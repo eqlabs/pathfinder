@@ -122,7 +122,7 @@ mod tests {
         net::{Ipv4Addr, SocketAddr, SocketAddrV4},
         sync::Arc,
     };
-    use web3::types::H256;
+    use ethers::types::H256;
 
     /// Starts the HTTP-RPC server.
     pub async fn run_server(
@@ -147,7 +147,7 @@ mod tests {
     pub fn setup_storage() -> Storage {
         use crate::state::update_contract_state;
         use pathfinder_common::{ContractNonce, StorageValue};
-        use web3::types::H128;
+        use ethers::types::H128;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();

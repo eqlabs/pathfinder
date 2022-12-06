@@ -13,7 +13,7 @@ use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, Transacti
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::StarkHash;
 use starknet_gateway_types::reply::transaction;
-use web3::types::H256;
+use ethers::types::H256;
 
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
 pub struct L1StateTable {}
@@ -2037,7 +2037,7 @@ mod tests {
         use crate::test_utils;
         use pathfinder_common::starkhash;
         use pathfinder_common::{EntryPoint, EventData, Fee};
-        use web3::types::H128;
+        use ethers::types::H128;
 
         #[test]
         fn event_data_serialization() {

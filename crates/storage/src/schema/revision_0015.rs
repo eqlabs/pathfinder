@@ -1,7 +1,7 @@
 use anyhow::Context;
 use pathfinder_common::Fee;
 use rusqlite::{named_params, Transaction as RusqliteTransaction};
-use web3::types::H128;
+use ethers::types::H128;
 
 // This is a copy of the sequencer reply types _without_ deny_unknown_fields
 // The point is that with the old `struct Transaction` we had some optional
@@ -229,7 +229,7 @@ mod tests {
     use crate::schema;
     use pathfinder_common::{starkhash, StarknetTransactionHash};
     use rusqlite::{named_params, Connection};
-    use web3::types::H128;
+    use ethers::types::H128;
 
     #[test]
     fn empty() {

@@ -289,7 +289,7 @@ pub fn register_all_methods(
             let params = params.parse::<NamedArgs>()?;
 
             // These are required on the sequencer-side but missing from the v0.1.0 RPC request
-            const MAX_FEE: Fee = Fee(web3::types::H128::zero());
+            const MAX_FEE: Fee = Fee(ethers::types::H128::zero());
             const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
@@ -2575,7 +2575,7 @@ mod tests {
                 contract::{EntryPointType, SelectorAndOffset},
             };
             use std::collections::HashMap;
-            use web3::types::H256;
+            use ethers::types::H256;
 
             lazy_static::lazy_static! {
                 pub static ref CALL: ContractCall = ContractCall {
@@ -2694,7 +2694,7 @@ mod tests {
                         "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
                     )),
                 ];
-                let max_fee = Fee(web3::types::H128::from_low_u64_be(0x630a0aff77));
+                let max_fee = Fee(ethers::types::H128::from_low_u64_be(0x630a0aff77));
                 let nonce = TransactionNonce(starkhash!("02"));
 
                 let params = rpc_params!(call, signature, max_fee, TransactionVersion::ONE, nonce);

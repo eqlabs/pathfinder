@@ -69,13 +69,13 @@ struct Work {
     transaction: pathfinder_lib::rpc::v02::types::request::BroadcastedTransaction,
     at_block: pathfinder_common::StarknetBlockHash,
     gas_price: pathfinder_lib::cairo::ext_py::GasPriceSource,
-    actual_fee: web3::types::H256,
+    actual_fee: ethers::types::H256,
     span: tracing::Span,
 }
 
 #[derive(Debug)]
 struct ReadyResult {
-    actual_fee: web3::types::H256,
+    actual_fee: ethers::types::H256,
     result: Result<
         pathfinder_lib::rpc::v01::types::reply::FeeEstimate,
         pathfinder_lib::cairo::ext_py::CallFailure,
@@ -127,7 +127,7 @@ fn feed_work(
             let mut raw = [0u8; 32];
             let slice = next.get_ref_unwrap(4).as_blob()?;
             raw[32 - slice.len()..].copy_from_slice(slice);
-            web3::types::H256::from(raw)
+            ethers::types::H256::from(raw)
         };
 
         let prev_block_number = next.get_ref_unwrap(5).as_i64().unwrap() as u64;
@@ -191,7 +191,7 @@ fn feed_work(
         }
         */
 
-        let actual_fee = web3::types::H256::from(actual_fee.to_be_bytes());
+        let actual_fee = ethers::types::H256::from(actual_fee.to_be_bytes());
 
         invokes += 1;
 
@@ -294,9 +294,9 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
             Ok(fees) => {
                 ne += 1;
 
-                let fee = web3::types::U256::from_big_endian(fees.fee.as_bytes());
-                let actual_fee = web3::types::U256::from_big_endian(actual_fee.as_bytes());
-                let gas_price = web3::types::U256::from_big_endian(fees.gas_price.as_bytes());
+                let fee = ethers::types::U256::from_big_endian(fees.fee.as_bytes());
+                let actual_fee = ethers::types::U256::from_big_endian(actual_fee.as_bytes());
+                let gas_price = ethers::types::U256::from_big_endian(fees.gas_price.as_bytes());
 
                 // this hasn't yet happened that any of the numbers would be
                 // even more than u64...

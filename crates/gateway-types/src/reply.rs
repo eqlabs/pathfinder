@@ -363,7 +363,7 @@ pub mod transaction {
     }
 
     fn transaction_version_zero() -> TransactionVersion {
-        TransactionVersion(web3::types::H256::zero())
+        TransactionVersion(ethers::types::H256::zero())
     }
 
     /// Represents deserialized L2 deploy transaction data.
@@ -417,7 +417,7 @@ pub mod transaction {
             D: serde::Deserializer<'de>,
         {
             use serde::de;
-            use web3::types::H256;
+            use ethers::types::H256;
 
             #[serde_as]
             #[derive(Deserialize)]

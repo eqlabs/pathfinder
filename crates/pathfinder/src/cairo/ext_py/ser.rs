@@ -32,7 +32,7 @@ pub(crate) enum ChildCommand<'a> {
 
         // zero means use the gas price from the block.
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
-        gas_price: &'a web3::types::H256,
+        gas_price: &'a ethers::types::H256,
         transaction: &'a AddTransaction,
     },
 }

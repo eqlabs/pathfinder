@@ -99,7 +99,7 @@ mod tests {
 
         fn test_declare_txn() -> Transaction {
             Transaction::Declare(BroadcastedDeclareTransaction {
-                max_fee: Fee(web3::types::H128::from_low_u64_be(1)),
+                max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
                 version: TransactionVersion::ZERO,
                 signature: vec![],
                 nonce: TransactionNonce(StarkHash::ZERO),

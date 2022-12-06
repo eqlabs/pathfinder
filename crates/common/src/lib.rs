@@ -4,7 +4,7 @@
 //! This includes many trivial wrappers around [StarkHash] which help by providing additional type safety.
 use serde::{Deserialize, Serialize};
 use stark_hash::StarkHash;
-use web3::types::{H128, H160, H256};
+use ethers::types::{H128, H160, H256};
 
 pub mod consts;
 mod macros;
@@ -306,9 +306,9 @@ impl std::ops::SubAssign<u64> for StarknetBlockNumber {
     }
 }
 
-impl From<EthereumBlockNumber> for web3::types::BlockId {
+impl From<EthereumBlockNumber> for ethers::types::BlockId {
     fn from(number: EthereumBlockNumber) -> Self {
-        web3::types::BlockId::Number(web3::types::BlockNumber::Number(number.0.into()))
+        ethers::types::BlockId::Number(ethers::types::BlockNumber::Number(number.0.into()))
     }
 }
 
@@ -365,7 +365,7 @@ impl From<StarknetBlockHash> for BlockId {
 pub enum EthereumChain {
     Mainnet,
     Goerli,
-    Other(web3::types::U256),
+    Other(ethers::types::U256),
 }
 
 /// Starknet chain.

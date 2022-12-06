@@ -9,7 +9,7 @@ use pathfinder_ethereum::{
 use pathfinder_retry::Retry;
 use std::{num::NonZeroU64, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot, RwLock};
-use web3::types::H160;
+use ethers::types::H160;
 
 /// Events and queries emitted by L1 sync process.
 #[derive(Debug)]
@@ -43,7 +43,7 @@ where
         logs: Arc::new(RwLock::new(StateRootFetcher::new(
             head,
             chain,
-            core_address,
+            core_address.0.into(),
         ))),
         transport,
     };
@@ -125,9 +125,9 @@ impl<T: EthereumTransport + Send + Sync + Clone> EthereumApi for EthereumImpl<T>
         // No explicit retrying here as any `EthereumTransport` implementor should already hadle that there.
         Ok(self
             .transport
-            .block(block.into())
+            .block(block.0.into())
             .await?
-            .map(|b| EthereumBlockHash(b.hash.unwrap())))
+            .map(|b| EthereumBlockHash(b.hash.unwrap().0.into())))
     }
 }
 
@@ -275,7 +275,7 @@ mod tests {
         };
         use pathfinder_ethereum::{BlockOrigin, EthOrigin, TransactionOrigin};
         use stark_hash::StarkHash;
-        use web3::types::H256;
+        use ethers::types::H256;
 
         #[tokio::test]
         async fn happy_path() {

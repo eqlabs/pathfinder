@@ -1,5 +1,6 @@
-//! Wrapper for the parts of the [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
-use anyhow::Context;
+//! Wrapper for the parts of the [`ethers::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
+use ethers::providers::Middleware;
+use ethers::types::{Block, BlockId, Filter, Log, Transaction, TxHash, H256, U256};
 use futures::TryFutureExt;
 use pathfinder_common::EthereumChain;
 use pathfinder_retry::Retry;
@@ -7,12 +8,7 @@ use reqwest::Url;
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::time::Duration;
-use tracing::{debug, error, info};
-use web3::{
-    transports::Http,
-    types::{Block, BlockId, Filter, Log, Transaction, TransactionId, H256, U256},
-    Error, Web3,
-};
+use tracing::error;
 
 /// Error returned by [`HttpTransport::logs`].
 #[derive(Debug, thiserror::Error)]
@@ -25,22 +21,22 @@ pub enum LogsError {
     #[error("unknown block")]
     UnknownBlock,
     #[error(transparent)]
-    Other(#[from] web3::Error),
+    Other(#[from] ethers::providers::ProviderError),
 }
 
-/// Contains only those functions from [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
+/// Contains only those functions from [`ethers::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
 /// that [the ethereum module](super) uses.
 #[async_trait::async_trait]
 pub trait EthereumTransport {
-    async fn block(&self, block: BlockId) -> web3::Result<Option<Block<H256>>>;
-    async fn block_number(&self) -> web3::Result<u64>;
+    async fn block(&self, block: BlockId) -> anyhow::Result<Option<Block<H256>>>;
+    async fn block_number(&self) -> anyhow::Result<u64>;
     async fn chain(&self) -> anyhow::Result<EthereumChain>;
     async fn logs(&self, filter: Filter) -> std::result::Result<Vec<Log>, LogsError>;
-    async fn transaction(&self, id: TransactionId) -> web3::Result<Option<Transaction>>;
-    async fn gas_price(&self) -> web3::Result<U256>;
+    async fn transaction(&self, id: TxHash) -> anyhow::Result<Option<Transaction>>;
+    async fn gas_price(&self) -> anyhow::Result<U256>;
 }
 
-/// An implementation of [`EthereumTransport`] which uses [`Web3::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
+/// An implementation of [`EthereumTransport`] which uses [`ethers::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
 /// wrapped in an [exponential backoff retry utility](Retry).
 ///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
@@ -49,11 +45,11 @@ pub trait EthereumTransport {
 ///
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Clone, Debug)]
-pub struct HttpTransport(Web3<Http>);
+pub struct HttpTransport(ethers::providers::Provider<ethers::providers::Http>);
 
 impl HttpTransport {
     /// Creates new [`HttpTransport`] from [`Web3<Http>`]
-    pub fn new(http: Web3<Http>) -> Self {
+    pub fn new(http: ethers::providers::Provider<ethers::providers::Http>) -> Self {
         Self(http)
     }
 
@@ -63,20 +59,14 @@ impl HttpTransport {
     /// - the [Url](reqwest::Url)
     /// - the password (if provided)
     pub fn from_config(url: Url, password: Option<String>) -> anyhow::Result<Self> {
-        let client = reqwest::Client::builder();
-
-        let client = client
-            .user_agent(pathfinder_common::consts::USER_AGENT)
-            .build()
-            .context("Creating HTTP client")?;
-
         let mut url = url;
         url.set_password(password.as_deref())
             .map_err(|_| anyhow::anyhow!("Setting password"))?;
 
-        let client = Http::with_client(client, url);
+        let provider = ethers::providers::Http::new(url);
+        let provider = ethers::providers::Provider::new(provider);
 
-        Ok(Self::new(Web3::new(client)))
+        Ok(Self::new(provider))
     }
 
     /// Creates a [`HttpTransport`] transport from the Ethereum endpoint specified by the relevant environment variables.
@@ -108,98 +98,84 @@ impl HttpTransport {
 
         let password = std::env::var(password_key).ok();
 
-        let mut url = url.parse::<reqwest::Url>().expect("Bad Ethereum URL");
-        url.set_password(password.as_deref()).unwrap();
+        let url = url.parse::<reqwest::Url>().expect("Bad Ethereum URL");
 
-        let client = reqwest::Client::builder().build().unwrap();
-        let transport = Http::with_client(client, url);
-
-        Self::new(Web3::new(transport))
+        Self::from_config(url, password).unwrap()
     }
 }
 
 #[async_trait::async_trait]
 impl EthereumTransport for HttpTransport {
-    /// Wraps [`Web3::eth().block()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block)
+    /// Wraps [`ethers::eth().block()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block)
     /// into exponential retry on __all__ errors.
-    async fn block(&self, block: BlockId) -> web3::Result<Option<Block<H256>>> {
-        retry(|| self.0.eth().block(block), log_and_always_retry).await
+    async fn block(&self, block: BlockId) -> anyhow::Result<Option<Block<H256>>> {
+        Ok(retry(|| self.0.get_block(block), log_and_always_retry).await?)
     }
 
-    /// Wraps [`Web3::eth().block_number()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block_number)
+    /// Wraps [`ethers::eth().block_number()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block_number)
     /// into exponential retry on __all__ errors.
-    async fn block_number(&self) -> web3::Result<u64> {
-        retry(|| self.0.eth().block_number(), log_and_always_retry)
+    async fn block_number(&self) -> anyhow::Result<u64> {
+        Ok(retry(|| self.0.get_block_number(), log_and_always_retry)
             .await
-            .map(|n| n.as_u64())
+            .map(|n| n.as_u64())?)
     }
 
     /// Identifies the [EthereumChain] behind the given Ethereum transport.
     ///
     /// Will error if it's not one of the valid Starknet [EthereumChain] variants.
-    /// Internaly wraps [`Web3::chain_id()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.chain_id)
+    /// Internaly wraps [`ethers::chain_id()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.chain_id)
     /// into exponential retry on __all__ errors.
     async fn chain(&self) -> anyhow::Result<EthereumChain> {
-        match retry(|| self.0.eth().chain_id(), log_and_always_retry).await? {
+        match retry(|| self.0.get_chainid(), log_and_always_retry).await? {
             id if id == U256::from(1u32) => Ok(EthereumChain::Mainnet),
             id if id == U256::from(5u32) => Ok(EthereumChain::Goerli),
             other => anyhow::bail!("Unsupported chain ID: {}", other),
         }
     }
 
-    /// Wraps [`Web3::logs()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.logs)
+    /// Wraps [`ethers::logs()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.logs)
     /// into exponential retry on __some__ errors.
     async fn logs(&self, filter: Filter) -> std::result::Result<Vec<Log>, LogsError> {
-        use super::RpcErrorCode::*;
-        /// Error message generated by spurious decoder error which occurs on Infura endpoints from
-        /// time to time. It appears that the returned value is simply empty.
-        const DECODER_ERR: &str =
-            "Error(\"invalid type: null, expected a sequence\", line: 0, column: 0)";
-        const ALCHEMY_UNKNOWN_BLOCK_ERR: &str =
-            "One of the blocks specified in filter (fromBlock, toBlock or blockHash) cannot be found.";
-        const ALCHEMY_QUERY_TIMEOUT_ERR: &str =
-            "Query timeout exceeded. Consider reducing your block range.";
+        const INVALID_PARAMS: i64 = -32602;
+        const LIMIT_EXCEEDED: i64 = -32005;
+        const INVALID_INPUT: i64 = -32000;
 
         retry(
             || {
-                self.0.eth().logs(filter.clone()).map_err(|e| match e {
-                    Error::Rpc(err) if err.code.code() == LimitExceeded.code() => {
-                        LogsError::QueryLimit
+                use ethers::providers::ProviderError;
+                use ethers::providers::HttpClientError;
+
+                self.0.get_logs(&filter).map_err(|err| {
+                    let rpc_err = match err {
+                        ProviderError::JsonRpcClientError(inner) => inner,
+                        other => return LogsError::Other(other.into()),
+                    };
+            
+                    let rpc_err = match rpc_err.downcast::<HttpClientError>() {
+                        Ok(a) => a,
+                        Err(b) => return LogsError::Other(b.into()),
+                    };
+            
+                    let rpc_err = match *rpc_err {
+                        HttpClientError::JsonRpcError(rpc_err) => rpc_err,
+                        other => return LogsError::Other(other.into()),
+                    };
+            
+                    match (rpc_err.code, rpc_err.message.as_str()) {
+                        (LIMIT_EXCEEDED, _) => LogsError::QueryLimit,
+                        (INVALID_PARAMS, msg) if msg.starts_with("Log response size exceeded") => {
+                            LogsError::QueryLimit
+                        }
+                        (INVALID_PARAMS, msg) if msg.starts_with("query returned more than") => {
+                            LogsError::QueryLimit
+                        }
+                        (INVALID_INPUT, "Query timeout exceeded. Consider reducing your block range.") => LogsError::QueryLimit,
+                        (INVALID_INPUT, "One of the blocks specified in filter (fromBlock, toBlock or blockHash) cannot be found.") => LogsError::UnknownBlock,
+                        _ => LogsError::Other(HttpClientError::JsonRpcError(rpc_err).into()),
                     }
-                    Error::Rpc(err)
-                        if err.code.code() == InvalidParams.code()
-                            && err.message.starts_with("Log response size exceeded") =>
-                    {
-                        // Handle Alchemy query limit error response. Uses InvalidParams which is unusual.
-                        LogsError::QueryLimit
-                    }
-                    Error::Rpc(err)
-                        if err.code.code() == InvalidParams.code()
-                            && err.message.starts_with("query returned more than") =>
-                    {
-                        // Handle Infura query limit error response.
-                        LogsError::QueryLimit
-                    }
-                    Error::Rpc(err)
-                        if err.code.code() == InvalidInput.code()
-                            && err.message == ALCHEMY_UNKNOWN_BLOCK_ERR =>
-                    {
-                        LogsError::UnknownBlock
-                    }
-                    Error::Rpc(err)
-                        if err.code.code() == InvalidInput.code()
-                            && err.message == ALCHEMY_QUERY_TIMEOUT_ERR =>
-                    {
-                        LogsError::QueryLimit
-                    }
-                    _ => LogsError::Other(e),
                 })
             },
             |e| match e {
-                LogsError::Other(Error::Decoder(msg)) if msg == DECODER_ERR => {
-                    tracing::trace!("Spurious L1 log decoder error occurred, retrying");
-                    true
-                }
                 LogsError::Other(error) => log_and_always_retry(error),
                 _ => false,
             },
@@ -207,18 +183,14 @@ impl EthereumTransport for HttpTransport {
         .await
     }
 
-    /// Wraps [`Web3::transaction()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.transaction)
+    /// Wraps [`ethers::transaction()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.transaction)
     /// into exponential retry on __all__ errors.
-    async fn transaction(&self, id: TransactionId) -> web3::Result<Option<Transaction>> {
-        retry(
-            || self.0.eth().transaction(id.clone()),
-            log_and_always_retry,
-        )
-        .await
+    async fn transaction(&self, id: TxHash) -> anyhow::Result<Option<Transaction>> {
+        Ok(retry(|| self.0.get_transaction(id.clone()), log_and_always_retry).await?)
     }
 
-    async fn gas_price(&self) -> web3::Result<U256> {
-        retry(|| self.0.eth().gas_price(), log_and_always_retry).await
+    async fn gas_price(&self) -> anyhow::Result<U256> {
+        Ok(retry(|| self.0.get_gas_price(), log_and_always_retry).await?)
     }
 }
 
@@ -240,27 +212,15 @@ where
 }
 
 /// A helper function to log Web3 Eth API errors. Always yields __true__.
-fn log_and_always_retry(error: &Error) -> bool {
-    match error {
-        Error::Transport(web3::error::TransportError::Code(401)) => {
-            // this happens at least on infura with bad urls, also alchemy
-            return false;
-        }
-        Error::Unreachable | Error::InvalidResponse(_) | Error::Transport(_) => {
-            debug!(reason=%error, "L1 request failed, retrying")
-        }
-        Error::Decoder(_) | Error::Internal | Error::Io(_) | Error::Recovery(_) => {
-            error!(reason=%error, "L1 request failed, retrying")
-        }
-        Error::Rpc(_) => info!(reason=%error, "L1 request failed, retrying"),
-    }
+fn log_and_always_retry(error: &ethers::providers::ProviderError) -> bool {
+    error!(reason=%error, "L1 request failed, retrying");
 
     true
 }
 
 #[cfg(test)]
 impl std::ops::Deref for HttpTransport {
-    type Target = Web3<Http>;
+    type Target = ethers::providers::Provider<ethers::providers::Http>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -272,21 +232,17 @@ mod tests {
     mod logs {
         use crate::transport::{EthereumTransport, HttpTransport, LogsError};
         use assert_matches::assert_matches;
+        use ethers::types::{H256, BlockNumber};
         use pathfinder_common::Chain;
-        use web3::types::{BlockNumber, FilterBuilder, H256};
 
         #[tokio::test]
         async fn ok() {
             use std::str::FromStr;
             // Create a filter which includes just a single block with a small, known amount of logs.
-            let filter = FilterBuilder::default()
-                .block_hash(
-                    H256::from_str(
-                        "0x0d82aea6f64525def8594e3192497153b83d8c568bb76adee980042d85dec931",
-                    )
-                    .unwrap(),
-                )
-                .build();
+            let filter = ethers::types::Filter::default()
+                .at_block_hash(H256::from_str(
+                    "0x0d82aea6f64525def8594e3192497153b83d8c568bb76adee980042d85dec931",
+                ).unwrap());
 
             let transport = HttpTransport::test_transport(Chain::Testnet);
 
@@ -298,10 +254,9 @@ mod tests {
         async fn query_limit() {
             // Create a filter which includes all logs ever. This should cause the API to return
             // error with a query limit variant.
-            let filter = FilterBuilder::default()
+            let filter = ethers::types::Filter::default()
                 .from_block(BlockNumber::Earliest)
-                .to_block(BlockNumber::Latest)
-                .build();
+                .to_block(BlockNumber::Latest);
 
             let transport = HttpTransport::test_transport(Chain::Testnet);
 
@@ -320,10 +275,9 @@ mod tests {
             let transport = HttpTransport::test_transport(Chain::Testnet);
             let latest = transport.block_number().await.unwrap();
 
-            let filter = FilterBuilder::default()
+            let filter = ethers::types::Filter::default()
                 .from_block(BlockNumber::Number((latest + 10).into()))
-                .to_block(BlockNumber::Number((latest + 20).into()))
-                .build();
+                .to_block(BlockNumber::Number((latest + 20).into()));
 
             let result = transport.logs(filter).await;
             match result {

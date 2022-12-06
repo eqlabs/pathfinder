@@ -1,10 +1,9 @@
+use ethers::types::{Filter, H160};
 use pathfinder_common::{Chain, EthereumBlockNumber};
-use web3::types::H160;
 
 use crate::log::StateUpdateLog;
 
 use anyhow::Context;
-use web3::types::{BlockNumber, FilterBuilder};
 
 use crate::transport::{EthereumTransport, LogsError};
 
@@ -14,7 +13,7 @@ pub struct StateRootFetcher {
     head: Option<StateUpdateLog>,
     genesis: EthereumBlockNumber,
     stride: u64,
-    base_filter: FilterBuilder,
+    base_filter: Filter,
 }
 
 #[derive(Debug)]
@@ -50,9 +49,12 @@ impl StateRootFetcher {
             Chain::Custom => EthereumBlockNumber(0),
         };
 
-        let base_filter = FilterBuilder::default()
+        let signature = StateUpdateLog::signature();
+        let signature: ethers::types::H256 = signature.0.into();
+
+        let base_filter = Filter::default()
             .address(vec![contract_address])
-            .topics(Some(vec![StateUpdateLog::signature()]), None, None, None);
+            .topic0(signature);
 
         Self {
             head,
@@ -66,7 +68,7 @@ impl StateRootFetcher {
     fn testnet(head: Option<StateUpdateLog>) -> Self {
         let contract_address = crate::contract::TESTNET_ADDRESSES.core;
 
-        Self::new(head, Chain::Testnet, contract_address)
+        Self::new(head, Chain::Testnet, contract_address.0.into())
     }
 
     pub fn set_head(&mut self, head: Option<StateUpdateLog>) {
@@ -103,10 +105,7 @@ impl StateRootFetcher {
             .as_ref()
             .map(|update| update.origin.block.number.0)
             .unwrap_or(self.genesis.0);
-        let base_filter = self
-            .base_filter
-            .clone()
-            .from_block(BlockNumber::Number(from_block.into()));
+        let base_filter = self.base_filter.clone().from_block(from_block);
 
         // The largest stride we are allowed to take. This gets
         // set if we encounter the Infura result cap error.
@@ -120,10 +119,7 @@ impl StateRootFetcher {
 
         loop {
             let to_block = from_block.saturating_add(self.stride);
-            let filter = base_filter
-                .clone()
-                .to_block(BlockNumber::Number(to_block.into()))
-                .build();
+            let filter = base_filter.clone().to_block(to_block);
 
             let logs = match transport.logs(filter).await {
                 Ok(logs) => logs,
@@ -234,8 +230,8 @@ mod tests {
     }
 
     mod genesis {
+        use ethers::types::{BlockNumber, Filter};
         use pretty_assertions::assert_eq;
-        use web3::types::{BlockNumber, FilterBuilder};
 
         use crate::transport::EthereumTransport;
 
@@ -250,12 +246,11 @@ mod tests {
 
             let block_number = BlockNumber::Number(MAINNET_GENESIS.0.into());
 
-            let filter = FilterBuilder::default()
-                .address(vec![MAINNET_ADDRESSES.core])
-                .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
+            let filter = Filter::default()
+                .address(MAINNET_ADDRESSES.core)
+                .topic0(StateUpdateLog::signature())
                 .from_block(block_number)
-                .to_block(block_number)
-                .build();
+                .to_block(block_number);
 
             let logs = transport.logs(filter).await.unwrap();
             let logs = logs
@@ -279,12 +274,11 @@ mod tests {
 
             let block_number = BlockNumber::Number(TESTNET_GENESIS.0.into());
 
-            let filter = FilterBuilder::default()
-                .address(vec![TESTNET_ADDRESSES.core])
-                .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
+            let filter = Filter::default()
+                .address(TESTNET_ADDRESSES.core)
+                .topic0(StateUpdateLog::signature())
                 .from_block(block_number)
-                .to_block(block_number)
-                .build();
+                .to_block(block_number);
 
             let logs = transport.logs(filter).await.unwrap();
             let logs = logs
@@ -307,12 +301,11 @@ mod tests {
 
             let block_number = BlockNumber::Number(INTEGRATION_GENESIS.0.into());
 
-            let filter = FilterBuilder::default()
-                .address(vec![INTEGRATION_ADDRESSES.core])
-                .topics(Some(vec![StateUpdateLog::signature()]), None, None, None)
+            let filter = Filter::default()
+                .address(INTEGRATION_ADDRESSES.core)
+                .topic0(StateUpdateLog::signature())
                 .from_block(block_number)
-                .to_block(block_number)
-                .build();
+                .to_block(block_number);
 
             let logs = transport.logs(filter).await.unwrap();
             let logs = logs
@@ -329,7 +322,7 @@ mod tests {
     }
 
     mod reorg {
-        use web3::types::H256;
+        use ethers::types::H256;
 
         use pathfinder_common::{
             starkhash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
