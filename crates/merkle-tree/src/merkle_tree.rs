@@ -44,7 +44,7 @@
 //!
 //! The in-memory tree is built using a graph of `Rc<RefCell<Node>>` which is a bit painful.
 
-use crate::state::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
+use crate::merkle_node::{BinaryNode, Direction, EdgeNode, Node};
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use pathfinder_storage::merkle_tree::{

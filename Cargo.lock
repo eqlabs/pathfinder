@@ -2953,6 +2953,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-merkle-tree"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec 0.20.4",
+ "hex-literal",
+ "pathfinder-common",
+ "pathfinder-storage",
+ "pretty_assertions",
+ "rand",
+ "rusqlite",
+ "stark_hash",
+]
+
+[[package]]
 name = "pathfinder-retry"
 version = "0.1.0"
 dependencies = [

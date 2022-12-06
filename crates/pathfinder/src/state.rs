@@ -9,9 +9,6 @@ use stark_hash::{stark_hash, StarkHash};
 use starknet_gateway_types::reply::state_update::StorageDiff;
 
 pub mod block_hash;
-pub mod merkle_node;
-pub mod merkle_tree;
-pub mod state_tree;
 mod sync;
 
 pub use sync::{l1, l2, sync, PendingData};
