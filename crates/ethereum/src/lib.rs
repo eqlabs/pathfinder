@@ -12,64 +12,6 @@ pub mod log;
 pub mod provider;
 pub mod state_update;
 
-/// List of semi-official Ethereum RPC errors taken from [EIP-1474] (which is stagnant).
-///
-/// The issue of standardizing the Ethereum RPC seems to now be taking
-/// place here: <https://github.com/eea-oasis/eth1.x-JSON-RPC-API-standard/issues>.
-///
-/// [EIP-1474]: https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1474.md#error-codes
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum RpcErrorCode {
-    _ParseError,
-    _InvalidRequest,
-    _MethodNotFound,
-    InvalidParams,
-    _InternalError,
-    InvalidInput,
-    _ResourceNotFound,
-    _ResourceUnavailable,
-    _TransactionRejected,
-    _MethodNotSupported,
-    LimitExceeded,
-    _JsonRpcVersion,
-}
-
-impl RpcErrorCode {
-    fn code(&self) -> i64 {
-        match self {
-            RpcErrorCode::_ParseError => -32700,
-            RpcErrorCode::_InvalidRequest => -32600,
-            RpcErrorCode::_MethodNotFound => -32601,
-            RpcErrorCode::InvalidParams => -32602,
-            RpcErrorCode::_InternalError => -32603,
-            RpcErrorCode::InvalidInput => -32000,
-            RpcErrorCode::_ResourceNotFound => -32001,
-            RpcErrorCode::_ResourceUnavailable => -32002,
-            RpcErrorCode::_TransactionRejected => -32003,
-            RpcErrorCode::_MethodNotSupported => -32004,
-            RpcErrorCode::LimitExceeded => -32005,
-            RpcErrorCode::_JsonRpcVersion => -32006,
-        }
-    }
-
-    fn _reason(&self) -> &str {
-        match self {
-            RpcErrorCode::_ParseError => "Invalid JSON",
-            RpcErrorCode::_InvalidRequest => "JSON is not a valid request object",
-            RpcErrorCode::_MethodNotFound => "Method does not exist",
-            RpcErrorCode::InvalidParams => "Invalid method parameters",
-            RpcErrorCode::_InternalError => "Internal JSON-RPC error",
-            RpcErrorCode::InvalidInput => "Missing or invalid parameters",
-            RpcErrorCode::_ResourceNotFound => "Requested resource not found",
-            RpcErrorCode::_ResourceUnavailable => "Requested resource not available",
-            RpcErrorCode::_TransactionRejected => "Transaction creation failed",
-            RpcErrorCode::_MethodNotSupported => "Method is not implemented",
-            RpcErrorCode::LimitExceeded => "Request exceeds defined limit",
-            RpcErrorCode::_JsonRpcVersion => "Version of JSON-RPC protocol is not supported",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct BlockOrigin {
     pub hash: EthereumBlockHash,

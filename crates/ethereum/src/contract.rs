@@ -1,7 +1,5 @@
 use ethers::abi::{Contract, Event};
-use ethers::providers::Middleware;
 use ethers::types::H160;
-use pathfinder_common::{GlobalRoot, StarknetBlockNumber};
 
 /// Groups the Starknet contract addresses for a specific chain.
 pub struct ContractAddresses {
@@ -86,8 +84,6 @@ mod tests {
     use std::str::FromStr;
 
     mod contract {
-        use ethers::types::{BlockId, BlockNumber};
-
         use crate::provider::HttpProvider;
         use pathfinder_common::Chain;
 
@@ -134,37 +130,21 @@ mod tests {
                 // log changes as read these. In particular, any of the `XXX_EVENT` consts.
 
                 // The current address of Starknet's core contract implementation.
-                // const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
-                // let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
+                const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
+                let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
+                let provider = HttpProvider::test_provider(Chain::Testnet);
+                let provider = std::sync::Arc::new(&*provider);
 
-                // // The proxy's ABI.
-                // const CORE_PROXY_ABI: &[u8] = include_bytes!(concat!(
-                //     env!("CARGO_MANIFEST_DIR"),
-                //     "/resources/contracts/core_proxy.json"
-                // ));
+                ethers::contract::abigen!(
+                    ProxyContract,
+                    "$CARGO_MANIFEST_DIR/resources/contracts/core_proxy.json"
+                );
 
-                // let transport = HttpTransport::test_transport(Chain::Testnet);
+                let core_proxy = ProxyContract::new(TESTNET_ADDRESSES.core, provider);
 
-                // let core_proxy = ethers::contract::Contract::from_json(
-                //     transport.eth(),
-                //     TESTNET_ADDRESSES.core,
-                //     CORE_PROXY_ABI,
-                // )
-                // .unwrap();
+                let impl_addr = core_proxy.implementation().call().await.unwrap();
 
-                // let impl_addr: H160 = core_proxy
-                //     .query(
-                //         "implementation",
-                //         (),
-                //         None,
-                //         Options::default(),
-                //         Some(BlockId::Number(BlockNumber::Latest)),
-                //     )
-                //     .await
-                //     .unwrap();
-
-                // assert_eq!(impl_addr, expect_addr);
-                todo!("FIXME");
+                assert_eq!(impl_addr, expect_addr);
             }
 
             #[tokio::test]
@@ -174,37 +154,21 @@ mod tests {
                 // update the address and more importantly, the ABI.
 
                 // The current address of Starknet's core contract implementation.
-                // const CORE_IMPL_ADDR: &str = "0xe267213b0749bb94c575f6170812c887330d9ce3";
-                // let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
+                const CORE_IMPL_ADDR: &str = "0xe267213b0749bb94c575f6170812c887330d9ce3";
+                let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
+                let provider = HttpProvider::test_provider(Chain::Mainnet);
+                let provider = std::sync::Arc::new(&*provider);
 
-                // // The proxy's ABI.
-                // const CORE_PROXY_ABI: &[u8] = include_bytes!(concat!(
-                //     env!("CARGO_MANIFEST_DIR"),
-                //     "/resources/contracts/core_proxy.json"
-                // ));
+                ethers::contract::abigen!(
+                    ProxyContract,
+                    "$CARGO_MANIFEST_DIR/resources/contracts/core_proxy.json"
+                );
 
-                // let transport = HttpTransport::test_transport(Chain::Mainnet);
+                let core_proxy = ProxyContract::new(MAINNET_ADDRESSES.core, provider);
 
-                // let core_proxy = ethers::contract::Contract::from_json(
-                //     transport.eth(),
-                //     MAINNET_ADDRESSES.core,
-                //     CORE_PROXY_ABI,
-                // )
-                // .unwrap();
+                let impl_addr = core_proxy.implementation().call().await.unwrap();
 
-                // let impl_addr: H160 = core_proxy
-                //     .query(
-                //         "implementation",
-                //         (),
-                //         None,
-                //         Options::default(),
-                //         Some(BlockId::Number(BlockNumber::Latest)),
-                //     )
-                //     .await
-                //     .unwrap();
-
-                // assert_eq!(impl_addr, expect_addr);
-                todo!("FIXME");
+                assert_eq!(impl_addr, expect_addr);
             }
 
             #[tokio::test]
@@ -214,37 +178,21 @@ mod tests {
                 // update the address and more importantly, the ABI once it reaches testnet.
 
                 // The current address of Starknet's core contract implementation.
-                // const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
-                // let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
+                const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
+                let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
+                let provider = HttpProvider::test_provider(Chain::Testnet);
+                let provider = std::sync::Arc::new(&*provider);
 
-                // // The proxy's ABI.
-                // const CORE_PROXY_ABI: &[u8] = include_bytes!(concat!(
-                //     env!("CARGO_MANIFEST_DIR"),
-                //     "/resources/contracts/core_proxy.json"
-                // ));
+                ethers::contract::abigen!(
+                    ProxyContract,
+                    "$CARGO_MANIFEST_DIR/resources/contracts/core_proxy.json"
+                );
 
-                // let transport = HttpTransport::test_transport(Chain::Integration);
+                let core_proxy = ProxyContract::new(INTEGRATION_ADDRESSES.core, provider);
 
-                // let core_proxy = ethers::contract::Contract::from_json(
-                //     transport.eth(),
-                //     INTEGRATION_ADDRESSES.core,
-                //     CORE_PROXY_ABI,
-                // )
-                // .unwrap();
+                let impl_addr = core_proxy.implementation().call().await.unwrap();
 
-                // let impl_addr: H160 = core_proxy
-                //     .query(
-                //         "implementation",
-                //         (),
-                //         None,
-                //         Options::default(),
-                //         Some(BlockId::Number(BlockNumber::Latest)),
-                //     )
-                //     .await
-                //     .unwrap();
-
-                // assert_eq!(impl_addr, expect_addr);
-                todo!("FIXME");
+                assert_eq!(impl_addr, expect_addr);
             }
         }
     }

@@ -10,7 +10,7 @@ use std::num::NonZeroU64;
 use std::time::Duration;
 use tracing::error;
 
-/// Error returned by [`HttpTransport::logs`].
+/// Error returned by [`HttpProvider::logs`].
 #[derive(Debug, thiserror::Error)]
 pub enum LogsError {
     /// Query exceeded limits (time or result length).
@@ -24,8 +24,7 @@ pub enum LogsError {
     Other(#[from] ethers::providers::ProviderError),
 }
 
-/// Contains only those functions from [`ethers::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
-/// that [the ethereum module](super) uses.
+/// Contains only those functions from that [the ethereum module](super) uses.
 #[async_trait::async_trait]
 pub trait EthereumTransport {
     async fn block(&self, block: BlockId) -> anyhow::Result<Option<Block<H256>>>;
@@ -36,8 +35,7 @@ pub trait EthereumTransport {
     async fn gas_price(&self) -> anyhow::Result<U256>;
 }
 
-/// An implementation of [`EthereumTransport`] which uses [`ethers::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html)
-/// wrapped in an [exponential backoff retry utility](Retry).
+/// An implementation of [`EthereumTransport`] wrapped with a [exponential backoff retry utility](Retry).
 ///
 /// Initial backoff time is 30 seconds and saturates at 1 hour:
 ///
@@ -48,12 +46,12 @@ pub trait EthereumTransport {
 pub struct HttpProvider(ethers::providers::Provider<ethers::providers::Http>);
 
 impl HttpProvider {
-    /// Creates new [`HttpTransport`] from [`Web3<Http>`]
+    /// Creates new [`HttpProvider`].
     pub fn new(http: ethers::providers::Provider<ethers::providers::Http>) -> Self {
         Self(http)
     }
 
-    /// Creates new [`HttpTransport`] from url and optional password
+    /// Creates new [`HttpProvider`] from url and optional password
     ///
     /// This includes setting:
     /// - the [Url](reqwest::Url)
@@ -69,7 +67,7 @@ impl HttpProvider {
         Ok(Self::new(provider))
     }
 
-    /// Creates a [`HttpTransport`] transport from the Ethereum endpoint specified by the relevant environment variables.
+    /// Creates a [`HttpProvider`] transport from the Ethereum endpoint specified by the relevant environment variables.
     ///
     /// Requires an environment variable for both the URL and (optional) password.
     ///
@@ -106,14 +104,10 @@ impl HttpProvider {
 
 #[async_trait::async_trait]
 impl EthereumTransport for HttpProvider {
-    /// Wraps [`ethers::eth().block()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block)
-    /// into exponential retry on __all__ errors.
     async fn block(&self, block: BlockId) -> anyhow::Result<Option<Block<H256>>> {
         Ok(retry(|| self.0.get_block(block), log_and_always_retry).await?)
     }
 
-    /// Wraps [`ethers::eth().block_number()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block_number)
-    /// into exponential retry on __all__ errors.
     async fn block_number(&self) -> anyhow::Result<u64> {
         Ok(retry(|| self.0.get_block_number(), log_and_always_retry)
             .await
@@ -123,8 +117,6 @@ impl EthereumTransport for HttpProvider {
     /// Identifies the [EthereumChain] behind the given Ethereum transport.
     ///
     /// Will error if it's not one of the valid Starknet [EthereumChain] variants.
-    /// Internaly wraps [`ethers::chain_id()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.chain_id)
-    /// into exponential retry on __all__ errors.
     async fn chain(&self) -> anyhow::Result<EthereumChain> {
         match retry(|| self.0.get_chainid(), log_and_always_retry).await? {
             id if id == U256::from(1u32) => Ok(EthereumChain::Mainnet),
@@ -133,8 +125,6 @@ impl EthereumTransport for HttpProvider {
         }
     }
 
-    /// Wraps [`ethers::logs()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.logs)
-    /// into exponential retry on __some__ errors.
     async fn logs(&self, filter: Filter) -> std::result::Result<Vec<Log>, LogsError> {
         const INVALID_PARAMS: i64 = -32602;
         const LIMIT_EXCEEDED: i64 = -32005;
@@ -183,8 +173,6 @@ impl EthereumTransport for HttpProvider {
         .await
     }
 
-    /// Wraps [`ethers::transaction()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.transaction)
-    /// into exponential retry on __all__ errors.
     async fn transaction(&self, id: TxHash) -> anyhow::Result<Option<Transaction>> {
         Ok(retry(|| self.0.get_transaction(id.clone()), log_and_always_retry).await?)
     }
@@ -271,7 +259,7 @@ mod tests {
             //
             // Infura and Alchemy handle this differently.
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
-            //  - Alchemy throws a RPC::ServerError which `HttpTransport::logs` maps to `UnknownBlock`.
+            //  - Alchemy throws a RPC::ServerError which `HttpProvider::logs` maps to `UnknownBlock`.
             let transport = HttpProvider::test_provider(Chain::Testnet);
             let latest = transport.block_number().await.unwrap();
 
