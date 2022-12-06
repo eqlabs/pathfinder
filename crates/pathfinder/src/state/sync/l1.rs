@@ -4,7 +4,7 @@ use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetB
 use pathfinder_ethereum::{
     log::StateUpdateLog,
     state_update::{FetchError, StateRootFetcher},
-    transport::EthereumTransport,
+    provider::EthereumTransport,
 };
 use pathfinder_retry::Retry;
 use std::{num::NonZeroU64, sync::Arc, time::Duration};

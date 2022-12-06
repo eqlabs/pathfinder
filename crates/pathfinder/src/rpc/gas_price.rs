@@ -7,12 +7,12 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct Cached {
     inner: Arc<std::sync::Mutex<Inner>>,
-    eth: Arc<dyn pathfinder_ethereum::transport::EthereumTransport + Send + Sync + 'static>,
+    eth: Arc<dyn pathfinder_ethereum::provider::EthereumTransport + Send + Sync + 'static>,
 }
 
 impl Cached {
     pub fn new(
-        eth: Arc<dyn pathfinder_ethereum::transport::EthereumTransport + Send + Sync + 'static>,
+        eth: Arc<dyn pathfinder_ethereum::provider::EthereumTransport + Send + Sync + 'static>,
     ) -> Self {
         Cached {
             inner: Default::default(),

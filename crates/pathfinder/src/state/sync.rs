@@ -11,7 +11,7 @@ use pathfinder_common::{
     Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
-use pathfinder_ethereum::{log::StateUpdateLog, transport::EthereumTransport};
+use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_storage::{
     ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
@@ -964,7 +964,7 @@ mod tests {
     struct FakeTransport;
 
     #[async_trait::async_trait]
-    impl pathfinder_ethereum::transport::EthereumTransport for FakeTransport {
+    impl pathfinder_ethereum::provider::EthereumTransport for FakeTransport {
         async fn block(
             &self,
             _: ethers::types::BlockId,
@@ -983,7 +983,7 @@ mod tests {
         async fn logs(
             &self,
             _: ethers::types::Filter,
-        ) -> std::result::Result<Vec<ethers::types::Log>, pathfinder_ethereum::transport::LogsError>
+        ) -> std::result::Result<Vec<ethers::types::Log>, pathfinder_ethereum::provider::LogsError>
         {
             unimplemented!()
         }

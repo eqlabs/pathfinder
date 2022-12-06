@@ -45,9 +45,9 @@ pub trait EthereumTransport {
 ///
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Clone, Debug)]
-pub struct HttpTransport(ethers::providers::Provider<ethers::providers::Http>);
+pub struct HttpProvider(ethers::providers::Provider<ethers::providers::Http>);
 
-impl HttpTransport {
+impl HttpProvider {
     /// Creates new [`HttpTransport`] from [`Web3<Http>`]
     pub fn new(http: ethers::providers::Provider<ethers::providers::Http>) -> Self {
         Self(http)
@@ -80,7 +80,7 @@ impl HttpTransport {
     ///
     /// Mainnet: PATHFINDER_ETHEREUM_HTTP_MAINNET_URL
     ///          PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD (optional)
-    pub fn test_transport(chain: pathfinder_common::Chain) -> Self {
+    pub fn test_provider(chain: pathfinder_common::Chain) -> Self {
         use pathfinder_common::Chain;
         let key_prefix = match chain {
             Chain::Mainnet => "PATHFINDER_ETHEREUM_HTTP_MAINNET",
@@ -105,7 +105,7 @@ impl HttpTransport {
 }
 
 #[async_trait::async_trait]
-impl EthereumTransport for HttpTransport {
+impl EthereumTransport for HttpProvider {
     /// Wraps [`ethers::eth().block()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html#method.block)
     /// into exponential retry on __all__ errors.
     async fn block(&self, block: BlockId) -> anyhow::Result<Option<Block<H256>>> {
@@ -219,7 +219,7 @@ fn log_and_always_retry(error: &ethers::providers::ProviderError) -> bool {
 }
 
 #[cfg(test)]
-impl std::ops::Deref for HttpTransport {
+impl std::ops::Deref for HttpProvider {
     type Target = ethers::providers::Provider<ethers::providers::Http>;
 
     fn deref(&self) -> &Self::Target {
@@ -230,7 +230,7 @@ impl std::ops::Deref for HttpTransport {
 #[cfg(test)]
 mod tests {
     mod logs {
-        use crate::transport::{EthereumTransport, HttpTransport, LogsError};
+        use crate::provider::{EthereumTransport, HttpProvider, LogsError};
         use assert_matches::assert_matches;
         use ethers::types::{H256, BlockNumber};
         use pathfinder_common::Chain;
@@ -244,7 +244,7 @@ mod tests {
                     "0x0d82aea6f64525def8594e3192497153b83d8c568bb76adee980042d85dec931",
                 ).unwrap());
 
-            let transport = HttpTransport::test_transport(Chain::Testnet);
+            let transport = HttpProvider::test_provider(Chain::Testnet);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Ok(logs) if logs.len() == 85);
@@ -258,7 +258,7 @@ mod tests {
                 .from_block(BlockNumber::Earliest)
                 .to_block(BlockNumber::Latest);
 
-            let transport = HttpTransport::test_transport(Chain::Testnet);
+            let transport = HttpProvider::test_provider(Chain::Testnet);
 
             let result = transport.logs(filter).await;
             assert_matches!(result, Err(LogsError::QueryLimit));
@@ -272,7 +272,7 @@ mod tests {
             // Infura and Alchemy handle this differently.
             //  - Infura accepts the query as valid and simply returns logs for whatever part of the range it has.
             //  - Alchemy throws a RPC::ServerError which `HttpTransport::logs` maps to `UnknownBlock`.
-            let transport = HttpTransport::test_transport(Chain::Testnet);
+            let transport = HttpProvider::test_provider(Chain::Testnet);
             let latest = transport.block_number().await.unwrap();
 
             let filter = ethers::types::Filter::default()

@@ -3,7 +3,6 @@ use ethers::providers::Middleware;
 use ethers::types::H160;
 use pathfinder_common::{GlobalRoot, StarknetBlockNumber};
 
-
 /// Groups the Starknet contract addresses for a specific chain.
 pub struct ContractAddresses {
     pub core: H160,
@@ -87,12 +86,9 @@ mod tests {
     use std::str::FromStr;
 
     mod contract {
-        use ethers::{
-            // contract::Options,
-            types::{BlockId, BlockNumber},
-        };
+        use ethers::types::{BlockId, BlockNumber};
 
-        use crate::transport::HttpTransport;
+        use crate::provider::HttpProvider;
         use pathfinder_common::Chain;
 
         use super::*;

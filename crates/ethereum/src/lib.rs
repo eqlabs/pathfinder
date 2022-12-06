@@ -9,8 +9,8 @@ use pathfinder_common::{
 
 pub mod contract;
 pub mod log;
+pub mod provider;
 pub mod state_update;
-pub mod transport;
 
 /// List of semi-official Ethereum RPC errors taken from [EIP-1474] (which is stagnant).
 ///
@@ -136,13 +136,13 @@ impl TryFrom<&ethers::types::Log> for EthOrigin {
 #[cfg(test)]
 mod tests {
     mod chain {
-        use crate::transport::{EthereumTransport, HttpTransport};
+        use crate::provider::{EthereumTransport, HttpProvider};
         use pathfinder_common::{Chain, EthereumChain};
 
         #[tokio::test]
         async fn testnet() {
             let expected_chain = EthereumChain::Goerli;
-            let transport = HttpTransport::test_transport(Chain::Testnet);
+            let transport = HttpProvider::test_provider(Chain::Testnet);
             let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);
@@ -151,7 +151,7 @@ mod tests {
         #[tokio::test]
         async fn integration() {
             let expected_chain = EthereumChain::Goerli;
-            let transport = HttpTransport::test_transport(Chain::Integration);
+            let transport = HttpProvider::test_provider(Chain::Integration);
             let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);
@@ -160,7 +160,7 @@ mod tests {
         #[tokio::test]
         async fn mainnet() {
             let expected_chain = EthereumChain::Mainnet;
-            let transport = HttpTransport::test_transport(Chain::Mainnet);
+            let transport = HttpProvider::test_provider(Chain::Mainnet);
             let chain = transport.chain().await.unwrap();
 
             assert_eq!(chain, expected_chain);

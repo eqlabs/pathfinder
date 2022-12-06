@@ -5,7 +5,7 @@ use crate::log::StateUpdateLog;
 
 use anyhow::Context;
 
-use crate::transport::{EthereumTransport, LogsError};
+use crate::provider::{EthereumTransport, LogsError};
 
 /// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 #[derive(Clone)]
@@ -211,7 +211,7 @@ mod tests {
 
     use pathfinder_common::{Chain, StarknetBlockNumber};
 
-    use crate::transport::HttpTransport;
+    use crate::provider::HttpProvider;
 
     use super::*;
 
@@ -220,7 +220,7 @@ mod tests {
         // The first state root retrieved should be the genesis event,
         // with a sequence number of 0.
         let chain = Chain::Testnet;
-        let transport = HttpTransport::test_transport(chain);
+        let transport = HttpProvider::test_provider(chain);
 
         let mut uut = StateRootFetcher::testnet(None);
         let first_fetch = uut.fetch(transport).await.unwrap();
@@ -233,7 +233,7 @@ mod tests {
         use ethers::types::{BlockNumber, Filter};
         use pretty_assertions::assert_eq;
 
-        use crate::transport::EthereumTransport;
+        use crate::provider::EthereumTransport;
 
         use super::*;
 
@@ -242,7 +242,7 @@ mod tests {
             use crate::contract::MAINNET_ADDRESSES;
             // Checks `MAINNET_GENESIS` contains the actual Starknet genesis StateUpdateLog
             let chain = Chain::Mainnet;
-            let transport = HttpTransport::test_transport(chain);
+            let transport = HttpProvider::test_provider(chain);
 
             let block_number = BlockNumber::Number(MAINNET_GENESIS.0.into());
 
@@ -270,7 +270,7 @@ mod tests {
             use crate::contract::TESTNET_ADDRESSES;
             // Checks `TESTNET_GENESIS` contains the actual Starknet genesis StateUpdateLog
             let chain = Chain::Testnet;
-            let transport = HttpTransport::test_transport(chain);
+            let transport = HttpProvider::test_provider(chain);
 
             let block_number = BlockNumber::Number(TESTNET_GENESIS.0.into());
 
@@ -297,7 +297,7 @@ mod tests {
         async fn integration() {
             use crate::contract::INTEGRATION_ADDRESSES;
             let chain = Chain::Integration;
-            let transport = HttpTransport::test_transport(chain);
+            let transport = HttpProvider::test_provider(chain);
 
             let block_number = BlockNumber::Number(INTEGRATION_GENESIS.0.into());
 
@@ -330,7 +330,7 @@ mod tests {
         };
 
         use crate::{
-            state_update::FetchError, transport::EthereumTransport, BlockOrigin, EthOrigin,
+            state_update::FetchError, provider::EthereumTransport, BlockOrigin, EthOrigin,
             TransactionOrigin,
         };
 
@@ -342,7 +342,7 @@ mod tests {
             // This should get interpretted as a reorg once the correct
             // first L2 update log is found.
             let chain = Chain::Testnet;
-            let transport = HttpTransport::test_transport(chain);
+            let transport = HttpProvider::test_provider(chain);
 
             // Note that block_number must be 0 so that we pull all of L1 history.
             // This makes the test robust against L2 changes, updates or deployments
@@ -373,7 +373,7 @@ mod tests {
             // This should be interpreted as a reorg as this update
             // won't be found.
             let chain = Chain::Testnet;
-            let transport = HttpTransport::test_transport(chain);
+            let transport = HttpProvider::test_provider(chain);
 
             let latest_on_chain = transport.block_number().await.unwrap();
 
