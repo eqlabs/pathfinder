@@ -2,9 +2,9 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [StarkHash] which help by providing additional type safety.
+use ethers::types::{H128, H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::StarkHash;
-use ethers::types::{H128, H160, H256};
 
 pub mod consts;
 mod macros;

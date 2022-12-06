@@ -7,7 +7,6 @@ use anyhow::Context;
 
 use crate::provider::{EthereumTransport, LogsError};
 
-/// A simple wrapper for [LogFetcher]<[StateUpdateLog]>.
 #[derive(Clone)]
 pub struct StateRootFetcher {
     head: Option<StateUpdateLog>,
@@ -330,7 +329,7 @@ mod tests {
         };
 
         use crate::{
-            state_update::FetchError, provider::EthereumTransport, BlockOrigin, EthOrigin,
+            provider::EthereumTransport, state_update::FetchError, BlockOrigin, EthOrigin,
             TransactionOrigin,
         };
 

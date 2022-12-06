@@ -1,5 +1,6 @@
 use crate::types::StateUpdate;
 use anyhow::Context;
+use ethers::types::H256;
 use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
@@ -13,7 +14,6 @@ use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, Transacti
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::StarkHash;
 use starknet_gateway_types::reply::transaction;
-use ethers::types::H256;
 
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
 pub struct L1StateTable {}
@@ -2035,9 +2035,9 @@ mod tests {
     mod starknet_events {
         use super::*;
         use crate::test_utils;
+        use ethers::types::H128;
         use pathfinder_common::starkhash;
         use pathfinder_common::{EntryPoint, EventData, Fee};
-        use ethers::types::H128;
 
         #[test]
         fn event_data_serialization() {

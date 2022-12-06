@@ -26,6 +26,3 @@ hex = "0.4.3"
 hex-literal = "0.3"
 pretty_assertions = "1.0.0"
 tokio = { version = "1.11.0", features = ["macros"] }
-
-[build-dependencies]
-ethers = "1.0.0"

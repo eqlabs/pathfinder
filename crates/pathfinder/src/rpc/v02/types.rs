@@ -368,8 +368,8 @@ pub mod reply {
         where
             D: serde::Deserializer<'de>,
         {
-            use serde::de;
             use ethers::types::H256;
+            use serde::de;
 
             const VERSION_0: H256 = H256::zero();
             const fn transaction_version_zero() -> TransactionVersion {

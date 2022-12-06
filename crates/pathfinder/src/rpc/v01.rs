@@ -2565,6 +2565,7 @@ mod tests {
         mod positional_args {
             use super::*;
             use crate::rpc::v01::types::request::ContractCall;
+            use ethers::types::H256;
             use pathfinder_common::{
                 starkhash, ByteCodeOffset, CallParam, ClassHash, EntryPoint, Fee,
                 TransactionSignatureElem, TransactionVersion,
@@ -2575,7 +2576,6 @@ mod tests {
                 contract::{EntryPointType, SelectorAndOffset},
             };
             use std::collections::HashMap;
-            use ethers::types::H256;
 
             lazy_static::lazy_static! {
                 pub static ref CALL: ContractCall = ContractCall {

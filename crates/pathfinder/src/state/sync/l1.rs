@@ -1,15 +1,15 @@
 use anyhow::Context;
+use ethers::types::H160;
 use futures::Future;
 use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber};
 use pathfinder_ethereum::{
     log::StateUpdateLog,
-    state_update::{FetchError, StateRootFetcher},
     provider::EthereumTransport,
+    state_update::{FetchError, StateRootFetcher},
 };
 use pathfinder_retry::Retry;
 use std::{num::NonZeroU64, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot, RwLock};
-use ethers::types::H160;
 
 /// Events and queries emitted by L1 sync process.
 #[derive(Debug)]
@@ -269,13 +269,13 @@ mod tests {
 
     mod sync_ethereum_state_impl {
         use super::*;
+        use ethers::types::H256;
         use pathfinder_common::{
             starkhash, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
             GlobalRoot,
         };
         use pathfinder_ethereum::{BlockOrigin, EthOrigin, TransactionOrigin};
         use stark_hash::StarkHash;
-        use ethers::types::H256;
 
         #[tokio::test]
         async fn happy_path() {

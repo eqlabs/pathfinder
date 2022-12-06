@@ -1,8 +1,8 @@
 use crate::{contract::STATE_UPDATE_EVENT, EthOrigin};
 use anyhow::Context;
+use ethers::abi::{LogParam, RawLog};
 use pathfinder_common::{GlobalRoot, StarknetBlockNumber};
 use stark_hash::StarkHash;
-use ethers::abi::{LogParam, RawLog};
 
 /// Describes a state update log event.
 ///

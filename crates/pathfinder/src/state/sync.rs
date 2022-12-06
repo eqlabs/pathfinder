@@ -7,6 +7,7 @@ use crate::{
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
 };
 use anyhow::Context;
+use ethers::types::H160;
 use pathfinder_common::{
     Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
@@ -26,7 +27,6 @@ use starknet_gateway_types::reply::{
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use ethers::types::H160;
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -936,6 +936,7 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 mod tests {
     use super::{l1, l2};
     use crate::state::{self, sync::PendingData};
+    use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
         BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
@@ -958,7 +959,6 @@ mod tests {
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
-    use ethers::types::H256;
 
     #[derive(Debug, Clone)]
     struct FakeTransport;

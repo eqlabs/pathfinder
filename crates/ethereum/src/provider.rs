@@ -138,19 +138,19 @@ impl EthereumTransport for HttpProvider {
                 self.0.get_logs(&filter).map_err(|err| {
                     let rpc_err = match err {
                         ProviderError::JsonRpcClientError(inner) => inner,
-                        other => return LogsError::Other(other.into()),
+                        other => return LogsError::Other(other),
                     };
-            
+
                     let rpc_err = match rpc_err.downcast::<HttpClientError>() {
                         Ok(a) => a,
                         Err(b) => return LogsError::Other(b.into()),
                     };
-            
+
                     let rpc_err = match *rpc_err {
                         HttpClientError::JsonRpcError(rpc_err) => rpc_err,
                         other => return LogsError::Other(other.into()),
                     };
-            
+
                     match (rpc_err.code, rpc_err.message.as_str()) {
                         (LIMIT_EXCEEDED, _) => LogsError::QueryLimit,
                         (INVALID_PARAMS, msg) if msg.starts_with("Log response size exceeded") => {
@@ -174,7 +174,7 @@ impl EthereumTransport for HttpProvider {
     }
 
     async fn transaction(&self, id: TxHash) -> anyhow::Result<Option<Transaction>> {
-        Ok(retry(|| self.0.get_transaction(id.clone()), log_and_always_retry).await?)
+        Ok(retry(|| self.0.get_transaction(id), log_and_always_retry).await?)
     }
 
     async fn gas_price(&self) -> anyhow::Result<U256> {
@@ -220,17 +220,19 @@ mod tests {
     mod logs {
         use crate::provider::{EthereumTransport, HttpProvider, LogsError};
         use assert_matches::assert_matches;
-        use ethers::types::{H256, BlockNumber};
+        use ethers::types::{BlockNumber, H256};
         use pathfinder_common::Chain;
 
         #[tokio::test]
         async fn ok() {
             use std::str::FromStr;
             // Create a filter which includes just a single block with a small, known amount of logs.
-            let filter = ethers::types::Filter::default()
-                .at_block_hash(H256::from_str(
+            let filter = ethers::types::Filter::default().at_block_hash(
+                H256::from_str(
                     "0x0d82aea6f64525def8594e3192497153b83d8c568bb76adee980042d85dec931",
-                ).unwrap());
+                )
+                .unwrap(),
+            );
 
             let transport = HttpProvider::test_provider(Chain::Testnet);
 

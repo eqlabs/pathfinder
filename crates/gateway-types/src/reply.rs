@@ -416,8 +416,8 @@ pub mod transaction {
         where
             D: serde::Deserializer<'de>,
         {
-            use serde::de;
             use ethers::types::H256;
+            use serde::de;
 
             #[serde_as]
             #[derive(Deserialize)]
