@@ -278,22 +278,6 @@ pub mod reply {
                 // places, and leaning on ErrorObject partialeq impl.
                 let repr = match self {
                     ErrorCode::PageSizeTooBig => {
-                        // let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
-                        //     if let Some(e) = e.downcast_ref::<EventFilterError>() {
-                        //         match e {
-                        //             EventFilterError::PageSizeTooBig(max_size) => {
-                        //                 Error::Call(CallError::Custom(ErrorObject::owned(
-                        //                     ErrorCode::PageSizeTooBig as i32,
-                        //                     ErrorCode::PageSizeTooBig.to_string(),
-                        //                     Some(serde_json::json!({ "max_page_size": max_size })),
-                        //                 )))
-                        //             }
-                        //         }
-                        //     } else {
-                        //         internal_server_error(e)
-                        //     }
-                        // })?;
-
                         Error::Call(CallError::Custom(ErrorObject::owned(
                             ErrorCode::PageSizeTooBig as i32,
                             ErrorCode::PageSizeTooBig.to_string(),
@@ -302,10 +286,6 @@ pub mod reply {
                                     pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT
                             })),
                         )))
-
-                        // Error::from(pathfinder_storage::EventFilterError::PageSizeTooBig(
-                        //     pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT,
-                        // ))
                     }
                     other => Error::from(*other),
                 };
