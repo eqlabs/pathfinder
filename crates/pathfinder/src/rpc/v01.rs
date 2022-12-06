@@ -1430,9 +1430,9 @@ mod tests {
         pub fn setup_class_and_contract(
             transaction: &rusqlite::Transaction<'_>,
         ) -> anyhow::Result<(ContractAddress, ClassHash, String, serde_json::Value)> {
-            let buffer = zstd::decode_all(std::io::Cursor::new(
+            let buffer = zstd::decode_all(
                 starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
-            ))?;
+            )?;
             let contract_definition = Bytes::from(buffer);
 
             let contract_address = ContractAddress::new_or_panic(starkhash!(
