@@ -55,18 +55,20 @@ pub(crate) struct CommonProperties<'a> {
 pub(crate) enum UsedChain {
     #[serde(rename = "MAINNET")]
     Mainnet,
-    #[serde(rename = "GOERLI")]
-    Goerli,
+    #[serde(rename = "TESTNET")]
+    Testnet,
+    #[serde(rename = "TESTNET2")]
+    Testnet2,
 }
 
 impl From<Chain> for UsedChain {
     fn from(c: Chain) -> Self {
         match c {
             pathfinder_common::Chain::Mainnet => UsedChain::Mainnet,
-            pathfinder_common::Chain::Testnet => UsedChain::Goerli,
-            pathfinder_common::Chain::Testnet2 => UsedChain::Goerli,
-            pathfinder_common::Chain::Integration => UsedChain::Goerli,
-            pathfinder_common::Chain::Custom => UsedChain::Goerli,
+            pathfinder_common::Chain::Testnet => UsedChain::Testnet,
+            pathfinder_common::Chain::Testnet2 => UsedChain::Testnet2,
+            pathfinder_common::Chain::Integration => UsedChain::Testnet,
+            pathfinder_common::Chain::Custom => UsedChain::Testnet,
         }
     }
 }
