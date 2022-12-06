@@ -1,13 +1,15 @@
-use crate::sequencer;
 use crate::state::block_hash::verify_block_hash;
-use crate::state::class_hash::extract_abi_code_hash;
-use crate::state::CompressedContract;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
-use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::reply::{
-    state_update::{DeployedContract, StateDiff},
-    Block, PendingBlock, StateUpdate, Status,
+use pathfinder_storage::types::CompressedContract;
+use starknet_gateway_client::ClientApi;
+use starknet_gateway_types::{
+    class_hash::extract_abi_code_hash,
+    error::SequencerError,
+    reply::{
+        state_update::{DeployedContract, StateDiff},
+        Block, PendingBlock, StateUpdate, Status,
+    },
 };
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
@@ -50,7 +52,7 @@ pub enum Event {
 
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
-    sequencer: impl sequencer::ClientApi,
+    sequencer: impl ClientApi,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
     chain: Chain,
     pending_poll_interval: Option<Duration>,
@@ -166,7 +168,7 @@ pub async fn sync(
 /// is required to handle older blocks which don't have declare transactions.
 async fn declare_classes(
     block: &Block,
-    sequencer: &impl sequencer::ClientApi,
+    sequencer: &impl ClientApi,
     tx_event: &mpsc::Sender<Event>,
 ) -> Result<(), anyhow::Error> {
     let declared_classes = block
@@ -241,7 +243,7 @@ async fn download_block(
     block_number: StarknetBlockNumber,
     chain: Chain,
     prev_block_hash: Option<StarknetBlockHash>,
-    sequencer: &impl sequencer::ClientApi,
+    sequencer: &impl ClientApi,
 ) -> anyhow::Result<DownloadBlock> {
     use pathfinder_common::BlockId;
     use starknet_gateway_types::{
@@ -315,7 +317,7 @@ async fn reorg(
     head: (StarknetBlockNumber, StarknetBlockHash, GlobalRoot),
     chain: Chain,
     tx_event: &mpsc::Sender<Event>,
-    sequencer: &impl sequencer::ClientApi,
+    sequencer: &impl ClientApi,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
@@ -366,7 +368,7 @@ async fn reorg(
 
 async fn deploy_contracts(
     tx_event: &mpsc::Sender<Event>,
-    sequencer: &impl sequencer::ClientApi,
+    sequencer: &impl ClientApi,
     state_diff: &StateDiff,
 ) -> anyhow::Result<()> {
     let unique_contracts = state_diff
@@ -431,7 +433,7 @@ async fn deploy_contracts(
 /// These should eventually be deduplicated, but right now we are just aiming at functional.
 async fn download_and_compress_class(
     class_hash: ClassHash,
-    sequencer: &impl sequencer::ClientApi,
+    sequencer: &impl ClientApi,
 ) -> anyhow::Result<CompressedContract> {
     let definition = sequencer
         .class_by_hash(class_hash)
@@ -481,7 +483,7 @@ async fn download_and_compress_class(
 
 async fn download_and_compress_contract(
     contract: &DeployedContract,
-    sequencer: &impl sequencer::ClientApi,
+    sequencer: &impl ClientApi,
 ) -> anyhow::Result<CompressedContract> {
     let contract_definition = sequencer
         .full_contract(contract.address)
@@ -532,7 +534,6 @@ async fn download_and_compress_contract(
 mod tests {
     mod sync {
         use super::super::{sync, Event};
-        use crate::sequencer::MockClientApi;
         use assert_matches::assert_matches;
         use pathfinder_common::{
             BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
@@ -540,6 +541,7 @@ mod tests {
             StorageValue,
         };
         use stark_hash::StarkHash;
+        use starknet_gateway_client::MockClientApi;
         use starknet_gateway_types::{
             error::{SequencerError, StarknetError, StarknetErrorCode},
             reply,

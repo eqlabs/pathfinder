@@ -158,11 +158,12 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{rpc::v02::types::request::BroadcastedInvokeTransaction, storage::JournalMode};
+    use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
         starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_storage::JournalMode;
     use std::path::PathBuf;
 
     mod parsing {
@@ -296,7 +297,8 @@ mod tests {
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             database_path.push("fixtures/mainnet.sqlite");
             let storage =
-                crate::storage::Storage::migrate(database_path.clone(), JournalMode::WAL).unwrap();
+                pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
+                    .unwrap();
             let sync_state = Arc::new(crate::state::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
@@ -307,7 +309,7 @@ mod tests {
             .await
             .unwrap();
 
-            let sequencer = crate::sequencer::Client::new(Chain::Mainnet).unwrap();
+            let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }
@@ -381,8 +383,8 @@ mod tests {
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_CLASS: ContractClass = {
-                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION;
-                let json = zstd::decode_all(std::io::Cursor::new(compressed_json)).unwrap();
+                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
+                let json = zstd::decode_all(compressed_json).unwrap();
                 ContractClass::from_definition_bytes(&json).unwrap()
             };
         }

@@ -1,8 +1,8 @@
 use crate::rpc::v02::common::get_block_status;
 use crate::rpc::v02::RpcContext;
-use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use serde::Deserialize;
 use stark_hash::StarkHash;
 

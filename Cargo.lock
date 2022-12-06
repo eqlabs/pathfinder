@@ -2295,9 +2295,8 @@ dependencies = [
  "pathfinder-ethereum",
  "pathfinder-retry",
  "pathfinder-serde",
+ "pathfinder-storage",
  "pretty_assertions",
- "r2d2",
- "r2d2_sqlite",
  "rand",
  "reqwest",
  "rusqlite",
@@ -2307,6 +2306,7 @@ dependencies = [
  "serde_with",
  "sha3",
  "stark_hash",
+ "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
  "tempfile",
@@ -2328,6 +2328,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "hex-literal",
+ "metrics",
  "rusqlite",
  "serde",
  "serde_json",
@@ -2381,6 +2382,38 @@ dependencies = [
  "serde_with",
  "stark_hash",
  "web3",
+]
+
+[[package]]
+name = "pathfinder-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "base64",
+ "bitvec",
+ "flate2",
+ "hex",
+ "hex-literal",
+ "lazy_static",
+ "pathfinder-common",
+ "pathfinder-ethereum",
+ "pathfinder-serde",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha3",
+ "stark_hash",
+ "starknet-gateway-client",
+ "starknet-gateway-types",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "web3",
+ "zstd",
 ]
 
 [[package]]
@@ -3225,13 +3258,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "starknet-gateway-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-trait",
+ "base64",
+ "bytes",
+ "flate2",
+ "futures",
+ "hex-literal",
+ "http",
+ "lazy_static",
+ "metrics",
+ "mockall",
+ "pathfinder-common",
+ "pathfinder-retry",
+ "pathfinder-serde",
+ "pretty_assertions",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "stark_hash",
+ "starknet-gateway-test-fixtures",
+ "starknet-gateway-types",
+ "test-log",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "warp",
+]
+
+[[package]]
 name = "starknet-gateway-test-fixtures"
 version = "0.1.0"
+dependencies = [
+ "hex-literal",
+ "pathfinder-common",
+ "stark_hash",
+ "starknet-gateway-types",
+]
 
 [[package]]
 name = "starknet-gateway-types"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "hex-literal",
  "pathfinder-common",
  "pathfinder-serde",
@@ -3239,10 +3312,13 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "sha3",
  "stark_hash",
  "starknet-gateway-test-fixtures",
  "thiserror",
+ "tokio",
  "web3",
+ "zstd",
 ]
 
 [[package]]

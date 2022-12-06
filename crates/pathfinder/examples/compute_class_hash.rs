@@ -11,6 +11,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = Vec::new();
     std::io::stdin().read_to_end(&mut s).unwrap();
     let s = s;
-    println!("{:x}", pathfinder_lib::state::compute_class_hash(&s)?.0);
+    println!(
+        "{:x}",
+        starknet_gateway_types::class_hash::compute_class_hash(&s)?.0
+    );
     Ok(())
 }

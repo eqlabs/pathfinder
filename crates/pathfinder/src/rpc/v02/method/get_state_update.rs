@@ -1,7 +1,7 @@
 use crate::rpc::v02::RpcContext;
-use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
 use anyhow::{anyhow, Context};
 use pathfinder_common::BlockId;
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -100,8 +100,8 @@ mod types {
         }
     }
 
-    impl From<crate::rpc::v01::types::reply::StateUpdate> for StateUpdate {
-        fn from(x: crate::rpc::v01::types::reply::StateUpdate) -> Self {
+    impl From<pathfinder_storage::types::StateUpdate> for StateUpdate {
+        fn from(x: pathfinder_storage::types::StateUpdate) -> Self {
             Self {
                 block_hash: x.block_hash,
                 new_root: x.new_root,
@@ -159,8 +159,8 @@ mod types {
     /// in our storage.
     /// Storage updates are now grouped per-contract and individual update entries no
     /// longer contain the contract address.
-    impl From<crate::rpc::v01::types::reply::state_update::StateDiff> for StateDiff {
-        fn from(diff: crate::rpc::v01::types::reply::state_update::StateDiff) -> Self {
+    impl From<pathfinder_storage::types::state_update::StateDiff> for StateDiff {
+        fn from(diff: pathfinder_storage::types::state_update::StateDiff) -> Self {
             let mut per_contract_diff: HashMap<ContractAddress, Vec<StorageEntry>> = HashMap::new();
             for storage_diff in diff.storage_diffs {
                 per_contract_diff
@@ -247,8 +247,8 @@ mod types {
         }
     }
 
-    impl From<crate::rpc::v01::types::reply::state_update::DeployedContract> for DeployedContract {
-        fn from(c: crate::rpc::v01::types::reply::state_update::DeployedContract) -> Self {
+    impl From<pathfinder_storage::types::state_update::DeployedContract> for DeployedContract {
+        fn from(c: pathfinder_storage::types::state_update::DeployedContract) -> Self {
             Self {
                 address: c.address,
                 class_hash: c.class_hash,
@@ -265,8 +265,8 @@ mod types {
         pub nonce: ContractNonce,
     }
 
-    impl From<crate::rpc::v01::types::reply::state_update::Nonce> for Nonce {
-        fn from(n: crate::rpc::v01::types::reply::state_update::Nonce) -> Self {
+    impl From<pathfinder_storage::types::state_update::Nonce> for Nonce {
+        fn from(n: pathfinder_storage::types::state_update::Nonce) -> Self {
             Self {
                 contract_address: n.contract_address,
                 nonce: n.nonce,
@@ -375,14 +375,14 @@ mod tests {
     fn context_with_state_updates() -> (Vec<types::StateUpdate>, RpcContext) {
         use pathfinder_common::ChainId;
 
-        let storage = crate::storage::Storage::in_memory().unwrap();
+        let storage = pathfinder_storage::Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        let state_updates = crate::storage::fixtures::init::with_n_state_updates(&tx, 3);
+        let state_updates = pathfinder_storage::test_fixtures::init::with_n_state_updates(&tx, 3);
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::state::SyncState::default());
-        let sequencer = crate::sequencer::Client::new(Chain::Testnet).unwrap();
+        let sequencer = starknet_gateway_client::Client::new(Chain::Testnet).unwrap();
         let context = RpcContext::new(storage, sync_state, ChainId::TESTNET, sequencer);
         let state_updates = state_updates.into_iter().map(Into::into).collect();
 

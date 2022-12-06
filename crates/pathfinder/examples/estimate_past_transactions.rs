@@ -15,12 +15,12 @@ fn main() -> Result<(), anyhow::Error> {
         std::process::exit(1);
     }
 
-    let storage = pathfinder_lib::storage::Storage::migrate(
+    let storage = pathfinder_storage::Storage::migrate(
         std::env::args()
             .nth(1)
             .context("missing DATABASE_FILE argument")?
             .into(),
-        pathfinder_lib::storage::JournalMode::WAL,
+        pathfinder_storage::JournalMode::WAL,
     )?;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -84,7 +84,7 @@ struct ReadyResult {
 }
 
 fn feed_work(
-    storage: pathfinder_lib::storage::Storage,
+    storage: pathfinder_storage::Storage,
     sender: tokio::sync::mpsc::Sender<Work>,
 ) -> Result<(), anyhow::Error> {
     let mut connection = storage.connection()?;

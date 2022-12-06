@@ -1,11 +1,11 @@
 //! Basic test fixtures for storage.
 
 use crate::{
-    rpc::v01::types::reply::{
+    types::{
         state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
         StateUpdate,
     },
-    storage::{StarknetBlock, Storage},
+    {StarknetBlock, Storage},
 };
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
@@ -26,7 +26,7 @@ pub(crate) use hash;
 /// Initializers for storage test fixtures.
 pub mod init {
     use super::*;
-    use crate::storage::{StarknetBlocksTable, StarknetStateUpdatesTable};
+    use crate::{StarknetBlocksTable, StarknetStateUpdatesTable};
 
     /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {

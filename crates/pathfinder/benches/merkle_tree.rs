@@ -45,7 +45,7 @@ pub fn chunked_inserts(
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let s = pathfinder_lib::storage::Storage::in_memory().unwrap();
+    let s = pathfinder_storage::Storage::in_memory().unwrap();
     let mut connection = s.connection().unwrap();
 
     c.bench_function("merkle_tree of 1000", |b| {

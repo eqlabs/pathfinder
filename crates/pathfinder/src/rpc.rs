@@ -96,10 +96,6 @@ mod tests {
     use crate::{
         rpc::RpcServer,
         state::{state_tree::GlobalStateTree, PendingData},
-        storage::{
-            CanonicalBlocksTable, ContractCodeTable, ContractsTable, StarknetBlock,
-            StarknetBlocksTable, StarknetTransactionsTable, Storage,
-        },
     };
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
@@ -107,6 +103,10 @@ mod tests {
         EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
         StarknetTransactionIndex, StorageAddress, TransactionVersion,
+    };
+    use pathfinder_storage::{
+        types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, ContractsTable,
+        StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use stark_hash::StarkHash;
     use starknet_gateway_types::reply::{
@@ -145,7 +145,7 @@ mod tests {
 
     // Local test helper
     pub fn setup_storage() -> Storage {
-        use crate::state::{update_contract_state, CompressedContract};
+        use crate::state::update_contract_state;
         use pathfinder_common::{ContractNonce, StorageValue};
         use web3::types::H128;
 
@@ -179,7 +179,7 @@ mod tests {
         // contract definition, as this is asserted for internally
         let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
         let contract_definition =
-            starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION.to_vec();
+            starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION.to_vec();
         let contract0_code = CompressedContract {
             abi: zstd_magic.clone(),
             bytecode: zstd_magic,
@@ -378,7 +378,7 @@ mod tests {
             let mut db = storage2.connection().unwrap();
             let tx = db.transaction().unwrap();
 
-            use crate::storage::StarknetBlocksBlockId;
+            use pathfinder_storage::StarknetBlocksBlockId;
             StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
                 .unwrap()
                 .expect("Storage should contain a latest block")
@@ -515,12 +515,13 @@ mod tests {
             let mut db = deploy_storage.connection().unwrap();
             let tx = db.transaction().unwrap();
             let compressed_definition =
-                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION.to_vec();
+                starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION
+                    .to_vec();
             for deployed in deployed_contracts {
                 // The abi, bytecode, definition are expected to be zstd compressed, and are
                 // checked for the magic bytes.
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-                let contract = crate::state::CompressedContract {
+                let contract = CompressedContract {
                     abi: zstd_magic.clone(),
                     bytecode: zstd_magic.clone(),
                     definition: compressed_definition.to_vec(),

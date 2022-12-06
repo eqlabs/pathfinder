@@ -8,6 +8,8 @@ use web3::types::{H128, H160, H256};
 
 pub mod consts;
 mod macros;
+#[cfg(feature = "test-utils")]
+pub mod test_utils;
 
 /// The address of a StarkNet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]

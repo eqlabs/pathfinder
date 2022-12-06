@@ -1,27 +1,40 @@
 [package]
-name = "starknet-gateway-types"
+name = "pathfinder-storage"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+test-utils = []
+
 [dependencies]
 anyhow = "1.0.44"
+base64 = "0.13.0"
+bitvec = "0.20.4"
+flate2 = "1.0.23"
+hex = "0.4.3"
+hex-literal = "0.3"
+lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
+pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
-reqwest = "0.11.4"
+r2d2 = "0.8.9"
+r2d2_sqlite = "0.20.0"
+rusqlite = { version = "0.27.0", features = ["bundled"] }
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
 serde_with = "1.9.4"
 sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
+starknet-gateway-client = { path = "../gateway-client" }
+starknet-gateway-types = { path = "../gateway-types" }
 thiserror = "1.0.30"
+tokio = "1.11.0"
+tracing = "0.1.31"
 web3 = "0.18.0"
+zstd = "0.10"
 
 [dev-dependencies]
-# Due to pathfinder_common::starkhash!() usage
-hex-literal = "0.3"
-starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-tokio = { version = "1.11.0", features = ["test-util"] }
-zstd = "0.10"
+assert_matches = "1.5.0"

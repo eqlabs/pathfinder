@@ -1,4 +1,4 @@
-use crate::rpc::v01::types::reply::StateUpdate;
+use crate::types::StateUpdate;
 use anyhow::Context;
 use pathfinder_common::{
     consts::{
@@ -846,7 +846,7 @@ impl StarknetEventsTable {
         Ok(())
     }
 
-    pub(crate) const PAGE_SIZE_LIMIT: usize = 1024;
+    pub const PAGE_SIZE_LIMIT: usize = 1024;
 
     fn event_query<'query, 'arg>(
         base: &'query str,
@@ -1231,7 +1231,7 @@ impl ContractsStateTable {
     }
 }
 
-/// Stores all known [Starknet state updates][crate::rpc::v01::types::reply::StateUpdate].
+/// Stores all known [Starknet state updates][starknet_gateway_types::reply::StateUpdate].
 pub struct StarknetStateUpdatesTable {}
 
 impl StarknetStateUpdatesTable {
@@ -1316,7 +1316,7 @@ impl CanonicalBlocksTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Storage;
+    use crate::Storage;
 
     mod contracts {
         use super::*;
@@ -1612,7 +1612,7 @@ mod tests {
 
     mod starknet_blocks {
         use super::*;
-        use crate::storage::test_utils;
+        use crate::test_utils;
 
         fn create_blocks() -> [StarknetBlock; test_utils::NUM_BLOCKS] {
             test_utils::create_blocks()
@@ -2034,7 +2034,7 @@ mod tests {
 
     mod starknet_events {
         use super::*;
-        use crate::storage::test_utils;
+        use crate::test_utils;
         use pathfinder_common::starkhash;
         use pathfinder_common::{EntryPoint, EventData, Fee};
         use web3::types::H128;
@@ -2647,7 +2647,7 @@ mod tests {
 
     mod starknet_updates {
         use super::*;
-        use crate::storage::fixtures::with_n_state_updates;
+        use crate::test_fixtures::with_n_state_updates;
 
         mod get {
             use super::*;

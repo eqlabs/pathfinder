@@ -85,9 +85,10 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
             let definition = r.get_ref_unwrap(0).as_blob()?;
             let raw_definition = zstd::decode_all(definition)?;
             let (abi, code, hash) =
-                crate::state::class_hash::extract_abi_code_hash(&raw_definition).with_context(
-                    || format!("Failed to process {} bytes of definition", definition.len()),
-                )?;
+                starknet_gateway_types::class_hash::extract_abi_code_hash(&raw_definition)
+                    .with_context(|| {
+                        format!("Failed to process {} bytes of definition", definition.len())
+                    })?;
 
             if exists.exists([&hash.0.to_be_bytes()[..]])? {
                 if dump_duplicate_contracts {
@@ -106,7 +107,7 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
                 }
                 duplicates += 1;
             } else {
-                crate::storage::ContractCodeTable::insert(tx, hash, &abi, &code, &raw_definition)?;
+                crate::ContractCodeTable::insert(tx, hash, &abi, &code, &raw_definition)?;
                 uniq_contracts += 1;
             }
 

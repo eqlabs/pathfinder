@@ -1,9 +1,9 @@
 use crate::rpc::v02::types::ContractClass;
 use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::GlobalStateTree;
-use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use rusqlite::OptionalExtension;
 
 crate::rpc::error::generate_rpc_error_subset!(GetClassAtError: BlockNotFound, ContractNotFound);

@@ -1,8 +1,8 @@
 use crate::rpc::v02::RpcContext;
 use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
-use crate::storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use serde::Deserialize;
 use stark_hash::StarkHash;
 

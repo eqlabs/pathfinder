@@ -1,9 +1,7 @@
-use crate::{
-    rpc::v02::RpcContext,
-    storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable},
-};
+use crate::rpc::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::BlockId;
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetBlockTransactionCountInput {
