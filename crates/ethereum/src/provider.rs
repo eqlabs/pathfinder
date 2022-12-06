@@ -1,4 +1,3 @@
-//! Wrapper for the parts of the [`ethers::eth()`](https://docs.rs/web3/latest/web3/api/struct.Eth.html) API that [the ethereum module](super) uses.
 use ethers::providers::Middleware;
 use ethers::types::{Block, BlockId, Filter, Log, Transaction, TxHash, H256, U256};
 use futures::TryFutureExt;
@@ -182,7 +181,7 @@ impl EthereumTransport for HttpProvider {
     }
 }
 
-/// A helper function to keep the backoff strategy consistent across different Web3 Eth API calls.
+/// A helper function to keep the backoff strategy consistent across different Eth API calls.
 async fn retry<T, E, Fut, FutureFactory, RetryCondition>(
     future_factory: FutureFactory,
     retry_condition: RetryCondition,
@@ -199,7 +198,7 @@ where
         .await
 }
 
-/// A helper function to log Web3 Eth API errors. Always yields __true__.
+/// A helper function to log API errors. Always yields __true__.
 fn log_and_always_retry(error: &ethers::providers::ProviderError) -> bool {
     error!(reason=%error, "L1 request failed, retrying");
 
