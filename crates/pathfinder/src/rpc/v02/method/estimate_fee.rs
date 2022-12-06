@@ -383,7 +383,7 @@ mod tests {
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_CLASS: ContractClass = {
-                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION;
+                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
                 let json = zstd::decode_all(compressed_json).unwrap();
                 ContractClass::from_definition_bytes(&json).unwrap()
             };

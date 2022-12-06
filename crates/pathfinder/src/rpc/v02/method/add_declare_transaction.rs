@@ -82,7 +82,7 @@ mod tests {
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
-            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION).unwrap()
+            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION).unwrap()
         };
 
         pub static ref CONTRACT_CLASS: ContractClass = {

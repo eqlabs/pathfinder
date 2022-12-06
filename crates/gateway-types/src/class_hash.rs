@@ -412,10 +412,7 @@ mod json {
 
         #[test]
         fn second() {
-            let contract_definition = zstd::decode_all(
-                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
-            )
-            .unwrap();
+            let contract_definition = zstd::decode_all(CONTRACT_DEFINITION).unwrap();
             let hash = super::super::compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(

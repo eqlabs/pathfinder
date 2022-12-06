@@ -772,9 +772,10 @@ mod tests {
     }
 
     fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let test_contract_definition =
-            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION)
-                .unwrap();
+        let test_contract_definition = zstd::decode_all(
+            starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION,
+        )
+        .unwrap();
 
         let test_contract_address = ContractAddress::new_or_panic(starkhash!(
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
@@ -834,9 +835,10 @@ mod tests {
     }
 
     fn deploy_account_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let account_contract_definition =
-            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed::DUMMY_ACCOUNT)
-                .unwrap();
+        let account_contract_definition = zstd::decode_all(
+            starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT,
+        )
+        .unwrap();
 
         let account_contract_address = ContractAddress::new_or_panic(starkhash!("0123"));
 

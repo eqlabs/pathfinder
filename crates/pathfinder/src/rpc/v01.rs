@@ -1431,7 +1431,7 @@ mod tests {
             transaction: &rusqlite::Transaction<'_>,
         ) -> anyhow::Result<(ContractAddress, ClassHash, String, serde_json::Value)> {
             let buffer = zstd::decode_all(
-                starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
+                starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION,
             )?;
             let contract_definition = Bytes::from(buffer);
 

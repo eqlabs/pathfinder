@@ -80,12 +80,9 @@ pub mod integration {
     }
 }
 
-pub mod zstd_compressed {
-    pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contract_definition.json.zst");
-    pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("dummy_account.json.zst");
-}
-
 pub mod zstd_compressed_contracts {
+    pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json.zst");
+    pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json.zst");
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc
     pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json.zst");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3
