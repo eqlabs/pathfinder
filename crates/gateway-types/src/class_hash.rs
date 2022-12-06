@@ -395,39 +395,27 @@ mod json {
 
     #[cfg(test)]
     mod test_vectors {
+        use super::super::compute_class_hash;
         use pathfinder_common::starkhash;
+        use starknet_gateway_test_fixtures::zstd_compressed_contracts::*;
 
         #[tokio::test]
         async fn first() {
-            // this test is a bit on the slow side because of the download and because of the long
-            // processing time in dev builds. expected --release speed is 9 contracts/s.
-            let expected =
-                starkhash!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576");
+            let contract_definition = zstd::decode_all(INTEGRATION_TEST).unwrap();
+            let hash = compute_class_hash(&contract_definition).unwrap();
 
-            // this is quite big payload, ~500kB
-            let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc")
-                .await
-                .unwrap();
-
-            let payload = resp.text().await.expect("response wasn't a string");
-
-            // for bad urls the response looks like:
-            // 500
-            // {"code": "StarknetErrorCode.UNINITIALIZED_CONTRACT", "message": "Contract with address 2116724861677265616176388745625154424116334641142188761834194304782006389228 is not deployed."}
-
-            let hash = super::super::compute_class_hash(payload.as_bytes()).unwrap();
-
-            assert_eq!(hash.0, expected);
+            assert_eq!(
+                hash.0,
+                starkhash!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
+            );
         }
 
         #[test]
         fn second() {
             let contract_definition = zstd::decode_all(
-                // opening up a file requires a path relative to the test running
                 starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
             )
             .unwrap();
-
             let hash = super::super::compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
@@ -438,18 +426,13 @@ mod json {
 
         #[tokio::test]
         async fn genesis_contract() {
-            let contract_definition = reqwest::get(
-                    "https://alpha4.starknet.io/feeder_gateway/get_full_contract?\
-                    contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3",
-                )
-                .await
-                .unwrap()
-                .bytes()
-                .await
-                .unwrap();
+            let contract_definition = zstd::decode_all(GOERLI_GENESIS).unwrap();
+            let hash = compute_class_hash(&contract_definition).unwrap();
 
-            let _ = super::super::compute_class_hash(&contract_definition)
-                .expect("Extract and compute  hash");
+            assert_eq!(
+                hash.0,
+                starkhash!("010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
+            );
         }
 
         #[tokio::test]
@@ -465,15 +448,7 @@ mod json {
             ));
 
             // Known contract which triggered a hash mismatch failure.
-            let contract_definition = reqwest::get(
-                "https://alpha4.starknet.io/feeder_gateway/get_full_contract?\
-                contractAddress=0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC",
-            )
-            .await
-            .unwrap()
-            .bytes()
-            .await
-            .unwrap();
+            let contract_definition = zstd::decode_all(CAIRO_0_8_NEW_ATTRIBUTES).unwrap();
 
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
@@ -486,55 +461,40 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_10() {
-            let expected =
-                starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6");
-
             // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
-            let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2")
-                .await
-                .unwrap();
+            let contract_definition = zstd::decode_all(CAIRO_0_10_COMPILER_VERSION).unwrap();
+            let hash = compute_class_hash(&contract_definition).unwrap();
 
-            let payload = resp.text().await.expect("response wasn't a string");
-
-            let hash = super::super::compute_class_hash(payload.as_bytes()).unwrap();
-
-            assert_eq!(hash.0, expected);
+            assert_eq!(
+                hash.0,
+                starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
+            );
         }
 
         #[tokio::test]
         async fn cairo_0_10_part_2() {
-            let expected =
-                starkhash!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f");
-
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
-            let resp = reqwest::get("https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x06f17fb7a052f3d18c1911c9d9c2fb0032bbe1ea57c58b0baca85bda9f3698be")
-                .await
-                .unwrap();
+            let contract_definition = zstd::decode_all(CAIRO_0_10_TUPLES_INTEGRATION).unwrap();
+            let hash = compute_class_hash(&contract_definition).unwrap();
 
-            let payload = resp.text().await.expect("response wasn't a string");
-
-            let hash = super::super::compute_class_hash(payload.as_bytes()).unwrap();
-
-            assert_eq!(hash.0, expected);
+            assert_eq!(
+                hash.0,
+                starkhash!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
+            );
         }
 
         #[tokio::test]
         async fn cairo_0_10_part_3() {
-            let expected =
-                starkhash!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157");
-
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
-            let resp = reqwest::get("https://alpha4.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x0424e799d610433168a31aab44c0d3e38b45d97387b45de80089f56c184fa315")
-                .await
-                .unwrap();
+            let contract_definition = zstd::decode_all(CAIRO_0_10_TUPLES_GOERLI).unwrap();
+            let hash = compute_class_hash(&contract_definition).unwrap();
 
-            let payload = resp.text().await.expect("response wasn't a string");
-
-            let hash = super::super::compute_class_hash(payload.as_bytes()).unwrap();
-
-            assert_eq!(hash.0, expected);
+            assert_eq!(
+                hash.0,
+                starkhash!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
+            );
         }
     }
 

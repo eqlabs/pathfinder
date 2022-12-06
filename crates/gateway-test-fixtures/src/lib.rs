@@ -85,6 +85,28 @@ pub mod zstd_compressed {
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("dummy_account.json.zst");
 }
 
+pub mod zstd_compressed_contracts {
+    // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc
+    pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json.zst");
+    // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3
+    pub const GOERLI_GENESIS: &[u8] = bytes_fixture!("contracts/goerli-genesis.json.zst");
+    // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC
+    pub const CAIRO_0_8_NEW_ATTRIBUTES: &[u8] =
+        bytes_fixture!("contracts/cairo-0.8-new-attributes.json.zst");
+    // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
+    // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2
+    pub const CAIRO_0_10_COMPILER_VERSION: &[u8] =
+        bytes_fixture!("contracts/cairo-0.10-compiler-version.json.zst");
+    // Contracts whose class contains `compiler_version` property as well as `cairo_type` with tuple values.
+    // These tuple values require a space to be injected in order to achieve the correct hash.
+    // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x06f17fb7a052f3d18c1911c9d9c2fb0032bbe1ea57c58b0baca85bda9f3698be
+    pub const CAIRO_0_10_TUPLES_INTEGRATION: &[u8] =
+        bytes_fixture!("contracts/cairo-0.10-tuples-integration.json.zst");
+    // https://alpha4.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x0424e799d610433168a31aab44c0d3e38b45d97387b45de80089f56c184fa315
+    pub const CAIRO_0_10_TUPLES_GOERLI: &[u8] =
+        bytes_fixture!("contracts/cairo-0.10-tuples-goerli.json.zst");
+}
+
 pub mod testnet {
     use pathfinder_common::{
         starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
