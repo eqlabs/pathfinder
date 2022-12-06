@@ -80,7 +80,6 @@ impl StateRootFetcher {
 
     /// Fetches the next set of logs from L1. This set may be empty, in which
     /// case we have reached the current end of the L1 chain.
-    // pub async fn fetch(&mut self, transport: &impl EthereumTransport) -> Result<Vec<T>, FetchError> {
     pub async fn fetch(
         &mut self,
         transport: impl EthereumTransport,
