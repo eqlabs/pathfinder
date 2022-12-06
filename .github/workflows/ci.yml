@@ -162,57 +162,36 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
-
-      - name: Prepare py/
-        run: |
-          cd py
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -e .[dev]
+      - uses: actions/setup-python@v4
+        id: setup_python
+        with:
+          python-version: '3.8'
+          cache: 'pip'
+          cache-dependency-path: 'py/requirements*.txt'
+      # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
+      - uses: actions/cache@v3
+        id: python_cache
+        with:
+          path: ${{ env.pythonLocation }}/**/site-packages
+          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
+      - name: Install Python dependencies
+        run: pip install -e py/.[dev]
 
       - name: Test (python)
         run: |
-          source py/.venv/bin/activate
           cd py
           pytest
 
       - name: Formatting (python)
         run: |
-          source py/.venv/bin/activate
           cd py
           black --check .
 
       - name: Lints (python)
         run: |
-          source py/.venv/bin/activate
           cd py
           flake8 src/ tests/ tools/
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: rui314/setup-mold@v1
-        with:
-          mold-version: 1.4.1
-          make-default: false
-      - name: Enable mold
-        run: |
-          mkdir -p $HOME/.cargo
-          cat << EOF >> $HOME/.cargo/config.toml
-          [target.x86_64-unknown-linux-gnu]
-          linker = "/usr/bin/clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/mold"]
-          EOF
-
-          cat $HOME/.cargo/config.toml
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: "mold"
-      - name: Integration (rust)
-        run: |
-          source py/.venv/bin/activate
-          cargo test --no-run -p pathfinder
-          timeout 5m cargo test -p pathfinder -- cairo::ext_py --ignored
 
   fuzz_targets:
     runs-on: ubuntu-latest
