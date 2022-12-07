@@ -556,7 +556,7 @@ mod tests {
         use super::truncated_keccak;
         use pathfinder_common::starkhash;
         use sha3::{Digest, Keccak256};
-        let all_set = Keccak256::digest(&[0xffu8; 32]);
+        let all_set = Keccak256::digest([0xffu8; 32]);
         assert!(all_set[0] > 0xf);
         let truncated = truncated_keccak(all_set.into());
         assert_eq!(
