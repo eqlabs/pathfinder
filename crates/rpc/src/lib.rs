@@ -160,9 +160,9 @@ mod tests {
 
     // Local test helper
     pub fn setup_storage() -> Storage {
-        use crate::state::update_contract_state;
         use ethers::types::H128;
         use pathfinder_common::{ContractNonce, StorageValue};
+        use pathfinder_merkle_tree::contract_state::update_contract_state;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
@@ -563,7 +563,7 @@ mod tests {
                 ContractsTable::upsert(&tmp_tx, deployed.address, deployed.class_hash).unwrap();
             }
             for (contract_address, storage_diffs) in state_diff2.storage_diffs {
-                use crate::state::update_contract_state;
+                use pathfinder_merkle_tree::contract_state::update_contract_state;
                 let state_hash = update_contract_state(
                     contract_address,
                     &storage_diffs,

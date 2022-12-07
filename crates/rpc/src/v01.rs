@@ -1405,11 +1405,11 @@ mod tests {
 
     mod contract_setup {
         use super::*;
-        use crate::state::update_contract_state;
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
         use pathfinder_common::{starkhash, StorageValue};
+        use pathfinder_merkle_tree::contract_state::update_contract_state;
         use pathfinder_storage::{ContractCodeTable, ContractsTable, StarknetBlocksBlockId};
         use pretty_assertions::assert_eq;
         use starknet_gateway_types::reply::state_update::StorageDiff;

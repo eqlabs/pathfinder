@@ -2967,6 +2967,7 @@ dependencies = [
  "rand",
  "rusqlite",
  "stark_hash",
+ "starknet-gateway-types",
 ]
 
 [[package]]

@@ -926,11 +926,12 @@ mod tests {
 
         let contract_nonce = ContractNonce(StarkHash::ZERO);
 
-        let contract_state_hash = crate::state::calculate_contract_state_hash(
-            class_hash,
-            contract_state_root,
-            contract_nonce,
-        );
+        let contract_state_hash =
+            pathfinder_merkle_tree::contract_state::calculate_contract_state_hash(
+                class_hash,
+                contract_state_root,
+                contract_nonce,
+            );
 
         // set up contract state table
         ContractsStateTable::upsert(

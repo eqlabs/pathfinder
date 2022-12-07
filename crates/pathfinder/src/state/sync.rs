@@ -2,7 +2,6 @@ pub mod l1;
 pub mod l2;
 mod pending;
 
-use crate::state::{calculate_contract_state_hash, update_contract_state};
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
@@ -10,7 +9,10 @@ use pathfinder_common::{
     StarknetBlockHash, StarknetBlockNumber,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
-use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+use pathfinder_merkle_tree::{
+    contract_state::{calculate_contract_state_hash, update_contract_state},
+    state_tree::GlobalStateTree,
+};
 use pathfinder_rpc::{
     v01::types::reply::{syncing, syncing::NumberedBlock, Syncing},
     SyncState,
