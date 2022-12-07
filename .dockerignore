@@ -1,5 +1,5 @@
-# Don't ignore this, because it being missing would interfere with -dirty in `git describe`.
-# Dockerfile
+Dockerfile
+.git
 # rust temporary files
 target/
 crates/load-test/target/
