@@ -1,9 +1,10 @@
 use crate::rpc::v02::RpcContext;
 use crate::state::PendingData;
-use crate::storage::EventFilterError;
-use crate::storage::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
+use pathfinder_storage::{
+    EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable,
+};
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 
@@ -146,7 +147,7 @@ pub async fn get_events(
         let from_block = map_to_number(&transaction, request.from_block)?;
         let to_block = map_to_number(&transaction, request.to_block)?;
 
-        let filter = crate::storage::StarknetEventFilter {
+        let filter = StarknetEventFilter {
             from_block,
             to_block,
             contract_address: request.address,
@@ -340,6 +341,7 @@ mod types {
         ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
         StarknetTransactionHash,
     };
+    use pathfinder_storage::StarknetEmittedEvent;
     use serde::Serialize;
 
     /// Describes an emitted event returned by starknet_getEvents
@@ -356,8 +358,8 @@ mod types {
         pub transaction_hash: StarknetTransactionHash,
     }
 
-    impl From<crate::storage::StarknetEmittedEvent> for EmittedEvent {
-        fn from(event: crate::storage::StarknetEmittedEvent) -> Self {
+    impl From<StarknetEmittedEvent> for EmittedEvent {
+        fn from(event: StarknetEmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,
@@ -386,9 +388,9 @@ mod tests {
         types::{EmittedEvent, GetEventsResult},
         *,
     };
-    use crate::storage::test_utils;
     use jsonrpsee::types::Params;
     use pathfinder_common::starkhash;
+    use pathfinder_storage::test_utils;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -546,7 +548,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };

@@ -20,7 +20,7 @@ use std::{fmt::Debug, result::Result, time::Duration};
 mod builder;
 mod metrics;
 
-#[cfg_attr(test, mockall::automock)]
+#[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
 pub trait ClientApi {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError>;
@@ -131,7 +131,7 @@ impl Client {
     const RETRY: builder::Retry = builder::Retry::Disabled;
 
     /// Creates a new Sequencer client for the given chain.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn new(chain: Chain) -> anyhow::Result<Self> {
         match chain {
             Chain::Mainnet => Ok(Self::mainnet()),
@@ -466,70 +466,12 @@ impl ClientApi for Client {
 }
 
 #[cfg(test)]
-pub mod test_utils {
-    use pathfinder_common::{
-        starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
-        StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
-    };
-    use stark_hash::StarkHash;
-    use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
-
-    pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
-        BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
-    pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag =
-        BlockNumberOrTag::Number(StarknetBlockNumber::MAX);
-    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
-    ));
-    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
-    ));
-    pub const PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag =
-        BlockHashOrTag::Hash(StarknetBlockHash(starkhash!(
-            "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
-        )));
-    pub const INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"),
-    ));
-    pub const VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
-        "0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
-    ));
-    pub const INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
-        "0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
-    ));
-    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
-        "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-    ));
-    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
-        "05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-    ));
-    pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(starkhash!(
-        "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-    ));
-    pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-    pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(starkhash!(
-        "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
-    ));
-    lazy_static::lazy_static! {
-        pub static ref VALID_KEY_DEC: String = pathfinder_serde::starkhash_to_dec_str(VALID_KEY.get());
-    }
-    pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("04d2"))];
-    /// Class hash for VALID_CONTRACT_ADDR
-    pub const VALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
-        "021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
-    ));
-    pub const INVALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
-        "031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
-    ));
-}
-
-#[cfg(test)]
 mod tests {
-    use super::{test_utils::*, *};
+    use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
     use stark_hash::StarkHash;
-    use starknet_gateway_test_fixtures::*;
+    use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
     use starknet_gateway_types::request::Tag;
     use std::collections::VecDeque;
@@ -694,9 +636,11 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use crate::sequencer::reply::{Block, Status};
-        use pathfinder_common::{consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, StarknetBlockTimestamp};
+        use pathfinder_common::{
+            consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, test_utils::metrics::RecorderGuard,
+            StarknetBlockTimestamp,
+        };
+        use starknet_gateway_types::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
 
@@ -743,8 +687,7 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::{starkhash, test_utils::metrics::RecorderGuard};
 
         #[tokio::test]
         async fn genesis() {
@@ -805,8 +748,7 @@ mod tests {
 
     mod block {
         use super::*;
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_common::BlockId;
+        use pathfinder_common::{test_utils::metrics::RecorderGuard, BlockId};
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -869,7 +811,7 @@ mod tests {
         #[tokio::test]
         async fn with_starknet_version_added_in_0_9_1() {
             let _guard = RecorderGuard::lock_as_noop();
-            use crate::sequencer::reply::MaybePendingBlock;
+            use starknet_gateway_types::reply::MaybePendingBlock;
             let (_jh, client) = setup([
                 // TODO move these fixtures to v0_9_1
                 (
@@ -1019,6 +961,7 @@ mod tests {
         use super::*;
         use pathfinder_common::starkhash;
         use pretty_assertions::assert_eq;
+        use starknet_gateway_test_fixtures::testnet::VALID_KEY_DEC;
 
         #[test_log::test(tokio::test)]
         async fn invalid_contract_address() {
@@ -1026,7 +969,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
                     INVALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC
+                    VALID_KEY_DEC
                 ),
                 (r#""0x0""#, 200),
             )]);
@@ -1067,7 +1010,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC,
+                    VALID_KEY_DEC,
                     INVALID_BLOCK_HASH
                 ),
                 response_from(StarknetErrorCode::BlockNotFound),
@@ -1088,7 +1031,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC,
+                    VALID_KEY_DEC,
                     INVOKE_CONTRACT_BLOCK_HASH
                 ),
                 (r#""0x1e240""#, 200),
@@ -1106,7 +1049,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC,
+                    VALID_KEY_DEC,
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1127,7 +1070,7 @@ mod tests {
                 format!(
                     "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=pending",
                     VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    *VALID_KEY_DEC
+                    VALID_KEY_DEC
                 ),
                 (r#""0x1e240""#, 200),
             )]);
@@ -1268,8 +1211,9 @@ mod tests {
             },
             *,
         };
-        use crate::monitoring::metrics::test::RecorderGuard;
-        use pathfinder_common::{starkhash, ContractAddress, GlobalRoot};
+        use pathfinder_common::{
+            starkhash, test_utils::metrics::RecorderGuard, ContractAddress, GlobalRoot,
+        };
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
 
@@ -1369,7 +1313,7 @@ mod tests {
 
     mod state_update {
         use super::*;
-        use crate::monitoring::metrics::test::RecorderGuard;
+        use pathfinder_common::test_utils::metrics::RecorderGuard;
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
@@ -1783,7 +1727,7 @@ mod tests {
     }
 
     mod chain {
-        use crate::sequencer;
+        use crate::Client;
         use pathfinder_common::Chain;
 
         #[derive(Copy, Clone, PartialEq, Eq)]
@@ -1794,15 +1738,13 @@ mod tests {
             Invalid,
         }
 
-        /// Creates a [sequencer::Client] whose Sequencer gateway is either the real Sequencer,
+        /// Creates a [starknet_gateway_client::Client] where the endpoint is either the real feeder gateway,
         /// or a local warp server. A local server is created if:
         /// - SEQUENCER_TESTS_LIVE_API is not set, __or__
         /// - `target == TargetChain::Invalid`
         ///
         /// The local server only supports the `feeder_gateway/get_block?blockNumber=0` queries.
-        fn setup_server(
-            target: TargetChain,
-        ) -> (Option<tokio::task::JoinHandle<()>>, sequencer::Client) {
+        fn setup_server(target: TargetChain) -> (Option<tokio::task::JoinHandle<()>>, Client) {
             use warp::http::{Response, StatusCode};
             use warp::Filter;
 
@@ -1812,8 +1754,8 @@ mod tests {
                 && target != TargetChain::Invalid
             {
                 match target {
-                    TargetChain::Mainnet => (None, sequencer::Client::new(Chain::Mainnet).unwrap()),
-                    TargetChain::Testnet => (None, sequencer::Client::new(Chain::Testnet).unwrap()),
+                    TargetChain::Mainnet => (None, Client::new(Chain::Mainnet).unwrap()),
+                    TargetChain::Testnet => (None, Client::new(Chain::Testnet).unwrap()),
                     // Escaped above already
                     TargetChain::Invalid => unreachable!(),
                 }
@@ -1856,7 +1798,7 @@ mod tests {
 
                 let (addr, serve_fut) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
                 let server_handle = tokio::spawn(serve_fut);
-                let client = sequencer::Client::with_base_url(
+                let client = Client::with_base_url(
                     reqwest::Url::parse(&format!("http://{}", addr)).unwrap(),
                 )
                 .unwrap();
@@ -1920,7 +1862,7 @@ mod tests {
             F: Fn(Client, BlockId) -> Fut,
             Fut: Future<Output = T>,
         {
-            use crate::monitoring::metrics::test::{FakeRecorder, RecorderGuard};
+            use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
 
             let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
             let handle = recorder.handle();

@@ -234,7 +234,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         .arg(
             Arg::new(CHAIN_ID)
             .long(CHAIN_ID)
-            .help("Set a custom StarkNet chain ID")
+            .help("Set a custom StarkNet chain ID (e.g. SN_GOERLI)")
             .takes_value(true)
             .env("PATHFINDER_CHAIN_ID")
         )
@@ -497,11 +497,11 @@ mod tests {
         let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         clear_environment();
 
-        let value = "value".to_owned();
+        let value = "mainnet".to_owned();
         let (_, mut cfg) = parse_args(vec!["bin name", "--network", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::Network), Some(value));
 
-        let value = "value".to_owned();
+        let value = "mainnet".to_owned();
         env::set_var("PATHFINDER_NETWORK", &value);
         let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::Network), Some(value));

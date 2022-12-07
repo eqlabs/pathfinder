@@ -1,8 +1,8 @@
 use crate::rpc::v02::types::reply::Transaction;
 use crate::rpc::v02::RpcContext;
-use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use anyhow::Context;
 use pathfinder_common::{BlockId, StarknetTransactionIndex};
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByBlockIdAndIndexInput {

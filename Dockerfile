@@ -27,12 +27,13 @@ RUN mkdir crates \
     && cargo new --lib --vcs none crates/stark_hash \
     && cargo new --lib --vcs none crates/common \
     && cargo new --lib --vcs none crates/ethereum \
+    && cargo new --lib --vcs none crates/gateway-client \
     && cargo new --lib --vcs none crates/gateway-test-fixtures \
     && cargo new --lib --vcs none crates/gateway-types \
     && cargo new --lib --vcs none crates/retry \
     && cargo new --lib --vcs none crates/serde \
-    && cargo new --lib --vcs none crates/pathfinder \
-    && cargo new --lib --vcs none crates/load-test
+    && cargo new --lib --vcs none crates/storage \
+    && cargo new --lib --vcs none crates/pathfinder
 
 COPY Cargo.toml Cargo.lock ./
 
@@ -42,10 +43,12 @@ COPY crates/stark_hash/benches crates/stark_hash/benches
 
 COPY crates/common/Cargo.toml crates/common/build.rs crates/common/
 COPY crates/ethereum/Cargo.toml crates/ethereum/Cargo.toml
+COPY crates/gateway-client/Cargo.toml crates/gateway-client/Cargo.toml
 COPY crates/gateway-test-fixtures/Cargo.toml crates/gateway-test-fixtures/Cargo.toml
 COPY crates/gateway-types/Cargo.toml crates/gateway-types/Cargo.toml
 COPY crates/retry/Cargo.toml crates/retry/Cargo.toml
 COPY crates/serde/Cargo.toml crates/serde/Cargo.toml
+COPY crates/storage/Cargo.toml crates/storage/Cargo.toml
 
 COPY crates/pathfinder/benches crates/pathfinder/benches
 

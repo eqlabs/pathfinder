@@ -7,13 +7,17 @@ strip = "debuginfo"
 members = [
     "crates/common",
     "crates/ethereum",
+    "crates/gateway-client",
     "crates/gateway-test-fixtures",
     "crates/gateway-types",
-    "crates/load-test",
     "crates/pathfinder",
     "crates/retry",
     "crates/serde",
     "crates/stark_curve",
     "crates/stark_hash",
+    "crates/storage",
+]
+exclude = [
+    "crates/load-test"
 ]
 resolver = "2"

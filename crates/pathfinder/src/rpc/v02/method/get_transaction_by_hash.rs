@@ -1,8 +1,8 @@
 use crate::rpc::v02::types::reply::Transaction;
 use crate::rpc::v02::RpcContext;
-use crate::storage::StarknetTransactionsTable;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
+use pathfinder_storage::StarknetTransactionsTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByHashInput {
@@ -131,7 +131,7 @@ mod tests {
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonInvokeTransactionProperties {
                     hash: StarknetTransactionHash(starkhash_bytes!(b"txn 0")),
-                    max_fee: Fee(web3::types::H128::zero()),
+                    max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
                     nonce: TransactionNonce(StarkHash::ZERO),
                 },
@@ -157,7 +157,7 @@ mod tests {
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonInvokeTransactionProperties {
                     hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
-                    max_fee: Fee(web3::types::H128::zero()),
+                    max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
                     nonce: TransactionNonce(StarkHash::ZERO),
                 },

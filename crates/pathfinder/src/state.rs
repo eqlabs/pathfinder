@@ -1,43 +1,20 @@
-use crate::{
-    state::state_tree::{ContractsStateTree, GlobalStateTree},
-    storage::{ContractsStateTable, ContractsTable},
-};
+use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
 use anyhow::Context;
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
 };
+use pathfinder_storage::{ContractsStateTable, ContractsTable};
 use rusqlite::Transaction;
 use stark_hash::{stark_hash, StarkHash};
 use starknet_gateway_types::reply::state_update::StorageDiff;
 
 pub mod block_hash;
-pub(crate) mod class_hash;
 pub mod merkle_node;
 pub mod merkle_tree;
 pub mod state_tree;
 mod sync;
 
-pub use class_hash::compute_class_hash;
 pub use sync::{l1, l2, sync, PendingData, State as SyncState};
-
-#[derive(Clone, PartialEq, Eq)]
-pub struct CompressedContract {
-    pub abi: Vec<u8>,
-    pub bytecode: Vec<u8>,
-    pub definition: Vec<u8>,
-    pub hash: ClassHash,
-}
-
-impl std::fmt::Debug for CompressedContract {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "CompressedContract {{ sizes: {:?}, hash: {} }}",
-            (self.abi.len(), self.bytecode.len(), self.definition.len()),
-            self.hash.0
-        )
-    }
-}
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.
@@ -475,14 +452,14 @@ mod tests {
     async fn go_sync() {
         use std::sync::Arc;
 
-        let storage = crate::storage::Storage::migrate(
+        let storage = pathfinder_storage::Storage::migrate(
             std::path::PathBuf::from("testing.sqlite"),
-            crate::storage::JournalMode::WAL,
+            pathfinder_storage::JournalMode::WAL,
         )
         .unwrap();
         let chain = pathfinder_common::Chain::Testnet;
-        let transport = pathfinder_ethereum::transport::HttpTransport::test_transport(chain);
-        let sequencer = crate::sequencer::Client::new(chain).unwrap();
+        let transport = pathfinder_ethereum::provider::HttpProvider::test_provider(chain);
+        let sequencer = starknet_gateway_client::Client::new(chain).unwrap();
         let state = Arc::new(sync::State::default());
 
         sync::sync(

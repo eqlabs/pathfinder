@@ -10,13 +10,12 @@ pub struct GetNonceInput {
 
 crate::rpc::error::generate_rpc_error_subset!(GetNonceError: BlockNotFound, ContractNotFound);
 
-#[allow(dead_code)]
 pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<ContractNonce, GetNonceError> {
     use crate::state::state_tree::GlobalStateTree;
-    use crate::storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+    use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 
     // We can potentially read the nonce from pending without having to reach out to the database.
     let block_id = match input.block_id {
@@ -52,7 +51,7 @@ pub async fn get_nonce(
             .context("Get contract state hash from global state tree")?
             .ok_or(GetNonceError::ContractNotFound)?;
 
-        let nonce = crate::storage::ContractsStateTable::get_nonce(&tx, state_hash)
+        let nonce = ContractsStateTable::get_nonce(&tx, state_hash)
             .context("Reading contract nonce")?
             // Since the contract does exist, the nonce should not be missing.
             .context("Contract nonce is missing from database")?;

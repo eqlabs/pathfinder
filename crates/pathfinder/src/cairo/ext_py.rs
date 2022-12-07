@@ -97,7 +97,7 @@ impl Handle {
 
         let transaction = match transaction {
             BroadcastedTransaction::Deploy(_) => {
-                const ZERO: web3::types::H256 = web3::types::H256::zero();
+                const ZERO: ethers::types::H256 = ethers::types::H256::zero();
                 return Ok(FeeEstimate {
                     consumed: ZERO,
                     gas_price: ZERO,
@@ -203,13 +203,13 @@ pub enum GasPriceSource {
     ///
     /// U256 is not used for serialization matters, [u8; 32] could be used as well. python side's
     /// serialization limits this value to u128 but in general `eth_gasPrice` is U256.
-    Current(web3::types::H256),
+    Current(ethers::types::H256),
 }
 
 impl GasPriceSource {
-    const GAS_PRICE_ZERO: web3::types::H256 = web3::types::H256::zero();
+    const GAS_PRICE_ZERO: ethers::types::H256 = ethers::types::H256::zero();
     /// Convert to `&H256`, for use in serialization.
-    fn as_price(&self) -> &web3::types::H256 {
+    fn as_price(&self) -> &ethers::types::H256 {
         match self {
             GasPriceSource::PastBlock => &Self::GAS_PRICE_ZERO,
             GasPriceSource::Current(price) => price,
@@ -344,18 +344,19 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 #[cfg(test)]
 mod tests {
     use super::sub_process::launch_python;
-    use crate::{
-        rpc::v02::types::request::{
-            BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
-            BroadcastedInvokeTransactionV0, BroadcastedTransaction,
-        },
-        storage::StarknetBlock,
+    use crate::rpc::v02::types::request::{
+        BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
+        BroadcastedInvokeTransactionV0, BroadcastedTransaction,
     };
     use pathfinder_common::{
         starkhash, starkhash_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
         ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
+    };
+    use pathfinder_storage::{
+        ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
+        StarknetBlocksTable, Storage,
     };
     use stark_hash::StarkHash;
     use std::path::PathBuf;
@@ -365,11 +366,7 @@ mod tests {
     async fn start_with_wrong_database_schema_fails() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         {
             let conn = s.connection().unwrap();
@@ -398,11 +395,7 @@ mod tests {
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -474,11 +467,7 @@ mod tests {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -528,7 +517,7 @@ mod tests {
             .await
             .unwrap();
 
-        use web3::types::H256;
+        use ethers::types::H256;
 
         assert_eq!(
             at_block_fee,
@@ -572,11 +561,7 @@ mod tests {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -623,7 +608,7 @@ mod tests {
             .await
             .unwrap();
 
-        use web3::types::H256;
+        use ethers::types::H256;
 
         assert_eq!(
             at_block_fee,
@@ -643,11 +628,7 @@ mod tests {
     async fn call_with_unknown_contract() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -709,11 +690,7 @@ mod tests {
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = crate::storage::Storage::migrate(
-            PathBuf::from(db_file.path()),
-            crate::storage::JournalMode::WAL,
-        )
-        .unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
         conn.execute("PRAGMA foreign_keys = off", []).unwrap();
@@ -795,9 +772,9 @@ mod tests {
     }
 
     fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let test_contract_definition = zstd::decode_all(std::io::Cursor::new(
-            starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION,
-        ))
+        let test_contract_definition = zstd::decode_all(
+            starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION,
+        )
         .unwrap();
 
         let test_contract_address = ContractAddress::new_or_panic(starkhash!(
@@ -825,7 +802,7 @@ mod tests {
         let global_root = global_tree.apply().unwrap();
 
         // create a block with the global root
-        crate::storage::StarknetBlocksTable::insert(
+        StarknetBlocksTable::insert(
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
@@ -858,9 +835,9 @@ mod tests {
     }
 
     fn deploy_account_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let account_contract_definition = zstd::decode_all(std::io::Cursor::new(
-            starknet_gateway_test_fixtures::zstd_compressed::DUMMY_ACCOUNT,
-        ))
+        let account_contract_definition = zstd::decode_all(
+            starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT,
+        )
         .unwrap();
 
         let account_contract_address = ContractAddress::new_or_panic(starkhash!("0123"));
@@ -883,7 +860,7 @@ mod tests {
         let global_root = global_tree.apply().unwrap();
 
         // create a block with the global root
-        crate::storage::StarknetBlocksTable::insert(
+        StarknetBlocksTable::insert(
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
@@ -922,20 +899,13 @@ mod tests {
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {
         let (abi, bytecode, class_hash) =
-            crate::state::class_hash::extract_abi_code_hash(contract_definition).unwrap();
+            starknet_gateway_types::class_hash::extract_abi_code_hash(contract_definition).unwrap();
 
         // create class
-        crate::storage::ContractCodeTable::insert(
-            tx,
-            class_hash,
-            &abi,
-            &bytecode,
-            contract_definition,
-        )
-        .unwrap();
+        ContractCodeTable::insert(tx, class_hash, &abi, &bytecode, contract_definition).unwrap();
 
         // create contract
-        crate::storage::ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
+        ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
 
         // set up contract state tree
         let mut contract_state =
@@ -957,7 +927,7 @@ mod tests {
         );
 
         // set up contract state table
-        crate::storage::ContractsStateTable::upsert(
+        ContractsStateTable::upsert(
             tx,
             contract_state_hash,
             class_hash,

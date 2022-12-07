@@ -1,7 +1,8 @@
-use crate::state::{class_hash::extract_program_and_entry_points_by_type, CompressedContract};
+use crate::types::CompressedContract;
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
 use pathfinder_common::{ClassHash, ContractAddress, ContractClass, StarknetBlockHash};
+use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's
@@ -190,7 +191,7 @@ impl ContractsTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Storage;
+    use crate::Storage;
     use pathfinder_common::starkhash;
 
     #[test]

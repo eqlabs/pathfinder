@@ -25,7 +25,7 @@ async fn main() {
 
     let path = std::path::PathBuf::from(path);
 
-    use pathfinder_lib::storage::{JournalMode, StarknetBlocksTable, Storage};
+    use pathfinder_storage::{JournalMode, StarknetBlocksTable, Storage};
 
     let storage = Storage::migrate(path, JournalMode::WAL).unwrap();
     let mut connection = storage.connection().unwrap();
@@ -52,7 +52,7 @@ async fn main() {
 
     let downloader = std::thread::spawn(move || {
         use pathfinder_common::BlockId;
-        use pathfinder_lib::sequencer::{Client, ClientApi};
+        use starknet_gateway_client::{Client, ClientApi};
 
         let client = match chain {
             Chain::Mainnet => Client::mainnet(),
@@ -82,7 +82,7 @@ async fn main() {
         let mut compressor = zstd::bulk::Compressor::new(10).unwrap();
 
         for (block_num, sequencer_state_update) in downloaded_rx.iter() {
-            use pathfinder_lib::rpc::v01::types::reply::StateUpdate;
+            use pathfinder_storage::types::StateUpdate;
 
             // Unwrap is safe because all non-pending state updates contain a block hash
             let block_hash = sequencer_state_update.block_hash.unwrap();

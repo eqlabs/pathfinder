@@ -131,8 +131,8 @@ mod tests {
 
     mod ext_py {
         use super::*;
-        use crate::storage::JournalMode;
         use pathfinder_common::{starkhash_bytes, Chain, StarknetBlockHash};
+        use pathfinder_storage::JournalMode;
         use std::path::PathBuf;
         use std::sync::Arc;
 
@@ -167,7 +167,8 @@ mod tests {
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             database_path.push("fixtures/mainnet.sqlite");
             let storage =
-                crate::storage::Storage::migrate(database_path.clone(), JournalMode::WAL).unwrap();
+                pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
+                    .unwrap();
             let sync_state = Arc::new(crate::state::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
@@ -178,7 +179,7 @@ mod tests {
             .await
             .unwrap();
 
-            let sequencer = crate::sequencer::Client::new(Chain::Mainnet).unwrap();
+            let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
 
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)

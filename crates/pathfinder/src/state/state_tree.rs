@@ -5,11 +5,11 @@
 
 use super::merkle_node::Node;
 use crate::state::merkle_tree::{MerkleTree, ProofNode, Visit};
-use crate::storage::merkle_tree::RcNodeStorage;
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
 };
+use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
 use std::ops::ControlFlow;
 

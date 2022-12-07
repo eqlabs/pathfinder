@@ -1,5 +1,6 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
+use ethers::types::{H128, H160, H256};
 use num_bigint::BigUint;
 use pathfinder_common::{
     CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, Fee, GasPrice,
@@ -11,7 +12,6 @@ use serde_with::{serde_conv, DeserializeAs, SerializeAs};
 use stark_hash::{HexParseError, OverflowError, StarkHash};
 use std::borrow::Cow;
 use std::str::FromStr;
-use web3::types::{H128, H160, H256};
 
 serde_conv!(
     pub CallParamAsDecimalStr,
@@ -283,7 +283,7 @@ serde_with::serde_conv!(
 
 serde_with::serde_conv!(
     pub H256AsHexStr,
-    web3::types::H256,
+    ethers::types::H256,
     |u: &H256| bytes_to_hex_str(u.as_bytes()),
     |s: &str| bytes_from_hex_str::<32>(s).map(H256::from)
 );
@@ -430,6 +430,28 @@ fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     it_to_hex_str(it, start, len, &mut buf);
     // Unwrap is safe as the buffer contains valid utf8
     String::from_utf8(buf).unwrap().into()
+}
+
+/// Extract JSON representation of program and entry points from the contract definition.
+pub fn extract_program_and_entry_points_by_type(
+    contract_definition_dump: &[u8],
+) -> anyhow::Result<(serde_json::Value, serde_json::Value)> {
+    use anyhow::Context;
+
+    #[derive(serde::Deserialize)]
+    struct ContractDefinition {
+        pub program: serde_json::Value,
+        pub entry_points_by_type: serde_json::Value,
+    }
+
+    let contract_definition =
+        serde_json::from_slice::<ContractDefinition>(contract_definition_dump)
+            .context("Failed to parse contract_definition")?;
+
+    Ok((
+        contract_definition.program,
+        contract_definition.entry_points_by_type,
+    ))
 }
 
 #[cfg(test)]

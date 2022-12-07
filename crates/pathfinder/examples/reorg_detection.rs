@@ -5,16 +5,13 @@
 
 use std::{collections::VecDeque, io::Write, time::Duration};
 
+use ethers::providers::{Http, Middleware, Provider};
+use ethers::types::{Block, BlockId, BlockNumber, H256};
 use reqwest::Url;
-use web3::{
-    transports::Http,
-    types::{Block, BlockId, BlockNumber, H256},
-    Web3,
-};
 
 #[tokio::main]
 async fn main() {
-    let w3 = setup_transport();
+    let provider = setup_provider();
     /// The maximum amount of blocks to keep.
     const MAX_HISTORY: usize = 128;
 
@@ -22,13 +19,13 @@ async fn main() {
 
     loop {
         if history.is_empty() {
-            let block = init_local_head(&w3, MAX_HISTORY as u64).await;
+            let block = init_local_head(&provider, MAX_HISTORY as u64).await;
             history.push_back(block.clone());
         }
         // Safe as we always check empty above.
         let latest_local = history.back().unwrap();
 
-        match get_next_block(&w3, latest_local).await {
+        match get_next_block(&provider, latest_local).await {
             Ok(block) => {
                 let block_no = block.number.unwrap();
 
@@ -47,7 +44,7 @@ async fn main() {
             }
             Err(_reorg) => {
                 let old_length = history.len();
-                handle_reorg(&w3, &mut history).await;
+                handle_reorg(&provider, &mut history).await;
                 let new_length = history.len();
 
                 println!(
@@ -61,17 +58,16 @@ async fn main() {
 }
 
 /// Downloads a block `depth` away from the latest on chain.
-async fn init_local_head(w3: &Web3<Http>, depth: u64) -> Block<H256> {
-    let l1_latest = w3
-        .eth()
-        .block_number()
+async fn init_local_head(provider: &Provider<Http>, depth: u64) -> Block<H256> {
+    let l1_latest = provider
+        .get_block_number()
         .await
         .expect("Failed to get latest block number from Ethereum");
 
     // Start back a bit so that we don't have to wait to fill up history.
     let local_head = l1_latest - depth;
-    w3.eth()
-        .block(BlockId::Number(BlockNumber::Number(local_head)))
+    provider
+        .get_block(BlockId::Number(BlockNumber::Number(local_head)))
         .await
         .expect("Failed to read block")
         .expect("Earliest block is missing")
@@ -79,12 +75,12 @@ async fn init_local_head(w3: &Web3<Http>, depth: u64) -> Block<H256> {
 
 /// Handles L1 chain reorgs, by deleting history until we are back in sync
 /// with the L1 chain.
-async fn handle_reorg(w3: &Web3<Http>, history: &mut VecDeque<Block<H256>>) {
+async fn handle_reorg(provider: &Provider<Http>, history: &mut VecDeque<Block<H256>>) {
     let mut delete_count = 0;
     for block in history.iter().rev() {
         let number = block.number.unwrap();
         let number = BlockId::Number(BlockNumber::Number(number));
-        let l1_block = w3.eth().block(number).await.unwrap();
+        let l1_block = provider.get_block(number).await.unwrap();
 
         if let Some(l1_block) = l1_block {
             if &l1_block == block {
@@ -107,7 +103,10 @@ struct Reorg;
 /// next block is available.
 ///
 /// Returns [Err(Reorg)] if an L1 chain reorganization occurred.
-async fn get_next_block(w3: &Web3<Http>, local_head: &Block<H256>) -> Result<Block<H256>, Reorg> {
+async fn get_next_block(
+    provider: &Provider<Http>,
+    local_head: &Block<H256>,
+) -> Result<Block<H256>, Reorg> {
     let local_number = local_head.number.expect("Block should have number");
     let next_block = local_number + 1u64;
     let next_block = BlockId::Number(BlockNumber::Number(next_block));
@@ -116,9 +115,8 @@ async fn get_next_block(w3: &Web3<Http>, local_head: &Block<H256>) -> Result<Blo
     let mut sleep_mode = false;
 
     loop {
-        match w3
-            .eth()
-            .block(next_block)
+        match provider
+            .get_block(next_block)
             .await
             .expect("Failed to read block")
         {
@@ -139,9 +137,8 @@ async fn get_next_block(w3: &Web3<Http>, local_head: &Block<H256>) -> Result<Blo
             None => {
                 // Block does not exist, this could be because we have reach the HEAD, or because
                 // there was a reorg and the requested block number is far ahead of reality.
-                let l1_latest = w3
-                    .eth()
-                    .block_number()
+                let l1_latest = provider
+                    .get_block_number()
                     .await
                     .expect("Failed to get latest block number from Ethereum");
 
@@ -176,7 +173,7 @@ async fn get_next_block(w3: &Web3<Http>, local_head: &Block<H256>) -> Result<Blo
 /// Creates the Ethereum conntection for the Goerli test network,
 /// using the `PATHFINDER_ETHEREUM_HTTP_GOERLI_xxx` environment
 /// variables.
-fn setup_transport() -> Web3<Http> {
+fn setup_provider() -> Provider<Http> {
     let key_prefix = "PATHFINDER_ETHEREUM_HTTP_GOERLI";
 
     let url_key = format!("{}_URL", key_prefix);
@@ -190,8 +187,7 @@ fn setup_transport() -> Web3<Http> {
     let mut url = url.parse::<Url>().expect("Bad Ethereum URL");
     url.set_password(password.as_deref()).unwrap();
 
-    let client = reqwest::Client::builder().build().unwrap();
-    let transport = Http::with_client(client, url);
+    let provider = Http::new(url);
 
-    Web3::new(transport)
+    Provider::new(provider)
 }

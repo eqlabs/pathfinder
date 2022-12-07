@@ -9,7 +9,7 @@
 //!   2. [Method](stage::Method) where you select the REST API method.
 //!   3. [Params](stage::Params) where you select the retry behavior.
 //!   4. [Final](stage::Final) where you select the REST operation type, which is then executed.
-use crate::sequencer::metrics::{with_metrics, BlockTag, RequestMetadata};
+use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
 use pathfinder_common::{
     BlockId, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
 };
@@ -30,7 +30,7 @@ pub enum Retry {
 }
 
 pub mod stage {
-    use crate::sequencer::metrics::RequestMetadata;
+    use crate::metrics::RequestMetadata;
 
     /// Provides the [builder](super::Request::builder) entry-point.
     pub struct Init;
@@ -442,7 +442,7 @@ mod tests {
         use tokio::{sync::Mutex, task::JoinHandle};
         use warp::Filter;
 
-        use crate::sequencer::builder::{retry0, retry_condition};
+        use crate::builder::{retry0, retry_condition};
 
         // A test helper
         fn status_queue_server(
@@ -478,7 +478,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn stop_on_ok() {
-            use crate::sequencer::builder;
+            use crate::builder;
 
             tokio::time::pause();
 
@@ -510,7 +510,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn stop_on_fatal() {
-            use crate::sequencer::builder;
+            use crate::builder;
             use starknet_gateway_types::error::{SequencerError, StarknetErrorCode};
 
             tokio::time::pause();
@@ -549,7 +549,7 @@ mod tests {
 
         #[tokio::test(flavor = "current_thread")]
         async fn request_timeout() {
-            use crate::sequencer::builder;
+            use crate::builder;
 
             use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -591,7 +591,7 @@ mod tests {
     }
 
     mod invalid_starknet_error_variant {
-        use crate::sequencer::Client;
+        use crate::Client;
         use http::response::Builder;
         use warp::Filter;
 

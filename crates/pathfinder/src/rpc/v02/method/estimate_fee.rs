@@ -136,13 +136,13 @@ pub(super) async fn base_block_and_pending_for_call(
 pub struct FeeEstimate {
     /// The Ethereum gas cost of the transaction
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_consumed: web3::types::H256,
+    pub gas_consumed: ethers::types::H256,
     /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_price: web3::types::H256,
+    pub gas_price: ethers::types::H256,
     /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub overall_fee: web3::types::H256,
+    pub overall_fee: ethers::types::H256,
 }
 
 impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
@@ -158,11 +158,12 @@ impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{rpc::v02::types::request::BroadcastedInvokeTransaction, storage::JournalMode};
+    use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
         starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_storage::JournalMode;
     use std::path::PathBuf;
 
     mod parsing {
@@ -172,7 +173,7 @@ mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                 crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                    max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                    max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                     signature: vec![TransactionSignatureElem(starkhash!("07"))],
                     nonce: Some(TransactionNonce(starkhash!("08"))),
                     contract_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
@@ -296,7 +297,8 @@ mod tests {
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             database_path.push("fixtures/mainnet.sqlite");
             let storage =
-                crate::storage::Storage::migrate(database_path.clone(), JournalMode::WAL).unwrap();
+                pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
+                    .unwrap();
             let sync_state = Arc::new(crate::state::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
@@ -307,7 +309,7 @@ mod tests {
             .await
             .unwrap();
 
-            let sequencer = crate::sequencer::Client::new(Chain::Mainnet).unwrap();
+            let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (context.with_call_handling(call_handle), cairo_handle)
         }
@@ -381,8 +383,8 @@ mod tests {
 
         lazy_static::lazy_static! {
             pub static ref CONTRACT_CLASS: ContractClass = {
-                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed::CONTRACT_DEFINITION;
-                let json = zstd::decode_all(std::io::Cursor::new(compressed_json)).unwrap();
+                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
+                let json = zstd::decode_all(compressed_json).unwrap();
                 ContractClass::from_definition_bytes(&json).unwrap()
             };
         }

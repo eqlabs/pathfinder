@@ -195,18 +195,17 @@ pub struct EventAbiEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     data: Option<Vec<TypedParameter>>,
-    // FIXME: This is not part of the spec, but is present in many ABIs.
-    // Must be confirmed by StarkWare still whether to accept it.
-    #[serde(skip_serializing)]
+    // The `inputs` and `outputs` property is not part of the JSON-RPC
+    // specification, but because we use these types to parse the
+    // `starknet_estimateFee` request and then serialize the class definition in
+    // the transaction for the Python layer we have to keep this property when
+    // serializing.
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    #[serde(rename = "inputs")]
-    _inputs: Option<Vec<TypedParameter>>,
-    // FIXME: This is not part of the spec, but is present in some ABIs.
-    // Must be confirmed by StarkWare still whether to accept it.
-    #[serde(skip_serializing)]
+    inputs: Option<Vec<TypedParameter>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    #[serde(rename = "outputs")]
-    _outputs: Option<Vec<TypedParameter>>,
+    outputs: Option<Vec<TypedParameter>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -220,12 +219,13 @@ pub struct FunctionAbiEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     outputs: Option<Vec<TypedParameter>>,
-    // This is valid but unverifiable part of the ABI, so it is excluded from
-    // serialization for RPC (and is not part of the spec).
-    #[serde(skip_serializing)]
-    #[serde(default)]
+    // This is not part of the JSON-RPC specification, but because we use these
+    // types to parse the `starknet_estimateFee` request and then serialize the
+    // class definition in the transaction for the Python layer we have to keep
+    // this property when serializing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "stateMutability")]
-    _state_mutability: Option<String>,
+    state_mutability: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

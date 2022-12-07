@@ -152,7 +152,7 @@ impl Configuration {
 
         let cfg = cfg.try_build()?;
 
-        match (&cfg.custom_gateway, cfg.integration, cfg.testnet2) {
+        match (&cfg.network, cfg.integration, cfg.testnet2) {
             (_, true, true) => anyhow::bail!("Cannot use both integration and testnet 2 at the same time."),
             (Some(_), true, false) => anyhow::bail!("Cannot specify both network and integration options at the same time. Please use network only."),
             (Some(_), false, true) => anyhow::bail!("Cannot specify both network and testnet2 options at the same time. Please use network only."),

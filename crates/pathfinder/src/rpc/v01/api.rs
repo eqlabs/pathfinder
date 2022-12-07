@@ -4,8 +4,7 @@ use crate::rpc::{
         reply::{
             Block, BlockHashAndNumber, BlockStatus, DeclareTransactionResult,
             DeployTransactionResult, EmittedEvent, ErrorCode, FeeEstimate, GetEventsResult,
-            InvokeTransactionResult, StateUpdate, Syncing, Transaction, TransactionReceipt,
-            Transactions,
+            InvokeTransactionResult, Syncing, Transaction, TransactionReceipt, Transactions,
         },
         request::{Call, ContractCall, EventFilter},
     },
@@ -17,12 +16,7 @@ use crate::rpc::{
 use crate::{
     cairo::ext_py::{self, BlockHashNumberOrLatest},
     rpc::gas_price,
-    sequencer::{self, ClientApi},
     state::{state_tree::GlobalStateTree, PendingData, SyncState},
-    storage::{
-        ContractsTable, EventFilterError, RefsTable, StarknetBlocksBlockId, StarknetBlocksTable,
-        StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
-    },
 };
 use anyhow::Context;
 use jsonrpsee::{
@@ -36,7 +30,13 @@ use pathfinder_common::{
     StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
     TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
+use pathfinder_storage::{
+    types::StateUpdate, ContractCodeTable, ContractsStateTable, ContractsTable, EventFilterError,
+    RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventFilter,
+    StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+};
 use stark_hash::StarkHash;
+use starknet_gateway_client::{Client, ClientApi};
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -44,7 +44,7 @@ use std::sync::Arc;
 /// Implements JSON-RPC endpoints.
 pub struct RpcApi {
     pub storage: Storage,
-    pub sequencer: sequencer::Client,
+    pub sequencer: Client,
     pub chain_id: ChainId,
     pub call_handle: Option<ext_py::Handle>,
     pub shared_gas_price: Option<gas_price::Cached>,
@@ -76,7 +76,7 @@ pub enum BlockResponseScope {
 impl RpcApi {
     pub fn new(
         storage: Storage,
-        sequencer: sequencer::Client,
+        sequencer: Client,
         chain_id: ChainId,
         sync_state: Arc<SyncState>,
     ) -> Self {
@@ -323,7 +323,7 @@ impl RpcApi {
         key: StorageAddress,
         block_id: BlockId,
     ) -> RpcResult<StorageValue> {
-        use crate::{state::state_tree::ContractsStateTree, storage::ContractsStateTable};
+        use crate::state::state_tree::ContractsStateTree;
 
         let block_id = match block_id {
             BlockId::Hash(hash) => hash.into(),
@@ -604,8 +604,6 @@ impl RpcApi {
 
     /// Get the class based on its hash.
     pub async fn get_class(&self, class_hash: ClassHash) -> RpcResult<ContractClass> {
-        use crate::storage::ContractCodeTable;
-
         let storage = self.storage.clone();
         let span = tracing::Span::current();
 
@@ -730,7 +728,6 @@ impl RpcApi {
         block_id: BlockId,
         contract_address: ContractAddress,
     ) -> RpcResult<ContractClass> {
-        use crate::storage::ContractCodeTable;
         let span = tracing::Span::current();
 
         let block_id = match block_id {
@@ -1036,7 +1033,7 @@ impl RpcApi {
                 .map_err(internal_server_error)?
                 .ok_or_else(|| Error::from(ErrorCode::ContractNotFound))?;
 
-            let nonce = crate::storage::ContractsStateTable::get_nonce(&tx, state_hash)
+            let nonce = ContractsStateTable::get_nonce(&tx, state_hash)
                 .context("Reading contract nonce")
                 .map_err(internal_server_error)?
                 // Since the contract does exist, the nonce should not be missing.
@@ -1216,7 +1213,7 @@ impl RpcApi {
             let from_block = map_to_number(&transaction, request.from_block)?;
             let to_block = map_to_number(&transaction, request.to_block)?;
 
-            let filter = crate::storage::StarknetEventFilter {
+            let filter = StarknetEventFilter {
                 from_block,
                 to_block,
                 contract_address: request.address,
@@ -1224,12 +1221,21 @@ impl RpcApi {
                 page_size: request.page_size,
                 offset: request.page_number * request.page_size,
             };
+
             // We don't add context here, because [StarknetEventsTable::get_events] adds its
             // own context to the errors. This way we get meaningful error information
             // for errors related to query parameters.
             let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
                 if let Some(e) = e.downcast_ref::<EventFilterError>() {
-                    Error::from(*e)
+                    match e {
+                        EventFilterError::PageSizeTooBig(max_size) => {
+                            Error::Call(CallError::Custom(ErrorObject::owned(
+                                ErrorCode::PageSizeTooBig as i32,
+                                ErrorCode::PageSizeTooBig.to_string(),
+                                Some(serde_json::json!({ "max_page_size": max_size })),
+                            )))
+                        }
+                    }
                 } else {
                     internal_server_error(e)
                 }
@@ -1523,21 +1529,6 @@ impl From<ext_py::CallFailure> for jsonrpsee::core::Error {
     }
 }
 
-impl From<EventFilterError> for jsonrpsee::core::Error {
-    fn from(e: EventFilterError) -> Self {
-        match e {
-            EventFilterError::PageSizeTooBig(max_size) => {
-                let error = ErrorCode::PageSizeTooBig as i32;
-                Error::Call(CallError::Custom(ErrorObject::owned(
-                    error,
-                    ErrorCode::PageSizeTooBig.to_string(),
-                    Some(serde_json::json!({ "max_page_size": max_size })),
-                )))
-            }
-        }
-    }
-}
-
 // We cannot just return Error::Internal (-32003) in cases which are not covered by starknet RPC API spec
 // as jsonrpsee reserved it for internal subscription related errors only, so we resort to
 // CallError::Custom with the same code value and message as Error::Internal. This way we can still provide
@@ -1586,7 +1577,8 @@ fn into_rpc_error(e: starknet_gateway_types::error::SequencerError) -> Error {
             | InvalidTransactionNonce
             | OutOfRangeFee
             | InvalidTransactionVersion
-            | InvalidProgram => Error::Call(CallError::Failed(e.into())),
+            | InvalidProgram
+            | DeprecatedTransaction => Error::Call(CallError::Failed(e.into())),
             UndeclaredClass => ErrorCode::InvalidContractClassHash.into(),
         },
     }

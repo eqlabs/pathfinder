@@ -5,14 +5,14 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{
     consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, Chain, ChainId, EthereumChain, StarknetBlockNumber,
 };
-use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
-use pathfinder_lib::sequencer::ClientApi;
+use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
 use pathfinder_lib::{
     cairo,
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
-    rpc, sequencer, state,
-    storage::{JournalMode, Storage},
+    rpc, state,
 };
+use pathfinder_storage::{JournalMode, Storage};
+use starknet_gateway_client::ClientApi;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let eth_transport = HttpTransport::from_config(
+    let eth_transport = HttpProvider::from_config(
         config.ethereum.url.clone(),
         config.ethereum.password.clone(),
     )
@@ -62,8 +62,10 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    let network = match config.network {
-        Some(network) => match network.as_str() {
+    // Note that network testnet2 integration are mutually exclusive, which is already
+    // checked in the config builder.
+    let network = match (config.network, config.testnet2, config.integration) {
+        (Some(network), _, _) => match network.as_str() {
             "mainnet" => Chain::Mainnet,
             "testnet" => Chain::Testnet,
             "testnet2" => Chain::Testnet2,
@@ -73,8 +75,10 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
             }
         },
-        // Defaults if --network is not specified
-        None => match ethereum_chain {
+        (None, true, _) => Chain::Testnet2,
+        (None, _, true) => Chain::Integration,
+        // Defaults if not specified
+        (None, _, _) => match ethereum_chain {
             EthereumChain::Mainnet => Chain::Mainnet,
             EthereumChain::Goerli => Chain::Testnet,
             EthereumChain::Other(id) => anyhow::bail!(
@@ -99,23 +103,23 @@ If you are trying to setup a custom StarkNet please use '--network custom',
             );
         }
         (Chain::Custom, Some((gateway, feeder)), _) => {
-            pathfinder_lib::sequencer::Client::with_urls(gateway, feeder)
+            starknet_gateway_client::Client::with_urls(gateway, feeder)
                 .context("Creating gateway client")?
         }
         (_, Some(_), _) => anyhow::bail!(
             "'--gateway-url' and '--feeder-gateway-url' are only valid with '--network custom'"
         ),
-        (Chain::Mainnet, None, None) => sequencer::Client::mainnet(),
-        (Chain::Testnet, None, None) => sequencer::Client::testnet(),
-        (Chain::Testnet2, None, None) => sequencer::Client::testnet2(),
-        (Chain::Integration, None, None) => sequencer::Client::integration(),
+        (Chain::Mainnet, None, None) => starknet_gateway_client::Client::mainnet(),
+        (Chain::Testnet, None, None) => starknet_gateway_client::Client::testnet(),
+        (Chain::Testnet2, None, None) => starknet_gateway_client::Client::testnet2(),
+        (Chain::Integration, None, None) => starknet_gateway_client::Client::integration(),
         (_, _, Some(sequencer_url)) => {
-            pathfinder_lib::sequencer::Client::with_base_url(sequencer_url)
+            starknet_gateway_client::Client::with_base_url(sequencer_url)
                 .context("Creating gateway client")?
         }
     };
 
-    // Setup and verify database
+    // Get database path before we mutate network.
     let database_path = config.data_directory.join(match network {
         Chain::Mainnet => "mainnet.sqlite",
         Chain::Testnet => "goerli.sqlite",
@@ -123,6 +127,47 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         Chain::Integration => "integration.sqlite",
         Chain::Custom => "custom.sqlite",
     });
+
+    // Check for known proxy network
+    let network = match network {
+        Chain::Custom => {
+            use pathfinder_common::consts::{
+                INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
+                TESTNET_GENESIS_HASH,
+            };
+
+            let genesis = gateway_client
+                .block(StarknetBlockNumber::GENESIS.into())
+                .await
+                .context("Downloading genesis block from gateway for proxy check")?
+                .as_block()
+                .context("Genesis block should not be pending")?
+                .block_hash;
+
+            match genesis {
+                MAINNET_GENESIS_HASH => {
+                    tracing::info!("Proxy for mainnet detected");
+                    Chain::Mainnet
+                }
+                TESTNET_GENESIS_HASH => {
+                    tracing::info!("Proxy for testnet detected");
+                    Chain::Testnet
+                }
+                TESTNET2_GENESIS_HASH => {
+                    tracing::info!("Proxy for testnet2 detected");
+                    Chain::Testnet2
+                }
+                INTEGRATION_GENESIS_HASH => {
+                    tracing::info!("Proxy for integration detected");
+                    Chain::Integration
+                }
+                _other => Chain::Custom,
+            }
+        }
+        other => other,
+    };
+
+    // Setup and verify database
     let journal_mode = match config.sqlite_wal {
         false => JournalMode::Rollback,
         true => JournalMode::WAL,
@@ -149,7 +194,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
                 let gateway_block = gateway_client
                     .block(StarknetBlockNumber::GENESIS.into())
                     .await
-                    .context("Downloading genesis block from gateway")?
+                    .context("Downloading genesis block from gateway for database verification")?
                     .as_block()
                     .context("Genesis block should not be pending")?;
 
@@ -291,7 +336,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
 async fn database_genesis_hash(
     storage: &Storage,
 ) -> anyhow::Result<Option<pathfinder_common::StarknetBlockHash>> {
-    use pathfinder_lib::storage::StarknetBlocksTable;
+    use pathfinder_storage::StarknetBlocksTable;
 
     let storage = storage.clone();
     tokio::task::spawn_blocking(move || {

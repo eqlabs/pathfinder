@@ -1,16 +1,17 @@
 use super::error::RpcError;
 use crate::cairo::ext_py;
 use crate::rpc::gas_price;
+use crate::state::PendingData;
 use crate::state::SyncState;
-use crate::{state::PendingData, storage::Storage};
 use pathfinder_common::ChainId;
+use pathfinder_storage::Storage;
 use std::sync::Arc;
 
 mod common;
 pub mod method;
 pub mod types;
 
-type SequencerClient = crate::sequencer::Client;
+type SequencerClient = starknet_gateway_client::Client;
 
 #[derive(Clone)]
 pub struct RpcContext {

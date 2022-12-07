@@ -1,8 +1,5 @@
 //! Contains the Sqlite persistent storage abstraction for a Starknet Binary Merkle Patricia Tree.
 //!
-//! For more information on the structure of the tree, see
-//! [`MerkleTree`](crate::state::merkle_tree::MerkleTree).
-//!
 //! ## Overview
 //!
 //! This storage functions similarly to a key-value store with the addition of automatic
@@ -47,6 +44,84 @@ use rusqlite::{params, OptionalExtension, Transaction};
 
 use stark_hash::StarkHash;
 
+/// Backing storage for Starknet Binary Merkle Patricia Tree.
+///
+/// Default implementation and persistent implementation is the `RcNodeStorage`. Testing/future
+/// implementations include [`HashMap`](std::collections::HashMap) and `()` based implementations
+/// where the backing storage is not persistent, or doesn't exist at all. The nodes will still be
+/// visitable in-memory.
+pub trait NodeStorage {
+    /// Find a persistent node during a traversal from the storage.
+    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>>;
+
+    /// Insert or ignore if already exists `node` to storage under the given `key`.
+    ///
+    /// This does not imply incrementing the nodes ref count.
+    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
+
+    /// Decrement previously stored `key`'s reference count. This shouldn't fail for key not found.
+    #[cfg(feature = "test-utils")]
+    fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
+
+    /// Increment previously stored `key`'s reference count. This shouldn't fail for key not found.
+    fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
+}
+
+impl NodeStorage for () {
+    fn get(&self, _key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+        // the rc<refcell> impl will do just fine by without any backing for transaction tree
+        // building
+        Ok(None)
+    }
+
+    fn upsert(&self, _key: StarkHash, _node: PersistedNode) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    #[cfg(feature = "test-utils")]
+    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, PersistedNode>> {
+    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+        Ok(self.borrow().get(&key).cloned())
+    }
+
+    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+        use std::collections::hash_map::Entry::*;
+        if !matches!(node, PersistedNode::Leaf) {
+            match self.borrow_mut().entry(key) {
+                Vacant(ve) => {
+                    ve.insert(node);
+                }
+                Occupied(oe) => {
+                    let existing = oe.get();
+                    anyhow::ensure!(
+                        existing == &node,
+                        "trying to upsert a different node over existing? {existing:?} != {node:?}"
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "test-utils")]
+    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 /// Provides a reference counted storage backend for the
 /// nodes of a Starknet Binary Merkle Patricia Tree.
 ///
@@ -81,12 +156,12 @@ struct Queries<'a> {
     insert: Cow<'a, str>,
     update: Cow<'a, str>,
     get: Cow<'a, str>,
-    #[cfg(test)]
+    #[cfg(feature = "test-utils")]
     delete_node: Cow<'a, str>,
-    #[cfg(test)]
+    #[cfg(feature = "test-utils")]
     set_ref_count: Cow<'a, str>,
     increment_ref_count: Cow<'a, str>,
-    #[cfg(test)]
+    #[cfg(feature = "test-utils")]
     get_ref_count: Cow<'a, str>,
 }
 
@@ -114,16 +189,16 @@ impl Queries<'static> {
             .into(),
             update: format!("UPDATE {} SET data=?, ref_count=? WHERE hash=?", table).into(),
             get: format!("SELECT data FROM {} WHERE hash = ?", table).into(),
-            #[cfg(test)]
+            #[cfg(feature = "test-utils")]
             delete_node: format!("DELETE FROM {} WHERE hash = ?", table).into(),
-            #[cfg(test)]
+            #[cfg(feature = "test-utils")]
             set_ref_count: format!("UPDATE {} SET ref_count = ? WHERE hash = ?", table).into(),
             increment_ref_count: format!(
                 "UPDATE {} SET ref_count = ref_count + 1 WHERE hash = ?",
                 table
             )
             .into(),
-            #[cfg(test)]
+            #[cfg(feature = "test-utils")]
             get_ref_count: format!("SELECT ref_count FROM {} WHERE hash = ?", table).into(),
         }
     }
@@ -147,18 +222,18 @@ impl Queries<'static> {
             insert: borrow_cow!(self.insert),
             update: borrow_cow!(self.update),
             get: borrow_cow!(self.get),
-            #[cfg(test)]
+            #[cfg(feature = "test-utils")]
             delete_node: borrow_cow!(self.delete_node),
-            #[cfg(test)]
+            #[cfg(feature = "test-utils")]
             set_ref_count: borrow_cow!(self.set_ref_count),
             increment_ref_count: borrow_cow!(self.increment_ref_count),
-            #[cfg(test)]
+            #[cfg(feature = "test-utils")]
             get_ref_count: borrow_cow!(self.get_ref_count),
         }
     }
 }
 
-impl<'a, 'queries> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a, 'queries> {
+impl<'a, 'queries> NodeStorage for RcNodeStorage<'a, 'queries> {
     fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
         self.get(key)
     }
@@ -167,7 +242,7 @@ impl<'a, 'queries> crate::state::merkle_tree::NodeStorage for RcNodeStorage<'a, 
         self.upsert(key, node)
     }
 
-    #[cfg(test)]
+    #[cfg(feature = "test-utils")]
     fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         RcNodeStorage::decrement_ref_count(self, key)
     }
@@ -416,7 +491,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
-    #[cfg(test)]
+    #[cfg(feature = "test-utils")]
     fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
@@ -443,7 +518,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
 
     /// Decrements the reference count of the node and automatically deletes it
     /// if the count becomes zero.
-    #[cfg(test)]
+    #[cfg(feature = "test-utils")]
     pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 

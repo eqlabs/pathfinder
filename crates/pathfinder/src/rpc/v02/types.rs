@@ -125,7 +125,7 @@ pub mod request {
     }
 
     const fn transaction_version_zero() -> TransactionVersion {
-        TransactionVersion(web3::types::H256::zero())
+        TransactionVersion(ethers::types::H256::zero())
     }
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -210,23 +210,23 @@ pub mod request {
                 };
                 let txs = vec![
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
-                        max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
-                        version: TransactionVersion(web3::types::H256::from_low_u64_be(0x0)),
+                        max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
                         signature: vec![TransactionSignatureElem(starkhash!("07"))],
                         nonce: TransactionNonce(starkhash!("08")),
                         contract_class: contract_class.clone(),
                         sender_address: ContractAddress::new_or_panic(starkhash!("0a")),
                     }),
                     BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
-                        version: TransactionVersion(web3::types::H256::from_low_u64_be(0x0)),
+                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
                         contract_address_salt: ContractAddressSalt(starkhash!("dd")),
                         constructor_calldata: vec![ConstructorParam(starkhash!("11"))],
                         contract_class,
                     }),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                         BroadcastedInvokeTransactionV0 {
-                            version: TransactionVersion(web3::types::H256::zero()),
-                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                            version: TransactionVersion(ethers::types::H256::zero()),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
                             nonce: Some(TransactionNonce(starkhash!("08"))),
                             contract_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
@@ -236,8 +236,8 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
-                            version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
-                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
                             nonce: TransactionNonce(starkhash!("08")),
                             sender_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
@@ -246,10 +246,10 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
-                            version: TransactionVersion(web3::types::H256(hex_literal::hex!(
+                            version: TransactionVersion(ethers::types::H256(hex_literal::hex!(
                                 "0000000000000000000000000000000100000000000000000000000000000001"
                             ))),
-                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
                             nonce: TransactionNonce(starkhash!("08")),
                             sender_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
@@ -368,8 +368,8 @@ pub mod reply {
         where
             D: serde::Deserializer<'de>,
         {
+            use ethers::types::H256;
             use serde::de;
-            use web3::types::H256;
 
             const VERSION_0: H256 = H256::zero();
             const fn transaction_version_zero() -> TransactionVersion {
@@ -636,8 +636,8 @@ pub mod reply {
             fn transaction() {
                 let common = CommonTransactionProperties {
                     hash: StarknetTransactionHash(starkhash!("04")),
-                    max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
-                    version: TransactionVersion(web3::types::H256::from_low_u64_be(0x0)),
+                    max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                    version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
                     signature: vec![TransactionSignatureElem(starkhash!("07"))],
                     nonce: TransactionNonce(starkhash!("08")),
                 };
@@ -651,7 +651,7 @@ pub mod reply {
                     Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                         common: CommonInvokeTransactionProperties {
                             hash: StarknetTransactionHash(starkhash!("0b")),
-                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x999)),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x999)),
                             signature: vec![TransactionSignatureElem(starkhash!("0777"))],
                             nonce: TransactionNonce(starkhash!("dd")),
                         },
@@ -662,7 +662,7 @@ pub mod reply {
                     Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
                         common: CommonInvokeTransactionProperties {
                             hash: StarknetTransactionHash(starkhash!("0bbb")),
-                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x9999)),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x9999)),
                             signature: vec![TransactionSignatureElem(starkhash!("0eee"))],
                             nonce: TransactionNonce(starkhash!("de")),
                         },
@@ -672,13 +672,13 @@ pub mod reply {
                     Transaction::Deploy(DeployTransaction {
                         hash: StarknetTransactionHash(starkhash!("0e")),
                         class_hash: ClassHash(starkhash!("10")),
-                        version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
+                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
                         contract_address_salt: ContractAddressSalt(starkhash!("ee")),
                         constructor_calldata: vec![ConstructorParam(starkhash!("11"))],
                     }),
                     Transaction::L1Handler(L1HandlerTransaction {
                         hash: StarknetTransactionHash(starkhash!("0f")),
-                        version: TransactionVersion(web3::types::H256::from_low_u64_be(1)),
+                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
                         nonce: common.nonce,
                         contract_address: ContractAddress::new_or_panic(starkhash!("0fff")),
                         entry_point_selector: EntryPoint(starkhash!("0f")),

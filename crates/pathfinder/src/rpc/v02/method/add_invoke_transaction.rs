@@ -1,8 +1,8 @@
 use crate::rpc::v02::types::request::BroadcastedInvokeTransaction;
 use crate::rpc::v02::RpcContext;
-use crate::sequencer::ClientApi;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
+use starknet_gateway_client::ClientApi;
 
 crate::rpc::error::generate_rpc_error_subset!(AddInvokeTransactionError);
 
@@ -215,7 +215,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let input = BroadcastedInvokeTransactionV1 {
             version: TransactionVersion::ONE,
-            max_fee: Fee(web3::types::H128::from_low_u64_be(0x630a0aff77)),
+            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x630a0aff77)),
             signature: vec![
                 TransactionSignatureElem(starkhash!(
                     "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"

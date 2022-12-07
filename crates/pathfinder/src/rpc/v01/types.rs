@@ -52,9 +52,9 @@ pub mod request {
     }
 
     impl Call {
-        pub const DEFAULT_MAX_FEE: Fee = Fee(web3::types::H128::zero());
+        pub const DEFAULT_MAX_FEE: Fee = Fee(ethers::types::H128::zero());
         pub const DEFAULT_VERSION: TransactionVersion =
-            TransactionVersion(web3::types::H256::zero());
+            TransactionVersion(ethers::types::H256::zero());
         pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
     }
 
@@ -270,7 +270,7 @@ pub mod reply {
     impl PartialEq<jsonrpsee::core::error::Error> for ErrorCode {
         fn eq(&self, other: &jsonrpsee::core::error::Error) -> bool {
             use jsonrpsee::core::error::Error;
-            use jsonrpsee::types::error::CallError;
+            use jsonrpsee::types::error::{CallError, ErrorObject};
 
             if let Error::Call(CallError::Custom(custom)) = other {
                 // this is quite ackward dance to go back to error level then come back to the
@@ -278,9 +278,14 @@ pub mod reply {
                 // places, and leaning on ErrorObject partialeq impl.
                 let repr = match self {
                     ErrorCode::PageSizeTooBig => {
-                        Error::from(crate::storage::EventFilterError::PageSizeTooBig(
-                            crate::storage::StarknetEventsTable::PAGE_SIZE_LIMIT,
-                        ))
+                        Error::Call(CallError::Custom(ErrorObject::owned(
+                            ErrorCode::PageSizeTooBig as i32,
+                            ErrorCode::PageSizeTooBig.to_string(),
+                            Some(serde_json::json!({
+                                "max_page_size":
+                                    pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT
+                            })),
+                        )))
                     }
                     other => Error::from(*other),
                 };
@@ -363,125 +368,6 @@ pub mod reply {
                 // this is insufficient in every situation (PageSizeTooBig)
                 None::<()>,
             )))
-        }
-    }
-
-    /// L2 state update as returned by the [RPC API v0.1.0](https://github.com/starkware-libs/starknet-specs/blob/30e5bafcda60c31b5fb4021b4f5ddcfc18d2ff7d/api/starknet_api_openrpc.json#L846).
-    ///
-    /// # Serialization
-    ///
-    /// This structure derives [serde::Deserialize] without depending
-    /// on the `rpc-full-serde` feature because state updates are
-    /// stored in the DB as compressed raw JSON bytes.
-    #[skip_serializing_none]
-    #[derive(Clone, Debug, serde::Deserialize, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct StateUpdate {
-        /// None for `pending`
-        #[serde(default)]
-        pub block_hash: Option<StarknetBlockHash>,
-        pub new_root: GlobalRoot,
-        pub old_root: GlobalRoot,
-        pub state_diff: state_update::StateDiff,
-    }
-
-    impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
-        fn from(x: starknet_gateway_types::reply::StateUpdate) -> Self {
-            Self {
-                block_hash: x.block_hash,
-                new_root: x.new_root,
-                old_root: x.old_root,
-                state_diff: x.state_diff.into(),
-            }
-        }
-    }
-
-    /// State update related substructures.
-    ///
-    /// # Serialization
-    ///
-    /// All structures in this module derive [serde::Deserialize] without depending
-    /// on the `rpc-full-serde` feature because state updates are
-    /// stored in the DB as compressed raw JSON bytes.
-    pub mod state_update {
-        use pathfinder_common::{
-            ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
-        };
-        use serde::{Deserialize, Serialize};
-
-        /// L2 state diff.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[serde(deny_unknown_fields)]
-        pub struct StateDiff {
-            pub storage_diffs: Vec<StorageDiff>,
-            pub declared_contracts: Vec<DeclaredContract>,
-            pub deployed_contracts: Vec<DeployedContract>,
-            pub nonces: Vec<Nonce>,
-        }
-
-        impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
-            fn from(x: starknet_gateway_types::reply::state_update::StateDiff) -> Self {
-                Self {
-                    storage_diffs: x
-                        .storage_diffs
-                        .into_iter()
-                        .flat_map(|(contract_address, storage_diffs)| {
-                            storage_diffs.into_iter().map(move |x| StorageDiff {
-                                address: contract_address,
-                                key: x.key,
-                                value: x.value,
-                            })
-                        })
-                        .collect(),
-                    declared_contracts: x
-                        .declared_contracts
-                        .into_iter()
-                        .map(|class_hash| DeclaredContract { class_hash })
-                        .collect(),
-                    deployed_contracts: x
-                        .deployed_contracts
-                        .into_iter()
-                        .map(|deployed_contract| DeployedContract {
-                            address: deployed_contract.address,
-                            class_hash: deployed_contract.class_hash,
-                        })
-                        .collect(),
-                    // FIXME once the sequencer API provides the nonces
-                    nonces: vec![],
-                }
-            }
-        }
-
-        /// L2 storage diff of a contract.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[serde(deny_unknown_fields)]
-        pub struct StorageDiff {
-            pub address: ContractAddress,
-            pub key: StorageAddress,
-            pub value: StorageValue,
-        }
-
-        /// L2 state diff declared contract item.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[serde(deny_unknown_fields)]
-        pub struct DeclaredContract {
-            pub class_hash: ClassHash,
-        }
-
-        /// L2 state diff deployed contract item.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[serde(deny_unknown_fields)]
-        pub struct DeployedContract {
-            pub address: ContractAddress,
-            pub class_hash: ClassHash,
-        }
-
-        /// L2 state diff nonce item.
-        #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[serde(deny_unknown_fields)]
-        pub struct Nonce {
-            pub contract_address: ContractAddress,
-            pub nonce: ContractNonce,
         }
     }
 
@@ -633,7 +519,7 @@ pub mod reply {
                                 common: CommonTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
-                                    version: TransactionVersion(web3::types::H256::zero()),
+                                    version: TransactionVersion(ethers::types::H256::zero()),
                                     signature: txn.signature.clone(),
                                     // no `nonce` in v0 invoke transactions
                                     nonce: TransactionNonce(Default::default()),
@@ -650,7 +536,7 @@ pub mod reply {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
                                     version: TransactionVersion(
-                                        web3::types::H256::from_low_u64_be(1),
+                                        ethers::types::H256::from_low_u64_be(1),
                                     ),
                                     signature: txn.signature.clone(),
                                     nonce: txn.nonce,
@@ -1123,8 +1009,8 @@ pub mod reply {
         pub transaction_hash: StarknetTransactionHash,
     }
 
-    impl From<crate::storage::StarknetEmittedEvent> for EmittedEvent {
-        fn from(event: crate::storage::StarknetEmittedEvent) -> Self {
+    impl From<pathfinder_storage::StarknetEmittedEvent> for EmittedEvent {
+        fn from(event: pathfinder_storage::StarknetEmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,
@@ -1180,14 +1066,14 @@ pub mod reply {
         /// The Ethereum gas cost of the transaction
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "gas_consumed")]
-        pub consumed: web3::types::H256,
+        pub consumed: ethers::types::H256,
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub gas_price: web3::types::H256,
+        pub gas_price: ethers::types::H256,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "overall_fee")]
-        pub fee: web3::types::H256,
+        pub fee: ethers::types::H256,
     }
 
     #[cfg(test)]
@@ -1219,8 +1105,8 @@ pub mod reply {
                     pub fn test_data() -> Self {
                         let common = CommonTransactionProperties {
                             hash: StarknetTransactionHash(starkhash!("04")),
-                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
-                            version: TransactionVersion(web3::types::H256::from_low_u64_be(0x6)),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
                             nonce: TransactionNonce(starkhash!("08")),
                         };
@@ -1250,7 +1136,7 @@ pub mod reply {
                                     hash: StarknetTransactionHash(starkhash!("0e")),
 
                                     version: TransactionVersion(
-                                        web3::types::H256::from_low_u64_be(1),
+                                        ethers::types::H256::from_low_u64_be(1),
                                     ),
                                     contract_address: ContractAddress::new_or_panic(starkhash!(
                                         "0f"
@@ -1295,7 +1181,7 @@ pub mod reply {
                     pub fn test_data() -> Self {
                         Self {
                             transaction_hash: StarknetTransactionHash(starkhash!("00")),
-                            actual_fee: Fee(web3::types::H128::from_low_u64_be(0x1)),
+                            actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x1)),
                             status: TransactionStatus::AcceptedOnL1,
                             status_data: Some("blah".to_string()),
                             block_hash: StarknetBlockHash(starkhash!("0aaa")),
@@ -1308,7 +1194,7 @@ pub mod reply {
                     pub fn test_data() -> Self {
                         Self {
                             transaction_hash: StarknetTransactionHash(starkhash!("01")),
-                            actual_fee: Fee(web3::types::H128::from_low_u64_be(0x2)),
+                            actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x2)),
                         }
                     }
                 }
@@ -1319,7 +1205,7 @@ pub mod reply {
                             common: CommonTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
                                 to_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x2),
+                                    ethers::types::H160::from_low_u64_be(0x2),
                                 ),
                                 payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
                                     starkhash!("03"),
@@ -1327,7 +1213,7 @@ pub mod reply {
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
                                 from_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x4),
+                                    ethers::types::H160::from_low_u64_be(0x4),
                                 ),
                                 payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
                                     starkhash!("05"),
@@ -1348,7 +1234,7 @@ pub mod reply {
                             common: CommonPendingTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
                                 to_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x5),
+                                    ethers::types::H160::from_low_u64_be(0x5),
                                 ),
                                 payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
                                     starkhash!("06"),
@@ -1356,7 +1242,7 @@ pub mod reply {
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
                                 from_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x77),
+                                    ethers::types::H160::from_low_u64_be(0x77),
                                 ),
                                 payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
                                     starkhash!("07"),

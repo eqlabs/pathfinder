@@ -1,7 +1,7 @@
 use anyhow::Context;
+use ethers::types::H128;
 use pathfinder_common::Fee;
 use rusqlite::{named_params, Transaction as RusqliteTransaction};
-use web3::types::H128;
 
 // This is a copy of the sequencer reply types _without_ deny_unknown_fields
 // The point is that with the old `struct Transaction` we had some optional
@@ -226,10 +226,10 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
 #[cfg(test)]
 mod tests {
     use super::transaction;
-    use crate::storage::schema;
+    use crate::schema;
+    use ethers::types::H128;
     use pathfinder_common::{starkhash, StarknetTransactionHash};
     use rusqlite::{named_params, Connection};
-    use web3::types::H128;
 
     #[test]
     fn empty() {
@@ -387,7 +387,7 @@ mod tests {
         let transaction_hash =
             starkhash!("e0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75");
 
-        let migrated_tx = crate::storage::state::StarknetTransactionsTable::get_transaction(
+        let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
             &transaction,
             StarknetTransactionHash(transaction_hash),
         )
@@ -430,7 +430,7 @@ mod tests {
         let transaction_hash =
             starkhash!("05d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42");
 
-        let migrated_tx = crate::storage::state::StarknetTransactionsTable::get_transaction(
+        let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
             &transaction,
             StarknetTransactionHash(transaction_hash),
         )
