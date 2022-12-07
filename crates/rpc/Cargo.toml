@@ -9,6 +9,7 @@ rust-version = "1.62"
 [dependencies]
 anyhow = "1.0.44"
 base64 = "0.13.0"
+ethers = "1.0.0"
 flate2 = "1.0.23"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex-literal = "0.3"
@@ -16,7 +17,6 @@ jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_
     "server",
 ] }
 metrics = "0.20.1"
-# pathfinder-cairo = { path = "../cairo" }
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }

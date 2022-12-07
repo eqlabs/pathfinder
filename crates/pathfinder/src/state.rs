@@ -88,7 +88,7 @@ pub(crate) fn calculate_contract_state_hash(
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_contract_state_hash, sync};
+    use super::calculate_contract_state_hash;
     use pathfinder_common::starkhash;
     use pathfinder_common::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
 

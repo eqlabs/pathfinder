@@ -2985,6 +2985,7 @@ dependencies = [
  "assert_matches",
  "base64 0.13.1",
  "bytes",
+ "ethers",
  "flate2",
  "futures",
  "hex",
