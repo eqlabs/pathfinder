@@ -21,7 +21,7 @@ stark_curve = { path = "../stark_curve" }
 
 [dev-dependencies]
 assert_matches = "1.5.0"
-criterion = "0.3"
+criterion = "0.4"
 hex = "0.4.3"
 pretty_assertions = "1.3.0"
 rand = "0.8"
