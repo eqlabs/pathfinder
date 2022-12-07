@@ -7,7 +7,7 @@
 //!
 //! Running the load test:
 //! ```
-//! cargo run --release -p load-test -- -H http://127.0.0.1:9545 --report-file /tmp/report.html -u 30 -r 5 -t 60 --no-gzip
+//! cargo run --release -- -H http://127.0.0.1:9545 --report-file /tmp/report.html -u 30 -r 5 -t 60 --no-gzip
 //! ```
 use goose::prelude::*;
 
