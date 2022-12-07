@@ -25,7 +25,7 @@ pub fn chunked_inserts(
 
     for keys in keys.chunks(batch_size) {
         let mut uut =
-            pathfinder_lib::state::merkle_tree::MerkleTree::load("tree_contracts", tx, hash)
+            pathfinder_merkle_tree::merkle_tree::MerkleTree::load("tree_contracts", tx, hash)
                 .unwrap();
 
         keys.iter()
