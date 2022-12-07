@@ -20,7 +20,7 @@ async-trait = "0.1.59"
 bitvec = "0.20.4"
 clap = { version = "3.2.23", features = ["env"] }
 console-subscriber = { version = "0.1.8", optional = true }
-enum-iterator = "0.7.0"
+enum-iterator = "1.2.0"
 ethers = "1.0.2"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex-literal = "0.3"

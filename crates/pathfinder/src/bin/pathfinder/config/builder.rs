@@ -254,15 +254,13 @@ Hint: Register your own account or run your own Ethereum node and put the real U
 
 #[cfg(test)]
 mod tests {
-    use enum_iterator::IntoEnumIterator;
-
     use super::*;
 
     #[test]
     fn with_take() {
         let value = Some("Value".to_owned());
         let mut builder = ConfigBuilder::default();
-        for option in ConfigOption::into_enum_iter() {
+        for option in enum_iterator::all::<ConfigOption>() {
             builder = builder.with(option, value.clone());
             assert_eq!(builder.take(option), value);
             assert_eq!(builder.take(option), None);
@@ -273,7 +271,7 @@ mod tests {
     fn default_is_none() {
         // Quite a few tests rely on the default value being None, so we enforce this with a test.
         let mut builder = ConfigBuilder::default();
-        for option in ConfigOption::into_enum_iter() {
+        for option in enum_iterator::all::<ConfigOption>() {
             assert_eq!(builder.take(option), None);
         }
     }
@@ -294,7 +292,7 @@ mod tests {
             let mut builder = ConfigBuilder::default();
             let mut values = HashMap::new();
 
-            for (idx, option) in ConfigOption::into_enum_iter().enumerate() {
+            for (idx, option) in enum_iterator::all::<ConfigOption>().enumerate() {
                 let value = Some(format!("{} {}", prefix, idx));
 
                 builder = builder.with(option, value.clone());
@@ -311,7 +309,7 @@ mod tests {
 
             let mut merged = some_1.merge(some_2);
 
-            for option in ConfigOption::into_enum_iter() {
+            for option in enum_iterator::all::<ConfigOption>() {
                 assert_eq!(merged.take(option), values_1.remove(&option).unwrap());
             }
         }
@@ -323,7 +321,7 @@ mod tests {
 
             let mut merged = some.merge(none);
 
-            for option in ConfigOption::into_enum_iter() {
+            for option in enum_iterator::all::<ConfigOption>() {
                 assert_eq!(merged.take(option), values.remove(&option).unwrap());
             }
         }
@@ -335,7 +333,7 @@ mod tests {
 
             let mut merged = none.merge(some);
 
-            for option in ConfigOption::into_enum_iter() {
+            for option in enum_iterator::all::<ConfigOption>() {
                 assert_eq!(merged.take(option), values.remove(&option).unwrap());
             }
         }
