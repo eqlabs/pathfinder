@@ -36,6 +36,7 @@ impl Serialize for ProofNode {
         match &self {
             ProofNode::Binary(bin) => {
                 let mut state = serializer.serialize_struct("Binary", 2)?;
+                state.serialize_field("type", &"Binary")?;
                 state.serialize_field("left", &bin.left_hash)?;
                 state.serialize_field("right", &bin.right_hash)?;
                 state.end()
@@ -48,6 +49,7 @@ impl Serialize for ProofNode {
                 };
 
                 let mut state = serializer.serialize_struct("Edge", 2)?;
+                state.serialize_field("type", &"Edge")?;
                 state.serialize_field("path", &path_wrapper)?;
                 state.serialize_field("child", &edge.child_hash)?;
                 state.end()
@@ -216,7 +218,9 @@ fn read_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{ContractAddress, StorageAddress};
+    use bitvec::{bitvec, order::Msb0};
+    use crate::state::merkle_tree::{BinaryProofNode, EdgeProofNode};
+    use pathfinder_common::{ContractAddress, StorageAddress, starkhash};
 
     type TestCaseHandler = Box<dyn Fn(usize, &Result<GetProofOutput, GetProofError>)>;
 
