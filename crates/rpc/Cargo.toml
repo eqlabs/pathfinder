@@ -44,14 +44,15 @@ jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_
     "async-client",
 ] }
 lazy_static = "1.4.0"
+pathfinder-common = { path = "../common", features = ["full-serde", "test-utils"] }
 pathfinder-storage = { path = "../storage", features = ["test-utils"] }
 pretty_assertions = "1.0.0"
 reqwest = { version = "0.11.4", features = ["json"] }
 rusqlite = { version = "0.27.0", features = ["bundled"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
 stark_hash = { path = "../stark_hash" }
+starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-starknet-gateway-types = { path = "../gateway-types" }
 tempfile = "3"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
