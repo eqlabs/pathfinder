@@ -42,7 +42,7 @@ impl Serialize for ProofNode {
                 state.end()
             }
             ProofNode::Edge(edge) => {
-                let value = StarkHash::from_bits(&edge.path.as_bitslice()).unwrap();
+                let value = StarkHash::from_bits(edge.path.as_bitslice()).unwrap();
                 let path_wrapper = PathWrapper {
                     value,
                     len: edge.path.len(),

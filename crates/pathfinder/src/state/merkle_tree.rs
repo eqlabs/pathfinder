@@ -57,7 +57,7 @@ use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
 /// Lightweight representation of [BinaryNode]. Only holds left and right hashes.
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct BinaryProofNode {
     pub left_hash: StarkHash,
     pub right_hash: StarkHash,
@@ -73,7 +73,7 @@ impl From<&BinaryNode> for ProofNode {
 }
 
 /// Ligthtweight representation of [EdgeNode]. Only holds its path and its child's hash.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EdgeProofNode {
     pub path: BitVec<Msb0, u8>,
     pub child_hash: StarkHash,
@@ -95,7 +95,7 @@ impl From<&EdgeNode> for ProofNode {
 /// [ProofNode] s are lightweight versions of their `Node` counterpart.
 /// They only consist of [BinaryProofNode] and [EdgeProofNode] because `Leaf`
 /// and `Unresolved` nodes should not appear in a proof.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ProofNode {
     Binary(BinaryProofNode),
     Edge(EdgeProofNode),

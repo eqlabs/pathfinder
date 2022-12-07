@@ -34,7 +34,7 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof<'a>(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
+    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
         self.tree.get_proof(key)
     }
 
