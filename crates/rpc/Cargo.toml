@@ -25,7 +25,7 @@ pathfinder-storage = { path = "../storage" }
 rusqlite = { version = "0.27.0", features = ["bundled"] }
 serde = { version = "1.0.149", features = ["derive"] }
 serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
-serde_with = "1.14.0"
+serde_with = "2.1.0"
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
