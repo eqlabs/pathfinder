@@ -33,8 +33,7 @@ RUN mkdir crates \
     && cargo new --lib --vcs none crates/retry \
     && cargo new --lib --vcs none crates/serde \
     && cargo new --lib --vcs none crates/storage \
-    && cargo new --lib --vcs none crates/pathfinder \
-    && cargo new --lib --vcs none crates/load-test
+    && cargo new --lib --vcs none crates/pathfinder
 
 COPY Cargo.toml Cargo.lock ./
 
