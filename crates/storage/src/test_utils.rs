@@ -1,6 +1,7 @@
 use super::{
     StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
 };
+use ethers::types::{H128, H256};
 use pathfinder_common::{
     starkhash, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
     EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
@@ -12,7 +13,6 @@ use starknet_gateway_types::reply::transaction::{
     self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
     InvokeTransactionV0,
 };
-use web3::types::{H128, H256};
 
 pub const NUM_BLOCKS: usize = 4;
 pub const TRANSACTIONS_PER_BLOCK: usize = 15;
@@ -88,7 +88,7 @@ pub(crate) fn create_transactions_and_receipts(
                 transaction_hash: StarknetTransactionHash(
                     StarkHash::from_hex_str(&"9".repeat(i + 3)).unwrap(),
                 ),
-                version: TransactionVersion(web3::types::H256::zero()),
+                version: TransactionVersion(ethers::types::H256::zero()),
             })
         }
         _ => transaction::Transaction::Declare(DeclareTransaction {

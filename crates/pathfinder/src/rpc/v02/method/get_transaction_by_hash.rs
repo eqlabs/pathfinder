@@ -131,7 +131,7 @@ mod tests {
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonInvokeTransactionProperties {
                     hash: StarknetTransactionHash(starkhash_bytes!(b"txn 0")),
-                    max_fee: Fee(web3::types::H128::zero()),
+                    max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
                     nonce: TransactionNonce(StarkHash::ZERO),
                 },
@@ -157,7 +157,7 @@ mod tests {
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonInvokeTransactionProperties {
                     hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
-                    max_fee: Fee(web3::types::H128::zero()),
+                    max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
                     nonce: TransactionNonce(StarkHash::ZERO),
                 },

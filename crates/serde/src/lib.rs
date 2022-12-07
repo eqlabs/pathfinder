@@ -1,5 +1,6 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
+use ethers::types::{H128, H160, H256};
 use num_bigint::BigUint;
 use pathfinder_common::{
     CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, Fee, GasPrice,
@@ -11,7 +12,6 @@ use serde_with::{serde_conv, DeserializeAs, SerializeAs};
 use stark_hash::{HexParseError, OverflowError, StarkHash};
 use std::borrow::Cow;
 use std::str::FromStr;
-use web3::types::{H128, H160, H256};
 
 serde_conv!(
     pub CallParamAsDecimalStr,
@@ -283,7 +283,7 @@ serde_with::serde_conv!(
 
 serde_with::serde_conv!(
     pub H256AsHexStr,
-    web3::types::H256,
+    ethers::types::H256,
     |u: &H256| bytes_to_hex_str(u.as_bytes()),
     |s: &str| bytes_from_hex_str::<32>(s).map(H256::from)
 );

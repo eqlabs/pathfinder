@@ -5,7 +5,7 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{
     consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, Chain, ChainId, EthereumChain, StarknetBlockNumber,
 };
-use pathfinder_ethereum::transport::{EthereumTransport, HttpTransport};
+use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
 use pathfinder_lib::{
     cairo,
     monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let eth_transport = HttpTransport::from_config(
+    let eth_transport = HttpProvider::from_config(
         config.ethereum.url.clone(),
         config.ethereum.password.clone(),
     )

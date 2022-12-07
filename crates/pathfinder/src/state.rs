@@ -458,7 +458,7 @@ mod tests {
         )
         .unwrap();
         let chain = pathfinder_common::Chain::Testnet;
-        let transport = pathfinder_ethereum::transport::HttpTransport::test_transport(chain);
+        let transport = pathfinder_ethereum::provider::HttpProvider::test_provider(chain);
         let sequencer = starknet_gateway_client::Client::new(chain).unwrap();
         let state = Arc::new(sync::State::default());
 

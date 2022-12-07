@@ -97,7 +97,7 @@ impl Handle {
 
         let transaction = match transaction {
             BroadcastedTransaction::Deploy(_) => {
-                const ZERO: web3::types::H256 = web3::types::H256::zero();
+                const ZERO: ethers::types::H256 = ethers::types::H256::zero();
                 return Ok(FeeEstimate {
                     consumed: ZERO,
                     gas_price: ZERO,
@@ -203,13 +203,13 @@ pub enum GasPriceSource {
     ///
     /// U256 is not used for serialization matters, [u8; 32] could be used as well. python side's
     /// serialization limits this value to u128 but in general `eth_gasPrice` is U256.
-    Current(web3::types::H256),
+    Current(ethers::types::H256),
 }
 
 impl GasPriceSource {
-    const GAS_PRICE_ZERO: web3::types::H256 = web3::types::H256::zero();
+    const GAS_PRICE_ZERO: ethers::types::H256 = ethers::types::H256::zero();
     /// Convert to `&H256`, for use in serialization.
-    fn as_price(&self) -> &web3::types::H256 {
+    fn as_price(&self) -> &ethers::types::H256 {
         match self {
             GasPriceSource::PastBlock => &Self::GAS_PRICE_ZERO,
             GasPriceSource::Current(price) => price,
@@ -517,7 +517,7 @@ mod tests {
             .await
             .unwrap();
 
-        use web3::types::H256;
+        use ethers::types::H256;
 
         assert_eq!(
             at_block_fee,
@@ -608,7 +608,7 @@ mod tests {
             .await
             .unwrap();
 
-        use web3::types::H256;
+        use ethers::types::H256;
 
         assert_eq!(
             at_block_fee,

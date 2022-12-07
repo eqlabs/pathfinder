@@ -13,6 +13,7 @@ test-utils = []
 anyhow = "1.0.44"
 base64 = "0.13.0"
 bitvec = "0.20.4"
+ethers = "1.0.0"
 flate2 = "1.0.23"
 hex = "0.4.3"
 hex-literal = "0.3"
@@ -33,7 +34,6 @@ starknet-gateway-types = { path = "../gateway-types" }
 thiserror = "1.0.30"
 tokio = "1.11.0"
 tracing = "0.1.31"
-web3 = "0.18.0"
 zstd = "0.10"
 
 [dev-dependencies]

@@ -52,9 +52,9 @@ pub mod request {
     }
 
     impl Call {
-        pub const DEFAULT_MAX_FEE: Fee = Fee(web3::types::H128::zero());
+        pub const DEFAULT_MAX_FEE: Fee = Fee(ethers::types::H128::zero());
         pub const DEFAULT_VERSION: TransactionVersion =
-            TransactionVersion(web3::types::H256::zero());
+            TransactionVersion(ethers::types::H256::zero());
         pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
     }
 
@@ -519,7 +519,7 @@ pub mod reply {
                                 common: CommonTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
-                                    version: TransactionVersion(web3::types::H256::zero()),
+                                    version: TransactionVersion(ethers::types::H256::zero()),
                                     signature: txn.signature.clone(),
                                     // no `nonce` in v0 invoke transactions
                                     nonce: TransactionNonce(Default::default()),
@@ -536,7 +536,7 @@ pub mod reply {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
                                     version: TransactionVersion(
-                                        web3::types::H256::from_low_u64_be(1),
+                                        ethers::types::H256::from_low_u64_be(1),
                                     ),
                                     signature: txn.signature.clone(),
                                     nonce: txn.nonce,
@@ -1066,14 +1066,14 @@ pub mod reply {
         /// The Ethereum gas cost of the transaction
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "gas_consumed")]
-        pub consumed: web3::types::H256,
+        pub consumed: ethers::types::H256,
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub gas_price: web3::types::H256,
+        pub gas_price: ethers::types::H256,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         #[serde(rename = "overall_fee")]
-        pub fee: web3::types::H256,
+        pub fee: ethers::types::H256,
     }
 
     #[cfg(test)]
@@ -1105,8 +1105,8 @@ pub mod reply {
                     pub fn test_data() -> Self {
                         let common = CommonTransactionProperties {
                             hash: StarknetTransactionHash(starkhash!("04")),
-                            max_fee: Fee(web3::types::H128::from_low_u64_be(0x5)),
-                            version: TransactionVersion(web3::types::H256::from_low_u64_be(0x6)),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(starkhash!("07"))],
                             nonce: TransactionNonce(starkhash!("08")),
                         };
@@ -1136,7 +1136,7 @@ pub mod reply {
                                     hash: StarknetTransactionHash(starkhash!("0e")),
 
                                     version: TransactionVersion(
-                                        web3::types::H256::from_low_u64_be(1),
+                                        ethers::types::H256::from_low_u64_be(1),
                                     ),
                                     contract_address: ContractAddress::new_or_panic(starkhash!(
                                         "0f"
@@ -1181,7 +1181,7 @@ pub mod reply {
                     pub fn test_data() -> Self {
                         Self {
                             transaction_hash: StarknetTransactionHash(starkhash!("00")),
-                            actual_fee: Fee(web3::types::H128::from_low_u64_be(0x1)),
+                            actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x1)),
                             status: TransactionStatus::AcceptedOnL1,
                             status_data: Some("blah".to_string()),
                             block_hash: StarknetBlockHash(starkhash!("0aaa")),
@@ -1194,7 +1194,7 @@ pub mod reply {
                     pub fn test_data() -> Self {
                         Self {
                             transaction_hash: StarknetTransactionHash(starkhash!("01")),
-                            actual_fee: Fee(web3::types::H128::from_low_u64_be(0x2)),
+                            actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x2)),
                         }
                     }
                 }
@@ -1205,7 +1205,7 @@ pub mod reply {
                             common: CommonTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
                                 to_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x2),
+                                    ethers::types::H160::from_low_u64_be(0x2),
                                 ),
                                 payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
                                     starkhash!("03"),
@@ -1213,7 +1213,7 @@ pub mod reply {
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
                                 from_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x4),
+                                    ethers::types::H160::from_low_u64_be(0x4),
                                 ),
                                 payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
                                     starkhash!("05"),
@@ -1234,7 +1234,7 @@ pub mod reply {
                             common: CommonPendingTransactionReceiptProperties::test_data(),
                             messages_sent: vec![transaction_receipt::MessageToL1 {
                                 to_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x5),
+                                    ethers::types::H160::from_low_u64_be(0x5),
                                 ),
                                 payload: vec![pathfinder_common::L2ToL1MessagePayloadElem(
                                     starkhash!("06"),
@@ -1242,7 +1242,7 @@ pub mod reply {
                             }],
                             l1_origin_message: Some(transaction_receipt::MessageToL2 {
                                 from_address: pathfinder_common::EthereumAddress(
-                                    web3::types::H160::from_low_u64_be(0x77),
+                                    ethers::types::H160::from_low_u64_be(0x77),
                                 ),
                                 payload: vec![pathfinder_common::L1ToL2MessagePayloadElem(
                                     starkhash!("07"),

@@ -7,11 +7,12 @@ use crate::{
     state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
 };
 use anyhow::Context;
+use ethers::types::H160;
 use pathfinder_common::{
     Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
 };
-use pathfinder_ethereum::{log::StateUpdateLog, transport::EthereumTransport};
+use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_storage::{
     ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
@@ -26,7 +27,6 @@ use starknet_gateway_types::reply::{
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use web3::types::H160;
 
 pub struct State {
     pub status: RwLock<SyncStatus>,
@@ -936,6 +936,7 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 mod tests {
     use super::{l1, l2};
     use crate::state::{self, sync::PendingData};
+    use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
         BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
@@ -958,21 +959,20 @@ mod tests {
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
-    use web3::types::H256;
 
     #[derive(Debug, Clone)]
     struct FakeTransport;
 
     #[async_trait::async_trait]
-    impl pathfinder_ethereum::transport::EthereumTransport for FakeTransport {
+    impl pathfinder_ethereum::provider::EthereumTransport for FakeTransport {
         async fn block(
             &self,
-            _: web3::types::BlockId,
-        ) -> web3::Result<Option<web3::types::Block<H256>>> {
+            _: ethers::types::BlockId,
+        ) -> anyhow::Result<Option<ethers::types::Block<H256>>> {
             unimplemented!()
         }
 
-        async fn block_number(&self) -> web3::Result<u64> {
+        async fn block_number(&self) -> anyhow::Result<u64> {
             unimplemented!()
         }
 
@@ -982,20 +982,20 @@ mod tests {
 
         async fn logs(
             &self,
-            _: web3::types::Filter,
-        ) -> std::result::Result<Vec<web3::types::Log>, pathfinder_ethereum::transport::LogsError>
+            _: ethers::types::Filter,
+        ) -> std::result::Result<Vec<ethers::types::Log>, pathfinder_ethereum::provider::LogsError>
         {
             unimplemented!()
         }
 
         async fn transaction(
             &self,
-            _: web3::types::TransactionId,
-        ) -> web3::Result<Option<web3::types::Transaction>> {
+            _: ethers::types::TxHash,
+        ) -> anyhow::Result<Option<ethers::types::Transaction>> {
             unimplemented!()
         }
 
-        async fn gas_price(&self) -> web3::Result<web3::types::U256> {
+        async fn gas_price(&self) -> anyhow::Result<ethers::types::U256> {
             unimplemented!()
         }
     }
@@ -1115,7 +1115,7 @@ mod tests {
         _: mpsc::Sender<l1::Event>,
         _: FakeTransport,
         _: Chain,
-        _: web3::types::H160,
+        _: ethers::types::H160,
         _: Option<pathfinder_ethereum::log::StateUpdateLog>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop

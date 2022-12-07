@@ -136,13 +136,13 @@ pub(super) async fn base_block_and_pending_for_call(
 pub struct FeeEstimate {
     /// The Ethereum gas cost of the transaction
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_consumed: web3::types::H256,
+    pub gas_consumed: ethers::types::H256,
     /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_price: web3::types::H256,
+    pub gas_price: ethers::types::H256,
     /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub overall_fee: web3::types::H256,
+    pub overall_fee: ethers::types::H256,
 }
 
 impl From<crate::rpc::v01::types::reply::FeeEstimate> for FeeEstimate {
@@ -173,7 +173,7 @@ mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                 crate::rpc::v02::types::request::BroadcastedInvokeTransactionV0 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                    max_fee: Fee(web3::types::H128::from_low_u64_be(0x6)),
+                    max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                     signature: vec![TransactionSignatureElem(starkhash!("07"))],
                     nonce: Some(TransactionNonce(starkhash!("08"))),
                     contract_address: ContractAddress::new_or_panic(starkhash!("0aaa")),

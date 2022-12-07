@@ -10,6 +10,7 @@ test-utils = ["dep:metrics"]
 
 [dependencies]
 bitvec = "0.20.4"
+ethers = "1.0.0"
 hex-literal = "0.3"
 metrics = { version = "0.20.1", optional = true }
 rusqlite = { version = "0.27.0", features = ["bundled"] }
@@ -18,7 +19,6 @@ serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value
 sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
 thiserror = "1.0.30"
-web3 = "0.18.0"
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["git"] }

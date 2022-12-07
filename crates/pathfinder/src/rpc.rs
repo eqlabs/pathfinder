@@ -97,6 +97,7 @@ mod tests {
         rpc::RpcServer,
         state::{state_tree::GlobalStateTree, PendingData},
     };
+    use ethers::types::H256;
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
         starkhash, starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
@@ -122,7 +123,6 @@ mod tests {
         net::{Ipv4Addr, SocketAddr, SocketAddrV4},
         sync::Arc,
     };
-    use web3::types::H256;
 
     /// Starts the HTTP-RPC server.
     pub async fn run_server(
@@ -146,8 +146,8 @@ mod tests {
     // Local test helper
     pub fn setup_storage() -> Storage {
         use crate::state::update_contract_state;
+        use ethers::types::H128;
         use pathfinder_common::{ContractNonce, StorageValue};
-        use web3::types::H128;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();

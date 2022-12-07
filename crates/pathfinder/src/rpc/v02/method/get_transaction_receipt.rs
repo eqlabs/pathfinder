@@ -411,12 +411,12 @@ mod types {
                 pub fn test_data() -> Self {
                     Self {
                         transaction_hash: StarknetTransactionHash(starkhash!("deadbeef")),
-                        actual_fee: Fee(web3::types::H128::from_low_u64_be(0x1)),
+                        actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x1)),
                         status: TransactionStatus::AcceptedOnL1,
                         block_hash: StarknetBlockHash(starkhash!("0aaa")),
                         block_number: StarknetBlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
-                            to_address: EthereumAddress(web3::types::H160::from_low_u64_be(0x55)),
+                            to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x55)),
                             payload: vec![L2ToL1MessagePayloadElem(starkhash!("06"))],
                         }],
                         events: vec![Event {
@@ -432,9 +432,9 @@ mod types {
                 pub fn test_data() -> Self {
                     Self {
                         transaction_hash: StarknetTransactionHash(starkhash!("feedfeed")),
-                        actual_fee: Fee(web3::types::H128::from_low_u64_be(0x2)),
+                        actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x2)),
                         messages_sent: vec![MessageToL1 {
-                            to_address: EthereumAddress(web3::types::H160::from_low_u64_be(0x5)),
+                            to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x5)),
                             payload: vec![L2ToL1MessagePayloadElem(starkhash!("06"))],
                         }],
                         events: vec![Event {
@@ -607,7 +607,7 @@ mod tests {
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
                         transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"txn 0")),
-                        actual_fee: Fee(web3::types::H128::zero()),
+                        actual_fee: Fee(ethers::types::H128::zero()),
                         status: TransactionStatus::AcceptedOnL2,
                         block_hash: StarknetBlockHash(starkhash_bytes!(b"genesis")),
                         block_number: StarknetBlockNumber::new_or_panic(0),
@@ -639,7 +639,7 @@ mod tests {
                 PendingInvokeTransactionReceipt {
                     common: CommonPendingTransactionReceiptProperties {
                         transaction_hash,
-                        actual_fee: Fee(web3::types::H128::zero()),
+                        actual_fee: Fee(ethers::types::H128::zero()),
                         messages_sent: vec![],
                         events: vec![
                             Event {
