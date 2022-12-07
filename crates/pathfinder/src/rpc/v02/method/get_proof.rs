@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context};
-use serde::ser::SerializeStruct;
+use serde::ser::SerializeStructVariant;
 use serde::{Deserialize, Serialize};
 
 use crate::rpc::v02::RpcContext;
@@ -35,8 +35,7 @@ impl Serialize for ProofNode {
     {
         match &self {
             ProofNode::Binary(bin) => {
-                let mut state = serializer.serialize_struct("Binary", 2)?;
-                state.serialize_field("type", &"Binary")?;
+                let mut state = serializer.serialize_struct_variant("ProofNode", 0, "Binary", 2)?;
                 state.serialize_field("left", &bin.left_hash)?;
                 state.serialize_field("right", &bin.right_hash)?;
                 state.end()
@@ -48,8 +47,7 @@ impl Serialize for ProofNode {
                     len: edge.path.len(),
                 };
 
-                let mut state = serializer.serialize_struct("Edge", 2)?;
-                state.serialize_field("type", &"Edge")?;
+                let mut state = serializer.serialize_struct_variant("ProofNode", 1, "Edge", 2)?;
                 state.serialize_field("path", &path_wrapper)?;
                 state.serialize_field("child", &edge.child_hash)?;
                 state.end()
