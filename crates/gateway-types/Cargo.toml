@@ -25,4 +25,4 @@ tokio = { version = "1.23.0" }
 hex-literal = "0.3"
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { version = "1.23.0", features = ["test-util"] }
-zstd = "0.10"
+zstd = "0.12"

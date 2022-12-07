@@ -47,7 +47,7 @@ toml = "0.5.9"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 warp = "0.3.3"
-zstd = "0.10"
+zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
