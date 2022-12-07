@@ -180,7 +180,7 @@ jobs:
       - name: Test (python)
         run: |
           cd py
-          pytest
+          python -m pytest
 
       - name: Formatting (python)
         run: |
