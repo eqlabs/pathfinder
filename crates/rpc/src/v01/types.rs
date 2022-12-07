@@ -59,7 +59,7 @@ pub mod request {
     }
 
     /// This is what [`Call`] used to be, but is used in
-    /// [`crate::rpc::v01::api::RpcApi::add_invoke_transaction`] for example.
+    /// [`crate::v01::api::RpcApi::add_invoke_transaction`] for example.
     ///
     /// It might be that [`Call`] and arguments of `addInvokeTransaction` could be unified in the
     /// future when the dust has settled on the implementation.
@@ -146,7 +146,7 @@ pub mod reply {
     }
 
     /// Wrapper for transaction data returned in block related queries,
-    /// chosen variant depends on [crate::rpc::v01::api::BlockResponseScope](crate::rpc::v01::api::BlockResponseScope).
+    /// chosen variant depends on [`BlockResponseScope`](crate::v01::api::BlockResponseScope).
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
