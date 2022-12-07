@@ -51,13 +51,12 @@ use pathfinder_storage::merkle_tree::{
     NodeStorage, PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage,
 };
 use rusqlite::Transaction;
-use serde::Serialize;
 use stark_hash::StarkHash;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
 /// Lightweight representation of [BinaryNode]. Only holds left and right hashes.
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct BinaryProofNode {
     pub left_hash: StarkHash,
     pub right_hash: StarkHash,
