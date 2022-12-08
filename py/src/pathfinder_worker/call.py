@@ -1,11 +1,14 @@
 import asyncio
 import dataclasses
+import itertools
 import json
 import os
+import pkg_resources
 import re
 import sqlite3
 import sys
 import time
+import traceback
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,17 +19,11 @@ try:
     import marshmallow.exceptions
     import marshmallow_dataclass
     import marshmallow_oneofschema
+    import zstandard
     from cachetools import LRUCache
     from marshmallow import Schema
     from marshmallow import fields as mfields
     from services.everest.definitions import fields as everest_fields
-    from starkware.starknet.definitions import fields
-    from starkware.starknet.definitions.general_config import StarknetChainId
-    from starkware.starknet.services.api.gateway.transaction import (
-        AccountTransaction,
-    )
-    from starkware.storage.storage import Storage
-    from starkware.starknet.business_logic.state.state import CachedState
     from starkware.cairo.lang.builtins.all_builtins import (
         BITWISE_BUILTIN,
         EC_OP_BUILTIN,
@@ -35,11 +32,35 @@ try:
         PEDERSEN_BUILTIN,
         RANGE_CHECK_BUILTIN,
     )
+    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
+    from starkware.starknet.business_logic.execution.execute_entry_point import (
+        ExecuteEntryPoint,
+    )
+    from starkware.starknet.business_logic.fact_state.patricia_state import (
+        PatriciaStateReader,
+    )
+    from starkware.starknet.business_logic.fact_state.state import (
+        ExecutionResourcesManager,
+    )
+    from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
+    from starkware.starknet.definitions import fields
     from starkware.starknet.definitions.general_config import (
         N_STEPS_RESOURCE,
+        StarknetChainId,
         StarknetGeneralConfig,
         StarknetOsConfig,
     )
+    from starkware.starknet.services.api.contract_class import EntryPointType
+    from starkware.starknet.services.api.gateway.transaction import AccountTransaction
+    from starkware.starknet.services.utils.sequencer_api_utils import (
+        InternalAccountTransactionForSimulate,
+    )
+    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
+        PatriciaTree,
+    )
+    from starkware.starkware_utils.error_handling import WebFriendlyException
+    from starkware.storage.storage import FactFetchingContext, Storage
+
 except ModuleNotFoundError:
     print(
         "missing cairo-lang module: please reinstall dependencies to upgrade.",
@@ -253,8 +274,6 @@ def main():
 
 
 def check_cairolang_version():
-    import pkg_resources
-
     try:
         version = pkg_resources.get_distribution("cairo-lang").version
         return version == EXPECTED_CAIRO_VERSION
@@ -263,14 +282,14 @@ def check_cairolang_version():
 
 
 def do_loop(connection, input_gen, output_file):
-    from starkware.starkware_utils.error_handling import WebFriendlyException
-
     logger = Logger()
 
     if DEV_MODE:
         logger.warn(
             "dev mode enabled, expect long tracebacks; do not use in production!"
         )
+
+    contract_class_cache = LRUCache(maxsize=128)
 
     for line in input_gen:
         if line == "" or line.startswith("#"):
@@ -291,7 +310,9 @@ def do_loop(connection, input_gen, output_file):
 
             connection.execute("BEGIN")
 
-            [verb, output, inner_timings] = loop_inner(connection, command)
+            [verb, output, inner_timings] = loop_inner(
+                connection, command, contract_class_cache
+            )
 
             # this is more backwards compatible dictionary union
             timings = {**timings, **inner_timings}
@@ -339,18 +360,20 @@ def report_failed(logger, command, e):
     # we cannot log errors at higher than info, which is the default level, to
     # allow opting in to these and not forcing them on everyone
     if DEV_MODE:
-        import traceback
-
         strs = traceback.format_exception(type(e), e, e.__traceback__)
         logger.debug("".join(strs))
     else:
         logger.debug(str(e))
 
 
-def loop_inner(connection, command: Command):
+def loop_inner(connection, command: Command, contract_class_cache=None):
 
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
+
+    # for easier test setup we default to no cross-command caching
+    if contract_class_cache is None:
+        contract_class_cache = {}
 
     at_block = int_hash_or_latest(command.at_block)
 
@@ -395,20 +418,27 @@ def loop_inner(connection, command: Command):
     general_config = create_general_config(command.chain.value)
 
     adapter = SqliteAdapter(connection)
+    # hook up the sqlite adapter
+    ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
+    state_reader = PatriciaStateReader(
+        PatriciaTree(global_root, 251), ffc, contract_class_storage=adapter
+    )
+    async_state = CachedState(
+        block_info=block_info,
+        state_reader=state_reader,
+        contract_class_cache=contract_class_cache,
+    )
+
+    apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
     if isinstance(command, Call):
         result = asyncio.run(
             do_call(
-                adapter,
+                async_state,
                 general_config,
-                global_root,
                 command.contract_address,
                 command.entry_point_selector,
                 command.calldata,
-                block_info,
-                pending_updates,
-                pending_deployed,
-                pending_nonces,
             )
         )
         ret = (command.verb, result.retdata, timings)
@@ -416,14 +446,10 @@ def loop_inner(connection, command: Command):
         assert isinstance(command, EstimateFee)
         fees = asyncio.run(
             do_estimate_fee(
-                adapter,
+                async_state,
                 general_config,
-                global_root,
                 block_info,
                 command.transaction,
-                pending_updates,
-                pending_deployed,
-                pending_nonces,
             )
         )
         ret = (command.verb, fees, timings)
@@ -480,14 +506,13 @@ def check_schema(connection):
     return version == EXPECTED_SCHEMA_REVISION
 
 
-def resolve_block(connection, at_block, forced_gas_price: int):
+def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
     """
     forced_gas_price is the gas price we must use for this blockinfo, if None,
     the one from starknet_blocks will be used. this allows the caller to select
     where the gas_price information is coming from, and for example, select
     different one for latest pointed out by hash or tag.
     """
-    from starkware.starknet.business_logic.state.state import BlockInfo
 
     if at_block == "latest":
         # it has been decided that the latest is whatever pathfinder knows to be latest synced block
@@ -709,10 +734,6 @@ class SqliteAdapter(Storage):
         )
 
     def fetch_contract_definition(self, suffix):
-        import itertools
-
-        import zstandard
-
         # assert False, "we must rebuild the full json out of our columns"
         cursor = self.connection.execute(
             "select definition from contract_code where hash = ?", [suffix]
@@ -743,47 +764,15 @@ class SqliteAdapter(Storage):
 
 
 async def do_call(
-    adapter,
+    async_state: CachedState,
     general_config,
-    root,
     contract_address,
     selector,
     calldata,
-    block_info,
-    pending_updates,
-    pending_deployed,
-    pending_nonces,
 ):
     """
     The actual call execution with cairo-lang.
     """
-    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
-    from starkware.starknet.business_logic.execution.execute_entry_point import (
-        ExecuteEntryPoint,
-    )
-    from starkware.starknet.business_logic.fact_state.patricia_state import (
-        PatriciaStateReader,
-    )
-    from starkware.starknet.business_logic.fact_state.state import (
-        ExecutionResourcesManager,
-    )
-    from starkware.starknet.business_logic.state.state import CachedState
-    from starkware.starknet.services.api.contract_class import EntryPointType
-    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
-        PatriciaTree,
-    )
-    from starkware.storage.storage import FactFetchingContext
-
-    # hook up the sqlite adapter
-    ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    state_reader = PatriciaStateReader(
-        PatriciaTree(root, 251), ffc, contract_class_storage=adapter
-    )
-    async_state = CachedState(
-        block_info=block_info, state_reader=state_reader, contract_class_cache={}
-    )
-
-    apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
     resource_manager = ExecutionResourcesManager.empty()
 
@@ -804,14 +793,10 @@ async def do_call(
 
 
 async def do_estimate_fee(
-    adapter,
-    general_config,
-    root,
-    block_info,
+    async_state: CachedState,
+    general_config: StarknetGeneralConfig,
+    block_info: BlockInfo,
     transaction: AccountTransaction,
-    pending_updates,
-    pending_deployed,
-    pending_nonces,
 ):
     """
     This is distinct from the call because estimating a fee requires flushing the state to count
@@ -820,32 +805,9 @@ async def do_estimate_fee(
     deploy and perhaps declare transactions as well.
     """
 
-    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
-    from starkware.starknet.business_logic.fact_state.patricia_state import (
-        PatriciaStateReader,
-    )
-    from starkware.starknet.business_logic.state.state import CachedState
-    from starkware.starknet.services.utils.sequencer_api_utils import (
-        InternalAccountTransactionForSimulate,
-    )
-    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
-        PatriciaTree,
-    )
-    from starkware.storage.storage import FactFetchingContext
-
     more = InternalAccountTransactionForSimulate.from_external(
         transaction, general_config
     )
-
-    ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    state_reader = PatriciaStateReader(
-        PatriciaTree(root, 251), ffc, contract_class_storage=adapter
-    )
-    async_state = CachedState(
-        block_info=block_info, state_reader=state_reader, contract_class_cache={}
-    )
-
-    apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
 
     tx_info = await more.apply_state_updates(async_state, general_config)
 
@@ -880,7 +842,7 @@ def apply_pending(
         state.cache._nonce_initial_values[addr] = nonce
 
 
-def create_general_config(chain_id: StarknetChainId):
+def create_general_config(chain_id: StarknetChainId) -> StarknetGeneralConfig:
     """
     Separate fn because it's tricky to get a new instance with actual configuration
     """
