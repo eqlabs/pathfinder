@@ -59,28 +59,28 @@ impl Serialize for ProofNode {
 /// Holds the data and proofs for a specific contract.
 #[derive(Debug, Serialize)]
 pub struct ContractData {
-    // Required to verify the contract state hash to contract root calculation.
+    /// Required to verify the contract state hash to contract root calculation.
     class_hash: ClassHash,
-    // Required to verify the contract state hash to contract root calculation.
+    /// Required to verify the contract state hash to contract root calculation.
     nonce: ContractNonce,
 
-    // Root of the Contract state tree
+    /// Root of the Contract state tree
     root: ContractRoot,
 
-    // This is currently just a constant = 0, however it might change in the future.
+    /// This is currently just a constant = 0, however it might change in the future.
     contract_state_hash_version: StarkHash,
 
-    // The proofs associated with the queried storage values
+    /// The proofs associated with the queried storage values
     storage_proofs: Vec<Vec<ProofNode>>,
 }
 
 /// Holds the membership/non-membership of a contract and its associated contract contract if the contract exists.
 #[derive(Debug, Serialize)]
 pub struct GetProofOutput {
-    // Membership / Non-membership proof for the queried contract
+    /// Membership / Non-membership proof for the queried contract
     contract_proof: Vec<ProofNode>,
 
-    // Additional contract data if it exists.
+    /// Additional contract data if it exists.
     contract_data: Option<ContractData>,
 }
 
