@@ -1,11 +1,14 @@
 import asyncio
 import dataclasses
+import itertools
 import json
 import os
+import pkg_resources
 import re
 import sqlite3
 import sys
 import time
+import traceback
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,6 +19,7 @@ try:
     import marshmallow.exceptions
     import marshmallow_dataclass
     import marshmallow_oneofschema
+    import zstandard
     from cachetools import LRUCache
     from marshmallow import Schema
     from marshmallow import fields as mfields
@@ -29,8 +33,14 @@ try:
         RANGE_CHECK_BUILTIN,
     )
     from starkware.cairo.lang.vm.crypto import pedersen_hash_func
+    from starkware.starknet.business_logic.execution.execute_entry_point import (
+        ExecuteEntryPoint,
+    )
     from starkware.starknet.business_logic.fact_state.patricia_state import (
         PatriciaStateReader,
+    )
+    from starkware.starknet.business_logic.fact_state.state import (
+        ExecutionResourcesManager,
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.definitions import fields
@@ -40,10 +50,15 @@ try:
         StarknetGeneralConfig,
         StarknetOsConfig,
     )
+    from starkware.starknet.services.api.contract_class import EntryPointType
     from starkware.starknet.services.api.gateway.transaction import AccountTransaction
+    from starkware.starknet.services.utils.sequencer_api_utils import (
+        InternalAccountTransactionForSimulate,
+    )
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
+    from starkware.starkware_utils.error_handling import WebFriendlyException
     from starkware.storage.storage import FactFetchingContext, Storage
 
 except ModuleNotFoundError:
@@ -259,8 +274,6 @@ def main():
 
 
 def check_cairolang_version():
-    import pkg_resources
-
     try:
         version = pkg_resources.get_distribution("cairo-lang").version
         return version == EXPECTED_CAIRO_VERSION
@@ -269,8 +282,6 @@ def check_cairolang_version():
 
 
 def do_loop(connection, input_gen, output_file):
-    from starkware.starkware_utils.error_handling import WebFriendlyException
-
     logger = Logger()
 
     if DEV_MODE:
@@ -345,8 +356,6 @@ def report_failed(logger, command, e):
     # we cannot log errors at higher than info, which is the default level, to
     # allow opting in to these and not forcing them on everyone
     if DEV_MODE:
-        import traceback
-
         strs = traceback.format_exception(type(e), e, e.__traceback__)
         logger.debug("".join(strs))
     else:
@@ -487,7 +496,7 @@ def check_schema(connection):
     return version == EXPECTED_SCHEMA_REVISION
 
 
-def resolve_block(connection, at_block, forced_gas_price: int):
+def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
     """
     forced_gas_price is the gas price we must use for this blockinfo, if None,
     the one from starknet_blocks will be used. this allows the caller to select
@@ -715,10 +724,6 @@ class SqliteAdapter(Storage):
         )
 
     def fetch_contract_definition(self, suffix):
-        import itertools
-
-        import zstandard
-
         # assert False, "we must rebuild the full json out of our columns"
         cursor = self.connection.execute(
             "select definition from contract_code where hash = ?", [suffix]
@@ -758,13 +763,6 @@ async def do_call(
     """
     The actual call execution with cairo-lang.
     """
-    from starkware.starknet.business_logic.execution.execute_entry_point import (
-        ExecuteEntryPoint,
-    )
-    from starkware.starknet.business_logic.fact_state.state import (
-        ExecutionResourcesManager,
-    )
-    from starkware.starknet.services.api.contract_class import EntryPointType
 
     resource_manager = ExecutionResourcesManager.empty()
 
@@ -796,10 +794,6 @@ async def do_estimate_fee(
     an estimate fee requires, but that is a bit in flux, as estimate_fee might need to work with
     deploy and perhaps declare transactions as well.
     """
-
-    from starkware.starknet.services.utils.sequencer_api_utils import (
-        InternalAccountTransactionForSimulate,
-    )
 
     more = InternalAccountTransactionForSimulate.from_external(
         transaction, general_config
