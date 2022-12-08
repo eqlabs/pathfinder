@@ -35,6 +35,19 @@ ARG PATHFINDER_FORCE_VERSION
 
 RUN PATHFINDER_FORCE_VERSION=${PATHFINDER_FORCE_VERSION} CARGO_INCREMENTAL=0 cargo build --release -p pathfinder --bin pathfinder
 
+#############################################
+# Stage 1.5: Build the Python Pedersen hash #
+#############################################
+FROM ghcr.io/pyo3/maturin:v0.14.5 AS rust-python-builder
+
+WORKDIR /io
+COPY crates/stark_curve crates/stark_curve
+COPY crates/stark_hash crates/stark_hash
+COPY crates/pathfinder_starkhash crates/pathfinder_starkhash
+
+RUN maturin build --release -o dist --manifest-path crates/pathfinder_starkhash/Cargo.toml --interpreter python3.9
+
+
 #######################################
 # Stage 2: Build the Python libraries #
 #######################################
@@ -45,6 +58,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-d
 WORKDIR /usr/share/pathfinder
 COPY py py
 RUN python3 -m pip --disable-pip-version-check install py/.
+COPY --from=rust-python-builder /io/dist dist
+RUN python3 -m pip --disable-pip-version-check install dist/pathfinder_starkhash*.whl
 
 # This reduces the size of the python libs by about 50%
 ENV PY_PATH=/usr/local/lib/python3.9/
