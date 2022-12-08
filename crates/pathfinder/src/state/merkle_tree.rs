@@ -482,7 +482,7 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(result)
     }
 
-    /// Generates a merkle-proof a given `key`.
+    /// Generates a merkle-proof for a given `key`.
     ///
     /// Returns vector of [`ProofNode`] which form a chain from the root to the key,
     /// if it exists, or down to the node which proves that the key does not exist.
