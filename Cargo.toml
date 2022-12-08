@@ -21,5 +21,6 @@ members = [
 ]
 exclude = [
     "crates/load-test",
+    "crates/pathfinder_starkhash",
 ]
 resolver = "2"

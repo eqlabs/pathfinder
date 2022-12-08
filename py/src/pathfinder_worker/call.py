@@ -14,6 +14,21 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import ClassVar, Dict, List, Optional, Type
 
+try:
+    import pathfinder_starkhash
+    import starkware.crypto.signature.fast_pedersen_hash
+
+    starkware.crypto.signature.fast_pedersen_hash.pedersen_hash_func = (
+        pathfinder_starkhash.pedersen_hash_func
+    )
+    starkware.crypto.signature.fast_pedersen_hash.pedersen_hash = (
+        pathfinder_starkhash.pedersen_hash
+    )
+except ModuleNotFoundError:
+    # Monkey-patching with our fast implementation of the Pedersen hash failed.
+    # This is not fatal, some operations will be slower this way.
+    pass
+
 # import non-standard modules and detect if Python environment is not properly set up
 try:
     import marshmallow.exceptions
