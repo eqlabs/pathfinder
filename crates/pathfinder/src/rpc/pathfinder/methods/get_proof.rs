@@ -94,20 +94,9 @@ pub async fn get_proof(
         BlockId::Number(number) => number.into(),
         BlockId::Latest => StarknetBlocksBlockId::Latest,
         BlockId::Pending => {
-            match context
-                .pending_data
-                .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
-                .state_update()
-                .await
-            {
-                Some(_) => {
-                    // TODO: add support for pending blocks
-                    return Err(GetProofError::Internal(anyhow!(
-                        "'pending' is not currently supported by this method!"
-                    )));
-                }
-                None => StarknetBlocksBlockId::Latest,
-            }
+            return Err(GetProofError::Internal(anyhow!(
+                "'pending' is not currently supported by this method!"
+            )))
         }
     };
 
