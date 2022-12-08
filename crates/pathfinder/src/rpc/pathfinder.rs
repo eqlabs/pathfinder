@@ -1,3 +1,5 @@
+mod get_proof;
+
 pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<()>) -> anyhow::Result<()> {
     use anyhow::Context;
 
@@ -6,6 +8,7 @@ pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<()>) -> anyhow::Re
             Ok(pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT)
         })
         .with_context(|| "Registering pathfinder_version".to_string())?;
+    // module.register_method("pathfinder_getProof", get_proof::get_proof)?; TODO: expose this
 
     Ok(())
 }
