@@ -185,12 +185,12 @@ jobs:
       - name: Formatting (python)
         run: |
           cd py
-          black --check .
+          python -m black --check .
 
       - name: Lints (python)
         run: |
           cd py
-          flake8 src/ tests/ tools/
+          python -m flake8 src/ tests/ tools/
 
 
   fuzz_targets:
