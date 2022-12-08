@@ -289,6 +289,8 @@ def do_loop(connection, input_gen, output_file):
             "dev mode enabled, expect long tracebacks; do not use in production!"
         )
 
+    contract_class_cache = LRUCache(maxsize=128)
+
     for line in input_gen:
         if line == "" or line.startswith("#"):
             continue
@@ -308,7 +310,9 @@ def do_loop(connection, input_gen, output_file):
 
             connection.execute("BEGIN")
 
-            [verb, output, inner_timings] = loop_inner(connection, command)
+            [verb, output, inner_timings] = loop_inner(
+                connection, command, contract_class_cache
+            )
 
             # this is more backwards compatible dictionary union
             timings = {**timings, **inner_timings}
@@ -362,10 +366,14 @@ def report_failed(logger, command, e):
         logger.debug(str(e))
 
 
-def loop_inner(connection, command: Command):
+def loop_inner(connection, command: Command, contract_class_cache=None):
 
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
+
+    # for easier test setup we default to no cross-command caching
+    if contract_class_cache is None:
+        contract_class_cache = {}
 
     at_block = int_hash_or_latest(command.at_block)
 
@@ -416,7 +424,9 @@ def loop_inner(connection, command: Command):
         PatriciaTree(global_root, 251), ffc, contract_class_storage=adapter
     )
     async_state = CachedState(
-        block_info=block_info, state_reader=state_reader, contract_class_cache={}
+        block_info=block_info,
+        state_reader=state_reader,
+        contract_class_cache=contract_class_cache,
     )
 
     apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
