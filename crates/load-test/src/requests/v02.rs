@@ -8,8 +8,7 @@ use crate::types::{
     Block, ContractClass, FeeEstimate, StateUpdate, Transaction, TransactionReceipt,
 };
 
-type GooseTransactionError = goose::goose::TransactionError;
-type MethodResult<T> = Result<T, GooseTransactionError>;
+type MethodResult<T> = Result<T, Box<goose::goose::TransactionError>>;
 
 pub async fn get_block_by_number(user: &mut GooseUser, block_number: u64) -> MethodResult<Block> {
     post_jsonrpc_request(
@@ -277,12 +276,17 @@ async fn post_jsonrpc_request<T: DeserializeOwned>(
     params: serde_json::Value,
 ) -> MethodResult<T> {
     let request = jsonrpc_request(method, params);
-    let response = user.post_json("/rpc/v0.2", &request).await?.response?;
+    let response = user
+        .post_json("/rpc/v0.2", &request)
+        .await?
+        .response
+        .map_err(|e| Box::new(e.into()))?;
     #[derive(Deserialize)]
     struct TransactionReceiptResponse<T> {
         result: T,
     }
-    let response: TransactionReceiptResponse<T> = response.json().await?;
+    let response: TransactionReceiptResponse<T> =
+        response.json().await.map_err(|e| Box::new(e.into()))?;
 
     Ok(response.result)
 }
