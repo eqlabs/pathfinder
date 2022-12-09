@@ -127,6 +127,8 @@ pub async fn get_events(
             "to_block": to_block,
             "address": filter.address,
             "keys": filter.keys,
+            "page_size": 1000,
+            "page_number": 0,
         }}),
     )
     .await
