@@ -4,7 +4,7 @@
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
 use super::merkle_node::Node;
-use crate::state::merkle_tree::{MerkleTree, Visit};
+use crate::state::merkle_tree::{MerkleTree, ProofNode, Visit};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, GlobalRoot, StorageAddress, StorageValue,
@@ -31,6 +31,11 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
         let value = self.tree.get(address.view_bits())?;
         Ok(value.map(StorageValue))
+    }
+
+    /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
+    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
+        self.tree.get_proof(key)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -83,6 +88,11 @@ impl<'tx> GlobalStateTree<'tx, '_> {
     pub fn apply(self) -> anyhow::Result<GlobalRoot> {
         let root = self.tree.commit()?;
         Ok(GlobalRoot(root))
+    }
+
+    /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
+    pub fn get_proof(&self, address: &ContractAddress) -> anyhow::Result<Vec<ProofNode>> {
+        self.tree.get_proof(address.view_bits())
     }
 
     /// See [`MerkleTree::dfs`]
