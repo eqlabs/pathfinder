@@ -38,15 +38,22 @@ RUN PATHFINDER_FORCE_VERSION=${PATHFINDER_FORCE_VERSION} CARGO_INCREMENTAL=0 car
 #############################################
 # Stage 1.5: Build the Python Pedersen hash #
 #############################################
-FROM ghcr.io/pyo3/maturin:v0.14.5 AS rust-python-builder
-
-WORKDIR /io
+FROM cargo-chef AS rust-python-starkhash-planner
 COPY crates/stark_curve crates/stark_curve
 COPY crates/stark_hash crates/stark_hash
 COPY crates/pathfinder_starkhash crates/pathfinder_starkhash
+RUN cd crates/pathfinder_starkhash && \
+    cargo chef prepare --recipe-path recipe.json
 
-RUN maturin build --release -o dist --manifest-path crates/pathfinder_starkhash/Cargo.toml --interpreter python3.9
 
+FROM cargo-chef AS rust-python-starkhash-builder
+COPY --from=rust-python-starkhash-planner /usr/src/pathfinder/crates/pathfinder_starkhash/recipe.json /usr/src/pathfinder/crates/pathfinder_starkhash/recipe.json
+COPY crates/stark_curve crates/stark_curve
+COPY crates/stark_hash crates/stark_hash
+RUN cd crates/pathfinder_starkhash && cargo chef cook --release --recipe-path recipe.json
+
+COPY crates/pathfinder_starkhash crates/pathfinder_starkhash
+RUN cd crates/pathfinder_starkhash && CARGO_INCREMENTAL=0 cargo build --release
 
 #######################################
 # Stage 2: Build the Python libraries #
@@ -58,8 +65,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-d
 WORKDIR /usr/share/pathfinder
 COPY py py
 RUN python3 -m pip --disable-pip-version-check install py/.
-COPY --from=rust-python-builder /io/dist dist
-RUN python3 -m pip --disable-pip-version-check install dist/pathfinder_starkhash*.whl
+COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/pathfinder_starkhash/target/release/libpathfinder_starkhash.so /usr/local/lib/python3.9/site-packages/pathfinder_starkhash.so
 
 # This reduces the size of the python libs by about 50%
 ENV PY_PATH=/usr/local/lib/python3.9/
