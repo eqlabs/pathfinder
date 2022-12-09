@@ -10,14 +10,16 @@ members = [
     "crates/gateway-client",
     "crates/gateway-test-fixtures",
     "crates/gateway-types",
+    "crates/merkle-tree",
     "crates/pathfinder",
     "crates/retry",
+    "crates/rpc",
     "crates/serde",
     "crates/stark_curve",
     "crates/stark_hash",
     "crates/storage",
 ]
 exclude = [
-    "crates/load-test"
+    "crates/load-test",
 ]
 resolver = "2"

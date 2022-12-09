@@ -2,17 +2,21 @@ pub mod l1;
 pub mod l2;
 mod pending;
 
-use crate::{
-    rpc::v01::types::reply::{syncing, syncing::NumberedBlock, Syncing as SyncStatus},
-    state::{calculate_contract_state_hash, state_tree::GlobalStateTree, update_contract_state},
-};
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
     Chain, ClassHash, ContractNonce, ContractRoot, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StarknetBlockHash, StarknetBlockNumber,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
+use pathfinder_merkle_tree::{
+    contract_state::{calculate_contract_state_hash, update_contract_state},
+    state_tree::GlobalStateTree,
+};
+use pathfinder_rpc::{
+    v01::types::reply::{syncing, syncing::NumberedBlock, Syncing},
+    SyncState,
+};
 use pathfinder_storage::{
     ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
@@ -21,76 +25,13 @@ use pathfinder_storage::{
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::StarkHash;
 use starknet_gateway_client::ClientApi;
-use starknet_gateway_types::reply::{
-    state_update::DeployedContract, Block, MaybePendingBlock, PendingBlock, StateUpdate,
+use starknet_gateway_types::{
+    pending::PendingData,
+    reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
 };
 use std::future::Future;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
-
-pub struct State {
-    pub status: RwLock<SyncStatus>,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            status: RwLock::new(SyncStatus::False(false)),
-        }
-    }
-}
-
-struct PendingInner {
-    pub block: Arc<PendingBlock>,
-    pub state_update: Arc<StateUpdate>,
-}
-
-#[derive(Default, Clone)]
-pub struct PendingData {
-    inner: Arc<RwLock<Option<PendingInner>>>,
-}
-
-impl PendingData {
-    pub async fn set(&self, block: Arc<PendingBlock>, state_update: Arc<StateUpdate>) {
-        *self.inner.write().await = Some(PendingInner {
-            block,
-            state_update,
-        });
-    }
-
-    pub async fn clear(&self) {
-        *self.inner.write().await = None;
-    }
-
-    pub async fn block(&self) -> Option<Arc<PendingBlock>> {
-        self.inner
-            .read()
-            .await
-            .as_ref()
-            .map(|inner| inner.block.clone())
-    }
-
-    pub async fn state_update(&self) -> Option<Arc<StateUpdate>> {
-        self.inner
-            .read()
-            .await
-            .as_ref()
-            .map(|inner| inner.state_update.clone())
-    }
-
-    pub async fn state_update_on_parent_block(
-        &self,
-    ) -> Option<(StarknetBlockHash, StarknetBlockTimestamp, Arc<StateUpdate>)> {
-        let g = self.inner.read().await;
-        let inner = g.as_ref()?;
-
-        Some((
-            inner.block.parent_hash,
-            inner.block.timestamp,
-            inner.state_update.clone(),
-        ))
-    }
-}
+use tokio::sync::mpsc;
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
@@ -100,7 +41,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     chain: Chain,
     core_address: H160,
     sequencer: SequencerClient,
-    state: Arc<State>,
+    state: Arc<SyncState>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
     pending_data: PendingData,
@@ -283,8 +224,8 @@ where
 
                     // Update sync status
                     match &mut *state.status.write().await {
-                        SyncStatus::False(_) => {}
-                        SyncStatus::Status(status) => {
+                        Syncing::False(_) => {}
+                        Syncing::Status(status) => {
                             status.current = NumberedBlock::from((block_hash, block_number));
 
                             if status.highest.number <= block_number {
@@ -463,7 +404,7 @@ where
 
 /// Periodically updates sync state with the latest block height.
 async fn update_sync_status_latest(
-    state: Arc<State>,
+    state: Arc<SyncState>,
     sequencer: impl ClientApi,
     starting_block_hash: StarknetBlockHash,
     starting_block_num: StarknetBlockNumber,
@@ -485,8 +426,8 @@ async fn update_sync_status_latest(
                 };
                 // Update the sync status.
                 match &mut *state.status.write().await {
-                    sync_status @ SyncStatus::False(_) => {
-                        *sync_status = SyncStatus::Status(syncing::Status {
+                    sync_status @ Syncing::False(_) => {
+                        *sync_status = Syncing::Status(syncing::Status {
                             starting,
                             current: starting,
                             highest: latest,
@@ -497,7 +438,7 @@ async fn update_sync_status_latest(
                             "Updated sync status",
                         );
                     }
-                    SyncStatus::Status(status) => {
+                    Syncing::Status(status) => {
                         if status.highest.hash != latest.hash {
                             status.highest = latest;
 
@@ -935,7 +876,7 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use super::{l1, l2};
-    use crate::state::{self, sync::PendingData};
+    use crate::state;
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
@@ -946,6 +887,7 @@ mod tests {
         StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
+    use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
         types::CompressedContract, ContractCodeTable, L1StateTable, L1TableBlockId, RefsTable,
         StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
@@ -954,6 +896,7 @@ mod tests {
     use starknet_gateway_client::ClientApi;
     use starknet_gateway_types::{
         error::SequencerError,
+        pending::PendingData,
         reply,
         request::{add_transaction::ContractDefinition, BlockHashOrTag},
     };
@@ -1219,7 +1162,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_update() {
         let chain = Chain::Testnet;
-        let sync_state = Arc::new(state::SyncState::default());
+        let sync_state = Arc::new(SyncState::default());
         let core_address = pathfinder_ethereum::contract::TESTNET_ADDRESSES.core;
 
         lazy_static::lazy_static! {
@@ -1344,7 +1287,7 @@ mod tests {
                 Chain::Testnet,
                 pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
                 FakeSequencer,
-                Arc::new(state::SyncState::default()),
+                Arc::new(SyncState::default()),
                 l1,
                 l2_noop,
                 PendingData::default(),
@@ -1414,7 +1357,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1,
             l2_noop,
             PendingData::default(),
@@ -1450,7 +1393,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1,
             l2_noop,
             PendingData::default(),
@@ -1475,7 +1418,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let chain = Chain::Testnet;
-        let sync_state = Arc::new(state::SyncState::default());
+        let sync_state = Arc::new(SyncState::default());
 
         // Incoming L2 update
         let block = || BLOCK0.clone();
@@ -1594,7 +1537,7 @@ mod tests {
                 Chain::Testnet,
                 pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
                 FakeSequencer,
-                Arc::new(state::SyncState::default()),
+                Arc::new(SyncState::default()),
                 l1_noop,
                 l2,
                 PendingData::default(),
@@ -1657,7 +1600,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),
@@ -1705,7 +1648,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),
@@ -1753,7 +1696,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),
@@ -1782,7 +1725,7 @@ mod tests {
             Chain::Testnet,
             pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
             FakeSequencer,
-            Arc::new(state::SyncState::default()),
+            Arc::new(SyncState::default()),
             l1_noop,
             l2,
             PendingData::default(),

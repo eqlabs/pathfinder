@@ -52,7 +52,7 @@ Above generates the py/test_call.py::populate_test_contract_with_132_on_3 tree_g
 
     let mut line_number = 0;
 
-    let mut tree = pathfinder_lib::state::merkle_tree::MerkleTree::empty(
+    let mut tree = pathfinder_merkle_tree::merkle_tree::MerkleTree::empty(
         RefCell::new(Default::default()),
         251,
     );

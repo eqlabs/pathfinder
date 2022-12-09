@@ -1,5 +1,3 @@
-pub mod metrics;
-
 use std::sync::atomic::AtomicBool;
 
 use metrics_exporter_prometheus::PrometheusHandle;

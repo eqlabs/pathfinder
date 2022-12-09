@@ -2727,7 +2727,6 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
- "base64 0.13.1",
  "bitvec 0.20.4",
  "bytes",
  "clap 3.2.23",
@@ -2737,18 +2736,17 @@ dependencies = [
  "ethers",
  "flate2",
  "futures",
- "hex",
  "hex-literal",
  "http",
- "jsonrpsee",
  "lazy_static",
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
- "num-bigint 0.4.3",
  "pathfinder-common",
  "pathfinder-ethereum",
+ "pathfinder-merkle-tree",
  "pathfinder-retry",
+ "pathfinder-rpc",
  "pathfinder-serde",
  "pathfinder-storage",
  "pretty_assertions",
@@ -2759,16 +2757,13 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sha3 0.9.1",
  "stark_hash",
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
  "tempfile",
  "test-log",
- "thiserror",
  "tokio",
- "tokio-retry",
  "toml",
  "tracing",
  "tracing-subscriber",
@@ -2816,11 +2811,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-merkle-tree"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitvec 0.20.4",
+ "hex-literal",
+ "pathfinder-common",
+ "pathfinder-storage",
+ "pretty_assertions",
+ "rand",
+ "rusqlite",
+ "stark_hash",
+ "starknet-gateway-types",
+]
+
+[[package]]
 name = "pathfinder-retry"
 version = "0.1.0"
 dependencies = [
  "tokio",
  "tokio-retry",
+]
+
+[[package]]
+name = "pathfinder-rpc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "base64 0.13.1",
+ "bytes",
+ "ethers",
+ "flate2",
+ "futures",
+ "hex",
+ "hex-literal",
+ "jsonrpsee",
+ "lazy_static",
+ "metrics",
+ "pathfinder-common",
+ "pathfinder-ethereum",
+ "pathfinder-merkle-tree",
+ "pathfinder-serde",
+ "pathfinder-storage",
+ "pretty_assertions",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "stark_hash",
+ "starknet-gateway-client",
+ "starknet-gateway-test-fixtures",
+ "starknet-gateway-types",
+ "tempfile",
+ "test-log",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zstd",
 ]
 
 [[package]]

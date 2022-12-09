@@ -1,72 +1,58 @@
 [package]
-name = "pathfinder"
-version = "0.4.3"
+name = "pathfinder-rpc"
+version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[lib]
-name = "pathfinder_lib"
-path = "src/lib.rs"
-
-[features]
-tokio-console = ["console-subscriber", "tokio/tracing"]
-rpc-full-serde = []
-
 [dependencies]
 anyhow = "1.0.44"
-async-trait = "0.1.52"
-bitvec = "0.20.4"
-clap = { version = "3.1.6", features = ["env"] }
-console-subscriber = { version = "0.1.3", optional = true }
-enum-iterator = "0.7.0"
+base64 = "0.13.0"
 ethers = "1.0.0"
+flate2 = "1.0.23"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 hex-literal = "0.3"
-lazy_static = "1.4.0"
+jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
+    "server",
+] }
 metrics = "0.20.1"
-metrics-exporter-prometheus = "0.11.0"
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
-pathfinder-retry = { path = "../retry" }
-pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
-reqwest = { version = "0.11.4", features = ["json"] }
 rusqlite = { version = "0.27.0", features = ["bundled"] }
-semver = "1.0.7"
 serde = { version = "1.0.130", features = ["derive"] }
+serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
+serde_with = "1.9.4"
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
-tempfile = "3"
-tokio = { version = "1.11.0", features = ["process"] }
-toml = "0.5.8"
+thiserror = "1.0.30"
+tokio = "1.11.0"
 tracing = "0.1.31"
-tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
-warp = "0.3.2"
 zstd = "0.10"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
 bytes = "1.1.0"
-criterion = "0.3"
-flate2 = "1.0.23"
-http = "0.2.6"
-mockall = "0.11.0"
+hex = "0.4.3"
+jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
+    "server",
+    "async-client",
+] }
+lazy_static = "1.4.0"
 pathfinder-common = { path = "../common", features = ["full-serde", "test-utils"] }
 pathfinder-storage = { path = "../storage", features = ["test-utils"] }
 pretty_assertions = "1.0.0"
-rand = "0.8"
+reqwest = { version = "0.11.4", features = ["json"] }
+rusqlite = { version = "0.27.0", features = ["bundled"] }
 serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
-serde_with = "1.9.4"
+stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+tempfile = "3"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 tokio = { version = "1.11.0", features = ["test-util"] }
-
-[[bench]]
-name = "merkle_tree"
-harness = false
+tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }

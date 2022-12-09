@@ -18,6 +18,7 @@ serde_with = "1.9.4"
 sha3 = "0.9"
 stark_hash = { path = "../stark_hash" }
 thiserror = "1.0.30"
+tokio = { version = "1.11.0" }
 
 [dev-dependencies]
 # Due to pathfinder_common::starkhash!() usage

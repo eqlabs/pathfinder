@@ -7,12 +7,13 @@ use pathfinder_common::{
 };
 use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
 use pathfinder_lib::{
-    cairo,
-    monitoring::{self, metrics::middleware::RpcMetricsMiddleware},
-    rpc, state,
+    monitoring::{self},
+    state,
 };
+use pathfinder_rpc::{cairo, metrics::middleware::RpcMetricsMiddleware, SyncState};
 use pathfinder_storage::{JournalMode, Storage};
 use starknet_gateway_client::ClientApi;
+use starknet_gateway_types::pending::PendingData;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
@@ -231,8 +232,8 @@ If you are trying to setup a custom StarkNet please use '--network custom',
 
     // TODO: verify Ethereum core contract matches if we are on a custom network.
 
-    let sync_state = Arc::new(state::SyncState::default());
-    let pending_state = state::PendingData::default();
+    let sync_state = Arc::new(SyncState::default());
+    let pending_state = PendingData::default();
     let pending_interval = match config.poll_pending {
         true => Some(std::time::Duration::from_secs(5)),
         false => None,
@@ -264,7 +265,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         pending_interval,
     ));
 
-    let shared = rpc::gas_price::Cached::new(Arc::new(eth_transport));
+    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(eth_transport));
 
     let chain_id = match network {
         Chain::Mainnet => ChainId::MAINNET,
@@ -281,7 +282,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         }
     };
 
-    let api = rpc::v01::api::RpcApi::new(storage, gateway_client, chain_id, sync_state)
+    let api = pathfinder_rpc::v01::api::RpcApi::new(storage, gateway_client, chain_id, sync_state)
         .with_call_handling(call_handle)
         .with_eth_gas_price(shared);
     let api = match config.poll_pending {
@@ -289,7 +290,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         false => api,
     };
 
-    let (rpc_handle, local_addr) = rpc::RpcServer::new(config.http_rpc_addr, api)
+    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.http_rpc_addr, api)
         .with_middleware(RpcMetricsMiddleware)
         .run()
         .await
