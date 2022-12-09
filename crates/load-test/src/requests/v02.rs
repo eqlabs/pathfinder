@@ -180,6 +180,7 @@ pub async fn get_events(
             "to_block": to_block,
             "address": filter.address,
             "keys": filter.keys,
+            "chunk_size": 1000,
         }}),
     )
     .await
@@ -197,8 +198,7 @@ pub struct EventFilter {
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct GetEventsResult {
     pub events: Vec<serde_json::Value>,
-    pub page_number: usize,
-    pub is_last_page: bool,
+    pub continuation_token: Option<String>,
 }
 
 fn block_number_to_block_id(number: Option<u64>) -> serde_json::Value {
