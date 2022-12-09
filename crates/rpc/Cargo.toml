@@ -32,7 +32,6 @@ starknet-gateway-types = { path = "../gateway-types" }
 thiserror = "1.0.30"
 tokio = "1.11.0"
 tracing = "0.1.31"
-web3 = "0.18.0"
 zstd = "0.10"
 
 [dev-dependencies]
