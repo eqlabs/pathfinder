@@ -1694,7 +1694,7 @@ mod tests {
             }
         }
 
-        #[derive(Debug, PartialEq)]
+        #[derive(Debug, PartialEq, Eq)]
         pub enum Membership {
             Member,
             NonMember,
@@ -1721,7 +1721,7 @@ mod tests {
             root: StarkHash,
             key: &BitSlice<Msb0, u8>,
             value: StarkHash,
-            proofs: &Vec<ProofNode>,
+            proofs: &[ProofNode],
         ) -> Option<Membership> {
             // Protect from ill-formed keys
             if key.len() != 251 {
@@ -1805,7 +1805,7 @@ mod tests {
                     .for_each(|(k, v)| uut.set(k.view_bits(), *v).unwrap());
 
                 let root = uut.commit().unwrap();
-                let tree = MerkleTree::load("test", &transaction, root).unwrap();
+                let tree = MerkleTree::load("test", transaction, root).unwrap();
 
                 Self {
                     keys,
