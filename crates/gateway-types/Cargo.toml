@@ -7,22 +7,22 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.44"
-ethers = "1.0.0"
+anyhow = "1.0.66"
+ethers = "1.0.2"
 pathfinder-common = { path = "../common" }
 pathfinder-serde = { path = "../serde" }
-reqwest = "0.11.4"
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
-serde_with = "1.9.4"
-sha3 = "0.9"
+reqwest = "0.11.13"
+serde = { version = "1.0.149", features = ["derive"] }
+serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
+serde_with = "2.1.0"
+sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
-thiserror = "1.0.30"
-tokio = { version = "1.11.0" }
+thiserror = "1.0.37"
+tokio = { version = "1.23.0" }
 
 [dev-dependencies]
 # Due to pathfinder_common::starkhash!() usage
 hex-literal = "0.3"
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-tokio = { version = "1.11.0", features = ["test-util"] }
-zstd = "0.10"
+tokio = { version = "1.23.0", features = ["test-util"] }
+zstd = "0.12"

@@ -18,4 +18,4 @@ ff = { git = "https://github.com/eqlabs/ff", branch = "var_time_eq", default-fea
 ] }
 
 [dev-dependencies]
-pretty_assertions = "1.0.0"
+pretty_assertions = "1.3.0"

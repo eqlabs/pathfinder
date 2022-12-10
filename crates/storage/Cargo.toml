@@ -10,31 +10,31 @@ rust-version = "1.62"
 test-utils = []
 
 [dependencies]
-anyhow = "1.0.44"
-base64 = "0.13.0"
+anyhow = "1.0.66"
+base64 = "0.13.1"
 bitvec = "0.20.4"
-ethers = "1.0.0"
-flate2 = "1.0.23"
+ethers = "1.0.2"
+flate2 = "1.0.25"
 hex = "0.4.3"
 hex-literal = "0.3"
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
-r2d2 = "0.8.9"
-r2d2_sqlite = "0.20.0"
-rusqlite = { version = "0.27.0", features = ["bundled"] }
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = { version = "1.0.68", features = ["arbitrary_precision", "raw_value"] }
-serde_with = "1.9.4"
-sha3 = "0.9"
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.21.0"
+rusqlite = { version = "0.28.0", features = ["bundled"] }
+serde = { version = "1.0.149", features = ["derive"] }
+serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
+serde_with = "2.1.0"
+sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
-thiserror = "1.0.30"
-tokio = "1.11.0"
-tracing = "0.1.31"
-zstd = "0.10"
+thiserror = "1.0.37"
+tokio = "1.23.0"
+tracing = "0.1.37"
+zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
