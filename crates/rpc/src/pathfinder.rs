@@ -1,3 +1,5 @@
+mod methods;
+
 pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<()>) -> anyhow::Result<()> {
     use anyhow::Context;
 

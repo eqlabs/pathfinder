@@ -2,13 +2,13 @@ use anyhow::{anyhow, Context};
 use serde::ser::SerializeStructVariant;
 use serde::{Deserialize, Serialize};
 
-use crate::rpc::v02::RpcContext;
-use crate::state::merkle_tree::ProofNode;
-use crate::state::state_tree::{ContractsStateTree, GlobalStateTree};
+use crate::v02::RpcContext;
 use pathfinder_common::{
     BlockId, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     StorageAddress,
 };
+use pathfinder_merkle_tree::merkle_tree::ProofNode;
+use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use stark_hash::StarkHash;
 
@@ -19,7 +19,7 @@ pub struct GetProofInput {
     pub block_id: BlockId,
 }
 
-crate::rpc::error::generate_rpc_error_subset!(GetProofError: BlockNotFound);
+crate::error::generate_rpc_error_subset!(GetProofError: BlockNotFound);
 
 /// Utility struct used for serializing.
 #[derive(Debug, Serialize)]
