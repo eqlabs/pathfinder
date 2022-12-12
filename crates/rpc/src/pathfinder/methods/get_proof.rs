@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
 
-use crate::v02::RpcContext;
+use crate::context::RpcContext;
 use pathfinder_common::{
     BlockId, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     StorageAddress,
