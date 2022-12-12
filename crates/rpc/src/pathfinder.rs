@@ -1,14 +1,17 @@
+use jsonrpsee::core::server::rpc_module::Methods;
+
+use crate::context::RpcContext;
+use crate::error::RpcError;
+
 mod methods;
 
-pub fn register_all_methods(module: &mut jsonrpsee::RpcModule<()>) -> anyhow::Result<()> {
-    use anyhow::Context;
+/// Registers all methods for the pathfinder RPC API
+pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
+    let methods = crate::module::Module::new(context)
+        .register_method_with_no_input("pathfinder_version", |_| async {
+            Result::<_, RpcError>::Ok(pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT)
+        })?
+        .build();
 
-    module
-        .register_method("pathfinder_version", |_, _| {
-            Ok(pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT)
-        })
-        .with_context(|| "Registering pathfinder_version".to_string())?;
-    // module.register_method("pathfinder_getProof", get_proof::get_proof)?; TODO: expose this
-
-    Ok(())
+    Ok(methods)
 }
