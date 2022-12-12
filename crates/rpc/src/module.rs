@@ -150,8 +150,14 @@ mod tests {
 
         let ctx = RpcContext::for_tests();
 
-        async fn echo(_: RpcContext, input: String) -> Result<String, RpcError> {
-            Ok(input)
+        // Required because jsonrpsee api is a pita to use.
+        #[derive(serde::Deserialize, serde::Serialize, Clone)]
+        struct EchoInput {
+            inner: String,
+        }
+
+        async fn echo(_: RpcContext, input: EchoInput) -> Result<String, RpcError> {
+            Ok(input.inner)
         }
 
         let methods = super::Module::new(ctx)
@@ -173,10 +179,12 @@ mod tests {
             .build()
             .unwrap();
 
+        let input = "testing testing 123".to_string();
+
         let message = client
-            .request::<String>("echo", rpc_params!["testing testing 123"])
+            .request::<String>("echo", rpc_params!(input.clone()))
             .await
             .unwrap();
-        assert_eq!(message, "testing testing 123");
+        assert_eq!(message, input);
     }
 }
