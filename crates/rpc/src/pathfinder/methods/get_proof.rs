@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context};
-use serde::ser::SerializeStructVariant;
 use serde::{Deserialize, Serialize};
 
 use crate::v02::RpcContext;
@@ -28,31 +27,55 @@ struct PathWrapper {
     len: usize,
 }
 
-impl Serialize for ProofNode {
+/// Wrapper around [Vec<ProofNode>] as we don't control [ProofNode] in this crate.
+#[derive(Debug)]
+pub struct Proof(Vec<ProofNode>);
+
+impl Serialize for Proof {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        match &self {
-            ProofNode::Binary(bin) => {
-                let mut state = serializer.serialize_struct_variant("ProofNode", 0, "Binary", 2)?;
-                state.serialize_field("left", &bin.left_hash)?;
-                state.serialize_field("right", &bin.right_hash)?;
-                state.end()
-            }
-            ProofNode::Edge(edge) => {
-                let value = StarkHash::from_bits(edge.path.as_bitslice()).unwrap();
-                let path_wrapper = PathWrapper {
-                    value,
-                    len: edge.path.len(),
-                };
+        use serde::ser::{SerializeSeq, SerializeStructVariant};
+        let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
 
-                let mut state = serializer.serialize_struct_variant("ProofNode", 1, "Edge", 2)?;
-                state.serialize_field("path", &path_wrapper)?;
-                state.serialize_field("child", &edge.child_hash)?;
-                state.end()
+        for node in &self.0 {
+            struct SerProofNode<'a>(&'a ProofNode);
+
+            impl Serialize for SerProofNode<'_> {
+                fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+                where
+                    S: serde::Serializer,
+                {
+                    match self.0 {
+                        ProofNode::Binary(bin) => {
+                            let mut state =
+                                serializer.serialize_struct_variant("ProofNode", 0, "Binary", 2)?;
+                            state.serialize_field("left", &bin.left_hash)?;
+                            state.serialize_field("right", &bin.right_hash)?;
+                            state.end()
+                        }
+                        ProofNode::Edge(edge) => {
+                            let value = StarkHash::from_bits(edge.path.as_bitslice()).unwrap();
+                            let path_wrapper = PathWrapper {
+                                value,
+                                len: edge.path.len(),
+                            };
+
+                            let mut state =
+                                serializer.serialize_struct_variant("ProofNode", 1, "Edge", 2)?;
+                            state.serialize_field("path", &path_wrapper)?;
+                            state.serialize_field("child", &edge.child_hash)?;
+                            state.end()
+                        }
+                    }
+                }
             }
+
+            sequence.serialize_element(&SerProofNode(node))?;
         }
+
+        sequence.end()
     }
 }
 
@@ -71,14 +94,14 @@ pub struct ContractData {
     contract_state_hash_version: StarkHash,
 
     /// The proofs associated with the queried storage values
-    storage_proofs: Vec<Vec<ProofNode>>,
+    storage_proofs: Vec<Proof>,
 }
 
 /// Holds the membership/non-membership of a contract and its associated contract contract if the contract exists.
 #[derive(Debug, Serialize)]
 pub struct GetProofOutput {
     /// Membership / Non-membership proof for the queried contract
-    contract_proof: Vec<ProofNode>,
+    contract_proof: Proof,
 
     /// Additional contract data if it exists.
     contract_data: Option<ContractData>,
@@ -125,6 +148,7 @@ pub async fn get_proof(
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
         let contract_proof = global_state_tree.get_proof(&input.contract_address)?;
+        let contract_proof = Proof(contract_proof);
 
         let contract_state_hash = match global_state_tree.get(input.contract_address)? {
             Some(contract_state_hash) => contract_state_hash,
@@ -163,8 +187,12 @@ pub async fn get_proof(
         let storage_proofs = input
             .keys
             .iter()
-            .map(|k| contract_state_tree.get_proof(k.view_bits()))
-            .collect::<anyhow::Result<Vec<Vec<ProofNode>>>>()
+            .map(|k| {
+                contract_state_tree
+                    .get_proof(k.view_bits())
+                    .map(|p| Proof(p))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()
             .context("Get proof from contract state treee")?;
 
         let contract_data = ContractData {
