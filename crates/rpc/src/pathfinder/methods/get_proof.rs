@@ -13,9 +13,9 @@ use stark_hash::StarkHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetProofInput {
+    pub block_id: BlockId,
     pub contract_address: ContractAddress,
     pub keys: Vec<StorageAddress>,
-    pub block_id: BlockId,
 }
 
 crate::error::generate_rpc_error_subset!(GetProofError: BlockNotFound);
