@@ -50,7 +50,7 @@ impl Serialize for Proof {
                     match self.0 {
                         ProofNode::Binary(bin) => {
                             let mut state =
-                                serializer.serialize_struct_variant("ProofNode", 0, "Binary", 2)?;
+                                serializer.serialize_struct_variant("proof_node", 0, "binary", 2)?;
                             state.serialize_field("left", &bin.left_hash)?;
                             state.serialize_field("right", &bin.right_hash)?;
                             state.end()
@@ -63,7 +63,7 @@ impl Serialize for Proof {
                             };
 
                             let mut state =
-                                serializer.serialize_struct_variant("ProofNode", 1, "Edge", 2)?;
+                                serializer.serialize_struct_variant("proof_node", 1, "edge", 2)?;
                             state.serialize_field("path", &path_wrapper)?;
                             state.serialize_field("child", &edge.child_hash)?;
                             state.end()
