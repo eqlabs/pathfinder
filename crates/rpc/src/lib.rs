@@ -4,6 +4,7 @@ mod context;
 mod error;
 pub mod gas_price;
 pub mod metrics;
+mod module;
 mod pathfinder;
 #[cfg(test)]
 pub mod test_client;
