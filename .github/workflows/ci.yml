@@ -159,6 +159,7 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
+    needs: python-starkhash
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
@@ -176,6 +177,12 @@ jobs:
           key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
       - name: Install Python dependencies
         run: pip install -e py/.[dev]
+      - uses: actions/download-artifact@v3
+        with:
+          name: pathfinder-starkhash-wheels
+      - name: Install Pedersen hash Python wrapper
+        run: |
+          pip install --no-index ./stark_hash_rust-*.whl
 
       - name: Test (python)
         run: |
@@ -192,6 +199,31 @@ jobs:
           cd py
           python -m flake8 src/ tests/ tools/
 
+  python-starkhash:
+    name: Compile Python Pedersen hash wrapper
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "crates/stark_hash_python"
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+          cache: 'pip'
+          cache-dependency-path: 'py/requirements*.txt'
+      - uses: messense/maturin-action@v1
+        with:
+          command: build
+          container: off
+          working-directory: crates/stark_hash_python
+          args: --release -o dist
+      - uses: actions/upload-artifact@v3
+        with:
+          name: pathfinder-starkhash-wheels
+          path: crates/stark_hash_python/dist/stark_hash_rust*.whl
+          if-no-files-found: error
 
   fuzz_targets:
     runs-on: ubuntu-latest

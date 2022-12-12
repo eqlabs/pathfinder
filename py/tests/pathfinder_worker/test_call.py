@@ -5,12 +5,15 @@ import sqlite3
 
 import pytest
 import zstandard
+
+import pathfinder_worker.call as call
+
+
 from starkware.starknet.public.abi import get_selector_from_name
 from starkware.starknet.services.api.gateway.transaction import InvokeFunction, Declare
 from starkware.starknet.services.api.contract_class import ContractClass
 from starkware.starkware_utils.error_handling import WebFriendlyException
 
-import pathfinder_worker.call as call
 from pathfinder_worker.call import (
     EXPECTED_SCHEMA_REVISION,
     NOT_FOUND_CONTRACT_STATE,

@@ -35,19 +35,40 @@ ARG PATHFINDER_FORCE_VERSION
 
 RUN PATHFINDER_FORCE_VERSION=${PATHFINDER_FORCE_VERSION} CARGO_INCREMENTAL=0 cargo build --release -p pathfinder --bin pathfinder
 
+#############################################
+# Stage 1.5: Build the Python Pedersen hash #
+#############################################
+FROM cargo-chef AS rust-python-starkhash-planner
+COPY crates/stark_curve crates/stark_curve
+COPY crates/stark_hash crates/stark_hash
+COPY crates/stark_hash_python crates/stark_hash_python
+RUN cd crates/stark_hash_python && \
+    cargo chef prepare --recipe-path recipe.json
+
+
+FROM cargo-chef AS rust-python-starkhash-builder
+COPY --from=rust-python-starkhash-planner /usr/src/pathfinder/crates/stark_hash_python/recipe.json /usr/src/pathfinder/crates/stark_hash_python/recipe.json
+COPY crates/stark_curve crates/stark_curve
+COPY crates/stark_hash crates/stark_hash
+RUN cd crates/stark_hash_python && cargo chef cook --release --recipe-path recipe.json
+
+COPY crates/stark_hash_python crates/stark_hash_python
+RUN cd crates/stark_hash_python && CARGO_INCREMENTAL=0 cargo build --release
+
 #######################################
 # Stage 2: Build the Python libraries #
 #######################################
-FROM python:3.8-slim-bullseye AS python-builder
+FROM python:3.9-slim-bullseye AS python-builder
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-dev gcc && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/share/pathfinder
 COPY py py
 RUN python3 -m pip --disable-pip-version-check install py/.
+COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/stark_hash_python/target/release/libstark_hash_rust.so /usr/local/lib/python3.9/site-packages/stark_hash_rust.so
 
 # This reduces the size of the python libs by about 50%
-ENV PY_PATH=/usr/local/lib/python3.8/
+ENV PY_PATH=/usr/local/lib/python3.9/
 RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
     && find ${PY_PATH} -type d -a -name tests  -exec rm -rf '{}' + \
     && find ${PY_PATH} -type f -a -name '*.pyc' -exec rm -rf '{}' + \
@@ -58,13 +79,13 @@ RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
 #######################
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Rust builder we've built the pathfinder executable in.
-FROM python:3.8-slim-bullseye AS runner
+FROM python:3.9-slim-bullseye AS runner
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp10 tini && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pathfinder --no-create-home pathfinder
 
 COPY --from=rust-builder /usr/src/pathfinder/target/release/pathfinder /usr/local/bin/pathfinder
-COPY --from=python-builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
+COPY --from=python-builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=python-builder /usr/local/bin/pathfinder_python_worker /usr/local/bin
 
 # Create directory and volume for persistent data
