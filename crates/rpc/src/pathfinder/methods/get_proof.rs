@@ -49,8 +49,12 @@ impl Serialize for Proof {
                 {
                     match self.0 {
                         ProofNode::Binary(bin) => {
-                            let mut state =
-                                serializer.serialize_struct_variant("proof_node", 0, "binary", 2)?;
+                            let mut state = serializer.serialize_struct_variant(
+                                "proof_node",
+                                0,
+                                "binary",
+                                2,
+                            )?;
                             state.serialize_field("left", &bin.left_hash)?;
                             state.serialize_field("right", &bin.right_hash)?;
                             state.end()
@@ -187,11 +191,7 @@ pub async fn get_proof(
         let storage_proofs = input
             .keys
             .iter()
-            .map(|k| {
-                contract_state_tree
-                    .get_proof(k.view_bits())
-                    .map(|p| Proof(p))
-            })
+            .map(|k| contract_state_tree.get_proof(k.view_bits()).map(Proof))
             .collect::<anyhow::Result<Vec<_>>>()
             .context("Get proof from contract state treee")?;
 
