@@ -77,9 +77,7 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         v01::register_all_methods(&mut module_v01)?;
         let module_v01: Methods = module_v01.into_inner().into();
 
-        let mut module_v02 = RpcModule::new(context_v02);
-        v02::register_all_methods(&mut module_v02)?;
-        let module_v02 = module_v02.into();
+        let module_v02 = v02::register_methods(context_v02)?;
 
         let mut pathfinder_module = RpcModule::new(());
         pathfinder::register_all_methods(&mut pathfinder_module)?;
