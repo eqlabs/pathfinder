@@ -7,7 +7,7 @@
     },
     "methods": [
         {
-            "name": "version",
+            "name": "pathfinder_version",
             "summary": "The version of the pathfinder node hosting this API.",
             "params": [],
             "result": {
