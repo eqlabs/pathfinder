@@ -81,6 +81,10 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             "starknet_addDeployAccountTransaction",
             method::add_deploy_account_transaction::add_deploy_account_transaction,
         )?
+        .register_method(
+            "pathfinder_getProof",
+            crate::pathfinder::methods::get_proof::get_proof,
+        )?
         .build();
 
     Ok(methods)

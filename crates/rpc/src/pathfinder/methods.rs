@@ -1,1 +1,1 @@
-pub(super) mod get_proof;
+pub(crate) mod get_proof;
