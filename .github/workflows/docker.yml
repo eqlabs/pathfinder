@@ -35,6 +35,13 @@ jobs:
           swap-size-gb: 10
       - name: Checkout sources
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Generate version
+        id: generate_version
+        run: |
+          echo -n "pathfinder_version=" >> $GITHUB_OUTPUT
+          git describe --tags --dirty >> $GITHUB_OUTPUT
       - name: Set up QEMU
         id: qemu
         uses: docker/setup-qemu-action@v2
@@ -62,6 +69,8 @@ jobs:
             linux/amd64
             linux/arm64
           file: ./Dockerfile
+          build-args: |
+            PATHFINDER_FORCE_VERSION=${{ steps.generate_version.outputs.pathfinder_version }}
           builder: ${{ steps.buildx.outputs.name }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
