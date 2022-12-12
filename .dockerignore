@@ -3,7 +3,7 @@ Dockerfile
 # rust temporary files
 target/
 crates/load-test/target/
-crates/pathfinder_starkhash/target/
+crates/stark_hash_python/target/
 # Python virtualenv
 .venv
 # database files

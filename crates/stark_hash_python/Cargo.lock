@@ -183,15 +183,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pathfinder_starkhash"
-version = "0.1.0"
-dependencies = [
- "num-bigint 0.4.3",
- "pyo3",
- "stark_hash",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -325,6 +316,15 @@ dependencies = [
  "rand_core",
  "serde",
  "stark_curve",
+]
+
+[[package]]
+name = "stark_hash_python"
+version = "0.1.0"
+dependencies = [
+ "num-bigint 0.4.3",
+ "pyo3",
+ "stark_hash",
 ]
 
 [[package]]

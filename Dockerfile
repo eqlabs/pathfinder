@@ -41,19 +41,19 @@ RUN PATHFINDER_FORCE_VERSION=${PATHFINDER_FORCE_VERSION} CARGO_INCREMENTAL=0 car
 FROM cargo-chef AS rust-python-starkhash-planner
 COPY crates/stark_curve crates/stark_curve
 COPY crates/stark_hash crates/stark_hash
-COPY crates/pathfinder_starkhash crates/pathfinder_starkhash
-RUN cd crates/pathfinder_starkhash && \
+COPY crates/stark_hash_python crates/stark_hash_python
+RUN cd crates/stark_hash_python && \
     cargo chef prepare --recipe-path recipe.json
 
 
 FROM cargo-chef AS rust-python-starkhash-builder
-COPY --from=rust-python-starkhash-planner /usr/src/pathfinder/crates/pathfinder_starkhash/recipe.json /usr/src/pathfinder/crates/pathfinder_starkhash/recipe.json
+COPY --from=rust-python-starkhash-planner /usr/src/pathfinder/crates/stark_hash_python/recipe.json /usr/src/pathfinder/crates/stark_hash_python/recipe.json
 COPY crates/stark_curve crates/stark_curve
 COPY crates/stark_hash crates/stark_hash
-RUN cd crates/pathfinder_starkhash && cargo chef cook --release --recipe-path recipe.json
+RUN cd crates/stark_hash_python && cargo chef cook --release --recipe-path recipe.json
 
-COPY crates/pathfinder_starkhash crates/pathfinder_starkhash
-RUN cd crates/pathfinder_starkhash && CARGO_INCREMENTAL=0 cargo build --release
+COPY crates/stark_hash_python crates/stark_hash_python
+RUN cd crates/stark_hash_python && CARGO_INCREMENTAL=0 cargo build --release
 
 #######################################
 # Stage 2: Build the Python libraries #
@@ -65,7 +65,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-d
 WORKDIR /usr/share/pathfinder
 COPY py py
 RUN python3 -m pip --disable-pip-version-check install py/.
-COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/pathfinder_starkhash/target/release/libpathfinder_starkhash.so /usr/local/lib/python3.9/site-packages/pathfinder_starkhash.so
+COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/stark_hash_python/target/release/libstark_hash_rust.so /usr/local/lib/python3.9/site-packages/stark_hash_rust.so
 
 # This reduces the size of the python libs by about 50%
 ENV PY_PATH=/usr/local/lib/python3.9/

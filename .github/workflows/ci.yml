@@ -182,7 +182,7 @@ jobs:
           name: pathfinder-starkhash-wheels
       - name: Install Pedersen hash Python wrapper
         run: |
-          pip install --no-index ./pathfinder_starkhash-*.whl
+          pip install --no-index ./stark_hash_rust-*.whl
 
       - name: Test (python)
         run: |
@@ -207,7 +207,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "crates/pathfinder_starkhash"
+          workspaces: "crates/stark_hash_python"
       - uses: actions/setup-python@v4
         with:
           python-version: '3.8'
@@ -217,12 +217,12 @@ jobs:
         with:
           command: build
           container: off
-          working-directory: crates/pathfinder_starkhash
+          working-directory: crates/stark_hash_python
           args: --release -o dist
       - uses: actions/upload-artifact@v3
         with:
           name: pathfinder-starkhash-wheels
-          path: crates/pathfinder_starkhash/dist/pathfinder_starkhash*.whl
+          path: crates/stark_hash_python/dist/stark_hash_rust*.whl
           if-no-files-found: error
 
   fuzz_targets:

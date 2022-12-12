@@ -33,7 +33,7 @@ fn pedersen_hash(a: BigUint, b: BigUint) -> PyResult<BigUint> {
 }
 
 #[pymodule]
-fn pathfinder_starkhash(_py: Python, m: &PyModule) -> PyResult<()> {
+fn stark_hash_rust(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pedersen_hash, m)?)?;
     m.add_function(wrap_pyfunction!(pedersen_hash_func, m)?)?;
     Ok(())

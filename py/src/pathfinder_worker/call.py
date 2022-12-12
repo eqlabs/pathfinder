@@ -15,14 +15,14 @@ from enum import Enum
 from typing import ClassVar, Dict, List, Optional, Type
 
 try:
-    import pathfinder_starkhash
+    import stark_hash_rust
     import starkware.crypto.signature.fast_pedersen_hash
 
     starkware.crypto.signature.fast_pedersen_hash.pedersen_hash_func = (
-        pathfinder_starkhash.pedersen_hash_func
+        stark_hash_rust.pedersen_hash_func
     )
     starkware.crypto.signature.fast_pedersen_hash.pedersen_hash = (
-        pathfinder_starkhash.pedersen_hash
+        stark_hash_rust.pedersen_hash
     )
 except ModuleNotFoundError:
     # Monkey-patching with our fast implementation of the Pedersen hash failed.
