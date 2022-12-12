@@ -8,5 +8,12 @@ crates/stark_hash_python/target/
 .venv
 # database files
 *.sqlite
+*.sqlite-wal
+*.sqlite-shm
 # compressed database dump files
 *.zst
+# direnv
+.envrc
+.env
+# pyenv
+.python-version
