@@ -62,33 +62,27 @@
                     "properties": {
                         "contract_proof": {
                             "title": "Proof of the contract state hash",
-                            "ref": "#/components/schemas/PROOF",
-                            "required": true
+                            "$ref": "#/components/schemas/PROOF"
                         },
                         "contract_data": {
                             "type": "object",
                             "description": "Only present if the contract exists",
-                            "required": false,
                             "properties": {
                                 "class_hash": {
                                     "description": "The hash of the contract's class",
-                                    "$ref": "#/components/schemas/FELT",
-                                    "required": true
+                                    "$ref": "#/components/schemas/FELT"
                                 },
                                 "nonce": {
                                     "description": "The contract's nonce",
-                                    "$ref": "#/components/schemas/FELT",
-                                    "required": true
+                                    "$ref": "#/components/schemas/FELT"
                                 },
                                 "root": {
                                     "description": "The contract's storage state root hash",
-                                    "$ref": "#/components/schemas/FELT",
-                                    "required": true
+                                    "$ref": "#/components/schemas/FELT"
                                 },
                                 "contract_state_hash_version": {
                                     "description": "The state hash version used to calculate the state hash",
-                                    "$ref": "#/components/schemas/FELT",
-                                    "required": true
+                                    "$ref": "#/components/schemas/FELT"
                                 },
                                 "storage_proofs": {
                                     "description": "Contains the requested storage proofs (in order of request)",
@@ -97,9 +91,18 @@
                                         "$ref": "#/components/schemas/PROOF"
                                     }
                                 }
-                            }
+                            },
+                            "required": [
+                                "class_hash",
+                                "nonce",
+                                "root",
+                                "contract_state_hash_version"
+                            ]
                         }
-                    }
+                    },
+                    "required": [
+                        "contract_proof"
+                    ]
                 }
             }
         }
@@ -168,10 +171,10 @@
             "NODE": {
                 "oneof": [
                     {
-                        "ref": "#/components/schemas/BINARY_NODE"
+                        "$ref": "#/components/schemas/BINARY_NODE"
                     },
                     {
-                        "ref": "#/components/schemas/EDGE_NODE"
+                        "$ref": "#/components/schemas/EDGE_NODE"
                     }
                 ]
             },
@@ -180,41 +183,47 @@
                 "properties": {
                     "left": {
                         "title": "Left child's hash",
-                        "ref": "#/components/schemas/FELT",
-                        "required": true
+                        "$ref": "#/components/schemas/FELT"
                     },
                     "right": {
                         "title": "Right child's hash",
-                        "ref": "#/components/schemas/FELT",
-                        "required": true
+                        "$ref": "#/components/schemas/FELT"
                     }
-                }
+                },
+                "required": [
+                    "left",
+                    "right"
+                ]
             },
             "EDGE_NODE": {
                 "type": "object",
                 "properties": {
                     "child": {
                         "title": "Child's hash",
-                        "ref": "#/components/schemas/FELT",
-                        "required": true
+                        "$ref": "#/components/schemas/FELT"
                     },
                     "path": {
                         "type": "object",
                         "properties": {
                             "value": {
                                 "title": "The path of this edge node",
-                                "ref": "#/components/schemas/FELT",
-                                "required": true
+                                "$ref": "#/components/schemas/FELT"
                             },
                             "len": {
                                 "title": "The bit length of this path",
-                                "type": "integer",
-                                "required": true
+                                "type": "integer"
                             }
                         },
-                        "required": true
+                        "required": [
+                            "value",
+                            "len"
+                        ]
                     }
-                }
+                },
+                "required": [
+                    "child",
+                    "path"
+                ]
             }
         },
         "errors": {
