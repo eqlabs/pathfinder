@@ -54,5 +54,5 @@ starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tempfile = "3"
 test-log = { version = "0.2.11", default-features = false, features = ["trace"] }
-tokio = { version = "1.23.0", features = ["test-util"] }
+tokio = { version = "1.23.0", features = ["test-util", "process"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

@@ -1,0 +1,236 @@
+{
+    "openrpc": "1.2.6",
+    "info": {
+        "title": "Pathfinder RPC API",
+        "version": "0.1",
+        "description": "Provides additional (pathfinder specific) methods over and above the StarkNet RPC API"
+    },
+    "methods": [
+        {
+            "name": "pathfinder_version",
+            "summary": "The version of the pathfinder node hosting this API.",
+            "params": [],
+            "result": {
+                "name": "semver version",
+                "required": true,
+                "schema": {
+                    "type": "string",
+                    "description": "A semver compatible version string"
+                }
+            }
+        },
+        {
+            "name": "pathfinder_getProof",
+            "summary": "Returns merkle proofs of a contract's storage state",
+            "description": "This method returns merkle proofs for a contract's storage. This allows you to verify a contract's state for a specific StarkNet block.",
+            "params": [
+                {
+                    "name": "block_id",
+                    "description": "The hash of the requested block, or number (height) of the requested block, or a block tag",
+                    "required": true,
+                    "schema": {
+                        "$ref": "#/components/schemas/BLOCK_ID"
+                    }
+                },
+                {
+                    "name": "contract_address",
+                    "description": "The address of the contract",
+                    "required": true,
+                    "schema": {
+                        "$ref": "#/components/schemas/ADDRESS"
+                    }
+                },
+                {
+                    "name": "keys",
+                    "description": "The storage element addresses to gather proofs for",
+                    "required": true,
+                    "schema": {
+                        "type": "array",
+                        "items": {
+                            "title": "storage address",
+                            "$ref": "#/components/schemas/ADDRESS"
+                        }
+                    }
+                }
+            ],
+            "result": {
+                "name": "storage proofs",
+                "required": true,
+                "schema": {
+                    "type": "object",
+                    "description": "Contains the requested contract's state proofs",
+                    "properties": {
+                        "contract_proof": {
+                            "title": "Proof of the contract state hash",
+                            "$ref": "#/components/schemas/PROOF"
+                        },
+                        "contract_data": {
+                            "type": "object",
+                            "description": "Only present if the contract exists",
+                            "properties": {
+                                "class_hash": {
+                                    "description": "The hash of the contract's class",
+                                    "$ref": "#/components/schemas/FELT"
+                                },
+                                "nonce": {
+                                    "description": "The contract's nonce",
+                                    "$ref": "#/components/schemas/FELT"
+                                },
+                                "root": {
+                                    "description": "The contract's storage state root hash",
+                                    "$ref": "#/components/schemas/FELT"
+                                },
+                                "contract_state_hash_version": {
+                                    "description": "The state hash version used to calculate the state hash",
+                                    "$ref": "#/components/schemas/FELT"
+                                },
+                                "storage_proofs": {
+                                    "description": "Contains the requested storage proofs (in order of request)",
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/PROOF"
+                                    }
+                                }
+                            },
+                            "required": [
+                                "class_hash",
+                                "nonce",
+                                "root",
+                                "contract_state_hash_version"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "contract_proof"
+                    ]
+                }
+            }
+        }
+    ],
+    "components": {
+        "contentDescriptors": {},
+        "schemas": {
+            "BLOCK_ID": {
+                "title": "Block hash, number or tag",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "block_hash": {
+                                "$ref": "#/components/schemas/BLOCK_HASH"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "block_number": {
+                                "$ref": "#/components/schemas/BLOCK_NUMBER"
+                            }
+                        }
+                    },
+                    {
+                        "$ref": "#/components/schemas/BLOCK_TAG"
+                    }
+                ]
+            },
+            "BLOCK_TAG": {
+                "type": "string",
+                "description": "A tag specifying a dynamic reference to a block",
+                "enum": [
+                    "latest",
+                    "pending"
+                ]
+            },
+            "FELT": {
+                "type": "string",
+                "title": "Field element",
+                "$comment": "A field element, represented as a string of hex digits",
+                "description": "A field element represented as a string of hex digits with a 0x prefix",
+                "pattern": "^0x0[a-fA-F0-9]{1,63}$"
+            },
+            "BLOCK_NUMBER": {
+                "description": "The block's number (its height)",
+                "type": "integer",
+                "minimum": 0
+            },
+            "BLOCK_HASH": {
+                "$ref": "#/components/schemas/FELT"
+            },
+            "ADDRESS": {
+                "$ref": "#/components/schemas/FELT"
+            },
+            "PROOF": {
+                "type": "array",
+                "title": "Ordered set of merkle tree nodes which constitute a merkle proof",
+                "description": "Set of merkle tree nodes which constitute a merkle proof. Ordered from root towards the target.",
+                "items": {
+                    "$ref": "#/components/schemas/NODE"
+                }
+            },
+            "NODE": {
+                "oneof": [
+                    {
+                        "$ref": "#/components/schemas/BINARY_NODE"
+                    },
+                    {
+                        "$ref": "#/components/schemas/EDGE_NODE"
+                    }
+                ]
+            },
+            "BINARY_NODE": {
+                "type": "object",
+                "properties": {
+                    "left": {
+                        "title": "Left child's hash",
+                        "$ref": "#/components/schemas/FELT"
+                    },
+                    "right": {
+                        "title": "Right child's hash",
+                        "$ref": "#/components/schemas/FELT"
+                    }
+                },
+                "required": [
+                    "left",
+                    "right"
+                ]
+            },
+            "EDGE_NODE": {
+                "type": "object",
+                "properties": {
+                    "child": {
+                        "title": "Child's hash",
+                        "$ref": "#/components/schemas/FELT"
+                    },
+                    "path": {
+                        "type": "object",
+                        "properties": {
+                            "value": {
+                                "title": "The path of this edge node",
+                                "$ref": "#/components/schemas/FELT"
+                            },
+                            "len": {
+                                "title": "The bit length of this path",
+                                "type": "integer"
+                            }
+                        },
+                        "required": [
+                            "value",
+                            "len"
+                        ]
+                    }
+                },
+                "required": [
+                    "child",
+                    "path"
+                ]
+            }
+        },
+        "errors": {
+            "BLOCK_NOT_FOUND": {
+                "code": 24,
+                "message": "Block not found"
+            }
+        }
+    }
+}
