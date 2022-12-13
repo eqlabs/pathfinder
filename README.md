@@ -332,7 +332,7 @@ To check if it's running well use `docker-compose logs -f`.
 
 ## JSON-RPC API
 
-You can get interact with StarkNet using the JSON-RPC API. Pathfinder supports the official StarkNet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
+You can interact with StarkNet using the JSON-RPC API. Pathfinder supports the official StarkNet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
 Currently pathfinder supports both `v0.1` and `v0.2.1` versions of the StarkNet JSON-RPC specification. `v0.1` will be supported until the ecosystem has moved onto the next version.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:

@@ -15,7 +15,7 @@ rpc_call '{"jsonrpc":"2.0","id":"0","method":"pathfinder_version"}'
 
 rpc_call '{
     "jsonrpc": "2.0",
-    "method": "starknet_addInvokeTransaction",
+    "method": "pathfinder_getProof",
     "params": {
         "block_id": "latest",
         "contract_address": "0x23371b227eaecd8e8920cd429d2cd0f3fee6abaacca08d3ab82a7cdd",
