@@ -78,7 +78,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-d
 
 WORKDIR /usr/share/pathfinder
 COPY py py
-RUN python3 -m pip --disable-pip-version-check install py/.
+RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip --disable-pip-version-check install py/.
 COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/stark_hash_python/stark_hash_rust.so-${TARGETARCH} /usr/local/lib/python3.9/site-packages/stark_hash_rust.so
 
 # This reduces the size of the python libs by about 50%
