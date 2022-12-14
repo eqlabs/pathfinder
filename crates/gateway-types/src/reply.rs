@@ -437,20 +437,9 @@ pub mod transaction {
                 TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
                     InvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => {
-                    // Starknet 0.10.0 still has `entry_point_selector` and `entry_point_type` because
-                    // of a bug that will be fixed in 0.10.1. We should just ignore these fields until
-                    // this gets fixed.
-                    // FIXME: 0.10.1 remove this hack
-                    let o = v
-                        .as_object_mut()
-                        .expect("must be an object because deserializing version succeeded");
-                    o.remove("entry_point_selector");
-                    o.remove("entry_point_type");
-                    Ok(Self::V1(
-                        InvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
-                    ))
-                }
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                    InvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
                 _v => Err(de::Error::custom("version must be 0 or 1")),
             }
         }
@@ -599,8 +588,6 @@ pub mod state_update {
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
         pub declared_contracts: Vec<ClassHash>,
-        /// FIXME(0.10): drop the default once 0.10 hits mainnet
-        #[serde(default)]
         pub nonces: HashMap<ContractAddress, ContractNonce>,
     }
 

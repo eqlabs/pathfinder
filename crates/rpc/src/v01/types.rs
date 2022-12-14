@@ -471,8 +471,6 @@ pub mod reply {
     /// this transaction type is taken from the 0.2.0-rc1 spec
     /// to plug the hole after the feeder gateway introduced
     /// similar type in its api with cairo 0.10.0.
-    ///
-    /// FIXME: remove this comment when 0.2.0 spec is released and implemented
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
