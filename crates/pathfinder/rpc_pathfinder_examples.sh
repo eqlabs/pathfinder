@@ -20,8 +20,8 @@ rpc_call '{
         "block_id": "latest",
         "contract_address": "0x23371b227eaecd8e8920cd429d2cd0f3fee6abaacca08d3ab82a7cdd",
         "keys": [
-            "0x1,
-            "0xfffffffff,
+            "0x1",
+            "0xfffffffff"
         ]
     },
     "id": 0

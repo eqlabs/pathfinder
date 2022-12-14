@@ -181,48 +181,64 @@
             "BINARY_NODE": {
                 "type": "object",
                 "properties": {
-                    "left": {
-                        "title": "Left child's hash",
-                        "$ref": "#/components/schemas/FELT"
-                    },
-                    "right": {
-                        "title": "Right child's hash",
-                        "$ref": "#/components/schemas/FELT"
+                    "binary": {
+                        "type": "object",
+                        "properties": {
+                            "left": {
+                                "title": "Left child's hash",
+                                "$ref": "#/components/schemas/FELT"
+                            },
+                            "right": {
+                                "title": "Right child's hash",
+                                "$ref": "#/components/schemas/FELT"
+                            }
+                        },
+                        "required": [
+                            "left",
+                            "right"
+                        ]
                     }
                 },
                 "required": [
-                    "left",
-                    "right"
+                    "binary"
                 ]
             },
             "EDGE_NODE": {
                 "type": "object",
                 "properties": {
-                    "child": {
-                        "title": "Child's hash",
-                        "$ref": "#/components/schemas/FELT"
-                    },
-                    "path": {
+                    "edge": {
                         "type": "object",
                         "properties": {
-                            "value": {
-                                "title": "The path of this edge node",
+                            "child": {
+                                "title": "Child's hash",
                                 "$ref": "#/components/schemas/FELT"
                             },
-                            "len": {
-                                "title": "The bit length of this path",
-                                "type": "integer"
+                            "path": {
+                                "type": "object",
+                                "properties": {
+                                    "value": {
+                                        "title": "The path of this edge node",
+                                        "$ref": "#/components/schemas/FELT"
+                                    },
+                                    "len": {
+                                        "title": "The bit length of this path",
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": [
+                                    "value",
+                                    "len"
+                                ]
                             }
                         },
                         "required": [
-                            "value",
-                            "len"
+                            "child",
+                            "path"
                         ]
                     }
                 },
                 "required": [
-                    "child",
-                    "path"
+                    "edge"
                 ]
             }
         },
