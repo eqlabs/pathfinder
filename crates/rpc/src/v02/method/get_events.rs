@@ -127,25 +127,8 @@ pub async fn get_events(
             .transaction()
             .context("Creating database transaction")?;
 
-        // Maps a BlockId to a block number which can be used by the events query.
-        fn map_to_number(
-            tx: &rusqlite::Transaction<'_>,
-            block: Option<BlockId>,
-        ) -> Result<Option<StarknetBlockNumber>, GetEventsError> {
-            match block {
-                Some(Hash(hash)) => {
-                    let number = StarknetBlocksTable::get_number(tx, hash)?
-                        .ok_or(GetEventsError::BlockNotFound)?;
-
-                    Ok(Some(number))
-                }
-                Some(Number(number)) => Ok(Some(number)),
-                Some(Pending) | Some(Latest) | None => Ok(None),
-            }
-        }
-
-        let from_block = map_to_number(&transaction, request.from_block)?;
-        let to_block = map_to_number(&transaction, request.to_block)?;
+        let from_block = map_from_block_to_number(&transaction, request.from_block)?;
+        let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
         let filter = StarknetEventFilter {
             from_block,
@@ -238,6 +221,55 @@ pub async fn get_events(
     check_continuation_token_validity(requested_offset, &events.events)?;
 
     Ok(events)
+}
+
+// Maps `to_block` BlockId to a block number which can be used by the events query.
+//
+// This block id specifies the upper end of the range, so pending/latest/None means
+// there's no upper limit.
+fn map_to_block_to_number(
+    tx: &rusqlite::Transaction<'_>,
+    block: Option<BlockId>,
+) -> Result<Option<StarknetBlockNumber>, GetEventsError> {
+    use BlockId::*;
+
+    match block {
+        Some(Hash(hash)) => {
+            let number =
+                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+
+            Ok(Some(number))
+        }
+        Some(Number(number)) => Ok(Some(number)),
+        Some(Pending) | Some(Latest) | None => Ok(None),
+    }
+}
+
+// Maps `from_block` BlockId to a block number which can be used by the events query.
+//
+// This block id specifies the lower end of the range, so pending/latest means
+// a lower limit here.
+fn map_from_block_to_number(
+    tx: &rusqlite::Transaction<'_>,
+    block: Option<BlockId>,
+) -> Result<Option<StarknetBlockNumber>, GetEventsError> {
+    use BlockId::*;
+
+    match block {
+        Some(Hash(hash)) => {
+            let number =
+                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+
+            Ok(Some(number))
+        }
+        Some(Number(number)) => Ok(Some(number)),
+        Some(Pending) | Some(Latest) => {
+            let number =
+                StarknetBlocksTable::get_latest_number(tx)?.ok_or(GetEventsError::BlockNotFound)?;
+            Ok(Some(number))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Append's pending events to `dst` based on the filter requirements and returns
@@ -529,6 +561,35 @@ mod tests {
 
         let expected_events = &events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
             ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
+        assert_eq!(
+            result,
+            GetEventsResult {
+                events: expected_events.to_vec(),
+                continuation_token: None,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn get_events_from_latest_block() {
+        let (context, events) = setup();
+
+        const LATEST_BLOCK_NUMBER: usize = 3;
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: Some(BlockId::Latest),
+                to_block: Some(BlockId::Latest),
+                address: None,
+                keys: vec![],
+                chunk_size: test_utils::NUM_EVENTS,
+                continuation_token: None,
+            },
+        };
+
+        let result = get_events(context, input).await.unwrap();
+
+        let expected_events = &events[test_utils::EVENTS_PER_BLOCK * LATEST_BLOCK_NUMBER
+            ..test_utils::EVENTS_PER_BLOCK * (LATEST_BLOCK_NUMBER + 1)];
         assert_eq!(
             result,
             GetEventsResult {

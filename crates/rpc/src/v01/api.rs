@@ -1190,15 +1190,17 @@ impl RpcApi {
                 .context("Creating database transaction")
                 .map_err(internal_server_error)?;
 
-            // Maps a BlockId to a block number which can be used by the events query.
-            fn map_to_number(
+            // Maps `to_block` BlockId to a block number which can be used by the events query.
+            //
+            // This block id specifies the upper end of the range, so pending/latest/None means
+            // there's no upper limit.
+            fn map_to_block_to_number(
                 tx: &rusqlite::Transaction<'_>,
                 block: Option<BlockId>,
             ) -> RpcResult<Option<StarknetBlockNumber>> {
                 match block {
                     Some(Hash(hash)) => {
-                        let number = StarknetBlocksTable::get_number(tx, hash)
-                            .map_err(internal_server_error)?
+                        let number = StarknetBlocksTable::get_number(tx, hash)?
                             .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
 
                         Ok(Some(number))
@@ -1208,8 +1210,33 @@ impl RpcApi {
                 }
             }
 
-            let from_block = map_to_number(&transaction, request.from_block)?;
-            let to_block = map_to_number(&transaction, request.to_block)?;
+            // Maps `from_block` BlockId to a block number which can be used by the events query.
+            //
+            // This block id specifies the lower end of the range, so pending/latest means
+            // a lower limit here.
+            fn map_from_block_to_number(
+                tx: &rusqlite::Transaction<'_>,
+                block: Option<BlockId>,
+            ) -> RpcResult<Option<StarknetBlockNumber>> {
+                match block {
+                    Some(Hash(hash)) => {
+                        let number = StarknetBlocksTable::get_number(tx, hash)?
+                            .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
+
+                        Ok(Some(number))
+                    }
+                    Some(Number(number)) => Ok(Some(number)),
+                    Some(Pending) | Some(Latest) => {
+                        let number = StarknetBlocksTable::get_latest_number(tx)?
+                            .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
+                        Ok(Some(number))
+                    }
+                    None => Ok(None),
+                }
+            }
+
+            let from_block = map_from_block_to_number(&transaction, request.from_block)?;
+            let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
             let filter = StarknetEventFilter {
                 from_block,
