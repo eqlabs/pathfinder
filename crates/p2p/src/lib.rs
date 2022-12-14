@@ -21,6 +21,8 @@ mod behaviour;
 mod executor;
 mod peers;
 mod sync;
+#[cfg(test)]
+mod tests;
 mod transport;
 
 pub use peers::Peers;
@@ -225,6 +227,10 @@ pub enum Event {
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
     BlockPropagation(p2p_proto::propagation::Message),
+    #[cfg(test)]
+    NewListenAddress(Multiaddr),
+    #[cfg(test)]
+    Dummy,
 }
 
 pub type EventReceiver = mpsc::Receiver<Event>;
@@ -520,10 +526,7 @@ impl MainLoop {
                 Ok(())
             }
 
-            event => {
-                tracing::trace!(?event, "Ignoring event");
-                Ok(())
-            }
+            event => self.handle_event_for_test(event).await,
         }
     }
 
@@ -644,6 +647,34 @@ impl MainLoop {
         let local_peer_id = self.swarm.local_peer_id();
         if local_peer_id < &peer_id {
             self.request_sync_status.insert(peer_id);
+        }
+    }
+
+    #[cfg(not(test))]
+    async fn handle_event_for_test<E: std::fmt::Debug>(
+        &mut self,
+        event: SwarmEvent<behaviour::Event, E>,
+    ) -> anyhow::Result<()> {
+        tracing::trace!(?event, "Ignoring event");
+        Ok(())
+    }
+
+    #[cfg(test)]
+    async fn handle_event_for_test<E: std::fmt::Debug>(
+        &mut self,
+        event: SwarmEvent<behaviour::Event, E>,
+    ) -> anyhow::Result<()> {
+        match event {
+            SwarmEvent::NewListenAddr { address, .. } => {
+                self.event_sender
+                    .send(Event::NewListenAddress(address))
+                    .await?;
+                Ok(())
+            }
+            _ => {
+                tracing::trace!(?event, "Ignoring event");
+                Ok(())
+            }
         }
     }
 }

@@ -31,7 +31,7 @@ impl Peer {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 enum ConnectionStatus {
     #[default]
     Disconnected,

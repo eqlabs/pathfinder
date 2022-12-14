@@ -5007,6 +5007,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.6",
  "stark_hash",
+ "test-log",
  "tokio",
  "tracing",
  "tracing-subscriber",
