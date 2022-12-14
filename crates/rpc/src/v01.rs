@@ -2176,6 +2176,40 @@ mod tests {
             }
 
             #[tokio::test]
+            async fn get_events_from_latest_block() {
+                let (storage, events) = setup();
+                let sequencer = Client::new(Chain::Testnet).unwrap();
+                let sync_state = Arc::new(SyncState::default());
+                let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
+                let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
+
+                const LATEST_BLOCK_NUMBER: usize = 3;
+                let params = rpc_params!(EventFilter {
+                    from_block: Some(BlockId::Latest),
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    page_size: test_utils::NUM_EVENTS,
+                    page_number: 0,
+                });
+                let rpc_result = TestClient::v01(addr)
+                    .request::<GetEventsResult>("starknet_getEvents", params)
+                    .await
+                    .unwrap();
+
+                let expected_events = &events[test_utils::EVENTS_PER_BLOCK * LATEST_BLOCK_NUMBER
+                    ..test_utils::EVENTS_PER_BLOCK * (LATEST_BLOCK_NUMBER + 1)];
+                assert_eq!(
+                    rpc_result,
+                    GetEventsResult {
+                        events: expected_events.to_vec(),
+                        page_number: 0,
+                        is_last_page: true,
+                    }
+                );
+            }
+
+            #[tokio::test]
             async fn get_events_with_invalid_page_size() {
                 let (storage, _events) = setup();
                 let sequencer = Client::new(Chain::Testnet).unwrap();
