@@ -723,39 +723,11 @@ pub mod add_transaction {
 
 #[cfg(test)]
 mod tests {
-    /// The aim of these tests is to make sure pathfinder is still able to correctly
-    /// deserialize replies from the mainnet sequencer when it still is using some
-    /// previous version of cairo while at the same time the goerli sequencer is
-    /// already using a newer version.
+    /// These tests ensure backwards compatibility for various types that may
+    /// still exist in older pathfinder databases.
     mod backward_compatibility {
-        use super::super::{StateUpdate, Transaction};
+        use super::super::Transaction;
         use starknet_gateway_test_fixtures::*;
-
-        #[test]
-        fn block() {
-            use super::super::MaybePendingBlock;
-
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::GENESIS).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::NUMBER_1716).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::PENDING).unwrap();
-            // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216591).unwrap();
-            // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216171).unwrap();
-            // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_228457).unwrap();
-        }
-
-        #[test]
-        fn state_update() {
-            // FIXME(0.10): update these fixtures once 0.10 is on mainnet
-
-            // These fixtures do not contain nonces property (0.10 owards).
-            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::GENESIS).unwrap();
-            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::PENDING).unwrap();
-            // This is from integration starknet_version 0.10 and contains the new nonces field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_216572).unwrap();
-        }
 
         #[test]
         fn transaction() {
