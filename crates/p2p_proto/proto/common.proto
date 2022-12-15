@@ -41,15 +41,33 @@ message DeclareTransaction {
   FieldElement version = 6;
 }
 
+message DeployTransaction {
+  ContractClass contract_class = 1;
+  FieldElement contract_address_salt = 2;
+  repeated FieldElement constructor_calldata = 3;
+  FieldElement version = 4;
+}
+
+message L1HandlerTransaction {
+  FieldElement contract_address = 1;
+  FieldElement entry_point_selector = 2;
+  repeated FieldElement calldata = 3;
+  FieldElement nonce = 4;
+  FieldElement version = 5;
+}
+
 message ContractClass {
   message EntryPoint {
     FieldElement selector = 1;
     FieldElement offset = 2;
   }
 
+  // FIXME: ABI?
   repeated EntryPoint constructor_entry_points = 1;
   repeated EntryPoint external_entry_points = 2;
   repeated EntryPoint l1_handler_entry_points = 3;
+  // FIXME: what's this? Shouldn't we use the same representation as used in
+  // JSON-RPC?
   repeated string used_builtins = 4;
   FieldElement contract_program_hash = 5;
   repeated FieldElement bytecode = 6;
@@ -60,6 +78,8 @@ message Transaction {
   oneof txn {
     InvokeTransaction invoke = 1;
     DeclareTransaction declare = 2;
+    DeployTransaction deploy = 3;
+    L1HandlerTransaction l1_handler = 4;
   }
 }
 
