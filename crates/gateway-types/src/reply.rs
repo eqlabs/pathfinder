@@ -437,20 +437,9 @@ pub mod transaction {
                 TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
                     InvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => {
-                    // Starknet 0.10.0 still has `entry_point_selector` and `entry_point_type` because
-                    // of a bug that will be fixed in 0.10.1. We should just ignore these fields until
-                    // this gets fixed.
-                    // FIXME: 0.10.1 remove this hack
-                    let o = v
-                        .as_object_mut()
-                        .expect("must be an object because deserializing version succeeded");
-                    o.remove("entry_point_selector");
-                    o.remove("entry_point_type");
-                    Ok(Self::V1(
-                        InvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
-                    ))
-                }
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                    InvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
                 _v => Err(de::Error::custom("version must be 0 or 1")),
             }
         }
@@ -511,17 +500,11 @@ pub mod transaction {
     pub struct L1HandlerTransaction {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
-        // FIXME: remove once starkware fixes their gateway bug which was missing this field.
-        #[serde(default = "l1_handler_default_nonce")]
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,
         pub transaction_hash: StarknetTransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
-    }
-
-    const fn l1_handler_default_nonce() -> TransactionNonce {
-        TransactionNonce(stark_hash::StarkHash::ZERO)
     }
 
     impl From<DeclareTransaction> for Transaction {
@@ -599,8 +582,6 @@ pub mod state_update {
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
         pub declared_contracts: Vec<ClassHash>,
-        /// FIXME(0.10): drop the default once 0.10 hits mainnet
-        #[serde(default)]
         pub nonces: HashMap<ContractAddress, ContractNonce>,
     }
 
@@ -742,39 +723,11 @@ pub mod add_transaction {
 
 #[cfg(test)]
 mod tests {
-    /// The aim of these tests is to make sure pathfinder is still able to correctly
-    /// deserialize replies from the mainnet sequencer when it still is using some
-    /// previous version of cairo while at the same time the goerli sequencer is
-    /// already using a newer version.
+    /// These tests ensure backwards compatibility for various types that may
+    /// still exist in older pathfinder databases.
     mod backward_compatibility {
-        use super::super::{StateUpdate, Transaction};
+        use super::super::Transaction;
         use starknet_gateway_test_fixtures::*;
-
-        #[test]
-        fn block() {
-            use super::super::MaybePendingBlock;
-
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::GENESIS).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::NUMBER_1716).unwrap();
-            serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::PENDING).unwrap();
-            // This is from integration starknet_version 0.10 and contains the new version 1 invoke transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216591).unwrap();
-            // This is from integration starknet_version 0.10.0 and contains the new L1 handler transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_216171).unwrap();
-            // This is from integration starknet_version 0.10.1 and contains the new deploy account transaction.
-            serde_json::from_str::<MaybePendingBlock>(integration::block::NUMBER_228457).unwrap();
-        }
-
-        #[test]
-        fn state_update() {
-            // FIXME(0.10): update these fixtures once 0.10 is on mainnet
-
-            // These fixtures do not contain nonces property (0.10 owards).
-            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::GENESIS).unwrap();
-            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::PENDING).unwrap();
-            // This is from integration starknet_version 0.10 and contains the new nonces field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_216572).unwrap();
-        }
 
         #[test]
         fn transaction() {

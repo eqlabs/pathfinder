@@ -96,8 +96,14 @@ pub mod state_update {
                         class_hash: deployed_contract.class_hash,
                     })
                     .collect(),
-                // FIXME once the sequencer API provides the nonces
-                nonces: vec![],
+                nonces: x
+                    .nonces
+                    .into_iter()
+                    .map(|(contract_address, nonce)| Nonce {
+                        contract_address,
+                        nonce,
+                    })
+                    .collect(),
             }
         }
     }
