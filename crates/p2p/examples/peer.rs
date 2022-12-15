@@ -166,6 +166,7 @@ async fn main() -> anyhow::Result<()> {
             p2p::Event::BlockPropagation(block_propagation) => {
                 tracing::info!(?block_propagation, "Block Propagation");
             }
+            p2p::Event::Test(_) => {}
         }
     }
 

@@ -1,4 +1,4 @@
-use crate::{self as p2p, Event, Peers};
+use crate::{self as p2p, Event, Peers, TestEvent};
 use core::panic;
 use libp2p::identity::{ed25519, Keypair};
 use libp2p::Multiaddr;
@@ -34,7 +34,7 @@ async fn dial_succeds() {
         .unwrap();
 
     let addr1 = match event {
-        Event::NewListenAddress(addr) => addr,
+        Event::Test(TestEvent::NewListenAddress(addr)) => addr,
         _ => panic!("Unexpected event: {event:?}"),
     };
 

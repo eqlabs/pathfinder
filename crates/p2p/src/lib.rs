@@ -227,9 +227,13 @@ pub enum Event {
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
     BlockPropagation(p2p_proto::propagation::Message),
-    #[cfg(test)]
+    /// For testing purposes only
+    Test(TestEvent),
+}
+
+#[derive(Debug)]
+pub enum TestEvent {
     NewListenAddress(Multiaddr),
-    #[cfg(test)]
     Dummy,
 }
 
@@ -525,8 +529,11 @@ impl MainLoop {
                 tracing::debug!(?event, "DCUtR event");
                 Ok(())
             }
-
-            event => self.handle_event_for_test(event).await,
+            // ===========================
+            // Ignored or forwarded for
+            // test purposes
+            // ===========================
+            event => self.ignore_or_handle_event_for_test(event).await,
         }
     }
 
@@ -651,7 +658,7 @@ impl MainLoop {
     }
 
     #[cfg(not(test))]
-    async fn handle_event_for_test<E: std::fmt::Debug>(
+    async fn ignore_or_handle_event_for_test<E: std::fmt::Debug>(
         &mut self,
         event: SwarmEvent<behaviour::Event, E>,
     ) -> anyhow::Result<()> {
@@ -660,14 +667,14 @@ impl MainLoop {
     }
 
     #[cfg(test)]
-    async fn handle_event_for_test<E: std::fmt::Debug>(
+    async fn ignore_or_handle_event_for_test<E: std::fmt::Debug>(
         &mut self,
         event: SwarmEvent<behaviour::Event, E>,
     ) -> anyhow::Result<()> {
         match event {
             SwarmEvent::NewListenAddr { address, .. } => {
                 self.event_sender
-                    .send(Event::NewListenAddress(address))
+                    .send(Event::Test(TestEvent::NewListenAddress(address)))
                     .await?;
                 Ok(())
             }

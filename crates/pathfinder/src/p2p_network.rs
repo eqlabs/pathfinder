@@ -128,6 +128,7 @@ async fn handle_p2p_event(
         p2p::Event::BlockPropagation(block_propagation) => {
             tracing::info!(?block_propagation, "Block Propagation");
         }
+        p2p::Event::Test(_) => {/* Ignore me */}
     }
 
     Ok(())
