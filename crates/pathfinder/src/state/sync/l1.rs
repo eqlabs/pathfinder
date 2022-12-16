@@ -422,7 +422,7 @@ mod tests {
                         global_root: GlobalRoot(
                             StarkHash::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
-                        block_number: StarknetBlockNumber::new_or_panic(i as u64),
+                        block_number: StarknetBlockNumber::new_or_panic(i),
                     })
                     .collect::<Vec<_>>();
 
@@ -521,7 +521,7 @@ mod tests {
                         global_root: GlobalRoot(
                             StarkHash::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
-                        block_number: StarknetBlockNumber::new_or_panic(i as u64),
+                        block_number: StarknetBlockNumber::new_or_panic(i),
                     })
                     .collect::<Vec<_>>();
 
@@ -609,7 +609,7 @@ mod tests {
                         global_root: GlobalRoot(
                             StarkHash::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
-                        block_number: StarknetBlockNumber::new_or_panic(i as u64),
+                        block_number: StarknetBlockNumber::new_or_panic(i),
                     })
                     .collect::<Vec<_>>();
 

@@ -226,26 +226,26 @@ mod tests {
 
         #[test]
         fn no_variant() {
-            generate_rpc_error_subset!(EMPTY:);
+            generate_rpc_error_subset!(Empty:);
             generate_rpc_error_subset!(EmptyNoColon);
         }
 
         #[test]
         fn single_variant() {
-            generate_rpc_error_subset!(SINGLE: ContractNotFound);
+            generate_rpc_error_subset!(Single: ContractNotFound);
 
-            let original = RpcError::from(SINGLE::ContractNotFound);
+            let original = RpcError::from(Single::ContractNotFound);
 
             assert_matches!(original, RpcError::ContractNotFound);
         }
 
         #[test]
         fn multi_variant() {
-            generate_rpc_error_subset!(MULTI: ContractNotFound, NoBlocks, ContractError);
+            generate_rpc_error_subset!(Multi: ContractNotFound, NoBlocks, ContractError);
 
-            let contract_not_found = RpcError::from(MULTI::ContractNotFound);
-            let no_blocks = RpcError::from(MULTI::NoBlocks);
-            let contract_error = RpcError::from(MULTI::ContractError);
+            let contract_not_found = RpcError::from(Multi::ContractNotFound);
+            let no_blocks = RpcError::from(Multi::NoBlocks);
+            let contract_error = RpcError::from(Multi::ContractError);
 
             assert_matches!(contract_not_found, RpcError::ContractNotFound);
             assert_matches!(no_blocks, RpcError::NoBlocks);
