@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use serde::Deserialize;
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -104,10 +104,7 @@ fn get_raw_block(
     let block_status = get_block_status(transaction, block.number)?;
 
     let (parent_hash, parent_root) = match block.number {
-        StarknetBlockNumber::GENESIS => (
-            StarknetBlockHash(StarkHash::ZERO),
-            GlobalRoot(StarkHash::ZERO),
-        ),
+        StarknetBlockNumber::GENESIS => (StarknetBlockHash(Felt::ZERO), GlobalRoot(Felt::ZERO)),
         other => {
             let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                 .context("Read parent block from database")?
@@ -166,7 +163,7 @@ mod types {
     };
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
 
     /// Determines the type of response to block related queries.
     #[derive(Copy, Clone, Debug)]
@@ -259,7 +256,7 @@ mod types {
                     sequencer_address: block
                         .sequencer_address
                         // Default value for cairo <0.8.0 is 0
-                        .unwrap_or(SequencerAddress(StarkHash::ZERO)),
+                        .unwrap_or(SequencerAddress(Felt::ZERO)),
                     transactions,
                 },
                 MaybePendingBlock::Pending(pending) => Self {

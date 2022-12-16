@@ -109,7 +109,7 @@ pub mod testnet {
         starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
         StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
 
     pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
@@ -144,7 +144,7 @@ pub mod testnet {
     pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(starkhash!(
         "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
     ));
-    pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
+    pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(Felt::ZERO);
     pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(starkhash!(
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));

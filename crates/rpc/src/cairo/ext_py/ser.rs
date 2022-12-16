@@ -384,10 +384,10 @@ mod tests {
     fn serialize_block_hash_num_latest() {
         use super::BlockHashNumberOrLatest;
         use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
-        use stark_hash::StarkHash;
+        use stark_hash::Felt;
 
         let data = &[
-            (StarknetBlockHash(StarkHash::ZERO).into(), "\"0x0\""),
+            (StarknetBlockHash(Felt::ZERO).into(), "\"0x0\""),
             (StarknetBlockNumber::GENESIS.into(), "\"0\""),
             (BlockHashNumberOrLatest::Latest, "\"latest\""),
         ];

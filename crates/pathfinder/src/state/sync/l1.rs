@@ -275,7 +275,7 @@ mod tests {
             GlobalRoot,
         };
         use pathfinder_ethereum::{BlockOrigin, EthOrigin, TransactionOrigin};
-        use stark_hash::StarkHash;
+        use stark_hash::Felt;
 
         #[tokio::test]
         async fn happy_path() {
@@ -420,7 +420,7 @@ mod tests {
                             log_index: EthereumLogIndex(i + 3),
                         },
                         global_root: GlobalRoot(
-                            StarkHash::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
+                            Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
                         block_number: StarknetBlockNumber::new_or_panic(i),
                     })
@@ -519,7 +519,7 @@ mod tests {
                             log_index: EthereumLogIndex(i + 3),
                         },
                         global_root: GlobalRoot(
-                            StarkHash::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
+                            Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
                         block_number: StarknetBlockNumber::new_or_panic(i),
                     })
@@ -607,7 +607,7 @@ mod tests {
                             log_index: EthereumLogIndex(i + 3),
                         },
                         global_root: GlobalRoot(
-                            StarkHash::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
+                            Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
                         block_number: StarknetBlockNumber::new_or_panic(i),
                     })

@@ -12,7 +12,7 @@ use pathfinder_common::{
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
 
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
@@ -1040,7 +1040,7 @@ impl StarknetEventsTable {
                 let data: Vec<_> = data
                     .chunks_exact(32)
                     .map(|data| {
-                        let data = StarkHash::from_be_slice(data).unwrap();
+                        let data = Felt::from_be_slice(data).unwrap();
                         EventData(data)
                     })
                     .collect();
@@ -1055,7 +1055,7 @@ impl StarknetEventsTable {
                     .map(|key| {
                         let used =
                             base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
-                        let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
+                        let key = Felt::from_be_slice(&temp[..used]).unwrap();
                         EventKey(key)
                     })
                     .collect();
@@ -1402,7 +1402,7 @@ mod tests {
                         log_index: EthereumLogIndex(i + 500),
                     },
                     global_root: GlobalRoot(
-                        StarkHash::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
+                        Felt::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
                     ),
                     block_number: StarknetBlockNumber::GENESIS + i,
                 })
@@ -1685,7 +1685,7 @@ mod tests {
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
                         let non_existent =
-                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
                             None
@@ -1741,7 +1741,7 @@ mod tests {
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
                         let non_existent =
-                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
                             None
@@ -1802,7 +1802,7 @@ mod tests {
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
                         let non_existent =
-                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_root(tx, non_existent.into()).unwrap(),
                             None
@@ -2125,7 +2125,7 @@ mod tests {
                     data: Vec::new(),
                     keys: Vec::new(),
                     from_address: ContractAddress::new_or_panic(
-                        StarkHash::from_be_slice(&idx.to_be_bytes()).unwrap(),
+                        Felt::from_be_slice(&idx.to_be_bytes()).unwrap(),
                     ),
                 })
                 .collect::<Vec<_>>();
@@ -2145,9 +2145,9 @@ mod tests {
                     transaction::InvokeTransactionV0 {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
-                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        contract_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
-                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
                         transaction_hash: StarknetTransactionHash(starkhash!("0F")),
@@ -2157,9 +2157,9 @@ mod tests {
                     transaction::InvokeTransactionV0 {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
-                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        contract_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
-                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
                         transaction_hash: StarknetTransactionHash(starkhash!("01")),

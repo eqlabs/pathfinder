@@ -4,7 +4,7 @@ use pathfinder_common::{
     starkhash, ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash,
 };
 use rusqlite::named_params;
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 /// Removes bogus transfer events from the affected block range on Starknet Testnet.
 ///
@@ -169,7 +169,7 @@ const FIRST_BLOCK: u64 = 226000;
 const LAST_BLOCK: u64 = 322548;
 
 // Keccak mod 2**251 of the string Transfer
-const TRANSFER_KEY: StarkHash =
+const TRANSFER_KEY: Felt =
     starkhash!("99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9");
 
 // Address of ETH ERC20
@@ -187,7 +187,7 @@ const GOERLI_SEQUENCER_ADDRESS: EventData = EventData(starkhash!(
 /// According to Starkware these events all are from a well-known contract with a well-known key,
 /// and the event data is also expected to start with the contract address of the transaction
 /// and contain the well-known Goerli sequencer address.
-fn is_transfer_event(contract_address: StarkHash, e: &types::Event) -> bool {
+fn is_transfer_event(contract_address: Felt, e: &types::Event) -> bool {
     e.from_address == FROM_ADDRESS
         && e.keys.contains(&EventKey(TRANSFER_KEY))
         && e.data

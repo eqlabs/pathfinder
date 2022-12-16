@@ -13,36 +13,36 @@ include!(concat!(env!("OUT_DIR"), "/curve_consts.rs"));
 ///
 /// Forms the basic building block of most Starknet interactions.
 #[derive(Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
-pub struct StarkHash([u8; 32]);
+pub struct Felt([u8; 32]);
 
-impl std::fmt::Debug for StarkHash {
+impl std::fmt::Debug for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "StarkHash({})", self)
     }
 }
 
-impl std::fmt::Display for StarkHash {
+impl std::fmt::Display for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // 0xABCDEF1234567890
         write!(f, "0x{:X}", self)
     }
 }
 
-impl std::fmt::LowerHex for StarkHash {
+impl std::fmt::LowerHex for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.iter().try_for_each(|&b| write!(f, "{:02x}", b))
     }
 }
 
-impl std::fmt::UpperHex for StarkHash {
+impl std::fmt::UpperHex for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.iter().try_for_each(|&b| write!(f, "{:02X}", b))
     }
 }
 
-impl std::default::Default for StarkHash {
+impl std::default::Default for Felt {
     fn default() -> Self {
-        StarkHash::ZERO
+        Felt::ZERO
     }
 }
 
@@ -61,11 +61,11 @@ impl std::fmt::Display for OverflowError {
     }
 }
 
-impl StarkHash {
-    pub const ZERO: StarkHash = StarkHash([0u8; 32]);
+impl Felt {
+    pub const ZERO: Felt = Felt([0u8; 32]);
 
     pub fn is_zero(&self) -> bool {
-        self == &StarkHash::ZERO
+        self == &Felt::ZERO
     }
 
     /// Returns the big-endian representation of this [StarkHash].
@@ -96,7 +96,7 @@ impl StarkHash {
             index += 1;
         }
 
-        StarkHash::from_be_bytes(buf)
+        Felt::from_be_bytes(buf)
     }
 
     #[cfg(fuzzing)]
@@ -110,7 +110,7 @@ impl StarkHash {
 
     pub fn random<R: rand_core::RngCore>(rng: R) -> Self {
         use stark_curve::ff::Field;
-        StarkHash(FieldElement::random(rng).to_repr().0)
+        Felt(FieldElement::random(rng).to_repr().0)
     }
 
     /// Creates a [StarkHash] from big-endian bytes.
@@ -186,7 +186,7 @@ impl StarkHash {
             Err(OverflowError)
         } else {
             // substraction overflow; input is smaller than modulus
-            Ok(StarkHash(bytes))
+            Ok(Felt(bytes))
         }
     }
 
@@ -241,31 +241,31 @@ macro_rules! const_expect {
 
 use const_expect;
 
-impl From<u64> for StarkHash {
+impl From<u64> for Felt {
     fn from(value: u64) -> Self {
         Self::from_u64(value)
     }
 }
 
-impl From<u128> for StarkHash {
+impl From<u128> for Felt {
     fn from(value: u128) -> Self {
         Self::from_u128(value)
     }
 }
 
-impl std::ops::Add for StarkHash {
-    type Output = StarkHash;
+impl std::ops::Add for Felt {
+    type Output = Felt;
 
     fn add(self, rhs: Self) -> Self::Output {
         let result = FieldElement::from(self) + FieldElement::from(rhs);
-        StarkHash::from(result)
+        Felt::from(result)
     }
 }
 
 /// Computes the [Starknet Pedersen hash] on `a` and `b` using precomputed points.
 ///
 /// [Starknet Pedersen hash]: https://docs.starkware.co/starkex-v3/crypto/pedersen-hash-function
-pub fn stark_hash(a: StarkHash, b: StarkHash) -> StarkHash {
+pub fn stark_hash(a: Felt, b: Felt) -> Felt {
     let a = FieldElement::from(a).into_bits();
     let b = FieldElement::from(b).into_bits();
 
@@ -294,28 +294,28 @@ pub fn stark_hash(a: StarkHash, b: StarkHash) -> StarkHash {
     let result = AffinePoint::from(&acc);
 
     // Return x-coordinate
-    StarkHash::from(result.x)
+    Felt::from(result.x)
 }
 
-impl From<StarkHash> for FieldElement {
-    fn from(hash: StarkHash) -> Self {
+impl From<Felt> for FieldElement {
+    fn from(hash: Felt) -> Self {
         debug_assert_eq!(
             std::mem::size_of::<FieldElement>(),
-            std::mem::size_of::<StarkHash>()
+            std::mem::size_of::<Felt>()
         );
         Self::from_repr(FieldElementRepr(hash.to_be_bytes())).unwrap()
     }
 }
 
-impl From<FieldElement> for StarkHash {
+impl From<FieldElement> for Felt {
     fn from(fp: FieldElement) -> Self {
         debug_assert_eq!(
             std::mem::size_of::<FieldElement>(),
-            std::mem::size_of::<StarkHash>()
+            std::mem::size_of::<Felt>()
         );
         // unwrap is safe because the FieldElement and StarkHash
         // should both be smaller than the field modulus.
-        StarkHash::from_be_bytes(fp.to_repr().0).unwrap()
+        Felt::from_be_bytes(fp.to_repr().0).unwrap()
     }
 }
 
@@ -334,7 +334,7 @@ impl Display for InvalidBufferSizeError {
     }
 }
 
-impl StarkHash {
+impl Felt {
     /// A convenience function which parses a hex string into a [StarkHash].
     ///
     /// Supports both upper and lower case hex strings, as well as an
@@ -374,7 +374,7 @@ impl StarkHash {
             buf[31 - i] = parse_hex_digit(c[0])? << 4 | parse_hex_digit(c[1])?;
         }
 
-        let hash = StarkHash::from_be_bytes(buf)?;
+        let hash = Felt::from_be_bytes(buf)?;
         Ok(hash)
     }
 
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn view_bits() {
-        let one = StarkHash::from_hex_str("1").unwrap();
+        let one = Felt::from_hex_str("1").unwrap();
 
         let one = one.view_bits().to_bitvec();
 
@@ -499,10 +499,10 @@ mod tests {
         bits.set(3, false);
         bits.set(4, false);
 
-        let res = StarkHash::from_bits(&bits).unwrap();
+        let res = Felt::from_bits(&bits).unwrap();
 
         let x = res.view_bits();
-        let y = StarkHash::from_bits(x).unwrap();
+        let y = Felt::from_bits(x).unwrap();
 
         assert_eq!(res, y);
     }
@@ -520,9 +520,9 @@ mod tests {
             buf
         }
 
-        let a = StarkHash::from_be_bytes(parse_hex(a)).unwrap();
-        let b = StarkHash::from_be_bytes(parse_hex(b)).unwrap();
-        let expected = StarkHash::from_be_bytes(parse_hex(expected)).unwrap();
+        let a = Felt::from_be_bytes(parse_hex(a)).unwrap();
+        let b = Felt::from_be_bytes(parse_hex(b)).unwrap();
+        let expected = Felt::from_be_bytes(parse_hex(expected)).unwrap();
 
         let hash = stark_hash(a, b);
         let hash2 = stark_hash(a, b);
@@ -538,7 +538,7 @@ mod tests {
             0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B,
             0x1C, 0x1D, 0x1E, 0x1F,
         ];
-        let hash = StarkHash::from_be_bytes(original).unwrap();
+        let hash = Felt::from_be_bytes(original).unwrap();
         let bytes = hash.to_be_bytes();
         assert_eq!(bytes, original);
     }
@@ -552,11 +552,11 @@ mod tests {
     #[test]
     fn from_bytes_overflow() {
         // Field modulus
-        assert_eq!(StarkHash::from_be_bytes(MODULUS), Err(OverflowError));
+        assert_eq!(Felt::from_be_bytes(MODULUS), Err(OverflowError));
         // Field modulus - 1
         let mut max_val = MODULUS;
         max_val[31] -= 1;
-        StarkHash::from_be_bytes(max_val).unwrap();
+        Felt::from_be_bytes(max_val).unwrap();
     }
 
     #[test]
@@ -566,9 +566,9 @@ mod tests {
             0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B,
             0x1C, 0x1D, 0x1E, 0x1F,
         ];
-        let original = StarkHash::from_be_bytes(bytes).unwrap();
+        let original = Felt::from_be_bytes(bytes).unwrap();
         let fp = FieldElement::from(original);
-        let hash = StarkHash::from(fp);
+        let hash = Felt::from(fp);
         assert_eq!(hash, original);
     }
 
@@ -578,26 +578,26 @@ mod tests {
 
         #[test]
         fn round_trip() {
-            let original = StarkHash::from_hex_str("abcdef0123456789").unwrap();
+            let original = Felt::from_hex_str("abcdef0123456789").unwrap();
             let bytes = original.to_be_bytes();
-            let result = StarkHash::from_be_slice(&bytes[..]).unwrap();
+            let result = Felt::from_be_slice(&bytes[..]).unwrap();
 
             assert_eq!(result, original);
         }
 
         #[test]
         fn too_long() {
-            let original = StarkHash::from_hex_str("abcdef0123456789").unwrap();
+            let original = Felt::from_hex_str("abcdef0123456789").unwrap();
             let mut bytes = original.to_be_bytes().to_vec();
             bytes.push(0);
-            StarkHash::from_be_slice(&bytes[..]).unwrap_err();
+            Felt::from_be_slice(&bytes[..]).unwrap_err();
         }
 
         #[test]
         fn short_slice() {
-            let original = StarkHash::from_hex_str("abcdef0123456789").unwrap();
+            let original = Felt::from_hex_str("abcdef0123456789").unwrap();
             let bytes = original.to_be_bytes();
-            let result = StarkHash::from_be_slice(&bytes[24..]);
+            let result = Felt::from_be_slice(&bytes[24..]);
 
             assert_eq!(result, Ok(original));
         }
@@ -606,23 +606,23 @@ mod tests {
         fn max() {
             let mut max_val = MODULUS;
             max_val[31] -= 1;
-            StarkHash::from_be_slice(&max_val[..]).unwrap();
+            Felt::from_be_slice(&max_val[..]).unwrap();
         }
 
         #[test]
         fn overflow() {
-            assert_eq!(StarkHash::from_be_slice(&MODULUS[..]), Err(OverflowError));
+            assert_eq!(Felt::from_be_slice(&MODULUS[..]), Err(OverflowError));
         }
     }
 
     mod fmt {
-        use crate::StarkHash;
+        use crate::Felt;
         use pretty_assertions::assert_eq;
 
         #[test]
         fn debug() {
             let hex_str = "1234567890abcdef000edcba0987654321";
-            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{:?}", starkhash);
 
             let mut expected = "0".repeat(64 - hex_str.len());
@@ -635,7 +635,7 @@ mod tests {
         #[test]
         fn fmt() {
             let hex_str = "1234567890abcdef000edcba0987654321";
-            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{:x}", starkhash);
 
             let mut expected = "0".repeat(64 - hex_str.len());
@@ -648,7 +648,7 @@ mod tests {
         #[test]
         fn lower_hex() {
             let hex_str = "1234567890abcdef000edcba0987654321";
-            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{:x}", starkhash);
 
             let mut expected = "0".repeat(64 - hex_str.len());
@@ -660,7 +660,7 @@ mod tests {
         #[test]
         fn upper_hex() {
             let hex_str = "1234567890abcdef000edcba0987654321";
-            let starkhash = StarkHash::from_hex_str(hex_str).unwrap();
+            let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{:X}", starkhash);
 
             let mut expected = "0".repeat(64 - hex_str.len());
@@ -676,7 +676,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         /// Test hex string with its expected [StarkHash].
-        fn test_data() -> (&'static str, StarkHash) {
+        fn test_data() -> (&'static str, Felt) {
             let mut expected = [0; 32];
             expected[31] = 0xEF;
             expected[30] = 0xCD;
@@ -689,7 +689,7 @@ mod tests {
             expected[23] = 0x45;
             expected[22] = 0x23;
             expected[21] = 0x01;
-            let expected = StarkHash::from_be_bytes(expected).unwrap();
+            let expected = Felt::from_be_bytes(expected).unwrap();
 
             ("0123456789abcdefABCDEF", expected)
         }
@@ -697,39 +697,39 @@ mod tests {
         #[test]
         fn simple() {
             let (test_str, expected) = test_data();
-            let uut = StarkHash::from_hex_str(test_str).unwrap();
+            let uut = Felt::from_hex_str(test_str).unwrap();
             assert_eq!(uut, expected);
         }
 
         #[test]
         fn prefix() {
             let (test_str, expected) = test_data();
-            let uut = StarkHash::from_hex_str(&format!("0x{}", test_str)).unwrap();
+            let uut = Felt::from_hex_str(&format!("0x{}", test_str)).unwrap();
             assert_eq!(uut, expected);
         }
 
         #[test]
         fn leading_zeros() {
             let (test_str, expected) = test_data();
-            let uut = StarkHash::from_hex_str(&format!("000000000{}", test_str)).unwrap();
+            let uut = Felt::from_hex_str(&format!("000000000{}", test_str)).unwrap();
             assert_eq!(uut, expected);
         }
 
         #[test]
         fn prefix_and_leading_zeros() {
             let (test_str, expected) = test_data();
-            let uut = StarkHash::from_hex_str(&format!("0x000000000{}", test_str)).unwrap();
+            let uut = Felt::from_hex_str(&format!("0x000000000{}", test_str)).unwrap();
             assert_eq!(uut, expected);
         }
 
         #[test]
         fn invalid_nibble() {
-            assert_matches!(StarkHash::from_hex_str("0x123z").unwrap_err(), HexParseError::InvalidNibble(n) => assert_eq!(n, b'z'))
+            assert_matches!(Felt::from_hex_str("0x123z").unwrap_err(), HexParseError::InvalidNibble(n) => assert_eq!(n, b'z'))
         }
 
         #[test]
         fn invalid_len() {
-            assert_matches!(StarkHash::from_hex_str(&"1".repeat(65)).unwrap_err(), HexParseError::InvalidLength{max: 64, actual: n} => assert_eq!(n, 65))
+            assert_matches!(Felt::from_hex_str(&"1".repeat(65)).unwrap_err(), HexParseError::InvalidLength{max: 64, actual: n} => assert_eq!(n, 65))
         }
 
         #[test]
@@ -738,13 +738,13 @@ mod tests {
             let mut modulus =
                 "0x800000000000011000000000000000000000000000000000000000000000001".to_string();
             assert_eq!(
-                StarkHash::from_hex_str(&modulus).unwrap_err(),
+                Felt::from_hex_str(&modulus).unwrap_err(),
                 HexParseError::Overflow
             );
             // Field modulus - 1
             modulus.pop();
             modulus.push('0');
-            StarkHash::from_hex_str(&modulus).unwrap();
+            Felt::from_hex_str(&modulus).unwrap();
         }
     }
 
@@ -757,14 +757,14 @@ mod tests {
 
         #[test]
         fn zero() {
-            assert_eq!(StarkHash::ZERO.to_hex_str(), "0x0");
+            assert_eq!(Felt::ZERO.to_hex_str(), "0x0");
             let mut buf = [0u8; 66];
-            assert_eq!(StarkHash::ZERO.as_hex_str(&mut buf), "0x0");
+            assert_eq!(Felt::ZERO.as_hex_str(&mut buf), "0x0");
         }
 
         #[test]
         fn odd() {
-            let hash = StarkHash::from_hex_str(ODD).unwrap();
+            let hash = Felt::from_hex_str(ODD).unwrap();
             assert_eq!(hash.to_hex_str(), ODD);
             let mut buf = [0u8; 66];
             assert_eq!(hash.as_hex_str(&mut buf), ODD);
@@ -772,7 +772,7 @@ mod tests {
 
         #[test]
         fn even() {
-            let hash = StarkHash::from_hex_str(EVEN).unwrap();
+            let hash = Felt::from_hex_str(EVEN).unwrap();
             assert_eq!(hash.to_hex_str(), EVEN);
             let mut buf = [0u8; 66];
             assert_eq!(hash.as_hex_str(&mut buf), EVEN);
@@ -780,7 +780,7 @@ mod tests {
 
         #[test]
         fn max() {
-            let hash = StarkHash::from_hex_str(MAX).unwrap();
+            let hash = Felt::from_hex_str(MAX).unwrap();
             assert_eq!(hash.to_hex_str(), MAX);
             let mut buf = [0u8; 66];
             assert_eq!(hash.as_hex_str(&mut buf), MAX);
@@ -790,7 +790,7 @@ mod tests {
         #[should_panic]
         fn buffer_too_small() {
             let mut buf = [0u8; 65];
-            StarkHash::ZERO.as_hex_str(&mut buf);
+            Felt::ZERO.as_hex_str(&mut buf);
         }
     }
 
@@ -801,7 +801,7 @@ mod tests {
         fn has_251_bits() {
             let mut bytes = [0xFFu8; 32];
             bytes[0] = 0x07;
-            let h = StarkHash::from_be_bytes(bytes).unwrap();
+            let h = Felt::from_be_bytes(bytes).unwrap();
             assert!(!h.has_more_than_251_bits());
         }
 
@@ -809,7 +809,7 @@ mod tests {
         fn has_252_bits() {
             let mut bytes = [0u8; 32];
             bytes[0] = 0x08;
-            let h = StarkHash::from_be_bytes(bytes).unwrap();
+            let h = Felt::from_be_bytes(bytes).unwrap();
             assert!(h.has_more_than_251_bits());
         }
     }

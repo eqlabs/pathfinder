@@ -58,7 +58,7 @@ mod tests {
         starkhash, starkhash_bytes, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
         TransactionNonce,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
 
     mod parsing {
         use super::*;
@@ -133,10 +133,10 @@ mod tests {
                     hash: StarknetTransactionHash(starkhash_bytes!(b"txn 0")),
                     max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
-                    nonce: TransactionNonce(StarkHash::ZERO),
+                    nonce: TransactionNonce(Felt::ZERO),
                 },
                 contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
-                entry_point_selector: EntryPoint(StarkHash::ZERO),
+                entry_point_selector: EntryPoint(Felt::ZERO),
                 calldata: vec![],
             }))
         )
@@ -159,7 +159,7 @@ mod tests {
                     hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
                     max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
-                    nonce: TransactionNonce(StarkHash::ZERO),
+                    nonce: TransactionNonce(Felt::ZERO),
                 },
                 contract_address: ContractAddress::new_or_panic(starkhash_bytes!(
                     b"pending contract addr 0"

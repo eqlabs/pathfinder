@@ -4,7 +4,7 @@ use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 use starknet_gateway_types::reply::{Block, Status};
 
 /// Verify block hashes in a pathfinder database.
@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
         .connection()
         .context("Opening database connection")?;
 
-    let mut parent_block_hash = StarknetBlockHash(StarkHash::ZERO);
+    let mut parent_block_hash = StarknetBlockHash(Felt::ZERO);
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();

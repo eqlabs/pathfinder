@@ -1,5 +1,5 @@
 use anyhow::Context;
-use stark_hash::{stark_hash, StarkHash};
+use stark_hash::{stark_hash, Felt};
 use std::cell::RefCell;
 use std::io::BufRead;
 use std::num::NonZeroUsize;
@@ -117,8 +117,8 @@ Above generates the py/test_call.py::populate_test_contract_with_132_on_3 tree_g
     Ok(())
 }
 
-fn parse_line(buffer: &str) -> anyhow::Result<(StarkHash, StarkHash, NonZeroUsize)> {
-    let mut parts = buffer.split_whitespace().map(StarkHash::from_hex_str);
+fn parse_line(buffer: &str) -> anyhow::Result<(Felt, Felt, NonZeroUsize)> {
+    let mut parts = buffer.split_whitespace().map(Felt::from_hex_str);
 
     let key = parts
         .next()
@@ -145,8 +145,8 @@ fn parse_line(buffer: &str) -> anyhow::Result<(StarkHash, StarkHash, NonZeroUsiz
             Ok::<_, anyhow::Error>((stark_hash::stark_hash(acc.0, next), acc.1 + 1))
         })?;
 
-    let default_nonce = StarkHash::ZERO;
-    let default_contract_version = StarkHash::ZERO;
+    let default_nonce = Felt::ZERO;
+    let default_contract_version = Felt::ZERO;
     Ok(match folded {
         0 => unreachable!("zero values case would had exited already with questionmark"),
         1 => (key, value, NonZeroUsize::new(1).unwrap()),

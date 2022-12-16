@@ -470,7 +470,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
     use starknet_gateway_types::request::Tag;
@@ -654,12 +654,12 @@ mod tests {
                 assert_eq!(version, VERGEN_GIT_SEMVER_LIGHTWEIGHT);
 
                 Ok::<_, Infallible>(warp::reply::json(&Block {
-                    block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    block_hash: StarknetBlockHash(Felt::ZERO),
                     block_number: StarknetBlockNumber::GENESIS,
                     gas_price: None,
-                    parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
+                    parent_block_hash: StarknetBlockHash(Felt::ZERO),
                     sequencer_address: None,
-                    state_root: pathfinder_common::GlobalRoot(StarkHash::ZERO),
+                    state_root: pathfinder_common::GlobalRoot(Felt::ZERO),
                     status: Status::NotReceived,
                     timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
@@ -981,7 +981,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(StarkHash::ZERO));
+            assert_eq!(result, StorageValue(Felt::ZERO));
         }
 
         #[tokio::test]
@@ -996,12 +996,12 @@ mod tests {
             let result = client
                 .storage(
                     VALID_CONTRACT_ADDR,
-                    StorageAddress::new_or_panic(StarkHash::ZERO),
+                    StorageAddress::new_or_panic(Felt::ZERO),
                     BlockHashOrTag::Tag(Tag::Latest),
                 )
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(StarkHash::ZERO));
+            assert_eq!(result, StorageValue(Felt::ZERO));
         }
 
         #[tokio::test]
@@ -1418,7 +1418,7 @@ mod tests {
                     ContractAddress::new_or_panic(starkhash!(
                         "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                     )),
-                    Some(EntryPoint(StarkHash::ZERO)),
+                    Some(EntryPoint(Felt::ZERO)),
                     vec![
                         CallParam(starkhash!("01")),
                         CallParam(starkhash!(
@@ -1427,11 +1427,11 @@ mod tests {
                         CallParam(starkhash!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
-                        CallParam(StarkHash::ZERO),
+                        CallParam(Felt::ZERO),
                         CallParam(starkhash!("01")),
                         CallParam(starkhash!("01")),
                         CallParam(starkhash!("2b")),
-                        CallParam(StarkHash::ZERO),
+                        CallParam(Felt::ZERO),
                     ],
                 )
                 .await
@@ -1479,11 +1479,11 @@ mod tests {
                         CallParam(starkhash!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
-                        CallParam(StarkHash::ZERO),
+                        CallParam(Felt::ZERO),
                         CallParam(starkhash!("01")),
                         CallParam(starkhash!("01")),
                         CallParam(starkhash!("2b")),
-                        CallParam(StarkHash::ZERO),
+                        CallParam(Felt::ZERO),
                     ],
                 )
                 .await
@@ -1526,7 +1526,7 @@ mod tests {
                     TransactionVersion::ZERO,
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
-                    TransactionNonce(StarkHash::ZERO),
+                    TransactionNonce(Felt::ZERO),
                     contract_class,
                     // actual address dumped from a `starknet declare` call
                     ContractAddress::new_or_panic(starkhash!("01")),
@@ -1683,7 +1683,7 @@ mod tests {
                 client
                     .add_deploy_transaction(
                         TransactionVersion::ZERO,
-                        ContractAddressSalt(StarkHash::ZERO),
+                        ContractAddressSalt(Felt::ZERO),
                         vec![],
                         ContractDefinition {
                             program: "".to_owned(),
@@ -1706,7 +1706,7 @@ mod tests {
                 let err = client
                     .add_deploy_transaction(
                         TransactionVersion::ZERO,
-                        ContractAddressSalt(StarkHash::ZERO),
+                        ContractAddressSalt(Felt::ZERO),
                         vec![],
                         ContractDefinition {
                             program: "".to_owned(),

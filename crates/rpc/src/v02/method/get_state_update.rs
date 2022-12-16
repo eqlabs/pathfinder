@@ -338,7 +338,7 @@ mod tests {
         Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         StorageAddress, StorageValue,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -450,7 +450,7 @@ mod tests {
             (
                 ctx.clone(),
                 // The fixture happens to init this to zero for genesis block
-                BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)),
+                BlockId::Hash(StarknetBlockHash(Felt::ZERO)),
                 assert_ok(in_storage[0].clone()),
             ),
             // Errors

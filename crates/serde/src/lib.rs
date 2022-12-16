@@ -9,7 +9,7 @@ use pathfinder_common::{
 };
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
-use stark_hash::{HexParseError, OverflowError, StarkHash};
+use stark_hash::{Felt, HexParseError, OverflowError};
 use std::borrow::Cow;
 use std::str::FromStr;
 
@@ -296,19 +296,19 @@ serde_with::serde_conv!(
 );
 
 /// A helper conversion function. Only use with __sequencer API related types__.
-fn starkhash_from_biguint(b: BigUint) -> Result<StarkHash, OverflowError> {
-    StarkHash::from_be_slice(&b.to_bytes_be())
+fn starkhash_from_biguint(b: BigUint) -> Result<Felt, OverflowError> {
+    Felt::from_be_slice(&b.to_bytes_be())
 }
 
 /// A helper conversion function. Only use with __sequencer API related types__.
-pub fn starkhash_to_dec_str(h: &StarkHash) -> String {
+pub fn starkhash_to_dec_str(h: &Felt) -> String {
     let b = h.to_be_bytes();
     let b = BigUint::from_bytes_be(&b);
     b.to_str_radix(10)
 }
 
 /// A helper conversion function. Only use with __sequencer API related types__.
-fn starkhash_from_dec_str(s: &str) -> Result<StarkHash, anyhow::Error> {
+fn starkhash_from_dec_str(s: &str) -> Result<Felt, anyhow::Error> {
     // TODO remove fallback to hex string representation once mainnet moves to cairo-0.8.0
     match BigUint::from_str(s) {
         Ok(b) => {
@@ -316,7 +316,7 @@ fn starkhash_from_dec_str(s: &str) -> Result<StarkHash, anyhow::Error> {
             Ok(h)
         }
         Err(_) => {
-            let h = StarkHash::from_hex_str(s)?;
+            let h = Felt::from_hex_str(s)?;
             Ok(h)
         }
     }
@@ -467,7 +467,7 @@ mod tests {
 
         let a = starkhash_from_biguint(BigUint::from_bytes_be(&ZERO_BYTES)).unwrap();
         let b = starkhash_from_dec_str(ZERO_DEC_STR).unwrap();
-        let expected = StarkHash::ZERO;
+        let expected = Felt::ZERO;
         assert_eq!(expected, a);
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), ZERO_DEC_STR);
@@ -487,7 +487,7 @@ mod tests {
 
         let a = starkhash_from_biguint(BigUint::from_bytes_be(&ODD_BYTES)).unwrap();
         let b = starkhash_from_dec_str(ODD_DEC_STR).unwrap();
-        let expected = StarkHash::from_hex_str(ODD_HEX_STR).unwrap();
+        let expected = Felt::from_hex_str(ODD_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), ODD_DEC_STR);
@@ -507,7 +507,7 @@ mod tests {
 
         let a = starkhash_from_biguint(BigUint::from_bytes_be(&EVEN_BYTES)).unwrap();
         let b = starkhash_from_dec_str(EVEN_DEC_STR).unwrap();
-        let expected = StarkHash::from_hex_str(EVEN_HEX_STR).unwrap();
+        let expected = Felt::from_hex_str(EVEN_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), EVEN_DEC_STR);
@@ -532,7 +532,7 @@ mod tests {
 
         let a = starkhash_from_biguint(BigUint::from_bytes_be(&MAX_BYTES)).unwrap();
         let b = starkhash_from_dec_str(MAX_DEC_STR).unwrap();
-        let expected = StarkHash::from_hex_str(MAX_HEX_STR).unwrap();
+        let expected = Felt::from_hex_str(MAX_HEX_STR).unwrap();
         assert_eq!(expected, a);
         assert_eq!(expected, b);
         assert_eq!(starkhash_to_dec_str(&expected), MAX_DEC_STR);

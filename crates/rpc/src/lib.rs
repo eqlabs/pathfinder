@@ -119,7 +119,7 @@ mod tests {
         types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, ContractsTable,
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_types::{
         pending::PendingData,
         reply::{
@@ -208,7 +208,7 @@ mod tests {
         ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(StarkHash::ZERO)).unwrap();
+        let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
@@ -268,7 +268,7 @@ mod tests {
             root: global_root0,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
-            sequencer_address: SequencerAddress(StarkHash::ZERO),
+            sequencer_address: SequencerAddress(Felt::ZERO),
         };
         let block1_hash = StarknetBlockHash(starkhash_bytes!(b"block 1"));
         let block1 = StarknetBlock {
@@ -304,7 +304,7 @@ mod tests {
             calldata: vec![],
             contract_address: contract0_addr,
             entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: EntryPoint(StarkHash::ZERO),
+            entry_point_selector: EntryPoint(Felt::ZERO),
             max_fee: pathfinder_common::Fee(H128::zero()),
             signature: vec![],
             transaction_hash: txn0_hash,
@@ -341,7 +341,7 @@ mod tests {
         txn3.contract_address = contract1_addr;
         txn4.transaction_hash = txn4_hash;
 
-        txn4.contract_address = ContractAddress::new_or_panic(StarkHash::ZERO);
+        txn4.contract_address = ContractAddress::new_or_panic(Felt::ZERO);
         let mut txn5 = txn4.clone();
         txn5.transaction_hash = txn5_hash;
         let txn0 = Transaction::Invoke(txn0.into());

@@ -5,7 +5,7 @@ use pathfinder_common::{
 };
 use pathfinder_storage::{ContractsStateTable, ContractsTable};
 use rusqlite::Transaction;
-use stark_hash::{stark_hash, StarkHash};
+use stark_hash::{stark_hash, Felt};
 use starknet_gateway_types::reply::state_update::StorageDiff;
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
@@ -23,7 +23,7 @@ pub fn update_contract_state(
     let state_hash = global_tree
         .get(contract_address)
         .context("Get contract state hash from global state tree")?
-        .unwrap_or(ContractStateHash(StarkHash::ZERO));
+        .unwrap_or(ContractStateHash(Felt::ZERO));
 
     // Fetch contract's previous root and nonce. Both default to ZERO if they do not exist.
     //
@@ -69,7 +69,7 @@ pub fn calculate_contract_state_hash(
     root: ContractRoot,
     nonce: ContractNonce,
 ) -> ContractStateHash {
-    const CONTRACT_STATE_HASH_VERSION: StarkHash = StarkHash::ZERO;
+    const CONTRACT_STATE_HASH_VERSION: Felt = Felt::ZERO;
 
     // The contract state hash is defined as H(H(H(hash, root), nonce), CONTRACT_STATE_HASH_VERSION)
     let hash = stark_hash(hash.0, root.0);

@@ -128,7 +128,7 @@ pub(super) mod starkhash {
                     value: rusqlite::types::ValueRef<'_>,
                 ) -> rusqlite::types::FromSqlResult<Self> {
                     let blob = value.as_blob()?;
-                    let sh = stark_hash::StarkHash::from_be_slice(blob)
+                    let sh = stark_hash::Felt::from_be_slice(blob)
                         .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
                     Ok(Self(sh))
                 }
@@ -158,7 +158,7 @@ pub(super) mod starkhash251 {
     macro_rules! newtype {
         ($target:ty) => {
             impl $target {
-                pub const fn new(hash: StarkHash) -> Option<Self> {
+                pub const fn new(hash: Felt) -> Option<Self> {
                     if hash.has_more_than_251_bits() {
                         None
                     } else {
@@ -166,14 +166,14 @@ pub(super) mod starkhash251 {
                     }
                 }
 
-                pub const fn new_or_panic(hash: StarkHash) -> Self {
+                pub const fn new_or_panic(hash: Felt) -> Self {
                     match Self::new(hash) {
                         Some(key) => key,
                         None => panic!("Too many bits, need less for MPT keys"),
                     }
                 }
 
-                pub const fn get(&self) -> &StarkHash {
+                pub const fn get(&self) -> &Felt {
                     &self.0
                 }
 
@@ -191,7 +191,7 @@ pub(super) mod starkhash251 {
     macro_rules! deserialization {
         ($target:ty) => {
             impl $target {
-                pub fn deserialize_value<E>(original: &str, raw: StarkHash) -> Result<Self, E>
+                pub fn deserialize_value<E>(original: &str, raw: Felt) -> Result<Self, E>
                 where
                     E: serde::de::Error,
                 {
@@ -225,8 +225,7 @@ pub(super) mod starkhash251 {
                         where
                             E: serde::de::Error,
                         {
-                            let hash =
-                                StarkHash::from_hex_str(v).map_err(serde::de::Error::custom)?;
+                            let hash = Felt::from_hex_str(v).map_err(serde::de::Error::custom)?;
 
                             <$target>::deserialize_value(v, hash)
                         }
@@ -276,7 +275,7 @@ pub(super) mod fmt {
 macro_rules! starkhash {
     ($hex:expr) => {{
         let bytes = hex_literal::hex!($hex);
-        match stark_hash::StarkHash::from_be_slice(bytes.as_slice()) {
+        match stark_hash::Felt::from_be_slice(bytes.as_slice()) {
             Ok(sh) => sh,
             Err(stark_hash::OverflowError) => panic!("Invalid constant: OverflowError"),
         }
@@ -288,7 +287,7 @@ macro_rules! starkhash {
 #[macro_export]
 macro_rules! starkhash_bytes {
     ($bytes:expr) => {{
-        match stark_hash::StarkHash::from_be_slice($bytes) {
+        match stark_hash::Felt::from_be_slice($bytes) {
             Ok(sh) => sh,
             Err(stark_hash::OverflowError) => panic!("Invalid constant: OverflowError"),
         }

@@ -4,7 +4,7 @@ use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
 use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use serde::Deserialize;
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStorageAtInput {
@@ -94,7 +94,7 @@ pub async fn get_storage_at(
         let storage_val = contract_state_tree
             .get(input.key)
             .context("Get value from contract state tree")?
-            .unwrap_or(StorageValue(StarkHash::ZERO));
+            .unwrap_or(StorageValue(Felt::ZERO));
 
         Ok(storage_val)
     });

@@ -96,7 +96,7 @@ mod tests {
     use pathfinder_common::{
         starkhash, starkhash_bytes, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
 
     mod parsing {
         use super::*;
@@ -151,7 +151,7 @@ mod tests {
         async fn block_not_found() {
             let context = RpcContext::for_tests();
             let input = GetTransactionByBlockIdAndIndexInput {
-                block_id: BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)),
+                block_id: BlockId::Hash(StarknetBlockHash(Felt::ZERO)),
                 index: StarknetTransactionIndex::new_or_panic(0),
             };
 

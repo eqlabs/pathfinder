@@ -11,7 +11,7 @@ pub mod request {
     };
     use serde::Deserialize;
     use serde_with::{serde_as, skip_serializing_none};
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
 
     /// Contains parameters passed to `starknet_call`.
     #[serde_as]
@@ -55,7 +55,7 @@ pub mod request {
         pub const DEFAULT_MAX_FEE: Fee = Fee(ethers::types::H128::zero());
         pub const DEFAULT_VERSION: TransactionVersion =
             TransactionVersion(ethers::types::H256::zero());
-        pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
+        pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(Felt::ZERO);
     }
 
     /// This is what [`Call`] used to be, but is used in
@@ -107,7 +107,7 @@ pub mod reply {
     use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use std::convert::From;
     // At the moment both reply types are the same for get_code, hence the re-export
     use crate::v01::api::{BlockResponseScope, RawBlock};
@@ -226,7 +226,7 @@ pub mod reply {
                     sequencer_address: block
                         .sequencer_address
                         // Default value for cairo <0.8.0 is 0
-                        .unwrap_or(SequencerAddress(StarkHash::ZERO)),
+                        .unwrap_or(SequencerAddress(Felt::ZERO)),
                     transactions,
                 },
                 MaybePendingBlock::Pending(pending) => Self {
@@ -540,7 +540,7 @@ pub mod reply {
                                     nonce: txn.nonce,
                                 },
                                 contract_address: txn.sender_address,
-                                entry_point_selector: EntryPoint(StarkHash::ZERO),
+                                entry_point_selector: EntryPoint(Felt::ZERO),
                                 calldata: txn.calldata.clone(),
                             })
                         }
@@ -956,9 +956,9 @@ pub mod reply {
         #[cfg(test)]
         impl<'a> From<(&'a str, u64)> for NumberedBlock {
             fn from((h, n): (&'a str, u64)) -> Self {
-                use stark_hash::StarkHash;
+                use stark_hash::Felt;
                 NumberedBlock {
-                    hash: StarknetBlockHash(StarkHash::from_hex_str(h).unwrap()),
+                    hash: StarknetBlockHash(Felt::from_hex_str(h).unwrap()),
                     number: StarknetBlockNumber::new_or_panic(n),
                 }
             }

@@ -66,7 +66,7 @@ pub fn register_all_methods(
         FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::Deserialize;
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_types::request::add_transaction::ContractDefinition;
     use types::request::{Call, ContractCall, EventFilter};
 
@@ -290,7 +290,7 @@ pub fn register_all_methods(
 
             // These are required on the sequencer-side but missing from the v0.1.0 RPC request
             const MAX_FEE: Fee = Fee(ethers::types::H128::zero());
-            const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
+            const NONCE: TransactionNonce = TransactionNonce(Felt::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
                 ContractAddress::new_or_panic(pathfinder_common::starkhash!("01"));
@@ -364,7 +364,7 @@ mod tests {
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use serde_json::json;
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_client::Client;
     use starknet_gateway_test_fixtures::testnet::*;
     use starknet_gateway_types::{pending::PendingData, reply::PendingBlock};
@@ -548,7 +548,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_id() {
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)));
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(Felt::ZERO)));
             check_result(params, |result, _| {
                 assert_matches!(result, Err(error) => assert_eq!(
                     &crate::v01::types::reply::ErrorCode::InvalidBlockId,
@@ -943,7 +943,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)), 0);
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(Felt::ZERO)), 0);
             let error = TestClient::v01(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
                 .await
@@ -1568,7 +1568,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)));
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(Felt::ZERO)));
             let error = TestClient::v01(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await

@@ -78,7 +78,7 @@ mod tests {
     use pathfinder_common::{
         starkhash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
@@ -102,9 +102,9 @@ mod tests {
                 max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
                 version: TransactionVersion::ZERO,
                 signature: vec![],
-                nonce: TransactionNonce(StarkHash::ZERO),
+                nonce: TransactionNonce(Felt::ZERO),
                 contract_class: CONTRACT_CLASS.clone(),
-                sender_address: ContractAddress::new_or_panic(StarkHash::from_u64(1)),
+                sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
             })
         }
 
@@ -182,7 +182,7 @@ mod tests {
             signature: vec![],
             nonce: TransactionNonce(Default::default()),
             contract_class: invalid_contract_class,
-            sender_address: ContractAddress::new_or_panic(StarkHash::from_u64(1)),
+            sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
         });
 
         let input = AddDeclareTransactionInput {
@@ -204,7 +204,7 @@ mod tests {
             signature: vec![],
             nonce: TransactionNonce(Default::default()),
             contract_class: CONTRACT_CLASS.clone(),
-            sender_address: ContractAddress::new_or_panic(StarkHash::from_u64(1)),
+            sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
         });
 
         let input = AddDeclareTransactionInput {

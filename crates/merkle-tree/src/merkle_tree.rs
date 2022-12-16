@@ -51,15 +51,15 @@ use pathfinder_storage::merkle_tree::{
     NodeStorage, PersistedBinaryNode, PersistedEdgeNode, PersistedNode, RcNodeStorage,
 };
 use rusqlite::Transaction;
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
 /// Lightweight representation of [BinaryNode]. Only holds left and right hashes.
 #[derive(Debug, PartialEq, Eq)]
 pub struct BinaryProofNode {
-    pub left_hash: StarkHash,
-    pub right_hash: StarkHash,
+    pub left_hash: Felt,
+    pub right_hash: Felt,
 }
 
 impl From<&BinaryNode> for ProofNode {
@@ -75,7 +75,7 @@ impl From<&BinaryNode> for ProofNode {
 #[derive(Debug, PartialEq, Eq)]
 pub struct EdgeProofNode {
     pub path: BitVec<Msb0, u8>,
-    pub child_hash: StarkHash,
+    pub child_hash: Felt,
 }
 
 impl From<&EdgeNode> for ProofNode {
@@ -115,7 +115,7 @@ pub struct MerkleTree<T> {
 impl<'tx, 'queries> MerkleTree<RcNodeStorage<'tx, 'queries>> {
     /// Loads an existing tree or creates a new one if it does not yet exist.
     ///
-    /// Use the [StarkHash::ZERO] as root if the tree does not yet exist, will otherwise
+    /// Use the [Felt::ZERO] as root if the tree does not yet exist, will otherwise
     /// error if the given hash does not exist.
     ///
     /// The transaction is used for all storage interactions. The transaction
@@ -131,7 +131,7 @@ impl<'tx, 'queries> MerkleTree<RcNodeStorage<'tx, 'queries>> {
     pub fn load(
         table: &str,
         transaction: &'tx Transaction<'tx>,
-        root: StarkHash,
+        root: Felt,
     ) -> anyhow::Result<Self> {
         let storage = RcNodeStorage::open(table, transaction)?;
         Self::new(storage, root, 251)
@@ -150,7 +150,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     #[cfg(test)]
     pub fn delete(self) -> anyhow::Result<()> {
         match self.root.borrow().hash() {
-            Some(hash) if hash != StarkHash::ZERO => self
+            Some(hash) if hash != Felt::ZERO => self
                 .storage
                 .decrement_ref_count(hash)
                 .context("Failed to delete tree root"),
@@ -161,14 +161,14 @@ impl<T: NodeStorage> MerkleTree<T> {
     /// Less visible initialization for `MerkleTree<T>` as the main entry points should be
     /// [`MerkleTree::<RcNodeStorage>::load`] for persistent trees and [`MerkleTree::empty`] for
     /// transient ones.
-    fn new(storage: T, root: StarkHash, max_height: u8) -> anyhow::Result<Self> {
+    fn new(storage: T, root: Felt, max_height: u8) -> anyhow::Result<Self> {
         let root_node = Rc::new(RefCell::new(Node::Unresolved(root)));
         let mut tree = Self {
             storage,
             root: root_node,
             max_height,
         };
-        if root != StarkHash::ZERO {
+        if root != Felt::ZERO {
             // Resolve non-zero root node to check that it does exist.
             let root_node = tree
                 .resolve(root, 0)
@@ -179,7 +179,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 
     pub fn empty(storage: T, max_height: u8) -> Self {
-        Self::new(storage, StarkHash::ZERO, max_height).expect(
+        Self::new(storage, Felt::ZERO, max_height).expect(
             "Since called with ZERO as root, there should not have been a query, and therefore no error",
         )
     }
@@ -188,11 +188,11 @@ impl<T: NodeStorage> MerkleTree<T> {
     ///
     /// Note that the root is reference counted in storage. Committing the
     /// same tree again will therefore increment the count again.
-    pub fn commit(mut self) -> anyhow::Result<StarkHash> {
+    pub fn commit(mut self) -> anyhow::Result<Felt> {
         self.commit_mut()
     }
 
-    pub fn commit_mut(&mut self) -> anyhow::Result<StarkHash> {
+    pub fn commit_mut(&mut self) -> anyhow::Result<Felt> {
         // Go through tree, collect dirty nodes, calculate their hashes and
         // persist them. Take care to increment ref counts of child nodes. So in order
         // to do this correctly, will have to start back-to-front.
@@ -257,9 +257,9 @@ impl<T: NodeStorage> MerkleTree<T> {
         Ok(())
     }
 
-    /// Sets the value of a key. To delete a key, set the value to [StarkHash::ZERO].
-    pub fn set(&mut self, key: &BitSlice<Msb0, u8>, value: StarkHash) -> anyhow::Result<()> {
-        if value == StarkHash::ZERO {
+    /// Sets the value of a key. To delete a key, set the value to [Felt::ZERO].
+    pub fn set(&mut self, key: &BitSlice<Msb0, u8>, value: Felt) -> anyhow::Result<()> {
+        if value == Felt::ZERO {
             return self.delete_leaf(key);
         }
 
@@ -389,7 +389,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     /// Deletes a leaf node from the tree.
     ///
     /// This is not an external facing API; the functionality is instead accessed by calling
-    /// [`MerkleTree::set`] with value set to [`StarkHash::ZERO`].
+    /// [`MerkleTree::set`] with value set to [`Felt::ZERO`].
     fn delete_leaf(&mut self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<()> {
         // Algorithm explanation:
         //
@@ -455,7 +455,7 @@ impl<T: NodeStorage> MerkleTree<T> {
             None => {
                 // We reached the root without a hitting binary node. The new tree
                 // must therefore be empty.
-                self.root = Rc::new(RefCell::new(Node::Unresolved(StarkHash::ZERO)));
+                self.root = Rc::new(RefCell::new(Node::Unresolved(Felt::ZERO)));
                 return Ok(());
             }
         };
@@ -471,7 +471,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     }
 
     /// Returns the value stored at key, or `None` if it does not exist.
-    pub fn get(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Option<StarkHash>> {
+    pub fn get(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Option<Felt>> {
         let result = self
             .traverse(key)?
             .last()
@@ -572,7 +572,7 @@ impl<T: NodeStorage> MerkleTree<T> {
     /// Retrieves the requested node from storage.
     ///
     /// Result will be either a [Binary](Node::Binary), [Edge](Node::Edge) or [Leaf](Node::Leaf) node.
-    fn resolve(&self, hash: StarkHash, height: usize) -> anyhow::Result<Node> {
+    fn resolve(&self, hash: Felt, height: usize) -> anyhow::Result<Node> {
         if height == self.max_height as usize {
             #[cfg(debug_assertions)]
             match self.storage.get(hash)? {
@@ -668,7 +668,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                 None => break,
                 Some(VisitedNode { node, path }) => {
                     let current_node = &*node.borrow();
-                    if !matches!(current_node, Node::Unresolved(StarkHash::ZERO)) {
+                    if !matches!(current_node, Node::Unresolved(Felt::ZERO)) {
                         match visitor_fn(current_node, &path) {
                             ControlFlow::Continue(Visit::ContinueDeeper) => {
                                 // the default, no action, just continue deeper
@@ -715,7 +715,7 @@ impl<T: NodeStorage> MerkleTree<T> {
                         Node::Leaf(_) => {}
                         Node::Unresolved(hash) => {
                             // Zero means empty tree, so nothing to resolve
-                            if hash != &StarkHash::ZERO {
+                            if hash != &Felt::ZERO {
                                 visiting.push(VisitedNode {
                                     node: Rc::new(RefCell::new(self.resolve(*hash, path.len())?)),
                                     path,
@@ -758,7 +758,7 @@ mod tests {
     fn get_empty() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
-        let uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+        let uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
         let key = starkhash!("99cadc82").view_bits().to_bitvec();
         assert_eq!(uut.get(&key).unwrap(), None);
@@ -780,7 +780,7 @@ mod tests {
         fn set_get() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
             let key1 = starkhash!("901823").view_bits().to_bitvec();
@@ -803,7 +803,7 @@ mod tests {
         fn overwrite() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = starkhash!("0123").view_bits().to_bitvec();
             let old_value = starkhash!("0abc");
@@ -823,7 +823,7 @@ mod tests {
         fn single_leaf() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = starkhash!("0123").view_bits().to_bitvec();
             let value = starkhash!("0abc");
@@ -859,7 +859,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(&key0, value0).unwrap();
             uut.set(&key1, value1).unwrap();
@@ -922,7 +922,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(&key0, value0).unwrap();
             uut.set(&key1, value1).unwrap();
@@ -971,7 +971,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(&key0, value0).unwrap();
             uut.set(&key1, value1).unwrap();
@@ -1013,9 +1013,9 @@ mod tests {
         fn empty() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            assert_eq!(*uut.root.borrow(), Node::Unresolved(StarkHash::ZERO));
+            assert_eq!(*uut.root.borrow(), Node::Unresolved(Felt::ZERO));
         }
     }
 
@@ -1026,19 +1026,19 @@ mod tests {
         fn empty() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = starkhash!("123abc").view_bits().to_bitvec();
             uut.delete_leaf(&key).unwrap();
 
-            assert_eq!(*uut.root.borrow(), Node::Unresolved(StarkHash::ZERO));
+            assert_eq!(*uut.root.borrow(), Node::Unresolved(Felt::ZERO));
         }
 
         #[test]
         fn single_insert_and_removal() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = starkhash!("0123").view_bits().to_bitvec();
             let value = starkhash!("0abc");
@@ -1047,14 +1047,14 @@ mod tests {
             uut.delete_leaf(&key).unwrap();
 
             assert_eq!(uut.get(&key).unwrap(), None);
-            assert_eq!(*uut.root.borrow(), Node::Unresolved(StarkHash::ZERO));
+            assert_eq!(*uut.root.borrow(), Node::Unresolved(Felt::ZERO));
         }
 
         #[test]
         fn three_leaves_and_one_removal() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
             let key1 = starkhash!("901823").view_bits().to_bitvec();
@@ -1083,7 +1083,7 @@ mod tests {
         fn set() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
             let key1 = starkhash!("901823").view_bits().to_bitvec();
@@ -1114,7 +1114,7 @@ mod tests {
             // causing a malformed tree.
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let leaves = [
                 (
@@ -1173,7 +1173,7 @@ mod tests {
                 let val1 = starkhash!("02");
                 let val2 = starkhash!("03");
 
-                let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+                let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1214,7 +1214,7 @@ mod tests {
                 let val1 = starkhash!("02");
                 let val2 = starkhash!("03");
 
-                let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+                let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1259,7 +1259,7 @@ mod tests {
                 let val1 = starkhash!("02");
                 let val2 = starkhash!("03");
 
-                let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+                let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1300,7 +1300,7 @@ mod tests {
                 let val1 = starkhash!("02");
                 let val2 = starkhash!("03");
 
-                let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+                let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1333,7 +1333,7 @@ mod tests {
         fn multiple_identical_roots() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = starkhash!("99cadc82").view_bits().to_bitvec();
             let val = starkhash!("12345678");
@@ -1380,7 +1380,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(starkhash!("01").view_bits(), starkhash!("00"))
                 .unwrap();
@@ -1432,7 +1432,7 @@ mod tests {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
 
-            let mut tree = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut tree = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             for (key, val) in leaves {
                 let key = key.view_bits();
@@ -1453,7 +1453,7 @@ mod tests {
         use bitvec::slice::BitSlice;
         use bitvec::{bitvec, prelude::Msb0};
         use pathfinder_common::starkhash;
-        use stark_hash::StarkHash;
+        use stark_hash::Felt;
         use std::cell::RefCell;
         use std::ops::ControlFlow;
         use std::rc::Rc;
@@ -1462,7 +1462,7 @@ mod tests {
         fn empty_tree() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &Node, path: &BitSlice<Msb0, u8>| {
@@ -1477,7 +1477,7 @@ mod tests {
         fn one_leaf() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = starkhash!("01");
             let value = starkhash!("02");
@@ -1512,7 +1512,7 @@ mod tests {
         fn two_leaves() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key_left = starkhash!("00");
             let value_left = starkhash!("02");
@@ -1560,7 +1560,7 @@ mod tests {
         fn three_leaves() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key_a = starkhash!("10");
             let value_a = starkhash!("0a");
@@ -1658,35 +1658,35 @@ mod tests {
         use bitvec::slice::BitSlice;
         use pathfinder_common::starkhash;
         use rusqlite::Transaction;
-        use stark_hash::StarkHash;
+        use stark_hash::Felt;
 
         impl EdgeProofNode {
-            fn hash(&self) -> StarkHash {
+            fn hash(&self) -> Felt {
                 // Code taken from [merkle_node::EdgeNode::calculate_hash]
                 let child_hash = self.child_hash;
 
                 // Path should be valid, so `unwrap()` is safe to use here.
-                let path = StarkHash::from_bits(&self.path).unwrap();
+                let path = Felt::from_bits(&self.path).unwrap();
                 let mut length = [0; 32];
                 // Safe as len() is guaranteed to be <= 251
                 length[31] = self.path.len() as u8;
 
                 // Length should be smaller than the maximum size of a stark hash.
-                let length = StarkHash::from_be_bytes(length).unwrap();
+                let length = Felt::from_be_bytes(length).unwrap();
 
                 stark_hash::stark_hash(child_hash, path) + length
             }
         }
 
         impl BinaryProofNode {
-            fn hash(&self) -> StarkHash {
+            fn hash(&self) -> Felt {
                 // Code taken from [merkle_node::EdgeNode::calculate_hash]
                 stark_hash::stark_hash(self.left_hash, self.right_hash)
             }
         }
 
         impl ProofNode {
-            fn hash(&self) -> StarkHash {
+            fn hash(&self) -> Felt {
                 match self {
                     ProofNode::Binary(bin) => bin.hash(),
                     ProofNode::Edge(edge) => edge.hash(),
@@ -1718,9 +1718,9 @@ mod tests {
         ///    4. set expected_hash <- to the child hash
         /// 3. check that the expected_hash is `value` (we should've reached the leaf)
         fn verify_proof(
-            root: StarkHash,
+            root: Felt,
             key: &BitSlice<Msb0, u8>,
-            value: StarkHash,
+            value: Felt,
             proofs: &[ProofNode],
         ) -> Option<Membership> {
             // Protect from ill-formed keys
@@ -1782,22 +1782,22 @@ mod tests {
 
         /// Structure representing a randomly generated tree.
         struct RandomTree<'tx, 'queries> {
-            keys: Vec<StarkHash>,
-            values: Vec<StarkHash>,
-            root: StarkHash,
+            keys: Vec<Felt>,
+            values: Vec<Felt>,
+            root: Felt,
             tree: MerkleTree<RcNodeStorage<'tx, 'queries>>,
         }
 
         impl<'tx> RandomTree<'tx, '_> {
             /// Creates a new random tree with `len` key / value pairs.
             fn new(len: usize, transaction: &'tx Transaction<'tx>) -> Self {
-                let mut uut = MerkleTree::load("test", transaction, StarkHash::ZERO).unwrap();
+                let mut uut = MerkleTree::load("test", transaction, Felt::ZERO).unwrap();
 
                 // Create random keys
-                let keys: Vec<StarkHash> = gen_random_hashes(len);
+                let keys: Vec<Felt> = gen_random_hashes(len);
 
                 // Create random values
-                let values: Vec<StarkHash> = gen_random_hashes(len);
+                let values: Vec<Felt> = gen_random_hashes(len);
 
                 // Insert them
                 keys.iter()
@@ -1843,7 +1843,7 @@ mod tests {
         fn simple_binary() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //   (250, 0, x1)
             //        |
@@ -1878,7 +1878,7 @@ mod tests {
         fn double_binary() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (249,0,x3)
             //               |
@@ -1923,7 +1923,7 @@ mod tests {
         fn left_edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //  (251,0x00,0x99)
             //       /
@@ -1951,7 +1951,7 @@ mod tests {
         fn left_right_edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //  (251,0xff,0xaa)
             //     /
@@ -1979,7 +1979,7 @@ mod tests {
         fn right_most_edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //  (251,0x7fff...,0xbb)
             //          \
@@ -2008,7 +2008,7 @@ mod tests {
         fn binary_root() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (0, 0, x)
             //    /                    \
@@ -2042,12 +2042,12 @@ mod tests {
         }
 
         /// Generates `n` random [StarkHash]
-        fn gen_random_hashes(n: usize) -> Vec<StarkHash> {
+        fn gen_random_hashes(n: usize) -> Vec<Felt> {
             let mut out = Vec::with_capacity(n);
             let mut rng = rand::rngs::ThreadRng::default();
 
             while out.len() < n {
-                let sh = StarkHash::random(&mut rng);
+                let sh = Felt::random(&mut rng);
                 if sh.has_more_than_251_bits() {
                     continue;
                 }
@@ -2076,9 +2076,9 @@ mod tests {
             let random_tree = RandomTree::new(LEN, &transaction);
 
             // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
-            let keys_set: std::collections::HashSet<&StarkHash> = random_tree.keys.iter().collect();
+            let keys_set: std::collections::HashSet<&Felt> = random_tree.keys.iter().collect();
 
-            let inexistent_keys: Vec<StarkHash> = gen_random_hashes(LEN)
+            let inexistent_keys: Vec<Felt> = gen_random_hashes(LEN)
                 .into_iter()
                 .filter(|key| !keys_set.contains(key)) // Filter out duplicates if there are any
                 .collect();
@@ -2105,10 +2105,9 @@ mod tests {
             let random_tree = RandomTree::new(LEN, &transaction);
 
             // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
-            let values_set: std::collections::HashSet<&StarkHash> =
-                random_tree.values.iter().collect();
+            let values_set: std::collections::HashSet<&Felt> = random_tree.values.iter().collect();
 
-            let inexistent_values: Vec<StarkHash> = gen_random_hashes(LEN)
+            let inexistent_values: Vec<Felt> = gen_random_hashes(LEN)
                 .into_iter()
                 .filter(|value| !values_set.contains(value)) // Filter out duplicates if there are any
                 .collect();
@@ -2131,7 +2130,7 @@ mod tests {
         fn modified_binary_left() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (0, 0, x)
             //    /                    \
@@ -2173,7 +2172,7 @@ mod tests {
         fn modified_edge_child() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+            let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (0, 0, x)
             //    /                    \
@@ -2216,7 +2215,7 @@ mod tests {
     fn dfs_on_leaf_to_binary_collision_tree() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
-        let mut uut = MerkleTree::load("test", &transaction, StarkHash::ZERO).unwrap();
+        let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
         let value = starkhash!("01");
         let key0 = starkhash!("ee00").view_bits().to_bitvec();
@@ -2236,7 +2235,7 @@ mod tests {
         let mut visited = Vec::new();
         uut.dfs(&mut |n: &_, p: &_| -> ControlFlow<(), Visit> {
             if let Node::Leaf(h) = n {
-                visited.push((StarkHash::from_bits(p).unwrap(), *h));
+                visited.push((Felt::from_bits(p).unwrap(), *h));
             }
             std::ops::ControlFlow::Continue(Default::default())
         })

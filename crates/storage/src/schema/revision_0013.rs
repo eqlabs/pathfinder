@@ -3,14 +3,14 @@ use crate::types::CompressedContract;
 use anyhow::Context;
 use pathfinder_common::{Chain, ClassHash};
 use rusqlite::{OptionalExtension, Transaction};
-use stark_hash::{OverflowError, StarkHash};
+use stark_hash::{Felt, OverflowError};
 
 pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     let genesis = transaction
         .query_row(
             "SELECT hash FROM starknet_blocks WHERE number = 0",
             [],
-            |r| Ok(StarkHash::from_be_slice(r.get_ref_unwrap(0).as_blob()?)),
+            |r| Ok(Felt::from_be_slice(r.get_ref_unwrap(0).as_blob()?)),
         )
         .optional()?;
 

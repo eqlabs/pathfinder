@@ -3,7 +3,7 @@ use anyhow::{Context, Error, Result};
 use pathfinder_common::ClassHash;
 use serde::Serialize;
 use sha3::Digest;
-use stark_hash::{HashChain, StarkHash};
+use stark_hash::{Felt, HashChain};
 
 /// Computes the starknet class hash for given class definition json blob.
 ///
@@ -162,7 +162,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
 
     // what follows is defined over at the contract.cairo
 
-    const API_VERSION: StarkHash = StarkHash::ZERO;
+    const API_VERSION: Felt = Felt::ZERO;
 
     let mut outer = HashChain::default();
 
@@ -194,10 +194,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         })
         .for_each(|x| outer.update(x.finalize()));
 
-    fn update_hash_chain(
-        mut hc: HashChain,
-        next: Result<StarkHash, Error>,
-    ) -> Result<HashChain, Error> {
+    fn update_hash_chain(mut hc: HashChain, next: Result<Felt, Error>) -> Result<HashChain, Error> {
         hc.update(next?);
         Result::<_, Error>::Ok(hc)
     }
@@ -209,7 +206,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .enumerate()
         .map(|(i, s)| (i, s.as_bytes()))
         .map(|(i, s)| {
-            StarkHash::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
+            Felt::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
         })
         .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.builtins")?;
@@ -224,7 +221,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            StarkHash::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
+            Felt::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
         })
         .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.data")?;
@@ -236,11 +233,11 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
 
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
-pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> StarkHash {
+pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
     // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31 0xff in be
     // truncation is needed not to overflow the field element.
     plain[0] &= 0x03;
-    StarkHash::from_be_bytes(plain).expect("cannot overflow: smaller than modulus")
+    Felt::from_be_bytes(plain).expect("cannot overflow: smaller than modulus")
 }
 
 /// `std::io::Write` adapter for Keccak256; we don't need the serialized version in

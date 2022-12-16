@@ -275,8 +275,8 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         Chain::Custom => {
             let chain_id =
                 custom_chain_id.expect("Custom chain ID must be set for --network custom");
-            let chain_id = stark_hash::StarkHash::from_be_slice(chain_id.as_bytes())
-                .context("Parsing chain ID")?;
+            let chain_id =
+                stark_hash::Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?;
 
             ChainId(chain_id)
         }
