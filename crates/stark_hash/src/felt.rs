@@ -286,8 +286,8 @@ impl Felt {
     ///
     /// Supports both upper and lower case hex strings, as well as an
     /// optional "0x" prefix.
-    pub fn from_hex_str(hex_str: &str) -> Result<Self, HexParseError> {
-        fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
+    pub const fn from_hex_str(hex_str: &str) -> Result<Self, HexParseError> {
+        const fn parse_hex_digit(digit: u8) -> Result<u8, HexParseError> {
             match digit {
                 b'0'..=b'9' => Ok(digit - b'0'),
                 b'A'..=b'F' => Ok(digit - b'A' + 10),
@@ -296,33 +296,56 @@ impl Felt {
             }
         }
 
-        let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-        if hex_str.len() > 64 {
+        let bytes = hex_str.as_bytes();
+        let start = if bytes.len() >= 2 && bytes[0] == b'0' && bytes[1] == b'x' {
+            2
+        } else {
+            0
+        };
+        let len = bytes.len() - start;
+
+        if len > 64 {
             return Err(HexParseError::InvalidLength {
                 max: 64,
-                actual: hex_str.len(),
+                actual: bytes.len(),
             });
         }
 
         let mut buf = [0u8; 32];
 
         // We want the result in big-endian so reverse iterate over each pair of nibbles.
-        let chunks = hex_str.as_bytes().rchunks_exact(2);
+        // let chunks = hex_str.as_bytes().rchunks_exact(2);
 
         // Handle a possible odd nibble remaining nibble.
-        let odd_nibble = chunks.remainder();
-        if !odd_nibble.is_empty() {
-            let full_bytes = hex_str.len() / 2;
-            buf[31 - full_bytes] = parse_hex_digit(odd_nibble[0])?;
+        if len % 2 == 1 {
+            let idx = len / 2;
+            buf[31 - idx] = match parse_hex_digit(bytes[start]) {
+                Ok(b) => b,
+                Err(e) => return Err(e),
+            };
         }
 
-        for (i, c) in chunks.enumerate() {
-            // Indexing c[0] and c[1] are safe since chunk-size is 2.
-            buf[31 - i] = parse_hex_digit(c[0])? << 4 | parse_hex_digit(c[1])?;
+        let chunks = len / 2;
+        let mut chunk = 0;
+
+        while chunk < chunks {
+            let lower = match parse_hex_digit(bytes[bytes.len() - chunk * 2 - 1]) {
+                Ok(b) => b,
+                Err(e) => return Err(e),
+            };
+            let upper = match parse_hex_digit(bytes[bytes.len() - chunk * 2 - 2]) {
+                Ok(b) => b,
+                Err(e) => return Err(e),
+            };
+            buf[31 - chunk] = upper << 4 | lower;
+            chunk += 1;
         }
 
-        let hash = Felt::from_be_bytes(buf)?;
-        Ok(hash)
+        let felt = match Felt::from_be_bytes(buf) {
+            Ok(felt) => felt,
+            Err(OverflowError) => return Err(HexParseError::Overflow),
+        };
+        Ok(felt)
     }
 
     /// The first stage of conversion - skip leading zeros
