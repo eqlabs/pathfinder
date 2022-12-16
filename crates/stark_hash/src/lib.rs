@@ -1,8 +1,8 @@
 #![deny(rust_2018_idioms)]
 
 mod chain;
-mod hash;
+mod felt;
 mod serde;
 
 pub use chain::HashChain;
-pub use hash::{stark_hash, Felt, HexParseError, OverflowError};
+pub use felt::{stark_hash, Felt, HexParseError, OverflowError};
