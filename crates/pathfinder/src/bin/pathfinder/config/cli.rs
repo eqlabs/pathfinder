@@ -31,7 +31,7 @@ const CHAIN_ID: &str = "chain-id";
 pub fn parse_cmd_line() -> (Option<String>, ConfigBuilder) {
     // A thin wrapper around `parse_args()`. This should be kept thin
     // to enable test coverage without requiring cmd line arg input.
-    match parse_args(&mut std::env::args_os()) {
+    match parse_args(std::env::args_os()) {
         Ok(cfg) => cfg,
         Err(err) => err.exit(),
     }

@@ -210,7 +210,7 @@ where
 
                     let block_number = block.block_number;
                     let block_hash = block.block_hash;
-                    let storage_updates: usize = state_update.state_diff.storage_diffs.iter().map(|(_, storage_diffs)| storage_diffs.len()).sum();
+                    let storage_updates: usize = state_update.state_diff.storage_diffs.values().map(|storage_diffs| storage_diffs.len()).sum();
                     let update_t = std::time::Instant::now();
                     l2_update(&mut db_conn, *block, *state_update)
                         .await
