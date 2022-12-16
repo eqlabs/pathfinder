@@ -160,6 +160,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    // FIXME check if &mut self is required in all fns here
     pub async fn send_sync_status_request(
         &mut self,
         peer_id: PeerId,
@@ -169,6 +170,29 @@ impl Client {
             .send(Command::SendSyncStatusRequest { peer_id, status })
             .await
             .expect("Command receiver not to be dropped");
+    }
+
+    #[cfg(test)]
+    pub fn for_test(&self) -> TestClient {
+        TestClient {
+            sender: self.sender.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct TestClient {
+    sender: mpsc::Sender<Command>,
+}
+
+impl TestClient {
+    pub async fn get_peers_from_dht(&self) -> HashSet<PeerId> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::Test(TestCommand::GetPeersFromDHT(sender)))
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
     }
 }
 
@@ -211,6 +235,13 @@ enum Command {
         message: p2p_proto::propagation::Message,
         sender: EmptyResultSender,
     },
+    /// For testing purposes only
+    Test(TestCommand),
+}
+
+#[derive(Debug)]
+pub enum TestCommand {
+    GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
 }
 
 #[derive(Debug)]
@@ -386,6 +417,7 @@ impl MainLoop {
                                 .kademlia
                                 .add_address(&peer_id, addr.clone());
                         }
+                        // FIXME when no listen addrs then this fails
                         tracing::debug!(%peer_id, "Added peer to DHT");
                     }
 
@@ -636,6 +668,7 @@ impl MainLoop {
                 let result = self.publish_data(topic, &data);
                 let _ = sender.send(result);
             }
+            Command::Test(command) => self.handle_test_command(command).await,
         };
     }
 
@@ -666,6 +699,9 @@ impl MainLoop {
         Ok(())
     }
 
+    #[cfg(not(test))]
+    async fn handle_test_command(&mut self, _: TestCommand) {}
+
     #[cfg(test)]
     async fn ignore_or_handle_event_for_test<E: std::fmt::Debug>(
         &mut self,
@@ -681,6 +717,28 @@ impl MainLoop {
             _ => {
                 tracing::trace!(?event, "Ignoring event");
                 Ok(())
+            }
+        }
+    }
+
+    #[cfg(test)]
+    async fn handle_test_command(&mut self, command: TestCommand) {
+        match command {
+            TestCommand::GetPeersFromDHT(sender) => {
+                let peers = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .kbuckets()
+                    .map(|kbucket_ref| {
+                        kbucket_ref
+                            .iter()
+                            .map(|entry_ref| entry_ref.node.key.preimage().clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .flat_map(|x| x.into_iter())
+                    .collect::<HashSet<_>>();
+                sender.send(peers).expect("Receiver not to be dropped")
             }
         }
     }

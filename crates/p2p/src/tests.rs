@@ -2,6 +2,7 @@ use crate::{self as p2p, Event, Peers, TestEvent};
 use core::panic;
 use libp2p::identity::{ed25519, Keypair};
 use libp2p::Multiaddr;
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,12 +22,15 @@ async fn dial_succeds() {
     let peers_of2: Arc<RwLock<Peers>> = Default::default();
     let (mut client2, _, loop2) = p2p::new(k2, peers_of2.clone(), TEN_MINUTES);
 
+    tracing::info!(%peer1);
+    tracing::info!(%peer2);
+
     tokio::spawn(loop1.run());
     tokio::spawn(loop2.run());
 
-    let addr1 = Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap();
+    let addr = Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap();
 
-    client1.start_listening(addr1).await.unwrap();
+    client1.start_listening(addr).await.unwrap();
 
     let event = tokio::time::timeout(Duration::from_secs(1), rx1.recv())
         .await
@@ -38,6 +42,8 @@ async fn dial_succeds() {
         _ => panic!("Unexpected event: {event:?}"),
     };
 
+    tracing::info!(%addr1);
+
     client2.dial(peer1, addr1).await.unwrap();
 
     let peers_of1 = peers_of1
@@ -45,15 +51,15 @@ async fn dial_succeds() {
         .await
         .connected()
         .map(Clone::clone)
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
 
     let peers_of2 = peers_of2
         .read()
         .await
         .connected()
         .map(Clone::clone)
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
 
-    assert_eq!(peers_of1, vec![peer2]);
-    assert_eq!(peers_of2, vec![peer1]);
+    assert_eq!(peers_of1, [peer2].into());
+    assert_eq!(peers_of2, [peer1].into());
 }
