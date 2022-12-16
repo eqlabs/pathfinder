@@ -272,7 +272,7 @@ pub(super) mod fmt {
 /// Creates a [`stark_hash::StarkHash`] from an even hex string, resulting in compile-time error
 /// when invalid.
 #[macro_export]
-macro_rules! starkhash {
+macro_rules! felt {
     ($hex:expr) => {{
         let bytes = hex_literal::hex!($hex);
         match stark_hash::Felt::from_be_slice(bytes.as_slice()) {

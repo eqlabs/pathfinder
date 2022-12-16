@@ -489,14 +489,11 @@ mod tests {
 
         #[test]
         fn hash() {
-            use crate::starkhash;
+            use crate::felt;
             use crate::StarknetBlockHash;
             let result =
                 serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
-            assert_eq!(
-                result,
-                BlockId::Hash(StarknetBlockHash(starkhash!("deadbeef")))
-            );
+            assert_eq!(result, BlockId::Hash(StarknetBlockHash(felt!("deadbeef"))));
         }
     }
 }

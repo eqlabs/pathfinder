@@ -393,7 +393,7 @@ mod json {
     #[cfg(test)]
     mod test_vectors {
         use super::super::compute_class_hash;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use starknet_gateway_test_fixtures::zstd_compressed_contracts::*;
 
         #[tokio::test]
@@ -403,7 +403,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
+                felt!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
             );
         }
 
@@ -414,7 +414,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
+                felt!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
             );
         }
 
@@ -425,7 +425,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
+                felt!("010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
             );
         }
 
@@ -434,10 +434,10 @@ mod json {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
+            use felt;
             use pathfinder_common::ClassHash;
-            use starkhash;
 
-            let expected = ClassHash(starkhash!(
+            let expected = ClassHash(felt!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
             ));
 
@@ -461,7 +461,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
+                felt!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
             );
         }
 
@@ -474,7 +474,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
+                felt!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
             );
         }
 
@@ -487,7 +487,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
+                felt!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
             );
         }
     }
@@ -551,14 +551,14 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use sha3::{Digest, Keccak256};
         let all_set = Keccak256::digest([0xffu8; 32]);
         assert!(all_set[0] > 0xf);
         let truncated = truncated_keccak(all_set.into());
         assert_eq!(
             truncated,
-            starkhash!("01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9")
+            felt!("01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9")
         );
     }
 }

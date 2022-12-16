@@ -84,21 +84,20 @@ pub fn calculate_contract_state_hash(
 #[cfg(test)]
 mod tests {
     use super::calculate_contract_state_hash;
-    use pathfinder_common::starkhash;
+    use pathfinder_common::felt;
     use pathfinder_common::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
 
     #[test]
     fn hash() {
-        let root = starkhash!("04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028");
+        let root = felt!("04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028");
         let root = ContractRoot(root);
 
-        let hash = starkhash!("02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779");
+        let hash = felt!("02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779");
         let hash = ClassHash(hash);
 
         let nonce = ContractNonce::ZERO;
 
-        let expected =
-            starkhash!("07161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3");
+        let expected = felt!("07161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3");
         let expected = ContractStateHash(expected);
 
         let result = calculate_contract_state_hash(hash, root, nonce);

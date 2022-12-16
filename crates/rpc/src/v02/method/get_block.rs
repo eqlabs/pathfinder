@@ -279,13 +279,13 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{starkhash, StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{felt, StarknetBlockHash, StarknetBlockNumber};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
         let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(StarknetBlockHash(starkhash!("beef")));
+        let hash = BlockId::Hash(StarknetBlockHash(felt!("beef")));
 
         [
             (r#"["pending"]"#, BlockId::Pending),

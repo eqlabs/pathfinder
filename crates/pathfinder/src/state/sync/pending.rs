@@ -76,7 +76,7 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        starkhash, starkhash_bytes, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+        felt, starkhash_bytes, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp,
     };
     use starknet_gateway_client::MockClientApi;
@@ -85,11 +85,11 @@ mod tests {
     };
 
     lazy_static::lazy_static!(
-        pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(starkhash!("1234"));
+        pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(felt!("1234"));
         pub static ref PARENT_ROOT: GlobalRoot = GlobalRoot(starkhash_bytes!(b"parent root"));
 
         pub static ref NEXT_BLOCK: Block = Block{
-            block_hash: StarknetBlockHash(starkhash!("abcd")),
+            block_hash: StarknetBlockHash(felt!("abcd")),
             block_number: StarknetBlockNumber::new_or_panic(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
@@ -199,7 +199,7 @@ mod tests {
         let mut sequencer = MockClientApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
-        pending_block.parent_hash = StarknetBlockHash(starkhash!("FFFFFF"));
+        pending_block.parent_hash = StarknetBlockHash(felt!("FFFFFF"));
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));

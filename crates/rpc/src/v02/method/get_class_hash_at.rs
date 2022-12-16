@@ -101,7 +101,7 @@ fn read_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{starkhash, starkhash_bytes};
+    use pathfinder_common::{felt, starkhash_bytes};
 
     mod parsing {
         use super::*;
@@ -118,8 +118,8 @@ mod tests {
 
             let input = positional.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0abcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("012345")),
             };
             assert_eq!(input, expected);
         }
@@ -134,8 +134,8 @@ mod tests {
 
             let input = named.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0abcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("012345")),
             };
             assert_eq!(input, expected);
         }

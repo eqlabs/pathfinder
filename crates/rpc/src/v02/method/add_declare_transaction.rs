@@ -75,9 +75,7 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedDeclareTransaction;
     use crate::v02::types::ContractClass;
-    use pathfinder_common::{
-        starkhash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
-    };
+    use pathfinder_common::{felt, ContractAddress, Fee, TransactionNonce, TransactionVersion};
     use stark_hash::Felt;
 
     lazy_static::lazy_static! {
@@ -215,10 +213,10 @@ mod tests {
         assert_eq!(
             result,
             AddDeclareTransactionOutput {
-                transaction_hash: StarknetTransactionHash(starkhash!(
+                transaction_hash: StarknetTransactionHash(felt!(
                     "04b3791d16301be48268bfe1c0da7a9ad458847fd4666c98057d3940ef31775d"
                 )),
-                class_hash: ClassHash(starkhash!(
+                class_hash: ClassHash(felt!(
                     "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 )),
             }

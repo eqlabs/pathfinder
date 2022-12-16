@@ -271,15 +271,15 @@ mod tests {
     mod binary {
         use super::*;
         use bitvec::bitvec;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn direction() {
             let uut = BinaryNode {
                 hash: None,
                 height: 1,
-                left: Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc")))),
-                right: Rc::new(RefCell::new(Node::Leaf(starkhash!("0def")))),
+                left: Rc::new(RefCell::new(Node::Leaf(felt!("0abc")))),
+                right: Rc::new(RefCell::new(Node::Leaf(felt!("0def")))),
             };
 
             let mut zero_key = bitvec![Msb0, u8; 1; 251];
@@ -297,8 +297,8 @@ mod tests {
 
         #[test]
         fn get_child() {
-            let left = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
-            let right = Rc::new(RefCell::new(Node::Leaf(starkhash!("0def"))));
+            let left = Rc::new(RefCell::new(Node::Leaf(felt!("0abc"))));
+            let right = Rc::new(RefCell::new(Node::Leaf(felt!("0def"))));
 
             let uut = BinaryNode {
                 hash: None,
@@ -322,8 +322,8 @@ mod tests {
                 "0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
             )
             .unwrap();
-            let left = starkhash!("1234");
-            let right = starkhash!("abcd");
+            let left = felt!("1234");
+            let right = felt!("abcd");
 
             let left = Rc::new(RefCell::new(Node::Unresolved(left)));
             let right = Rc::new(RefCell::new(Node::Unresolved(right)));
@@ -344,7 +344,7 @@ mod tests {
     mod edge {
         use super::*;
         use bitvec::bitvec;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn hash() {
@@ -356,7 +356,7 @@ mod tests {
                 "1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
             )
             .unwrap();
-            let child = starkhash!("1234ABCD");
+            let child = felt!("1234ABCD");
             let child = Rc::new(RefCell::new(Node::Unresolved(child)));
             // Path = 42 in binary.
             let path = bitvec![Msb0, u8; 1, 0, 1, 0, 1, 0];
@@ -375,12 +375,12 @@ mod tests {
 
         mod path_matches {
             use super::*;
-            use pathfinder_common::starkhash;
+            use pathfinder_common::felt;
 
             #[test]
             fn full() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0abc"))));
 
                 let uut = EdgeNode {
                     hash: None,
@@ -394,8 +394,8 @@ mod tests {
 
             #[test]
             fn prefix() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0abc"))));
 
                 let path = key.view_bits()[..45].to_bitvec();
 
@@ -411,8 +411,8 @@ mod tests {
 
             #[test]
             fn suffix() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0abc"))));
 
                 let path = key.view_bits()[50..].to_bitvec();
 
@@ -428,8 +428,8 @@ mod tests {
 
             #[test]
             fn middle_slice() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0abc"))));
 
                 let path = key.view_bits()[230..235].to_bitvec();
 

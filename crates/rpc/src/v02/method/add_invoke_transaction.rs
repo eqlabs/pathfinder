@@ -70,7 +70,7 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransactionV0;
     use pathfinder_common::{
-        starkhash, CallParam, ContractAddress, EntryPoint, Fee, TransactionNonce,
+        felt, CallParam, ContractAddress, EntryPoint, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
 
@@ -80,33 +80,33 @@ mod tests {
                 version: TransactionVersion::ZERO,
                 max_fee: Fee(5444010076217u128.to_be_bytes().into()),
                 signature: vec![
-                    TransactionSignatureElem(starkhash!(
+                    TransactionSignatureElem(felt!(
                         "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                     )),
-                    TransactionSignatureElem(starkhash!(
+                    TransactionSignatureElem(felt!(
                         "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                     )),
                 ],
                 nonce: None,
-                contract_address: ContractAddress::new_or_panic(starkhash!(
+                contract_address: ContractAddress::new_or_panic(felt!(
                     "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                 )),
-                entry_point_selector: EntryPoint(starkhash!(
+                entry_point_selector: EntryPoint(felt!(
                     "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
                 )),
                 calldata: vec![
-                    CallParam(starkhash!("01")),
-                    CallParam(starkhash!(
+                    CallParam(felt!("01")),
+                    CallParam(felt!(
                         "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                     )),
-                    CallParam(starkhash!(
+                    CallParam(felt!(
                         "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                     )),
-                    CallParam(starkhash!("00")),
-                    CallParam(starkhash!("01")),
-                    CallParam(starkhash!("01")),
-                    CallParam(starkhash!("2b")),
-                    CallParam(starkhash!("00")),
+                    CallParam(felt!("00")),
+                    CallParam(felt!("01")),
+                    CallParam(felt!("01")),
+                    CallParam(felt!("2b")),
+                    CallParam(felt!("00")),
                 ],
             },
         ))
@@ -198,7 +198,7 @@ mod tests {
             invoke_transaction: test_invoke_txn(),
         };
         let expected = AddInvokeTransactionOutput {
-            transaction_hash: StarknetTransactionHash(starkhash!(
+            transaction_hash: StarknetTransactionHash(felt!(
                 "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
             )),
         };
@@ -217,29 +217,29 @@ mod tests {
             version: TransactionVersion::ONE,
             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x630a0aff77)),
             signature: vec![
-                TransactionSignatureElem(starkhash!(
+                TransactionSignatureElem(felt!(
                     "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
                 )),
-                TransactionSignatureElem(starkhash!(
+                TransactionSignatureElem(felt!(
                     "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
                 )),
             ],
-            nonce: TransactionNonce(starkhash!("02")),
-            sender_address: ContractAddress::new_or_panic(starkhash!(
+            nonce: TransactionNonce(felt!("02")),
+            sender_address: ContractAddress::new_or_panic(felt!(
                 "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
             )),
             calldata: vec![
-                CallParam(starkhash!("01")),
-                CallParam(starkhash!(
+                CallParam(felt!("01")),
+                CallParam(felt!(
                     "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
                 )),
-                CallParam(starkhash!(
+                CallParam(felt!(
                     "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                 )),
-                CallParam(starkhash!("00")),
-                CallParam(starkhash!("01")),
-                CallParam(starkhash!("01")),
-                CallParam(starkhash!("01")),
+                CallParam(felt!("00")),
+                CallParam(felt!("01")),
+                CallParam(felt!("01")),
+                CallParam(felt!("01")),
             ],
         };
 
@@ -247,7 +247,7 @@ mod tests {
             invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V1(input)),
         };
         let expected = AddInvokeTransactionOutput {
-            transaction_hash: StarknetTransactionHash(starkhash!(
+            transaction_hash: StarknetTransactionHash(felt!(
                 "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
             )),
         };

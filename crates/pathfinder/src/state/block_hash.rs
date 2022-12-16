@@ -102,7 +102,7 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use pathfinder_common::{starkhash, Chain, SequencerAddress, StarknetBlockNumber};
+    use pathfinder_common::{felt, Chain, SequencerAddress, StarknetBlockNumber};
     use std::ops::Range;
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -153,7 +153,7 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(119802)..StarknetBlockNumber::new_or_panic(148428),
         ),
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         ))),
     };
@@ -161,7 +161,7 @@ mod meta {
     const TESTNET2_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(0),
         not_verifiable_range: None,
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         ))),
     };
@@ -169,7 +169,7 @@ mod meta {
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(833),
         not_verifiable_range: None,
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
         ))),
     };
@@ -179,7 +179,7 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(110511),
         ),
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         ))),
     };
@@ -436,7 +436,7 @@ fn number_of_events_in_block(block: &Block) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{starkhash, EntryPoint, Fee};
+    use pathfinder_common::{felt, EntryPoint, Fee};
     use starknet_gateway_types::reply::{
         transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
         Block,
@@ -447,26 +447,26 @@ mod tests {
         use pathfinder_common::{ContractAddress, EventData, EventKey};
 
         let event = Event {
-            from_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
+            from_address: ContractAddress::new_or_panic(felt!("deadbeef")),
             data: vec![
-                EventData(starkhash!("05")),
-                EventData(starkhash!("06")),
-                EventData(starkhash!("07")),
-                EventData(starkhash!("08")),
-                EventData(starkhash!("09")),
+                EventData(felt!("05")),
+                EventData(felt!("06")),
+                EventData(felt!("07")),
+                EventData(felt!("08")),
+                EventData(felt!("09")),
             ],
             keys: vec![
-                EventKey(starkhash!("01")),
-                EventKey(starkhash!("02")),
-                EventKey(starkhash!("03")),
-                EventKey(starkhash!("04")),
+                EventKey(felt!("01")),
+                EventKey(felt!("02")),
+                EventKey(felt!("03")),
+                EventKey(felt!("04")),
             ],
         };
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_event_hash(0xdeadbeef, [1, 2, 3, 4], [5, 6, 7, 8, 9]))`
         let expected_event_hash =
-            starkhash!("db96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
+            felt!("db96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
         let calculated_event_hash = calculate_event_hash(&event);
         assert_eq!(expected_event_hash, calculated_event_hash);
     }
@@ -479,15 +479,15 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
-            contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
+            contract_address: ContractAddress::new_or_panic(felt!("deadbeef")),
             entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: EntryPoint(starkhash!("0e")),
+            entry_point_selector: EntryPoint(felt!("0e")),
             max_fee: Fee(0u128.to_be_bytes().into()),
             signature: vec![
-                TransactionSignatureElem(starkhash!("02")),
-                TransactionSignatureElem(starkhash!("03")),
+                TransactionSignatureElem(felt!("02")),
+                TransactionSignatureElem(felt!("03")),
             ],
-            transaction_hash: StarknetTransactionHash(starkhash!("01")),
+            transaction_hash: StarknetTransactionHash(felt!("01")),
         }));
 
         // produced by the cairo-lang Python implementation:
@@ -512,7 +512,7 @@ mod tests {
         // produced by the cairo-lang Python implementation:
         // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64, ffc=ffc))))`
         let expected_root_hash =
-            starkhash!("01a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
+            felt!("01a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
         let computed_root_hash = tree.commit().unwrap();
 
         assert_eq!(expected_root_hash, computed_root_hash);

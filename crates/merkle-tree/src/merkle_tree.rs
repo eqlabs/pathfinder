@@ -752,7 +752,7 @@ pub enum Visit {
 mod tests {
     use super::*;
     use bitvec::prelude::*;
-    use pathfinder_common::starkhash;
+    use pathfinder_common::felt;
 
     #[test]
     fn get_empty() {
@@ -760,7 +760,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
         let uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-        let key = starkhash!("99cadc82").view_bits().to_bitvec();
+        let key = felt!("99cadc82").view_bits().to_bitvec();
         assert_eq!(uut.get(&key).unwrap(), None);
     }
 
@@ -769,7 +769,7 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let non_root = starkhash!("99cadc82");
+        let non_root = felt!("99cadc82");
         MerkleTree::load("test", &transaction, non_root).unwrap_err();
     }
 
@@ -782,13 +782,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
-            let key1 = starkhash!("901823").view_bits().to_bitvec();
-            let key2 = starkhash!("8975").view_bits().to_bitvec();
+            let key0 = felt!("99cadc82").view_bits().to_bitvec();
+            let key1 = felt!("901823").view_bits().to_bitvec();
+            let key2 = felt!("8975").view_bits().to_bitvec();
 
-            let val0 = starkhash!("891127cbaf");
-            let val1 = starkhash!("82233127cbaf");
-            let val2 = starkhash!("0891124667aacde7cbaf");
+            let val0 = felt!("891127cbaf");
+            let val1 = felt!("82233127cbaf");
+            let val2 = felt!("0891124667aacde7cbaf");
 
             uut.set(&key0, val0).unwrap();
             uut.set(&key1, val1).unwrap();
@@ -805,9 +805,9 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key = starkhash!("0123").view_bits().to_bitvec();
-            let old_value = starkhash!("0abc");
-            let new_value = starkhash!("0def");
+            let key = felt!("0123").view_bits().to_bitvec();
+            let old_value = felt!("0abc");
+            let new_value = felt!("0def");
 
             uut.set(&key, old_value).unwrap();
             uut.set(&key, new_value).unwrap();
@@ -825,8 +825,8 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key = starkhash!("0123").view_bits().to_bitvec();
-            let value = starkhash!("0abc");
+            let key = felt!("0123").view_bits().to_bitvec();
+            let value = felt!("0abc");
 
             uut.set(&key, value).unwrap();
 
@@ -854,8 +854,8 @@ mod tests {
             let mut key1 = bitvec![Msb0, u8; 0; 251];
             key1.set(50, true);
 
-            let value0 = starkhash!("0abc");
-            let value1 = starkhash!("0def");
+            let value0 = felt!("0abc");
+            let value1 = felt!("0def");
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -917,8 +917,8 @@ mod tests {
             let mut key1 = bitvec![Msb0, u8; 0; 251];
             key1.set(0, true);
 
-            let value0 = starkhash!("0abc");
-            let value1 = starkhash!("0def");
+            let value0 = felt!("0abc");
+            let value1 = felt!("0def");
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -964,10 +964,10 @@ mod tests {
 
         #[test]
         fn binary_leaves() {
-            let key0 = starkhash!("00").view_bits().to_bitvec();
-            let key1 = starkhash!("01").view_bits().to_bitvec();
-            let value0 = starkhash!("0abc");
-            let value1 = starkhash!("0def");
+            let key0 = felt!("00").view_bits().to_bitvec();
+            let key1 = felt!("01").view_bits().to_bitvec();
+            let value0 = felt!("0abc");
+            let value1 = felt!("0def");
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
@@ -1028,7 +1028,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key = starkhash!("123abc").view_bits().to_bitvec();
+            let key = felt!("123abc").view_bits().to_bitvec();
             uut.delete_leaf(&key).unwrap();
 
             assert_eq!(*uut.root.borrow(), Node::Unresolved(Felt::ZERO));
@@ -1040,8 +1040,8 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key = starkhash!("0123").view_bits().to_bitvec();
-            let value = starkhash!("0abc");
+            let key = felt!("0123").view_bits().to_bitvec();
+            let value = felt!("0abc");
 
             uut.set(&key, value).unwrap();
             uut.delete_leaf(&key).unwrap();
@@ -1056,13 +1056,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
-            let key1 = starkhash!("901823").view_bits().to_bitvec();
-            let key2 = starkhash!("8975").view_bits().to_bitvec();
+            let key0 = felt!("99cadc82").view_bits().to_bitvec();
+            let key1 = felt!("901823").view_bits().to_bitvec();
+            let key2 = felt!("8975").view_bits().to_bitvec();
 
-            let val0 = starkhash!("01");
-            let val1 = starkhash!("02");
-            let val2 = starkhash!("03");
+            let val0 = felt!("01");
+            let val1 = felt!("02");
+            let val2 = felt!("03");
 
             uut.set(&key0, val0).unwrap();
             uut.set(&key1, val1).unwrap();
@@ -1085,13 +1085,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
-            let key1 = starkhash!("901823").view_bits().to_bitvec();
-            let key2 = starkhash!("8975").view_bits().to_bitvec();
+            let key0 = felt!("99cadc82").view_bits().to_bitvec();
+            let key1 = felt!("901823").view_bits().to_bitvec();
+            let key2 = felt!("8975").view_bits().to_bitvec();
 
-            let val0 = starkhash!("01");
-            let val1 = starkhash!("02");
-            let val2 = starkhash!("03");
+            let val0 = felt!("01");
+            let val1 = felt!("02");
+            let val2 = felt!("03");
 
             uut.set(&key0, val0).unwrap();
             uut.set(&key1, val1).unwrap();
@@ -1118,24 +1118,24 @@ mod tests {
 
             let leaves = [
                 (
-                    starkhash!("01A2FD9B06EAB5BCA4D3885EE4C42736E835A57399FF8B7F6083A92FD2A20095"),
-                    starkhash!("0215AA555E0CE3E462423D18B7216378D3CCD5D94D724AC7897FBC83FAAA4ED4"),
+                    felt!("01A2FD9B06EAB5BCA4D3885EE4C42736E835A57399FF8B7F6083A92FD2A20095"),
+                    felt!("0215AA555E0CE3E462423D18B7216378D3CCD5D94D724AC7897FBC83FAAA4ED4"),
                 ),
                 (
-                    starkhash!("07AC69285B869DC3E8B305C748A0B867B2DE3027AECEBA51158ECA3B7354D76F"),
-                    starkhash!("065C85592F29501D97A2EA1CCF2BA867E6A838D602F4E7A7391EFCBF66958386"),
+                    felt!("07AC69285B869DC3E8B305C748A0B867B2DE3027AECEBA51158ECA3B7354D76F"),
+                    felt!("065C85592F29501D97A2EA1CCF2BA867E6A838D602F4E7A7391EFCBF66958386"),
                 ),
                 (
-                    starkhash!("05C71AB5EF6A5E9DBC7EFD5C61554AB36039F60E5BA076833102E24344524566"),
-                    starkhash!("060970DF8E8A19AF3F41B78E93B845EC074A0AED4E96D18C6633580722B93A28"),
+                    felt!("05C71AB5EF6A5E9DBC7EFD5C61554AB36039F60E5BA076833102E24344524566"),
+                    felt!("060970DF8E8A19AF3F41B78E93B845EC074A0AED4E96D18C6633580722B93A28"),
                 ),
                 (
-                    starkhash!("0000000000000000000000000000000000000000000000000000000000000005"),
-                    starkhash!("000000000000000000000000000000000000000000000000000000000000022B"),
+                    felt!("0000000000000000000000000000000000000000000000000000000000000005"),
+                    felt!("000000000000000000000000000000000000000000000000000000000000022B"),
                 ),
                 (
-                    starkhash!("0000000000000000000000000000000000000000000000000000000000000005"),
-                    starkhash!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    felt!("0000000000000000000000000000000000000000000000000000000000000005"),
+                    felt!("0000000000000000000000000000000000000000000000000000000000000000"),
                 ),
             ];
 
@@ -1152,8 +1152,7 @@ mod tests {
             let val = leaves[4].1;
             uut.set(&key, val).unwrap();
             let root = uut.commit().unwrap();
-            let expect =
-                starkhash!("05f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
+            let expect = felt!("05f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
             assert_eq!(root, expect);
         }
 
@@ -1165,13 +1164,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
-                let key1 = starkhash!("901823").view_bits().to_bitvec();
-                let key2 = starkhash!("8975").view_bits().to_bitvec();
+                let key0 = felt!("99cadc82").view_bits().to_bitvec();
+                let key1 = felt!("901823").view_bits().to_bitvec();
+                let key2 = felt!("8975").view_bits().to_bitvec();
 
-                let val0 = starkhash!("01");
-                let val1 = starkhash!("02");
-                let val2 = starkhash!("03");
+                let val0 = felt!("01");
+                let val1 = felt!("02");
+                let val2 = felt!("03");
 
                 let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
@@ -1206,13 +1205,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
-                let key1 = starkhash!("901823").view_bits().to_bitvec();
-                let key2 = starkhash!("8975").view_bits().to_bitvec();
+                let key0 = felt!("99cadc82").view_bits().to_bitvec();
+                let key1 = felt!("901823").view_bits().to_bitvec();
+                let key2 = felt!("8975").view_bits().to_bitvec();
 
-                let val0 = starkhash!("01");
-                let val1 = starkhash!("02");
-                let val2 = starkhash!("03");
+                let val0 = felt!("01");
+                let val1 = felt!("02");
+                let val2 = felt!("03");
 
                 let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
@@ -1251,13 +1250,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
-                let key1 = starkhash!("901823").view_bits().to_bitvec();
-                let key2 = starkhash!("8975").view_bits().to_bitvec();
+                let key0 = felt!("99cadc82").view_bits().to_bitvec();
+                let key1 = felt!("901823").view_bits().to_bitvec();
+                let key2 = felt!("8975").view_bits().to_bitvec();
 
-                let val0 = starkhash!("01");
-                let val1 = starkhash!("02");
-                let val2 = starkhash!("03");
+                let val0 = felt!("01");
+                let val1 = felt!("02");
+                let val2 = felt!("03");
 
                 let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
@@ -1292,13 +1291,13 @@ mod tests {
                 let mut conn = rusqlite::Connection::open_in_memory().unwrap();
                 let transaction = conn.transaction().unwrap();
 
-                let key0 = starkhash!("99cadc82").view_bits().to_bitvec();
-                let key1 = starkhash!("901823").view_bits().to_bitvec();
-                let key2 = starkhash!("8975").view_bits().to_bitvec();
+                let key0 = felt!("99cadc82").view_bits().to_bitvec();
+                let key1 = felt!("901823").view_bits().to_bitvec();
+                let key2 = felt!("8975").view_bits().to_bitvec();
 
-                let val0 = starkhash!("01");
-                let val1 = starkhash!("02");
-                let val2 = starkhash!("03");
+                let val0 = felt!("01");
+                let val1 = felt!("02");
+                let val2 = felt!("03");
 
                 let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
@@ -1335,8 +1334,8 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key = starkhash!("99cadc82").view_bits().to_bitvec();
-            let val = starkhash!("12345678");
+            let key = felt!("99cadc82").view_bits().to_bitvec();
+            let val = felt!("12345678");
             uut.set(&key, val).unwrap();
 
             let root0 = uut.commit().unwrap();
@@ -1372,7 +1371,7 @@ mod tests {
 
     mod real_world {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn simple() {
@@ -1382,20 +1381,17 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            uut.set(starkhash!("01").view_bits(), starkhash!("00"))
-                .unwrap();
+            uut.set(felt!("01").view_bits(), felt!("00")).unwrap();
 
-            uut.set(starkhash!("86").view_bits(), starkhash!("01"))
-                .unwrap();
+            uut.set(felt!("86").view_bits(), felt!("01")).unwrap();
 
-            uut.set(starkhash!("87").view_bits(), starkhash!("02"))
-                .unwrap();
+            uut.set(felt!("87").view_bits(), felt!("02")).unwrap();
 
             let root = uut.commit().unwrap();
 
             assert_eq!(
                 root,
-                starkhash!("05458b9f8491e7c845bffa4cd36cdb3a7c29dcdf75f2809bd6f4ce65386facfc")
+                felt!("05458b9f8491e7c845bffa4cd36cdb3a7c29dcdf75f2809bd6f4ce65386facfc")
             );
         }
 
@@ -1409,22 +1405,22 @@ mod tests {
             // The bug was identified by comparing root and nodes against the python
             // utility in `root/py/src/test_generate_test_storage_tree.py`.
             let leaves = [
-                (starkhash!("05"), starkhash!("66")),
+                (felt!("05"), felt!("66")),
                 (
-                    starkhash!("01BF95D4B58F0741FEA29F94EE5A118D0847C8B7AE0173C2A570C9F74CCA9EA1"),
-                    starkhash!("07E5"),
+                    felt!("01BF95D4B58F0741FEA29F94EE5A118D0847C8B7AE0173C2A570C9F74CCA9EA1"),
+                    felt!("07E5"),
                 ),
                 (
-                    starkhash!("03C75C20765D020B0EC41B48BB8C5338AC4B619FC950D59994E844E1E1B9D2A9"),
-                    starkhash!("07C7"),
+                    felt!("03C75C20765D020B0EC41B48BB8C5338AC4B619FC950D59994E844E1E1B9D2A9"),
+                    felt!("07C7"),
                 ),
                 (
-                    starkhash!("04065B936C56F5908A981084DAFA66DC17600937DC80C52EEB834693BB811792"),
-                    starkhash!("07970C532B764BB36FAF5696B8BC1317505B8A4DC9EEE5DF4994671757975E4D"),
+                    felt!("04065B936C56F5908A981084DAFA66DC17600937DC80C52EEB834693BB811792"),
+                    felt!("07970C532B764BB36FAF5696B8BC1317505B8A4DC9EEE5DF4994671757975E4D"),
                 ),
                 (
-                    starkhash!("04B5FBB4904167E2E8195C35F7D4E78501A3FE95896794367C85B60B39AEFFC2"),
-                    starkhash!("0232C969EAFC5B30C20648759D7FA1E2F4256AC6604E1921578101DCE4DFDF48"),
+                    felt!("04B5FBB4904167E2E8195C35F7D4E78501A3FE95896794367C85B60B39AEFFC2"),
+                    felt!("0232C969EAFC5B30C20648759D7FA1E2F4256AC6604E1921578101DCE4DFDF48"),
                 ),
             ];
 
@@ -1442,7 +1438,7 @@ mod tests {
             let root = tree.commit().unwrap();
 
             let expected =
-                starkhash!("06ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
+                felt!("06ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
 
             assert_eq!(root, expected);
         }
@@ -1452,7 +1448,7 @@ mod tests {
         use super::{BinaryNode, EdgeNode, MerkleTree, Node, Visit};
         use bitvec::slice::BitSlice;
         use bitvec::{bitvec, prelude::Msb0};
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use stark_hash::Felt;
         use std::cell::RefCell;
         use std::ops::ControlFlow;
@@ -1479,8 +1475,8 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key = starkhash!("01");
-            let value = starkhash!("02");
+            let key = felt!("01");
+            let value = felt!("02");
 
             uut.set(key.view_bits(), value).unwrap();
 
@@ -1514,10 +1510,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key_left = starkhash!("00");
-            let value_left = starkhash!("02");
-            let key_right = starkhash!("01");
-            let value_right = starkhash!("03");
+            let key_left = felt!("00");
+            let value_left = felt!("02");
+            let key_right = felt!("01");
+            let value_right = felt!("03");
 
             uut.set(key_right.view_bits(), value_right).unwrap();
             uut.set(key_left.view_bits(), value_left).unwrap();
@@ -1562,12 +1558,12 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-            let key_a = starkhash!("10");
-            let value_a = starkhash!("0a");
-            let key_b = starkhash!("11");
-            let value_b = starkhash!("0b");
-            let key_c = starkhash!("13");
-            let value_c = starkhash!("0c");
+            let key_a = felt!("10");
+            let value_a = felt!("0a");
+            let key_b = felt!("11");
+            let value_b = felt!("0b");
+            let key_c = felt!("13");
+            let value_c = felt!("0c");
 
             uut.set(key_c.view_bits(), value_c).unwrap();
             uut.set(key_a.view_bits(), value_a).unwrap();
@@ -1656,7 +1652,7 @@ mod tests {
         };
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use rusqlite::Transaction;
         use stark_hash::Felt;
 
@@ -1851,15 +1847,15 @@ mod tests {
             //      /    \
             //     (2)  (3)
 
-            let key_1 = starkhash!("00"); // 0b01
-            let key_2 = starkhash!("01"); // 0b01
+            let key_1 = felt!("00"); // 0b01
+            let key_2 = felt!("01"); // 0b01
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
             let keys = [key1, key2];
 
-            let value_1 = starkhash!("02");
-            let value_2 = starkhash!("03");
+            let value_1 = felt!("02");
+            let value_2 = felt!("03");
 
             uut.set(key1, value_1).unwrap();
             uut.set(key2, value_2).unwrap();
@@ -1888,18 +1884,18 @@ mod tests {
             //      /    \             |
             //     (2)  (3)           (5)
 
-            let key_1 = starkhash!("00"); // 0b01
-            let key_2 = starkhash!("01"); // 0b01
-            let key_3 = starkhash!("03"); // 0b11
+            let key_1 = felt!("00"); // 0b01
+            let key_2 = felt!("01"); // 0b01
+            let key_3 = felt!("03"); // 0b11
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
             let key3 = key_3.view_bits();
             let keys = [key1, key2, key3];
 
-            let value_1 = starkhash!("02");
-            let value_2 = starkhash!("03");
-            let value_3 = starkhash!("05");
+            let value_1 = felt!("02");
+            let value_2 = felt!("03");
+            let value_3 = felt!("05");
 
             uut.set(key1, value_1).unwrap();
             uut.set(key2, value_2).unwrap();
@@ -1930,12 +1926,12 @@ mod tests {
             //      /
             //   (0x99)
 
-            let key_1 = starkhash!("00"); // 0b00
+            let key_1 = felt!("00"); // 0b00
 
             let key1 = key_1.view_bits();
             let keys = [key1];
 
-            let value_1 = starkhash!("aa");
+            let value_1 = felt!("aa");
 
             uut.set(key1, value_1).unwrap();
 
@@ -1958,12 +1954,12 @@ mod tests {
             //     \
             //   (0xaa)
 
-            let key_1 = starkhash!("ff"); // 0b11111111
+            let key_1 = felt!("ff"); // 0b11111111
 
             let key1 = key_1.view_bits();
             let keys = [key1];
 
-            let value_1 = starkhash!("aa");
+            let value_1 = felt!("aa");
 
             uut.set(key1, value_1).unwrap();
 
@@ -1986,13 +1982,12 @@ mod tests {
             //           \
             //          (0xbb)
 
-            let key_1 =
-                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+            let key_1 = felt!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
 
             let key1 = key_1.view_bits();
             let keys = [key1];
 
-            let value_1 = starkhash!("bb");
+            let value_1 = felt!("bb");
 
             uut.set(key1, value_1).unwrap();
 
@@ -2016,16 +2011,15 @@ mod tests {
             //    |                     |
             //   (cc)                  (dd)
 
-            let key_1 = starkhash!("00");
-            let key_2 =
-                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+            let key_1 = felt!("00");
+            let key_2 = felt!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
             let keys = [key1, key2];
 
-            let value_1 = starkhash!("cc");
-            let value_2 = starkhash!("dd");
+            let value_1 = felt!("cc");
+            let value_2 = felt!("dd");
 
             uut.set(key1, value_1).unwrap();
             uut.set(key2, value_2).unwrap();
@@ -2138,16 +2132,15 @@ mod tests {
             //    |                     |
             //   (cc)                  (dd)
 
-            let key_1 = starkhash!("00");
-            let key_2 =
-                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+            let key_1 = felt!("00");
+            let key_2 = felt!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
             let keys = [key1, key2];
 
-            let value_1 = starkhash!("cc");
-            let value_2 = starkhash!("dd");
+            let value_1 = felt!("cc");
+            let value_2 = felt!("dd");
 
             uut.set(key1, value_1).unwrap();
             uut.set(key2, value_2).unwrap();
@@ -2160,7 +2153,7 @@ mod tests {
             // Modify the left hash
             let to_change = proofs[0].get_mut(0).unwrap();
             match to_change {
-                ProofNode::Binary(bin) => bin.left_hash = starkhash!("42"),
+                ProofNode::Binary(bin) => bin.left_hash = felt!("42"),
                 _ => unreachable!(),
             };
 
@@ -2180,16 +2173,15 @@ mod tests {
             //    |                     |
             //   (cc)                  (dd)
 
-            let key_1 = starkhash!("00");
-            let key_2 =
-                starkhash!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+            let key_1 = felt!("00");
+            let key_2 = felt!("07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
 
             let key1 = key_1.view_bits();
             let key2 = key_2.view_bits();
             let keys = [key1, key2];
 
-            let value_1 = starkhash!("cc");
-            let value_2 = starkhash!("dd");
+            let value_1 = felt!("cc");
+            let value_2 = felt!("dd");
 
             uut.set(key1, value_1).unwrap();
             uut.set(key2, value_2).unwrap();
@@ -2202,7 +2194,7 @@ mod tests {
             // Modify the child hash
             let to_change = proofs[0].get_mut(1).unwrap();
             match to_change {
-                ProofNode::Edge(edge) => edge.child_hash = starkhash!("42"),
+                ProofNode::Edge(edge) => edge.child_hash = felt!("42"),
                 _ => unreachable!(),
             };
 
@@ -2217,11 +2209,11 @@ mod tests {
         let transaction = conn.transaction().unwrap();
         let mut uut = MerkleTree::load("test", &transaction, Felt::ZERO).unwrap();
 
-        let value = starkhash!("01");
-        let key0 = starkhash!("ee00").view_bits().to_bitvec();
-        let key1 = starkhash!("ee01").view_bits().to_bitvec();
+        let value = felt!("01");
+        let key0 = felt!("ee00").view_bits().to_bitvec();
+        let key1 = felt!("ee01").view_bits().to_bitvec();
 
-        let key2 = starkhash!("ffff").view_bits().to_bitvec();
+        let key2 = felt!("ffff").view_bits().to_bitvec();
         let hash_of_values = stark_hash::stark_hash(value, value);
         uut.set(&key2, hash_of_values).unwrap();
 
@@ -2247,11 +2239,11 @@ mod tests {
         assert_eq!(
             visited,
             &[
-                (starkhash!("EE00"), starkhash!("01")),
-                (starkhash!("EE01"), starkhash!("01")),
+                (felt!("EE00"), felt!("01")),
+                (felt!("EE01"), felt!("01")),
                 (
-                    starkhash!("FFFF"),
-                    starkhash!("02EBBD6878F81E49560AE863BD4EF327A417037BF57B63A016130AD0A94C8EAC")
+                    felt!("FFFF"),
+                    felt!("02EBBD6878F81E49560AE863BD4EF327A417037BF57B63A016130AD0A94C8EAC")
                 )
             ]
         );

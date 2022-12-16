@@ -187,7 +187,7 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use pathfinder_common::StarknetBlockHash;
 
         #[test]
@@ -200,8 +200,8 @@ mod tests {
 
             let input = positional.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                class_hash: ClassHash(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0abcde")).into(),
+                class_hash: ClassHash(felt!("012345")),
             };
             assert_eq!(input, expected);
         }
@@ -216,8 +216,8 @@ mod tests {
 
             let input = named.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                class_hash: ClassHash(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0abcde")).into(),
+                class_hash: ClassHash(felt!("012345")),
             };
             assert_eq!(input, expected);
         }

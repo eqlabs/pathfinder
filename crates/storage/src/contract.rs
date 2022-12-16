@@ -192,7 +192,7 @@ impl ContractsTable {
 mod tests {
     use super::*;
     use crate::Storage;
-    use pathfinder_common::starkhash;
+    use pathfinder_common::felt;
 
     #[test]
     fn fails_if_class_hash_missing() {
@@ -200,8 +200,8 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let address = ContractAddress::new_or_panic(starkhash!("0abc"));
-        let hash = ClassHash(starkhash!("0123"));
+        let address = ContractAddress::new_or_panic(felt!("0abc"));
+        let hash = ClassHash(felt!("0123"));
 
         ContractsTable::upsert(&transaction, address, hash).unwrap_err();
     }
@@ -212,8 +212,8 @@ mod tests {
         let mut conn = storage.connection().unwrap();
         let transaction = conn.transaction().unwrap();
 
-        let address = ContractAddress::new_or_panic(starkhash!("0abc"));
-        let hash = ClassHash(starkhash!("0123"));
+        let address = ContractAddress::new_or_panic(felt!("0abc"));
+        let hash = ClassHash(felt!("0123"));
         let definition = vec![9, 13, 25];
 
         ContractCodeTable::insert(&transaction, hash, &[][..], &[][..], &definition[..]).unwrap();
@@ -250,7 +250,7 @@ mod tests {
     }
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
-        let hash = ClassHash(starkhash!("0123"));
+        let hash = ClassHash(felt!("0123"));
 
         // list of objects
         let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
@@ -273,7 +273,7 @@ mod tests {
         let transaction = connection.transaction().unwrap();
 
         let (hash, _, _) = setup_class(&transaction);
-        let non_existent = ClassHash(starkhash!("0456"));
+        let non_existent = ClassHash(felt!("0456"));
 
         let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];

@@ -52,7 +52,7 @@ pub async fn add_deploy_account_transaction(
 mod tests {
     use super::*;
     use pathfinder_common::{
-        starkhash, CallParam, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
+        felt, CallParam, ClassHash, ContractAddressSalt, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
 
@@ -101,22 +101,22 @@ mod tests {
                     ]
                     .into()),
                     signature: vec![
-                        TransactionSignatureElem(starkhash!(
+                        TransactionSignatureElem(felt!(
                             "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                         )),
-                        TransactionSignatureElem(starkhash!(
+                        TransactionSignatureElem(felt!(
                             "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                         )),
                     ],
                     nonce: TransactionNonce::ZERO,
 
-                    contract_address_salt: ContractAddressSalt(starkhash!(
+                    contract_address_salt: ContractAddressSalt(felt!(
                         "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
                     )),
-                    constructor_calldata: vec![CallParam(starkhash!(
+                    constructor_calldata: vec![CallParam(felt!(
                         "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                     ))],
-                    class_hash: ClassHash(starkhash!(
+                    class_hash: ClassHash(felt!(
                         "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
                     )),
                 },
@@ -132,10 +132,10 @@ mod tests {
         let input = get_input();
 
         let expected = AddDeployAccountTransactionOutput {
-            transaction_hash: StarknetTransactionHash(starkhash!(
+            transaction_hash: StarknetTransactionHash(felt!(
                 "0273FB3C38B20037839D6BAD8811CD0AFD82F2BC3C95C061EB8F30CE5CEDC377"
             )),
-            contract_address: ContractAddress::new_or_panic(starkhash!(
+            contract_address: ContractAddress::new_or_panic(felt!(
                 "042AE26AB2B8236242BB384C23E74C69AF7204BB2FC711A99DA63E0DD6ADF33F"
             )),
         };

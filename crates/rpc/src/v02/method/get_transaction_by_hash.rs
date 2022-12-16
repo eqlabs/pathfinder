@@ -55,7 +55,7 @@ pub async fn get_transaction_by_hash(
 mod tests {
     use super::*;
     use pathfinder_common::{
-        starkhash, starkhash_bytes, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
+        felt, starkhash_bytes, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
         TransactionNonce,
     };
     use stark_hash::Felt;
@@ -76,7 +76,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByHashInput {
-                    transaction_hash: StarknetTransactionHash(starkhash!("deadbeef"))
+                    transaction_hash: StarknetTransactionHash(felt!("deadbeef"))
                 }
             )
         }
@@ -92,7 +92,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByHashInput {
-                    transaction_hash: StarknetTransactionHash(starkhash!("deadbeef"))
+                    transaction_hash: StarknetTransactionHash(felt!("deadbeef"))
                 }
             )
         }

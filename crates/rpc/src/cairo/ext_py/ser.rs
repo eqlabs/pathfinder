@@ -306,7 +306,7 @@ impl TryFrom<BlockId> for BlockHashNumberOrLatest {
 mod tests {
     use crate::cairo::ext_py::ser::NoncesWrapper;
     use pathfinder_common::{
-        starkhash, {ContractAddress, ContractNonce},
+        felt, {ContractAddress, ContractNonce},
     };
     use std::collections::HashMap;
 
@@ -320,12 +320,12 @@ mod tests {
         let map = {
             let mut map = HashMap::new();
             map.insert(
-                ContractAddress::new_or_panic(starkhash!(
+                ContractAddress::new_or_panic(felt!(
                     "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
                 )),
                 vec![StorageDiff {
-                    key: StorageAddress::new_or_panic(starkhash!("05")),
-                    value: StorageValue(starkhash!("00")),
+                    key: StorageAddress::new_or_panic(felt!("05")),
+                    value: StorageValue(felt!("00")),
                 }],
             );
             map
@@ -354,10 +354,10 @@ mod tests {
 
         let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
         let contracts = vec![DeployedContract {
-            address: ContractAddress::new_or_panic(starkhash!(
+            address: ContractAddress::new_or_panic(felt!(
                 "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
             )),
-            class_hash: ClassHash(starkhash!(
+            class_hash: ClassHash(felt!(
                 "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
             )),
         }];
@@ -407,8 +407,8 @@ mod tests {
                 {
                     let mut map = HashMap::new();
                     map.insert(
-                        ContractAddress::new(starkhash!("0123")).unwrap(),
-                        ContractNonce(starkhash!("01")),
+                        ContractAddress::new(felt!("0123")).unwrap(),
+                        ContractNonce(felt!("01")),
                     );
                     // cannot have multiple in this test because ordering
                     Some(map)

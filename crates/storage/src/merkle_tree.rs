@@ -580,13 +580,13 @@ mod tests {
 
     mod serde {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn edge() {
             // Tests all different possible path lengths. This is an area of concern as we are serializing
             // and deserializing big endian bit paths to a fixed size big endian array.
-            let child = starkhash!("123abc");
+            let child = felt!("123abc");
             // 251 randomly generated bits.
             let bits251 = bitvec![Msb0, u8; 1,0,0,1,1,0,1,1,0,0,1,1,1,1,0,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,0,0,
                                             1,1,1,1,1,1,1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,1,1,0,0,0,1,0,1,0,0,
@@ -614,8 +614,8 @@ mod tests {
         #[test]
         fn binary() {
             let original = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0123"),
-                right: starkhash!("0abc"),
+                left: felt!("0123"),
+                right: felt!("0abc"),
             });
 
             let mut data = [0u8; 65];
@@ -629,7 +629,7 @@ mod tests {
 
     mod reference_count {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn increment() {
@@ -637,10 +637,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0321"),
-                right: starkhash!("0abc"),
+                left: felt!("0321"),
+                right: felt!("0abc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -660,10 +660,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0321"),
-                right: starkhash!("0abc"),
+                left: felt!("0321"),
+                right: felt!("0abc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -686,10 +686,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0321"),
-                right: starkhash!("0abc"),
+                left: felt!("0321"),
+                right: felt!("0abc"),
             });
 
             uut.upsert(key, node.clone()).unwrap();
@@ -701,7 +701,7 @@ mod tests {
 
     mod insert_get {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn missing() {
@@ -709,7 +709,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("123abc");
             assert_eq!(uut.get(key).unwrap(), None);
         }
 
@@ -719,13 +719,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let left_child_key = starkhash!("123abc");
+            let left_child_key = felt!("123abc");
             let left_child = PersistedNode::Leaf;
 
-            let right_child_key = starkhash!("ddd111");
+            let right_child_key = felt!("ddd111");
             let right_child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("def123");
             let parent = PersistedNode::Binary(PersistedBinaryNode {
                 left: left_child_key,
                 right: right_child_key,
@@ -750,10 +750,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let child_key = starkhash!("123abc");
+            let child_key = felt!("123abc");
             let child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("def123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],
                 child: child_key,
@@ -774,7 +774,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("123abc");
             let node = PersistedNode::Leaf;
 
             uut.upsert(key, node).unwrap();
@@ -791,7 +791,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("123abc");
             let hash = key.to_be_bytes();
 
             // Force a leaf node into the database. Leaf nodes were represented as empty data.
@@ -806,8 +806,8 @@ mod tests {
 
             // It should be possible to overwrite this leaf node.
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("aaaa"),
-                right: starkhash!("bbbb"),
+                left: felt!("aaaa"),
+                right: felt!("bbbb"),
             });
             uut.upsert(key, node.clone()).unwrap();
 
@@ -816,8 +816,8 @@ mod tests {
 
             // It should not be possible to overwrite the new binary node.
             let fail = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("cccc"),
-                right: starkhash!("dddd"),
+                left: felt!("cccc"),
+                right: felt!("dddd"),
             });
             uut.upsert(key, fail).unwrap_err();
         }
@@ -825,7 +825,7 @@ mod tests {
 
     mod delete {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn binary() {
@@ -833,13 +833,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let left_child_key = starkhash!("123abc");
+            let left_child_key = felt!("123abc");
             let left_child = PersistedNode::Leaf;
 
-            let right_child_key = starkhash!("ddd111");
+            let right_child_key = felt!("ddd111");
             let right_child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("def123");
             let parent = PersistedNode::Binary(PersistedBinaryNode {
                 left: left_child_key,
                 right: right_child_key,
@@ -861,10 +861,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let child_key = starkhash!("123abc");
+            let child_key = felt!("123abc");
             let child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("def123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],
                 child: child_key,
@@ -884,11 +884,11 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let leaf_key = starkhash!("123abc");
+            let leaf_key = felt!("123abc");
             let leaf_node = PersistedNode::Leaf;
 
-            let parent_key_1 = starkhash!("0111");
-            let parent_key_2 = starkhash!("0222");
+            let parent_key_1 = felt!("0111");
+            let parent_key_2 = felt!("0222");
 
             let parent_node_1 = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],

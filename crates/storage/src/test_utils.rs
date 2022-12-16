@@ -3,10 +3,10 @@ use super::{
 };
 use ethers::types::{H128, H256};
 use pathfinder_common::{
-    starkhash, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-    EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    felt, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+    EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+    StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
@@ -115,7 +115,7 @@ pub(crate) fn create_transactions_and_receipts(
                     data: vec![EventData(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap())],
                     keys: vec![
                         EventKey(Felt::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                        EventKey(starkhash!("deadbeef")),
+                        EventKey(felt!("deadbeef")),
                     ],
                 }]
             } else {

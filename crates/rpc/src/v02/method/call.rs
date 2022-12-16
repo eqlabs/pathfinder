@@ -81,7 +81,7 @@ pub async fn call(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::starkhash;
+    use pathfinder_common::felt;
 
     mod parsing {
         use super::*;
@@ -99,11 +99,11 @@ mod tests {
             let input = positional.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(starkhash!("0abcde")),
-                    entry_point_selector: EntryPoint(starkhash!("ee")),
-                    calldata: vec![CallParam(starkhash!("1234")), CallParam(starkhash!("2345"))],
+                    contract_address: ContractAddress::new_or_panic(felt!("0abcde")),
+                    entry_point_selector: EntryPoint(felt!("ee")),
+                    calldata: vec![CallParam(felt!("1234")), CallParam(felt!("2345"))],
                 },
-                block_id: StarknetBlockHash(starkhash!("bbbbbbbb")).into(),
+                block_id: StarknetBlockHash(felt!("bbbbbbbb")).into(),
             };
             assert_eq!(input, expected);
         }
@@ -119,11 +119,11 @@ mod tests {
             let input = named.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(starkhash!("0abcde")),
-                    entry_point_selector: EntryPoint(starkhash!("ee")),
-                    calldata: vec![CallParam(starkhash!("1234")), CallParam(starkhash!("2345"))],
+                    contract_address: ContractAddress::new_or_panic(felt!("0abcde")),
+                    entry_point_selector: EntryPoint(felt!("ee")),
+                    calldata: vec![CallParam(felt!("1234")), CallParam(felt!("2345"))],
                 },
-                block_id: StarknetBlockHash(starkhash!("bbbbbbbb")).into(),
+                block_id: StarknetBlockHash(felt!("bbbbbbbb")).into(),
             };
             assert_eq!(input, expected);
         }
@@ -137,24 +137,24 @@ mod tests {
         use std::sync::Arc;
 
         // Mainnet block number 5
-        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         )));
 
         // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
         fn valid_mainnet_call() -> FunctionCall {
             FunctionCall {
-                contract_address: ContractAddress::new_or_panic(starkhash!(
+                contract_address: ContractAddress::new_or_panic(felt!(
                     "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                 )),
-                entry_point_selector: EntryPoint(starkhash!(
+                entry_point_selector: EntryPoint(felt!(
                     "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
                 )),
                 calldata: vec![
-                    CallParam(starkhash!(
+                    CallParam(felt!(
                         "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
                     )),
-                    CallParam(starkhash!(
+                    CallParam(felt!(
                         "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
                     )),
                 ],
@@ -203,7 +203,7 @@ mod tests {
 
             let input = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
+                    contract_address: ContractAddress::new_or_panic(felt!("deadbeef")),
                     ..valid_mainnet_call()
                 },
                 block_id: BLOCK_5,

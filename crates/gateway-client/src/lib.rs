@@ -687,7 +687,7 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
-        use pathfinder_common::{starkhash, test_utils::metrics::RecorderGuard};
+        use pathfinder_common::{felt, test_utils::metrics::RecorderGuard};
 
         #[tokio::test]
         async fn genesis() {
@@ -731,7 +731,7 @@ mod tests {
             ]);
             let by_hash = client
                 .block(
-                    StarknetBlockHash(starkhash!(
+                    StarknetBlockHash(felt!(
                         "040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
                     ))
                     .into(),
@@ -959,7 +959,7 @@ mod tests {
 
     mod storage {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use pretty_assertions::assert_eq;
         use starknet_gateway_test_fixtures::testnet::VALID_KEY_DEC;
 
@@ -1040,7 +1040,7 @@ mod tests {
                 .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVOKE_CONTRACT_BLOCK_HASH)
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(starkhash!("01e240")));
+            assert_eq!(result, StorageValue(felt!("01e240")));
         }
 
         #[tokio::test]
@@ -1061,7 +1061,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(starkhash!("01e240")));
+            assert_eq!(result, StorageValue(felt!("01e240")));
         }
 
         #[tokio::test]
@@ -1082,13 +1082,13 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(starkhash!("01e240")));
+            assert_eq!(result, StorageValue(felt!("01e240")));
         }
     }
 
     mod transaction {
         use super::{reply::Status, *};
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1099,7 +1099,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(starkhash!(
+                    .transaction(StarknetTransactionHash(felt!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
                     )))
                     .await
@@ -1117,7 +1117,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(starkhash!(
+                    .transaction(StarknetTransactionHash(felt!(
                         "03d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
                     )))
                     .await
@@ -1135,7 +1135,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(starkhash!(
+                    .transaction(StarknetTransactionHash(felt!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
                     )))
                     .await
@@ -1163,7 +1163,7 @@ mod tests {
 
     mod transaction_status {
         use super::{reply::Status, *};
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[tokio::test]
         async fn accepted() {
@@ -1173,7 +1173,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction_status(StarknetTransactionHash(starkhash!(
+                    .transaction_status(StarknetTransactionHash(felt!(
                         "079cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205"
                     )))
                     .await
@@ -1212,7 +1212,7 @@ mod tests {
             *,
         };
         use pathfinder_common::{
-            starkhash, test_utils::metrics::RecorderGuard, ContractAddress, GlobalRoot,
+            felt, test_utils::metrics::RecorderGuard, ContractAddress, GlobalRoot,
         };
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
@@ -1298,7 +1298,7 @@ mod tests {
                 .into();
             let by_hash: OrderedStateUpdate = client
                 .state_update(
-                    StarknetBlockHash(starkhash!(
+                    StarknetBlockHash(felt!(
                         "067c7dfe64eb8447f499064805969e3551a7598389c01fb22df7398fb2f163b2"
                     ))
                     .into(),
@@ -1390,7 +1390,7 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use pathfinder_common::{starkhash, ByteCodeOffset, ContractAddress};
+        use pathfinder_common::{felt, ByteCodeOffset, ContractAddress};
         use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
         use std::collections::HashMap;
 
@@ -1407,30 +1407,30 @@ mod tests {
                     TransactionVersion::ZERO,
                     Fee(5444010076217u128.to_be_bytes().into()),
                     vec![
-                        TransactionSignatureElem(starkhash!(
+                        TransactionSignatureElem(felt!(
                             "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                         )),
-                        TransactionSignatureElem(starkhash!(
+                        TransactionSignatureElem(felt!(
                             "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                         )),
                     ],
                     None,
-                    ContractAddress::new_or_panic(starkhash!(
+                    ContractAddress::new_or_panic(felt!(
                         "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                     )),
                     Some(EntryPoint(Felt::ZERO)),
                     vec![
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!(
+                        CallParam(felt!("01")),
+                        CallParam(felt!(
                             "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                         )),
-                        CallParam(starkhash!(
+                        CallParam(felt!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
                         CallParam(Felt::ZERO),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("2b")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("2b")),
                         CallParam(Felt::ZERO),
                     ],
                 )
@@ -1457,32 +1457,32 @@ mod tests {
                     TransactionVersion::ZERO,
                     Fee(5444010076217u128.to_be_bytes().into()),
                     vec![
-                        TransactionSignatureElem(starkhash!(
+                        TransactionSignatureElem(felt!(
                             "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                         )),
-                        TransactionSignatureElem(starkhash!(
+                        TransactionSignatureElem(felt!(
                             "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                         )),
                     ],
                     None,
-                    ContractAddress::new_or_panic(starkhash!(
+                    ContractAddress::new_or_panic(felt!(
                         "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                     )),
-                    Some(EntryPoint(starkhash!(
+                    Some(EntryPoint(felt!(
                         "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
                     ))),
                     vec![
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!(
+                        CallParam(felt!("01")),
+                        CallParam(felt!(
                             "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                         )),
-                        CallParam(starkhash!(
+                        CallParam(felt!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
                         CallParam(Felt::ZERO),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("2b")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("2b")),
                         CallParam(Felt::ZERO),
                     ],
                 )
@@ -1529,7 +1529,7 @@ mod tests {
                     TransactionNonce(Felt::ZERO),
                     contract_class,
                     // actual address dumped from a `starknet declare` call
-                    ContractAddress::new_or_panic(starkhash!("01")),
+                    ContractAddress::new_or_panic(felt!("01")),
                     None,
                 )
                 .await
@@ -1551,12 +1551,12 @@ mod tests {
             client
                 .add_deploy_transaction(
                     TransactionVersion::ZERO,
-                    ContractAddressSalt(starkhash!(
+                    ContractAddressSalt(felt!(
                         "05864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
                     )),
                     // Regression: use a dummy constructor param here to make sure that
                     // it is serialized properly
-                    vec![ConstructorParam(starkhash!("01"))],
+                    vec![ConstructorParam(felt!("01"))],
                     contract_definition,
                     None,
                 )
@@ -1596,10 +1596,10 @@ mod tests {
 
             let expected = reply::add_transaction::DeployAccountResponse {
                 code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: StarknetTransactionHash(pathfinder_common::starkhash!(
+                transaction_hash: StarknetTransactionHash(pathfinder_common::felt!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
                 )),
-                address: ContractAddress::new_or_panic(pathfinder_common::starkhash!(
+                address: ContractAddress::new_or_panic(pathfinder_common::felt!(
                     "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
                 )),
             };
@@ -1619,14 +1619,14 @@ mod tests {
                         EntryPointType::External,
                         vec![
                             SelectorAndOffset {
-                                offset: ByteCodeOffset(starkhash!("3a")),
-                                selector: EntryPoint(starkhash!(
+                                offset: ByteCodeOffset(felt!("3a")),
+                                selector: EntryPoint(felt!(
                                                 "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
                                 ),
                             },
                             SelectorAndOffset {
-                                offset: ByteCodeOffset(starkhash!("5b")),
-                                selector: EntryPoint(starkhash!(
+                                offset: ByteCodeOffset(felt!("5b")),
+                                selector: EntryPoint(felt!(
                                                 "039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"
                                         )),
                             },

@@ -277,33 +277,33 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn receipt() {
             let state_update = StateUpdate {
-                block_hash: Some(StarknetBlockHash(starkhash!("deadbeef"))),
-                new_root: GlobalRoot(starkhash!("01")),
-                old_root: GlobalRoot(starkhash!("02")),
+                block_hash: Some(StarknetBlockHash(felt!("deadbeef"))),
+                new_root: GlobalRoot(felt!("01")),
+                old_root: GlobalRoot(felt!("02")),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
-                        address: ContractAddress::new_or_panic(starkhash!("0adc")),
+                        address: ContractAddress::new_or_panic(felt!("0adc")),
                         storage_entries: vec![StorageEntry {
-                            key: StorageAddress::new_or_panic(starkhash!("f0")),
-                            value: StorageValue(starkhash!("55")),
+                            key: StorageAddress::new_or_panic(felt!("f0")),
+                            value: StorageValue(felt!("55")),
                         }],
                     }],
                     declared_contract_hashes: vec![
-                        ClassHash(starkhash!("cdef")),
-                        ClassHash(starkhash!("cdee")),
+                        ClassHash(felt!("cdef")),
+                        ClassHash(felt!("cdee")),
                     ],
                     deployed_contracts: vec![DeployedContract {
-                        address: ContractAddress::new_or_panic(starkhash!("0add")),
-                        class_hash: ClassHash(starkhash!("cdef")),
+                        address: ContractAddress::new_or_panic(felt!("0add")),
+                        class_hash: ClassHash(felt!("cdef")),
                     }],
                     nonces: vec![Nonce {
-                        contract_address: ContractAddress::new_or_panic(starkhash!("ca")),
-                        nonce: ContractNonce(starkhash!("0404ce")),
+                        contract_address: ContractAddress::new_or_panic(felt!("ca")),
+                        nonce: ContractNonce(felt!("0404ce")),
                     }],
                 },
             };
@@ -333,7 +333,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{starkhash, starkhash_bytes};
+    use pathfinder_common::{felt, starkhash_bytes};
     use pathfinder_common::{
         Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         StorageAddress, StorageValue,
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn parsing() {
         let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(StarknetBlockHash(starkhash!("beef")));
+        let hash = BlockId::Hash(StarknetBlockHash(felt!("beef")));
 
         [
             (r#"["pending"]"#, BlockId::Pending),
@@ -497,10 +497,10 @@ mod tests {
 
         let expected = StateUpdate {
             block_hash: None,
-            new_root: GlobalRoot(starkhash!(
+            new_root: GlobalRoot(felt!(
                 "06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
             )),
-            old_root: GlobalRoot(starkhash!(
+            old_root: GlobalRoot(felt!(
                 "0300e3d0ce5f0da1a086ab49734bab6f302efbf544b56226b7db665716b621c8"
             )),
             state_diff: StateDiff {

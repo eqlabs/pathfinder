@@ -100,7 +100,7 @@ mod tests {
         fn test_block_hash() {
             check(
                 "{ \"block_hash\": \"0xFACE\" }",
-                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash!("face"))),
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::felt!("face"))),
             );
         }
     }

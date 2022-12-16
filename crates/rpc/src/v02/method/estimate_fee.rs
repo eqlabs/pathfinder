@@ -159,7 +159,7 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
-        starkhash, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
+        felt, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_storage::JournalMode;
@@ -173,11 +173,11 @@ mod tests {
                 crate::v02::types::request::BroadcastedInvokeTransactionV0 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
-                    signature: vec![TransactionSignatureElem(starkhash!("07"))],
-                    nonce: Some(TransactionNonce(starkhash!("08"))),
-                    contract_address: ContractAddress::new_or_panic(starkhash!("0aaa")),
-                    entry_point_selector: EntryPoint(starkhash!("0e")),
-                    calldata: vec![CallParam(starkhash!("ff"))],
+                    signature: vec![TransactionSignatureElem(felt!("07"))],
+                    nonce: Some(TransactionNonce(felt!("08"))),
+                    contract_address: ContractAddress::new_or_panic(felt!("0aaa")),
+                    entry_point_selector: EntryPoint(felt!("0e")),
+                    calldata: vec![CallParam(felt!("ff"))],
                 },
             ))
         }
@@ -208,7 +208,7 @@ mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(StarknetBlockHash(starkhash!("0abcde"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt!("0abcde"))),
             };
             assert_eq!(input, expected);
         }
@@ -239,7 +239,7 @@ mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(StarknetBlockHash(starkhash!("0abcde"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt!("0abcde"))),
             };
             assert_eq!(input, expected);
         }
@@ -256,7 +256,7 @@ mod tests {
         use pathfinder_common::{starkhash_bytes, ContractAddressSalt};
 
         // Mainnet block number 5
-        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         )));
 
@@ -267,17 +267,17 @@ mod tests {
                 max_fee: Fee(Default::default()),
                 signature: vec![],
                 nonce: Some(TransactionNonce(Default::default())),
-                contract_address: ContractAddress::new_or_panic(starkhash!(
+                contract_address: ContractAddress::new_or_panic(felt!(
                     "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                 )),
-                entry_point_selector: EntryPoint(starkhash!(
+                entry_point_selector: EntryPoint(felt!(
                     "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
                 )),
                 calldata: vec![
-                    CallParam(starkhash!(
+                    CallParam(felt!(
                         "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
                     )),
-                    CallParam(starkhash!(
+                    CallParam(felt!(
                         "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
                     )),
                 ],
@@ -333,7 +333,7 @@ mod tests {
             let input = EstimateFeeInput {
                 request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                     BroadcastedInvokeTransactionV0 {
-                        contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
+                        contract_address: ContractAddress::new_or_panic(felt!("deadbeef")),
                         ..mainnet_invoke
                     },
                 )),
@@ -399,7 +399,7 @@ mod tests {
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
                     contract_class: CONTRACT_CLASS.clone(),
-                    sender_address: ContractAddress::new_or_panic(starkhash!(
+                    sender_address: ContractAddress::new_or_panic(felt!(
                         "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                     )),
                 });
@@ -427,7 +427,7 @@ mod tests {
 
             let deploy_transaction = BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
                 version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                contract_address_salt: ContractAddressSalt(starkhash!("deadbeef")),
+                contract_address_salt: ContractAddressSalt(felt!("deadbeef")),
                 constructor_calldata: vec![],
                 contract_class: CONTRACT_CLASS.clone(),
             });

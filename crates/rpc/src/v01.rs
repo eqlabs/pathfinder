@@ -293,7 +293,7 @@ pub fn register_all_methods(
             const NONCE: TransactionNonce = TransactionNonce(Felt::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
-                ContractAddress::new_or_panic(pathfinder_common::starkhash!("01"));
+                ContractAddress::new_or_panic(pathfinder_common::felt!("01"));
 
             context
                 .add_declare_transaction(
@@ -354,8 +354,8 @@ mod tests {
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
     use pathfinder_common::{
-        starkhash, starkhash_bytes, BlockId, Chain, ChainId, ClassHash, ContractAddress,
-        ContractClass, ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
+        felt, starkhash_bytes, BlockId, Chain, ChainId, ClassHash, ContractAddress, ContractClass,
+        ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
         TransactionNonce,
     };
@@ -1408,7 +1408,7 @@ mod tests {
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
-        use pathfinder_common::{starkhash, StorageValue};
+        use pathfinder_common::{felt, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
         use pathfinder_storage::{ContractCodeTable, ContractsTable, StarknetBlocksBlockId};
         use pretty_assertions::assert_eq;
@@ -1422,11 +1422,11 @@ mod tests {
             )?;
             let contract_definition = Bytes::from(buffer);
 
-            let contract_address = ContractAddress::new_or_panic(starkhash!(
+            let contract_address = ContractAddress::new_or_panic(felt!(
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             ));
             let expected_hash =
-                starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
+                felt!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
 
             let (abi, bytecode, hash) =
                 starknet_gateway_types::class_hash::extract_abi_code_hash(&contract_definition)?;
@@ -1668,7 +1668,7 @@ mod tests {
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
             .await
             .unwrap();
-        assert_eq!(nonce, ContractNonce(starkhash!("01")));
+        assert_eq!(nonce, ContractNonce(felt!("01")));
 
         // Invalid contract should error.
         let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
@@ -1685,19 +1685,19 @@ mod tests {
     mod call {
         use super::*;
         use crate::v01::types::request::Call;
-        use pathfinder_common::{starkhash, CallParam, CallResultValue};
+        use pathfinder_common::{felt, CallParam, CallResultValue};
         use pretty_assertions::assert_eq;
 
-        const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"
         )));
-        const PRE_DEPLOY_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const PRE_DEPLOY_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
         )));
-        const INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
         )));
-        const CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("1234"))];
+        const CALL_DATA: [CallParam; 1] = [CallParam(felt!("1234"))];
 
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
@@ -2074,7 +2074,7 @@ mod tests {
         mod positional_args {
             use super::*;
             use crate::v01::types::request::EventFilter;
-            use pathfinder_common::starkhash;
+            use pathfinder_common::felt;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2122,7 +2122,7 @@ mod tests {
                     to_block: Some(expected_event.block_number.unwrap().into()),
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
-                    keys: vec![EventKey(starkhash!("deadbeef"))],
+                    keys: vec![EventKey(felt!("deadbeef"))],
                     page_size: test_utils::NUM_EVENTS,
                     page_number: 0,
                 });
@@ -2567,7 +2567,7 @@ mod tests {
             use crate::v01::types::request::ContractCall;
             use ethers::types::H256;
             use pathfinder_common::{
-                starkhash, ByteCodeOffset, CallParam, ClassHash, EntryPoint, Fee,
+                felt, ByteCodeOffset, CallParam, ClassHash, EntryPoint, Fee,
                 TransactionSignatureElem, TransactionVersion,
             };
             use pretty_assertions::assert_eq;
@@ -2580,23 +2580,23 @@ mod tests {
             lazy_static::lazy_static! {
                 pub static ref CALL: ContractCall = ContractCall {
                     contract_address: ContractAddress::new_or_panic(
-                        starkhash!("023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd")
+                        felt!("023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd")
                     ),
                     calldata: vec![
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1")),
-                        CallParam(starkhash!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")),
-                        CallParam(starkhash!("00")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("2b")),
-                        CallParam(starkhash!("00")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1")),
+                        CallParam(felt!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")),
+                        CallParam(felt!("00")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("2b")),
+                        CallParam(felt!("00")),
                     ],
-                    entry_point_selector: Some(EntryPoint(starkhash!("015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad")))
+                    entry_point_selector: Some(EntryPoint(felt!("015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad")))
                 };
                 pub static ref SIGNATURE: Vec<TransactionSignatureElem> = vec![
-                    TransactionSignatureElem(starkhash!("07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
-                    TransactionSignatureElem(starkhash!("071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
+                    TransactionSignatureElem(felt!("07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
+                    TransactionSignatureElem(felt!("071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
                 ];
                 pub static ref MAX_FEE: Fee = Fee(5444010076217u128.to_be_bytes().into());
                 pub static ref TRANSACTION_VERSION: TransactionVersion = TransactionVersion(H256::zero());
@@ -2608,11 +2608,11 @@ mod tests {
                             EntryPointType::External,
                             vec![
                                 SelectorAndOffset {
-                                    offset: ByteCodeOffset(starkhash!("3a")),
+                                    offset: ByteCodeOffset(felt!("3a")),
                                     selector: EntryPoint::hashed(&b"increase_balance"[..]),
                                 },
                                 SelectorAndOffset{
-                                    offset: ByteCodeOffset(starkhash!("5b")),
+                                    offset: ByteCodeOffset(felt!("5b")),
                                     selector: EntryPoint::hashed(&b"get_balance"[..]),
                                 },
                             ],
@@ -2652,7 +2652,7 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     InvokeTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
                         ))
                     }
@@ -2668,34 +2668,34 @@ mod tests {
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let call = ContractCall {
-                    contract_address: ContractAddress::new_or_panic(starkhash!(
+                    contract_address: ContractAddress::new_or_panic(felt!(
                         "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
                     )),
                     calldata: vec![
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!(
+                        CallParam(felt!("01")),
+                        CallParam(felt!(
                             "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
                         )),
-                        CallParam(starkhash!(
+                        CallParam(felt!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
-                        CallParam(starkhash!("00")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
+                        CallParam(felt!("00")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("01")),
+                        CallParam(felt!("01")),
                     ],
                     entry_point_selector: None,
                 };
                 let signature = vec![
-                    TransactionSignatureElem(starkhash!(
+                    TransactionSignatureElem(felt!(
                         "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
                     )),
-                    TransactionSignatureElem(starkhash!(
+                    TransactionSignatureElem(felt!(
                         "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
                     )),
                 ];
                 let max_fee = Fee(ethers::types::H128::from_low_u64_be(0x630a0aff77));
-                let nonce = TransactionNonce(starkhash!("02"));
+                let nonce = TransactionNonce(felt!("02"));
 
                 let params = rpc_params!(call, signature, max_fee, TransactionVersion::ONE, nonce);
                 let rpc_result = TestClient::v01(addr)
@@ -2706,7 +2706,7 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     InvokeTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
                         ))
                     }
@@ -2733,10 +2733,10 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     DeclareTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
                         )),
-                        class_hash: ClassHash(starkhash!(
+                        class_hash: ClassHash(felt!(
                             "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
                         )),
                     }
@@ -2746,7 +2746,7 @@ mod tests {
 
         mod named_args {
             use super::*;
-            use pathfinder_common::{starkhash, ClassHash};
+            use pathfinder_common::{felt, ClassHash};
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2794,7 +2794,7 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     InvokeTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
                         ))
                     }
@@ -2822,10 +2822,10 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     DeclareTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
                         )),
-                        class_hash: ClassHash(starkhash!(
+                        class_hash: ClassHash(felt!(
                             "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
                         )),
                     }

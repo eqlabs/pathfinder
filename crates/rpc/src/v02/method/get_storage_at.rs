@@ -108,7 +108,7 @@ mod tests {
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
     use pathfinder_common::{
-        starkhash, starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress,
+        felt, starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress,
     };
 
     /// # Important
@@ -118,8 +118,8 @@ mod tests {
     #[test]
     fn parsing() {
         let expected = GetStorageAtInput {
-            contract_address: ContractAddress::new_or_panic(starkhash!("01")),
-            key: StorageAddress::new_or_panic(starkhash!("02")),
+            contract_address: ContractAddress::new_or_panic(felt!("01")),
+            key: StorageAddress::new_or_panic(felt!("02")),
             block_id: BlockId::Latest,
         };
 
