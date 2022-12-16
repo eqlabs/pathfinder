@@ -128,6 +128,8 @@ impl From<BlockBody> for proto::common::BlockBody {
 pub enum Transaction {
     Invoke(InvokeTransaction),
     Declare(DeclareTransaction),
+    Deploy(DeployTransaction),
+    L1Handler(L1HandlerTransaction),
 }
 
 impl TryFrom<proto::common::Transaction> for Transaction {
@@ -142,6 +144,12 @@ impl TryFrom<proto::common::Transaction> for Transaction {
                 proto::common::transaction::Txn::Declare(d) => {
                     Ok(Transaction::Declare(d.try_into()?))
                 }
+                proto::common::transaction::Txn::Deploy(d) => {
+                    Ok(Transaction::Deploy(d.try_into()?))
+                }
+                proto::common::transaction::Txn::L1Handler(l1) => {
+                    Ok(Transaction::L1Handler(l1.try_into()?))
+                }
             },
             None => Err(invalid_data("Missing txn field")),
         }
@@ -153,6 +161,8 @@ impl From<Transaction> for proto::common::Transaction {
         let txn = Some(match tx {
             Transaction::Invoke(tx) => proto::common::transaction::Txn::Invoke(tx.into()),
             Transaction::Declare(tx) => proto::common::transaction::Txn::Declare(tx.into()),
+            Transaction::Deploy(tx) => proto::common::transaction::Txn::Deploy(tx.into()),
+            Transaction::L1Handler(tx) => proto::common::transaction::Txn::L1Handler(tx.into()),
         });
         Self { txn }
     }
@@ -222,6 +232,54 @@ impl From<InvokeTransaction> for proto::common::InvokeTransaction {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct L1HandlerTransaction {
+    pub contract_address: StarkHash,
+    pub entry_point_selector: StarkHash,
+    pub calldata: Vec<StarkHash>,
+    pub nonce: StarkHash,
+    pub version: StarkHash,
+}
+
+impl TryFrom<proto::common::L1HandlerTransaction> for L1HandlerTransaction {
+    type Error = std::io::Error;
+
+    fn try_from(tx: proto::common::L1HandlerTransaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            contract_address: tx
+                .contract_address
+                .ok_or_else(|| invalid_data("Missing contract_address field"))?
+                .try_into()?,
+            entry_point_selector: tx
+                .entry_point_selector
+                .ok_or_else(|| invalid_data("Missing entry_point_selector field"))?
+                .try_into()?,
+            calldata: parse_felt_vector(tx.calldata, "calldata")?,
+            nonce: tx
+                .nonce
+                .ok_or_else(|| invalid_data("Missing nonce field"))?
+                .try_into()?,
+            version: tx
+                .version
+                .ok_or_else(|| invalid_data("Missing version field"))?
+                .try_into()?,
+        })
+    }
+}
+
+impl From<L1HandlerTransaction> for proto::common::L1HandlerTransaction {
+    fn from(tx: L1HandlerTransaction) -> Self {
+        Self {
+            contract_address: Some(tx.contract_address.into()),
+            entry_point_selector: Some(tx.entry_point_selector.into()),
+            calldata: tx.calldata.into_iter().map(Into::into).collect(),
+            nonce: Some(tx.nonce.into()),
+            version: Some(tx.version.into()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeclareTransaction {
     pub contract_class: ContractClass,
@@ -270,6 +328,54 @@ impl From<DeclareTransaction> for proto::common::DeclareTransaction {
             max_fee: Some(tx.max_fee.into()),
             signature: tx.signature.into_iter().map(Into::into).collect(),
             nonce: Some(tx.nonce.into()),
+            version: Some(tx.version.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeployTransaction {
+    pub contract_class: ContractClass,
+    pub contract_address_salt: StarkHash,
+    pub constructor_calldata: Vec<StarkHash>,
+    pub version: StarkHash,
+}
+
+impl TryFrom<proto::common::DeployTransaction> for DeployTransaction {
+    type Error = std::io::Error;
+
+    fn try_from(tx: proto::common::DeployTransaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            contract_class: tx
+                .contract_class
+                .ok_or_else(|| invalid_data("Missing contract_class field"))?
+                .try_into()?,
+            contract_address_salt: tx
+                .contract_address_salt
+                .ok_or_else(|| invalid_data("Missing contract_address_salt field"))?
+                .try_into()?,
+            constructor_calldata: parse_felt_vector(
+                tx.constructor_calldata,
+                "constructor_calldata",
+            )?,
+            version: tx
+                .version
+                .ok_or_else(|| invalid_data("Missing version field"))?
+                .try_into()?,
+        })
+    }
+}
+
+impl From<DeployTransaction> for proto::common::DeployTransaction {
+    fn from(tx: DeployTransaction) -> Self {
+        Self {
+            contract_class: Some(tx.contract_class.into()),
+            contract_address_salt: Some(tx.contract_address_salt.into()),
+            constructor_calldata: tx
+                .constructor_calldata
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             version: Some(tx.version.into()),
         }
     }
