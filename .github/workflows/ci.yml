@@ -157,6 +157,16 @@ jobs:
           cargo install cargo-sort
           cargo sort --check --workspace
 
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          cargo install cargo-msrv
+          cargo msrv --path crates/pathfinder verify
+
   python:
     runs-on: ubuntu-latest
     needs: python-starkhash
