@@ -1,6 +1,6 @@
 use goose::prelude::*;
 use rand::{Rng, SeedableRng};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 use crate::requests::v02::*;
 

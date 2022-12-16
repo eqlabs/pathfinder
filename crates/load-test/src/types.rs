@@ -4,7 +4,7 @@
 //! already found in pathfinder. However, these types are simplified and are missing fields
 //! that are irrelevant for load tests.
 //!
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct Block {
