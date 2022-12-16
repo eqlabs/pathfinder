@@ -109,10 +109,10 @@ mod tests {
     use ethers::types::H256;
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
-        felt, starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
-        EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StorageAddress, TransactionVersion,
+        felt, felt_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData,
+        EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+        TransactionVersion,
     };
     use pathfinder_merkle_tree::state_tree::GlobalStateTree;
     use pathfinder_storage::{
@@ -166,26 +166,26 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let db_txn = connection.transaction().unwrap();
 
-        let contract0_addr = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
-        let contract1_addr = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+        let contract0_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
+        let contract1_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
 
-        let class0_hash = ClassHash(starkhash_bytes!(b"class 0 hash"));
-        let class1_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
+        let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
+        let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
 
         let contract0_update = vec![];
 
-        let storage_addr = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0"));
+        let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
         let contract1_update0 = vec![StorageDiff {
             key: storage_addr,
-            value: StorageValue(starkhash_bytes!(b"storage value 0")),
+            value: StorageValue(felt_bytes!(b"storage value 0")),
         }];
         let contract1_update1 = vec![StorageDiff {
             key: storage_addr,
-            value: StorageValue(starkhash_bytes!(b"storage value 1")),
+            value: StorageValue(felt_bytes!(b"storage value 1")),
         }];
         let contract1_update2 = vec![StorageDiff {
             key: storage_addr,
-            value: StorageValue(starkhash_bytes!(b"storage value 2")),
+            value: StorageValue(felt_bytes!(b"storage value 2")),
         }];
 
         // We need to set the magic bytes for zstd compression to simulate a compressed
@@ -261,7 +261,7 @@ mod tests {
             .unwrap();
         let global_root2 = global_tree.apply().unwrap();
 
-        let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
+        let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
@@ -270,23 +270,23 @@ mod tests {
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
         };
-        let block1_hash = StarknetBlockHash(starkhash_bytes!(b"block 1"));
+        let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
         let block1 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: block1_hash,
             root: global_root1,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
-            sequencer_address: SequencerAddress(starkhash_bytes!(&[1u8])),
+            sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
         };
-        let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
+        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
         let block2 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(2),
             hash: latest_hash,
             root: global_root2,
             timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
-            sequencer_address: SequencerAddress(starkhash_bytes!(&[2u8])),
+            sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
         };
         StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
         StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
@@ -298,7 +298,7 @@ mod tests {
 
         ContractCodeTable::update_declared_on_if_null(&db_txn, class0_hash, block1.hash).unwrap();
 
-        let txn0_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
+        let txn0_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
         let txn0 = InvokeTransactionV0 {
             calldata: vec![],
@@ -324,11 +324,11 @@ mod tests {
             transaction_hash: txn0_hash,
             transaction_index: StarknetTransactionIndex::new_or_panic(0),
         };
-        let txn1_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 1"));
-        let txn2_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 2"));
-        let txn3_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 3"));
-        let txn4_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 4 "));
-        let txn5_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 5"));
+        let txn1_hash = StarknetTransactionHash(felt_bytes!(b"txn 1"));
+        let txn2_hash = StarknetTransactionHash(felt_bytes!(b"txn 2"));
+        let txn3_hash = StarknetTransactionHash(felt_bytes!(b"txn 3"));
+        let txn4_hash = StarknetTransactionHash(felt_bytes!(b"txn 4 "));
+        let txn5_hash = StarknetTransactionHash(felt_bytes!(b"txn 5"));
         let mut txn1 = txn0.clone();
         let mut txn2 = txn0.clone();
         let mut txn3 = txn0.clone();
@@ -356,9 +356,9 @@ mod tests {
         let mut receipt4 = receipt0.clone();
         let mut receipt5 = receipt0.clone();
         receipt0.events = vec![Event {
-            data: vec![EventData(starkhash_bytes!(b"event 0 data"))],
-            from_address: ContractAddress::new_or_panic(starkhash_bytes!(b"event 0 from addr")),
-            keys: vec![EventKey(starkhash_bytes!(b"event 0 key"))],
+            data: vec![EventData(felt_bytes!(b"event 0 data"))],
+            from_address: ContractAddress::new_or_panic(felt_bytes!(b"event 0 from addr")),
+            keys: vec![EventKey(felt_bytes!(b"event 0 key"))],
         }];
         receipt1.transaction_hash = txn1_hash;
         receipt2.transaction_hash = txn2_hash;
@@ -402,22 +402,22 @@ mod tests {
         let transactions: Vec<Transaction> = vec![
             InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![],
-                contract_address: ContractAddress::new_or_panic(starkhash_bytes!(
+                contract_address: ContractAddress::new_or_panic(felt_bytes!(
                     b"pending contract addr 0"
                 )),
-                entry_point_selector: EntryPoint(starkhash_bytes!(b"entry point 0")),
+                entry_point_selector: EntryPoint(felt_bytes!(b"entry point 0")),
                 entry_point_type: Some(EntryPointType::External),
                 max_fee: crate::v01::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
-                transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0")),
+                transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
             })
             .into(),
             DeployTransaction {
                 contract_address: ContractAddress::new_or_panic(felt!("01122355")),
-                contract_address_salt: ContractAddressSalt(starkhash_bytes!(b"salty")),
-                class_hash: ClassHash(starkhash_bytes!(b"pending class hash 1")),
+                contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),
+                class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
                 constructor_calldata: vec![],
-                transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 1")),
+                transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 1")),
                 version: TransactionVersion(H256::zero()),
             }
             .into(),
@@ -430,17 +430,17 @@ mod tests {
                     Event {
                         data: vec![],
                         from_address: ContractAddress::new_or_panic(felt!("abcddddddd")),
-                        keys: vec![EventKey(starkhash_bytes!(b"pending key"))],
+                        keys: vec![EventKey(felt_bytes!(b"pending key"))],
                     },
                     Event {
                         data: vec![],
                         from_address: ContractAddress::new_or_panic(felt!("abcddddddd")),
-                        keys: vec![EventKey(starkhash_bytes!(b"pending key"))],
+                        keys: vec![EventKey(felt_bytes!(b"pending key"))],
                     },
                     Event {
                         data: vec![],
                         from_address: ContractAddress::new_or_panic(felt!("abcaaaaaaa")),
-                        keys: vec![EventKey(starkhash_bytes!(b"pending key 2"))],
+                        keys: vec![EventKey(felt_bytes!(b"pending key 2"))],
                     },
                 ],
                 execution_resources: Some(ExecutionResources {
@@ -475,7 +475,7 @@ mod tests {
         let block = starknet_gateway_types::reply::PendingBlock {
             gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
             parent_hash: latest.hash,
-            sequencer_address: SequencerAddress(starkhash_bytes!(b"pending sequencer address")),
+            sequencer_address: SequencerAddress(felt_bytes!(b"pending sequencer address")),
             status: starknet_gateway_types::reply::Status::Pending,
             timestamp: StarknetBlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
@@ -486,28 +486,24 @@ mod tests {
         use starknet_gateway_types::reply as seq_reply;
         let deployed_contracts = vec![
             seq_reply::state_update::DeployedContract {
-                address: ContractAddress::new_or_panic(starkhash_bytes!(
-                    b"pending contract 0 address"
-                )),
-                class_hash: ClassHash(starkhash_bytes!(b"pending contract 0 hash")),
+                address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 0 address")),
+                class_hash: ClassHash(felt_bytes!(b"pending contract 0 hash")),
             },
             seq_reply::state_update::DeployedContract {
-                address: ContractAddress::new_or_panic(starkhash_bytes!(
-                    b"pending contract 1 address"
-                )),
-                class_hash: ClassHash(starkhash_bytes!(b"pending contract 1 hash")),
+                address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 1 address")),
+                class_hash: ClassHash(felt_bytes!(b"pending contract 1 hash")),
             },
         ];
         let storage_diffs = [(
             deployed_contracts[1].address,
             vec![
                 seq_reply::state_update::StorageDiff {
-                    key: StorageAddress::new_or_panic(starkhash_bytes!(b"pending storage key 0")),
-                    value: StorageValue(starkhash_bytes!(b"pending storage value 0")),
+                    key: StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 0")),
+                    value: StorageValue(felt_bytes!(b"pending storage value 0")),
                 },
                 seq_reply::state_update::StorageDiff {
-                    key: StorageAddress::new_or_panic(starkhash_bytes!(b"pending storage key 1")),
-                    value: StorageValue(starkhash_bytes!(b"pending storage value 1")),
+                    key: StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 1")),
+                    value: StorageValue(felt_bytes!(b"pending storage value 1")),
                 },
             ],
         )]

@@ -349,7 +349,7 @@ mod tests {
         BroadcastedInvokeTransactionV0, BroadcastedTransaction,
     };
     use pathfinder_common::{
-        felt, starkhash_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
+        felt, felt_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
         ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
@@ -802,7 +802,7 @@ mod tests {
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
-                hash: StarknetBlockHash(starkhash_bytes!(b"some blockhash somewhere")),
+                hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
                 root: global_root,
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
@@ -860,7 +860,7 @@ mod tests {
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
-                hash: StarknetBlockHash(starkhash_bytes!(b"some blockhash somewhere")),
+                hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
                 root: global_root,
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),

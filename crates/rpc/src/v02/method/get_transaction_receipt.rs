@@ -531,7 +531,7 @@ mod types {
 mod tests {
     use super::*;
     use pathfinder_common::{
-        felt, starkhash_bytes, ContractAddress, EventData, EventKey, Fee, StarknetBlockHash,
+        felt, felt_bytes, ContractAddress, EventData, EventKey, Fee, StarknetBlockHash,
         StarknetBlockNumber, StarknetTransactionHash,
     };
 
@@ -580,7 +580,7 @@ mod tests {
         async fn hash_not_found() {
             let context = RpcContext::for_tests();
             let input = GetTransactionReceiptInput {
-                transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"non_existent")),
+                transaction_hash: StarknetTransactionHash(felt_bytes!(b"non_existent")),
             };
 
             let result = get_transaction_receipt(context, input).await;
@@ -596,7 +596,7 @@ mod tests {
     async fn success() {
         let context = RpcContext::for_tests();
         let input = GetTransactionReceiptInput {
-            transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"txn 0")),
+            transaction_hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
         };
 
         let result = get_transaction_receipt(context, input).await.unwrap();
@@ -606,18 +606,18 @@ mod tests {
             MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(starkhash_bytes!(b"txn 0")),
+                        transaction_hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
                         actual_fee: Fee(ethers::types::H128::zero()),
                         status: TransactionStatus::AcceptedOnL2,
-                        block_hash: StarknetBlockHash(starkhash_bytes!(b"genesis")),
+                        block_hash: StarknetBlockHash(felt_bytes!(b"genesis")),
                         block_number: StarknetBlockNumber::new_or_panic(0),
                         messages_sent: vec![],
                         events: vec![Event {
-                            data: vec![EventData(starkhash_bytes!(b"event 0 data"))],
-                            from_address: ContractAddress::new_or_panic(starkhash_bytes!(
+                            data: vec![EventData(felt_bytes!(b"event 0 data"))],
+                            from_address: ContractAddress::new_or_panic(felt_bytes!(
                                 b"event 0 from addr"
                             )),
-                            keys: vec![EventKey(starkhash_bytes!(b"event 0 key"))],
+                            keys: vec![EventKey(felt_bytes!(b"event 0 key"))],
                         }],
                     }
                 }
@@ -628,7 +628,7 @@ mod tests {
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
-        let transaction_hash = StarknetTransactionHash(starkhash_bytes!(b"pending tx hash 0"));
+        let transaction_hash = StarknetTransactionHash(felt_bytes!(b"pending tx hash 0"));
         let input = GetTransactionReceiptInput { transaction_hash };
 
         let result = get_transaction_receipt(context, input).await.unwrap();
@@ -645,17 +645,17 @@ mod tests {
                             Event {
                                 data: vec![],
                                 from_address: ContractAddress::new_or_panic(felt!("abcddddddd")),
-                                keys: vec![EventKey(starkhash_bytes!(b"pending key"))],
+                                keys: vec![EventKey(felt_bytes!(b"pending key"))],
                             },
                             Event {
                                 data: vec![],
                                 from_address: ContractAddress::new_or_panic(felt!("abcddddddd")),
-                                keys: vec![EventKey(starkhash_bytes!(b"pending key"))],
+                                keys: vec![EventKey(felt_bytes!(b"pending key"))],
                             },
                             Event {
                                 data: vec![],
                                 from_address: ContractAddress::new_or_panic(felt!("abcaaaaaaa")),
-                                keys: vec![EventKey(starkhash_bytes!(b"pending key 2"))],
+                                keys: vec![EventKey(felt_bytes!(b"pending key 2"))],
                             },
                         ],
                     }

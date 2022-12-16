@@ -253,7 +253,7 @@ mod tests {
             BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::ContractClass;
-        use pathfinder_common::{starkhash_bytes, ContractAddressSalt};
+        use pathfinder_common::{felt_bytes, ContractAddressSalt};
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
@@ -319,7 +319,7 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: valid_broadcasted_transaction(),
-                block_id: BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));

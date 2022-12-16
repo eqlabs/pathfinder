@@ -148,7 +148,7 @@ async fn get_pending_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{felt, starkhash_bytes};
+    use pathfinder_common::{felt, felt_bytes};
 
     mod parsing {
         use super::*;
@@ -194,7 +194,7 @@ mod tests {
         let mut conn = context.storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
 
-        let valid = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
         super::get_definition(&tx, valid).unwrap();
     }
 
@@ -204,10 +204,10 @@ mod tests {
         let mut conn = context.storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
 
-        let valid = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
+        let valid = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
         super::get_definition_at(&tx, StarknetBlocksBlockId::Latest, valid).unwrap();
 
-        let invalid = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
+        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
         let error =
             super::get_definition_at(&tx, StarknetBlocksBlockId::Latest, invalid).unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
@@ -222,13 +222,13 @@ mod tests {
         let tx = conn.transaction().unwrap();
 
         // This contract is declared in block 1.
-        let valid = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+        let valid = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
         super::get_definition_at(&tx, StarknetBlockNumber::new_or_panic(1).into(), valid).unwrap();
         let error =
             super::get_definition_at(&tx, StarknetBlockNumber::GENESIS.into(), valid).unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
-        let invalid = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
+        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
         let error =
             super::get_definition_at(&tx, StarknetBlockNumber::new_or_panic(2).into(), invalid)
                 .unwrap_err();
@@ -249,21 +249,21 @@ mod tests {
         let tx = conn.transaction().unwrap();
 
         // This class is declared in block 1.
-        let valid = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
-        let block1_hash = StarknetBlockHash(starkhash_bytes!(b"block 1"));
+        let valid = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
+        let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
         super::get_definition_at(&tx, block1_hash.into(), valid).unwrap();
 
-        let block0_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
+        let block0_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
         let error = super::get_definition_at(&tx, block0_hash.into(), valid).unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
-        let invalid = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
-        let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
+        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
+        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
         let error = super::get_definition_at(&tx, latest_hash.into(), invalid).unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         // Class exists, but block hash does not.
-        let invalid_block = StarknetBlockHash(starkhash_bytes!(b"invalid"));
+        let invalid_block = StarknetBlockHash(felt_bytes!(b"invalid"));
         let error = super::get_definition_at(&tx, invalid_block.into(), valid).unwrap_err();
         assert_matches!(error, GetClassAtError::BlockNotFound);
     }

@@ -131,7 +131,7 @@ mod tests {
 
     mod ext_py {
         use super::*;
-        use pathfinder_common::{starkhash_bytes, Chain, StarknetBlockHash};
+        use pathfinder_common::{felt_bytes, Chain, StarknetBlockHash};
         use pathfinder_storage::JournalMode;
         use std::path::PathBuf;
         use std::sync::Arc;
@@ -191,7 +191,7 @@ mod tests {
 
             let input = CallInput {
                 request: valid_mainnet_call(),
-                block_id: BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = call(context, input).await;
             assert_matches::assert_matches!(error, Err(CallError::BlockNotFound));

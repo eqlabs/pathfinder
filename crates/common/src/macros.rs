@@ -285,7 +285,7 @@ macro_rules! felt {
 /// Creates a [`stark_hash::StarkHash`] from a byte slice, resulting in compile-time error when
 /// invalid.
 #[macro_export]
-macro_rules! starkhash_bytes {
+macro_rules! felt_bytes {
     ($bytes:expr) => {{
         match stark_hash::Felt::from_be_slice($bytes) {
             Ok(sh) => sh,

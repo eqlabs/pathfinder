@@ -333,7 +333,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, starkhash_bytes};
+    use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
         Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         StorageAddress, StorageValue,
@@ -461,7 +461,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::felt_bytes!(
                     b"non-existent"
                 ))),
                 assert_error(GetStateUpdateError::BlockNotFound),
@@ -505,37 +505,37 @@ mod tests {
             )),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
-                    address: ContractAddress::new_or_panic(starkhash_bytes!(
+                    address: ContractAddress::new_or_panic(felt_bytes!(
                         b"pending contract 1 address"
                     )),
                     storage_entries: vec![
                         StorageEntry {
-                            key: StorageAddress::new_or_panic(starkhash_bytes!(
+                            key: StorageAddress::new_or_panic(felt_bytes!(
                                 b"pending storage key 0"
                             )),
-                            value: StorageValue(starkhash_bytes!(b"pending storage value 0")),
+                            value: StorageValue(felt_bytes!(b"pending storage value 0")),
                         },
                         StorageEntry {
-                            key: StorageAddress::new_or_panic(starkhash_bytes!(
+                            key: StorageAddress::new_or_panic(felt_bytes!(
                                 b"pending storage key 1"
                             )),
-                            value: StorageValue(starkhash_bytes!(b"pending storage value 1")),
+                            value: StorageValue(felt_bytes!(b"pending storage value 1")),
                         },
                     ],
                 }],
                 declared_contract_hashes: vec![],
                 deployed_contracts: vec![
                     DeployedContract {
-                        address: ContractAddress::new_or_panic(starkhash_bytes!(
+                        address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 0 address"
                         )),
-                        class_hash: ClassHash(starkhash_bytes!(b"pending contract 0 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending contract 0 hash")),
                     },
                     DeployedContract {
-                        address: ContractAddress::new_or_panic(starkhash_bytes!(
+                        address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 1 address"
                         )),
-                        class_hash: ClassHash(starkhash_bytes!(b"pending contract 1 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending contract 1 hash")),
                     },
                 ],
                 nonces: vec![],

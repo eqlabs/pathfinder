@@ -107,9 +107,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{
-        felt, starkhash_bytes, ContractAddress, StarknetBlockHash, StorageAddress,
-    };
+    use pathfinder_common::{felt, felt_bytes, ContractAddress, StarknetBlockHash, StorageAddress};
 
     /// # Important
     ///
@@ -168,7 +166,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(value) => assert_eq!(
                 *value,
-                StorageValue(pathfinder_common::starkhash_bytes!(expected)),
+                StorageValue(pathfinder_common::felt_bytes!(expected)),
                 "test case {i}"
             ), "test case {i}");
         })
@@ -198,18 +196,16 @@ mod tests {
         let ctx_with_pending_disabled = RpcContext::for_tests();
 
         let pending_contract0 =
-            ContractAddress::new_or_panic(starkhash_bytes!(b"pending contract 1 address"));
-        let pending_key0 = StorageAddress::new_or_panic(starkhash_bytes!(b"pending storage key 0"));
-        let contract1 = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
-        let key0 = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0"));
-        let deployment_block = BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"block 1")));
-        let non_existent_key = StorageAddress::new_or_panic(starkhash_bytes!(b"non-existent"));
+            ContractAddress::new_or_panic(felt_bytes!(b"pending contract 1 address"));
+        let pending_key0 = StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 0"));
+        let contract1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
+        let key0 = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
+        let deployment_block = BlockId::Hash(StarknetBlockHash(felt_bytes!(b"block 1")));
+        let non_existent_key = StorageAddress::new_or_panic(felt_bytes!(b"non-existent"));
 
-        let non_existent_contract =
-            ContractAddress::new_or_panic(starkhash_bytes!(b"non-existent"));
-        let pre_deploy_block = BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"genesis")));
-        let non_existent_block =
-            BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"non-existent")));
+        let non_existent_contract = ContractAddress::new_or_panic(felt_bytes!(b"non-existent"));
+        let pre_deploy_block = BlockId::Hash(StarknetBlockHash(felt_bytes!(b"genesis")));
+        let non_existent_block = BlockId::Hash(StarknetBlockHash(felt_bytes!(b"non-existent")));
 
         let cases: &[(
             RpcContext,
