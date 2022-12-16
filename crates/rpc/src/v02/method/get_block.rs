@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn parsing() {
         let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(StarknetBlockHash(felt!("beef")));
+        let hash = BlockId::Hash(StarknetBlockHash(felt!("0xbeef")));
 
         [
             (r#"["pending"]"#, BlockId::Pending),

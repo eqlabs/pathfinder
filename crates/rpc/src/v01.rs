@@ -293,7 +293,7 @@ pub fn register_all_methods(
             const NONCE: TransactionNonce = TransactionNonce(Felt::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
-                ContractAddress::new_or_panic(pathfinder_common::felt!("01"));
+                ContractAddress::new_or_panic(pathfinder_common::felt!("0x01"));
 
             context
                 .add_declare_transaction(
@@ -1411,7 +1411,7 @@ mod tests {
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             ));
             let expected_hash =
-                felt!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
+                felt!("0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
 
             let (abi, bytecode, hash) =
                 starknet_gateway_types::class_hash::extract_abi_code_hash(&contract_definition)?;
@@ -1651,7 +1651,7 @@ mod tests {
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
             .await
             .unwrap();
-        assert_eq!(nonce, ContractNonce(felt!("01")));
+        assert_eq!(nonce, ContractNonce(felt!("0x01")));
 
         // Invalid contract should error.
         let invalid_contract = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
@@ -1680,7 +1680,7 @@ mod tests {
         const INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
         )));
-        const CALL_DATA: [CallParam; 1] = [CallParam(felt!("1234"))];
+        const CALL_DATA: [CallParam; 1] = [CallParam(felt!("0x1234"))];
 
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
@@ -2105,7 +2105,7 @@ mod tests {
                     to_block: Some(expected_event.block_number.unwrap().into()),
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
-                    keys: vec![EventKey(felt!("deadbeef"))],
+                    keys: vec![EventKey(felt!("0xdeadbeef"))],
                     page_size: test_utils::NUM_EVENTS,
                     page_number: 0,
                 });
@@ -2563,23 +2563,23 @@ mod tests {
             lazy_static::lazy_static! {
                 pub static ref CALL: ContractCall = ContractCall {
                     contract_address: ContractAddress::new_or_panic(
-                        felt!("023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd")
+                        felt!("0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd")
                     ),
                     calldata: vec![
-                        CallParam(felt!("01")),
-                        CallParam(felt!("0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1")),
-                        CallParam(felt!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")),
-                        CallParam(felt!("00")),
-                        CallParam(felt!("01")),
-                        CallParam(felt!("01")),
-                        CallParam(felt!("2b")),
-                        CallParam(felt!("00")),
+                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1")),
+                        CallParam(felt!("0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")),
+                        CallParam(felt!("0x00")),
+                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x2b")),
+                        CallParam(felt!("0x00")),
                     ],
-                    entry_point_selector: Some(EntryPoint(felt!("015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad")))
+                    entry_point_selector: Some(EntryPoint(felt!("0x015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad")))
                 };
                 pub static ref SIGNATURE: Vec<TransactionSignatureElem> = vec![
-                    TransactionSignatureElem(felt!("07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
-                    TransactionSignatureElem(felt!("071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
+                    TransactionSignatureElem(felt!("0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
+                    TransactionSignatureElem(felt!("0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
                 ];
                 pub static ref MAX_FEE: Fee = Fee(5444010076217u128.to_be_bytes().into());
                 pub static ref TRANSACTION_VERSION: TransactionVersion = TransactionVersion(H256::zero());
@@ -2591,11 +2591,11 @@ mod tests {
                             EntryPointType::External,
                             vec![
                                 SelectorAndOffset {
-                                    offset: ByteCodeOffset(felt!("3a")),
+                                    offset: ByteCodeOffset(felt!("0x3a")),
                                     selector: EntryPoint::hashed(&b"increase_balance"[..]),
                                 },
                                 SelectorAndOffset{
-                                    offset: ByteCodeOffset(felt!("5b")),
+                                    offset: ByteCodeOffset(felt!("0x5b")),
                                     selector: EntryPoint::hashed(&b"get_balance"[..]),
                                 },
                             ],
@@ -2655,17 +2655,17 @@ mod tests {
                         "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
                     )),
                     calldata: vec![
-                        CallParam(felt!("01")),
+                        CallParam(felt!("0x01")),
                         CallParam(felt!(
                             "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
                         )),
                         CallParam(felt!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
-                        CallParam(felt!("00")),
-                        CallParam(felt!("01")),
-                        CallParam(felt!("01")),
-                        CallParam(felt!("01")),
+                        CallParam(felt!("0x00")),
+                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x01")),
                     ],
                     entry_point_selector: None,
                 };
@@ -2678,7 +2678,7 @@ mod tests {
                     )),
                 ];
                 let max_fee = Fee(ethers::types::H128::from_low_u64_be(0x630a0aff77));
-                let nonce = TransactionNonce(felt!("02"));
+                let nonce = TransactionNonce(felt!("0x02"));
 
                 let params = rpc_params!(call, signature, max_fee, TransactionVersion::ONE, nonce);
                 let rpc_result = TestClient::v01(addr)

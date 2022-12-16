@@ -116,8 +116,8 @@ mod tests {
     #[test]
     fn parsing() {
         let expected = GetStorageAtInput {
-            contract_address: ContractAddress::new_or_panic(felt!("01")),
-            key: StorageAddress::new_or_panic(felt!("02")),
+            contract_address: ContractAddress::new_or_panic(felt!("0x01")),
+            key: StorageAddress::new_or_panic(felt!("0x02")),
             block_id: BlockId::Latest,
         };
 

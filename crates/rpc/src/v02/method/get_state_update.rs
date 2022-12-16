@@ -282,28 +282,28 @@ mod types {
         #[test]
         fn receipt() {
             let state_update = StateUpdate {
-                block_hash: Some(StarknetBlockHash(felt!("deadbeef"))),
-                new_root: GlobalRoot(felt!("01")),
-                old_root: GlobalRoot(felt!("02")),
+                block_hash: Some(StarknetBlockHash(felt!("0xdeadbeef"))),
+                new_root: GlobalRoot(felt!("0x01")),
+                old_root: GlobalRoot(felt!("0x02")),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
-                        address: ContractAddress::new_or_panic(felt!("0adc")),
+                        address: ContractAddress::new_or_panic(felt!("0x0adc")),
                         storage_entries: vec![StorageEntry {
-                            key: StorageAddress::new_or_panic(felt!("f0")),
-                            value: StorageValue(felt!("55")),
+                            key: StorageAddress::new_or_panic(felt!("0xf0")),
+                            value: StorageValue(felt!("0x55")),
                         }],
                     }],
                     declared_contract_hashes: vec![
-                        ClassHash(felt!("cdef")),
-                        ClassHash(felt!("cdee")),
+                        ClassHash(felt!("0xcdef")),
+                        ClassHash(felt!("0xcdee")),
                     ],
                     deployed_contracts: vec![DeployedContract {
-                        address: ContractAddress::new_or_panic(felt!("0add")),
-                        class_hash: ClassHash(felt!("cdef")),
+                        address: ContractAddress::new_or_panic(felt!("0x0add")),
+                        class_hash: ClassHash(felt!("0xcdef")),
                     }],
                     nonces: vec![Nonce {
-                        contract_address: ContractAddress::new_or_panic(felt!("ca")),
-                        nonce: ContractNonce(felt!("0404ce")),
+                        contract_address: ContractAddress::new_or_panic(felt!("0xca")),
+                        nonce: ContractNonce(felt!("0x0404ce")),
                     }],
                 },
             };
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn parsing() {
         let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(StarknetBlockHash(felt!("beef")));
+        let hash = BlockId::Hash(StarknetBlockHash(felt!("0xbeef")));
 
         [
             (r#"["pending"]"#, BlockId::Pending),

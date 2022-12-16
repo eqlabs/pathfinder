@@ -99,11 +99,11 @@ mod tests {
             let input = positional.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("0abcde")),
-                    entry_point_selector: EntryPoint(felt!("ee")),
-                    calldata: vec![CallParam(felt!("1234")), CallParam(felt!("2345"))],
+                    contract_address: ContractAddress::new_or_panic(felt!("0x0abcde")),
+                    entry_point_selector: EntryPoint(felt!("0xee")),
+                    calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },
-                block_id: StarknetBlockHash(felt!("bbbbbbbb")).into(),
+                block_id: StarknetBlockHash(felt!("0xbbbbbbbb")).into(),
             };
             assert_eq!(input, expected);
         }
@@ -119,11 +119,11 @@ mod tests {
             let input = named.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("0abcde")),
-                    entry_point_selector: EntryPoint(felt!("ee")),
-                    calldata: vec![CallParam(felt!("1234")), CallParam(felt!("2345"))],
+                    contract_address: ContractAddress::new_or_panic(felt!("0x0abcde")),
+                    entry_point_selector: EntryPoint(felt!("0xee")),
+                    calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },
-                block_id: StarknetBlockHash(felt!("bbbbbbbb")).into(),
+                block_id: StarknetBlockHash(felt!("0xbbbbbbbb")).into(),
             };
             assert_eq!(input, expected);
         }
@@ -203,7 +203,7 @@ mod tests {
 
             let input = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("deadbeef")),
+                    contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
                     ..valid_mainnet_call()
                 },
                 block_id: BLOCK_5,

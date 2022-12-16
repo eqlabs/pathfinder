@@ -85,11 +85,11 @@ mod tests {
     };
 
     lazy_static::lazy_static!(
-        pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(felt!("1234"));
+        pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(felt!("0x1234"));
         pub static ref PARENT_ROOT: GlobalRoot = GlobalRoot(felt_bytes!(b"parent root"));
 
         pub static ref NEXT_BLOCK: Block = Block{
-            block_hash: StarknetBlockHash(felt!("abcd")),
+            block_hash: StarknetBlockHash(felt!("0xabcd")),
             block_number: StarknetBlockNumber::new_or_panic(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
@@ -199,7 +199,7 @@ mod tests {
         let mut sequencer = MockClientApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
-        pending_block.parent_hash = StarknetBlockHash(felt!("FFFFFF"));
+        pending_block.parent_hash = StarknetBlockHash(felt!("0xFFFFFF"));
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));

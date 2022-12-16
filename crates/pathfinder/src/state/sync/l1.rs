@@ -302,7 +302,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(10),
                 },
-                global_root: GlobalRoot(felt!("0123")),
+                global_root: GlobalRoot(felt!("0x0123")),
                 block_number: StarknetBlockNumber::GENESIS,
             }];
 
@@ -318,7 +318,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(2),
                 },
-                global_root: GlobalRoot(felt!("456abc")),
+                global_root: GlobalRoot(felt!("0x456abc")),
                 block_number: StarknetBlockNumber::new_or_panic(1),
             }];
 
@@ -376,7 +376,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(10),
                 },
-                global_root: GlobalRoot(felt!("0123")),
+                global_root: GlobalRoot(felt!("0x0123")),
                 block_number: StarknetBlockNumber::GENESIS,
             }];
 

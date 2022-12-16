@@ -169,7 +169,8 @@ const FIRST_BLOCK: u64 = 226000;
 const LAST_BLOCK: u64 = 322548;
 
 // Keccak mod 2**251 of the string Transfer
-const TRANSFER_KEY: Felt = felt!("99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9");
+const TRANSFER_KEY: Felt =
+    felt!("0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9");
 
 // Address of ETH ERC20
 const FROM_ADDRESS: ContractAddress = ContractAddress::new_or_panic(felt!(

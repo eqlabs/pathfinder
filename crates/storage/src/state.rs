@@ -1328,10 +1328,10 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let transaction = connection.transaction().unwrap();
 
-            let state_hash = ContractStateHash(felt!("0abc"));
-            let hash = ClassHash(felt!("0123"));
-            let root = ContractRoot(felt!("0def"));
-            let nonce = ContractNonce(felt!("0456"));
+            let state_hash = ContractStateHash(felt!("0x0abc"));
+            let hash = ClassHash(felt!("0x0123"));
+            let root = ContractRoot(felt!("0x0def"));
+            let nonce = ContractNonce(felt!("0x0456"));
 
             ContractsStateTable::upsert(&transaction, state_hash, hash, root, nonce).unwrap();
 
@@ -2042,9 +2042,9 @@ mod tests {
         #[test]
         fn event_data_serialization() {
             let data = [
-                EventData(felt!("01")),
-                EventData(felt!("02")),
-                EventData(felt!("03")),
+                EventData(felt!("0x01")),
+                EventData(felt!("0x02")),
+                EventData(felt!("0x03")),
             ];
 
             let mut buffer = Vec::new();
@@ -2069,9 +2069,9 @@ mod tests {
                 )),
                 data: vec![],
                 keys: vec![
-                    EventKey(felt!("901823")),
-                    EventKey(felt!("901824")),
-                    EventKey(felt!("901825")),
+                    EventKey(felt!("0x901823")),
+                    EventKey(felt!("0x901824")),
+                    EventKey(felt!("0x901825")),
                 ],
             };
 
@@ -2096,7 +2096,7 @@ mod tests {
                 to_block: Some(expected_event.block_number),
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
-                keys: vec![EventKey(felt!("deadbeef"))],
+                keys: vec![EventKey(felt!("0xdeadbeef"))],
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2132,11 +2132,11 @@ mod tests {
 
             let block = StarknetBlock {
                 number: StarknetBlockNumber::GENESIS,
-                hash: StarknetBlockHash(felt!("1234")),
-                root: GlobalRoot(felt!("1234")),
+                hash: StarknetBlockHash(felt!("0x1234")),
+                root: GlobalRoot(felt!("0x1234")),
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
-                sequencer_address: SequencerAddress(felt!("1234")),
+                sequencer_address: SequencerAddress(felt!("0x1234")),
             };
 
             // Note: hashes are reverse ordered to trigger the sorting bug.
@@ -2150,7 +2150,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("0F")),
+                        transaction_hash: StarknetTransactionHash(felt!("0x0F")),
                     },
                 )),
                 transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
@@ -2162,7 +2162,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("01")),
+                        transaction_hash: StarknetTransactionHash(felt!("0x01")),
                     },
                 )),
             ];
@@ -2669,7 +2669,7 @@ mod tests {
             fn none() {
                 use pathfinder_common::felt;
                 with_n_state_updates(1, |_, tx, _| {
-                    let non_existent = StarknetBlockHash(felt!("ff"));
+                    let non_existent = StarknetBlockHash(felt!("0xff"));
                     let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();
                     assert!(actual.is_none());
                 })

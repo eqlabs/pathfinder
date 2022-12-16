@@ -117,7 +117,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {
-                    block_id: BlockId::Hash(StarknetBlockHash(felt!("deadbeef"))),
+                    block_id: BlockId::Hash(StarknetBlockHash(felt!("0xdeadbeef"))),
                     index: StarknetTransactionIndex::new_or_panic(1),
                 }
             )
@@ -137,7 +137,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {
-                    block_id: BlockId::Hash(StarknetBlockHash(felt!("deadbeef"))),
+                    block_id: BlockId::Hash(StarknetBlockHash(felt!("0xdeadbeef"))),
                     index: StarknetTransactionIndex::new_or_panic(1),
                 }
             )

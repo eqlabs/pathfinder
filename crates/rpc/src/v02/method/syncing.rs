@@ -83,9 +83,9 @@ mod tests {
                 starting_block_num: StarknetBlockNumber::new_or_panic(0x12),
                 current_block_num: StarknetBlockNumber::new_or_panic(0x45),
                 highest_block_num: StarknetBlockNumber::new_or_panic(0x772),
-                starting_block_hash: StarknetBlockHash(felt!("abcdef")),
-                current_block_hash: StarknetBlockHash(felt!("12345677")),
-                highest_block_hash: StarknetBlockHash(felt!("1144ffaacc")),
+                starting_block_hash: StarknetBlockHash(felt!("0xabcdef")),
+                current_block_hash: StarknetBlockHash(felt!("0x12345677")),
+                highest_block_hash: StarknetBlockHash(felt!("0x1144ffaacc")),
             };
             let value = SyncingOuput::Status(status);
             let json = serde_json::to_value(value).unwrap();
@@ -120,9 +120,9 @@ mod tests {
             starting_block_num: StarknetBlockNumber::new_or_panic(1),
             current_block_num: StarknetBlockNumber::new_or_panic(2),
             highest_block_num: StarknetBlockNumber::new_or_panic(3),
-            starting_block_hash: StarknetBlockHash(pathfinder_common::felt!("aabb")),
-            current_block_hash: StarknetBlockHash(pathfinder_common::felt!("ccddee")),
-            highest_block_hash: StarknetBlockHash(pathfinder_common::felt!("eeffaacc")),
+            starting_block_hash: StarknetBlockHash(pathfinder_common::felt!("0xaabb")),
+            current_block_hash: StarknetBlockHash(pathfinder_common::felt!("0xccddee")),
+            highest_block_hash: StarknetBlockHash(pathfinder_common::felt!("0xeeffaacc")),
         };
         let expected = SyncingOuput::Status(expected);
 

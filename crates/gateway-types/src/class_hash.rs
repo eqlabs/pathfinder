@@ -403,7 +403,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                felt!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
+                felt!("0x0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
             );
         }
 
@@ -414,7 +414,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                felt!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
+                felt!("0x050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
             );
         }
 
@@ -425,7 +425,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                felt!("010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
+                felt!("0x010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
             );
         }
 
@@ -461,7 +461,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                felt!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
+                felt!("0xa69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
             );
         }
 
@@ -474,7 +474,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                felt!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
+                felt!("0x0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
             );
         }
 
@@ -487,7 +487,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                felt!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
+                felt!("0x066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
             );
         }
     }
@@ -558,7 +558,7 @@ mod tests {
         let truncated = truncated_keccak(all_set.into());
         assert_eq!(
             truncated,
-            felt!("01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9")
+            felt!("0x01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9")
         );
     }
 }

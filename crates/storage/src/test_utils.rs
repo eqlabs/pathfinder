@@ -115,7 +115,7 @@ pub(crate) fn create_transactions_and_receipts(
                     data: vec![EventData(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap())],
                     keys: vec![
                         EventKey(Felt::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                        EventKey(felt!("deadbeef")),
+                        EventKey(felt!("0xdeadbeef")),
                     ],
                 }]
             } else {

@@ -434,7 +434,7 @@ mod tests {
                                     )
                                 ),
                                 calldata: vec![CallParam(
-                                    felt!("84"),
+                                    felt!("0x84"),
                                 )],
                                 entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
                                 signature: Default::default(),
@@ -502,7 +502,7 @@ mod tests {
                     "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                 )),
                 entry_point_selector: EntryPoint::hashed(&b"get_value"[..]),
-                calldata: vec![CallParam(felt!("84"))],
+                calldata: vec![CallParam(felt!("0x84"))],
             },
         ));
 
@@ -655,7 +655,7 @@ mod tests {
                 // this is one bit off from other examples
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
             )),
-            calldata: vec![CallParam(felt!("84"))],
+            calldata: vec![CallParam(felt!("0x84"))],
             entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
@@ -714,7 +714,7 @@ mod tests {
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
 
-        let storage_address = felt!("84");
+        let storage_address = felt!("0x84");
 
         let call = super::Call {
             contract_address: target_contract,
@@ -744,7 +744,7 @@ mod tests {
                         target_contract,
                         vec![starknet_gateway_types::reply::state_update::StorageDiff {
                             key: StorageAddress::new_or_panic(storage_address),
-                            value: StorageValue(felt!("04")),
+                            value: StorageValue(felt!("0x04")),
                         }],
                     );
                     map
@@ -782,8 +782,8 @@ mod tests {
             test_contract_address,
             &test_contract_definition,
             &[(
-                StorageAddress::new_or_panic(felt!("84")),
-                StorageValue(felt!("03")),
+                StorageAddress::new_or_panic(felt!("0x84")),
+                StorageValue(felt!("0x03")),
             )],
         );
 
@@ -836,7 +836,7 @@ mod tests {
         )
         .unwrap();
 
-        let account_contract_address = ContractAddress::new_or_panic(felt!("0123"));
+        let account_contract_address = ContractAddress::new_or_panic(felt!("0x0123"));
 
         let (account_contract_state_hash, account_contract_class_hash) = deploy_contract(
             tx,

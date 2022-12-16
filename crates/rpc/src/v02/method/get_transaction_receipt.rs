@@ -410,19 +410,19 @@ mod types {
             impl CommonTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: StarknetTransactionHash(felt!("deadbeef")),
+                        transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef")),
                         actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x1)),
                         status: TransactionStatus::AcceptedOnL1,
-                        block_hash: StarknetBlockHash(felt!("0aaa")),
+                        block_hash: StarknetBlockHash(felt!("0x0aaa")),
                         block_number: StarknetBlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x55)),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("06"))],
+                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x06"))],
                         }],
                         events: vec![Event {
-                            from_address: ContractAddress::new_or_panic(felt!("e6")),
-                            keys: vec![EventKey(felt!("e7"))],
-                            data: vec![EventData(felt!("e8"))],
+                            from_address: ContractAddress::new_or_panic(felt!("0xe6")),
+                            keys: vec![EventKey(felt!("0xe7"))],
+                            data: vec![EventData(felt!("0xe8"))],
                         }],
                     }
                 }
@@ -431,16 +431,16 @@ mod types {
             impl CommonPendingTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: StarknetTransactionHash(felt!("feedfeed")),
+                        transaction_hash: StarknetTransactionHash(felt!("0xfeedfeed")),
                         actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x2)),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x5)),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("06"))],
+                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x06"))],
                         }],
                         events: vec![Event {
-                            from_address: ContractAddress::new_or_panic(felt!("a6")),
-                            keys: vec![EventKey(felt!("a7"))],
-                            data: vec![EventData(felt!("a8"))],
+                            from_address: ContractAddress::new_or_panic(felt!("0xa6")),
+                            keys: vec![EventKey(felt!("0xa7"))],
+                            data: vec![EventData(felt!("0xa8"))],
                         }],
                     }
                 }
@@ -463,27 +463,27 @@ mod types {
                 // Somewhat redundant, but want to exhaust the variants
                 Normal(TransactionReceipt::Declare(DeclareTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(felt!("deaf01")),
+                        transaction_hash: StarknetTransactionHash(felt!("0xdeaf01")),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::L1Handler(L1HandlerTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(felt!("deaf02")),
+                        transaction_hash: StarknetTransactionHash(felt!("0xdeaf02")),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::Deploy(DeployTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(felt!("deaf03")),
+                        transaction_hash: StarknetTransactionHash(felt!("0xdeaf03")),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
-                    contract_address: ContractAddress::new_or_panic(felt!("cc")),
+                    contract_address: ContractAddress::new_or_panic(felt!("0xcc")),
                 })),
                 Pending(PendingTransactionReceipt::Invoke(
                     PendingInvokeTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("deaf11")),
+                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf11")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -491,7 +491,7 @@ mod types {
                 Pending(PendingTransactionReceipt::Declare(
                     PendingDeclareTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("deaf12")),
+                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf12")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -499,7 +499,7 @@ mod types {
                 Pending(PendingTransactionReceipt::L1Handler(
                     PendingL1HandlerTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("deaf13")),
+                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf13")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -507,10 +507,10 @@ mod types {
                 Pending(PendingTransactionReceipt::Deploy(
                     PendingDeployTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("deaf14")),
+                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf14")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
-                        contract_address: ContractAddress::new_or_panic(felt!("dd")),
+                        contract_address: ContractAddress::new_or_panic(felt!("0xdd")),
                     },
                 )),
             ];
@@ -551,7 +551,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: StarknetTransactionHash(felt!("deadbeef"))
+                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
@@ -567,7 +567,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: StarknetTransactionHash(felt!("deadbeef"))
+                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
@@ -644,17 +644,17 @@ mod tests {
                         events: vec![
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("abcddddddd")),
+                                from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
                                 keys: vec![EventKey(felt_bytes!(b"pending key"))],
                             },
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("abcddddddd")),
+                                from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
                                 keys: vec![EventKey(felt_bytes!(b"pending key"))],
                             },
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("abcaaaaaaa")),
+                                from_address: ContractAddress::new_or_panic(felt!("0xabcaaaaaaa")),
                                 keys: vec![EventKey(felt_bytes!(b"pending key 2"))],
                             },
                         ],

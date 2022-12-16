@@ -95,7 +95,7 @@ mod tests {
             Transaction::Deploy(BroadcastedDeployTransaction {
                 version: TransactionVersion::ZERO,
                 constructor_calldata: vec![],
-                contract_address_salt: ContractAddressSalt(felt!("1234")),
+                contract_address_salt: ContractAddressSalt(felt!("0x1234")),
                 contract_class: CONTRACT_CLASS.clone(),
             })
         }
@@ -167,7 +167,7 @@ mod tests {
         let deploy_transaction = Transaction::Deploy(BroadcastedDeployTransaction {
             version: TransactionVersion::ZERO,
             constructor_calldata: vec![],
-            contract_address_salt: ContractAddressSalt(felt!("1234")),
+            contract_address_salt: ContractAddressSalt(felt!("0x1234")),
             contract_class: invalid_contract_class,
         });
 
@@ -187,7 +187,7 @@ mod tests {
         let deploy_transaction = Transaction::Deploy(BroadcastedDeployTransaction {
             version: TransactionVersion::ZERO,
             constructor_calldata: vec![],
-            contract_address_salt: ContractAddressSalt(felt!("1234")),
+            contract_address_salt: ContractAddressSalt(felt!("0x1234")),
             contract_class: CONTRACT_CLASS.clone(),
         });
 

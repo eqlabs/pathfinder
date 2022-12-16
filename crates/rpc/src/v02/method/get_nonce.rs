@@ -101,8 +101,8 @@ mod tests {
 
             let input = positional.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: StarknetBlockHash(felt!("0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(felt!("012345")),
+                block_id: StarknetBlockHash(felt!("0x0abcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("0x012345")),
             };
             assert_eq!(input, expected);
         }
@@ -119,8 +119,8 @@ mod tests {
 
             let input = named.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: StarknetBlockHash(felt!("0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(felt!("012345")),
+                block_id: StarknetBlockHash(felt!("0x0abcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("0x012345")),
             };
             assert_eq!(input, expected);
         }
@@ -171,7 +171,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce, ContractNonce(felt!("01")));
+        assert_eq!(nonce, ContractNonce(felt!("0x01")));
     }
 
     #[tokio::test]
@@ -185,7 +185,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce, ContractNonce(felt!("10")));
+        assert_eq!(nonce, ContractNonce(felt!("0x10")));
     }
 
     #[tokio::test]
@@ -199,7 +199,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce, ContractNonce(felt!("01")));
+        assert_eq!(nonce, ContractNonce(felt!("0x01")));
     }
 
     #[tokio::test]

@@ -447,26 +447,26 @@ mod tests {
         use pathfinder_common::{ContractAddress, EventData, EventKey};
 
         let event = Event {
-            from_address: ContractAddress::new_or_panic(felt!("deadbeef")),
+            from_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             data: vec![
-                EventData(felt!("05")),
-                EventData(felt!("06")),
-                EventData(felt!("07")),
-                EventData(felt!("08")),
-                EventData(felt!("09")),
+                EventData(felt!("0x05")),
+                EventData(felt!("0x06")),
+                EventData(felt!("0x07")),
+                EventData(felt!("0x08")),
+                EventData(felt!("0x09")),
             ],
             keys: vec![
-                EventKey(felt!("01")),
-                EventKey(felt!("02")),
-                EventKey(felt!("03")),
-                EventKey(felt!("04")),
+                EventKey(felt!("0x01")),
+                EventKey(felt!("0x02")),
+                EventKey(felt!("0x03")),
+                EventKey(felt!("0x04")),
             ],
         };
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_event_hash(0xdeadbeef, [1, 2, 3, 4], [5, 6, 7, 8, 9]))`
         let expected_event_hash =
-            felt!("db96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
+            felt!("0xdb96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
         let calculated_event_hash = calculate_event_hash(&event);
         assert_eq!(expected_event_hash, calculated_event_hash);
     }
@@ -479,15 +479,15 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
-            contract_address: ContractAddress::new_or_panic(felt!("deadbeef")),
+            contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: EntryPoint(felt!("0e")),
+            entry_point_selector: EntryPoint(felt!("0x0e")),
             max_fee: Fee(0u128.to_be_bytes().into()),
             signature: vec![
-                TransactionSignatureElem(felt!("02")),
-                TransactionSignatureElem(felt!("03")),
+                TransactionSignatureElem(felt!("0x02")),
+                TransactionSignatureElem(felt!("0x03")),
             ],
-            transaction_hash: StarknetTransactionHash(felt!("01")),
+            transaction_hash: StarknetTransactionHash(felt!("0x01")),
         }));
 
         // produced by the cairo-lang Python implementation:
@@ -512,7 +512,7 @@ mod tests {
         // produced by the cairo-lang Python implementation:
         // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64, ffc=ffc))))`
         let expected_root_hash =
-            felt!("01a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
+            felt!("0x01a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
         let computed_root_hash = tree.commit().unwrap();
 
         assert_eq!(expected_root_hash, computed_root_hash);

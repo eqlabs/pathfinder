@@ -76,7 +76,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByHashInput {
-                    transaction_hash: StarknetTransactionHash(felt!("deadbeef"))
+                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
@@ -92,7 +92,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByHashInput {
-                    transaction_hash: StarknetTransactionHash(felt!("deadbeef"))
+                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
