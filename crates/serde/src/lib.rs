@@ -419,7 +419,7 @@ pub fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
     std::str::from_utf8(res).unwrap()
 }
 
-/// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+/// A convenience function which produces a "0x" prefixed hex string from a [Felt].
 #[allow(dead_code)]
 fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     if !bytes.iter().any(|b| *b != 0) {

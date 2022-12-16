@@ -136,7 +136,7 @@ pub(super) mod starkhash {
         };
     }
 
-    /// Common trait implementations for *[stark_hash::StarkHash]* newtypes, meaning tuple structs
+    /// Common trait implementations for *[stark_hash::Felt]* newtypes, meaning tuple structs
     /// with single field.
     macro_rules! common_newtype {
         ($target:ty) => {
@@ -285,7 +285,7 @@ macro_rules! felt {
     }};
 }
 
-/// Creates a [`stark_hash::StarkHash`] from a byte slice, resulting in compile-time error when
+/// Creates a [`stark_hash::Felt`] from a byte slice, resulting in compile-time error when
 /// invalid.
 #[macro_export]
 macro_rules! felt_bytes {

@@ -1,7 +1,7 @@
 //! Starknet utilises a custom Binary Merkle-Patricia Tree to store and organise its state.
 //!
 //! From an external perspective the tree is similar to a key-value store, where both key
-//! and value are [StarkHashes](StarkHash). The difference is that each tree is immutable,
+//! and value are [Felts](Felt). The difference is that each tree is immutable,
 //! and any mutations result in a new tree with a new root. This mutated variant can then
 //! be accessed via the new root, and the old variant via the old root.
 //!
@@ -12,7 +12,7 @@
 //!
 //! #### Tree definition
 //!
-//! It is important to understand that since all keys are [StarkHashes](StarkHash), this means
+//! It is important to understand that since all keys are [Felts](Felt), this means
 //! all paths to a key are equally long - 251 bits.
 //!
 //! Starknet defines three node types for a tree.
@@ -2035,7 +2035,7 @@ mod tests {
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
         }
 
-        /// Generates `n` random [StarkHash]
+        /// Generates `n` random [Felt]
         fn gen_random_hashes(n: usize) -> Vec<Felt> {
             let mut out = Vec::with_capacity(n);
             let mut rng = rand::rngs::ThreadRng::default();

@@ -3,7 +3,7 @@
 //! ## Overview
 //!
 //! This storage functions similarly to a key-value store with the addition of automatic
-//! reference counting. A [node's](PersistedNode) key is its [hash](StarkHash), and it is
+//! reference counting. A [node's](PersistedNode) key is its [hash](Felt), and it is
 //! stored as bytes (although from an API perspective they get deserialized).
 //!
 //! Reference counting is performed automatically for all nodes i.e. when a node is inserted,

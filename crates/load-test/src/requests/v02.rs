@@ -246,7 +246,7 @@ pub async fn call(
 pub async fn estimate_fee_for_invoke(
     user: &mut GooseUser,
     contract_address: StarkHash,
-    call_data: &[StarkHash],
+    call_data: &[Felt],
     entry_point_selector: StarkHash,
     max_fee: StarkHash,
     at_block: StarkHash,

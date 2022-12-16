@@ -43,7 +43,7 @@ impl std::default::Default for Felt {
     }
 }
 
-/// Error returned by [StarkHash::from_be_bytes] indicating that
+/// Error returned by [Felt::from_be_bytes] indicating that
 /// the maximum field value was exceeded.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct OverflowError;
@@ -65,17 +65,17 @@ impl Felt {
         self == &Felt::ZERO
     }
 
-    /// Returns the big-endian representation of this [StarkHash].
+    /// Returns the big-endian representation of this [Felt].
     pub const fn to_be_bytes(self) -> [u8; 32] {
         self.0
     }
 
-    /// Big-endian representation of this [StarkHash].
+    /// Big-endian representation of this [Felt].
     pub const fn as_be_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 
-    /// Convenience function which extends [StarkHash::from_be_bytes] to work with slices.
+    /// Convenience function which extends [Felt::from_be_bytes] to work with slices.
     pub const fn from_be_slice(bytes: &[u8]) -> Result<Self, OverflowError> {
         if bytes.len() > 32 {
             return Err(OverflowError);
@@ -110,7 +110,7 @@ impl Felt {
         Felt(FieldElement::random(rng).to_repr().0)
     }
 
-    /// Creates a [StarkHash] from big-endian bytes.
+    /// Creates a [Felt] from big-endian bytes.
     ///
     /// Returns [OverflowError] if not less than the field modulus.
     pub const fn from_be_bytes(bytes: [u8; 32]) -> Result<Self, OverflowError> {
@@ -192,7 +192,7 @@ impl Felt {
         &self.0.view_bits()[5..]
     }
 
-    /// Creates a [StarkHash] from up-to 251 bits.
+    /// Creates a [Felt] from up-to 251 bits.
     pub fn from_bits(bits: &BitSlice<Msb0, u8>) -> Result<Self, OverflowError> {
         if bits.len() > 251 {
             return Err(OverflowError);
@@ -204,9 +204,9 @@ impl Felt {
         Ok(Self(bytes))
     }
 
-    /// Returns `true` if the value of [`StarkHash`] is larger than `2^251 - 1`.
+    /// Returns `true` if the value of [`Felt`] is larger than `2^251 - 1`.
     ///
-    /// Every [`StarkHash`] that is used to traverse a Merkle-Patricia Tree
+    /// Every [`Felt`] that is used to traverse a Merkle-Patricia Tree
     /// must not exceed 251 bits, since 251 is the height of the tree.
     pub const fn has_more_than_251_bits(&self) -> bool {
         self.0[0] & 0b1111_1000 > 0
@@ -282,7 +282,7 @@ impl From<FieldElement> for Felt {
 }
 
 impl Felt {
-    /// A convenience function which parses a hex string into a [StarkHash].
+    /// A convenience function which parses a hex string into a [Felt].
     ///
     /// Supports both upper and lower case hex strings, as well as an
     /// optional "0x" prefix.
@@ -382,7 +382,7 @@ impl Felt {
     }
 
     /// A convenience function which produces a "0x" prefixed hex str slice in a given buffer `buf`
-    /// from a [StarkHash].
+    /// from a [Felt].
     /// Panics if `self.0.len() * 2 + 2 > buf.len()`
     pub fn as_hex_str<'a>(&'a self, buf: &'a mut [u8]) -> &'a str {
         let expected_buf_len = self.0.len() * 2 + 2;
@@ -403,7 +403,7 @@ impl Felt {
         std::str::from_utf8(res).unwrap()
     }
 
-    /// A convenience function which produces a "0x" prefixed hex string from a [StarkHash].
+    /// A convenience function which produces a "0x" prefixed hex string from a [Felt].
     pub fn to_hex_str(&self) -> Cow<'static, str> {
         if !self.0.iter().any(|b| *b != 0) {
             return Cow::from("0x0");
@@ -621,7 +621,7 @@ mod tests {
         use assert_matches::assert_matches;
         use pretty_assertions::assert_eq;
 
-        /// Test hex string with its expected [StarkHash].
+        /// Test hex string with its expected [Felt].
         fn test_data() -> (&'static str, Felt) {
             let mut expected = [0; 32];
             expected[31] = 0xEF;

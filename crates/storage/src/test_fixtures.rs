@@ -14,7 +14,7 @@ use pathfinder_common::{
 use rusqlite::Transaction;
 use stark_hash::Felt;
 
-/// Generate [`StarkHash`] from a sequence of bytes.
+/// Generate [`Felt`] from a sequence of bytes.
 macro_rules! hash {
     ($($value:expr),*) => {
         Felt::from_be_slice(&[$($value),*]).unwrap()
