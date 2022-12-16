@@ -200,8 +200,8 @@ mod tests {
 
             let input = positional.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(felt!("0x0abcde")).into(),
-                class_hash: ClassHash(felt!("0x012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                class_hash: ClassHash(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }
@@ -216,8 +216,8 @@ mod tests {
 
             let input = named.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(felt!("0x0abcde")).into(),
-                class_hash: ClassHash(felt!("0x012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                class_hash: ClassHash(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }

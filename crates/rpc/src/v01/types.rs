@@ -1102,39 +1102,39 @@ pub mod reply {
                 impl Block {
                     pub fn test_data() -> Self {
                         let common = CommonTransactionProperties {
-                            hash: StarknetTransactionHash(felt!("0x04")),
+                            hash: StarknetTransactionHash(felt!("0x4")),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x6)),
-                            signature: vec![TransactionSignatureElem(felt!("0x07"))],
-                            nonce: TransactionNonce(felt!("0x08")),
+                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                            nonce: TransactionNonce(felt!("0x8")),
                         };
                         Self {
                             status: BlockStatus::AcceptedOnL1,
-                            block_hash: Some(StarknetBlockHash(felt!("0x00"))),
-                            parent_hash: StarknetBlockHash(felt!("0x01")),
+                            block_hash: Some(StarknetBlockHash(felt!("0x0"))),
+                            parent_hash: StarknetBlockHash(felt!("0x1")),
                             block_number: Some(StarknetBlockNumber::GENESIS),
-                            new_root: Some(GlobalRoot(felt!("0x02"))),
+                            new_root: Some(GlobalRoot(felt!("0x2"))),
                             timestamp: StarknetBlockTimestamp::new_or_panic(1),
-                            sequencer_address: SequencerAddress(felt!("0x03")),
+                            sequencer_address: SequencerAddress(felt!("0x3")),
                             transactions: Transactions::Full(vec![
                                 Transaction::Declare(DeclareTransaction {
                                     common: common.clone(),
-                                    class_hash: ClassHash(felt!("0x09")),
-                                    sender_address: ContractAddress::new_or_panic(felt!("0x0a")),
+                                    class_hash: ClassHash(felt!("0x9")),
+                                    sender_address: ContractAddress::new_or_panic(felt!("0xa")),
                                 }),
                                 Transaction::Invoke(InvokeTransaction {
                                     common,
-                                    contract_address: ContractAddress::new_or_panic(felt!("0x0b")),
-                                    entry_point_selector: EntryPoint(felt!("0x0c")),
-                                    calldata: vec![CallParam(felt!("0x0d"))],
+                                    contract_address: ContractAddress::new_or_panic(felt!("0xb")),
+                                    entry_point_selector: EntryPoint(felt!("0xc")),
+                                    calldata: vec![CallParam(felt!("0xd"))],
                                 }),
                                 Transaction::Deploy(DeployTransaction {
-                                    hash: StarknetTransactionHash(felt!("0x0e")),
+                                    hash: StarknetTransactionHash(felt!("0xe")),
 
                                     version: TransactionVersion(
                                         ethers::types::H256::from_low_u64_be(1),
                                     ),
-                                    contract_address: ContractAddress::new_or_panic(felt!("0x0f")),
+                                    contract_address: ContractAddress::new_or_panic(felt!("0xf")),
                                     contract_address_salt: ContractAddressSalt(felt!("0xee")),
                                     class_hash: ClassHash(felt!("0x10")),
                                     constructor_calldata: vec![ConstructorParam(felt!("0x11"))],
@@ -1153,7 +1153,7 @@ pub mod reply {
                         block_number: None,
                         new_root: None,
                         transactions: Transactions::HashesOnly(vec![StarknetTransactionHash(
-                            felt!("0x04"),
+                            felt!("0x4"),
                         )]),
                         ..Block::test_data()
                     },
@@ -1174,11 +1174,11 @@ pub mod reply {
                 impl CommonTransactionReceiptProperties {
                     pub fn test_data() -> Self {
                         Self {
-                            transaction_hash: StarknetTransactionHash(felt!("0x00")),
+                            transaction_hash: StarknetTransactionHash(felt!("0x0")),
                             actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x1)),
                             status: TransactionStatus::AcceptedOnL1,
                             status_data: Some("blah".to_string()),
-                            block_hash: StarknetBlockHash(felt!("0x0aaa")),
+                            block_hash: StarknetBlockHash(felt!("0xaaa")),
                             block_number: StarknetBlockNumber::new_or_panic(3),
                         }
                     }
@@ -1187,7 +1187,7 @@ pub mod reply {
                 impl CommonPendingTransactionReceiptProperties {
                     pub fn test_data() -> Self {
                         Self {
-                            transaction_hash: StarknetTransactionHash(felt!("0x01")),
+                            transaction_hash: StarknetTransactionHash(felt!("0x1")),
                             actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x2)),
                         }
                     }
@@ -1214,9 +1214,9 @@ pub mod reply {
                                 ))],
                             }),
                             events: vec![transaction_receipt::Event {
-                                from_address: ContractAddress::new_or_panic(felt!("0x06")),
-                                keys: vec![EventKey(felt!("0x07"))],
-                                data: vec![EventData(felt!("0x08"))],
+                                from_address: ContractAddress::new_or_panic(felt!("0x6")),
+                                keys: vec![EventKey(felt!("0x7"))],
+                                data: vec![EventData(felt!("0x8"))],
                             }],
                         }
                     }

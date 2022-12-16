@@ -449,17 +449,17 @@ mod tests {
         let event = Event {
             from_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             data: vec![
-                EventData(felt!("0x05")),
-                EventData(felt!("0x06")),
-                EventData(felt!("0x07")),
-                EventData(felt!("0x08")),
-                EventData(felt!("0x09")),
+                EventData(felt!("0x5")),
+                EventData(felt!("0x6")),
+                EventData(felt!("0x7")),
+                EventData(felt!("0x8")),
+                EventData(felt!("0x9")),
             ],
             keys: vec![
-                EventKey(felt!("0x01")),
-                EventKey(felt!("0x02")),
-                EventKey(felt!("0x03")),
-                EventKey(felt!("0x04")),
+                EventKey(felt!("0x1")),
+                EventKey(felt!("0x2")),
+                EventKey(felt!("0x3")),
+                EventKey(felt!("0x4")),
             ],
         };
 
@@ -481,13 +481,13 @@ mod tests {
             calldata: vec![],
             contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: EntryPoint(felt!("0x0e")),
+            entry_point_selector: EntryPoint(felt!("0xe")),
             max_fee: Fee(0u128.to_be_bytes().into()),
             signature: vec![
-                TransactionSignatureElem(felt!("0x02")),
-                TransactionSignatureElem(felt!("0x03")),
+                TransactionSignatureElem(felt!("0x2")),
+                TransactionSignatureElem(felt!("0x3")),
             ],
-            transaction_hash: StarknetTransactionHash(felt!("0x01")),
+            transaction_hash: StarknetTransactionHash(felt!("0x1")),
         }));
 
         // produced by the cairo-lang Python implementation:
@@ -512,7 +512,7 @@ mod tests {
         // produced by the cairo-lang Python implementation:
         // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64, ffc=ffc))))`
         let expected_root_hash =
-            felt!("0x01a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
+            felt!("0x1a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
         let computed_root_hash = tree.commit().unwrap();
 
         assert_eq!(expected_root_hash, computed_root_hash);

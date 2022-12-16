@@ -1328,10 +1328,10 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let transaction = connection.transaction().unwrap();
 
-            let state_hash = ContractStateHash(felt!("0x0abc"));
-            let hash = ClassHash(felt!("0x0123"));
-            let root = ContractRoot(felt!("0x0def"));
-            let nonce = ContractNonce(felt!("0x0456"));
+            let state_hash = ContractStateHash(felt!("0xabc"));
+            let hash = ClassHash(felt!("0x123"));
+            let root = ContractRoot(felt!("0xdef"));
+            let nonce = ContractNonce(felt!("0x456"));
 
             ContractsStateTable::upsert(&transaction, state_hash, hash, root, nonce).unwrap();
 
@@ -2042,9 +2042,9 @@ mod tests {
         #[test]
         fn event_data_serialization() {
             let data = [
-                EventData(felt!("0x01")),
-                EventData(felt!("0x02")),
-                EventData(felt!("0x03")),
+                EventData(felt!("0x1")),
+                EventData(felt!("0x2")),
+                EventData(felt!("0x3")),
             ];
 
             let mut buffer = Vec::new();
@@ -2150,7 +2150,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("0x0F")),
+                        transaction_hash: StarknetTransactionHash(felt!("0xF")),
                     },
                 )),
                 transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
@@ -2162,7 +2162,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("0x01")),
+                        transaction_hash: StarknetTransactionHash(felt!("0x1")),
                     },
                 )),
             ];

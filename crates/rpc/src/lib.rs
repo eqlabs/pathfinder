@@ -212,7 +212,7 @@ mod tests {
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
-            Some(ContractNonce(felt!("0x01"))),
+            Some(ContractNonce(felt!("0x1"))),
             &global_tree,
             &db_txn,
         )
@@ -413,7 +413,7 @@ mod tests {
             })
             .into(),
             DeployTransaction {
-                contract_address: ContractAddress::new_or_panic(felt!("0x01122355")),
+                contract_address: ContractAddress::new_or_panic(felt!("0x1122355")),
                 contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),
                 class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
                 constructor_calldata: vec![],

@@ -328,7 +328,7 @@ mod tests {
             named_params![
                 ":hash": tx.hash().0.as_be_bytes(),
                 ":idx": idx,
-                ":block_hash": pathfinder_common::felt!("0x01").as_be_bytes(),
+                ":block_hash": pathfinder_common::felt!("0x1").as_be_bytes(),
                 ":tx": &compressed_tx,
                 ":receipt": &[],
             ]
@@ -354,9 +354,9 @@ mod tests {
 
         migrate_to_previous_version(&transaction);
 
-        let fake_class_hash = felt!("0x0deadadd");
+        let fake_class_hash = felt!("0xdeadadd");
         let contract_address =
-            felt!("0x020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6");
+            felt!("0x20cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6");
 
         // insert fake class
         transaction
@@ -428,7 +428,7 @@ mod tests {
         super::migrate(&transaction).unwrap();
 
         let transaction_hash =
-            felt!("0x05d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42");
+            felt!("0x5d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42");
 
         let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
             &transaction,

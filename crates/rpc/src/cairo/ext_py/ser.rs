@@ -324,8 +324,8 @@ mod tests {
                     "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
                 )),
                 vec![StorageDiff {
-                    key: StorageAddress::new_or_panic(felt!("0x05")),
-                    value: StorageValue(felt!("0x00")),
+                    key: StorageAddress::new_or_panic(felt!("0x5")),
+                    value: StorageValue(felt!("0x0")),
                 }],
             );
             map
@@ -407,8 +407,8 @@ mod tests {
                 {
                     let mut map = HashMap::new();
                     map.insert(
-                        ContractAddress::new(felt!("0x0123")).unwrap(),
-                        ContractNonce(felt!("0x01")),
+                        ContractAddress::new(felt!("0x123")).unwrap(),
+                        ContractNonce(felt!("0x1")),
                     );
                     // cannot have multiple in this test because ordering
                     Some(map)

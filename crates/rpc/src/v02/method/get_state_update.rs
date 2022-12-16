@@ -283,11 +283,11 @@ mod types {
         fn receipt() {
             let state_update = StateUpdate {
                 block_hash: Some(StarknetBlockHash(felt!("0xdeadbeef"))),
-                new_root: GlobalRoot(felt!("0x01")),
-                old_root: GlobalRoot(felt!("0x02")),
+                new_root: GlobalRoot(felt!("0x1")),
+                old_root: GlobalRoot(felt!("0x2")),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
-                        address: ContractAddress::new_or_panic(felt!("0x0adc")),
+                        address: ContractAddress::new_or_panic(felt!("0xadc")),
                         storage_entries: vec![StorageEntry {
                             key: StorageAddress::new_or_panic(felt!("0xf0")),
                             value: StorageValue(felt!("0x55")),
@@ -298,12 +298,12 @@ mod types {
                         ClassHash(felt!("0xcdee")),
                     ],
                     deployed_contracts: vec![DeployedContract {
-                        address: ContractAddress::new_or_panic(felt!("0x0add")),
+                        address: ContractAddress::new_or_panic(felt!("0xadd")),
                         class_hash: ClassHash(felt!("0xcdef")),
                     }],
                     nonces: vec![Nonce {
                         contract_address: ContractAddress::new_or_panic(felt!("0xca")),
-                        nonce: ContractNonce(felt!("0x0404ce")),
+                        nonce: ContractNonce(felt!("0x404ce")),
                     }],
                 },
             };

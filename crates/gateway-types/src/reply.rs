@@ -612,8 +612,8 @@ pub mod state_update {
             use pathfinder_common::felt;
 
             let expected = DeployedContract {
-                address: ContractAddress::new_or_panic(felt!("0x01")),
-                class_hash: ClassHash(felt!("0x02")),
+                address: ContractAddress::new_or_panic(felt!("0x1")),
+                class_hash: ClassHash(felt!("0x2")),
             };
 
             // cario <0.9.0

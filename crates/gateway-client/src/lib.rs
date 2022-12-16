@@ -1040,7 +1040,7 @@ mod tests {
                 .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVOKE_CONTRACT_BLOCK_HASH)
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(felt!("0x01e240")));
+            assert_eq!(result, StorageValue(felt!("0x1e240")));
         }
 
         #[tokio::test]
@@ -1061,7 +1061,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(felt!("0x01e240")));
+            assert_eq!(result, StorageValue(felt!("0x1e240")));
         }
 
         #[tokio::test]
@@ -1082,7 +1082,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(result, StorageValue(felt!("0x01e240")));
+            assert_eq!(result, StorageValue(felt!("0x1e240")));
         }
     }
 
@@ -1420,7 +1420,7 @@ mod tests {
                     )),
                     Some(EntryPoint(Felt::ZERO)),
                     vec![
-                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x1")),
                         CallParam(felt!(
                             "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                         )),
@@ -1428,8 +1428,8 @@ mod tests {
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
                         CallParam(Felt::ZERO),
-                        CallParam(felt!("0x01")),
-                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!("0x1")),
                         CallParam(felt!("0x2b")),
                         CallParam(Felt::ZERO),
                     ],
@@ -1472,7 +1472,7 @@ mod tests {
                         "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
                     ))),
                     vec![
-                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x1")),
                         CallParam(felt!(
                             "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                         )),
@@ -1480,8 +1480,8 @@ mod tests {
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
                         CallParam(Felt::ZERO),
-                        CallParam(felt!("0x01")),
-                        CallParam(felt!("0x01")),
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!("0x1")),
                         CallParam(felt!("0x2b")),
                         CallParam(Felt::ZERO),
                     ],
@@ -1529,7 +1529,7 @@ mod tests {
                     TransactionNonce(Felt::ZERO),
                     contract_class,
                     // actual address dumped from a `starknet declare` call
-                    ContractAddress::new_or_panic(felt!("0x01")),
+                    ContractAddress::new_or_panic(felt!("0x1")),
                     None,
                 )
                 .await
@@ -1556,7 +1556,7 @@ mod tests {
                     )),
                     // Regression: use a dummy constructor param here to make sure that
                     // it is serialized properly
-                    vec![ConstructorParam(felt!("0x01"))],
+                    vec![ConstructorParam(felt!("0x1"))],
                     contract_definition,
                     None,
                 )

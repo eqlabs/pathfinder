@@ -99,7 +99,7 @@ mod tests {
             let input = positional.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("0x0abcde")),
+                    contract_address: ContractAddress::new_or_panic(felt!("0xabcde")),
                     entry_point_selector: EntryPoint(felt!("0xee")),
                     calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },
@@ -119,7 +119,7 @@ mod tests {
             let input = named.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("0x0abcde")),
+                    contract_address: ContractAddress::new_or_panic(felt!("0xabcde")),
                     entry_point_selector: EntryPoint(felt!("0xee")),
                     calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },

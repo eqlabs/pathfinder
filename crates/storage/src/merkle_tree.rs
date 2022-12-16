@@ -614,8 +614,8 @@ mod tests {
         #[test]
         fn binary() {
             let original = PersistedNode::Binary(PersistedBinaryNode {
-                left: felt!("0x0123"),
-                right: felt!("0x0abc"),
+                left: felt!("0x123"),
+                right: felt!("0xabc"),
             });
 
             let mut data = [0u8; 65];
@@ -639,8 +639,8 @@ mod tests {
 
             let key = felt!("0x123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: felt!("0x0321"),
-                right: felt!("0x0abc"),
+                left: felt!("0x321"),
+                right: felt!("0xabc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -662,8 +662,8 @@ mod tests {
 
             let key = felt!("0x123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: felt!("0x0321"),
-                right: felt!("0x0abc"),
+                left: felt!("0x321"),
+                right: felt!("0xabc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -688,8 +688,8 @@ mod tests {
 
             let key = felt!("0x123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: felt!("0x0321"),
-                right: felt!("0x0abc"),
+                left: felt!("0x321"),
+                right: felt!("0xabc"),
             });
 
             uut.upsert(key, node.clone()).unwrap();
@@ -887,8 +887,8 @@ mod tests {
             let leaf_key = felt!("0x123abc");
             let leaf_node = PersistedNode::Leaf;
 
-            let parent_key_1 = felt!("0x0111");
-            let parent_key_2 = felt!("0x0222");
+            let parent_key_1 = felt!("0x111");
+            let parent_key_2 = felt!("0x222");
 
             let parent_node_1 = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],

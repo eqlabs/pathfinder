@@ -95,18 +95,18 @@ mod tests {
                     "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
                 )),
                 calldata: vec![
-                    CallParam(felt!("0x01")),
+                    CallParam(felt!("0x1")),
                     CallParam(felt!(
                         "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                     )),
                     CallParam(felt!(
                         "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                     )),
-                    CallParam(felt!("0x00")),
-                    CallParam(felt!("0x01")),
-                    CallParam(felt!("0x01")),
+                    CallParam(felt!("0x0")),
+                    CallParam(felt!("0x1")),
+                    CallParam(felt!("0x1")),
                     CallParam(felt!("0x2b")),
-                    CallParam(felt!("0x00")),
+                    CallParam(felt!("0x0")),
                 ],
             },
         ))
@@ -224,22 +224,22 @@ mod tests {
                     "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
                 )),
             ],
-            nonce: TransactionNonce(felt!("0x02")),
+            nonce: TransactionNonce(felt!("0x2")),
             sender_address: ContractAddress::new_or_panic(felt!(
                 "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
             )),
             calldata: vec![
-                CallParam(felt!("0x01")),
+                CallParam(felt!("0x1")),
                 CallParam(felt!(
                     "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
                 )),
                 CallParam(felt!(
                     "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                 )),
-                CallParam(felt!("0x00")),
-                CallParam(felt!("0x01")),
-                CallParam(felt!("0x01")),
-                CallParam(felt!("0x01")),
+                CallParam(felt!("0x0")),
+                CallParam(felt!("0x1")),
+                CallParam(felt!("0x1")),
+                CallParam(felt!("0x1")),
             ],
         };
 

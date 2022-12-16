@@ -173,10 +173,10 @@ mod tests {
                 crate::v02::types::request::BroadcastedInvokeTransactionV0 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
-                    signature: vec![TransactionSignatureElem(felt!("0x07"))],
-                    nonce: Some(TransactionNonce(felt!("0x08"))),
-                    contract_address: ContractAddress::new_or_panic(felt!("0x0aaa")),
-                    entry_point_selector: EntryPoint(felt!("0x0e")),
+                    signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                    nonce: Some(TransactionNonce(felt!("0x8"))),
+                    contract_address: ContractAddress::new_or_panic(felt!("0xaaa")),
+                    entry_point_selector: EntryPoint(felt!("0xe")),
                     calldata: vec![CallParam(felt!("0xff"))],
                 },
             ))
@@ -208,7 +208,7 @@ mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(StarknetBlockHash(felt!("0x0abcde"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
         }
@@ -239,7 +239,7 @@ mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(StarknetBlockHash(felt!("0x0abcde"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
         }

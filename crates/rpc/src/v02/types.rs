@@ -212,10 +212,10 @@ pub mod request {
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
                         max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
-                        signature: vec![TransactionSignatureElem(felt!("0x07"))],
-                        nonce: TransactionNonce(felt!("0x08")),
+                        signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                        nonce: TransactionNonce(felt!("0x8")),
                         contract_class: contract_class.clone(),
-                        sender_address: ContractAddress::new_or_panic(felt!("0x0a")),
+                        sender_address: ContractAddress::new_or_panic(felt!("0xa")),
                     }),
                     BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
@@ -227,10 +227,10 @@ pub mod request {
                         BroadcastedInvokeTransactionV0 {
                             version: TransactionVersion(ethers::types::H256::zero()),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
-                            signature: vec![TransactionSignatureElem(felt!("0x07"))],
-                            nonce: Some(TransactionNonce(felt!("0x08"))),
-                            contract_address: ContractAddress::new_or_panic(felt!("0x0aaa")),
-                            entry_point_selector: EntryPoint(felt!("0x0e")),
+                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                            nonce: Some(TransactionNonce(felt!("0x8"))),
+                            contract_address: ContractAddress::new_or_panic(felt!("0xaaa")),
+                            entry_point_selector: EntryPoint(felt!("0xe")),
                             calldata: vec![CallParam(felt!("0xff"))],
                         },
                     )),
@@ -238,9 +238,9 @@ pub mod request {
                         BroadcastedInvokeTransactionV1 {
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
-                            signature: vec![TransactionSignatureElem(felt!("0x07"))],
-                            nonce: TransactionNonce(felt!("0x08")),
-                            sender_address: ContractAddress::new_or_panic(felt!("0x0aaa")),
+                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                            nonce: TransactionNonce(felt!("0x8")),
+                            sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
                             calldata: vec![CallParam(felt!("0xff"))],
                         },
                     )),
@@ -250,9 +250,9 @@ pub mod request {
                                 "0000000000000000000000000000000100000000000000000000000000000001"
                             ))),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
-                            signature: vec![TransactionSignatureElem(felt!("0x07"))],
-                            nonce: TransactionNonce(felt!("0x08")),
-                            sender_address: ContractAddress::new_or_panic(felt!("0x0aaa")),
+                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                            nonce: TransactionNonce(felt!("0x8")),
+                            sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
                             calldata: vec![CallParam(felt!("0xff"))],
                         },
                     )),
@@ -635,54 +635,54 @@ pub mod reply {
             #[test]
             fn transaction() {
                 let common = CommonTransactionProperties {
-                    hash: StarknetTransactionHash(felt!("0x04")),
+                    hash: StarknetTransactionHash(felt!("0x4")),
                     max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
                     version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
-                    signature: vec![TransactionSignatureElem(felt!("0x07"))],
-                    nonce: TransactionNonce(felt!("0x08")),
+                    signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                    nonce: TransactionNonce(felt!("0x8")),
                 };
 
                 let transactions = vec![
                     Transaction::Declare(DeclareTransaction {
                         common: common.clone(),
-                        class_hash: ClassHash(felt!("0x09")),
-                        sender_address: ContractAddress::new_or_panic(felt!("0x0a")),
+                        class_hash: ClassHash(felt!("0x9")),
+                        sender_address: ContractAddress::new_or_panic(felt!("0xa")),
                     }),
                     Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                         common: CommonInvokeTransactionProperties {
-                            hash: StarknetTransactionHash(felt!("0x0b")),
+                            hash: StarknetTransactionHash(felt!("0xb")),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x999)),
-                            signature: vec![TransactionSignatureElem(felt!("0x0777"))],
+                            signature: vec![TransactionSignatureElem(felt!("0x777"))],
                             nonce: TransactionNonce(felt!("0xdd")),
                         },
-                        contract_address: ContractAddress::new_or_panic(felt!("0x0b")),
-                        entry_point_selector: EntryPoint(felt!("0x0c")),
-                        calldata: vec![CallParam(felt!("0x0d"))],
+                        contract_address: ContractAddress::new_or_panic(felt!("0xb")),
+                        entry_point_selector: EntryPoint(felt!("0xc")),
+                        calldata: vec![CallParam(felt!("0xd"))],
                     })),
                     Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
                         common: CommonInvokeTransactionProperties {
-                            hash: StarknetTransactionHash(felt!("0x0bbb")),
+                            hash: StarknetTransactionHash(felt!("0xbbb")),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x9999)),
-                            signature: vec![TransactionSignatureElem(felt!("0x0eee"))],
+                            signature: vec![TransactionSignatureElem(felt!("0xeee"))],
                             nonce: TransactionNonce(felt!("0xde")),
                         },
-                        sender_address: ContractAddress::new_or_panic(felt!("0x0c")),
-                        calldata: vec![CallParam(felt!("0x0ddd"))],
+                        sender_address: ContractAddress::new_or_panic(felt!("0xc")),
+                        calldata: vec![CallParam(felt!("0xddd"))],
                     })),
                     Transaction::Deploy(DeployTransaction {
-                        hash: StarknetTransactionHash(felt!("0x0e")),
+                        hash: StarknetTransactionHash(felt!("0xe")),
                         class_hash: ClassHash(felt!("0x10")),
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
                         contract_address_salt: ContractAddressSalt(felt!("0xee")),
                         constructor_calldata: vec![ConstructorParam(felt!("0x11"))],
                     }),
                     Transaction::L1Handler(L1HandlerTransaction {
-                        hash: StarknetTransactionHash(felt!("0x0f")),
+                        hash: StarknetTransactionHash(felt!("0xf")),
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
                         nonce: common.nonce,
-                        contract_address: ContractAddress::new_or_panic(felt!("0x0fff")),
-                        entry_point_selector: EntryPoint(felt!("0x0f")),
-                        calldata: vec![CallParam(felt!("0x0f"))],
+                        contract_address: ContractAddress::new_or_panic(felt!("0xfff")),
+                        entry_point_selector: EntryPoint(felt!("0xf")),
+                        calldata: vec![CallParam(felt!("0xf"))],
                     }),
                 ];
 

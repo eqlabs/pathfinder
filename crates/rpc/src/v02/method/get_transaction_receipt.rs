@@ -413,11 +413,11 @@ mod types {
                         transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef")),
                         actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x1)),
                         status: TransactionStatus::AcceptedOnL1,
-                        block_hash: StarknetBlockHash(felt!("0x0aaa")),
+                        block_hash: StarknetBlockHash(felt!("0xaaa")),
                         block_number: StarknetBlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x55)),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x06"))],
+                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
                         }],
                         events: vec![Event {
                             from_address: ContractAddress::new_or_panic(felt!("0xe6")),
@@ -435,7 +435,7 @@ mod types {
                         actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x2)),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x5)),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x06"))],
+                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
                         }],
                         events: vec![Event {
                             from_address: ContractAddress::new_or_panic(felt!("0xa6")),

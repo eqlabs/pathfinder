@@ -278,8 +278,8 @@ mod tests {
             let uut = BinaryNode {
                 hash: None,
                 height: 1,
-                left: Rc::new(RefCell::new(Node::Leaf(felt!("0x0abc")))),
-                right: Rc::new(RefCell::new(Node::Leaf(felt!("0x0def")))),
+                left: Rc::new(RefCell::new(Node::Leaf(felt!("0xabc")))),
+                right: Rc::new(RefCell::new(Node::Leaf(felt!("0xdef")))),
             };
 
             let mut zero_key = bitvec![Msb0, u8; 1; 251];
@@ -297,8 +297,8 @@ mod tests {
 
         #[test]
         fn get_child() {
-            let left = Rc::new(RefCell::new(Node::Leaf(felt!("0x0abc"))));
-            let right = Rc::new(RefCell::new(Node::Leaf(felt!("0x0def"))));
+            let left = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
+            let right = Rc::new(RefCell::new(Node::Leaf(felt!("0xdef"))));
 
             let uut = BinaryNode {
                 hash: None,
@@ -379,8 +379,8 @@ mod tests {
 
             #[test]
             fn full() {
-                let key = felt!("0x0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0x0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let uut = EdgeNode {
                     hash: None,
@@ -394,8 +394,8 @@ mod tests {
 
             #[test]
             fn prefix() {
-                let key = felt!("0x0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0x0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[..45].to_bitvec();
 
@@ -411,8 +411,8 @@ mod tests {
 
             #[test]
             fn suffix() {
-                let key = felt!("0x0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0x0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[50..].to_bitvec();
 
@@ -428,8 +428,8 @@ mod tests {
 
             #[test]
             fn middle_slice() {
-                let key = felt!("0x0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0x0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[230..235].to_bitvec();
 

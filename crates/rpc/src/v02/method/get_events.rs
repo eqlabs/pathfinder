@@ -430,8 +430,8 @@ mod tests {
         let optional_present = EventFilter {
             from_block: Some(BlockId::Number(StarknetBlockNumber::new_or_panic(0))),
             to_block: Some(BlockId::Latest),
-            address: Some(ContractAddress::new_or_panic(felt!("0x01"))),
-            keys: vec![EventKey(felt!("0x02"))],
+            address: Some(ContractAddress::new_or_panic(felt!("0x1"))),
+            keys: vec![EventKey(felt!("0x2"))],
             chunk_size: 3,
             continuation_token: Some("4".to_string()),
         };

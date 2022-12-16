@@ -165,8 +165,8 @@ mod tests {
 
             let input = positional.parse::<GetClassAtInput>().unwrap();
             let expected = GetClassAtInput {
-                block_id: StarknetBlockHash(felt!("0x0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }
@@ -181,8 +181,8 @@ mod tests {
 
             let input = named.parse::<GetClassAtInput>().unwrap();
             let expected = GetClassAtInput {
-                block_id: StarknetBlockHash(felt!("0x0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }

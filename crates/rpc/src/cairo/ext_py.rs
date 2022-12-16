@@ -744,7 +744,7 @@ mod tests {
                         target_contract,
                         vec![starknet_gateway_types::reply::state_update::StorageDiff {
                             key: StorageAddress::new_or_panic(storage_address),
-                            value: StorageValue(felt!("0x04")),
+                            value: StorageValue(felt!("0x4")),
                         }],
                     );
                     map
@@ -783,7 +783,7 @@ mod tests {
             &test_contract_definition,
             &[(
                 StorageAddress::new_or_panic(felt!("0x84")),
-                StorageValue(felt!("0x03")),
+                StorageValue(felt!("0x3")),
             )],
         );
 
@@ -836,7 +836,7 @@ mod tests {
         )
         .unwrap();
 
-        let account_contract_address = ContractAddress::new_or_panic(felt!("0x0123"));
+        let account_contract_address = ContractAddress::new_or_panic(felt!("0x123"));
 
         let (account_contract_state_hash, account_contract_class_hash) = deploy_contract(
             tx,
