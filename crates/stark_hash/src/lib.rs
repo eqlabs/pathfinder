@@ -2,7 +2,9 @@
 
 mod chain;
 mod felt;
+mod hash;
 mod serde;
 
 pub use chain::HashChain;
-pub use felt::{stark_hash, Felt, HexParseError, OverflowError};
+pub use felt::{Felt, HexParseError, OverflowError};
+pub use hash::stark_hash;
