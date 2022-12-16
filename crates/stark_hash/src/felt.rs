@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::error::Error;
-use std::fmt::Display;
 
 use stark_curve::{FieldElement, FieldElementRepr};
 
@@ -279,21 +278,6 @@ impl From<FieldElement> for Felt {
         // unwrap is safe because the FieldElement and StarkHash
         // should both be smaller than the field modulus.
         Felt::from_be_bytes(fp.to_repr().0).unwrap()
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) struct InvalidBufferSizeError {
-    expected: usize,
-    actual: usize,
-}
-
-impl Display for InvalidBufferSizeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "Expected buffer size {}, got {}",
-            self.expected, self.actual,
-        ))
     }
 }
 
