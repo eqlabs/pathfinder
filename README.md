@@ -46,7 +46,7 @@ sudo apt install curl git
 
 ### Install Rust
 
-`pathfinder` requires Rust version `1.63` or later.
+`pathfinder` requires Rust version `1.64` or later.
 The easiest way to install Rust is by following the [official instructions](https://www.rust-lang.org/tools/install).
 
 If you already have Rust installed, verify the version:
