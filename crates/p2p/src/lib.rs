@@ -574,7 +574,10 @@ impl MainLoop {
             // Ignored or forwarded for
             // test purposes
             // ===========================
-            event => self.ignore_or_handle_event_for_test(event).await,
+            event => {
+                self.ignore_or_handle_event_for_test(event).await;
+                Ok(())
+            }
         }
     }
 
@@ -699,38 +702,29 @@ impl MainLoop {
         }
     }
 
-    #[cfg(not(test))]
     async fn ignore_or_handle_event_for_test<E: std::fmt::Debug>(
         &mut self,
         event: SwarmEvent<behaviour::Event, E>,
-    ) -> anyhow::Result<()> {
-        tracing::trace!(?event, "Ignoring event");
-        Ok(())
-    }
-
-    #[cfg(not(test))]
-    async fn handle_test_command(&mut self, _: TestCommand) {}
-
-    #[cfg(test)]
-    async fn ignore_or_handle_event_for_test<E: std::fmt::Debug>(
-        &mut self,
-        event: SwarmEvent<behaviour::Event, E>,
-    ) -> anyhow::Result<()> {
-        match event {
-            SwarmEvent::NewListenAddr { address, .. } => {
-                send_test_event(&self.event_sender, TestEvent::NewListenAddress(address)).await;
-                Ok(())
-            }
-            _ => {
-                tracing::trace!(?event, "Ignoring event");
-                Ok(())
+    ) {
+        #[cfg(test)]
+        {
+            match event {
+                SwarmEvent::NewListenAddr { address, .. } => {
+                    send_test_event(&self.event_sender, TestEvent::NewListenAddress(address)).await;
+                }
+                _ => {
+                    tracing::trace!(?event, "Ignoring event");
+                }
             }
         }
+
+        #[cfg(not(test))]
+        tracing::trace!(?event, "Ignoring event");
     }
 
-    #[cfg(test)]
-    async fn handle_test_command(&mut self, command: TestCommand) {
-        match command {
+    async fn handle_test_command(&mut self, _command: TestCommand) {
+        #[cfg(test)]
+        match _command {
             TestCommand::GetPeersFromDHT(sender) => {
                 let peers = self
                     .swarm
@@ -751,13 +745,10 @@ impl MainLoop {
     }
 }
 
-#[cfg(not(test))]
-async fn send_test_event(_: &mpsc::Sender<Event>, _: TestEvent) {}
-
-#[cfg(test)]
-async fn send_test_event(event_sender: &mpsc::Sender<Event>, event: TestEvent) {
-    event_sender
-        .send(Event::Test(event))
+async fn send_test_event(_event_sender: &mpsc::Sender<Event>, _event: TestEvent) {
+    #[cfg(test)]
+    _event_sender
+        .send(Event::Test(_event))
         .await
         .expect("Event receiver not to be dropped");
 }
