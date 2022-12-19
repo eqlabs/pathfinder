@@ -8,8 +8,9 @@ use crate::{
     {StarknetBlock, Storage},
 };
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
+    ClassHash, ContractAddress, ContractNonce, EventCommitment, GasPrice, GlobalRoot,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StorageAddress, StorageValue, TransactionCommitment,
 };
 use rusqlite::Transaction;
 use stark_hash::Felt;
@@ -82,6 +83,8 @@ impl StarknetBlock {
                 .expect("block timestamp out of range"),
             gas_price: GasPrice(n as u128 + 2000),
             sequencer_address: SequencerAddress(hash!(2, n)),
+            transaction_commitment: TransactionCommitment::ZERO,
+            event_commitment: EventCommitment::ZERO,
         }
     }
 }

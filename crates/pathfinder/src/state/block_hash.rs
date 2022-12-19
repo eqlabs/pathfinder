@@ -1,8 +1,8 @@
 use anyhow::{Context, Error, Result};
 use bitvec::prelude::BitView;
 use pathfinder_common::{
-    Chain, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp,
+    Chain, EventCommitment, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    StarknetBlockTimestamp, TransactionCommitment,
 };
 use pathfinder_merkle_tree::merkle_tree::MerkleTree;
 use stark_hash::{stark_hash, Felt, HashChain};
@@ -13,9 +13,18 @@ use starknet_gateway_types::reply::{
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
-    Match,
+    Match((TransactionCommitment, EventCommitment)),
     Mismatch,
     NotVerifiable,
+}
+
+impl VerifyResult {
+    pub fn get_commitments(&self) -> Option<(TransactionCommitment, EventCommitment)> {
+        match self {
+            VerifyResult::Match((tx, ev)) => Some((*tx, *ev)),
+            _ => None,
+        }
+    }
 }
 
 /// Verify the block hash value.
@@ -46,6 +55,7 @@ pub fn verify_block_hash(
         .try_into()
         .expect("too many transactions in block");
     let transaction_commitment = calculate_transaction_commitment(&block.transactions)?;
+    let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
         use pathfinder_common::ChainId;
@@ -63,7 +73,7 @@ pub fn verify_block_hash(
             block.block_number,
             block.state_root,
             num_transactions,
-            transaction_commitment,
+            transaction_commitment.0,
             block.parent_block_hash,
             chain_id,
         );
@@ -71,7 +81,6 @@ pub fn verify_block_hash(
     } else {
         let num_events = number_of_events_in_block(block);
         let num_events: u64 = num_events.try_into().expect("too many events in block");
-        let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
 
         let block_sequencer_address = block
             .sequencer_address
@@ -86,9 +95,9 @@ pub fn verify_block_hash(
                     address,
                     block.timestamp,
                     num_transactions,
-                    transaction_commitment,
+                    transaction_commitment.0,
                     num_events,
-                    event_commitment,
+                    event_commitment.0,
                     block.parent_block_hash,
                 );
                 block_hash == expected_block_hash
@@ -97,7 +106,7 @@ pub fn verify_block_hash(
 
     Ok(match verified {
         false => VerifyResult::Mismatch,
-        true => VerifyResult::Match,
+        true => VerifyResult::Match((transaction_commitment, event_commitment)),
     })
 }
 
@@ -324,7 +333,9 @@ impl CommitmentTree {
 /// The transaction commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (transaction_index, transaction_hash_with_signature)
 /// key-value pairs to the tree and computing the root hash.
-fn calculate_transaction_commitment(transactions: &[Transaction]) -> Result<Felt> {
+pub fn calculate_transaction_commitment(
+    transactions: &[Transaction],
+) -> Result<TransactionCommitment> {
     let mut tree = CommitmentTree::default();
 
     transactions
@@ -340,7 +351,7 @@ fn calculate_transaction_commitment(transactions: &[Transaction]) -> Result<Felt
         })
         .context("Failed to create transaction commitment tree")?;
 
-    tree.commit()
+    Ok(TransactionCommitment(tree.commit()?))
 }
 
 /// Compute the combined hash of the transaction hash and the signature.
@@ -379,7 +390,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
 /// The event commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
-fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<Felt> {
+pub fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<EventCommitment> {
     let mut tree = CommitmentTree::default();
 
     transaction_receipts
@@ -396,7 +407,7 @@ fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<Felt> 
         })
         .context("Failed to create event commitment tree")?;
 
-    tree.commit()
+    Ok(EventCommitment(tree.commit()?))
 }
 
 /// Calculate the hash of an event.
@@ -436,6 +447,7 @@ fn number_of_events_in_block(block: &Block) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_matches::assert_matches;
     use pathfinder_common::{felt, EntryPoint, Fee};
     use starknet_gateway_types::reply::{
         transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
@@ -534,9 +546,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_90000;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 
@@ -547,9 +559,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_231579;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 
@@ -561,9 +573,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 
@@ -574,9 +586,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 }

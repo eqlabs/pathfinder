@@ -67,7 +67,7 @@ fn main() -> anyhow::Result<()> {
 
         let result = verify_block_hash(&block, chain, block_hash)?;
         match result {
-            VerifyResult::Match => {}
+            VerifyResult::Match(_) => {}
             VerifyResult::NotVerifiable => println!(
                 "Block hash cannot be verified for block number {} hash {:?}",
                 block_number, block_hash
