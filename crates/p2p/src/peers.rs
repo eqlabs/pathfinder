@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use libp2p::PeerId;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Peer {
     connection_status: ConnectionStatus,
     sync_status: Option<p2p_proto::sync::Status>,
@@ -40,7 +40,7 @@ enum ConnectionStatus {
     Disconnecting,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Peers {
     peers: HashMap<PeerId, Peer>,
 }

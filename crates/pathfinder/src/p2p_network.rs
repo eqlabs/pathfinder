@@ -15,8 +15,6 @@ use tracing::Instrument;
 
 mod sync_handlers;
 
-const PERIODIC_STATUS_INTERVAL: Duration = Duration::from_secs(30);
-
 #[tracing::instrument(name = "p2p", skip_all)]
 pub async fn start(
     chain_id: ChainId,
@@ -32,7 +30,7 @@ pub async fn start(
 
     let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
     let (mut p2p_client, mut p2p_events, p2p_main_loop) =
-        p2p::new(keypair, peers.clone(), PERIODIC_STATUS_INTERVAL);
+        p2p::new(keypair, peers.clone(), Default::default());
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");

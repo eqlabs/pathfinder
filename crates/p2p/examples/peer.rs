@@ -43,8 +43,6 @@ impl zeroize::Zeroize for IdentityConfig {
     }
 }
 
-const PERIODIC_STATUS_INTERVAL: Duration = Duration::from_secs(30);
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -71,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
 
     let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
     let (mut p2p_client, mut p2p_events, p2p_main_loop) =
-        p2p::new(keypair, peers.clone(), PERIODIC_STATUS_INTERVAL);
+        p2p::new(keypair, peers.clone(), Default::default());
 
     let _p2p_task = tokio::task::spawn(p2p_main_loop.run());
 

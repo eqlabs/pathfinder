@@ -32,7 +32,7 @@ pub use libp2p;
 pub fn new(
     keypair: Keypair,
     peers: Arc<RwLock<peers::Peers>>,
-    periodic_status_interval: Duration,
+    periodic_cfg: PeriodicTaskConfig,
 ) -> (Client, EventReceiver, MainLoop) {
     let peer_id = keypair.public().to_peer_id();
 
@@ -54,17 +54,35 @@ pub fn new(
             sender: command_sender,
         },
         event_receiver,
-        MainLoop::new(
-            swarm,
-            command_receiver,
-            event_sender,
-            peers,
-            periodic_status_interval,
-        ),
+        MainLoop::new(swarm, command_receiver, event_sender, peers, periodic_cfg),
     )
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug)]
+pub struct PeriodicTaskConfig {
+    pub bootstrap: BootstrapConfig,
+    pub status_period: Duration,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BootstrapConfig {
+    pub start_offset: Duration,
+    pub period: Duration,
+}
+
+impl Default for PeriodicTaskConfig {
+    fn default() -> Self {
+        Self {
+            bootstrap: BootstrapConfig {
+                start_offset: Duration::from_secs(5),
+                period: Duration::from_secs(10 * 60),
+            },
+            status_period: Duration::from_secs(30),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<Command>,
 }
@@ -180,22 +198,6 @@ impl Client {
     }
 }
 
-#[derive(Clone)]
-pub struct TestClient {
-    sender: mpsc::Sender<Command>,
-}
-
-impl TestClient {
-    pub async fn get_peers_from_dht(&self) -> HashSet<PeerId> {
-        let (sender, receiver) = oneshot::channel();
-        self.sender
-            .send(Command::Test(TestCommand::GetPeersFromDHT(sender)))
-            .await
-            .expect("Command receiver not to be dropped");
-        receiver.await.expect("Sender not to be dropped")
-    }
-}
-
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
 
 #[derive(Debug)]
@@ -265,6 +267,7 @@ pub enum Event {
 #[derive(Debug)]
 pub enum TestEvent {
     NewListenAddress(Multiaddr),
+    PeriodicBootstrapCompleted,
     Dummy,
 }
 
@@ -283,6 +286,8 @@ pub struct MainLoop {
     pending_block_sync_status_requests: HashSet<RequestId>,
 
     request_sync_status: HashSetDelay<PeerId>,
+
+    bootstrap_cfg: BootstrapConfig,
 }
 
 impl MainLoop {
@@ -291,7 +296,7 @@ impl MainLoop {
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
         peers: Arc<RwLock<peers::Peers>>,
-        periodic_status_interval: Duration,
+        periodic_cfg: PeriodicTaskConfig,
     ) -> Self {
         Self {
             swarm,
@@ -301,15 +306,16 @@ impl MainLoop {
             pending_dials: Default::default(),
             pending_block_sync_requests: Default::default(),
             pending_block_sync_status_requests: Default::default(),
-            request_sync_status: HashSetDelay::new(periodic_status_interval),
+            request_sync_status: HashSetDelay::new(periodic_cfg.status_period),
+            bootstrap_cfg: periodic_cfg.bootstrap,
         }
     }
 
     pub async fn run(mut self) {
-        const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(10 * 60);
-        // delay bootstrap so that by the time we attempt it we've connected to the bootstrap node
-        let bootstrap_start = tokio::time::Instant::now() + Duration::from_secs(5);
-        let mut bootstrap_interval = tokio::time::interval_at(bootstrap_start, BOOTSTRAP_INTERVAL);
+        // Delay bootstrap so that by the time we attempt it we've connected to the bootstrap node
+        let bootstrap_start = tokio::time::Instant::now() + self.bootstrap_cfg.start_offset;
+        let mut bootstrap_interval =
+            tokio::time::interval_at(bootstrap_start, self.bootstrap_cfg.period);
 
         loop {
             let bootstrap_interval_tick = bootstrap_interval.tick();
@@ -476,6 +482,9 @@ impl MainLoop {
                         let connection_counters = network_info.connection_counters();
                         let num_connections = connection_counters.num_connections();
                         tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+
+                        send_test_event(&self.event_sender, TestEvent::PeriodicBootstrapCompleted)
+                            .await;
                     }
                 }
                 Ok(())
@@ -709,9 +718,7 @@ impl MainLoop {
     ) -> anyhow::Result<()> {
         match event {
             SwarmEvent::NewListenAddr { address, .. } => {
-                self.event_sender
-                    .send(Event::Test(TestEvent::NewListenAddress(address)))
-                    .await?;
+                send_test_event(&self.event_sender, TestEvent::NewListenAddress(address)).await;
                 Ok(())
             }
             _ => {
@@ -741,5 +748,32 @@ impl MainLoop {
                 sender.send(peers).expect("Receiver not to be dropped")
             }
         }
+    }
+}
+
+#[cfg(not(test))]
+async fn send_test_event(_: &mpsc::Sender<Event>, _: TestEvent) {}
+
+#[cfg(test)]
+async fn send_test_event(event_sender: &mpsc::Sender<Event>, event: TestEvent) {
+    event_sender
+        .send(Event::Test(event))
+        .await
+        .expect("Event receiver not to be dropped");
+}
+
+#[derive(Clone)]
+pub struct TestClient {
+    sender: mpsc::Sender<Command>,
+}
+
+impl TestClient {
+    pub async fn get_peers_from_dht(&self) -> HashSet<PeerId> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::Test(TestCommand::GetPeersFromDHT(sender)))
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
     }
 }
