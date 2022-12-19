@@ -3,12 +3,12 @@ use super::{
 };
 use ethers::types::{H128, H256};
 use pathfinder_common::{
-    starkhash, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-    EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    felt, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
+    EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+    StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
     self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
     InvokeTransactionV0,
@@ -30,11 +30,11 @@ pub(crate) fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
     (0..NUM_BLOCKS)
         .map(|i| StarknetBlock {
             number: StarknetBlockNumber::GENESIS + i as u64,
-            hash: StarknetBlockHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
-            root: GlobalRoot(StarkHash::from_hex_str(&"f".repeat(i + 3)).unwrap()),
+            hash: StarknetBlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+            root: GlobalRoot(Felt::from_hex_str(&"f".repeat(i + 3)).unwrap()),
             timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
             gas_price: GasPrice::from(i as u64),
-            sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[i as u8]).unwrap()),
+            sequencer_address: SequencerAddress(Felt::from_be_slice(&[i as u8]).unwrap()),
         })
         .collect::<Vec<_>>()
         .try_into()
@@ -47,15 +47,11 @@ pub(crate) fn create_transactions_and_receipts(
     let transactions = (0..NUM_TRANSACTIONS).map(|i| match i % TRANSACTIONS_PER_BLOCK {
         x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
             transaction::Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
-                calldata: vec![CallParam(
-                    StarkHash::from_hex_str(&"0".repeat(i + 3)).unwrap(),
-                )],
+                calldata: vec![CallParam(Felt::from_hex_str(&"0".repeat(i + 3)).unwrap())],
                 contract_address: ContractAddress::new_or_panic(
-                    StarkHash::from_hex_str(&"1".repeat(i + 3)).unwrap(),
+                    Felt::from_hex_str(&"1".repeat(i + 3)).unwrap(),
                 ),
-                entry_point_selector: EntryPoint(
-                    StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-                ),
+                entry_point_selector: EntryPoint(Felt::from_hex_str(&"2".repeat(i + 3)).unwrap()),
                 entry_point_type: Some(if i & 1 == 0 {
                     EntryPointType::External
                 } else {
@@ -63,10 +59,10 @@ pub(crate) fn create_transactions_and_receipts(
                 }),
                 max_fee: Fee(H128::zero()),
                 signature: vec![TransactionSignatureElem(
-                    StarkHash::from_hex_str(&"3".repeat(i + 3)).unwrap(),
+                    Felt::from_hex_str(&"3".repeat(i + 3)).unwrap(),
                 )],
                 transaction_hash: StarknetTransactionHash(
-                    StarkHash::from_hex_str(&"4".repeat(i + 3)).unwrap(),
+                    Felt::from_hex_str(&"4".repeat(i + 3)).unwrap(),
                 ),
             }))
         }
@@ -76,33 +72,33 @@ pub(crate) fn create_transactions_and_receipts(
         {
             transaction::Transaction::Deploy(DeployTransaction {
                 contract_address: ContractAddress::new_or_panic(
-                    StarkHash::from_hex_str(&"5".repeat(i + 3)).unwrap(),
+                    Felt::from_hex_str(&"5".repeat(i + 3)).unwrap(),
                 ),
                 contract_address_salt: ContractAddressSalt(
-                    StarkHash::from_hex_str(&"6".repeat(i + 3)).unwrap(),
+                    Felt::from_hex_str(&"6".repeat(i + 3)).unwrap(),
                 ),
-                class_hash: ClassHash(StarkHash::from_hex_str(&"7".repeat(i + 3)).unwrap()),
+                class_hash: ClassHash(Felt::from_hex_str(&"7".repeat(i + 3)).unwrap()),
                 constructor_calldata: vec![ConstructorParam(
-                    StarkHash::from_hex_str(&"8".repeat(i + 3)).unwrap(),
+                    Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
                 )],
                 transaction_hash: StarknetTransactionHash(
-                    StarkHash::from_hex_str(&"9".repeat(i + 3)).unwrap(),
+                    Felt::from_hex_str(&"9".repeat(i + 3)).unwrap(),
                 ),
                 version: TransactionVersion(ethers::types::H256::zero()),
             })
         }
         _ => transaction::Transaction::Declare(DeclareTransaction {
-            class_hash: ClassHash(StarkHash::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+            class_hash: ClassHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
             max_fee: Fee(H128::zero()),
-            nonce: TransactionNonce(StarkHash::from_hex_str(&"b".repeat(i + 3)).unwrap()),
+            nonce: TransactionNonce(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap()),
             sender_address: ContractAddress::new_or_panic(
-                StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
+                Felt::from_hex_str(&"c".repeat(i + 3)).unwrap(),
             ),
             signature: vec![TransactionSignatureElem(
-                StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap(),
+                Felt::from_hex_str(&"d".repeat(i + 3)).unwrap(),
             )],
             transaction_hash: StarknetTransactionHash(
-                StarkHash::from_hex_str(&"e".repeat(i + 3)).unwrap(),
+                Felt::from_hex_str(&"e".repeat(i + 3)).unwrap(),
             ),
             version: TransactionVersion(H256::zero()),
         }),
@@ -114,14 +110,12 @@ pub(crate) fn create_transactions_and_receipts(
             events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
                 vec![transaction::Event {
                     from_address: ContractAddress::new_or_panic(
-                        StarkHash::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                        Felt::from_hex_str(&"2".repeat(i + 3)).unwrap(),
                     ),
-                    data: vec![EventData(
-                        StarkHash::from_hex_str(&"c".repeat(i + 3)).unwrap(),
-                    )],
+                    data: vec![EventData(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap())],
                     keys: vec![
-                        EventKey(StarkHash::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                        EventKey(starkhash!("deadbeef")),
+                        EventKey(Felt::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                        EventKey(felt!("0xdeadbeef")),
                     ],
                 }]
             } else {

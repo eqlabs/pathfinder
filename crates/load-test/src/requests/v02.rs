@@ -2,7 +2,7 @@ use goose::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::json;
 
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 use crate::types::{
     Block, ContractClass, FeeEstimate, StateUpdate, Transaction, TransactionReceipt,
@@ -246,7 +246,7 @@ pub async fn call(
 pub async fn estimate_fee_for_invoke(
     user: &mut GooseUser,
     contract_address: StarkHash,
-    call_data: &[StarkHash],
+    call_data: &[Felt],
     entry_point_selector: StarkHash,
     max_fee: StarkHash,
     at_block: StarkHash,

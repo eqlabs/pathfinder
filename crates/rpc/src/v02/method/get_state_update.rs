@@ -277,33 +277,33 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn receipt() {
             let state_update = StateUpdate {
-                block_hash: Some(StarknetBlockHash(starkhash!("deadbeef"))),
-                new_root: GlobalRoot(starkhash!("01")),
-                old_root: GlobalRoot(starkhash!("02")),
+                block_hash: Some(StarknetBlockHash(felt!("0xdeadbeef"))),
+                new_root: GlobalRoot(felt!("0x1")),
+                old_root: GlobalRoot(felt!("0x2")),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
-                        address: ContractAddress::new_or_panic(starkhash!("0adc")),
+                        address: ContractAddress::new_or_panic(felt!("0xadc")),
                         storage_entries: vec![StorageEntry {
-                            key: StorageAddress::new_or_panic(starkhash!("f0")),
-                            value: StorageValue(starkhash!("55")),
+                            key: StorageAddress::new_or_panic(felt!("0xf0")),
+                            value: StorageValue(felt!("0x55")),
                         }],
                     }],
                     declared_contract_hashes: vec![
-                        ClassHash(starkhash!("cdef")),
-                        ClassHash(starkhash!("cdee")),
+                        ClassHash(felt!("0xcdef")),
+                        ClassHash(felt!("0xcdee")),
                     ],
                     deployed_contracts: vec![DeployedContract {
-                        address: ContractAddress::new_or_panic(starkhash!("0add")),
-                        class_hash: ClassHash(starkhash!("cdef")),
+                        address: ContractAddress::new_or_panic(felt!("0xadd")),
+                        class_hash: ClassHash(felt!("0xcdef")),
                     }],
                     nonces: vec![Nonce {
-                        contract_address: ContractAddress::new_or_panic(starkhash!("ca")),
-                        nonce: ContractNonce(starkhash!("0404ce")),
+                        contract_address: ContractAddress::new_or_panic(felt!("0xca")),
+                        nonce: ContractNonce(felt!("0x404ce")),
                     }],
                 },
             };
@@ -333,18 +333,18 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{starkhash, starkhash_bytes};
+    use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
         Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
         StorageAddress, StorageValue,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
         let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(StarknetBlockHash(starkhash!("beef")));
+        let hash = BlockId::Hash(StarknetBlockHash(felt!("0xbeef")));
 
         [
             (r#"["pending"]"#, BlockId::Pending),
@@ -450,7 +450,7 @@ mod tests {
             (
                 ctx.clone(),
                 // The fixture happens to init this to zero for genesis block
-                BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)),
+                BlockId::Hash(StarknetBlockHash(Felt::ZERO)),
                 assert_ok(in_storage[0].clone()),
             ),
             // Errors
@@ -461,7 +461,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(pathfinder_common::starkhash_bytes!(
+                BlockId::Hash(StarknetBlockHash(pathfinder_common::felt_bytes!(
                     b"non-existent"
                 ))),
                 assert_error(GetStateUpdateError::BlockNotFound),
@@ -497,45 +497,45 @@ mod tests {
 
         let expected = StateUpdate {
             block_hash: None,
-            new_root: GlobalRoot(starkhash!(
+            new_root: GlobalRoot(felt!(
                 "06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
             )),
-            old_root: GlobalRoot(starkhash!(
+            old_root: GlobalRoot(felt!(
                 "0300e3d0ce5f0da1a086ab49734bab6f302efbf544b56226b7db665716b621c8"
             )),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
-                    address: ContractAddress::new_or_panic(starkhash_bytes!(
+                    address: ContractAddress::new_or_panic(felt_bytes!(
                         b"pending contract 1 address"
                     )),
                     storage_entries: vec![
                         StorageEntry {
-                            key: StorageAddress::new_or_panic(starkhash_bytes!(
+                            key: StorageAddress::new_or_panic(felt_bytes!(
                                 b"pending storage key 0"
                             )),
-                            value: StorageValue(starkhash_bytes!(b"pending storage value 0")),
+                            value: StorageValue(felt_bytes!(b"pending storage value 0")),
                         },
                         StorageEntry {
-                            key: StorageAddress::new_or_panic(starkhash_bytes!(
+                            key: StorageAddress::new_or_panic(felt_bytes!(
                                 b"pending storage key 1"
                             )),
-                            value: StorageValue(starkhash_bytes!(b"pending storage value 1")),
+                            value: StorageValue(felt_bytes!(b"pending storage value 1")),
                         },
                     ],
                 }],
                 declared_contract_hashes: vec![],
                 deployed_contracts: vec![
                     DeployedContract {
-                        address: ContractAddress::new_or_panic(starkhash_bytes!(
+                        address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 0 address"
                         )),
-                        class_hash: ClassHash(starkhash_bytes!(b"pending contract 0 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending contract 0 hash")),
                     },
                     DeployedContract {
-                        address: ContractAddress::new_or_panic(starkhash_bytes!(
+                        address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 1 address"
                         )),
-                        class_hash: ClassHash(starkhash_bytes!(b"pending contract 1 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending contract 1 hash")),
                     },
                 ],
                 nonces: vec![],

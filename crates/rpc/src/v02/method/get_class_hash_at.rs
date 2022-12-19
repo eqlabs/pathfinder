@@ -101,7 +101,7 @@ fn read_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{starkhash, starkhash_bytes};
+    use pathfinder_common::{felt, felt_bytes};
 
     mod parsing {
         use super::*;
@@ -118,8 +118,8 @@ mod tests {
 
             let input = positional.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }
@@ -134,8 +134,8 @@ mod tests {
 
             let input = named.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                contract_address: ContractAddress::new_or_panic(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }
@@ -150,7 +150,7 @@ mod tests {
 
             let input = GetClassHashAtInput {
                 block_id: BlockId::Latest,
-                contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"invalid")),
+                contract_address: ContractAddress::new_or_panic(felt_bytes!(b"invalid")),
             };
             let result = get_class_hash_at(context, input).await;
             assert_matches!(result, Err(GetClassHashAtError::ContractNotFound));
@@ -163,9 +163,9 @@ mod tests {
             let context = RpcContext::for_tests();
 
             let input = GetClassHashAtInput {
-                block_id: BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"invalid"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"invalid"))),
                 // This contract does exist and is added in block 0.
-                contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
+                contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
             };
             let result = get_class_hash_at(context, input).await;
             assert_matches!(result, Err(GetClassHashAtError::BlockNotFound));
@@ -175,11 +175,11 @@ mod tests {
     #[tokio::test]
     async fn latest() {
         let context = RpcContext::for_tests();
-        let expected = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let expected = ClassHash(felt_bytes!(b"class 0 hash"));
 
         let input = GetClassHashAtInput {
             block_id: BlockId::Latest,
-            contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
+            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let result = get_class_hash_at(context, input).await.unwrap();
         assert_eq!(result, expected);
@@ -191,7 +191,7 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // This contract is deployed in block 1.
-        let address = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+        let address = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
 
         let input = GetClassHashAtInput {
             block_id: StarknetBlockNumber::new_or_panic(0).into(),
@@ -200,7 +200,7 @@ mod tests {
         let result = get_class_hash_at(context.clone(), input).await;
         assert_matches!(result, Err(GetClassHashAtError::ContractNotFound));
 
-        let expected = ClassHash(starkhash_bytes!(b"class 1 hash"));
+        let expected = ClassHash(felt_bytes!(b"class 1 hash"));
         let input = GetClassHashAtInput {
             block_id: StarknetBlockNumber::new_or_panic(1).into(),
             contract_address: address,
@@ -219,11 +219,11 @@ mod tests {
     #[tokio::test]
     async fn pending_defaults_to_latest() {
         let context = RpcContext::for_tests();
-        let expected = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let expected = ClassHash(felt_bytes!(b"class 0 hash"));
 
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
+            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let result = get_class_hash_at(context, input).await.unwrap();
         assert_eq!(result, expected);
@@ -234,19 +234,19 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
 
         // This should still work even though it was deployed in an actual block.
-        let expected = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let expected = ClassHash(felt_bytes!(b"class 0 hash"));
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0")),
+            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
         assert_eq!(result, expected);
 
         // This is an actual pending deployed contract.
-        let expected = ClassHash(starkhash_bytes!(b"pending contract 0 hash"));
+        let expected = ClassHash(felt_bytes!(b"pending contract 0 hash"));
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(starkhash_bytes!(
+            contract_address: ContractAddress::new_or_panic(felt_bytes!(
                 b"pending contract 0 address"
             )),
         };
@@ -256,7 +256,7 @@ mod tests {
         // This one remains missing.
         let input = GetClassHashAtInput {
             block_id: BlockId::Latest,
-            contract_address: ContractAddress::new_or_panic(starkhash_bytes!(b"invalid")),
+            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"invalid")),
         };
         let result = get_class_hash_at(context, input).await;
         assert_matches!(result, Err(GetClassHashAtError::ContractNotFound));

@@ -5,7 +5,7 @@ use pathfinder_common::{
     StarknetBlockTimestamp,
 };
 use pathfinder_merkle_tree::merkle_tree::MerkleTree;
-use stark_hash::{stark_hash, HashChain, StarkHash};
+use stark_hash::{stark_hash, Felt, HashChain};
 use starknet_gateway_types::reply::{
     transaction::{Event, Receipt, Transaction},
     Block,
@@ -75,7 +75,7 @@ pub fn verify_block_hash(
 
         let block_sequencer_address = block
             .sequencer_address
-            .unwrap_or(SequencerAddress(StarkHash::ZERO));
+            .unwrap_or(SequencerAddress(Felt::ZERO));
 
         std::iter::once(&block_sequencer_address)
             .chain(meta_info.fallback_sequencer_address.iter())
@@ -102,7 +102,7 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use pathfinder_common::{starkhash, Chain, SequencerAddress, StarknetBlockNumber};
+    use pathfinder_common::{felt, Chain, SequencerAddress, StarknetBlockNumber};
     use std::ops::Range;
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -153,7 +153,7 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(119802)..StarknetBlockNumber::new_or_panic(148428),
         ),
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         ))),
     };
@@ -161,7 +161,7 @@ mod meta {
     const TESTNET2_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(0),
         not_verifiable_range: None,
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         ))),
     };
@@ -169,7 +169,7 @@ mod meta {
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: StarknetBlockNumber::new_or_panic(833),
         not_verifiable_range: None,
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
         ))),
     };
@@ -179,7 +179,7 @@ mod meta {
         not_verifiable_range: Some(
             StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(110511),
         ),
-        fallback_sequencer_address: Some(SequencerAddress(starkhash!(
+        fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         ))),
     };
@@ -214,32 +214,32 @@ fn compute_final_hash_pre_0_7(
     block_number: StarknetBlockNumber,
     state_root: GlobalRoot,
     num_transactions: u64,
-    transaction_commitment: StarkHash,
+    transaction_commitment: Felt,
     parent_block_hash: StarknetBlockHash,
     chain_id: pathfinder_common::ChainId,
 ) -> StarknetBlockHash {
     let mut chain = HashChain::default();
 
     // block number
-    chain.update(StarkHash::from(block_number.get()));
+    chain.update(Felt::from(block_number.get()));
     // global state root
     chain.update(state_root.0);
     // sequencer address: these versions used 0 as the sequencer address
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // block timestamp: these versions used 0 as a timestamp for block hash computation
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // number of transactions
-    chain.update(StarkHash::from(num_transactions));
+    chain.update(Felt::from(num_transactions));
     // transaction commitment
     chain.update(transaction_commitment);
     // number of events
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // event commitment
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // reserved: protocol version
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // reserved: extra data
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // EXTRA FIELD: chain id
     chain.update(chain_id.0);
     // parent block hash
@@ -256,33 +256,33 @@ fn compute_final_hash(
     sequencer_address: &SequencerAddress,
     timestamp: StarknetBlockTimestamp,
     num_transactions: u64,
-    transaction_commitment: StarkHash,
+    transaction_commitment: Felt,
     num_events: u64,
-    event_commitment: StarkHash,
+    event_commitment: Felt,
     parent_block_hash: StarknetBlockHash,
 ) -> StarknetBlockHash {
     let mut chain = HashChain::default();
 
     // block number
-    chain.update(StarkHash::from(block_number.get()));
+    chain.update(Felt::from(block_number.get()));
     // global state root
     chain.update(state_root.0);
     // sequencer address
     chain.update(sequencer_address.0);
     // block timestamp
-    chain.update(StarkHash::from(timestamp.get()));
+    chain.update(Felt::from(timestamp.get()));
     // number of transactions
-    chain.update(StarkHash::from(num_transactions));
+    chain.update(Felt::from(num_transactions));
     // transaction commitment
     chain.update(transaction_commitment);
     // number of events
-    chain.update(StarkHash::from(num_events));
+    chain.update(Felt::from(num_events));
     // event commitment
     chain.update(event_commitment);
     // reserved: protocol version
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // reserved: extra data
-    chain.update(StarkHash::ZERO);
+    chain.update(Felt::ZERO);
     // parent block hash
     chain.update(parent_block_hash.0);
 
@@ -309,12 +309,12 @@ impl Default for CommitmentTree {
 }
 
 impl CommitmentTree {
-    pub fn set(&mut self, index: u64, value: StarkHash) -> Result<()> {
+    pub fn set(&mut self, index: u64, value: Felt) -> Result<()> {
         let key = index.to_be_bytes();
         self.tree.set(key.view_bits(), value)
     }
 
-    pub fn commit(self) -> Result<StarkHash> {
+    pub fn commit(self) -> Result<Felt> {
         self.tree.commit()
     }
 }
@@ -324,7 +324,7 @@ impl CommitmentTree {
 /// The transaction commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (transaction_index, transaction_hash_with_signature)
 /// key-value pairs to the tree and computing the root hash.
-fn calculate_transaction_commitment(transactions: &[Transaction]) -> Result<StarkHash> {
+fn calculate_transaction_commitment(transactions: &[Transaction]) -> Result<Felt> {
     let mut tree = CommitmentTree::default();
 
     transactions
@@ -352,9 +352,9 @@ fn calculate_transaction_commitment(transactions: &[Transaction]) -> Result<Star
 /// Note that for non-invoke transactions we don't actually have signatures. The
 /// cairo-lang uses an empty list (whose hash is not the ZERO value!) in that
 /// case.
-fn calculate_transaction_hash_with_signature(tx: &Transaction) -> StarkHash {
+fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
     lazy_static::lazy_static!(
-        static ref HASH_OF_EMPTY_LIST: StarkHash = HashChain::default().finalize();
+        static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
     );
 
     let signature_hash = match tx {
@@ -379,7 +379,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> StarkHash {
 /// The event commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
-fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<StarkHash> {
+fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<Felt> {
     let mut tree = CommitmentTree::default();
 
     transaction_receipts
@@ -403,7 +403,7 @@ fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<StarkH
 ///
 /// See the [documentation](https://docs.starknet.io/docs/Events/starknet-events#event-hash)
 /// for details.
-fn calculate_event_hash(event: &Event) -> StarkHash {
+fn calculate_event_hash(event: &Event) -> Felt {
     let mut keys_hash = HashChain::default();
     for key in event.keys.iter() {
         keys_hash.update(key.0);
@@ -436,7 +436,7 @@ fn number_of_events_in_block(block: &Block) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{starkhash, EntryPoint, Fee};
+    use pathfinder_common::{felt, EntryPoint, Fee};
     use starknet_gateway_types::reply::{
         transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
         Block,
@@ -447,26 +447,26 @@ mod tests {
         use pathfinder_common::{ContractAddress, EventData, EventKey};
 
         let event = Event {
-            from_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
+            from_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             data: vec![
-                EventData(starkhash!("05")),
-                EventData(starkhash!("06")),
-                EventData(starkhash!("07")),
-                EventData(starkhash!("08")),
-                EventData(starkhash!("09")),
+                EventData(felt!("0x5")),
+                EventData(felt!("0x6")),
+                EventData(felt!("0x7")),
+                EventData(felt!("0x8")),
+                EventData(felt!("0x9")),
             ],
             keys: vec![
-                EventKey(starkhash!("01")),
-                EventKey(starkhash!("02")),
-                EventKey(starkhash!("03")),
-                EventKey(starkhash!("04")),
+                EventKey(felt!("0x1")),
+                EventKey(felt!("0x2")),
+                EventKey(felt!("0x3")),
+                EventKey(felt!("0x4")),
             ],
         };
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_event_hash(0xdeadbeef, [1, 2, 3, 4], [5, 6, 7, 8, 9]))`
         let expected_event_hash =
-            starkhash!("db96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
+            felt!("0xdb96455b3a61f9139f7921667188d31d1e1d49fb60a1aa3dbf3756dbe3a9b4");
         let calculated_event_hash = calculate_event_hash(&event);
         assert_eq!(expected_event_hash, calculated_event_hash);
     }
@@ -479,23 +479,22 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
-            contract_address: ContractAddress::new_or_panic(starkhash!("deadbeef")),
+            contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: EntryPoint(starkhash!("0e")),
+            entry_point_selector: EntryPoint(felt!("0xe")),
             max_fee: Fee(0u128.to_be_bytes().into()),
             signature: vec![
-                TransactionSignatureElem(starkhash!("02")),
-                TransactionSignatureElem(starkhash!("03")),
+                TransactionSignatureElem(felt!("0x2")),
+                TransactionSignatureElem(felt!("0x3")),
             ],
-            transaction_hash: StarknetTransactionHash(starkhash!("01")),
+            transaction_hash: StarknetTransactionHash(felt!("0x1")),
         }));
 
         // produced by the cairo-lang Python implementation:
         // `hex(calculate_single_tx_hash_with_signature(1, [2, 3], hash_function=pedersen_hash))`
-        let expected_final_hash = StarkHash::from_hex_str(
-            "0x259c3bd5a1951eafb2f41e0b783eab92cfe4e108b2b1f071e3736f06b909431",
-        )
-        .unwrap();
+        let expected_final_hash =
+            Felt::from_hex_str("0x259c3bd5a1951eafb2f41e0b783eab92cfe4e108b2b1f071e3736f06b909431")
+                .unwrap();
         let calculated_final_hash = calculate_transaction_hash_with_signature(&transaction);
         assert_eq!(expected_final_hash, calculated_final_hash);
     }
@@ -505,7 +504,7 @@ mod tests {
         let mut tree = CommitmentTree::default();
 
         for (idx, hash) in [1u64, 2, 3, 4].into_iter().enumerate() {
-            let hash = StarkHash::from(hash);
+            let hash = Felt::from(hash);
             let idx: u64 = idx.try_into().unwrap();
             tree.set(idx, hash).unwrap();
         }
@@ -513,7 +512,7 @@ mod tests {
         // produced by the cairo-lang Python implementation:
         // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64, ffc=ffc))))`
         let expected_root_hash =
-            starkhash!("01a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
+            felt!("0x1a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
         let computed_root_hash = tree.commit().unwrap();
 
         assert_eq!(expected_root_hash, computed_root_hash);

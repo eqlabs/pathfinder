@@ -1,5 +1,5 @@
 use anyhow::Context;
-use stark_hash::{stark_hash, StarkHash};
+use stark_hash::{stark_hash, Felt};
 
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args();
@@ -8,7 +8,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| String::from("compute_contract_state_hash"));
 
     let args = args
-        .map(|x| StarkHash::from_hex_str(&x).map(Some))
+        .map(|x| Felt::from_hex_str(&x).map(Some))
         .chain(std::iter::repeat_with(|| Ok(None)));
 
     let mut description = String::with_capacity(1 + 64 + 64 + 64 + 64 + 4);
@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         .inspect(|(_, x)| {
             use std::fmt::Write;
             if let Ok(x) = x {
-                write!(description, " {:x}", x.unwrap_or(StarkHash::ZERO)).unwrap();
+                write!(description, " {:x}", x.unwrap_or(Felt::ZERO)).unwrap();
             }
         })
         .take(4)
@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
             let next = if nth < 2 {
                 next.with_context(|| format!("Missing {nth} parameter"))?
             } else {
-                next.unwrap_or(StarkHash::ZERO)
+                next.unwrap_or(Felt::ZERO)
             };
             Ok::<_, anyhow::Error>(acc.map(|prev| stark_hash(prev, next)).or(Some(next)))
         })

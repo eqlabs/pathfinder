@@ -66,7 +66,7 @@ pub fn register_all_methods(
         FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::Deserialize;
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_types::request::add_transaction::ContractDefinition;
     use types::request::{Call, ContractCall, EventFilter};
 
@@ -290,10 +290,10 @@ pub fn register_all_methods(
 
             // These are required on the sequencer-side but missing from the v0.1.0 RPC request
             const MAX_FEE: Fee = Fee(ethers::types::H128::zero());
-            const NONCE: TransactionNonce = TransactionNonce(StarkHash::ZERO);
+            const NONCE: TransactionNonce = TransactionNonce(Felt::ZERO);
             // actual address dumped from a `starknet declare` call
             const SENDER_ADDRESS: ContractAddress =
-                ContractAddress::new_or_panic(pathfinder_common::starkhash!("01"));
+                ContractAddress::new_or_panic(pathfinder_common::felt!("0x1"));
 
             context
                 .add_declare_transaction(
@@ -354,8 +354,8 @@ mod tests {
     use assert_matches::assert_matches;
     use jsonrpsee::{core::RpcResult, rpc_params, types::ParamsSer};
     use pathfinder_common::{
-        starkhash, starkhash_bytes, BlockId, Chain, ChainId, ClassHash, ContractAddress,
-        ContractClass, ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
+        felt, felt_bytes, BlockId, Chain, ChainId, ClassHash, ContractAddress, ContractClass,
+        ContractNonce, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
         TransactionNonce,
     };
@@ -364,7 +364,7 @@ mod tests {
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use serde_json::json;
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_client::Client;
     use starknet_gateway_test_fixtures::testnet::*;
     use starknet_gateway_types::{pending::PendingData, reply::PendingBlock};
@@ -418,7 +418,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis_by_hash() {
-            let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
+            let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
             let genesis_id = BlockId::Hash(genesis_hash);
             let params = rpc_params!(genesis_id);
 
@@ -433,7 +433,7 @@ mod tests {
 
         #[tokio::test]
         async fn genesis_by_number() {
-            let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
+            let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
             let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
             let params = rpc_params!(genesis_id);
 
@@ -455,7 +455,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
+                    let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
                     let params = rpc_params!(BlockId::Latest);
 
                     check_result(params, move |result, _| {
@@ -480,7 +480,7 @@ mod tests {
 
                 #[tokio::test]
                 async fn all() {
-                    let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
+                    let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
                     let params = by_name([("block_id", json!("latest"))]);
 
                     check_result(params, move |result, _| {
@@ -523,7 +523,7 @@ mod tests {
                     assert_matches!(result, Ok(block) => {
                         assert_eq!(
                             block.block_hash,
-                            Some(StarknetBlockHash(starkhash_bytes!(b"latest")))
+                            Some(StarknetBlockHash(felt_bytes!(b"latest")))
                         );
                     });
                 })
@@ -548,7 +548,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_block_id() {
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)));
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(Felt::ZERO)));
             check_result(params, |result, _| {
                 assert_matches!(result, Err(error) => assert_eq!(
                     &crate::v01::types::reply::ErrorCode::InvalidBlockId,
@@ -616,8 +616,8 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress::new_or_panic(starkhash_bytes!(b"nonexistent")),
-                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
+                ContractAddress::new_or_panic(felt_bytes!(b"nonexistent")),
+                StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0")),
                 BlockId::Latest
             );
             let error = TestClient::v01(addr)
@@ -635,9 +635,9 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
-                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
-                BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"genesis")))
+                ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
+                StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0")),
+                BlockId::Hash(StarknetBlockHash(felt_bytes!(b"genesis")))
             );
             let error = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
@@ -654,9 +654,9 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
-                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
-                BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"nonexistent")))
+                ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
+                StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0")),
+                BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent")))
             );
             let error = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
@@ -673,15 +673,15 @@ mod tests {
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
             let params = rpc_params!(
-                ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
-                StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
-                BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"block 1")))
+                ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
+                StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0")),
+                BlockId::Hash(StarknetBlockHash(felt_bytes!(b"block 1")))
             );
             let value = TestClient::v01(addr)
                 .request::<StorageValue>("starknet_getStorageAt", params)
                 .await
                 .unwrap();
-            assert_eq!(value.0, starkhash_bytes!(b"storage value 1"));
+            assert_eq!(value.0, felt_bytes!(b"storage value 1"));
         }
 
         mod latest_block {
@@ -696,15 +696,15 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = rpc_params!(
-                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1")),
-                    StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr 0")),
+                    ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
+                    StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0")),
                     BlockId::Latest
                 );
                 let value = TestClient::v01(addr)
                     .request::<StorageValue>("starknet_getStorageAt", params)
                     .await
                     .unwrap();
-                assert_eq!(value.0, starkhash_bytes!(b"storage value 2"));
+                assert_eq!(value.0, felt_bytes!(b"storage value 2"));
             }
 
             #[tokio::test]
@@ -715,15 +715,15 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
                 let params = by_name([
-                    ("contract_address", json! {starkhash_bytes!(b"contract 1")}),
-                    ("key", json! {starkhash_bytes!(b"storage addr 0")}),
+                    ("contract_address", json! {felt_bytes!(b"contract 1")}),
+                    ("key", json! {felt_bytes!(b"storage addr 0")}),
                     ("block_id", json! {"latest"}),
                 ]);
                 let value = TestClient::v01(addr)
                     .request::<StorageValue>("starknet_getStorageAt", params)
                     .await
                     .unwrap();
-                assert_eq!(value.0, starkhash_bytes!(b"storage value 2"));
+                assert_eq!(value.0, felt_bytes!(b"storage value 2"));
             }
         }
 
@@ -765,7 +765,7 @@ mod tests {
             #[tokio::test]
             async fn positional_args() {
                 let storage = setup_storage();
-                let hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
+                let hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
@@ -781,7 +781,7 @@ mod tests {
             #[tokio::test]
             async fn named_args() {
                 let storage = setup_storage();
-                let hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
+                let hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
                 let sequencer = Client::new(Chain::Testnet).unwrap();
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
@@ -858,14 +858,11 @@ mod tests {
 
         #[tokio::test]
         async fn genesis_by_hash() {
-            let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
+            let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
             let genesis_id = BlockId::Hash(genesis_hash);
             let params = rpc_params!(genesis_id, 0);
             check_result(params, move |txn| {
-                assert_eq!(
-                    txn.hash(),
-                    StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
-                )
+                assert_eq!(txn.hash(), StarknetTransactionHash(felt_bytes!(b"txn 0")))
             })
             .await;
         }
@@ -875,10 +872,7 @@ mod tests {
             let genesis_id = BlockId::Number(StarknetBlockNumber::GENESIS);
             let params = rpc_params!(genesis_id, 0);
             check_result(params, move |txn| {
-                assert_eq!(
-                    txn.hash(),
-                    StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
-                )
+                assert_eq!(txn.hash(), StarknetTransactionHash(felt_bytes!(b"txn 0")))
             })
             .await;
         }
@@ -891,10 +885,7 @@ mod tests {
             async fn positional_args() {
                 let params = rpc_params!(BlockId::Latest, 0);
                 check_result(params, move |txn| {
-                    assert_eq!(
-                        txn.hash(),
-                        StarknetTransactionHash(starkhash_bytes!(b"txn 3"))
-                    );
+                    assert_eq!(txn.hash(), StarknetTransactionHash(felt_bytes!(b"txn 3")));
                 })
                 .await;
             }
@@ -903,10 +894,7 @@ mod tests {
             async fn named_args() {
                 let params = by_name([("block_id", json!("latest")), ("index", json!(0))]);
                 check_result(params, move |txn| {
-                    assert_eq!(
-                        txn.hash(),
-                        StarknetTransactionHash(starkhash_bytes!(b"txn 3"))
-                    );
+                    assert_eq!(txn.hash(), StarknetTransactionHash(felt_bytes!(b"txn 3")));
                 })
                 .await;
             }
@@ -943,7 +931,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)), 0);
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(Felt::ZERO)), 0);
             let error = TestClient::v01(addr)
                 .request::<Transaction>("starknet_getTransactionByBlockIdAndIndex", params)
                 .await
@@ -958,7 +946,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let genesis_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
+            let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
             let genesis_id = BlockId::Hash(genesis_hash);
             let params = rpc_params!(genesis_id, 123);
             let error = TestClient::v01(addr)
@@ -988,7 +976,7 @@ mod tests {
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let txn_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
+                let txn_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
                 let params = rpc_params!(txn_hash);
                 let receipt = TestClient::v01(addr)
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
@@ -999,7 +987,7 @@ mod tests {
                     receipt,
                     TransactionReceipt::Invoke(invoke) => assert_eq!(
                         invoke.events[0].keys[0],
-                        EventKey(starkhash_bytes!(b"event 0 key"))
+                        EventKey(felt_bytes!(b"event 0 key"))
                     )
                 );
             }
@@ -1011,7 +999,7 @@ mod tests {
                 let sync_state = Arc::new(SyncState::default());
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-                let txn_hash = StarknetTransactionHash(starkhash_bytes!(b"txn 0"));
+                let txn_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
                 let params = by_name([("transaction_hash", json!(txn_hash))]);
                 let receipt = TestClient::v01(addr)
                     .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
@@ -1022,7 +1010,7 @@ mod tests {
                     receipt,
                     TransactionReceipt::Invoke(invoke) => assert_eq!(
                         invoke.events[0].keys[0],
-                        EventKey(starkhash_bytes!(b"event 0 key"))
+                        EventKey(felt_bytes!(b"event 0 key"))
                     )
                 );
             }
@@ -1064,7 +1052,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let txn_hash = StarknetTransactionHash(starkhash_bytes!(b"not found"));
+            let txn_hash = StarknetTransactionHash(felt_bytes!(b"not found"));
             let params = rpc_params!(txn_hash);
             let error = TestClient::v01(addr)
                 .request::<TransactionReceipt>("starknet_getTransactionReceipt", params)
@@ -1189,14 +1177,13 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                let contract_address =
-                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+                let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
                 let params = rpc_params!(BlockId::Latest, contract_address);
                 let class_hash = TestClient::v01(addr)
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap();
-                let expected_class_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
+                let expected_class_hash = ClassHash(felt_bytes!(b"class 1 hash"));
                 assert_eq!(class_hash, expected_class_hash);
             }
 
@@ -1208,8 +1195,7 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                let contract_address =
-                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+                let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
                 let params = rpc_params!(
                     BlockId::Number(StarknetBlockNumber::GENESIS),
                     contract_address
@@ -1255,8 +1241,7 @@ mod tests {
                 let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
-                let contract_address =
-                    ContractAddress::new_or_panic(starkhash_bytes!(b"contract 1"));
+                let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
                 let params = by_name([
                     ("block_id", json!("latest")),
                     ("contract_address", json!(contract_address)),
@@ -1265,7 +1250,7 @@ mod tests {
                     .request::<ClassHash>("starknet_getClassHashAt", params)
                     .await
                     .unwrap();
-                let expected_class_hash = ClassHash(starkhash_bytes!(b"class 1 hash"));
+                let expected_class_hash = ClassHash(felt_bytes!(b"class 1 hash"));
                 assert_eq!(class_hash, expected_class_hash);
             }
         }
@@ -1408,7 +1393,7 @@ mod tests {
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
-        use pathfinder_common::{starkhash, StorageValue};
+        use pathfinder_common::{felt, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
         use pathfinder_storage::{ContractCodeTable, ContractsTable, StarknetBlocksBlockId};
         use pretty_assertions::assert_eq;
@@ -1422,11 +1407,11 @@ mod tests {
             )?;
             let contract_definition = Bytes::from(buffer);
 
-            let contract_address = ContractAddress::new_or_panic(starkhash!(
+            let contract_address = ContractAddress::new_or_panic(felt!(
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             ));
             let expected_hash =
-                starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
+                felt!("0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
 
             let (abi, bytecode, hash) =
                 starknet_gateway_types::class_hash::extract_abi_code_hash(&contract_definition)?;
@@ -1448,10 +1433,10 @@ mod tests {
             let program = base64::encode(program);
 
             // insert a new block whose state includes the contract
-            let storage_addr = StorageAddress::new_or_panic(starkhash_bytes!(b"storage addr"));
+            let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr"));
             let storage_diff = vec![StorageDiff {
                 key: storage_addr,
-                value: StorageValue(starkhash_bytes!(b"storage_value")),
+                value: StorageValue(felt_bytes!(b"storage_value")),
             }];
             let block2 = StarknetBlocksTable::get(
                 transaction,
@@ -1474,11 +1459,11 @@ mod tests {
 
             let block3 = StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(3),
-                hash: StarknetBlockHash(starkhash_bytes!(b"block 3 hash")),
+                hash: StarknetBlockHash(felt_bytes!(b"block 3 hash")),
                 root: global_tree.apply().unwrap(),
                 timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
-                sequencer_address: SequencerAddress(starkhash_bytes!(&[3u8])),
+                sequencer_address: SequencerAddress(felt_bytes!(&[3u8])),
             };
 
             StarknetBlocksTable::insert(transaction, &block3, None).unwrap();
@@ -1498,9 +1483,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(starkhash_bytes!(
-                b"genesis"
-            ))));
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(felt_bytes!(b"genesis"))));
             let count = TestClient::v01(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
@@ -1568,7 +1551,7 @@ mod tests {
             let sync_state = Arc::new(SyncState::default());
             let api = RpcApi::new(storage, sequencer, ChainId::TESTNET, sync_state);
             let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
-            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)));
+            let params = rpc_params!(BlockId::Hash(StarknetBlockHash(Felt::ZERO)));
             let error = TestClient::v01(addr)
                 .request::<u64>("starknet_getBlockTransactionCount", params)
                 .await
@@ -1663,15 +1646,15 @@ mod tests {
         let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
         // This contract is created in `setup_storage` and has a nonce set to 0x1.
-        let valid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"contract 0"));
+        let valid_contract = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
         let nonce = TestClient::v01(addr)
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(valid_contract))
             .await
             .unwrap();
-        assert_eq!(nonce, ContractNonce(starkhash!("01")));
+        assert_eq!(nonce, ContractNonce(felt!("0x1")));
 
         // Invalid contract should error.
-        let invalid_contract = ContractAddress::new_or_panic(starkhash_bytes!(b"invalid"));
+        let invalid_contract = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
         let error = TestClient::v01(addr)
             .request::<ContractNonce>("starknet_getNonce", rpc_params!(invalid_contract))
             .await
@@ -1685,19 +1668,19 @@ mod tests {
     mod call {
         use super::*;
         use crate::v01::types::request::Call;
-        use pathfinder_common::{starkhash, CallParam, CallResultValue};
+        use pathfinder_common::{felt, CallParam, CallResultValue};
         use pretty_assertions::assert_eq;
 
-        const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const INVOKE_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"
         )));
-        const PRE_DEPLOY_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const PRE_DEPLOY_CONTRACT_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
         )));
-        const INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(starkhash!(
+        const INVALID_BLOCK_ID: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
         )));
-        const CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("1234"))];
+        const CALL_DATA: [CallParam; 1] = [CallParam(felt!("0x1234"))];
 
         #[ignore = "no longer works without setting up ext_py"]
         #[tokio::test]
@@ -1971,7 +1954,7 @@ mod tests {
             .await
             .unwrap();
         let expected = BlockHashAndNumber {
-            hash: StarknetBlockHash(starkhash_bytes!(b"latest")),
+            hash: StarknetBlockHash(felt_bytes!(b"latest")),
             number: StarknetBlockNumber::new_or_panic(2),
         };
         assert_eq!(latest, expected);
@@ -2074,7 +2057,7 @@ mod tests {
         mod positional_args {
             use super::*;
             use crate::v01::types::request::EventFilter;
-            use pathfinder_common::starkhash;
+            use pathfinder_common::felt;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2122,7 +2105,7 @@ mod tests {
                     to_block: Some(expected_event.block_number.unwrap().into()),
                     address: Some(expected_event.from_address),
                     // we're using a key which is present in _all_ events
-                    keys: vec![EventKey(starkhash!("deadbeef"))],
+                    keys: vec![EventKey(felt!("0xdeadbeef"))],
                     page_size: test_utils::NUM_EVENTS,
                     page_number: 0,
                 });
@@ -2567,7 +2550,7 @@ mod tests {
             use crate::v01::types::request::ContractCall;
             use ethers::types::H256;
             use pathfinder_common::{
-                starkhash, ByteCodeOffset, CallParam, ClassHash, EntryPoint, Fee,
+                felt, ByteCodeOffset, CallParam, ClassHash, EntryPoint, Fee,
                 TransactionSignatureElem, TransactionVersion,
             };
             use pretty_assertions::assert_eq;
@@ -2580,23 +2563,23 @@ mod tests {
             lazy_static::lazy_static! {
                 pub static ref CALL: ContractCall = ContractCall {
                     contract_address: ContractAddress::new_or_panic(
-                        starkhash!("023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd")
+                        felt!("0x23371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd")
                     ),
                     calldata: vec![
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1")),
-                        CallParam(starkhash!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")),
-                        CallParam(starkhash!("00")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("2b")),
-                        CallParam(starkhash!("00")),
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!("0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1")),
+                        CallParam(felt!("0x362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")),
+                        CallParam(felt!("0x0")),
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!("0x2b")),
+                        CallParam(felt!("0x0")),
                     ],
-                    entry_point_selector: Some(EntryPoint(starkhash!("015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad")))
+                    entry_point_selector: Some(EntryPoint(felt!("0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad")))
                 };
                 pub static ref SIGNATURE: Vec<TransactionSignatureElem> = vec![
-                    TransactionSignatureElem(starkhash!("07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
-                    TransactionSignatureElem(starkhash!("071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
+                    TransactionSignatureElem(felt!("0x7dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5")),
+                    TransactionSignatureElem(felt!("0x71456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8")),
                 ];
                 pub static ref MAX_FEE: Fee = Fee(5444010076217u128.to_be_bytes().into());
                 pub static ref TRANSACTION_VERSION: TransactionVersion = TransactionVersion(H256::zero());
@@ -2608,11 +2591,11 @@ mod tests {
                             EntryPointType::External,
                             vec![
                                 SelectorAndOffset {
-                                    offset: ByteCodeOffset(starkhash!("3a")),
+                                    offset: ByteCodeOffset(felt!("0x3a")),
                                     selector: EntryPoint::hashed(&b"increase_balance"[..]),
                                 },
                                 SelectorAndOffset{
-                                    offset: ByteCodeOffset(starkhash!("5b")),
+                                    offset: ByteCodeOffset(felt!("0x5b")),
                                     selector: EntryPoint::hashed(&b"get_balance"[..]),
                                 },
                             ],
@@ -2652,7 +2635,7 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     InvokeTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
                         ))
                     }
@@ -2668,34 +2651,34 @@ mod tests {
                 let (__handle, addr) = run_server(*LOCALHOST, api).await.unwrap();
 
                 let call = ContractCall {
-                    contract_address: ContractAddress::new_or_panic(starkhash!(
+                    contract_address: ContractAddress::new_or_panic(felt!(
                         "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
                     )),
                     calldata: vec![
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!(
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!(
                             "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
                         )),
-                        CallParam(starkhash!(
+                        CallParam(felt!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
                         )),
-                        CallParam(starkhash!("00")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
-                        CallParam(starkhash!("01")),
+                        CallParam(felt!("0x0")),
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!("0x1")),
+                        CallParam(felt!("0x1")),
                     ],
                     entry_point_selector: None,
                 };
                 let signature = vec![
-                    TransactionSignatureElem(starkhash!(
+                    TransactionSignatureElem(felt!(
                         "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
                     )),
-                    TransactionSignatureElem(starkhash!(
+                    TransactionSignatureElem(felt!(
                         "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
                     )),
                 ];
                 let max_fee = Fee(ethers::types::H128::from_low_u64_be(0x630a0aff77));
-                let nonce = TransactionNonce(starkhash!("02"));
+                let nonce = TransactionNonce(felt!("0x2"));
 
                 let params = rpc_params!(call, signature, max_fee, TransactionVersion::ONE, nonce);
                 let rpc_result = TestClient::v01(addr)
@@ -2706,7 +2689,7 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     InvokeTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
                         ))
                     }
@@ -2733,10 +2716,10 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     DeclareTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
                         )),
-                        class_hash: ClassHash(starkhash!(
+                        class_hash: ClassHash(felt!(
                             "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
                         )),
                     }
@@ -2746,7 +2729,7 @@ mod tests {
 
         mod named_args {
             use super::*;
-            use pathfinder_common::{starkhash, ClassHash};
+            use pathfinder_common::{felt, ClassHash};
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -2794,7 +2777,7 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     InvokeTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
                         ))
                     }
@@ -2822,10 +2805,10 @@ mod tests {
                 assert_eq!(
                     rpc_result,
                     DeclareTransactionResult {
-                        transaction_hash: StarknetTransactionHash(starkhash!(
+                        transaction_hash: StarknetTransactionHash(felt!(
                             "077ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed"
                         )),
-                        class_hash: ClassHash(starkhash!(
+                        class_hash: ClassHash(felt!(
                             "0711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"
                         )),
                     }

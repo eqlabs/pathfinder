@@ -3,7 +3,7 @@
 //! ## Overview
 //!
 //! This storage functions similarly to a key-value store with the addition of automatic
-//! reference counting. A [node's](PersistedNode) key is its [hash](StarkHash), and it is
+//! reference counting. A [node's](PersistedNode) key is its [hash](Felt), and it is
 //! stored as bytes (although from an API perspective they get deserialized).
 //!
 //! Reference counting is performed automatically for all nodes i.e. when a node is inserted,
@@ -42,7 +42,7 @@ use anyhow::Context;
 use bitvec::{order::Msb0, prelude::BitVec, view::BitView};
 use rusqlite::{params, OptionalExtension, Transaction};
 
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 /// Backing storage for Starknet Binary Merkle Patricia Tree.
 ///
@@ -52,48 +52,48 @@ use stark_hash::StarkHash;
 /// visitable in-memory.
 pub trait NodeStorage {
     /// Find a persistent node during a traversal from the storage.
-    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>>;
+    fn get(&self, key: Felt) -> anyhow::Result<Option<PersistedNode>>;
 
     /// Insert or ignore if already exists `node` to storage under the given `key`.
     ///
     /// This does not imply incrementing the nodes ref count.
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()>;
+    fn upsert(&self, key: Felt, node: PersistedNode) -> anyhow::Result<()>;
 
     /// Decrement previously stored `key`'s reference count. This shouldn't fail for key not found.
     #[cfg(feature = "test-utils")]
-    fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
+    fn decrement_ref_count(&self, key: Felt) -> anyhow::Result<()>;
 
     /// Increment previously stored `key`'s reference count. This shouldn't fail for key not found.
-    fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()>;
+    fn increment_ref_count(&self, key: Felt) -> anyhow::Result<()>;
 }
 
 impl NodeStorage for () {
-    fn get(&self, _key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+    fn get(&self, _key: Felt) -> anyhow::Result<Option<PersistedNode>> {
         // the rc<refcell> impl will do just fine by without any backing for transaction tree
         // building
         Ok(None)
     }
 
-    fn upsert(&self, _key: StarkHash, _node: PersistedNode) -> anyhow::Result<()> {
+    fn upsert(&self, _key: Felt, _node: PersistedNode) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[cfg(feature = "test-utils")]
-    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+    fn decrement_ref_count(&self, _key: Felt) -> anyhow::Result<()> {
         Ok(())
     }
 
-    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+    fn increment_ref_count(&self, _key: Felt) -> anyhow::Result<()> {
         Ok(())
     }
 }
 
-impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, PersistedNode>> {
-    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+impl NodeStorage for std::cell::RefCell<std::collections::HashMap<Felt, PersistedNode>> {
+    fn get(&self, key: Felt) -> anyhow::Result<Option<PersistedNode>> {
         Ok(self.borrow().get(&key).cloned())
     }
 
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+    fn upsert(&self, key: Felt, node: PersistedNode) -> anyhow::Result<()> {
         use std::collections::hash_map::Entry::*;
         if !matches!(node, PersistedNode::Leaf) {
             match self.borrow_mut().entry(key) {
@@ -113,11 +113,11 @@ impl NodeStorage for std::cell::RefCell<std::collections::HashMap<StarkHash, Per
     }
 
     #[cfg(feature = "test-utils")]
-    fn decrement_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+    fn decrement_ref_count(&self, _key: Felt) -> anyhow::Result<()> {
         Ok(())
     }
 
-    fn increment_ref_count(&self, _key: StarkHash) -> anyhow::Result<()> {
+    fn increment_ref_count(&self, _key: Felt) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -234,20 +234,20 @@ impl Queries<'static> {
 }
 
 impl<'a, 'queries> NodeStorage for RcNodeStorage<'a, 'queries> {
-    fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+    fn get(&self, key: Felt) -> anyhow::Result<Option<PersistedNode>> {
         self.get(key)
     }
 
-    fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+    fn upsert(&self, key: Felt, node: PersistedNode) -> anyhow::Result<()> {
         self.upsert(key, node)
     }
 
     #[cfg(feature = "test-utils")]
-    fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
+    fn decrement_ref_count(&self, key: Felt) -> anyhow::Result<()> {
         RcNodeStorage::decrement_ref_count(self, key)
     }
 
-    fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
+    fn increment_ref_count(&self, key: Felt) -> anyhow::Result<()> {
         self.increment_ref_count(key)
     }
 }
@@ -255,15 +255,15 @@ impl<'a, 'queries> NodeStorage for RcNodeStorage<'a, 'queries> {
 /// A binary node which can be read / written from an [RcNodeStorage].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedBinaryNode {
-    pub left: StarkHash,
-    pub right: StarkHash,
+    pub left: Felt,
+    pub right: Felt,
 }
 
 /// An edge node which can be read / written from an [RcNodeStorage].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedEdgeNode {
     pub path: BitVec<Msb0, u8>,
-    pub child: StarkHash,
+    pub child: Felt,
 }
 
 /// A node which can be read / written from an [RcNodeStorage].
@@ -310,10 +310,10 @@ impl PersistedNode {
                 let left: [u8; 32] = bytes[..32].try_into().unwrap();
                 let right: [u8; 32] = bytes[32..].try_into().unwrap();
 
-                let left = StarkHash::from_be_bytes(left)
-                    .context("Binary node's left hash is corrupt.")?;
-                let right = StarkHash::from_be_bytes(right)
-                    .context("Binary node's right hash is corrupt.")?;
+                let left =
+                    Felt::from_be_bytes(left).context("Binary node's left hash is corrupt.")?;
+                let right =
+                    Felt::from_be_bytes(right).context("Binary node's right hash is corrupt.")?;
 
                 Ok(PersistedNode::Binary(PersistedBinaryNode { left, right }))
             }
@@ -329,8 +329,8 @@ impl PersistedNode {
                 // the last bits.
                 let path = path.view_bits::<Msb0>()[256 - length..].to_bitvec();
 
-                let child = StarkHash::from_be_bytes(child)
-                    .context("Edge node's child hash is corrupt.")?;
+                let child =
+                    Felt::from_be_bytes(child).context("Edge node's child hash is corrupt.")?;
 
                 Ok(PersistedNode::Edge(PersistedEdgeNode { path, child }))
             }
@@ -384,7 +384,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     ///
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
-    pub fn upsert(&self, key: StarkHash, node: PersistedNode) -> anyhow::Result<()> {
+    pub fn upsert(&self, key: Felt, node: PersistedNode) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
         let mut data = [0u8; 65];
@@ -465,7 +465,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     }
 
     /// Returns the node given by `key`, or [None] if it doesn't exist.
-    pub fn get(&self, key: StarkHash) -> anyhow::Result<Option<PersistedNode>> {
+    pub fn get(&self, key: Felt) -> anyhow::Result<Option<PersistedNode>> {
         let hash = key.to_be_bytes();
 
         let mut query = self.transaction.prepare_cached(&self.queries.get)?;
@@ -492,7 +492,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     /// Does not perform rollback on failure. This implies that you should rollback the [RcNodeStorage's](RcNodeStorage) transaction
     /// if this call returns an error to prevent database corruption.
     #[cfg(feature = "test-utils")]
-    fn delete_node(&self, key: StarkHash) -> anyhow::Result<()> {
+    fn delete_node(&self, key: Felt) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
         let node = match self.get(key)? {
@@ -519,7 +519,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     /// Decrements the reference count of the node and automatically deletes it
     /// if the count becomes zero.
     #[cfg(feature = "test-utils")]
-    pub fn decrement_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
+    pub fn decrement_ref_count(&self, key: Felt) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
 
         let mut query = self
@@ -548,7 +548,7 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     }
 
     /// Increments the reference count of the node.
-    pub fn increment_ref_count(&self, key: StarkHash) -> anyhow::Result<()> {
+    pub fn increment_ref_count(&self, key: Felt) -> anyhow::Result<()> {
         let hash = key.to_be_bytes();
         let mut stmt = self
             .transaction
@@ -565,7 +565,7 @@ mod tests {
     use bitvec::bitvec;
 
     /// Test helper function to query a node's current reference count from the database.
-    fn get_ref_count(storage: &RcNodeStorage<'_, '_>, key: StarkHash) -> Option<u64> {
+    fn get_ref_count(storage: &RcNodeStorage<'_, '_>, key: Felt) -> Option<u64> {
         let hash = key.to_be_bytes();
         storage
             .transaction
@@ -580,13 +580,13 @@ mod tests {
 
     mod serde {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn edge() {
             // Tests all different possible path lengths. This is an area of concern as we are serializing
             // and deserializing big endian bit paths to a fixed size big endian array.
-            let child = starkhash!("123abc");
+            let child = felt!("0x123abc");
             // 251 randomly generated bits.
             let bits251 = bitvec![Msb0, u8; 1,0,0,1,1,0,1,1,0,0,1,1,1,1,0,0,1,1,1,0,1,0,0,1,0,1,0,1,1,0,0,0,
                                             1,1,1,1,1,1,1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,1,1,0,0,0,1,0,1,0,0,
@@ -614,8 +614,8 @@ mod tests {
         #[test]
         fn binary() {
             let original = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0123"),
-                right: starkhash!("0abc"),
+                left: felt!("0x123"),
+                right: felt!("0xabc"),
             });
 
             let mut data = [0u8; 65];
@@ -629,7 +629,7 @@ mod tests {
 
     mod reference_count {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn increment() {
@@ -637,10 +637,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("0x123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0321"),
-                right: starkhash!("0abc"),
+                left: felt!("0x321"),
+                right: felt!("0xabc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -660,10 +660,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("0x123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0321"),
-                right: starkhash!("0abc"),
+                left: felt!("0x321"),
+                right: felt!("0xabc"),
             });
 
             uut.upsert(key, node).unwrap();
@@ -686,10 +686,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("0x123abc");
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("0321"),
-                right: starkhash!("0abc"),
+                left: felt!("0x321"),
+                right: felt!("0xabc"),
             });
 
             uut.upsert(key, node.clone()).unwrap();
@@ -701,7 +701,7 @@ mod tests {
 
     mod insert_get {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn missing() {
@@ -709,7 +709,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("0x123abc");
             assert_eq!(uut.get(key).unwrap(), None);
         }
 
@@ -719,13 +719,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let left_child_key = starkhash!("123abc");
+            let left_child_key = felt!("0x123abc");
             let left_child = PersistedNode::Leaf;
 
-            let right_child_key = starkhash!("ddd111");
+            let right_child_key = felt!("0xddd111");
             let right_child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("0xdef123");
             let parent = PersistedNode::Binary(PersistedBinaryNode {
                 left: left_child_key,
                 right: right_child_key,
@@ -750,10 +750,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let child_key = starkhash!("123abc");
+            let child_key = felt!("0x123abc");
             let child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("0xdef123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],
                 child: child_key,
@@ -774,7 +774,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("0x123abc");
             let node = PersistedNode::Leaf;
 
             uut.upsert(key, node).unwrap();
@@ -791,7 +791,7 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let key = starkhash!("123abc");
+            let key = felt!("0x123abc");
             let hash = key.to_be_bytes();
 
             // Force a leaf node into the database. Leaf nodes were represented as empty data.
@@ -806,8 +806,8 @@ mod tests {
 
             // It should be possible to overwrite this leaf node.
             let node = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("aaaa"),
-                right: starkhash!("bbbb"),
+                left: felt!("0xaaaa"),
+                right: felt!("0xbbbb"),
             });
             uut.upsert(key, node.clone()).unwrap();
 
@@ -816,8 +816,8 @@ mod tests {
 
             // It should not be possible to overwrite the new binary node.
             let fail = PersistedNode::Binary(PersistedBinaryNode {
-                left: starkhash!("cccc"),
-                right: starkhash!("dddd"),
+                left: felt!("0xcccc"),
+                right: felt!("0xdddd"),
             });
             uut.upsert(key, fail).unwrap_err();
         }
@@ -825,7 +825,7 @@ mod tests {
 
     mod delete {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn binary() {
@@ -833,13 +833,13 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let left_child_key = starkhash!("123abc");
+            let left_child_key = felt!("0x123abc");
             let left_child = PersistedNode::Leaf;
 
-            let right_child_key = starkhash!("ddd111");
+            let right_child_key = felt!("0xddd111");
             let right_child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("0xdef123");
             let parent = PersistedNode::Binary(PersistedBinaryNode {
                 left: left_child_key,
                 right: right_child_key,
@@ -861,10 +861,10 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let child_key = starkhash!("123abc");
+            let child_key = felt!("0x123abc");
             let child = PersistedNode::Leaf;
 
-            let parent_key = starkhash!("def123");
+            let parent_key = felt!("0xdef123");
             let parent = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],
                 child: child_key,
@@ -884,11 +884,11 @@ mod tests {
             let transaction = conn.transaction().unwrap();
             let uut = RcNodeStorage::open("test", &transaction).unwrap();
 
-            let leaf_key = starkhash!("123abc");
+            let leaf_key = felt!("0x123abc");
             let leaf_node = PersistedNode::Leaf;
 
-            let parent_key_1 = starkhash!("0111");
-            let parent_key_2 = starkhash!("0222");
+            let parent_key_1 = felt!("0x111");
+            let parent_key_2 = felt!("0x222");
 
             let parent_node_1 = PersistedNode::Edge(PersistedEdgeNode {
                 path: bitvec![Msb0, u8; 1, 0, 0],

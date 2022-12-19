@@ -2,7 +2,7 @@ use crate::{contract::STATE_UPDATE_EVENT, EthOrigin};
 use anyhow::Context;
 use ethers::abi::{LogParam, RawLog};
 use pathfinder_common::{GlobalRoot, StarknetBlockNumber};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 /// Describes a state update log event.
 ///
@@ -34,8 +34,7 @@ impl TryFrom<ethers::types::Log> for StateUpdateLog {
             .context("global root could not be parsed")?;
         let mut buf = [0u8; 32];
         global_root.to_big_endian(&mut buf);
-        let global_root =
-            StarkHash::from_be_bytes(buf).context("global root could not be parsed")?;
+        let global_root = Felt::from_be_bytes(buf).context("global root could not be parsed")?;
         let global_root = GlobalRoot(global_root);
 
         let block_number = get_log_param(&log, "blockNumber")?
@@ -116,7 +115,7 @@ mod tests {
             )
             .unwrap();
             let global_root = GlobalRoot(
-                StarkHash::from_hex_str(
+                Felt::from_hex_str(
                     "06bd197ccc199cc3be696635a482ff818a1f166ef91c5fd844aacafb15a12bcd",
                 )
                 .unwrap(),

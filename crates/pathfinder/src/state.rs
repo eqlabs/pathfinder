@@ -30,7 +30,7 @@ mod tests {
         // };
 
         // // The global root that we start with
-        // let global_root = GlobalRoot(StarkHash::ZERO);
+        // let global_root = GlobalRoot(Felt::ZERO);
 
         // // The global root that we end with
         // let expected_global_root = GlobalRoot(
@@ -182,7 +182,7 @@ mod tests {
         //     }],
         // };
 
-        // let global_root = GlobalRoot(StarkHash::ZERO);
+        // let global_root = GlobalRoot(Felt::ZERO);
         // let update_log = StateUpdateLog {
         //     origin: EthOrigin {
         //         block: BlockOrigin {
@@ -195,7 +195,7 @@ mod tests {
         //         },
         //         log_index: EthereumLogIndex(0),
         //     },
-        //     global_root: GlobalRoot(StarkHash::ZERO),
+        //     global_root: GlobalRoot(Felt::ZERO),
         //     block_number: StarknetBlockNumber(0),
         // };
 
@@ -312,7 +312,7 @@ mod tests {
         // /*
         // update(
         //     &transport,
-        //     GlobalRoot(StarkHash::ZERO),
+        //     GlobalRoot(Felt::ZERO),
         //     &genesis,
         //     &transaction,
         //     &sequencer,

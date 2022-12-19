@@ -12,7 +12,7 @@ use pathfinder_common::{
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
 
 /// Contains the [L1 Starknet update logs](StateUpdateLog).
@@ -1040,7 +1040,7 @@ impl StarknetEventsTable {
                 let data: Vec<_> = data
                     .chunks_exact(32)
                     .map(|data| {
-                        let data = StarkHash::from_be_slice(data).unwrap();
+                        let data = Felt::from_be_slice(data).unwrap();
                         EventData(data)
                     })
                     .collect();
@@ -1055,7 +1055,7 @@ impl StarknetEventsTable {
                     .map(|key| {
                         let used =
                             base64::decode_config_slice(key, base64::STANDARD, &mut temp).unwrap();
-                        let key = StarkHash::from_be_slice(&temp[..used]).unwrap();
+                        let key = Felt::from_be_slice(&temp[..used]).unwrap();
                         EventKey(key)
                     })
                     .collect();
@@ -1320,7 +1320,7 @@ mod tests {
 
     mod contracts {
         use super::*;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn get() {
@@ -1328,10 +1328,10 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let transaction = connection.transaction().unwrap();
 
-            let state_hash = ContractStateHash(starkhash!("0abc"));
-            let hash = ClassHash(starkhash!("0123"));
-            let root = ContractRoot(starkhash!("0def"));
-            let nonce = ContractNonce(starkhash!("0456"));
+            let state_hash = ContractStateHash(felt!("0xabc"));
+            let hash = ClassHash(felt!("0x123"));
+            let root = ContractRoot(felt!("0xdef"));
+            let nonce = ContractNonce(felt!("0x456"));
 
             ContractsStateTable::upsert(&transaction, state_hash, hash, root, nonce).unwrap();
 
@@ -1402,7 +1402,7 @@ mod tests {
                         log_index: EthereumLogIndex(i + 500),
                     },
                     global_root: GlobalRoot(
-                        StarkHash::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
+                        Felt::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
                     ),
                     block_number: StarknetBlockNumber::GENESIS + i,
                 })
@@ -1685,7 +1685,7 @@ mod tests {
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
                         let non_existent =
-                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
                             None
@@ -1741,7 +1741,7 @@ mod tests {
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
                         let non_existent =
-                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
                             None
@@ -1802,7 +1802,7 @@ mod tests {
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
                         let non_existent =
-                            StarknetBlockHash(StarkHash::from_hex_str(&"b".repeat(10)).unwrap());
+                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_root(tx, non_existent.into()).unwrap(),
                             None
@@ -2036,15 +2036,15 @@ mod tests {
         use super::*;
         use crate::test_utils;
         use ethers::types::H128;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use pathfinder_common::{EntryPoint, EventData, Fee};
 
         #[test]
         fn event_data_serialization() {
             let data = [
-                EventData(starkhash!("01")),
-                EventData(starkhash!("02")),
-                EventData(starkhash!("03")),
+                EventData(felt!("0x1")),
+                EventData(felt!("0x2")),
+                EventData(felt!("0x3")),
             ];
 
             let mut buffer = Vec::new();
@@ -2064,14 +2064,14 @@ mod tests {
         #[test]
         fn event_keys_to_base64_strings() {
             let event = transaction::Event {
-                from_address: ContractAddress::new_or_panic(starkhash!(
+                from_address: ContractAddress::new_or_panic(felt!(
                     "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
                 )),
                 data: vec![],
                 keys: vec![
-                    EventKey(starkhash!("901823")),
-                    EventKey(starkhash!("901824")),
-                    EventKey(starkhash!("901825")),
+                    EventKey(felt!("0x901823")),
+                    EventKey(felt!("0x901824")),
+                    EventKey(felt!("0x901825")),
                 ],
             };
 
@@ -2096,7 +2096,7 @@ mod tests {
                 to_block: Some(expected_event.block_number),
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
-                keys: vec![EventKey(starkhash!("deadbeef"))],
+                keys: vec![EventKey(felt!("0xdeadbeef"))],
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2125,18 +2125,18 @@ mod tests {
                     data: Vec::new(),
                     keys: Vec::new(),
                     from_address: ContractAddress::new_or_panic(
-                        StarkHash::from_be_slice(&idx.to_be_bytes()).unwrap(),
+                        Felt::from_be_slice(&idx.to_be_bytes()).unwrap(),
                     ),
                 })
                 .collect::<Vec<_>>();
 
             let block = StarknetBlock {
                 number: StarknetBlockNumber::GENESIS,
-                hash: StarknetBlockHash(starkhash!("1234")),
-                root: GlobalRoot(starkhash!("1234")),
+                hash: StarknetBlockHash(felt!("0x1234")),
+                root: GlobalRoot(felt!("0x1234")),
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
-                sequencer_address: SequencerAddress(starkhash!("1234")),
+                sequencer_address: SequencerAddress(felt!("0x1234")),
             };
 
             // Note: hashes are reverse ordered to trigger the sorting bug.
@@ -2145,24 +2145,24 @@ mod tests {
                     transaction::InvokeTransactionV0 {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
-                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        contract_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
-                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(starkhash!("0F")),
+                        transaction_hash: StarknetTransactionHash(felt!("0xF")),
                     },
                 )),
                 transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
                     transaction::InvokeTransactionV0 {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
-                        contract_address: ContractAddress::new_or_panic(StarkHash::ZERO),
+                        contract_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
-                        entry_point_selector: EntryPoint(StarkHash::ZERO),
+                        entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(starkhash!("01")),
+                        transaction_hash: StarknetTransactionHash(felt!("0x1")),
                     },
                 )),
             ];
@@ -2667,9 +2667,9 @@ mod tests {
 
             #[test]
             fn none() {
-                use pathfinder_common::starkhash;
+                use pathfinder_common::felt;
                 with_n_state_updates(1, |_, tx, _| {
-                    let non_existent = StarknetBlockHash(starkhash!("ff"));
+                    let non_existent = StarknetBlockHash(felt!("0xff"));
                     let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();
                     assert!(actual.is_none());
                 })

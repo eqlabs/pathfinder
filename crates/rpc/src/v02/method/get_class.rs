@@ -182,12 +182,12 @@ async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> boo
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::starkhash_bytes;
+    use pathfinder_common::felt_bytes;
 
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use pathfinder_common::StarknetBlockHash;
 
         #[test]
@@ -200,8 +200,8 @@ mod tests {
 
             let input = positional.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                class_hash: ClassHash(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                class_hash: ClassHash(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }
@@ -216,8 +216,8 @@ mod tests {
 
             let input = named.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(starkhash!("0abcde")).into(),
-                class_hash: ClassHash(starkhash!("012345")),
+                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                class_hash: ClassHash(felt!("0x12345")),
             };
             assert_eq!(input, expected);
         }
@@ -229,10 +229,10 @@ mod tests {
         let mut conn = context.storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
 
-        let valid = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
         super::read_pending(&tx, valid).unwrap();
 
-        let invalid = ClassHash(starkhash_bytes!(b"invalid"));
+        let invalid = ClassHash(felt_bytes!(b"invalid"));
         let error = super::read_pending(&tx, invalid).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
     }
@@ -243,15 +243,15 @@ mod tests {
         let mut conn = context.storage.connection().unwrap();
         let tx = conn.transaction().unwrap();
 
-        let valid = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
         super::read_latest(&tx, valid).unwrap();
 
-        let invalid = ClassHash(starkhash_bytes!(b"invalid"));
+        let invalid = ClassHash(felt_bytes!(b"invalid"));
         let error = super::read_latest(&tx, invalid).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
-        let invalid = ClassHash(starkhash_bytes!(b"class 1 hash"));
+        let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
         let error = super::read_latest(&tx, invalid).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
     }
@@ -265,25 +265,25 @@ mod tests {
         let tx = conn.transaction().unwrap();
 
         // This class is declared in block 1.
-        let valid = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
         super::read_at_number(&tx, valid, StarknetBlockNumber::new_or_panic(1)).unwrap();
 
         let error = super::read_at_number(&tx, valid, StarknetBlockNumber::GENESIS).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
-        let invalid = ClassHash(starkhash_bytes!(b"invalid"));
+        let invalid = ClassHash(felt_bytes!(b"invalid"));
         let error =
             super::read_at_number(&tx, invalid, StarknetBlockNumber::new_or_panic(2)).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
-        let invalid = ClassHash(starkhash_bytes!(b"class 1 hash"));
+        let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
         let error =
             super::read_at_number(&tx, invalid, StarknetBlockNumber::new_or_panic(2)).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // Class exists, but block number does not.
-        let valid = ClassHash(starkhash_bytes!(b"class 0 hash"));
+        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
         let error = super::read_at_number(&tx, valid, StarknetBlockNumber::MAX).unwrap_err();
         assert_matches!(error, GetClassError::BlockNotFound);
     }
@@ -297,28 +297,28 @@ mod tests {
         let tx = conn.transaction().unwrap();
 
         // This class is declared in block 1.
-        let valid = ClassHash(starkhash_bytes!(b"class 0 hash"));
-        let block1_hash = StarknetBlockHash(starkhash_bytes!(b"block 1"));
+        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
+        let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
         super::read_at_hash(&tx, valid, block1_hash).unwrap();
 
-        let block0_hash = StarknetBlockHash(starkhash_bytes!(b"genesis"));
+        let block0_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
         let error = super::read_at_hash(&tx, valid, block0_hash).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
-        let invalid = ClassHash(starkhash_bytes!(b"invalid"));
-        let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
+        let invalid = ClassHash(felt_bytes!(b"invalid"));
+        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
         let error = super::read_at_hash(&tx, invalid, latest_hash).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
-        let invalid = ClassHash(starkhash_bytes!(b"class 1 hash"));
-        let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
+        let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
+        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
         let error = super::read_at_hash(&tx, invalid, latest_hash).unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // Class exists, but block hash does not.
-        let valid = ClassHash(starkhash_bytes!(b"class 0 hash"));
-        let invalid_block = StarknetBlockHash(starkhash_bytes!(b"invalid"));
+        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
+        let invalid_block = StarknetBlockHash(felt_bytes!(b"invalid"));
         let error = super::read_at_hash(&tx, valid, invalid_block).unwrap_err();
         assert_matches!(error, GetClassError::BlockNotFound);
     }

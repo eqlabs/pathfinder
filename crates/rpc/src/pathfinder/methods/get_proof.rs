@@ -9,7 +9,7 @@ use pathfinder_common::{
 use pathfinder_merkle_tree::merkle_tree::ProofNode;
 use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetProofInput {
@@ -23,7 +23,7 @@ crate::error::generate_rpc_error_subset!(GetProofError: BlockNotFound);
 /// Utility struct used for serializing.
 #[derive(Debug, Serialize)]
 struct PathWrapper {
-    value: StarkHash,
+    value: Felt,
     len: usize,
 }
 
@@ -60,7 +60,7 @@ impl Serialize for Proof {
                             state.end()
                         }
                         ProofNode::Edge(edge) => {
-                            let value = StarkHash::from_bits(edge.path.as_bitslice()).unwrap();
+                            let value = Felt::from_bits(edge.path.as_bitslice()).unwrap();
                             let path_wrapper = PathWrapper {
                                 value,
                                 len: edge.path.len(),
@@ -95,7 +95,7 @@ pub struct ContractData {
     root: ContractRoot,
 
     /// This is currently just a constant = 0, however it might change in the future.
-    contract_state_hash_version: StarkHash,
+    contract_state_hash_version: Felt,
 
     /// The proofs associated with the queried storage values
     storage_proofs: Vec<Proof>,
@@ -199,7 +199,7 @@ pub async fn get_proof(
             class_hash,
             nonce,
             root: contract_state_root,
-            contract_state_hash_version: StarkHash::ZERO, // Currently, this is defined as 0. Might change in the future.
+            contract_state_hash_version: Felt::ZERO, // Currently, this is defined as 0. Might change in the future.
             storage_proofs,
         };
 

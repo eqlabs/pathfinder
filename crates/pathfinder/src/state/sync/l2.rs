@@ -540,7 +540,7 @@ mod tests {
             StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
             StorageValue,
         };
-        use stark_hash::StarkHash;
+        use stark_hash::Felt;
         use starknet_gateway_client::MockClientApi;
         use starknet_gateway_types::{
             error::{SequencerError, StarknetError, StarknetErrorCode},
@@ -571,40 +571,40 @@ mod tests {
         const BLOCK4_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(4);
 
         lazy_static::lazy_static! {
-            static ref BLOCK0_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 0 hash").unwrap());
-            static ref BLOCK0_HASH_V2: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 0 hash v2").unwrap());
-            static ref BLOCK1_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash").unwrap());
-            static ref BLOCK1_HASH_V2: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 1 hash v2").unwrap());
-            static ref BLOCK2_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 2 hash").unwrap());
-            static ref BLOCK2_HASH_V2: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 2 hash v2").unwrap());
-            static ref BLOCK3_HASH: StarknetBlockHash = StarknetBlockHash(StarkHash::from_be_slice(b"block 3 hash").unwrap());
+            static ref BLOCK0_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());
+            static ref BLOCK0_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 0 hash v2").unwrap());
+            static ref BLOCK1_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 1 hash").unwrap());
+            static ref BLOCK1_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 1 hash v2").unwrap());
+            static ref BLOCK2_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 2 hash").unwrap());
+            static ref BLOCK2_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
+            static ref BLOCK3_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
 
-            static ref GLOBAL_ROOT0: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 0").unwrap());
-            static ref GLOBAL_ROOT0_V2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 0 v2").unwrap());
-            static ref GLOBAL_ROOT1: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 1").unwrap());
-            static ref GLOBAL_ROOT1_V2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 1 v2").unwrap());
-            static ref GLOBAL_ROOT2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 2").unwrap());
-            static ref GLOBAL_ROOT2_V2: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 2 v2").unwrap());
-            static ref GLOBAL_ROOT3: GlobalRoot = GlobalRoot(StarkHash::from_be_slice(b"global root 3").unwrap());
+            static ref GLOBAL_ROOT0: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 0").unwrap());
+            static ref GLOBAL_ROOT0_V2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 0 v2").unwrap());
+            static ref GLOBAL_ROOT1: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 1").unwrap());
+            static ref GLOBAL_ROOT1_V2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 1 v2").unwrap());
+            static ref GLOBAL_ROOT2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 2").unwrap());
+            static ref GLOBAL_ROOT2_V2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 2 v2").unwrap());
+            static ref GLOBAL_ROOT3: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 3").unwrap());
 
-            static ref CONTRACT0_ADDR: ContractAddress = ContractAddress::new_or_panic(StarkHash::from_be_slice(b"contract 0 addr").unwrap());
-            static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress::new_or_panic(StarkHash::from_be_slice(b"contract 0 addr v2").unwrap());
-            static ref CONTRACT1_ADDR: ContractAddress = ContractAddress::new_or_panic(StarkHash::from_be_slice(b"contract 1 addr").unwrap());
+            static ref CONTRACT0_ADDR: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr").unwrap());
+            static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr v2").unwrap());
+            static ref CONTRACT1_ADDR: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 1 addr").unwrap());
 
             static ref CONTRACT0_HASH: ClassHash = ClassHash(
-                StarkHash::from_hex_str(
+                Felt::from_hex_str(
                     "0x03CC4D0167577958ADD7DD759418506E0930BB061597519CCEB8C3AC6277692E",
                 )
                 .unwrap(),
             );
             static ref CONTRACT0_HASH_V2: ClassHash = ClassHash(
-                StarkHash::from_hex_str(
+                Felt::from_hex_str(
                     "0x01BE539E97D3BEFAE5D56D780BAF433802B3203DC6B2947FDB90C384AEF39F3E",
                 )
                 .unwrap(),
             );
             static ref CONTRACT1_HASH: ClassHash = ClassHash(
-                StarkHash::from_hex_str(
+                Felt::from_hex_str(
                     "0x071B088C5C8CD884F3106D62C6CB8B423D1D3A58BFAD2EAA8AAC9E4E3E73529D",
                 )
                 .unwrap(),
@@ -614,19 +614,19 @@ mod tests {
             static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{}0 v2{}", DEF0, DEF1));
             static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{}1{}", DEF0, DEF1));
 
-            static ref STORAGE_KEY0: StorageAddress = StorageAddress::new_or_panic(StarkHash::from_be_slice(b"contract 0 storage addr 0").unwrap());
-            static ref STORAGE_KEY1: StorageAddress = StorageAddress::new_or_panic(StarkHash::from_be_slice(b"contract 1 storage addr 0").unwrap());
+            static ref STORAGE_KEY0: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 0 storage addr 0").unwrap());
+            static ref STORAGE_KEY1: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 1 storage addr 0").unwrap());
 
-            static ref STORAGE_VAL0: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0").unwrap());
-            static ref STORAGE_VAL0_V2: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 0 storage val 0 v2").unwrap());
-            static ref STORAGE_VAL1: StorageValue = StorageValue(StarkHash::from_be_slice(b"contract 1 storage val 0").unwrap());
+            static ref STORAGE_VAL0: StorageValue = StorageValue(Felt::from_be_slice(b"contract 0 storage val 0").unwrap());
+            static ref STORAGE_VAL0_V2: StorageValue = StorageValue(Felt::from_be_slice(b"contract 0 storage val 0 v2").unwrap());
+            static ref STORAGE_VAL1: StorageValue = StorageValue(Felt::from_be_slice(b"contract 1 storage val 0").unwrap());
 
             static ref BLOCK0: reply::Block = reply::Block {
                 block_hash: *BLOCK0_HASH,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::ZERO),
-                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-                sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
+                parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                sequencer_address: Some(SequencerAddress(Felt::ZERO)),
                 state_root: *GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
@@ -638,8 +638,8 @@ mod tests {
                 block_hash: *BLOCK0_HASH_V2,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
-                parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-                sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
+                parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_root: *GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,
                 timestamp: StarknetBlockTimestamp::new_or_panic(10),
@@ -652,7 +652,7 @@ mod tests {
                 block_number: BLOCK1_NUMBER,
                 gas_price: Some(GasPrice::from(1)),
                 parent_block_hash: *BLOCK0_HASH,
-                sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 1").unwrap())),
+                sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
                 state_root: *GLOBAL_ROOT1,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
@@ -665,7 +665,7 @@ mod tests {
                 block_number: BLOCK2_NUMBER,
                 gas_price: Some(GasPrice::from(2)),
                 parent_block_hash: *BLOCK1_HASH,
-                sequencer_address: Some(SequencerAddress(StarkHash::from_be_slice(b"sequencer address 2").unwrap())),
+                sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
                 state_root: *GLOBAL_ROOT2,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp::new_or_panic(2),
@@ -677,7 +677,7 @@ mod tests {
             static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK0_HASH),
                 new_root: *GLOBAL_ROOT0,
-                old_root: GlobalRoot(StarkHash::ZERO),
+                old_root: GlobalRoot(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR,
@@ -697,7 +697,7 @@ mod tests {
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK0_HASH_V2),
                 new_root: *GLOBAL_ROOT0_V2,
-                old_root: GlobalRoot(StarkHash::ZERO),
+                old_root: GlobalRoot(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR_V2,
@@ -1190,7 +1190,7 @@ mod tests {
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
-                        StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
+                        Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
                     state_root: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
@@ -1429,7 +1429,7 @@ mod tests {
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
-                        StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
+                        Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
                     state_root: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
@@ -1444,7 +1444,7 @@ mod tests {
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
-                        StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
+                        Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
                     state_root: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
@@ -1459,7 +1459,7 @@ mod tests {
                     gas_price: Some(GasPrice::from(3)),
                     parent_block_hash: *BLOCK2_HASH,
                     sequencer_address: Some(SequencerAddress(
-                        StarkHash::from_be_slice(b"sequencer address 3").unwrap(),
+                        Felt::from_be_slice(b"sequencer address 3").unwrap(),
                     )),
                     state_root: *GLOBAL_ROOT3,
                     status: reply::Status::AcceptedOnL1,
@@ -1704,7 +1704,7 @@ mod tests {
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2 v2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH,
                     sequencer_address: Some(SequencerAddress(
-                        StarkHash::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
+                        Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
                     state_root: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
@@ -1893,7 +1893,7 @@ mod tests {
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 1 v2").unwrap()),
                     parent_block_hash: *BLOCK0_HASH,
                     sequencer_address: Some(SequencerAddress(
-                        StarkHash::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
+                        Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
                     state_root: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
@@ -1908,7 +1908,7 @@ mod tests {
                     gas_price: Some(GasPrice::from_be_slice(b"gas price 2").unwrap()),
                     parent_block_hash: *BLOCK1_HASH_V2,
                     sequencer_address: Some(SequencerAddress(
-                        StarkHash::from_be_slice(b"sequencer address 2").unwrap(),
+                        Felt::from_be_slice(b"sequencer address 2").unwrap(),
                     )),
                     state_root: *GLOBAL_ROOT2,
                     status: reply::Status::AcceptedOnL1,

@@ -2,7 +2,7 @@ use goose::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::json;
 
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 use crate::types::{Block, Transaction, TransactionReceipt};
 

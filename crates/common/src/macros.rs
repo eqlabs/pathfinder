@@ -128,7 +128,7 @@ pub(super) mod starkhash {
                     value: rusqlite::types::ValueRef<'_>,
                 ) -> rusqlite::types::FromSqlResult<Self> {
                     let blob = value.as_blob()?;
-                    let sh = stark_hash::StarkHash::from_be_slice(blob)
+                    let sh = stark_hash::Felt::from_be_slice(blob)
                         .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
                     Ok(Self(sh))
                 }
@@ -136,7 +136,7 @@ pub(super) mod starkhash {
         };
     }
 
-    /// Common trait implementations for *[stark_hash::StarkHash]* newtypes, meaning tuple structs
+    /// Common trait implementations for *[stark_hash::Felt]* newtypes, meaning tuple structs
     /// with single field.
     macro_rules! common_newtype {
         ($target:ty) => {
@@ -158,7 +158,7 @@ pub(super) mod starkhash251 {
     macro_rules! newtype {
         ($target:ty) => {
             impl $target {
-                pub const fn new(hash: StarkHash) -> Option<Self> {
+                pub const fn new(hash: Felt) -> Option<Self> {
                     if hash.has_more_than_251_bits() {
                         None
                     } else {
@@ -166,14 +166,14 @@ pub(super) mod starkhash251 {
                     }
                 }
 
-                pub const fn new_or_panic(hash: StarkHash) -> Self {
+                pub const fn new_or_panic(hash: Felt) -> Self {
                     match Self::new(hash) {
                         Some(key) => key,
                         None => panic!("Too many bits, need less for MPT keys"),
                     }
                 }
 
-                pub const fn get(&self) -> &StarkHash {
+                pub const fn get(&self) -> &Felt {
                     &self.0
                 }
 
@@ -191,7 +191,7 @@ pub(super) mod starkhash251 {
     macro_rules! deserialization {
         ($target:ty) => {
             impl $target {
-                pub fn deserialize_value<E>(original: &str, raw: StarkHash) -> Result<Self, E>
+                pub fn deserialize_value<E>(original: &str, raw: Felt) -> Result<Self, E>
                 where
                     E: serde::de::Error,
                 {
@@ -225,8 +225,7 @@ pub(super) mod starkhash251 {
                         where
                             E: serde::de::Error,
                         {
-                            let hash =
-                                StarkHash::from_hex_str(v).map_err(serde::de::Error::custom)?;
+                            let hash = Felt::from_hex_str(v).map_err(serde::de::Error::custom)?;
 
                             <$target>::deserialize_value(v, hash)
                         }
@@ -270,25 +269,28 @@ pub(super) mod fmt {
     pub(crate) use {thin_debug, thin_display};
 }
 
-/// Creates a [`stark_hash::StarkHash`] from an even hex string, resulting in compile-time error
-/// when invalid.
+/// Creates a [Felt](stark_hash::Felt) from a hex string literal verified at compile time.
 #[macro_export]
-macro_rules! starkhash {
+macro_rules! felt {
     ($hex:expr) => {{
-        let bytes = hex_literal::hex!($hex);
-        match stark_hash::StarkHash::from_be_slice(bytes.as_slice()) {
-            Ok(sh) => sh,
-            Err(stark_hash::OverflowError) => panic!("Invalid constant: OverflowError"),
-        }
+        // This forces const evaluation of the macro call. Without this the invocation will only be evaluated
+        // at runtime.
+        const CONST_FELT: stark_hash::Felt = match stark_hash::Felt::from_hex_str($hex) {
+            Ok(f) => f,
+            Err(stark_hash::HexParseError::InvalidNibble(_)) => panic!("Invalid hex digit"),
+            Err(stark_hash::HexParseError::InvalidLength { .. }) => panic!("Too many hex digits"),
+            Err(stark_hash::HexParseError::Overflow) => panic!("Felt overflow"),
+        };
+        CONST_FELT
     }};
 }
 
-/// Creates a [`stark_hash::StarkHash`] from a byte slice, resulting in compile-time error when
+/// Creates a [`stark_hash::Felt`] from a byte slice, resulting in compile-time error when
 /// invalid.
 #[macro_export]
-macro_rules! starkhash_bytes {
+macro_rules! felt_bytes {
     ($bytes:expr) => {{
-        match stark_hash::StarkHash::from_be_slice($bytes) {
+        match stark_hash::Felt::from_be_slice($bytes) {
             Ok(sh) => sh,
             Err(stark_hash::OverflowError) => panic!("Invalid constant: OverflowError"),
         }

@@ -12,12 +12,12 @@ pub async fn chain_id(context: RpcContext) -> Result<ChainId, ChainIdError> {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::ChainId;
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
 
     #[tokio::test]
     async fn encoding() {
         let value = "example ID";
-        let chain_id = StarkHash::from_be_slice(value.as_bytes()).unwrap();
+        let chain_id = Felt::from_be_slice(value.as_bytes()).unwrap();
         let chain_id = ChainId(chain_id);
 
         let encoded = serde_json::to_string(&chain_id).unwrap();

@@ -1,6 +1,6 @@
 use goose::prelude::*;
 use rand::{Rng, SeedableRng};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 use crate::requests::v02::*;
 
@@ -224,7 +224,7 @@ pub async fn task_estimate_fee(user: &mut GooseUser) -> TransactionResult {
             "0x3d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3",
         )
         .unwrap(),
-        StarkHash::ZERO,
+        Felt::ZERO,
         // hash of mainnet block 0
         StarkHash::from_hex_str(
             "0x47c3637b57c2b079b93c61539950c17e868a28f46cdef28f88521067f21e943",

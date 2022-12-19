@@ -349,7 +349,7 @@ mod tests {
         BroadcastedInvokeTransactionV0, BroadcastedTransaction,
     };
     use pathfinder_common::{
-        starkhash, starkhash_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
+        felt, felt_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
         ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
@@ -358,7 +358,7 @@ mod tests {
         ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
         StarknetBlocksTable, Storage,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
 
@@ -429,12 +429,12 @@ mod tests {
                         handle.call(
                             super::Call {
                                 contract_address: ContractAddress::new_or_panic(
-                                    starkhash!(
+                                    felt!(
                                         "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                                     )
                                 ),
                                 calldata: vec![CallParam(
-                                    starkhash!("84"),
+                                    felt!("0x84"),
                                 )],
                                 entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
                                 signature: Default::default(),
@@ -443,7 +443,7 @@ mod tests {
                                 nonce: super::Call::DEFAULT_NONCE,
                             },
                             StarknetBlockHash(
-                                StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
+                                Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                             ).into(),
                             None,
                             None,
@@ -498,11 +498,11 @@ mod tests {
                 max_fee: super::Call::DEFAULT_MAX_FEE,
                 signature: Default::default(),
                 nonce: None,
-                contract_address: ContractAddress::new_or_panic(starkhash!(
+                contract_address: ContractAddress::new_or_panic(felt!(
                     "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                 )),
                 entry_point_selector: EntryPoint::hashed(&b"get_value"[..]),
-                calldata: vec![CallParam(starkhash!("84"))],
+                calldata: vec![CallParam(felt!("0x84"))],
             },
         ));
 
@@ -531,10 +531,8 @@ mod tests {
         let current_fee = handle
             .estimate_fee(
                 transaction,
-                StarknetBlockHash(
-                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )
-                .into(),
+                StarknetBlockHash(Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap())
+                    .into(),
                 super::GasPriceSource::Current(H256::from_low_u64_be(10)),
                 None,
                 None,
@@ -592,7 +590,7 @@ mod tests {
                 max_fee: super::Call::DEFAULT_MAX_FEE,
                 signature: Default::default(),
                 nonce: super::Call::DEFAULT_NONCE,
-                contract_address_salt: ContractAddressSalt(StarkHash::ZERO),
+                contract_address_salt: ContractAddressSalt(Felt::ZERO),
                 class_hash: account_contract_class_hash,
                 constructor_calldata: vec![],
             });
@@ -653,11 +651,11 @@ mod tests {
         .unwrap();
 
         let call = super::Call {
-            contract_address: ContractAddress::new_or_panic(starkhash!(
+            contract_address: ContractAddress::new_or_panic(felt!(
                 // this is one bit off from other examples
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
             )),
-            calldata: vec![CallParam(starkhash!("84"))],
+            calldata: vec![CallParam(felt!("0x84"))],
             entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
@@ -668,10 +666,8 @@ mod tests {
         let result = handle
             .call(
                 call,
-                StarknetBlockHash(
-                    StarkHash::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
-                )
-                .into(),
+                StarknetBlockHash(Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap())
+                    .into(),
                 None,
                 None,
             )
@@ -714,11 +710,11 @@ mod tests {
         .await
         .unwrap();
 
-        let target_contract = ContractAddress::new_or_panic(starkhash!(
+        let target_contract = ContractAddress::new_or_panic(felt!(
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
 
-        let storage_address = starkhash!("84");
+        let storage_address = felt!("0x84");
 
         let call = super::Call {
             contract_address: target_contract,
@@ -735,12 +731,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(res, &[CallResultValue(StarkHash::from(3u64))]);
+        assert_eq!(res, &[CallResultValue(Felt::from(3u64))]);
 
         let update = std::sync::Arc::new(StateUpdate {
             block_hash: None,
-            old_root: GlobalRoot(StarkHash::ZERO),
-            new_root: GlobalRoot(StarkHash::ZERO),
+            old_root: GlobalRoot(Felt::ZERO),
+            new_root: GlobalRoot(Felt::ZERO),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: {
                     let mut map = std::collections::HashMap::new();
@@ -748,7 +744,7 @@ mod tests {
                         target_contract,
                         vec![starknet_gateway_types::reply::state_update::StorageDiff {
                             key: StorageAddress::new_or_panic(storage_address),
-                            value: StorageValue(starkhash!("04")),
+                            value: StorageValue(felt!("0x4")),
                         }],
                     );
                     map
@@ -764,7 +760,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(res, &[CallResultValue(StarkHash::from(4u64))]);
+        assert_eq!(res, &[CallResultValue(Felt::from(4u64))]);
 
         shutdown_tx.send(()).unwrap();
 
@@ -777,7 +773,7 @@ mod tests {
         )
         .unwrap();
 
-        let test_contract_address = ContractAddress::new_or_panic(starkhash!(
+        let test_contract_address = ContractAddress::new_or_panic(felt!(
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
 
@@ -786,17 +782,15 @@ mod tests {
             test_contract_address,
             &test_contract_definition,
             &[(
-                StorageAddress::new_or_panic(starkhash!("84")),
-                StorageValue(starkhash!("03")),
+                StorageAddress::new_or_panic(felt!("0x84")),
+                StorageValue(felt!("0x3")),
             )],
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
-            tx,
-            GlobalRoot(StarkHash::ZERO),
-        )
-        .unwrap();
+        let mut global_tree =
+            pathfinder_merkle_tree::state_tree::GlobalStateTree::load(tx, GlobalRoot(Felt::ZERO))
+                .unwrap();
 
         global_tree
             .set(test_contract_address, test_contract_state_hash)
@@ -808,11 +802,11 @@ mod tests {
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
-                hash: StarknetBlockHash(starkhash_bytes!(b"some blockhash somewhere")),
+                hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
                 root: global_root,
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
-                sequencer_address: SequencerAddress(StarkHash::ZERO),
+                sequencer_address: SequencerAddress(Felt::ZERO),
             },
             None,
         )
@@ -842,7 +836,7 @@ mod tests {
         )
         .unwrap();
 
-        let account_contract_address = ContractAddress::new_or_panic(starkhash!("0123"));
+        let account_contract_address = ContractAddress::new_or_panic(felt!("0x123"));
 
         let (account_contract_state_hash, account_contract_class_hash) = deploy_contract(
             tx,
@@ -852,11 +846,9 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
-            tx,
-            GlobalRoot(StarkHash::ZERO),
-        )
-        .unwrap();
+        let mut global_tree =
+            pathfinder_merkle_tree::state_tree::GlobalStateTree::load(tx, GlobalRoot(Felt::ZERO))
+                .unwrap();
 
         global_tree
             .set(account_contract_address, account_contract_state_hash)
@@ -868,11 +860,11 @@ mod tests {
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
-                hash: StarknetBlockHash(starkhash_bytes!(b"some blockhash somewhere")),
+                hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
                 root: global_root,
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
-                sequencer_address: SequencerAddress(StarkHash::ZERO),
+                sequencer_address: SequencerAddress(Felt::ZERO),
             },
             None,
         )
@@ -914,7 +906,7 @@ mod tests {
         // set up contract state tree
         let mut contract_state = pathfinder_merkle_tree::state_tree::ContractsStateTree::load(
             tx,
-            ContractRoot(StarkHash::ZERO),
+            ContractRoot(Felt::ZERO),
         )
         .unwrap();
         for (storage_address, storage_value) in storage_updates {
@@ -924,7 +916,7 @@ mod tests {
         }
         let contract_state_root = contract_state.apply().unwrap();
 
-        let contract_nonce = ContractNonce(StarkHash::ZERO);
+        let contract_nonce = ContractNonce(Felt::ZERO);
 
         let contract_state_hash =
             pathfinder_merkle_tree::contract_state::calculate_contract_state_hash(

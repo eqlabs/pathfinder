@@ -1,7 +1,7 @@
 use anyhow::Context;
 use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 impl ContractClass {
     pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<ContractClass> {
@@ -116,14 +116,14 @@ pub struct ContractEntryPoints {
 pub struct ContractEntryPoint {
     #[serde_as(as = "U64AsHexStr")]
     pub offset: u64,
-    pub selector: StarkHash,
+    pub selector: Felt,
 }
 
 impl From<ContractEntryPoint> for starknet_gateway_types::request::contract::SelectorAndOffset {
     fn from(entry_point: ContractEntryPoint) -> Self {
         Self {
             selector: pathfinder_common::EntryPoint(entry_point.selector),
-            offset: pathfinder_common::ByteCodeOffset(StarkHash::from_u64(entry_point.offset)),
+            offset: pathfinder_common::ByteCodeOffset(Felt::from_u64(entry_point.offset)),
         }
     }
 }

@@ -3,7 +3,7 @@ use anyhow::{Context, Error, Result};
 use pathfinder_common::ClassHash;
 use serde::Serialize;
 use sha3::Digest;
-use stark_hash::{HashChain, StarkHash};
+use stark_hash::{Felt, HashChain};
 
 /// Computes the starknet class hash for given class definition json blob.
 ///
@@ -162,7 +162,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
 
     // what follows is defined over at the contract.cairo
 
-    const API_VERSION: StarkHash = StarkHash::ZERO;
+    const API_VERSION: Felt = Felt::ZERO;
 
     let mut outer = HashChain::default();
 
@@ -194,10 +194,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         })
         .for_each(|x| outer.update(x.finalize()));
 
-    fn update_hash_chain(
-        mut hc: HashChain,
-        next: Result<StarkHash, Error>,
-    ) -> Result<HashChain, Error> {
+    fn update_hash_chain(mut hc: HashChain, next: Result<Felt, Error>) -> Result<HashChain, Error> {
         hc.update(next?);
         Result::<_, Error>::Ok(hc)
     }
@@ -209,7 +206,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .enumerate()
         .map(|(i, s)| (i, s.as_bytes()))
         .map(|(i, s)| {
-            StarkHash::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
+            Felt::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
         })
         .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.builtins")?;
@@ -224,7 +221,7 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            StarkHash::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
+            Felt::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
         })
         .try_fold(HashChain::default(), update_hash_chain)
         .context("Failed to process contract_definition.program.data")?;
@@ -236,11 +233,11 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
 
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
-pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> StarkHash {
+pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
     // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31 0xff in be
     // truncation is needed not to overflow the field element.
     plain[0] &= 0x03;
-    StarkHash::from_be_bytes(plain).expect("cannot overflow: smaller than modulus")
+    Felt::from_be_bytes(plain).expect("cannot overflow: smaller than modulus")
 }
 
 /// `std::io::Write` adapter for Keccak256; we don't need the serialized version in
@@ -396,7 +393,7 @@ mod json {
     #[cfg(test)]
     mod test_vectors {
         use super::super::compute_class_hash;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use starknet_gateway_test_fixtures::zstd_compressed_contracts::*;
 
         #[tokio::test]
@@ -406,7 +403,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("0031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
+                felt!("0x031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
             );
         }
 
@@ -417,7 +414,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
+                felt!("0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
             );
         }
 
@@ -428,7 +425,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
+                felt!("0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
             );
         }
 
@@ -437,10 +434,10 @@ mod json {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
             use super::super::extract_abi_code_hash;
+            use felt;
             use pathfinder_common::ClassHash;
-            use starkhash;
 
-            let expected = ClassHash(starkhash!(
+            let expected = ClassHash(felt!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
             ));
 
@@ -464,7 +461,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("a69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
+                felt!("0xa69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
             );
         }
 
@@ -477,7 +474,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("0542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
+                felt!("0x542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
             );
         }
 
@@ -490,7 +487,7 @@ mod json {
 
             assert_eq!(
                 hash.0,
-                starkhash!("066af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
+                felt!("0x66af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
             );
         }
     }
@@ -554,14 +551,14 @@ mod tests {
     #[test]
     fn truncated_keccak_matches_pythonic() {
         use super::truncated_keccak;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
         use sha3::{Digest, Keccak256};
         let all_set = Keccak256::digest([0xffu8; 32]);
         assert!(all_set[0] > 0xf);
         let truncated = truncated_keccak(all_set.into());
         assert_eq!(
             truncated,
-            starkhash!("01c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9")
+            felt!("0x1c584056064687e149968cbab758a3376d22aedc6a55823d1b3ecbee81b8fb9")
         );
     }
 }

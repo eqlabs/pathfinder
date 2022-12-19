@@ -7,7 +7,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
-use stark_hash::{stark_hash, StarkHash};
+use stark_hash::{stark_hash, Felt};
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -15,13 +15,13 @@ pub enum Node {
     /// A node that has not been fetched from storage yet.
     ///
     /// As such, all we know is its hash.
-    Unresolved(StarkHash),
+    Unresolved(Felt),
     /// A branch node with exactly two children.
     Binary(BinaryNode),
     /// Describes a path connecting two other nodes.
     Edge(EdgeNode),
     /// A leaf node that contains a value.
-    Leaf(StarkHash),
+    Leaf(Felt),
 }
 
 /// Describes the [Node::Binary] variant.
@@ -29,7 +29,7 @@ pub enum Node {
 pub struct BinaryNode {
     /// The hash of this node. Is [None] if the node
     /// has not yet been committed.
-    pub hash: Option<StarkHash>,
+    pub hash: Option<Felt>,
     /// The height of this node in the tree.
     pub height: usize,
     /// [Left](Direction::Left) child.
@@ -42,7 +42,7 @@ pub struct BinaryNode {
 pub struct EdgeNode {
     /// The hash of this node. Is [None] if the node
     /// has not yet been committed.
-    pub hash: Option<StarkHash>,
+    pub hash: Option<Felt>,
     /// The starting height of this node in the tree.
     pub height: usize,
     /// The path this edge takes.
@@ -153,12 +153,12 @@ impl Node {
     }
 
     /// Returns true if the node represents an empty node -- this is defined as a node
-    /// with the [StarkHash::ZERO].
+    /// with the [Felt::ZERO].
     ///
     /// This can occur for the root node in an empty graph.
     pub fn is_empty(&self) -> bool {
         match self {
-            Node::Unresolved(hash) => hash == &StarkHash::ZERO,
+            Node::Unresolved(hash) => hash == &Felt::ZERO,
             _ => false,
         }
     }
@@ -181,7 +181,7 @@ impl Node {
         }
     }
 
-    pub fn hash(&self) -> Option<StarkHash> {
+    pub fn hash(&self) -> Option<Felt> {
         match self {
             Node::Unresolved(hash) => Some(*hash),
             Node::Binary(binary) => binary.hash,
@@ -226,12 +226,12 @@ impl EdgeNode {
             None => unreachable!("subtree has to be commited before"),
         };
 
-        let path = StarkHash::from_bits(&self.path).unwrap();
+        let path = Felt::from_bits(&self.path).unwrap();
         let mut length = [0; 32];
         // Safe as len() is guaranteed to be <= 251
         length[31] = self.path.len() as u8;
 
-        let length = StarkHash::from_be_bytes(length).unwrap();
+        let length = Felt::from_be_bytes(length).unwrap();
         let hash = stark_hash(child, path) + length;
         self.hash = Some(hash);
     }
@@ -271,15 +271,15 @@ mod tests {
     mod binary {
         use super::*;
         use bitvec::bitvec;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn direction() {
             let uut = BinaryNode {
                 hash: None,
                 height: 1,
-                left: Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc")))),
-                right: Rc::new(RefCell::new(Node::Leaf(starkhash!("0def")))),
+                left: Rc::new(RefCell::new(Node::Leaf(felt!("0xabc")))),
+                right: Rc::new(RefCell::new(Node::Leaf(felt!("0xdef")))),
             };
 
             let mut zero_key = bitvec![Msb0, u8; 1; 251];
@@ -297,8 +297,8 @@ mod tests {
 
         #[test]
         fn get_child() {
-            let left = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
-            let right = Rc::new(RefCell::new(Node::Leaf(starkhash!("0def"))));
+            let left = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
+            let right = Rc::new(RefCell::new(Node::Leaf(felt!("0xdef"))));
 
             let uut = BinaryNode {
                 hash: None,
@@ -318,12 +318,12 @@ mod tests {
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L14
             //
             // Note that the hash function must be exchanged for `async_stark_hash_func`, otherwise it just uses some other test hash function.
-            let expected = StarkHash::from_hex_str(
+            let expected = Felt::from_hex_str(
                 "0615bb8d47888d2987ad0c63fc06e9e771930986a4dd8adc55617febfcf3639e",
             )
             .unwrap();
-            let left = starkhash!("1234");
-            let right = starkhash!("abcd");
+            let left = felt!("0x1234");
+            let right = felt!("0xabcd");
 
             let left = Rc::new(RefCell::new(Node::Unresolved(left)));
             let right = Rc::new(RefCell::new(Node::Unresolved(right)));
@@ -344,7 +344,7 @@ mod tests {
     mod edge {
         use super::*;
         use bitvec::bitvec;
-        use pathfinder_common::starkhash;
+        use pathfinder_common::felt;
 
         #[test]
         fn hash() {
@@ -352,11 +352,11 @@ mod tests {
             // https://github.com/starkware-libs/cairo-lang/blob/fc97bdd8322a7df043c87c371634b26c15ed6cee/src/starkware/starkware_utils/commitment_tree/patricia_tree/nodes_test.py#L38
             //
             // Note that the hash function must be exchanged for `async_stark_hash_func`, otherwise it just uses some other test hash function.
-            let expected = StarkHash::from_hex_str(
+            let expected = Felt::from_hex_str(
                 "1d937094c09b5f8e26a662d21911871e3cbc6858d55cc49af9848ea6fed4e9",
             )
             .unwrap();
-            let child = starkhash!("1234ABCD");
+            let child = felt!("0x1234ABCD");
             let child = Rc::new(RefCell::new(Node::Unresolved(child)));
             // Path = 42 in binary.
             let path = bitvec![Msb0, u8; 1, 0, 1, 0, 1, 0];
@@ -375,12 +375,12 @@ mod tests {
 
         mod path_matches {
             use super::*;
-            use pathfinder_common::starkhash;
+            use pathfinder_common::felt;
 
             #[test]
             fn full() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let uut = EdgeNode {
                     hash: None,
@@ -394,8 +394,8 @@ mod tests {
 
             #[test]
             fn prefix() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[..45].to_bitvec();
 
@@ -411,8 +411,8 @@ mod tests {
 
             #[test]
             fn suffix() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[50..].to_bitvec();
 
@@ -428,8 +428,8 @@ mod tests {
 
             #[test]
             fn middle_slice() {
-                let key = starkhash!("0123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(starkhash!("0abc"))));
+                let key = felt!("0x123456789abcdef");
+                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[230..235].to_bitvec();
 

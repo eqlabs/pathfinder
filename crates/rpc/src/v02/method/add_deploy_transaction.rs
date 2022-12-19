@@ -72,7 +72,7 @@ pub async fn add_deploy_transaction(
 mod tests {
     use super::*;
     use crate::v02::types::ContractClass;
-    use pathfinder_common::{starkhash, ContractAddressSalt, TransactionVersion};
+    use pathfinder_common::{felt, ContractAddressSalt, TransactionVersion};
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
@@ -95,7 +95,7 @@ mod tests {
             Transaction::Deploy(BroadcastedDeployTransaction {
                 version: TransactionVersion::ZERO,
                 constructor_calldata: vec![],
-                contract_address_salt: ContractAddressSalt(starkhash!("1234")),
+                contract_address_salt: ContractAddressSalt(felt!("0x1234")),
                 contract_class: CONTRACT_CLASS.clone(),
             })
         }
@@ -167,7 +167,7 @@ mod tests {
         let deploy_transaction = Transaction::Deploy(BroadcastedDeployTransaction {
             version: TransactionVersion::ZERO,
             constructor_calldata: vec![],
-            contract_address_salt: ContractAddressSalt(starkhash!("1234")),
+            contract_address_salt: ContractAddressSalt(felt!("0x1234")),
             contract_class: invalid_contract_class,
         });
 
@@ -187,7 +187,7 @@ mod tests {
         let deploy_transaction = Transaction::Deploy(BroadcastedDeployTransaction {
             version: TransactionVersion::ZERO,
             constructor_calldata: vec![],
-            contract_address_salt: ContractAddressSalt(starkhash!("1234")),
+            contract_address_salt: ContractAddressSalt(felt!("0x1234")),
             contract_class: CONTRACT_CLASS.clone(),
         });
 
@@ -199,10 +199,10 @@ mod tests {
         assert_eq!(
             result,
             AddDeployTransactionOutput {
-                transaction_hash: StarknetTransactionHash(starkhash!(
+                transaction_hash: StarknetTransactionHash(felt!(
                     "03de4caad951e30581554b92ed5dfc29732dca360740598105d6b7cee7afd94f"
                 )),
-                contract_address: ContractAddress::new_or_panic(starkhash!(
+                contract_address: ContractAddress::new_or_panic(felt!(
                     "0159519a16ee4370a05009e584855a29f4f1914326283201356f7650290f7789"
                 )),
             }

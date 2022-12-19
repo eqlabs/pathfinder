@@ -323,7 +323,7 @@ mod tests {
         use ethers::types::H256;
 
         use pathfinder_common::{
-            starkhash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+            felt, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
             EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
         };
 
@@ -357,7 +357,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(11),
                 },
-                global_root: GlobalRoot(starkhash!("012354")),
+                global_root: GlobalRoot(felt!("0x12354")),
                 block_number: StarknetBlockNumber::new_or_panic(3),
             };
 
@@ -387,7 +387,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(11),
                 },
-                global_root: GlobalRoot(starkhash!("012354")),
+                global_root: GlobalRoot(felt!("0x12354")),
                 block_number: StarknetBlockNumber::new_or_panic(3),
             };
 

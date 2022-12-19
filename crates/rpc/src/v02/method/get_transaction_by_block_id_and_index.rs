@@ -94,9 +94,9 @@ async fn get_transaction_from_pending(
 mod tests {
     use super::*;
     use pathfinder_common::{
-        starkhash, starkhash_bytes, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+        felt, felt_bytes, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
 
     mod parsing {
         use super::*;
@@ -117,7 +117,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {
-                    block_id: BlockId::Hash(StarknetBlockHash(starkhash!("deadbeef"))),
+                    block_id: BlockId::Hash(StarknetBlockHash(felt!("0xdeadbeef"))),
                     index: StarknetTransactionIndex::new_or_panic(1),
                 }
             )
@@ -137,7 +137,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {
-                    block_id: BlockId::Hash(StarknetBlockHash(starkhash!("deadbeef"))),
+                    block_id: BlockId::Hash(StarknetBlockHash(felt!("0xdeadbeef"))),
                     index: StarknetTransactionIndex::new_or_panic(1),
                 }
             )
@@ -151,7 +151,7 @@ mod tests {
         async fn block_not_found() {
             let context = RpcContext::for_tests();
             let input = GetTransactionByBlockIdAndIndexInput {
-                block_id: BlockId::Hash(StarknetBlockHash(StarkHash::ZERO)),
+                block_id: BlockId::Hash(StarknetBlockHash(Felt::ZERO)),
                 index: StarknetTransactionIndex::new_or_panic(0),
             };
 
@@ -167,7 +167,7 @@ mod tests {
         async fn invalid_index() {
             let context = RpcContext::for_tests();
             let input = GetTransactionByBlockIdAndIndexInput {
-                block_id: BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"genesis"))),
+                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"genesis"))),
                 index: StarknetTransactionIndex::new_or_panic(123),
             };
 
@@ -193,7 +193,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             result.hash(),
-            StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
+            StarknetTransactionHash(felt_bytes!(b"txn 0"))
         );
     }
 
@@ -201,7 +201,7 @@ mod tests {
     async fn by_block_hash() {
         let context = RpcContext::for_tests();
         let input = GetTransactionByBlockIdAndIndexInput {
-            block_id: BlockId::Hash(StarknetBlockHash(starkhash_bytes!(b"genesis"))),
+            block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"genesis"))),
             index: StarknetTransactionIndex::new_or_panic(0),
         };
 
@@ -210,7 +210,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             result.hash(),
-            StarknetTransactionHash(starkhash_bytes!(b"txn 0"))
+            StarknetTransactionHash(felt_bytes!(b"txn 0"))
         );
     }
 
@@ -227,7 +227,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             result.hash(),
-            StarknetTransactionHash(starkhash_bytes!(b"txn 3"))
+            StarknetTransactionHash(felt_bytes!(b"txn 3"))
         );
     }
 

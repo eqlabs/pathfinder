@@ -5,7 +5,7 @@ use pathfinder_common::{
 };
 use pathfinder_storage::{ContractsStateTable, ContractsTable};
 use rusqlite::Transaction;
-use stark_hash::{stark_hash, StarkHash};
+use stark_hash::{stark_hash, Felt};
 use starknet_gateway_types::reply::state_update::StorageDiff;
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
@@ -23,7 +23,7 @@ pub fn update_contract_state(
     let state_hash = global_tree
         .get(contract_address)
         .context("Get contract state hash from global state tree")?
-        .unwrap_or(ContractStateHash(StarkHash::ZERO));
+        .unwrap_or(ContractStateHash(Felt::ZERO));
 
     // Fetch contract's previous root and nonce. Both default to ZERO if they do not exist.
     //
@@ -69,7 +69,7 @@ pub fn calculate_contract_state_hash(
     root: ContractRoot,
     nonce: ContractNonce,
 ) -> ContractStateHash {
-    const CONTRACT_STATE_HASH_VERSION: StarkHash = StarkHash::ZERO;
+    const CONTRACT_STATE_HASH_VERSION: Felt = Felt::ZERO;
 
     // The contract state hash is defined as H(H(H(hash, root), nonce), CONTRACT_STATE_HASH_VERSION)
     let hash = stark_hash(hash.0, root.0);
@@ -84,21 +84,20 @@ pub fn calculate_contract_state_hash(
 #[cfg(test)]
 mod tests {
     use super::calculate_contract_state_hash;
-    use pathfinder_common::starkhash;
+    use pathfinder_common::felt;
     use pathfinder_common::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
 
     #[test]
     fn hash() {
-        let root = starkhash!("04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028");
+        let root = felt!("0x4fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028");
         let root = ContractRoot(root);
 
-        let hash = starkhash!("02ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779");
+        let hash = felt!("0x2ff4903e17f87b298ded00c44bfeb22874c5f73be2ced8f1d9d9556fb509779");
         let hash = ClassHash(hash);
 
         let nonce = ContractNonce::ZERO;
 
-        let expected =
-            starkhash!("07161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3");
+        let expected = felt!("0x7161b591c893836263a64f2a7e0d829c92f6956148a60ce5e99a3f55c7973f3");
         let expected = ContractStateHash(expected);
 
         let result = calculate_contract_state_hash(hash, root, nonce);

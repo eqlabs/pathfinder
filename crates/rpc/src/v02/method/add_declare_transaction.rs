@@ -75,10 +75,8 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedDeclareTransaction;
     use crate::v02::types::ContractClass;
-    use pathfinder_common::{
-        starkhash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
-    };
-    use stark_hash::StarkHash;
+    use pathfinder_common::{felt, ContractAddress, Fee, TransactionNonce, TransactionVersion};
+    use stark_hash::Felt;
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
@@ -102,9 +100,9 @@ mod tests {
                 max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
                 version: TransactionVersion::ZERO,
                 signature: vec![],
-                nonce: TransactionNonce(StarkHash::ZERO),
+                nonce: TransactionNonce(Felt::ZERO),
                 contract_class: CONTRACT_CLASS.clone(),
-                sender_address: ContractAddress::new_or_panic(StarkHash::from_u64(1)),
+                sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
             })
         }
 
@@ -182,7 +180,7 @@ mod tests {
             signature: vec![],
             nonce: TransactionNonce(Default::default()),
             contract_class: invalid_contract_class,
-            sender_address: ContractAddress::new_or_panic(StarkHash::from_u64(1)),
+            sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
         });
 
         let input = AddDeclareTransactionInput {
@@ -204,7 +202,7 @@ mod tests {
             signature: vec![],
             nonce: TransactionNonce(Default::default()),
             contract_class: CONTRACT_CLASS.clone(),
-            sender_address: ContractAddress::new_or_panic(StarkHash::from_u64(1)),
+            sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
         });
 
         let input = AddDeclareTransactionInput {
@@ -215,10 +213,10 @@ mod tests {
         assert_eq!(
             result,
             AddDeclareTransactionOutput {
-                transaction_hash: StarknetTransactionHash(starkhash!(
+                transaction_hash: StarknetTransactionHash(felt!(
                     "04b3791d16301be48268bfe1c0da7a9ad458847fd4666c98057d3940ef31775d"
                 )),
-                class_hash: ClassHash(starkhash!(
+                class_hash: ClassHash(felt!(
                     "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 )),
             }

@@ -1,4 +1,4 @@
-use ::stark_hash::{stark_hash, HashChain, StarkHash};
+use ::stark_hash::{stark_hash, Felt, HashChain};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -7,8 +7,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let e0 = "03d937c035c878245caf64531a5756109c53068da139362728feb561405371cb";
     let e1 = "0208a0a10250e382e1e4bbe2880906c2791bf6275695e02fbbc6aeff9cd8b31a";
 
-    let e0 = StarkHash::from_hex_str(e0).unwrap();
-    let e1 = StarkHash::from_hex_str(e1).unwrap();
+    let e0 = Felt::from_hex_str(e0).unwrap();
+    let e1 = Felt::from_hex_str(e1).unwrap();
 
     // this is useful for testing out the branch predictor
     c.bench_function("pedersen_hash", |b| {
@@ -22,8 +22,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("random_stark_hash", |b| {
         b.iter_batched(
             || {
-                let a = StarkHash::random(&mut rng);
-                let b = StarkHash::random(&mut rng);
+                let a = Felt::random(&mut rng);
+                let b = Felt::random(&mut rng);
                 (a, b)
             },
             |(a, b)| black_box(stark_hash(a, b)),
@@ -34,7 +34,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("random_hashchain", |b| {
         b.iter_batched_ref(
             || {
-                std::iter::from_fn(|| Some(StarkHash::random(&mut rng)))
+                std::iter::from_fn(|| Some(Felt::random(&mut rng)))
                     .take(100)
                     .collect::<Vec<_>>()
             },

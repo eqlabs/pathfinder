@@ -12,12 +12,12 @@ use pathfinder_common::{
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
 };
 use rusqlite::Transaction;
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
-/// Generate [`StarkHash`] from a sequence of bytes.
+/// Generate [`Felt`] from a sequence of bytes.
 macro_rules! hash {
     ($($value:expr),*) => {
-        StarkHash::from_be_slice(&[$($value),*]).unwrap()
+        Felt::from_be_slice(&[$($value),*]).unwrap()
     };
 }
 

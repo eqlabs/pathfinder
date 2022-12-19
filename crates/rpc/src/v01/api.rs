@@ -35,7 +35,7 @@ use pathfinder_storage::{
     RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventFilter,
     StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
 };
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 use starknet_gateway_client::{Client, ClientApi};
 use starknet_gateway_types::{pending::PendingData, request::add_transaction::ContractDefinition};
 use std::convert::TryInto;
@@ -230,10 +230,7 @@ impl RpcApi {
         let block_status = Self::get_block_status(transaction, block.number)?;
 
         let (parent_hash, parent_root) = match block.number {
-            StarknetBlockNumber::GENESIS => (
-                StarknetBlockHash(StarkHash::ZERO),
-                GlobalRoot(StarkHash::ZERO),
-            ),
+            StarknetBlockNumber::GENESIS => (StarknetBlockHash(Felt::ZERO), GlobalRoot(Felt::ZERO)),
             other => {
                 let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                     .context("Read parent block from database")
@@ -406,7 +403,7 @@ impl RpcApi {
                 .get(key)
                 .context("Get value from contract state tree")
                 .map_err(internal_server_error)?
-                .unwrap_or(StorageValue(StarkHash::ZERO));
+                .unwrap_or(StorageValue(Felt::ZERO));
 
             Ok(storage_val)
         });

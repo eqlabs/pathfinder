@@ -23,7 +23,7 @@ use pathfinder_storage::{
     StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::{
     pending::PendingData,
@@ -84,8 +84,8 @@ where
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
         StarknetBlockNumber::MAX,
-        StarknetBlockHash(StarkHash::ZERO),
-        GlobalRoot(StarkHash::ZERO),
+        StarknetBlockHash(Felt::ZERO),
+        GlobalRoot(Felt::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
@@ -566,7 +566,7 @@ async fn l2_update(
             gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
             sequencer_address: block
                 .sequencer_address
-                .unwrap_or(SequencerAddress(StarkHash::ZERO)),
+                .unwrap_or(SequencerAddress(Felt::ZERO)),
         };
         StarknetBlocksTable::insert(
             &transaction,
@@ -681,7 +681,7 @@ fn update_starknet_state(
     let global_root = StarknetBlocksTable::get(transaction, StarknetBlocksBlockId::Latest)
         .context("Query latest state root")?
         .map(|block| block.root)
-        .unwrap_or(GlobalRoot(StarkHash::ZERO));
+        .unwrap_or(GlobalRoot(Felt::ZERO));
     let mut global_tree =
         GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;
 
@@ -892,7 +892,7 @@ mod tests {
         types::CompressedContract, ContractCodeTable, L1StateTable, L1TableBlockId, RefsTable,
         StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_client::ClientApi;
     use starknet_gateway_types::{
         error::SequencerError,
@@ -1079,8 +1079,8 @@ mod tests {
     }
 
     lazy_static::lazy_static! {
-        static ref A: StarkHash = StarkHash::from_be_slice(&[0xA]).unwrap();
-        static ref B: StarkHash = StarkHash::from_be_slice(&[0xB]).unwrap();
+        static ref A: Felt = Felt::from_be_slice(&[0xA]).unwrap();
+        static ref B: Felt = Felt::from_be_slice(&[0xB]).unwrap();
         static ref ETH_ORIG: pathfinder_ethereum::EthOrigin = pathfinder_ethereum::EthOrigin {
             block: pathfinder_ethereum::BlockOrigin {
                 hash: EthereumBlockHash(H256::zero()),
@@ -1095,7 +1095,7 @@ mod tests {
         pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::GENESIS,
             // State update actually doesn't change the state hence 0 root
-            global_root: GlobalRoot(StarkHash::ZERO),
+            global_root: GlobalRoot(Felt::ZERO),
             origin: ETH_ORIG.clone(),
         };
         pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
@@ -1107,9 +1107,9 @@ mod tests {
             block_hash: StarknetBlockHash(*A),
             block_number: StarknetBlockNumber::GENESIS,
             gas_price: Some(GasPrice::ZERO),
-            parent_block_hash: StarknetBlockHash(StarkHash::ZERO),
-            sequencer_address: Some(SequencerAddress(StarkHash::ZERO)),
-            state_root: GlobalRoot(StarkHash::ZERO),
+            parent_block_hash: StarknetBlockHash(Felt::ZERO),
+            sequencer_address: Some(SequencerAddress(Felt::ZERO)),
+            state_root: GlobalRoot(Felt::ZERO),
             status: reply::Status::AcceptedOnL1,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
@@ -1121,7 +1121,7 @@ mod tests {
             block_number: StarknetBlockNumber::new_or_panic(1),
             gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
-            sequencer_address: Some(SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap())),
+            sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
             state_root: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
@@ -1132,10 +1132,10 @@ mod tests {
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: StarknetBlockHash(*A),
-            root: GlobalRoot(StarkHash::ZERO),
+            root: GlobalRoot(Felt::ZERO),
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
-            sequencer_address: SequencerAddress(StarkHash::ZERO),
+            sequencer_address: SequencerAddress(Felt::ZERO),
         };
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
@@ -1143,13 +1143,13 @@ mod tests {
             root: GlobalRoot(*B),
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
-            sequencer_address: SequencerAddress(StarkHash::from_be_bytes([1u8; 32]).unwrap()),
+            sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
         };
         // Causes root to remain 0
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
             block_hash: Some(StarknetBlockHash(*A)),
-            new_root: GlobalRoot(StarkHash::ZERO),
-            old_root: GlobalRoot(StarkHash::ZERO),
+            new_root: GlobalRoot(Felt::ZERO),
+            old_root: GlobalRoot(Felt::ZERO),
             state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],

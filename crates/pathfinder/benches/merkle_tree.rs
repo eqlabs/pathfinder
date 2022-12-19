@@ -1,12 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
-fn gen_random_keys(n: usize) -> Vec<StarkHash> {
+fn gen_random_keys(n: usize) -> Vec<Felt> {
     let mut out = Vec::with_capacity(n);
     let mut rng = rand::rngs::ThreadRng::default();
 
     while out.len() < n {
-        let sh = StarkHash::random(&mut rng);
+        let sh = Felt::random(&mut rng);
         if sh.has_more_than_251_bits() {
             continue;
         }
@@ -16,12 +16,8 @@ fn gen_random_keys(n: usize) -> Vec<StarkHash> {
     out
 }
 
-pub fn chunked_inserts(
-    tx: &rusqlite::Transaction<'_>,
-    keys: &[StarkHash],
-    batch_size: usize,
-) -> StarkHash {
-    let mut hash = stark_hash::StarkHash::ZERO;
+pub fn chunked_inserts(tx: &rusqlite::Transaction<'_>, keys: &[Felt], batch_size: usize) -> Felt {
+    let mut hash = stark_hash::Felt::ZERO;
 
     for keys in keys.chunks(batch_size) {
         let mut uut =
@@ -33,7 +29,7 @@ pub fn chunked_inserts(
             .try_for_each(|(value, key)| {
                 uut.set(
                     key.view_bits(),
-                    stark_hash::StarkHash::from_be_slice(&value.to_be_bytes()).unwrap(),
+                    stark_hash::Felt::from_be_slice(&value.to_be_bytes()).unwrap(),
                 )
             })
             .unwrap();

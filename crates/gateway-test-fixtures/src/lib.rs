@@ -106,56 +106,56 @@ pub mod zstd_compressed_contracts {
 
 pub mod testnet {
     use pathfinder_common::{
-        starkhash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
+        felt, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
         StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
     };
-    use stark_hash::StarkHash;
+    use stark_hash::Felt;
     use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
 
     pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
         BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
     pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag =
         BlockNumberOrTag::Number(StarknetBlockNumber::MAX);
-    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
-    ));
-    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"),
-    ));
+    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(felt!(
+        "07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+    )));
+    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(felt!(
+        "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+    )));
     pub const PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag =
-        BlockHashOrTag::Hash(StarknetBlockHash(starkhash!(
+        BlockHashOrTag::Hash(StarknetBlockHash(felt!(
             "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
         )));
     pub const INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        starkhash!("03871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"),
+        felt!("0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"),
     ));
-    pub const VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
+    pub const VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(felt!(
         "0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
     ));
-    pub const INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(starkhash!(
+    pub const INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(felt!(
         "0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
     ));
-    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
+    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(felt!(
         "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
     ));
-    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(starkhash!(
+    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(felt!(
         "05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
     ));
-    pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(starkhash!(
+    pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(felt!(
         "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
     ));
-    pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(StarkHash::ZERO);
-    pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(starkhash!(
+    pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(Felt::ZERO);
+    pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(felt!(
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));
     pub const VALID_KEY_DEC: &str =
         "916907772491729262376534102982219947830828984996257231353398618781993312401";
-    pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(starkhash!("04d2"))];
+    pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(felt!("0x4d2"))];
     /// Class hash for VALID_CONTRACT_ADDR
-    pub const VALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
+    pub const VALID_CLASS_HASH: ClassHash = ClassHash(felt!(
         "021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
     ));
-    pub const INVALID_CLASS_HASH: ClassHash = ClassHash(starkhash!(
+    pub const INVALID_CLASS_HASH: ClassHash = ClassHash(felt!(
         "031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
     ));
 }

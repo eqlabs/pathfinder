@@ -1,5 +1,5 @@
 use anyhow::Context;
-use stark_hash::StarkHash;
+use stark_hash::Felt;
 
 fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt::init();
@@ -119,8 +119,8 @@ fn feed_work(
     while let Some(next) = work.next()? {
         rows += 1;
 
-        let target_hash = StarkHash::from_be_slice(next.get_ref_unwrap(0).as_blob()?).unwrap();
-        let tx_hash = StarkHash::from_be_slice(next.get_ref_unwrap(1).as_blob()?).unwrap();
+        let target_hash = Felt::from_be_slice(next.get_ref_unwrap(0).as_blob()?).unwrap();
+        let tx_hash = Felt::from_be_slice(next.get_ref_unwrap(1).as_blob()?).unwrap();
         let tx = zstd::decode_all(next.get_ref_unwrap(2).as_blob()?)?;
         let receipt = zstd::decode_all(next.get_ref_unwrap(3).as_blob()?).unwrap();
         let gas_price_at_block = {
@@ -146,7 +146,7 @@ fn feed_work(
         let actual_fee = serde_json::from_slice::<SimpleReceipt>(&receipt)
             .unwrap()
             .actual_fee
-            .unwrap_or(StarkHash::ZERO);
+            .unwrap_or(Felt::ZERO);
 
         let tx = serde_json::from_slice::<SimpleTransaction>(&tx).with_context(|| {
             let tx = String::from_utf8_lossy(&tx);
@@ -184,7 +184,7 @@ fn feed_work(
         };
 
         /*
-        if actual_fee == StarkHash::ZERO {
+        if actual_fee == Felt::ZERO {
             // rest will not be useful to go through
             tracing::info!("stopping scrolling since found actual_fee = 0");
             break;
@@ -321,7 +321,7 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
 
 #[derive(serde::Deserialize, Debug)]
 struct SimpleReceipt {
-    actual_fee: Option<StarkHash>,
+    actual_fee: Option<Felt>,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -406,7 +406,7 @@ impl From<SimpleInvoke> for pathfinder_rpc::v02::types::request::BroadcastedTran
                         contract_address: tx.contract_address,
                         entry_point_selector: tx
                             .entry_point_selector
-                            .unwrap_or(pathfinder_common::EntryPoint(StarkHash::ZERO)),
+                            .unwrap_or(pathfinder_common::EntryPoint(Felt::ZERO)),
                         calldata: tx.calldata,
                     },
                 )),
@@ -434,7 +434,7 @@ impl From<SimpleInvoke> for pathfinder_rpc::v02::types::request::BroadcastedTran
                     contract_address: tx.contract_address,
                     entry_point_selector: tx
                         .entry_point_selector
-                        .unwrap_or(pathfinder_common::EntryPoint(StarkHash::ZERO)),
+                        .unwrap_or(pathfinder_common::EntryPoint(Felt::ZERO)),
                     calldata: tx.calldata,
                 },
             )),

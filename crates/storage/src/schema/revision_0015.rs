@@ -228,7 +228,7 @@ mod tests {
     use super::transaction;
     use crate::schema;
     use ethers::types::H128;
-    use pathfinder_common::{starkhash, StarknetTransactionHash};
+    use pathfinder_common::{felt, StarknetTransactionHash};
     use rusqlite::{named_params, Connection};
 
     #[test]
@@ -328,7 +328,7 @@ mod tests {
             named_params![
                 ":hash": tx.hash().0.as_be_bytes(),
                 ":idx": idx,
-                ":block_hash": pathfinder_common::starkhash!("01").as_be_bytes(),
+                ":block_hash": pathfinder_common::felt!("0x1").as_be_bytes(),
                 ":tx": &compressed_tx,
                 ":receipt": &[],
             ]
@@ -354,9 +354,9 @@ mod tests {
 
         migrate_to_previous_version(&transaction);
 
-        let fake_class_hash = starkhash!("0deadadd");
+        let fake_class_hash = felt!("0xdeadadd");
         let contract_address =
-            starkhash!("020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6");
+            felt!("0x20cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6");
 
         // insert fake class
         transaction
@@ -385,7 +385,7 @@ mod tests {
         super::migrate(&transaction).unwrap();
 
         let transaction_hash =
-            starkhash!("e0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75");
+            felt!("0xe0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75");
 
         let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
             &transaction,
@@ -428,7 +428,7 @@ mod tests {
         super::migrate(&transaction).unwrap();
 
         let transaction_hash =
-            starkhash!("05d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42");
+            felt!("0x5d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42");
 
         let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
             &transaction,
