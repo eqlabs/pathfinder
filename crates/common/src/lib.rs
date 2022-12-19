@@ -144,6 +144,10 @@ macros::i64_backed_u64::to_from_sql!(StarknetBlockTimestamp);
 macros::i64_backed_u64::new_get_partialeq!(StarknetBlockTimestamp);
 macros::i64_backed_u64::serdes!(StarknetBlockTimestamp);
 
+/// A StarkNet block commitment.
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct StarknetCommitment(pub StarkHash);
+
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub StarkHash);
@@ -441,6 +445,7 @@ macros::starkhash::common_newtype!(
     StorageValue,
     GlobalRoot,
     StarknetBlockHash,
+    StarknetCommitment,
     TransactionSignatureElem,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,

@@ -5,8 +5,9 @@ use ethers::types::{H128, H256};
 use pathfinder_common::{
     starkhash, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
     EntryPoint, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetCommitment,
+    StarknetTransactionHash, StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem,
+    TransactionVersion,
 };
 use stark_hash::StarkHash;
 use starknet_gateway_types::reply::transaction::{
@@ -35,6 +36,8 @@ pub(crate) fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
             timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
             gas_price: GasPrice::from(i as u64),
             sequencer_address: SequencerAddress(StarkHash::from_be_slice(&[i as u8]).unwrap()),
+            transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+            event_commitment: StarknetCommitment(StarkHash::ZERO),
         })
         .collect::<Vec<_>>()
         .try_into()

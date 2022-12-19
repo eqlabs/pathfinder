@@ -1,4 +1,4 @@
-use crate::state::block_hash::verify_block_hash;
+use crate::state::block_hash::{verify_block_hash, BlockExtra};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{Chain, ClassHash, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::types::CompressedContract;
@@ -27,7 +27,7 @@ pub struct Timings {
 #[derive(Debug)]
 pub enum Event {
     /// New L2 [block update](StateUpdate) found.
-    Update(Box<Block>, Box<StateUpdate>, Timings),
+    Update((Box<Block>, BlockExtra), Box<StateUpdate>, Timings),
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
@@ -67,9 +67,9 @@ pub async fn sync(
         };
         let t_block = std::time::Instant::now();
 
-        let block = loop {
+        let (block, extra) = loop {
             match download_block(next, chain, head_meta.map(|h| h.1), &sequencer).await? {
-                DownloadBlock::Block(block) => break block,
+                DownloadBlock::Block(block, extra) => break (block, extra),
                 DownloadBlock::AtHead => {
                     // Poll pending if it is enabled, otherwise just wait to poll head again.
                     match pending_poll_interval {
@@ -156,7 +156,11 @@ pub async fn sync(
         };
 
         tx_event
-            .send(Event::Update(block, Box::new(state_update), timings))
+            .send(Event::Update(
+                (block, extra),
+                Box::new(state_update),
+                timings,
+            ))
             .await
             .context("Event channel closed")?;
     }
@@ -234,7 +238,7 @@ async fn declare_classes(
 }
 
 enum DownloadBlock {
-    Block(Box<Block>),
+    Block(Box<Block>, BlockExtra),
     AtHead,
     Reorg,
 }
@@ -272,7 +276,10 @@ async fn download_block(
                 "Block hash mismatch"
             );
             match block.status {
-                Status::AcceptedOnL1 | Status::AcceptedOnL2 => Ok(DownloadBlock::Block(block)),
+                Status::AcceptedOnL1 | Status::AcceptedOnL2 => Ok(DownloadBlock::Block(
+                    block,
+                    verify_result.get_extra().unwrap_or_default(),
+                )),
                 _ => Err(anyhow!(
                     "Rejecting block as its status is {}, and only accepted blocks are allowed",
                     block.status
@@ -345,7 +352,7 @@ async fn reorg(
             .await
             .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
         {
-            DownloadBlock::Block(block) if block.block_hash == previous.0 => {
+            DownloadBlock::Block(block, _) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
             }
             _ => {}
@@ -917,7 +924,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -933,7 +940,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -1002,7 +1009,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -1144,7 +1151,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -1164,7 +1171,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
@@ -1349,7 +1356,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -1365,11 +1372,11 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
@@ -1397,11 +1404,11 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block1_v2);
                     assert!(state_update.state_diff.deployed_contracts.is_empty());
                     assert!(state_update.state_diff.storage_diffs.is_empty());
@@ -1629,7 +1636,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -1645,15 +1652,15 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block3);
                     assert_eq!(*state_update, *STATE_UPDATE3);
                 });
@@ -1673,11 +1680,11 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -1836,7 +1843,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -1852,11 +1859,11 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
@@ -1868,7 +1875,7 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK2_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -2032,7 +2039,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
@@ -2048,7 +2055,7 @@ mod tests {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -2060,11 +2067,11 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update(block, state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });

@@ -13,9 +13,24 @@ use starknet_gateway_types::reply::{
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
-    Match,
+    Match(BlockExtra),
     Mismatch,
     NotVerifiable,
+}
+
+impl VerifyResult {
+    pub fn get_extra(&self) -> Option<BlockExtra> {
+        match self {
+            VerifyResult::Match(extra) => Some(*extra),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+pub struct BlockExtra {
+    pub transaction_commitment: StarkHash,
+    pub event_commitment: StarkHash,
 }
 
 /// Verify the block hash value.
@@ -46,6 +61,7 @@ pub fn verify_block_hash(
         .try_into()
         .expect("too many transactions in block");
     let transaction_commitment = calculate_transaction_commitment(&block.transactions)?;
+    let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
         use pathfinder_common::ChainId;
@@ -71,7 +87,6 @@ pub fn verify_block_hash(
     } else {
         let num_events = number_of_events_in_block(block);
         let num_events: u64 = num_events.try_into().expect("too many events in block");
-        let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
 
         let block_sequencer_address = block
             .sequencer_address
@@ -97,7 +112,10 @@ pub fn verify_block_hash(
 
     Ok(match verified {
         false => VerifyResult::Mismatch,
-        true => VerifyResult::Match,
+        true => VerifyResult::Match(BlockExtra {
+            transaction_commitment,
+            event_commitment,
+        }),
     })
 }
 
@@ -436,6 +454,7 @@ fn number_of_events_in_block(block: &Block) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_matches::assert_matches;
     use pathfinder_common::{starkhash, EntryPoint, Fee};
     use starknet_gateway_types::reply::{
         transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
@@ -535,9 +554,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_90000;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 
@@ -548,9 +567,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_231579;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 
@@ -562,9 +581,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::NUMBER_156000;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 
@@ -575,9 +594,9 @@ mod tests {
         let json = starknet_gateway_test_fixtures::v0_9_0::block::GENESIS;
         let block: Block = serde_json::from_str(json).unwrap();
 
-        assert_eq!(
+        assert_matches!(
             verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
-            VerifyResult::Match
+            VerifyResult::Match(_)
         );
     }
 }

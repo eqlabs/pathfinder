@@ -83,9 +83,9 @@ fn fetch_block_headers(
                 .context("Too many transactions")?,
             // TODO: how to get these values. We'd have to store these (along with the parent hash) as part of the starknet_blocks table
             // so that we can implement this effectively. Unfortunately re-computing these values is slow...
-            transaction_commitment: StarkHash::ZERO,
+            transaction_commitment: block.transaction_commitment.0,
             event_count: 0,
-            event_commitment: StarkHash::ZERO,
+            event_commitment: block.event_commitment.0,
             // TODO: what's the protocol version?
             protocol_version: 0,
         });

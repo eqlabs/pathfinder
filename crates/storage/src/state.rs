@@ -8,7 +8,8 @@ use pathfinder_common::{
     Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
     EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetCommitment,
+    StarknetTransactionHash,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
@@ -232,8 +233,8 @@ impl StarknetBlocksTable {
         };
 
         tx.execute(
-            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id)
-                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id)",
+            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id, transaction_commitment, event_commitment )
+                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment)",
             named_params! {
                 ":number": block.number,
                 ":hash": block.hash,
@@ -242,6 +243,8 @@ impl StarknetBlocksTable {
                 ":gas_price": &block.gas_price.to_be_bytes(),
                 ":sequencer_address": block.sequencer_address,
                 ":version_id": version_id,
+                ":transaction_commitment": block.transaction_commitment, 
+                ":event_commitment": block.event_commitment,
             },
         )?;
 
@@ -255,15 +258,15 @@ impl StarknetBlocksTable {
     ) -> anyhow::Result<Option<StarknetBlock>> {
         let mut statement = match block {
             StarknetBlocksBlockId::Number(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
                     FROM starknet_blocks WHERE number = ?",
             ),
             StarknetBlocksBlockId::Hash(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
                     FROM starknet_blocks WHERE hash = ?",
             ),
             StarknetBlocksBlockId::Latest => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
                     FROM starknet_blocks ORDER BY number DESC LIMIT 1",
             ),
         }?;
@@ -298,6 +301,8 @@ impl StarknetBlocksTable {
                     timestamp,
                     gas_price,
                     sequencer_address,
+                    transaction_commitment: row.get_unwrap("transaction_commitment"),
+                    event_commitment: row.get_unwrap("transaction_commitment"),
                 };
 
                 Ok(Some(block))
@@ -1091,6 +1096,8 @@ pub struct StarknetBlock {
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
+    pub transaction_commitment: StarknetCommitment,
+    pub event_commitment: StarknetCommitment,
 }
 
 /// StarknetVersionsTable tracks `starknet_versions` table, which just interns the version
@@ -1869,6 +1876,8 @@ mod tests {
                         timestamp: blocks[0].timestamp,
                         gas_price: blocks[0].gas_price,
                         sequencer_address: blocks[0].sequencer_address,
+                        transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+                        event_commitment: StarknetCommitment(StarkHash::ZERO),
                     };
 
                     assert_eq!(
@@ -2137,6 +2146,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(starkhash!("1234")),
+                transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+                event_commitment: StarknetCommitment(StarkHash::ZERO),
             };
 
             // Note: hashes are reverse ordered to trigger the sorting bug.

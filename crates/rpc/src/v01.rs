@@ -1408,7 +1408,7 @@ mod tests {
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
-        use pathfinder_common::{starkhash, StorageValue};
+        use pathfinder_common::{starkhash, StarknetCommitment, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
         use pathfinder_storage::{ContractCodeTable, ContractsTable, StarknetBlocksBlockId};
         use pretty_assertions::assert_eq;
@@ -1479,6 +1479,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
                 sequencer_address: SequencerAddress(starkhash_bytes!(&[3u8])),
+                transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+                event_commitment: StarknetCommitment(StarkHash::ZERO),
             };
 
             StarknetBlocksTable::insert(transaction, &block3, None).unwrap();

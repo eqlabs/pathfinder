@@ -352,7 +352,8 @@ mod tests {
         starkhash, starkhash_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
         ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
+        StarknetBlockTimestamp, StarknetCommitment, StorageAddress, StorageValue,
+        TransactionVersion,
     };
     use pathfinder_storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
@@ -813,6 +814,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(StarkHash::ZERO),
+                transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+                event_commitment: StarknetCommitment(StarkHash::ZERO),
             },
             None,
         )
@@ -873,6 +876,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(StarkHash::ZERO),
+                transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+                event_commitment: StarknetCommitment(StarkHash::ZERO),
             },
             None,
         )

@@ -113,7 +113,7 @@ mod tests {
     use pathfinder_common::{
         starkhash, starkhash_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
         EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetCommitment, StarknetTransactionHash,
         StarknetTransactionIndex, StorageAddress, TransactionVersion,
     };
     use pathfinder_merkle_tree::state_tree::GlobalStateTree;
@@ -271,6 +271,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(StarkHash::ZERO),
+            transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+            event_commitment: StarknetCommitment(StarkHash::ZERO),
         };
         let block1_hash = StarknetBlockHash(starkhash_bytes!(b"block 1"));
         let block1 = StarknetBlock {
@@ -280,6 +282,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(starkhash_bytes!(&[1u8])),
+            transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+            event_commitment: StarknetCommitment(StarkHash::ZERO),
         };
         let latest_hash = StarknetBlockHash(starkhash_bytes!(b"latest"));
         let block2 = StarknetBlock {
@@ -289,6 +293,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(starkhash_bytes!(&[2u8])),
+            transaction_commitment: StarknetCommitment(StarkHash::ZERO),
+            event_commitment: StarknetCommitment(StarkHash::ZERO),
         };
         StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
         StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
