@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(%peer_id, "Starting up");
 
     let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
-    let (mut p2p_client, mut p2p_events, p2p_main_loop) =
+    let (p2p_client, mut p2p_events, p2p_main_loop) =
         p2p::new(keypair, peers.clone(), Default::default());
 
     let _p2p_task = tokio::task::spawn(p2p_main_loop.run());
@@ -100,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     p2p_client.subscribe_topic(&block_propagation_topic).await?;
 
     if args.emit_events {
-        let mut client = p2p_client.clone();
+        let client = p2p_client.clone();
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(10));
             loop {

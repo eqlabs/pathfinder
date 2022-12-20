@@ -88,7 +88,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn start_listening(&mut self, addr: Multiaddr) -> anyhow::Result<()> {
+    pub async fn start_listening(&self, addr: Multiaddr) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::StarListening { addr, sender })
@@ -97,7 +97,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn dial(&mut self, peer_id: PeerId, addr: Multiaddr) -> anyhow::Result<()> {
+    pub async fn dial(&self, peer_id: PeerId, addr: Multiaddr) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::Dial {
@@ -110,7 +110,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn provide_capability(&mut self, capability: &str) -> anyhow::Result<()> {
+    pub async fn provide_capability(&self, capability: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::ProvideCapability {
@@ -122,7 +122,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn subscribe_topic(&mut self, topic: &str) -> anyhow::Result<()> {
+    pub async fn subscribe_topic(&self, topic: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);
         self.sender
@@ -133,7 +133,7 @@ impl Client {
     }
 
     pub async fn send_sync_request(
-        &mut self,
+        &self,
         peer_id: PeerId,
         request: p2p_proto::sync::Request,
     ) -> anyhow::Result<p2p_proto::sync::Response> {
@@ -150,7 +150,7 @@ impl Client {
     }
 
     pub async fn send_sync_response(
-        &mut self,
+        &self,
         channel: ResponseChannel<p2p_proto::sync::Response>,
         response: p2p_proto::sync::Response,
     ) {
@@ -161,7 +161,7 @@ impl Client {
     }
 
     pub async fn publish_propagation_message(
-        &mut self,
+        &self,
         topic: &str,
         message: p2p_proto::propagation::Message,
     ) -> anyhow::Result<()> {
@@ -178,12 +178,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    // FIXME check if &mut self is required in all fns here
-    pub async fn send_sync_status_request(
-        &mut self,
-        peer_id: PeerId,
-        status: p2p_proto::sync::Status,
-    ) {
+    pub async fn send_sync_status_request(&self, peer_id: PeerId, status: p2p_proto::sync::Status) {
         self.sender
             .send(Command::SendSyncStatusRequest { peer_id, status })
             .await
