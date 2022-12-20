@@ -8,7 +8,7 @@
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.48-rust-1.65.0-bullseye AS cargo-chef
+FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.50-rust-1.66-bullseye AS cargo-chef
 WORKDIR /usr/src/pathfinder
 
 # refresh indices, do it with cli git for much better ram usage
