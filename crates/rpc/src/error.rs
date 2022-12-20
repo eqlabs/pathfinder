@@ -33,6 +33,8 @@ pub enum RpcError {
     ContractError,
     #[error("Invalid contract class")]
     InvalidContractClass,
+    #[error("Too many storage keys requested")]
+    ProofLimitExceeded { limit: u32, requested: u32 },
     #[error(transparent)]
     Internal(anyhow::Error),
 }
@@ -53,6 +55,7 @@ impl RpcError {
             RpcError::InvalidContinuationToken => 33,
             RpcError::ContractError => 40,
             RpcError::InvalidContractClass => 50,
+            RpcError::ProofLimitExceeded { .. } => 10000,
             RpcError::Internal(_) => jsonrpsee::types::error::ErrorCode::InternalError.code(),
         }
     }
@@ -62,7 +65,26 @@ impl From<RpcError> for jsonrpsee::core::error::Error {
     fn from(err: RpcError) -> Self {
         use jsonrpsee::types::error::{CallError, ErrorObject};
 
-        CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), None::<()>)).into()
+        match err {
+            RpcError::ProofLimitExceeded { limit, requested } => {
+                #[derive(serde::Serialize)]
+                struct Data {
+                    limit: u32,
+                    requested: u32,
+                }
+
+                let data = Data { limit, requested };
+
+                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
+                    .into()
+            }
+            other => CallError::Custom(ErrorObject::owned(
+                other.code(),
+                other.to_string(),
+                None::<()>,
+            ))
+            .into(),
+        }
     }
 }
 

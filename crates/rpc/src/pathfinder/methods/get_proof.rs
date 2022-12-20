@@ -18,7 +18,29 @@ pub struct GetProofInput {
     pub keys: Vec<StorageAddress>,
 }
 
-crate::error::generate_rpc_error_subset!(GetProofError: BlockNotFound);
+// FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants. This may not actually be possible though.
+#[derive(Debug)]
+pub enum GetProofError {
+    Internal(anyhow::Error),
+    BlockNotFound,
+    ProofLimitExceeded { limit: u32, requested: u32 },
+}
+impl From<anyhow::Error> for GetProofError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
+    }
+}
+impl From<GetProofError> for crate::error::RpcError {
+    fn from(x: GetProofError) -> Self {
+        match x {
+            GetProofError::ProofLimitExceeded { limit, requested } => {
+                Self::ProofLimitExceeded { limit, requested }
+            }
+            GetProofError::BlockNotFound => Self::BlockNotFound,
+            GetProofError::Internal(internal) => Self::Internal(internal),
+        }
+    }
+}
 
 /// Utility struct used for serializing.
 #[derive(Debug, Serialize)]
@@ -116,6 +138,14 @@ pub async fn get_proof(
     context: RpcContext,
     input: GetProofInput,
 ) -> Result<GetProofOutput, GetProofError> {
+    const MAX_KEYS: usize = 100;
+    if input.keys.len() > MAX_KEYS {
+        return Err(GetProofError::ProofLimitExceeded {
+            limit: MAX_KEYS as u32,
+            requested: input.keys.len() as u32,
+        });
+    }
+
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
@@ -227,4 +257,26 @@ fn read_class_hash(
     )
     .optional()
     .map_err(|e| e.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::{felt, ContractAddress};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn limit_exceeded() {
+        let context = RpcContext::for_tests();
+        let input = GetProofInput {
+            block_id: BlockId::Latest,
+            contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            keys: (0..10_000)
+                .map(|idx| StorageAddress::new_or_panic(Felt::from_u64(idx)))
+                .collect(),
+        };
+
+        let err = get_proof(context, input).await.unwrap_err();
+        assert_matches::assert_matches!(err, GetProofError::ProofLimitExceeded { .. });
+    }
 }
