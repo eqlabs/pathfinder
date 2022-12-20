@@ -469,6 +469,37 @@ Licensed under either of
 
 at your option.
 
+## Questions / FAQ
+
+Questions are welcome! If you have any questions regarding Pathfinder, feel free to ask them using [Newton](https://www.newton.so/view?tags=pathfinder).
+
+### FAQ
+
+* [How do I run a Pathfinder node?](https://www.newton.so/view/63a062c3620f9c99ad981fc6)
+
+* [Why should I run a Pathfinder node?](https://www.newton.so/view/63a06374620f9c99ad981fc7)
+
+* [What resources are required to run a Pathfinder node?](https://www.newton.so/view/63a063e1620f9c99ad981fc9)
+
+* [Are there rewards for running a Pathfinder node?](https://www.newton.so/view/63a0643d620f9c99ad981fca)
+
+* [How do I connect my wallet to my Pathfinder node?](https://www.newton.so/view/63a06484620f9c99ad981fcb)
+
+* [How do I interact with my Pathfinder node?](https://www.newton.so/view/63a064bb407c7621270c0202)
+
+* [My Alchemy dashboard usage is low?](https://www.newton.so/view/63a06558620f9c99ad981fce)
+
+* [How to select the network my Pathfinder node runs on?](https://www.newton.so/view/63a0659a407c7621270c0204)
+
+* [How do I see my Pathfinder logs?](https://www.newton.so/view/63a065da620f9c99ad981fd0)
+
+* [How do I move my Pathfinder node to another server / disk?](https://www.newton.so/view/63a06611407c7621270c0206)
+
+* [Error compiling Pathfinder (rust)](https://www.newton.so/view/63a066c2407c7621270c0208)
+
+* [Python issues with Pathfinder](https://www.newton.so/view/63a06669620f9c99ad981fd1)
+
+
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
