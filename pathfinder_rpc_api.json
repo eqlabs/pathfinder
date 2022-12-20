@@ -104,7 +104,12 @@
                         "contract_proof"
                     ]
                 }
-            }
+            },
+            "errors": [
+                {
+                    "$ref": "#/components/errors/PROOF_LIMIT_EXCEEDED"
+                }
+            ]
         }
     ],
     "components": {
@@ -246,6 +251,27 @@
             "BLOCK_NOT_FOUND": {
                 "code": 24,
                 "message": "Block not found"
+            },
+            "PROOF_LIMIT_EXCEEDED": {
+                "code": 10000,
+                "message": "Too many storage keys requested",
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "description": "The maximum number of storage keys a request may have",
+                            "type": "integer"
+                        },
+                        "requested": {
+                            "description": "The number of storage keys this request had",
+                            "type": "integer"
+                        }
+                    },
+                    "required": [
+                        "limit",
+                        "requested"
+                    ]
+                }
             }
         }
     }
