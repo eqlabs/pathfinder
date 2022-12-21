@@ -743,6 +743,7 @@ mod tests {
         fn block() {
             use super::super::MaybePendingBlock;
 
+            // Mainnet block 192 contains an L1_HANDLER transaction without a nonce.
             serde_json::from_str::<MaybePendingBlock>(old::block::NUMBER_192).unwrap();
             serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::GENESIS).unwrap();
             serde_json::from_str::<MaybePendingBlock>(v0_8_2::block::NUMBER_1716).unwrap();
