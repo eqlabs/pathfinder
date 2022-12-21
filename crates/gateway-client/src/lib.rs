@@ -1254,14 +1254,14 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
-                    (v0_10_3::state_update::GENESIS, 200),
+                    (v0_9_1::state_update::GENESIS, 200),
                 ),
                 (
                     format!(
                         "/feeder_gateway/get_state_update?blockHash={}",
                         GENESIS_BLOCK_HASH
                     ),
-                    (v0_10_3::state_update::GENESIS, 200),
+                    (v0_9_1::state_update::GENESIS, 200),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1283,23 +1283,23 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
-                    "/feeder_gateway/get_state_update?blockNumber=509209",
-                    (v0_10_3::state_update::NUMBER_509209, 200)
+                    "/feeder_gateway/get_state_update?blockNumber=315700",
+                    (v0_9_1::state_update::NUMBER_315700, 200)
                 ),
                 (
-                    "/feeder_gateway/get_state_update?blockHash=0x67c7dfe64eb8447f499064805969e3551a7598389c01fb22df7398fb2f163b2",
-                    (v0_10_3::state_update::NUMBER_509209, 200)
+                    "/feeder_gateway/get_state_update?blockHash=0x17e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03",
+                    (v0_9_1::state_update::NUMBER_315700, 200)
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(StarknetBlockNumber::new_or_panic(509209).into())
+                .state_update(StarknetBlockNumber::new_or_panic(315700).into())
                 .await
                 .unwrap()
                 .into();
             let by_hash: OrderedStateUpdate = client
                 .state_update(
                     StarknetBlockHash(felt!(
-                        "067c7dfe64eb8447f499064805969e3551a7598389c01fb22df7398fb2f163b2"
+                        "017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03"
                     ))
                     .into(),
                 )
@@ -1360,7 +1360,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                (v0_10_3::state_update::NUMBER_509209, 200),
+                (v0_9_1::state_update::NUMBER_315700, 200),
             )]);
             client.state_update(BlockId::Latest).await.unwrap();
         }
@@ -1370,7 +1370,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                (v0_10_3::state_update::PENDING, 200),
+                (v0_9_1::state_update::PENDING, 200),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
         }
@@ -1852,7 +1852,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.state_update(x).await;
                 },
-                (v0_10_3::state_update::GENESIS.to_owned(), 200),
+                (v0_9_1::state_update::GENESIS.to_owned(), 200),
             )
             .await;
         }

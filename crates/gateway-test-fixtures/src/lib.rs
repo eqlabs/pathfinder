@@ -46,20 +46,20 @@ pub mod v0_9_0 {
     }
 }
 
+pub mod v0_9_1 {
+    pub mod state_update {
+        pub const GENESIS: &str = str_fixture!("0.9.1/state-update/genesis.json");
+        pub const NUMBER_315700: &str = str_fixture!("0.9.1/state-update/315700.json");
+        pub const PENDING: &str = str_fixture!("0.9.1/state-update/pending.json");
+    }
+}
+
 pub mod v0_10_1 {
     pub mod add_transaction {
         pub const DEPLOY_ACCOUNT_REQUEST: &str =
             str_fixture!("0.10.1/add-transaction/deploy-account-request.json");
         pub const DEPLOY_ACCOUNT_RESPONSE: &str =
             str_fixture!("0.10.1/add-transaction/deploy-account-response.json");
-    }
-}
-
-pub mod v0_10_3 {
-    pub mod state_update {
-        pub const GENESIS: &str = str_fixture!("0.10.3/state-update/genesis.json");
-        pub const NUMBER_509209: &str = str_fixture!("0.10.3/state-update/509209.json");
-        pub const PENDING: &str = str_fixture!("0.10.3/state-update/pending.json");
     }
 }
 
