@@ -588,6 +588,8 @@ pub mod state_update {
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
         pub declared_contracts: Vec<ClassHash>,
+        /// Old state diffs have no "nonces"
+        #[serde(default)]
         pub nonces: HashMap<ContractAddress, ContractNonce>,
     }
 
