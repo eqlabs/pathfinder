@@ -200,8 +200,8 @@ Note that the pathfinder extension is versioned separately from the StarkNet spe
 Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the following changes:
 
 - The `starknet_protocolVersion` method is not implemented. This method will be removed from the specification in its next version as its semantics and usage was questionable. We decided to not implement it.
-- To be able to represent L1 handler transactions introduced in Starknet 0.10.0, we use the `L1_HANDLER_TXN` type from `v0.2.1-rc1` of the JSON-RPC specification.
-- To be able to represent DEPLOY_ACCOUNT transactions introduced in Starknet 0.10.1, we use the `DEPLOY_ACCOUNT_TXN` type from `v0.2.1-rc1` of the JSON-RPC specification.
+- To be able to represent L1 handler transactions introduced in Starknet 0.10.0, we use the `L1_HANDLER_TXN` type from `v0.2.1` of the JSON-RPC specification.
+- To be able to represent DEPLOY_ACCOUNT transactions introduced in Starknet 0.10.1, we use the `DEPLOY_ACCOUNT_TXN` type from `v0.2.1` of the JSON-RPC specification.
 
 When browsing the specification project, please be aware of the following pitfalls:
 
@@ -222,17 +222,15 @@ Note that:
 - `starknet_addDeployTransaction` and `starknet_addDeclareTransaction` allow an optional `abi` property
   within the contract definition JSON object.
 
-### API `v0.2.1-rc1`
+### API `v0.2.1`
 
-Pathfinder supports `v0.2.1` of the Starknet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.2.1-rc1/api/starknet_api_openrpc.json), with the following deviations:
+Pathfinder supports `v0.2.1` of the Starknet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.2.1/api/starknet_api_openrpc.json).
 
-- `starknet_estimateFee` does not support estimating DEPLOY_ACCOUNT transactions.
+Use the [playground link](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://raw.githubusercontent.com/starkware-libs/starknet-specs/v0.2.1/api/starknet_api_openrpc.json&uiSchema) to check the list of methods and the parameters.
 
-Use the [playground link](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://raw.githubusercontent.com/starkware-libs/starknet-specs/v0.2.1-rc1/api/starknet_api_openrpc.json&uiSchema) to check the list of methods and the parameters.
+### Transaction write API `v0.2.1`
 
-### Transaction write API `v0.2.1-rc1`
-
-Here are links to the [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.2.1-rc1/api/starknet_write_api.json) and the [playground](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://gist.githubusercontent.com/kkovaacs/9a57bedfb5c311366c00e4881c7768dc/raw/23ed477438992c84cb59573681a7da983a0496a6/starknet_write_api-0.2.1-rc1.json).
+Here are links to the [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.2.1/api/starknet_write_api.json) and the [playground](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://gist.githubusercontent.com/kkovaacs/9a57bedfb5c311366c00e4881c7768dc/raw/23ed477438992c84cb59573681a7da983a0496a6/starknet_write_api-0.2.1-rc1.json).
 
 Note that:
 
