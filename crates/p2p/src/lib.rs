@@ -23,6 +23,8 @@ mod executor;
 mod peers;
 mod sync;
 #[cfg(test)]
+mod test_utils;
+#[cfg(test)]
 mod tests;
 mod transport;
 
@@ -187,10 +189,8 @@ impl Client {
     }
 
     #[cfg(test)]
-    pub fn for_test(&self) -> TestClient {
-        TestClient {
-            sender: self.sender.clone(),
-        }
+    pub(crate) fn for_test(&self) -> test_utils::Client {
+        test_utils::Client::new(self.sender.clone())
     }
 }
 
@@ -242,7 +242,7 @@ pub enum TestCommand {
     GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
     GetProviders {
         key: Vec<u8>,
-        sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>>>,
+        sender: mpsc::Sender<Result<HashSet<PeerId>, ()>>,
     },
 }
 
@@ -600,7 +600,8 @@ impl MainLoop {
             // test purposes
             // ===========================
             event => {
-                self.ignore_or_handle_event_for_test(event).await;
+                tracing::trace!(?event, "Ignoring event");
+                self.handle_event_for_test(event).await;
                 Ok(())
             }
         }
@@ -727,189 +728,53 @@ impl MainLoop {
         }
     }
 
-    async fn ignore_or_handle_event_for_test<E: std::fmt::Debug>(
+    /// No-op outside tests
+    async fn handle_event_for_test<E: std::fmt::Debug>(
         &mut self,
-        event: SwarmEvent<behaviour::Event, E>,
+        _event: SwarmEvent<behaviour::Event, E>,
     ) {
         #[cfg(test)]
-        {
-            match event {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    send_test_event(&self.event_sender, TestEvent::NewListenAddress(address)).await;
-                }
-                _ => {
-                    tracing::trace!(?event, "Ignoring event");
-                }
-            }
-        }
-
-        #[cfg(not(test))]
-        tracing::trace!(?event, "Ignoring event");
+        test_utils::handle_event(&self.event_sender, _event).await
     }
 
+    /// No-op outside tests
     async fn handle_test_command(&mut self, _command: TestCommand) {
         #[cfg(test)]
-        match _command {
-            TestCommand::GetPeersFromDHT(sender) => {
-                let peers = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .kbuckets()
-                    // Cannot .into_iter() a KBucketRef, hence the collect followed by flat_map
-                    .map(|kbucket_ref| {
-                        kbucket_ref
-                            .iter()
-                            .map(|entry_ref| entry_ref.node.key.preimage().clone())
-                            .collect::<Vec<_>>()
-                    })
-                    .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
-                    .collect::<HashSet<_>>();
-                sender.send(peers).expect("Receiver not to be dropped")
-            }
-            TestCommand::GetProviders { key, sender } => {
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_providers(key.into());
-                self._pending_test_queries
-                    .inner
-                    .get_providers
-                    .insert(query_id, sender);
-            }
-        }
+        test_utils::handle_command(
+            self.swarm.behaviour_mut(),
+            _command,
+            &mut self._pending_test_queries.inner,
+        )
+        .await;
     }
 
-    /// Handle the final stage of the query
+    /// Handle the final stage of the query, no-op outside tests
     async fn test_query_completed(&mut self, _id: QueryId, _result: QueryResult) {
         #[cfg(test)]
-        match _result {
-            QueryResult::GetProviders(result) => {
-                use libp2p::kad::GetProvidersOk;
-
-                let result = match result {
-                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
-                    Ok(_) => Ok(Default::default()),
-                    Err(error) => Err(error.into()),
-                };
-
-                let sender = self
-                    ._pending_test_queries
-                    .inner
-                    .get_providers
-                    .remove(&_id)
-                    .expect("Query to be pending");
-
-                sender
-                    .send(result)
-                    .await
-                    .expect("Receiver not to be dropped");
-            }
-            QueryResult::StartProviding(result) => {
-                use libp2p::kad::AddProviderOk;
-
-                let result = match result {
-                    Ok(AddProviderOk { key }) => Ok(key),
-                    Err(error) => Err(error.into_key()),
-                };
-                send_test_event(
-                    &self.event_sender,
-                    TestEvent::StartProvidingCompleted(result),
-                )
-                .await
-            }
-            _ => {}
-        }
+        test_utils::query_completed(
+            &mut self._pending_test_queries.inner,
+            &self.event_sender,
+            _id,
+            _result,
+        )
+        .await;
     }
 
-    /// Handle all stages except the final one
+    /// Handle all stages except the final one, no-op outside tests
     async fn test_query_progressed(&mut self, _id: QueryId, _result: QueryResult) {
         #[cfg(test)]
-        match _result {
-            QueryResult::GetProviders(result) => {
-                use libp2p::kad::GetProvidersOk;
-
-                let result = match result {
-                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
-                    Ok(_) => Ok(Default::default()),
-                    Err(_) => {
-                        unreachable!(
-                            "libp2p makes a query step the last one if the query timed out"
-                        )
-                    }
-                };
-
-                let sender = self
-                    ._pending_test_queries
-                    .inner
-                    .get_providers
-                    .get(&_id)
-                    .expect("Query to be pending");
-
-                sender
-                    .send(result)
-                    .await
-                    .expect("Receiver not to be dropped");
-            }
-            _ => {}
-        }
+        test_utils::query_progressed(&self._pending_test_queries.inner, _id, _result).await
     }
 }
 
+/// No-op outside tests
 async fn send_test_event(_event_sender: &mpsc::Sender<Event>, _event: TestEvent) {
     #[cfg(test)]
-    _event_sender
-        .send(Event::Test(_event))
-        .await
-        .expect("Event receiver not to be dropped");
-}
-
-#[cfg(test)]
-#[derive(Clone)]
-pub struct TestClient {
-    sender: mpsc::Sender<Command>,
-}
-
-#[cfg(test)]
-impl TestClient {
-    pub async fn get_peers_from_dht(&self) -> HashSet<PeerId> {
-        let (sender, receiver) = oneshot::channel();
-        self.sender
-            .send(Command::_Test(TestCommand::GetPeersFromDHT(sender)))
-            .await
-            .expect("Command receiver not to be dropped");
-        receiver.await.expect("Sender not to be dropped")
-    }
-
-    pub async fn get_providers(&self, key: Vec<u8>) -> Result<HashSet<PeerId>, ()> {
-        let (sender, mut receiver) = mpsc::channel(1);
-        self.sender
-            .send(Command::_Test(TestCommand::GetProviders { key, sender }))
-            .await
-            .expect("Command receiver not to be dropped");
-
-        let mut providers = HashSet::new();
-
-        while let Some(partial_result) = receiver.recv().await {
-            match partial_result {
-                Ok(more_providers) => providers.extend(more_providers.into_iter()),
-                Err(_) => return Err(()),
-            }
-        }
-
-        Ok(providers)
-    }
+    test_utils::send_event(_event_sender, _event).await
 }
 
 #[derive(Debug, Default)]
 struct TestQueries {
     #[cfg(test)]
-    inner: TestQueriesInner,
-}
-
-#[cfg(test)]
-#[derive(Debug, Default)]
-struct TestQueriesInner {
-    get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>>>>,
+    inner: test_utils::PendingQueries,
 }
