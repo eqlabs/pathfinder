@@ -141,7 +141,6 @@
                 }
             ]
         },
-        "nonces": {},
         "deployed_contracts": [
             {
                 "address": "0x546ba9763d33dc59a070c0d87d94f2dcafa82c4a93b5e2bf5ae458b0013a9d3",

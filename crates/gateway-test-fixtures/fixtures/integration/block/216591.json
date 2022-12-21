@@ -7,11 +7,15 @@
     "gas_price": "0x8401f7e",
     "transactions": [
         {
+            "transaction_hash": "0x223a52d3081ae0b0c83464fe33b424981975a98ff9bba82345e3c035741420",
             "version": "0x1",
-            "contract_address": "0x577abc3e3ab491af6fdc1e185b71a6d04f7e71a525f9f57c19fc36ed0655a39",
-            "entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
-            "entry_point_type": "EXTERNAL",
+            "max_fee": "0x2386f26fc10000",
+            "signature": [
+                "0x14441c931e7c3d4e725c584e9c481f9bb1af9c565621b6dba61d83c6a7dffc2",
+                "0x3abdf98ab5137530c39de50de553c120d052ce389db1019f420f29001ccea21"
+            ],
             "nonce": "0xcb",
+            "contract_address": "0x577abc3e3ab491af6fdc1e185b71a6d04f7e71a525f9f57c19fc36ed0655a39",
             "calldata": [
                 "0x1",
                 "0x1b27285a7420fbf7fbae8a38b23d4b8202893a253967b0829ebe9ac9eb27e78",
@@ -34,12 +38,6 @@
                 "0x4af7944f76e031cf9f288dc346caa5201f9c84993c86d4ba83fb314ccd5de74",
                 "0x5cbd6c770057caf2c6c08f166dc11669bf3abff6e5adbd4edfa01987dfb63c5"
             ],
-            "signature": [
-                "0x14441c931e7c3d4e725c584e9c481f9bb1af9c565621b6dba61d83c6a7dffc2",
-                "0x3abdf98ab5137530c39de50de553c120d052ce389db1019f420f29001ccea21"
-            ],
-            "transaction_hash": "0x223a52d3081ae0b0c83464fe33b424981975a98ff9bba82345e3c035741420",
-            "max_fee": "0x2386f26fc10000",
             "type": "INVOKE_FUNCTION"
         }
     ],
