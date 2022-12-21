@@ -110,7 +110,9 @@ Our images are updated on every `pathfinder` release. This means that the `:late
 
 ### Docker compose
 
-Create the folder `pathfinder` where your `docker-compose.yaml is
+You can also use `docker-compose` if you prefer that to just using Docker.
+
+Create the folder `pathfinder` where your `docker-compose.yaml` is
 
 ```bash
 mkdir -p pathfinder
