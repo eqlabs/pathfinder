@@ -130,7 +130,9 @@ fn consume_events(mut event_receiver: EventReceiver) {
 }
 
 #[test_log::test(tokio::test)]
-async fn dial_succeds() {
+async fn dial() {
+    // tokio::time::pause() does not make a difference
+
     let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
@@ -148,9 +150,10 @@ async fn dial_succeds() {
     assert_eq!(peers_of2, [peer1.peer_id].into());
 }
 
-// TODO figure out how to make this test run using tokio::time::pause()
 #[test_log::test(tokio::test)]
 async fn periodic_bootstrap() {
+    // TODO figure out how to make this test run using tokio::time::pause()
+    // instead of arbitrary short delays
     let periodic_cfg = PeriodicTaskConfig {
         bootstrap: BootstrapConfig {
             period: Duration::from_millis(500),
@@ -180,7 +183,7 @@ async fn periodic_bootstrap() {
     peer2.client.dial(boot.peer_id, boot_addr).await.unwrap();
 
     let filter_periodic_bootstrap = |event| match event {
-        Event::Test(TestEvent::PeriodicBootstrapCompleted) => Some(()),
+        Event::Test(TestEvent::PeriodicBootstrapCompleted(_)) => Some(()),
         _ => None,
     };
 
@@ -209,4 +212,36 @@ async fn periodic_bootstrap() {
     );
     assert_eq!(dht1, [boot.peer_id.clone(), peer2.peer_id.clone()].into());
     assert_eq!(dht2, [boot.peer_id.clone(), peer1.peer_id.clone()].into());
+}
+
+#[test_log::test(tokio::test)]
+async fn provide_capability() {
+    let mut peer1 = TestPeer::default();
+    let mut peer2 = TestPeer::default();
+
+    let addr1 = peer1.start_listening().await.unwrap();
+    let addr2 = peer2.start_listening().await.unwrap();
+
+    tracing::info!(%peer1.peer_id, %addr1);
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    let mut peer1_started_providing = filter_events(peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::StartProvidingCompleted(_)) => Some(()),
+        _ => None,
+    });
+    consume_events(peer2.event_receiver);
+
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+    peer1.client.provide_capability("blah").await.unwrap();
+    peer1_started_providing.recv().await;
+
+    // Apparently sometimes still not yet providing at this point
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // sha256("blah")
+    let key =
+        hex::decode("8b7df143d91c716ecfa5fc1730022f6b421b05cedee8fd52b1fc65a96030ad52").unwrap();
+    let providers = peer2.client.for_test().get_providers(key).await.unwrap();
+
+    assert_eq!(providers, [peer1.peer_id].into());
 }

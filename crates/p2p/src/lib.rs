@@ -8,7 +8,8 @@ use delay_map::HashSetDelay;
 use futures::StreamExt;
 use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
 use libp2p::identity::Keypair;
-use libp2p::kad::KademliaEvent;
+use libp2p::kad::record::Key;
+use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
 use libp2p::request_response::{
     RequestId, RequestResponseEvent, RequestResponseMessage, ResponseChannel,
 };
@@ -233,12 +234,16 @@ enum Command {
         sender: EmptyResultSender,
     },
     /// For testing purposes only
-    Test(TestCommand),
+    _Test(TestCommand),
 }
 
 #[derive(Debug)]
 pub enum TestCommand {
     GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
+    GetProviders {
+        key: Vec<u8>,
+        sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>>>,
+    },
 }
 
 #[derive(Debug)]
@@ -262,7 +267,8 @@ pub enum Event {
 #[derive(Debug)]
 pub enum TestEvent {
     NewListenAddress(Multiaddr),
-    PeriodicBootstrapCompleted,
+    PeriodicBootstrapCompleted(Result<PeerId, PeerId>),
+    StartProvidingCompleted(Result<Key, Key>),
     Dummy,
 }
 
@@ -283,6 +289,7 @@ pub struct MainLoop {
     request_sync_status: HashSetDelay<PeerId>,
 
     bootstrap_cfg: BootstrapConfig,
+    _pending_test_queries: TestQueries,
 }
 
 impl MainLoop {
@@ -303,6 +310,7 @@ impl MainLoop {
             pending_block_sync_status_requests: Default::default(),
             request_sync_status: HashSetDelay::new(periodic_cfg.status_period),
             bootstrap_cfg: periodic_cfg.bootstrap,
+            _pending_test_queries: Default::default(),
         }
     }
 
@@ -470,16 +478,38 @@ impl MainLoop {
             // Discovery
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
-                if let KademliaEvent::OutboundQueryProgressed { step, .. } = e {
+                if let KademliaEvent::OutboundQueryProgressed {
+                    step, result, id, ..
+                } = e
+                {
                     if step.last {
-                        let network_info = self.swarm.network_info();
-                        let num_peers = network_info.num_peers();
-                        let connection_counters = network_info.connection_counters();
-                        let num_connections = connection_counters.num_connections();
-                        tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                        match result {
+                            libp2p::kad::QueryResult::Bootstrap(result) => {
+                                let network_info = self.swarm.network_info();
+                                let num_peers = network_info.num_peers();
+                                let connection_counters = network_info.connection_counters();
+                                let num_connections = connection_counters.num_connections();
 
-                        send_test_event(&self.event_sender, TestEvent::PeriodicBootstrapCompleted)
-                            .await;
+                                let result = match result {
+                                    Ok(BootstrapOk { peer, .. }) => {
+                                        tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                                        Ok(peer)
+                                    }
+                                    Err(BootstrapError::Timeout { peer, .. }) => {
+                                        tracing::warn!(%num_peers, %num_connections, "Periodic bootstrap failed");
+                                        Err(peer)
+                                    }
+                                };
+                                send_test_event(
+                                    &self.event_sender,
+                                    TestEvent::PeriodicBootstrapCompleted(result),
+                                )
+                                .await;
+                            }
+                            _ => self.test_query_completed(id, result).await,
+                        }
+                    } else {
+                        self.test_query_progressed(id, result).await;
                     }
                 }
                 Ok(())
@@ -675,7 +705,7 @@ impl MainLoop {
                 let result = self.publish_data(topic, &data);
                 let _ = sender.send(result);
             }
-            Command::Test(command) => self.handle_test_command(command).await,
+            Command::_Test(command) => self.handle_test_command(command).await,
         };
     }
 
@@ -726,16 +756,103 @@ impl MainLoop {
                     .behaviour_mut()
                     .kademlia
                     .kbuckets()
+                    // Cannot .into_iter() a KBucketRef, hence the collect followed by flat_map
                     .map(|kbucket_ref| {
                         kbucket_ref
                             .iter()
                             .map(|entry_ref| entry_ref.node.key.preimage().clone())
                             .collect::<Vec<_>>()
                     })
-                    .flat_map(|x| x.into_iter())
+                    .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
                     .collect::<HashSet<_>>();
                 sender.send(peers).expect("Receiver not to be dropped")
             }
+            TestCommand::GetProviders { key, sender } => {
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_providers(key.into());
+                self._pending_test_queries
+                    .inner
+                    .get_providers
+                    .insert(query_id, sender);
+            }
+        }
+    }
+
+    /// Handle the final stage of the query
+    async fn test_query_completed(&mut self, _id: QueryId, _result: QueryResult) {
+        #[cfg(test)]
+        match _result {
+            QueryResult::GetProviders(result) => {
+                use libp2p::kad::GetProvidersOk;
+
+                let result = match result {
+                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
+                    Ok(_) => Ok(Default::default()),
+                    Err(error) => Err(error.into()),
+                };
+
+                let sender = self
+                    ._pending_test_queries
+                    .inner
+                    .get_providers
+                    .remove(&_id)
+                    .expect("Query to be pending");
+
+                sender
+                    .send(result)
+                    .await
+                    .expect("Receiver not to be dropped");
+            }
+            QueryResult::StartProviding(result) => {
+                use libp2p::kad::AddProviderOk;
+
+                let result = match result {
+                    Ok(AddProviderOk { key }) => Ok(key),
+                    Err(error) => Err(error.into_key()),
+                };
+                send_test_event(
+                    &self.event_sender,
+                    TestEvent::StartProvidingCompleted(result),
+                )
+                .await
+            }
+            _ => {}
+        }
+    }
+
+    /// Handle all stages except the final one
+    async fn test_query_progressed(&mut self, _id: QueryId, _result: QueryResult) {
+        #[cfg(test)]
+        match _result {
+            QueryResult::GetProviders(result) => {
+                use libp2p::kad::GetProvidersOk;
+
+                let result = match result {
+                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
+                    Ok(_) => Ok(Default::default()),
+                    Err(_) => {
+                        unreachable!(
+                            "libp2p makes a query step the last one if the query timed out"
+                        )
+                    }
+                };
+
+                let sender = self
+                    ._pending_test_queries
+                    .inner
+                    .get_providers
+                    .get(&_id)
+                    .expect("Query to be pending");
+
+                sender
+                    .send(result)
+                    .await
+                    .expect("Receiver not to be dropped");
+            }
+            _ => {}
         }
     }
 }
@@ -748,18 +865,51 @@ async fn send_test_event(_event_sender: &mpsc::Sender<Event>, _event: TestEvent)
         .expect("Event receiver not to be dropped");
 }
 
+#[cfg(test)]
 #[derive(Clone)]
 pub struct TestClient {
     sender: mpsc::Sender<Command>,
 }
 
+#[cfg(test)]
 impl TestClient {
     pub async fn get_peers_from_dht(&self) -> HashSet<PeerId> {
         let (sender, receiver) = oneshot::channel();
         self.sender
-            .send(Command::Test(TestCommand::GetPeersFromDHT(sender)))
+            .send(Command::_Test(TestCommand::GetPeersFromDHT(sender)))
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
+
+    pub async fn get_providers(&self, key: Vec<u8>) -> Result<HashSet<PeerId>, ()> {
+        let (sender, mut receiver) = mpsc::channel(1);
+        self.sender
+            .send(Command::_Test(TestCommand::GetProviders { key, sender }))
+            .await
+            .expect("Command receiver not to be dropped");
+
+        let mut providers = HashSet::new();
+
+        while let Some(partial_result) = receiver.recv().await {
+            match partial_result {
+                Ok(more_providers) => providers.extend(more_providers.into_iter()),
+                Err(_) => return Err(()),
+            }
+        }
+
+        Ok(providers)
+    }
+}
+
+#[derive(Debug, Default)]
+struct TestQueries {
+    #[cfg(test)]
+    inner: TestQueriesInner,
+}
+
+#[cfg(test)]
+#[derive(Debug, Default)]
+struct TestQueriesInner {
+    get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>>>>,
 }
