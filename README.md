@@ -108,15 +108,6 @@ sudo docker run \
 
 Our images are updated on every `pathfinder` release. This means that the `:latest` docker image does not track our `main` branch here, but instead matches the latest `pathfinder` [release](https://github.com/eqlabs/pathfinder/releases).
 
-### Building the container image yourself
-
-Building the container image from source code is necessary only in special cases or development.
-You can build the image by running:
-
-```bash
-docker build -t pathfinder .
-```
-
 ### Docker compose
 
 Create the folder `pathfinder` where your `docker-compose.yaml is
