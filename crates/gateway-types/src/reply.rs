@@ -732,12 +732,17 @@ mod tests {
     /// These tests ensure backwards compatibility for various types that may
     /// still exist in older pathfinder databases.
     mod backward_compatibility {
-        use super::super::Transaction;
+        use super::super::{Block, Transaction};
         use starknet_gateway_test_fixtures::*;
 
         #[test]
         fn transaction() {
             serde_json::from_str::<Transaction>(v0_8_2::transaction::INVOKE).unwrap();
+        }
+
+        #[test]
+        fn block() {
+            serde_json::from_str::<Block>(old::block::NUMBER_192).unwrap();
         }
     }
 }

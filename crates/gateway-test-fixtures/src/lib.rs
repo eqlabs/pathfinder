@@ -10,6 +10,12 @@ macro_rules! bytes_fixture {
     };
 }
 
+pub mod old {
+    pub mod block {
+        pub const NUMBER_192: &str = str_fixture!("old/block/192.json");
+    }
+}
+
 pub mod v0_8_2 {
     pub mod block {
         pub const GENESIS: &str = str_fixture!("0.8.2/block/genesis.json");
