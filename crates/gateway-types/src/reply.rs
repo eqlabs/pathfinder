@@ -510,7 +510,7 @@ pub mod transaction {
     }
 
     const fn l1_handler_default_nonce() -> TransactionNonce {
-        TransactionNonce(stark_hash::StarkHash::ZERO)
+        TransactionNonce(stark_hash::Felt::ZERO)
     }
 
     impl From<DeclareTransaction> for Transaction {
