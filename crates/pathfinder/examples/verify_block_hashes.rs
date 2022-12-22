@@ -1,8 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
-use pathfinder_lib::state::block_hash::{
-    calculate_event_commitment, calculate_transaction_commitment, verify_block_hash, VerifyResult,
-};
+use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
@@ -58,18 +56,6 @@ fn main() -> anyhow::Result<()> {
         let block_hash = block.hash;
         let (transactions, receipts): (Vec<_>, Vec<_>) =
             transactions_and_receipts.into_iter().unzip();
-
-        let at = std::time::Instant::now();
-        let (transaction_commitment, event_commitment) = {
-            let transaction_commitment = calculate_transaction_commitment(&transactions)?;
-            let event_commitment = calculate_event_commitment(&receipts)?;
-            (transaction_commitment, event_commitment)
-        };
-        let ms = at.elapsed().as_millis() as u32;
-        println!(
-            "block: {} commitments ({} ms):\n\ttx: {}\n\tev: {}",
-            block.number, ms, transaction_commitment, event_commitment
-        );
 
         let block = Block {
             block_hash: block.hash,
