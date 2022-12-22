@@ -294,6 +294,9 @@ impl StarknetBlocksTable {
 
                 let sequencer_address = row.get_unwrap("sequencer_address");
 
+                let transaction_commitment: Option<StarknetCommitment> = row.get_unwrap("transaction_commitment");
+                let event_commitment: Option<StarknetCommitment> = row.get_unwrap("event_commitment");
+
                 let block = StarknetBlock {
                     number,
                     hash,
@@ -301,8 +304,8 @@ impl StarknetBlocksTable {
                     timestamp,
                     gas_price,
                     sequencer_address,
-                    transaction_commitment: row.get_unwrap("transaction_commitment"),
-                    event_commitment: row.get_unwrap("transaction_commitment"),
+                    transaction_commitment: transaction_commitment.unwrap_or_else(|| StarknetCommitment(StarkHash::ZERO)),
+                    event_commitment: event_commitment.unwrap_or_else(|| StarknetCommitment(StarkHash::ZERO)),
                 };
 
                 Ok(Some(block))
