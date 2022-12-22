@@ -90,7 +90,7 @@ impl Default for TestPeer {
 /// all events as soon as they're sent otherwise the main loop will stall.
 /// `f` should return `Some(data)` where `data` is extracted from
 /// the event type of interest. For other events that should be ignored
-/// `f` should return None. This function returns a receiver to the filtered
+/// `f` should return `None`. This function returns a receiver to the filtered
 /// events' data channel.
 fn filter_events<T: Debug + Send + 'static>(
     mut event_receiver: EventReceiver,
@@ -249,4 +249,97 @@ async fn provide_capability() {
     let providers = peer2.client.for_test().get_providers(key).await.unwrap();
 
     assert_eq!(providers, [peer1.peer_id].into());
+}
+
+#[test_log::test(tokio::test)]
+async fn subscription_and_propagation() {
+    use p2p_proto::common::{BlockBody, BlockHeader};
+    use p2p_proto::propagation::{
+        BlockStateUpdate, Message, NewBlockBody, NewBlockHeader, NewBlockState,
+    };
+    use pathfinder_common::starkhash;
+
+    const NEW_BLOCK_HEADER: Message = Message::NewBlockHeader(NewBlockHeader {
+        header: BlockHeader {
+            parent_block_hash: starkhash!("01"),
+            block_number: 2,
+            global_state_root: starkhash!("02"),
+            sequencer_address: starkhash!("03"),
+            block_timestamp: 4,
+            transaction_count: 5,
+            transaction_commitment: starkhash!("06"),
+            event_count: 7,
+            event_commitment: starkhash!("08"),
+            protocol_version: 9,
+        },
+    });
+    const NEW_BLOCK_BODY: Message = Message::NewBlockBody(NewBlockBody {
+        block_hash: starkhash!("01"),
+        body: BlockBody {
+            // TODO populate with all variants to e2e test protobuf stuff?
+            receipts: vec![],
+            transactions: vec![],
+        },
+    });
+    const NEW_BLOCK_STATE: Message = Message::NewBlockState(NewBlockState {
+        block_hash: starkhash!("01"),
+        state_update: BlockStateUpdate {
+            contract_diffs: vec![],
+            declared_contract_class_hashes: vec![],
+            deployed_contracts: vec![],
+        },
+    });
+
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let mut peer1 = TestPeer::default();
+    let mut peer2 = TestPeer::default();
+
+    let addr1 = peer1.start_listening().await.unwrap();
+    let addr2 = peer2.start_listening().await.unwrap();
+
+    tracing::info!(%peer1.peer_id, %addr1);
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    let mut peer2_subscribed_to_peer1 = filter_events(peer1.event_receiver, |event| match event {
+        Event::Test(TestEvent::Subscribed { .. }) => Some(()),
+        _ => None,
+    });
+
+    let mut propagated_to_peer2 = filter_events(peer2.event_receiver, |event| match event {
+        Event::BlockPropagation(message) => Some(message),
+        _ => None,
+    });
+
+    const TOPIC: &str = "TOPIC";
+
+    peer2.client.dial(peer1.peer_id, addr1).await.unwrap();
+    peer2.client.subscribe_topic(TOPIC).await.unwrap();
+    peer2_subscribed_to_peer1.recv().await;
+    // Apparently some internal libp2p futures still need to be polled
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    for expected in [NEW_BLOCK_HEADER, NEW_BLOCK_BODY, NEW_BLOCK_STATE] {
+        peer1
+            .client
+            .publish_propagation_message(TOPIC, expected.clone())
+            .await
+            .unwrap();
+
+        let msg = propagated_to_peer2.recv().await.unwrap();
+
+        assert_eq!(msg, expected);
+    }
+}
+
+#[test_log::test(tokio::test)]
+async fn todo() {
+    //send_sync_request
+    //send_sync_response
+    //send_sync_status_request
+    //periodic_sync_status
+    //Events
+    //  SyncPeerConnected
+    //  SyncPeerRequestStatus
+    //  InboundSyncRequest
 }

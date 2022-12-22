@@ -269,6 +269,8 @@ pub enum TestEvent {
     NewListenAddress(Multiaddr),
     PeriodicBootstrapCompleted(Result<PeerId, PeerId>),
     StartProvidingCompleted(Result<Key, Key>),
+    ConnectionEstablished { outbound: bool, remote: PeerId },
+    Subscribed { remote: PeerId, topic: String },
     Dummy,
 }
 
@@ -368,9 +370,20 @@ impl MainLoop {
                         let _ = sender.send(Ok(()));
                         tracing::debug!(%peer_id, "Established outbound connection");
                     }
+                    // FIXME else: trigger an error?
                 } else {
                     tracing::debug!(%peer_id, "Established inbound connection");
                 }
+
+                send_test_event(
+                    &self.event_sender,
+                    TestEvent::ConnectionEstablished {
+                        outbound: endpoint.is_dialer(),
+                        remote: peer_id,
+                    },
+                )
+                .await;
+
                 Ok(())
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => {

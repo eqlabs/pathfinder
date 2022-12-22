@@ -29,5 +29,8 @@ zeroize = "1.5.7"
 [dev-dependencies]
 env_logger = "0.10.0"
 hex = "0.4.3"
+hex-literal = "0.3"
+# TODO Move starkhash!() to stark_hash crate
+pathfinder-common = { path = "../common" }
 test-log = { version = "0.2.11", default-features = false, features = ["trace"] }
 tokio = { version = "1.20.1", features = ["test-util"] }

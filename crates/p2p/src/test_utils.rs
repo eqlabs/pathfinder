@@ -49,6 +49,19 @@ pub(super) async fn handle_event<E: std::fmt::Debug>(
         SwarmEvent::NewListenAddr { address, .. } => {
             send_event(event_sender, TestEvent::NewListenAddress(address)).await;
         }
+        SwarmEvent::Behaviour(behaviour::Event::Gossipsub(GossipsubEvent::Subscribed {
+            peer_id,
+            topic,
+        })) => {
+            send_event(
+                event_sender,
+                TestEvent::Subscribed {
+                    remote: peer_id,
+                    topic: topic.into_string(),
+                },
+            )
+            .await;
+        }
         _ => {}
     }
 }
