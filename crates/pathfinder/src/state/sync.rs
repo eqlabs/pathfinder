@@ -1170,7 +1170,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    #[ignore = "???"]
     async fn l1_update() {
         let chain = Chain::Testnet;
         let sync_state = Arc::new(SyncState::default());

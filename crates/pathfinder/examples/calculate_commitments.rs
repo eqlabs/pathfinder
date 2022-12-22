@@ -8,7 +8,7 @@ use pathfinder_storage::{
 /// Calculate transcation and event commitments for blocks.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example calculate_commitments testnet.sqlite`
+/// `cargo run --release -p pathfinder --example calculate_commitments /path/to/file.sqlite`
 /// 
 fn main() -> anyhow::Result<()> {
     let database_path = std::env::args().nth(1).unwrap();
