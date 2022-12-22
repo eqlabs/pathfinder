@@ -342,7 +342,7 @@ impl CommitmentTree {
 /// The transaction commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (transaction_index, transaction_hash_with_signature)
 /// key-value pairs to the tree and computing the root hash.
-fn calculate_transaction_commitment(transactions: &[Transaction]) -> Result<StarkHash> {
+pub fn calculate_transaction_commitment(transactions: &[Transaction]) -> Result<StarkHash> {
     let mut tree = CommitmentTree::default();
 
     transactions
@@ -397,7 +397,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> StarkHash {
 /// The event commitment is the root of the Patricia Merkle tree with height 64
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
-fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<StarkHash> {
+pub fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<StarkHash> {
     let mut tree = CommitmentTree::default();
 
     transaction_receipts

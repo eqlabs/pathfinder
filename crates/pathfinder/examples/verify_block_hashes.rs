@@ -1,6 +1,8 @@
 use anyhow::Context;
 use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
-use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
+use pathfinder_lib::state::block_hash::{
+    calculate_event_commitment, calculate_transaction_commitment, verify_block_hash, VerifyResult,
+};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
@@ -30,14 +32,21 @@ fn main() -> anyhow::Result<()> {
         .connection()
         .context("Opening database connection")?;
 
+    let blocks_limit = std::env::args()
+        .nth(3)
+        .and_then(|limit| limit.parse::<u64>().ok())
+        .unwrap_or(u64::MAX);
+
     let mut parent_block_hash = StarknetBlockHash(StarkHash::ZERO);
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();
         StarknetBlocksTable::get_latest_number(&tx)?.unwrap()
     };
+    println!("{}", latest_block_number.get());
 
-    for block_number in 0..latest_block_number.get() {
+    let num_blocks = latest_block_number.get().min(blocks_limit);
+    for block_number in 0..num_blocks {
         let tx = db.transaction().unwrap();
         let block_id =
             StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(block_number));
@@ -49,6 +58,18 @@ fn main() -> anyhow::Result<()> {
         let block_hash = block.hash;
         let (transactions, receipts): (Vec<_>, Vec<_>) =
             transactions_and_receipts.into_iter().unzip();
+
+        let at = std::time::Instant::now();
+        let (transaction_commitment, event_commitment) = {
+            let transaction_commitment = calculate_transaction_commitment(&transactions)?;
+            let event_commitment = calculate_event_commitment(&receipts)?;
+            (transaction_commitment, event_commitment)
+        };
+        let ms = at.elapsed().as_millis() as u32;
+        println!(
+            "block: {} commitments ({} ms):\n\ttx: {}\n\tev: {}",
+            block.number, ms, transaction_commitment, event_commitment
+        );
 
         let block = Block {
             block_hash: block.hash,
