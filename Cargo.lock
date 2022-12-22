@@ -1153,7 +1153,7 @@ version = "0.1.0"
 source = "git+https://github.com/eqlabs/cairo?branch=force-cairo-vm-0.1.0#fa91b1399ada5e09a5480731486e0b5567c6a03d"
 dependencies = [
  "chrono",
- "env_logger",
+ "env_logger 0.9.3",
  "indexmap",
  "itertools",
  "log",
@@ -2262,6 +2262,19 @@ checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
 dependencies = [
  "atty",
  "humantime",
+ "log",
+ "regex",
+ "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85cdab6a89accf66733ad5a1693a4dcced6aeff64602b634530dd73c1f3ee9f0"
+dependencies = [
+ "humantime",
+ "is-terminal",
  "log",
  "regex",
  "termcolor",
@@ -4998,6 +5011,7 @@ dependencies = [
  "base64 0.13.1",
  "clap 3.2.23",
  "delay_map",
+ "env_logger 0.10.0",
  "futures",
  "hex",
  "libp2p",

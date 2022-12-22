@@ -131,8 +131,8 @@ fn consume_events(mut event_receiver: EventReceiver) {
 
 #[test_log::test(tokio::test)]
 async fn dial() {
+    let _ = env_logger::builder().is_test(true).try_init();
     // tokio::time::pause() does not make a difference
-
     let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
@@ -152,6 +152,8 @@ async fn dial() {
 
 #[test_log::test(tokio::test)]
 async fn periodic_bootstrap() {
+    let _ = env_logger::builder().is_test(true).try_init();
+
     // TODO figure out how to make this test run using tokio::time::pause()
     // instead of arbitrary short delays
     let periodic_cfg = PeriodicTaskConfig {
@@ -216,6 +218,8 @@ async fn periodic_bootstrap() {
 
 #[test_log::test(tokio::test)]
 async fn provide_capability() {
+    let _ = env_logger::builder().is_test(true).try_init();
+
     let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
@@ -235,7 +239,8 @@ async fn provide_capability() {
     peer1.client.provide_capability("blah").await.unwrap();
     peer1_started_providing.recv().await;
 
-    // Apparently sometimes still not yet providing at this point
+    // Apparently sometimes still not yet providing at this point and there's
+    // no other event to rely on
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // sha256("blah")
