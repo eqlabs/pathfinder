@@ -26,7 +26,6 @@ fn main() -> anyhow::Result<()> {
         let tx = db.transaction().unwrap();
         StarknetBlocksTable::get_latest_number(&tx)?.unwrap()
     };
-    println!("{}", latest_block_number.get());
 
     let num_blocks = latest_block_number.get().min(blocks_limit);
     for block_number in 0..num_blocks {
