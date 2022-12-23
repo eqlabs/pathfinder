@@ -1,0 +1,65 @@
+name: "release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "x.y.z format"
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Branch verification
+        if: github.ref_name != 'main' || github.ref_type != 'branch'
+        run: |
+          echo "::error This action may only be run on 'main' branch"
+          exit 1
+
+      - uses: actions/checkout@v3
+
+      - name: Update pathfinder package version
+        run: |
+          sed -i -e 's/version = ".*"/version = "${{ github.event.inputs.version }}"/' crates/pathfinder/Cargo.toml
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --local user.email "${{ github.actor }}@users.noreply.github.com"
+          git config --local user.name "${{ github.actor }}"
+          git switch -c release-${{ github.event.inputs.version }}
+          git commit -a -m "feat: update package version to ${{ github.event.inputs.version }}"
+          git push --set-upstream origin release-${{ github.event.inputs.version }}
+
+          gh pr create --base main --fill
+
+      - name: Approve PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          gh pr review --approve
+          gh pr merge --delete-branch --merge
+            
+      - name: Tag & release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git switch main
+          git pull
+          git tag v${{ github.event.inputs.version }}
+          git push origin v${{ github.event.inputs.version }}
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+              /repos/eqlabs/pathfinder/releases \
+            -f tag_name='v${{ github.event.inputs.version }}' \
+            -f target_commitish='main' \
+            -f name='v${{ github.event.inputs.version }}' \
+            -f body='Description of the release' \
+            -F draft=true \
+            -F prerelease=false \
+            -F generate_release_notes=true 
