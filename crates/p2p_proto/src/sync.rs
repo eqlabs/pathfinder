@@ -1,3 +1,5 @@
+#[cfg(feature = "test-utils")]
+use fake::{Dummy, Fake};
 use stark_hash::Felt;
 
 use crate::{ToProtobuf, TryFromProtobuf};
@@ -93,6 +95,7 @@ impl ToProtobuf<proto::sync::Request> for Request {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub enum Direction {
     Forward,
     Backward,
@@ -123,6 +126,7 @@ impl ToProtobuf<i32> for Direction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::GetBlockHeaders")]
 pub struct GetBlockHeaders {
     pub start_block: Felt,
@@ -132,6 +136,7 @@ pub struct GetBlockHeaders {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::GetBlockBodies")]
 pub struct GetBlockBodies {
     pub start_block: Felt,
@@ -141,6 +146,7 @@ pub struct GetBlockBodies {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::GetStateDiffs")]
 pub struct GetStateDiffs {
     pub start_block: Felt,
@@ -235,24 +241,28 @@ impl ToProtobuf<proto::sync::Response> for Response {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::BlockHeaders")]
 pub struct BlockHeaders {
     pub headers: Vec<BlockHeader>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::BlockBodies")]
 pub struct BlockBodies {
     pub block_bodies: Vec<BlockBody>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::StateDiffs")]
 pub struct StateDiffs {
     pub block_state_updates: Vec<BlockStateUpdateWithHash>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::state_diffs::BlockStateUpdateWithHash")]
 pub struct BlockStateUpdateWithHash {
     pub block_hash: Felt,
