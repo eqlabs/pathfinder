@@ -533,25 +533,50 @@ impl StarknetTransactionsTable {
         Ok(())
     }
 
+    pub fn update_block_commitments(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksBlockId,
+        transaction_commitment: StarknetCommitment,
+        event_commitment: StarknetCommitment,
+    ) -> anyhow::Result<()> {
+        let block_hash = match Self::get_block_hash(tx, block)? {
+            Some(hash) => hash,
+            None => return Ok(())
+        };
+
+        let sql = r"UPDATE starknet_blocks SET
+                transaction_commitment = :transaction_commitment,
+                event_commitment = :event_commitment
+            WHERE hash = :block_hash";
+        tx.execute(sql, named_params![
+                ":transaction_commitment": transaction_commitment,
+                ":event_commitment": event_commitment,
+                ":block_hash": block_hash,
+            ])
+            .context("Update transaction and event commitments")?;
+
+        Ok(())
+    }
+
+    fn get_block_hash(tx: &Transaction<'_>, block: StarknetBlocksBlockId) -> anyhow::Result<Option<StarknetBlockHash>> {
+        Ok(match block {
+            StarknetBlocksBlockId::Hash(hash) => Some(hash),
+            StarknetBlocksBlockId::Number(number) =>
+                StarknetBlocksTable::get(tx, number.into())?
+                    .map(|block| block.hash),
+            StarknetBlocksBlockId::Latest =>
+                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)?
+                    .map(|block| block.hash)
+        })
+    }
+
     pub fn get_transaction_data_for_block(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Vec<(transaction::Transaction, transaction::Receipt)>> {
-        // Identify block hash
-        let block_hash = match block {
-            StarknetBlocksBlockId::Number(number) => {
-                match StarknetBlocksTable::get(tx, number.into())? {
-                    Some(block) => block.hash,
-                    None => return Ok(Vec::new()),
-                }
-            }
-            StarknetBlocksBlockId::Hash(hash) => hash,
-            StarknetBlocksBlockId::Latest => {
-                match StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)? {
-                    Some(block) => block.hash,
-                    None => return Ok(Vec::new()),
-                }
-            }
+        let block_hash = match Self::get_block_hash(tx, block)? {
+            Some(hash) => hash,
+            None => return Ok(Vec::new())
         };
 
         let mut stmt = tx
