@@ -76,7 +76,7 @@ pub(super) async fn handle_command(
             let peers = behavior
                 .kademlia
                 .kbuckets()
-                // Cannot .into_iter() a KBucketRef, hence the collect followed by flat_map
+                // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
                 .map(|kbucket_ref| {
                     kbucket_ref
                         .iter()
