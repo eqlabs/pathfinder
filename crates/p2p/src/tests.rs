@@ -254,50 +254,7 @@ async fn provide_capability() {
 #[test_log::test(tokio::test)]
 async fn subscription_and_propagation() {
     use fake::{Fake, Faker};
-    use p2p_proto::common::{BlockBody, BlockHeader};
-    use p2p_proto::propagation::{
-        BlockStateUpdate, Message, NewBlockBody, NewBlockHeader, NewBlockState,
-    };
-    use pathfinder_common::felt;
-
-    let new_block_header = Faker.fake::<NewBlockHeader>();
-    let new_block_body = Faker.fake::<NewBlockBody>();
-    let new_block_state = Faker.fake::<NewBlockState>();
-
-    tracing::info!(?new_block_header);
-    tracing::info!(?new_block_body);
-    tracing::info!(?new_block_state);
-
-    const NEW_BLOCK_HEADER: Message = Message::NewBlockHeader(NewBlockHeader {
-        header: BlockHeader {
-            parent_block_hash: felt!("01"),
-            block_number: 2,
-            global_state_root: felt!("02"),
-            sequencer_address: felt!("03"),
-            block_timestamp: 4,
-            transaction_count: 5,
-            transaction_commitment: felt!("06"),
-            event_count: 7,
-            event_commitment: felt!("08"),
-            protocol_version: 9,
-        },
-    });
-    const NEW_BLOCK_BODY: Message = Message::NewBlockBody(NewBlockBody {
-        block_hash: felt!("01"),
-        body: BlockBody {
-            // TODO populate with all variants to e2e test protobuf stuff?
-            receipts: vec![],
-            transactions: vec![],
-        },
-    });
-    const NEW_BLOCK_STATE: Message = Message::NewBlockState(NewBlockState {
-        block_hash: felt!("01"),
-        state_update: BlockStateUpdate {
-            contract_diffs: vec![],
-            declared_contract_class_hashes: vec![],
-            deployed_contracts: vec![],
-        },
-    });
+    use p2p_proto::propagation::{Message, NewBlockBody, NewBlockHeader, NewBlockState};
 
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -328,7 +285,11 @@ async fn subscription_and_propagation() {
     // Apparently some internal libp2p futures still need to be polled
     tokio::time::sleep(Duration::from_millis(10)).await;
 
-    for expected in [NEW_BLOCK_HEADER, NEW_BLOCK_BODY, NEW_BLOCK_STATE] {
+    let new_block_header = Message::NewBlockHeader(Faker.fake::<NewBlockHeader>());
+    let new_block_body = Message::NewBlockBody(Faker.fake::<NewBlockBody>());
+    let new_block_state = Message::NewBlockState(Faker.fake::<NewBlockState>());
+
+    for expected in [new_block_header, new_block_body, new_block_state] {
         peer1
             .client
             .publish_propagation_message(TOPIC, expected.clone())
