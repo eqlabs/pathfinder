@@ -282,8 +282,6 @@ async fn subscription_and_propagation() {
     peer2.client.dial(peer1.peer_id, addr1).await.unwrap();
     peer2.client.subscribe_topic(TOPIC).await.unwrap();
     peer2_subscribed_to_peer1.recv().await;
-    // Apparently some internal libp2p futures still need to be polled
-    tokio::time::sleep(Duration::from_millis(10)).await;
 
     let new_block_header = Message::NewBlockHeader(Faker.fake::<NewBlockHeader>());
     let new_block_body = Message::NewBlockBody(Faker.fake::<NewBlockBody>());
