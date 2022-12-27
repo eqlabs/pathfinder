@@ -270,6 +270,7 @@ pub struct BlockStateUpdateWithHash {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::Status")]
 pub struct Status {
     pub height: u64,

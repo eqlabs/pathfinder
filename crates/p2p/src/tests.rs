@@ -301,6 +301,86 @@ async fn subscription_and_propagation() {
 }
 
 #[test_log::test(tokio::test)]
+async fn sync_request_response() {
+    use fake::{Fake, Faker};
+    use p2p_proto::sync::{
+        BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders, GetStateDiffs, Request,
+        Response, StateDiffs, Status,
+    };
+
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let mut peer1 = TestPeer::default();
+    let mut peer2 = TestPeer::default();
+
+    let addr1 = peer1.start_listening().await.unwrap();
+    let addr2 = peer2.start_listening().await.unwrap();
+
+    tracing::info!(%peer1.peer_id, %addr1);
+    tracing::info!(%peer2.peer_id, %addr2);
+
+    let mut peer1_inbound_sync_requests =
+        filter_events(peer1.event_receiver, move |event| match event {
+            Event::InboundSyncRequest {
+                from,
+                request,
+                channel,
+            } => {
+                assert_eq!(from, peer2.peer_id);
+                Some((request, channel))
+            }
+            _ => None,
+        });
+
+    consume_events(peer2.event_receiver);
+
+    // Dial to fill in the DHTs
+    peer1
+        .client
+        .dial(peer2.peer_id.clone(), addr2)
+        .await
+        .unwrap();
+
+    for (expected_request, expected_response) in [
+        (
+            Request::GetBlockHeaders(Faker.fake::<GetBlockHeaders>()),
+            Response::BlockHeaders(Faker.fake::<BlockHeaders>()),
+        ),
+        (
+            Request::GetBlockBodies(Faker.fake::<GetBlockBodies>()),
+            Response::BlockBodies(Faker.fake::<BlockBodies>()),
+        ),
+        (
+            Request::GetStateDiffs(Faker.fake::<GetStateDiffs>()),
+            Response::StateDiffs(Faker.fake::<StateDiffs>()),
+        ),
+        (
+            Request::Status(Faker.fake::<Status>()),
+            Response::Status(Faker.fake::<Status>()),
+        ),
+    ] {
+        let expected_request_cloned = expected_request.clone();
+        let expected_response_cloned = expected_response.clone();
+        let client2 = peer2.client.clone();
+
+        tokio::spawn(async move {
+            let resp = client2
+                .send_sync_request(peer1.peer_id, expected_request_cloned)
+                .await
+                .unwrap();
+            assert_eq!(resp, expected_response_cloned);
+        });
+
+        let (request, resp_channel) = peer1_inbound_sync_requests.recv().await.unwrap();
+        assert_eq!(request, expected_request);
+        peer1
+            .client
+            .send_sync_response(resp_channel, expected_response)
+            .await;
+    }
+}
+
+#[test_log::test(tokio::test)]
 async fn todo() {
     //send_sync_request
     //send_sync_response
