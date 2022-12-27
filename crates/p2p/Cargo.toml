@@ -27,10 +27,14 @@ tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
 zeroize = "1.5.7"
 
 [dev-dependencies]
+fake = { version = "2.5.0", features = ["derive"] }
 env_logger = "0.10.0"
 hex = "0.4.3"
 hex-literal = "0.3"
 # TODO Move starkhash!() to stark_hash crate
 pathfinder-common = { path = "../common" }
+p2p_proto = { path = "../p2p_proto", features = ["test-utils"] }
+rand = "0.8.5"
+stark_hash = { path = "../stark_hash", features = ["test-utils"] }
 test-log = { version = "0.2.11", default-features = false, features = ["trace"] }
 tokio = { version = "1.20.1", features = ["test-util"] }
