@@ -5063,6 +5063,7 @@ name = "p2p"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_matches",
  "async-trait",
  "base64 0.13.1",
  "clap 3.2.23",
