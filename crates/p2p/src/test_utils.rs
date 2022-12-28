@@ -145,29 +145,26 @@ pub(super) async fn query_progressed(
     id: QueryId,
     result: QueryResult,
 ) {
-    match result {
-        QueryResult::GetProviders(result) => {
-            use libp2p::kad::GetProvidersOk;
+    if let QueryResult::GetProviders(result) = result {
+        use libp2p::kad::GetProvidersOk;
 
-            let result = match result {
-                Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
-                Ok(_) => Ok(Default::default()),
-                Err(_) => {
-                    unreachable!("when a query times out libp2p makes it the last stage")
-                }
-            };
+        let result = match result {
+            Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
+            Ok(_) => Ok(Default::default()),
+            Err(_) => {
+                unreachable!("when a query times out libp2p makes it the last stage")
+            }
+        };
 
-            let sender = pending_test_queries
-                .get_providers
-                .get(&id)
-                .expect("Query to be pending");
+        let sender = pending_test_queries
+            .get_providers
+            .get(&id)
+            .expect("Query to be pending");
 
-            sender
-                .send(result)
-                .await
-                .expect("Receiver not to be dropped");
-        }
-        _ => {}
+        sender
+            .send(result)
+            .await
+            .expect("Receiver not to be dropped");
     }
 }
 

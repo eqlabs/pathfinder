@@ -337,7 +337,7 @@ async fn sync_request_response() {
     // Dial so that the peers have each other in their DHTs, the direction doesn't matter
     peer1
         .client
-        .dial(peer2.peer_id.clone(), addr2)
+        .dial(peer2.peer_id, addr2)
         .await
         .unwrap();
 
@@ -435,7 +435,7 @@ async fn sync_status_events_and_periodic() {
     // Dial so that the peers have each other in their DHTs, the direction doesn't matter
     peer1
         .client
-        .dial(peer2.peer_id.clone(), addr2.clone())
+        .dial(peer2.peer_id, addr2.clone())
         .await
         .unwrap();
 
