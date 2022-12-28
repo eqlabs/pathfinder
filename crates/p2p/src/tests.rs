@@ -335,11 +335,7 @@ async fn sync_request_response() {
     consume_events(peer2.event_receiver);
 
     // Dial so that the peers have each other in their DHTs, the direction doesn't matter
-    peer1
-        .client
-        .dial(peer2.peer_id, addr2)
-        .await
-        .unwrap();
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
     for (expected_request, expected_response) in [
         (
