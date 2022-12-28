@@ -439,8 +439,12 @@ impl MainLoop {
                                 .kademlia
                                 .add_address(&peer_id, addr.clone());
                         }
-                        // FIXME when no listen addrs then this fails
-                        tracing::debug!(%peer_id, "Added peer to DHT");
+
+                        if listen_addrs.is_empty() {
+                            tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
+                        } else {
+                            tracing::debug!(%peer_id, "Added peer to DHT");
+                        }
                     }
 
                     if protocols
