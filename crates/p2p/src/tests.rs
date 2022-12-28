@@ -334,7 +334,7 @@ async fn sync_request_response() {
 
     consume_events(peer2.event_receiver);
 
-    // Dial to fill in the DHTs
+    // Dial so that the peers have each other in their DHTs
     peer1
         .client
         .dial(peer2.peer_id.clone(), addr2)
@@ -382,12 +382,9 @@ async fn sync_request_response() {
 
 #[test_log::test(tokio::test)]
 async fn todo() {
-    //send_sync_request
-    //send_sync_response
     //send_sync_status_request
     //periodic_sync_status
     //Events
     //  SyncPeerConnected
     //  SyncPeerRequestStatus
-    //  InboundSyncRequest
 }
