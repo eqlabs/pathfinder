@@ -17,7 +17,7 @@ pub async fn get_block_by_number(user: &mut GooseUser, block_number: u64) -> Met
     .await
 }
 
-pub async fn get_block_by_hash(user: &mut GooseUser, block_hash: StarkHash) -> MethodResult<Block> {
+pub async fn get_block_by_hash(user: &mut GooseUser, block_hash: Felt) -> MethodResult<Block> {
     post_jsonrpc_request(
         user,
         "starknet_getBlockWithTxHashes",
@@ -28,7 +28,7 @@ pub async fn get_block_by_hash(user: &mut GooseUser, block_hash: StarkHash) -> M
 
 pub async fn get_transaction_by_hash(
     user: &mut GooseUser,
-    hash: StarkHash,
+    hash: Felt,
 ) -> MethodResult<Transaction> {
     post_jsonrpc_request(
         user,
@@ -40,7 +40,7 @@ pub async fn get_transaction_by_hash(
 
 pub async fn get_transaction_by_block_hash_and_index(
     user: &mut GooseUser,
-    block_hash: StarkHash,
+    block_hash: Felt,
     index: usize,
 ) -> MethodResult<Transaction> {
     post_jsonrpc_request(
@@ -66,7 +66,7 @@ pub async fn get_transaction_by_block_number_and_index(
 
 pub async fn get_transaction_receipt_by_hash(
     user: &mut GooseUser,
-    hash: StarkHash,
+    hash: Felt,
 ) -> MethodResult<TransactionReceipt> {
     post_jsonrpc_request(
         user,
@@ -78,7 +78,7 @@ pub async fn get_transaction_receipt_by_hash(
 
 pub async fn get_block_transaction_count_by_hash(
     user: &mut GooseUser,
-    hash: StarkHash,
+    hash: Felt,
 ) -> MethodResult<u64> {
     post_jsonrpc_request(
         user,
@@ -136,8 +136,8 @@ pub async fn get_events(
 pub struct EventFilter {
     pub from_block: Option<u64>,
     pub to_block: Option<u64>,
-    pub address: Option<StarkHash>,
-    pub keys: Vec<StarkHash>,
+    pub address: Option<Felt>,
+    pub keys: Vec<Felt>,
     pub page_size: u64,
     pub page_number: u64,
 }
@@ -158,10 +158,10 @@ fn block_number_to_block_id(number: Option<u64>) -> serde_json::Value {
 
 pub async fn get_storage_at(
     user: &mut GooseUser,
-    contract_address: StarkHash,
-    key: StarkHash,
-    block_hash: StarkHash,
-) -> MethodResult<StarkHash> {
+    contract_address: Felt,
+    key: Felt,
+    block_hash: Felt,
+) -> MethodResult<Felt> {
     post_jsonrpc_request(
         user,
         "starknet_getStorageAt",
@@ -172,10 +172,10 @@ pub async fn get_storage_at(
 
 pub async fn call(
     user: &mut GooseUser,
-    contract_address: StarkHash,
+    contract_address: Felt,
     call_data: &[&str],
     entry_point_selector: &str,
-    at_block: StarkHash,
+    at_block: Felt,
 ) -> MethodResult<Vec<String>> {
     post_jsonrpc_request(
         user,
