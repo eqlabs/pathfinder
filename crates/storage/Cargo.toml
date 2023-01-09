@@ -32,7 +32,7 @@ stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = "1.0.37"
-tokio = "1.23.0"
+tokio = { workspace = true }
 tracing = "0.1.37"
 zstd = "0.12"
 
