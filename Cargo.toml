@@ -24,3 +24,6 @@ exclude = [
     "crates/stark_hash_python",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+tokio = "1.24.0"
