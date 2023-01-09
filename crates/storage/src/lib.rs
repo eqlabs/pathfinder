@@ -84,6 +84,9 @@ impl Storage {
                     (1024usize * 1024 * 1024).to_string(),
                 )
                 .context("Set journal size limit")?;
+                // According to the documentation NORMAL is a good choice for WAL mode.
+                conn.pragma_update(None, "synchronous", "normal")
+                    .context("Setting synchronous flag to NORMAL")?;
             }
         }
         migrate_database(&mut conn).context("Migrate database")?;
