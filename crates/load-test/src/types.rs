@@ -8,33 +8,33 @@ use stark_hash::Felt;
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct Block {
-    pub block_hash: StarkHash,
-    pub parent_hash: StarkHash,
+    pub block_hash: Felt,
+    pub parent_hash: Felt,
     pub block_number: u64,
-    pub new_root: StarkHash,
+    pub new_root: Felt,
     pub timestamp: u64,
-    pub sequencer_address: StarkHash,
-    pub transactions: Vec<StarkHash>,
+    pub sequencer_address: Felt,
+    pub transactions: Vec<Felt>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct Transaction {
     pub r#type: String,
-    pub transaction_hash: StarkHash,
+    pub transaction_hash: Felt,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct TransactionReceipt {
     #[serde(default)]
     pub r#type: Option<String>, // Absent in v0.1
-    pub transaction_hash: StarkHash,
+    pub transaction_hash: Felt,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct StateUpdate {
-    pub block_hash: StarkHash,
-    pub new_root: StarkHash,
-    pub old_root: StarkHash,
+    pub block_hash: Felt,
+    pub new_root: Felt,
+    pub old_root: Felt,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
