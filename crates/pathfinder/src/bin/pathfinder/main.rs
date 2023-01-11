@@ -282,9 +282,14 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         }
     };
 
-    let api = pathfinder_rpc::v01::api::RpcApi::new(storage, gateway_client, chain_id, sync_state)
-        .with_call_handling(call_handle)
-        .with_eth_gas_price(shared);
+    let api = pathfinder_rpc::v01::api::RpcApi::new(
+        storage.clone(),
+        gateway_client,
+        chain_id,
+        sync_state.clone(),
+    )
+    .with_call_handling(call_handle)
+    .with_eth_gas_price(shared);
     let api = match config.poll_pending {
         true => api.with_pending_data(pending_state),
         false => api,
@@ -297,6 +302,8 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         .context("Starting the RPC server")?;
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
+
+    let p2p_handle = start_p2p(chain_id, storage, sync_state).await?;
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
@@ -327,6 +334,12 @@ If you are trying to setup a custom StarkNet please use '--network custom',
             match result {
                 Ok(_) => tracing::error!("Release monitoring process ended unexpectedly"),
                 Err(err) => tracing::error!(error=%err, "Release monitoring process ended unexpectedly"),
+            }
+        }
+        result = p2p_handle => {
+            match result {
+                Ok(_) => tracing::error!("P2P process ended unexpectedly"),
+                Err(err) => tracing::error!(error=%err, "P2P process ended unexpectedly"),
             }
         }
     }
@@ -386,4 +399,43 @@ fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
     // well, don't really know what else to check
 
     Ok(())
+}
+
+#[cfg(feature = "p2p")]
+async fn start_p2p(
+    chain_id: ChainId,
+    storage: Storage,
+    sync_state: Arc<SyncState>,
+) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    let p2p_listen_address = std::env::var("PATHFINDER_P2P_LISTEN_ADDRESS")
+        .unwrap_or_else(|_| "/ip4/0.0.0.0/tcp/4001".to_owned());
+    let listen_on: p2p::libp2p::Multiaddr = p2p_listen_address.parse()?;
+
+    let p2p_bootstrap_addresses = std::env::var("PATHFINDER_P2P_BOOTSTRAP_MULTIADDRESSES")?;
+    let bootstrap_addresses = p2p_bootstrap_addresses
+        .split_ascii_whitespace()
+        .map(|a| a.parse::<p2p::libp2p::Multiaddr>())
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let (_p2p_peers, _p2p_client, p2p_handle) = pathfinder_lib::p2p_network::start(
+        chain_id,
+        storage,
+        sync_state,
+        listen_on,
+        &bootstrap_addresses,
+    )
+    .await?;
+
+    Ok(p2p_handle)
+}
+
+#[cfg(not(feature = "p2p"))]
+async fn start_p2p(
+    _chain_id: ChainId,
+    _storage: Storage,
+    _sync_state: Arc<SyncState>,
+) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    let join_handle = tokio::task::spawn(async move { futures::future::pending().await });
+
+    Ok(join_handle)
 }

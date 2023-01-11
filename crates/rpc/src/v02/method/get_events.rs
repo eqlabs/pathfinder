@@ -471,8 +471,12 @@ mod tests {
     }
 
     fn setup() -> (RpcContext, Vec<EmittedEvent>) {
-        let (storage, events) = test_utils::setup_test_storage();
-        let events = events.into_iter().map(EmittedEvent::from).collect();
+        let (storage, test_data) = test_utils::setup_test_storage();
+        let events = test_data
+            .events
+            .into_iter()
+            .map(EmittedEvent::from)
+            .collect();
         let context = RpcContext::for_tests().with_storage(storage);
 
         (context, events)

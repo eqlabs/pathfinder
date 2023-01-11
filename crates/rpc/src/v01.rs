@@ -2051,8 +2051,12 @@ mod tests {
         use pathfinder_storage::test_utils;
 
         fn setup() -> (Storage, Vec<EmittedEvent>) {
-            let (storage, events) = test_utils::setup_test_storage();
-            let events = events.into_iter().map(EmittedEvent::from).collect();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let events = test_data
+                .events
+                .into_iter()
+                .map(EmittedEvent::from)
+                .collect();
             (storage, events)
         }
 

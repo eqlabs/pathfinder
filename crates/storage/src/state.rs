@@ -2130,7 +2130,8 @@ mod tests {
 
         #[test]
         fn get_events_with_fully_specified_filter() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2292,7 +2293,8 @@ mod tests {
 
         #[test]
         fn get_events_by_block() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2320,7 +2322,8 @@ mod tests {
 
         #[test]
         fn get_events_up_to_block() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2348,7 +2351,8 @@ mod tests {
 
         #[test]
         fn get_events_from_block_onwards() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2376,7 +2380,8 @@ mod tests {
 
         #[test]
         fn get_events_from_contract() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2403,7 +2408,8 @@ mod tests {
 
         #[test]
         fn get_events_by_key() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2429,7 +2435,8 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2454,7 +2461,8 @@ mod tests {
 
         #[test]
         fn get_events_with_no_filter_and_paging() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2572,7 +2580,8 @@ mod tests {
 
         #[test]
         fn get_events_by_key_with_paging() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2646,7 +2655,8 @@ mod tests {
 
         #[test]
         fn event_count_from_contract() {
-            let (storage, events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
@@ -2669,7 +2679,8 @@ mod tests {
 
         #[test]
         fn event_count_by_key() {
-            let (storage, emitted_events) = test_utils::setup_test_storage();
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
