@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package starknet.propagation;
+
+import "common.proto";
+
+message Message {
+  oneof message {
+    NewBlockHeader new_block_header = 1;
+    NewBlockBody new_block_body = 2;
+    NewBlockState new_block_state = 3;
+  }
+}
+
+message NewBlockHeader { starknet.common.BlockHeader header = 2; }
+
+message NewBlockBody {
+  starknet.common.FieldElement block_hash = 1;
+  starknet.common.BlockBody body = 2;
+}
+
+message NewBlockState {
+  starknet.common.FieldElement block_hash = 1;
+  BlockStateUpdate state_update = 2;
+}
+
+message BlockStateUpdate {
+  message StorageDiff {
+    starknet.common.FieldElement key = 1;
+    starknet.common.FieldElement value = 2;
+  }
+
+  message ContractDiff {
+    starknet.common.FieldElement contract_address = 1;
+    starknet.common.FieldElement nonce = 2;
+    repeated StorageDiff storage_diffs = 3;
+  }
+
+  message DeployedContract {
+    starknet.common.FieldElement contract_address = 1;
+    starknet.common.FieldElement contract_class_hash = 2;
+  }
+
+  repeated ContractDiff contract_diffs = 2;
+  repeated DeployedContract deployed_contracts = 3;
+  repeated starknet.common.FieldElement declared_contract_class_hashes = 4;
+}

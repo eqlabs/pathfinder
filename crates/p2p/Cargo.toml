@@ -1,0 +1,27 @@
+[package]
+name = "p2p"
+version = "0.1.0"
+edition = "2021"
+description = "Pathfinder P2P"
+license = "MIT OR Apache-2.0"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.56"
+async-trait = "0.1.58"
+base64 = "0.13.0"
+clap = { version = "3.2.17", features = ["env", "derive"] }
+delay_map = "0.1.2"
+futures = "0.3.21"
+libp2p = { version = "0.50.0", default-features = false, features = ["identify", "gossipsub", "kad", "noise", "ping", "dns", "tcp", "tokio", "yamux", "request-response", "autonat", "relay", "dcutr", "macros"] }
+p2p_proto = { path = "../p2p_proto" }
+prost = "0.11.2"
+serde = "1.0.144"
+serde_derive = "1.0.144"
+serde_json = "1.0.85"
+sha2 = "0.10.2"
+stark_hash = { path = "../stark_hash" }
+tokio = { version = "1.20.1", features = ["rt-multi-thread", "macros", "sync"] }
+tracing = "0.1.31"
+tracing-subscriber = { version = "0.3.9", features = ["env-filter"] }
+zeroize = "1.5.7"

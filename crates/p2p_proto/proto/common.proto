@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package starknet.common;
+
+message FieldElement { bytes elements = 1; }
+
+message EthereumAddress { bytes elements = 1; }
+
+message PeerID { bytes id = 1; }
+
+message BlockHeader {
+  FieldElement parent_block_hash = 1;
+  uint64 block_number = 2;
+  FieldElement global_state_root = 3;
+  FieldElement sequencer_address = 4;
+  uint64 block_timestamp = 5;
+
+  uint32 transaction_count = 6;
+  FieldElement transaction_commitment = 7;
+
+  uint32 event_count = 8;
+  FieldElement event_commitment = 9;
+
+  uint32 protocol_version = 10;
+}
+
+message InvokeTransaction {
+  FieldElement contract_address = 1;
+  FieldElement entry_point_selector = 2;
+  repeated FieldElement calldata = 3;
+  repeated FieldElement signature = 4;
+  FieldElement max_fee = 5;
+  FieldElement nonce = 6;
+  FieldElement version = 7;
+}
+
+message DeclareTransaction {
+  ContractClass contract_class = 1;
+  FieldElement sender_address = 2;
+  FieldElement max_fee = 3;
+  repeated FieldElement signature = 4;
+  FieldElement nonce = 5;
+  FieldElement version = 6;
+}
+
+message DeployTransaction {
+  ContractClass contract_class = 1;
+  FieldElement contract_address_salt = 2;
+  repeated FieldElement constructor_calldata = 3;
+  FieldElement version = 4;
+}
+
+message L1HandlerTransaction {
+  FieldElement contract_address = 1;
+  FieldElement entry_point_selector = 2;
+  repeated FieldElement calldata = 3;
+  FieldElement nonce = 4;
+  FieldElement version = 5;
+}
+
+message DeployAccountTransaction {
+  FieldElement contract_address_salt = 1;
+  repeated FieldElement constructor_calldata = 2;
+  FieldElement class_hash = 3;
+  FieldElement max_fee = 4;
+  repeated FieldElement signature = 5;
+  FieldElement nonce = 6;
+  FieldElement version = 7;
+}
+
+message ContractClass {
+  message EntryPoint {
+    FieldElement selector = 1;
+    FieldElement offset = 2;
+  }
+
+  repeated EntryPoint constructor_entry_points = 1;
+  repeated EntryPoint external_entry_points = 2;
+  repeated EntryPoint l1_handler_entry_points = 3;
+  string program = 4;
+  string abi = 5;
+}
+
+message Transaction {
+  oneof txn {
+    InvokeTransaction invoke = 1;
+    DeclareTransaction declare = 2;
+    DeployTransaction deploy = 3;
+    L1HandlerTransaction l1_handler = 4;
+    DeployAccountTransaction deploy_account = 5;
+  }
+}
+
+message MessageToL1 {
+  FieldElement from_address = 1;
+  repeated FieldElement payload = 2;
+  EthereumAddress to_address = 3;
+}
+
+message Event {
+  FieldElement from_address = 1;
+  repeated FieldElement keys = 2;
+  repeated FieldElement data = 3;
+}
+
+message CommonTransactionReceiptProperties {
+  FieldElement transaction_hash = 1;
+  FieldElement actual_fee = 2;
+  repeated MessageToL1 messages_sent = 3;
+  repeated Event events = 4;
+}
+
+message InvokeTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message L1HandlerTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message DeclareTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message DeployTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+  FieldElement contract_address = 2;
+}
+
+message DeployAccountTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+  FieldElement contract_address = 2;
+}
+
+message Receipt {
+  oneof receipt {
+    InvokeTransactionReceipt invoke = 1;
+    L1HandlerTransactionReceipt l1_handler = 2;
+    DeclareTransactionReceipt declare = 3;
+    DeployTransactionReceipt deploy = 4;
+    DeployAccountTransactionReceipt deploy_account = 5;
+  }
+}
+
+message BlockBody {
+  repeated Transaction transactions = 1;
+  repeated Receipt receipts = 4;
+}

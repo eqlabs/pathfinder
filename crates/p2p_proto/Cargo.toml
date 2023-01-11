@@ -1,0 +1,17 @@
+[package]
+name = "p2p_proto"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+build = "build.rs"
+
+[dependencies]
+anyhow = "1.0.62"
+p2p_proto_derive = { path = "../p2p_proto_derive" }
+primitive-types = "0.12.1"
+prost = "0.11.0"
+stark_hash = { path = "../stark_hash" }
+zstd = "0.12.0"
+
+[build-dependencies]
+prost-build = "0.11.0"
