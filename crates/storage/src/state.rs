@@ -582,21 +582,9 @@ impl StarknetTransactionsTable {
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Vec<(transaction::Transaction, transaction::Receipt)>> {
-        // Identify block hash
-        let block_hash = match block {
-            StarknetBlocksBlockId::Number(number) => {
-                match StarknetBlocksTable::get(tx, number.into())? {
-                    Some(block) => block.hash,
-                    None => return Ok(Vec::new()),
-                }
-            }
-            StarknetBlocksBlockId::Hash(hash) => hash,
-            StarknetBlocksBlockId::Latest => {
-                match StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)? {
-                    Some(block) => block.hash,
-                    None => return Ok(Vec::new()),
-                }
-            }
+        let block_hash = match Self::get_block_hash(tx, block)? {
+            Some(hash) => hash,
+            None => return Ok(Vec::new()),
         };
 
         let mut stmt = tx
