@@ -15,17 +15,6 @@ use fake::Dummy;
 #[derive(Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub struct Felt([u8; 32]);
 
-#[cfg(feature = "test-utils")]
-impl<T> Dummy<T> for Felt {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        let mut bytes = [0u8; 32];
-        rng.fill_bytes(&mut bytes);
-        // Some 252 bit values are fine too but we don't really care here
-        bytes[0] &= 0x03;
-        Self(bytes)
-    }
-}
-
 impl std::fmt::Debug for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "StarkHash({})", self)
@@ -54,6 +43,17 @@ impl std::fmt::UpperHex for Felt {
 impl std::default::Default for Felt {
     fn default() -> Self {
         Felt::ZERO
+    }
+}
+
+#[cfg(feature = "test-utils")]
+impl<T> Dummy<T> for Felt {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let mut bytes = [0u8; 32];
+        rng.fill_bytes(&mut bytes);
+        // Some 252 bit values are fine too but we don't really care here
+        bytes[0] &= 0x03;
+        Self(bytes)
     }
 }
 
