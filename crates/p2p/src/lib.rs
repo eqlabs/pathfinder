@@ -271,6 +271,7 @@ pub enum TestEvent {
     StartProvidingCompleted(Result<Key, Key>),
     ConnectionEstablished { outbound: bool, remote: PeerId },
     Subscribed { remote: PeerId, topic: String },
+    PeerAddedToDHT { remote: PeerId },
     Dummy,
 }
 
@@ -444,6 +445,12 @@ impl MainLoop {
                             tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
                         } else {
                             tracing::debug!(%peer_id, "Added peer to DHT");
+
+                            send_test_event(
+                                &self.event_sender,
+                                TestEvent::PeerAddedToDHT { remote: peer_id },
+                            )
+                            .await;
                         }
                     }
 

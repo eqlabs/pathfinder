@@ -190,19 +190,20 @@ async fn periodic_bootstrap() {
     };
 
     consume_events(boot.event_receiver);
-    let mut peer1_bootstrap_done = filter_events(peer1.event_receiver, filter_periodic_bootstrap);
+
+    let peer_id2 = peer2.peer_id.clone();
+
+    let mut peer2_added_to_dht_of_peer1 =
+        filter_events(peer1.event_receiver, move |event| match event {
+            Event::Test(TestEvent::PeerAddedToDHT { remote }) if remote == peer_id2 => Some(()),
+            _ => None,
+        });
     let mut peer2_bootstrap_done = filter_events(peer2.event_receiver, filter_periodic_bootstrap);
 
-    tokio::join!(
-        async {
-            peer1_bootstrap_done.recv().await;
-            peer1_bootstrap_done.recv().await;
-        },
-        async {
-            peer2_bootstrap_done.recv().await;
-            peer2_bootstrap_done.recv().await;
-        },
-    );
+    tokio::join!(peer2_added_to_dht_of_peer1.recv(), async {
+        peer2_bootstrap_done.recv().await;
+        peer2_bootstrap_done.recv().await;
+    });
 
     let boot_dht = boot.client.for_test().get_peers_from_dht().await;
     let dht1 = peer1.client.for_test().get_peers_from_dht().await;
