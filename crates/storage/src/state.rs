@@ -305,9 +305,8 @@ impl StarknetBlocksTable {
                     timestamp,
                     gas_price,
                     sequencer_address,
-                    transaction_commitment: transaction_commitment
-                        .unwrap_or(TransactionCommitment::ZERO),
-                    event_commitment: event_commitment.unwrap_or(EventCommitment::ZERO),
+                    transaction_commitment,
+                    event_commitment,
                 };
 
                 Ok(Some(block))
@@ -1132,8 +1131,8 @@ pub struct StarknetBlock {
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
-    pub transaction_commitment: TransactionCommitment,
-    pub event_commitment: EventCommitment,
+    pub transaction_commitment: Option<TransactionCommitment>,
+    pub event_commitment: Option<EventCommitment>,
 }
 
 /// StarknetVersionsTable tracks `starknet_versions` table, which just interns the version
@@ -1884,8 +1883,6 @@ mod tests {
         }
 
         mod reorg {
-            use pathfinder_common::{EventCommitment, TransactionCommitment};
-
             use super::*;
 
             #[test]
@@ -1914,8 +1911,8 @@ mod tests {
                         timestamp: blocks[0].timestamp,
                         gas_price: blocks[0].gas_price,
                         sequencer_address: blocks[0].sequencer_address,
-                        transaction_commitment: TransactionCommitment::ZERO,
-                        event_commitment: EventCommitment::ZERO,
+                        transaction_commitment: None,
+                        event_commitment: None,
                     };
 
                     assert_eq!(
@@ -2083,7 +2080,7 @@ mod tests {
         use super::*;
         use crate::test_utils;
         use ethers::types::H128;
-        use pathfinder_common::{felt, EventCommitment, TransactionCommitment};
+        use pathfinder_common::felt;
         use pathfinder_common::{EntryPoint, EventData, Fee};
 
         #[test]
@@ -2184,8 +2181,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(felt!("0x1234")),
-                transaction_commitment: TransactionCommitment::ZERO,
-                event_commitment: EventCommitment::ZERO,
+                transaction_commitment: None,
+                event_commitment: None,
             };
 
             // Note: hashes are reverse ordered to trigger the sorting bug.

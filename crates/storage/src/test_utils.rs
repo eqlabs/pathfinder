@@ -4,10 +4,9 @@ use super::{
 use ethers::types::{H128, H256};
 use pathfinder_common::{
     felt, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-    EventCommitment, EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    StarknetTransactionIndex, TransactionCommitment, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+    EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
+    StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
@@ -36,8 +35,8 @@ pub(crate) fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
             timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
             gas_price: GasPrice::from(i as u64),
             sequencer_address: SequencerAddress(Felt::from_be_slice(&[i as u8]).unwrap()),
-            transaction_commitment: TransactionCommitment::ZERO,
-            event_commitment: EventCommitment::ZERO,
+            transaction_commitment: None,
+            event_commitment: None,
         })
         .collect::<Vec<_>>()
         .try_into()

@@ -350,10 +350,9 @@ mod tests {
     };
     use pathfinder_common::{
         felt, felt_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
-        ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint,
-        EventCommitment, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
-        TransactionCommitment, TransactionVersion,
+        ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
     };
     use pathfinder_storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
@@ -808,8 +807,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
-                transaction_commitment: TransactionCommitment::ZERO,
-                event_commitment: EventCommitment::ZERO,
+                transaction_commitment: None,
+                event_commitment: None,
             },
             None,
         )
@@ -868,8 +867,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
-                transaction_commitment: TransactionCommitment::ZERO,
-                event_commitment: EventCommitment::ZERO,
+                transaction_commitment: None,
+                event_commitment: None,
             },
             None,
         )

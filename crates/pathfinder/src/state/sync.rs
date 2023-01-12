@@ -569,8 +569,8 @@ async fn l2_update(
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
-            transaction_commitment: tx_commitment,
-            event_commitment: ev_commitment,
+            transaction_commitment: Some(tx_commitment),
+            event_commitment: Some(ev_commitment),
         };
         StarknetBlocksTable::insert(
             &transaction,
@@ -886,10 +886,10 @@ mod tests {
     use pathfinder_common::{
         BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
-        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, EventCommitment, Fee,
-        GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
+        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
-        TransactionCommitment, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1136,8 +1136,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
-            transaction_commitment: TransactionCommitment::ZERO,
-            event_commitment: EventCommitment::ZERO,
+            transaction_commitment: None,
+            event_commitment: None,
         };
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
@@ -1146,8 +1146,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
-            transaction_commitment: TransactionCommitment::ZERO,
-            event_commitment: EventCommitment::ZERO,
+            transaction_commitment: None,
+            event_commitment: None,
         };
         // Causes root to remain 0
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
