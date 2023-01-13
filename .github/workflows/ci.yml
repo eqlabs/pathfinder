@@ -18,6 +18,9 @@ jobs:
         with:
           mold-version: 1.4.1
           make-default: false
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - name: Enable mold
         run: |
           mkdir -p $HOME/.cargo
@@ -98,7 +101,9 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - uses: actions/setup-python@v4
         id: setup_python
         with:
@@ -125,6 +130,9 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
 
   rustfmt:
@@ -145,6 +153,9 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - run: cargo doc --no-deps --document-private-items
 
   dep-sort:
