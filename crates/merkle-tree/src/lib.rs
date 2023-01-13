@@ -21,7 +21,7 @@ impl Hash for PedersenHash {
 }
 
 /// Implements [Hash] for the StarkNet Poseidon hash.
-/// 
+///
 /// TODO: add once hash is implemented.
 struct PoseidonHash;
 impl crate::Hash for PoseidonHash {

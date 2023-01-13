@@ -1164,8 +1164,7 @@ mod tests {
             let root = uut.commit().unwrap();
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let mut uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&key, val).unwrap();
@@ -1191,8 +1190,7 @@ mod tests {
                 let val2 = felt!("0x3");
 
                 let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO)
-                        .unwrap();
+                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1206,20 +1204,17 @@ mod tests {
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1239,8 +1234,7 @@ mod tests {
                 let val2 = felt!("0x3");
 
                 let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO)
-                        .unwrap();
+                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1254,20 +1248,17 @@ mod tests {
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
                 uut.delete().unwrap();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
                 MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap_err();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1291,8 +1282,7 @@ mod tests {
                 let val2 = felt!("0x3");
 
                 let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO)
-                        .unwrap();
+                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1306,20 +1296,17 @@ mod tests {
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1339,8 +1326,7 @@ mod tests {
                 let val2 = felt!("0x3");
 
                 let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO)
-                        .unwrap();
+                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
@@ -1354,20 +1340,17 @@ mod tests {
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
                 uut.delete().unwrap();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
                 MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap_err();
 
-                let uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1859,8 +1842,7 @@ mod tests {
                     .for_each(|(k, v)| uut.set(k.view_bits(), *v).unwrap());
 
                 let root = uut.commit().unwrap();
-                let tree =
-                    MerkleTree::<_, PedersenHash>::load("test", transaction, root).unwrap();
+                let tree = MerkleTree::<_, PedersenHash>::load("test", transaction, root).unwrap();
 
                 Self {
                     keys,

@@ -297,7 +297,7 @@ fn compute_final_hash(
 ///
 /// The tree height is 64 in our case since our set operation takes u64 index values.
 struct CommitmentTree {
-    tree: MerkleTree::<(), pathfinder_merkle_tree::PedersenHash>,
+    tree: MerkleTree<(), pathfinder_merkle_tree::PedersenHash>,
 }
 
 impl Default for CommitmentTree {
