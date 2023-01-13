@@ -445,12 +445,6 @@ impl MainLoop {
                             tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
                         } else {
                             tracing::debug!(%peer_id, "Added peer to DHT");
-
-                            send_test_event(
-                                &self.event_sender,
-                                TestEvent::PeerAddedToDHT { remote: peer_id },
-                            )
-                            .await;
                         }
                     }
 
@@ -502,40 +496,54 @@ impl MainLoop {
             // Discovery
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
-                if let KademliaEvent::OutboundQueryProgressed {
-                    step, result, id, ..
-                } = e
-                {
-                    if step.last {
-                        match result {
-                            libp2p::kad::QueryResult::Bootstrap(result) => {
-                                let network_info = self.swarm.network_info();
-                                let num_peers = network_info.num_peers();
-                                let connection_counters = network_info.connection_counters();
-                                let num_connections = connection_counters.num_connections();
+                match e {
+                    KademliaEvent::OutboundQueryProgressed {
+                        step, result, id, ..
+                    } => {
+                        if step.last {
+                            match result {
+                                libp2p::kad::QueryResult::Bootstrap(result) => {
+                                    let network_info = self.swarm.network_info();
+                                    let num_peers = network_info.num_peers();
+                                    let connection_counters = network_info.connection_counters();
+                                    let num_connections = connection_counters.num_connections();
 
-                                let result = match result {
-                                    Ok(BootstrapOk { peer, .. }) => {
-                                        tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
-                                        Ok(peer)
-                                    }
-                                    Err(BootstrapError::Timeout { peer, .. }) => {
-                                        tracing::warn!(%num_peers, %num_connections, "Periodic bootstrap failed");
-                                        Err(peer)
-                                    }
-                                };
-                                send_test_event(
-                                    &self.event_sender,
-                                    TestEvent::PeriodicBootstrapCompleted(result),
-                                )
-                                .await;
+                                    let result = match result {
+                                        Ok(BootstrapOk { peer, .. }) => {
+                                            tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                                            Ok(peer)
+                                        }
+                                        Err(BootstrapError::Timeout { peer, .. }) => {
+                                            tracing::warn!(%num_peers, %num_connections, "Periodic bootstrap failed");
+                                            Err(peer)
+                                        }
+                                    };
+                                    send_test_event(
+                                        &self.event_sender,
+                                        TestEvent::PeriodicBootstrapCompleted(result),
+                                    )
+                                    .await;
+                                }
+                                _ => self.test_query_completed(id, result).await,
                             }
-                            _ => self.test_query_completed(id, result).await,
+                        } else {
+                            self.test_query_progressed(id, result).await;
                         }
-                    } else {
-                        self.test_query_progressed(id, result).await;
                     }
+                    KademliaEvent::RoutingUpdated {
+                        peer, is_new_peer, ..
+                    } => {
+                        if is_new_peer {
+                            send_test_event(
+                                &self.event_sender,
+                                TestEvent::PeerAddedToDHT { remote: peer },
+                            )
+                            .await
+                        }
+                    }
+                    _ => {}
                 }
+
                 Ok(())
             }
             // ===========================
