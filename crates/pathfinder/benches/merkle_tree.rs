@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use pathfinder_merkle_tree::PedersenHash;
 use stark_hash::Felt;
 
 fn gen_random_keys(n: usize) -> Vec<Felt> {
@@ -20,9 +21,12 @@ pub fn chunked_inserts(tx: &rusqlite::Transaction<'_>, keys: &[Felt], batch_size
     let mut hash = stark_hash::Felt::ZERO;
 
     for keys in keys.chunks(batch_size) {
-        let mut uut =
-            pathfinder_merkle_tree::merkle_tree::MerkleTree::load("tree_contracts", tx, hash)
-                .unwrap();
+        let mut uut = pathfinder_merkle_tree::merkle_tree::MerkleTree::<_, PedersenHash>::load(
+            "tree_contracts",
+            tx,
+            hash,
+        )
+        .unwrap();
 
         keys.iter()
             .enumerate()

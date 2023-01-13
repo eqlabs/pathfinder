@@ -7,7 +7,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
-use stark_hash::{stark_hash, Felt};
+use stark_hash::Felt;
+
+use crate::Hash;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -120,7 +122,7 @@ impl BinaryNode {
     ///
     /// If either childs hash is [None], then the hash cannot
     /// be calculated and it will remain [None].
-    pub(crate) fn calculate_hash(&mut self) {
+    pub(crate) fn calculate_hash<H: Hash>(&mut self) {
         if self.hash.is_some() {
             return;
         }
@@ -135,7 +137,7 @@ impl BinaryNode {
             None => unreachable!("subtrees have to be commited first"),
         };
 
-        self.hash = Some(stark_hash(left, right));
+        self.hash = Some(H::hash(left, right));
     }
 }
 
@@ -216,7 +218,7 @@ impl EdgeNode {
     ///
     /// If the child's hash is [None], then the hash cannot
     /// be calculated and it will remain [None].
-    pub(crate) fn calculate_hash(&mut self) {
+    pub(crate) fn calculate_hash<H: Hash>(&mut self) {
         if self.hash.is_some() {
             return;
         }
@@ -232,7 +234,7 @@ impl EdgeNode {
         length[31] = self.path.len() as u8;
 
         let length = Felt::from_be_bytes(length).unwrap();
-        let hash = stark_hash(child, path) + length;
+        let hash = H::hash(child, path) + length;
         self.hash = Some(hash);
     }
 }
@@ -240,6 +242,7 @@ impl EdgeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PedersenHash;
 
     mod direction {
         use super::*;
@@ -335,7 +338,7 @@ mod tests {
                 right,
             };
 
-            uut.calculate_hash();
+            uut.calculate_hash::<PedersenHash>();
 
             assert_eq!(uut.hash, Some(expected));
         }
@@ -368,7 +371,7 @@ mod tests {
                 child,
             };
 
-            uut.calculate_hash();
+            uut.calculate_hash::<PedersenHash>();
 
             assert_eq!(uut.hash, Some(expected));
         }

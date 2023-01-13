@@ -3,6 +3,7 @@
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
+use crate::PedersenHash;
 use crate::{
     merkle_node::Node,
     merkle_tree::{MerkleTree, ProofNode, Visit},
@@ -18,7 +19,7 @@ use std::ops::ControlFlow;
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.
 pub struct ContractsStateTree<'tx, 'queries> {
-    tree: MerkleTree<RcNodeStorage<'tx, 'queries>>,
+    tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash>,
 }
 
 impl<'tx> ContractsStateTree<'tx, '_> {
@@ -62,7 +63,7 @@ impl<'tx> ContractsStateTree<'tx, '_> {
 /// A Binary Merkle-Patricia Tree which contains
 /// the global state of StarkNet.
 pub struct GlobalStateTree<'tx, 'queries> {
-    tree: MerkleTree<RcNodeStorage<'tx, 'queries>>,
+    tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash>,
 }
 
 impl<'tx> GlobalStateTree<'tx, '_> {
