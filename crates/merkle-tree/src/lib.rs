@@ -19,3 +19,13 @@ impl Hash for PedersenHash {
         stark_hash::stark_hash(left, right)
     }
 }
+
+/// Implements [Hash] for the StarkNet Poseidon hash.
+/// 
+/// TODO: add once hash is implemented.
+struct PoseidonHash;
+impl crate::Hash for PoseidonHash {
+    fn hash(_left: stark_hash::Felt, _right: stark_hash::Felt) -> stark_hash::Felt {
+        unimplemented!("Hash function still needs to be implemented");
+    }
+}
