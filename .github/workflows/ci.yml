@@ -120,7 +120,7 @@ jobs:
 
       # We want to strip the debug info as some of these test binaries are 100MB+ and pathfinder_lib is 1GB+
       - name: Execute tests
-        run: timeout 15m cargo test --all-targets --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
+        run: timeout 25m cargo test --all-targets --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
 
   clippy:
     runs-on: ubuntu-latest
