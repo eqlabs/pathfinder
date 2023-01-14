@@ -1,4 +1,4 @@
-use crate::state::block_hash::verify_block_hash;
+use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
     Chain, ClassHash, EventCommitment, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
@@ -76,7 +76,7 @@ pub async fn sync(
 
         let (block, commitments) = loop {
             match download_block(next, chain, head_meta.map(|h| h.1), &sequencer).await? {
-                DownloadBlock::Block(block, extra) => break (block, extra),
+                DownloadBlock::Block(block, commitments) => break (block, commitments),
                 DownloadBlock::AtHead => {
                     // Poll pending if it is enabled, otherwise just wait to poll head again.
                     match pending_poll_interval {
@@ -274,19 +274,26 @@ async fn download_block(
                     .with_context(move || format!("Verify block {}", block_number))?;
                 Ok((block, verify_result))
             });
-            #[allow(unused_variables)]
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
-            // FIXME: test block hashes aren't correct so this error breaks tests.
-            #[cfg(not(test))]
-            anyhow::ensure!(
-                verify_result != crate::state::block_hash::VerifyResult::Mismatch,
-                "Block hash mismatch"
-            );
-            match block.status {
-                Status::AcceptedOnL1 | Status::AcceptedOnL2 => Ok(DownloadBlock::Block(
-                    block,
-                    verify_result.get_commitments().unwrap_or_default(),
-                )),
+            match (block.status, verify_result) {
+                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Match(commitments)) => {
+                    Ok(DownloadBlock::Block(block, commitments))
+                }
+                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::NotVerifiable) => {
+                    Ok(DownloadBlock::Block(block, Default::default()))
+                }
+
+                #[cfg(test)]
+                // FIXME: test block hashes aren't correct so `VerifyResult::Mismatch` breaks tests.
+                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Mismatch) => {
+                    Ok(DownloadBlock::Block(block, Default::default()))
+                }
+
+                #[cfg(not(test))]
+                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Mismatch) => {
+                    Err(anyhow!("Block hash mismatch"))
+                }
+
                 _ => Err(anyhow!(
                     "Rejecting block as its status is {}, and only accepted blocks are allowed",
                     block.status

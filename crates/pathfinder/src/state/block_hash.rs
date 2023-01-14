@@ -18,15 +18,6 @@ pub enum VerifyResult {
     NotVerifiable,
 }
 
-impl VerifyResult {
-    pub fn get_commitments(&self) -> Option<(TransactionCommitment, EventCommitment)> {
-        match self {
-            VerifyResult::Match((tx, ev)) => Some((*tx, *ev)),
-            _ => None,
-        }
-    }
-}
-
 /// Verify the block hash value.
 ///
 /// The method to compute the block hash is documented
