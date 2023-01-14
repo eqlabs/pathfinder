@@ -46,6 +46,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     l2_sync: L2Sync,
     pending_data: PendingData,
     pending_poll_interval: Option<std::time::Duration>,
+    block_validation_mode: l2::BlockValidationMode,
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
@@ -59,6 +60,7 @@ where
             Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
             Chain,
             Option<std::time::Duration>,
+            l2::BlockValidationMode,
         ) -> F2
         + Copy,
 {
@@ -109,6 +111,7 @@ where
         l2_head,
         chain,
         pending_poll_interval,
+        block_validation_mode,
     ));
 
     let mut existed = (0, 0);
@@ -388,7 +391,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval);
+                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval, block_validation_mode);
 
                     l2_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
@@ -1072,6 +1075,7 @@ mod tests {
         _: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
         _: Chain,
         _: Option<std::time::Duration>,
+        _: l2::BlockValidationMode,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -1222,6 +1226,7 @@ mod tests {
                 l2_noop,
                 PendingData::default(),
                 None,
+                l2::BlockValidationMode::Strict,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1296,6 +1301,7 @@ mod tests {
                 l2_noop,
                 PendingData::default(),
                 None,
+                l2::BlockValidationMode::Strict,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1366,6 +1372,7 @@ mod tests {
             l2_noop,
             PendingData::default(),
             None,
+            l2::BlockValidationMode::Strict,
         ));
 
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1402,6 +1409,7 @@ mod tests {
             l2_noop,
             PendingData::default(),
             None,
+            l2::BlockValidationMode::Strict,
         ));
 
         let timeout = std::time::Duration::from_secs(1);
@@ -1435,7 +1443,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 (Box::new(block()), Default::default()),
                 Box::new(state_update()),
@@ -1477,6 +1485,7 @@ mod tests {
                 l2,
                 PendingData::default(),
                 None,
+                l2::BlockValidationMode::Strict,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1516,7 +1525,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(StarknetBlockNumber::new_or_panic(
                     reorg_on_block,
                 )))
@@ -1546,6 +1555,7 @@ mod tests {
                 l2,
                 PendingData::default(),
                 None,
+                l2::BlockValidationMode::Strict,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1582,7 +1592,7 @@ mod tests {
         let connection = storage.connection().unwrap();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewContract(CompressedContract {
                 abi: zstd_magic.clone(),
@@ -1609,6 +1619,7 @@ mod tests {
             l2,
             PendingData::default(),
             None,
+            l2::BlockValidationMode::Strict,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1630,7 +1641,7 @@ mod tests {
         StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0, None).unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel();
 
             tx.send(l2::Event::QueryBlock(StarknetBlockNumber::GENESIS, tx1))
@@ -1657,6 +1668,7 @@ mod tests {
             l2,
             PendingData::default(),
             None,
+            l2::BlockValidationMode::Strict,
         ));
     }
 
@@ -1679,7 +1691,7 @@ mod tests {
         .unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
 
             tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
@@ -1705,6 +1717,7 @@ mod tests {
             l2,
             PendingData::default(),
             None,
+            l2::BlockValidationMode::Strict,
         ));
     }
 
@@ -1717,7 +1730,7 @@ mod tests {
         static CNT: AtomicUsize = AtomicUsize::new(0);
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _, _| async move {
+        let l2 = move |_, _, _, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };
@@ -1734,6 +1747,7 @@ mod tests {
             l2,
             PendingData::default(),
             None,
+            l2::BlockValidationMode::Strict,
         ));
 
         tokio::time::sleep(Duration::from_millis(5)).await;
