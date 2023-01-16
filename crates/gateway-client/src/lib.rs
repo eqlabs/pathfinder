@@ -32,11 +32,6 @@ pub trait ClientApi {
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
-    async fn class_hash_at(
-        &self,
-        contract_address: ContractAddress,
-    ) -> Result<ClassHash, SequencerError>;
-
     async fn storage(
         &self,
         contract_addr: ContractAddress,
@@ -250,20 +245,6 @@ impl ClientApi for Client {
             .with_class_hash(class_hash)
             .with_retry(Self::RETRY)
             .get_as_bytes()
-            .await
-    }
-
-    /// Gets class hash for a particular contract address.
-    #[tracing::instrument(skip(self))]
-    async fn class_hash_at(
-        &self,
-        contract_address: ContractAddress,
-    ) -> Result<ClassHash, SequencerError> {
-        self.feeder_gateway_request()
-            .get_class_hash_at()
-            .with_contract_address(contract_address)
-            .with_retry(Self::RETRY)
-            .get()
             .await
     }
 
@@ -918,42 +899,6 @@ mod tests {
             )]);
             let bytes = client.class_by_hash(VALID_CLASS_HASH).await.unwrap();
             serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
-        }
-    }
-
-    mod class_hash {
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[test_log::test(tokio::test)]
-        async fn invalid_contract_address() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    INVALID_CONTRACT_ADDR.get().to_hex_str()
-                ),
-                response_from(StarknetErrorCode::UninitializedContract),
-            )]);
-            let error = client
-                .class_hash_at(INVALID_CONTRACT_ADDR)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
-            );
-        }
-
-        #[tokio::test]
-        async fn success() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_class_hash_at?contractAddress={}",
-                    VALID_CONTRACT_ADDR.get().to_hex_str()
-                ),
-                (r#""0x01""#, 200),
-            )]);
-            client.class_hash_at(VALID_CONTRACT_ADDR).await.unwrap();
         }
     }
 

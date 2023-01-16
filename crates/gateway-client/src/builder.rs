@@ -40,7 +40,6 @@ pub mod stage {
     /// - [get_block](super::Request::get_block)
     /// - [get_full_contract](super::Request::get_full_contract)
     /// - [get_class_by_hash](super::Request::get_class_by_hash)
-    /// - [get_class_hash_at](super::Request::get_class_hash_at)
     /// - [get_storage_at](super::Request::get_storage_at)
     /// - [get_transaction](super::Request::get_transaction)
     /// - [get_transaction_status](super::Request::get_transaction_status)
@@ -141,7 +140,6 @@ impl<'a> Request<'a, stage::Method> {
         get_block,
         get_full_contract,
         get_class_by_hash,
-        get_class_hash_at,
         get_storage_at,
         get_transaction,
         get_transaction_status,
