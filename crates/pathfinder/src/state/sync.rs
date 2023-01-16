@@ -966,10 +966,6 @@ mod tests {
             unimplemented!()
         }
 
-        async fn class_hash_at(&self, _: ContractAddress) -> Result<ClassHash, SequencerError> {
-            unimplemented!()
-        }
-
         async fn storage(
             &self,
             _: ContractAddress,

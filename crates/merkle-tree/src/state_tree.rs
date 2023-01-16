@@ -110,7 +110,7 @@ impl<'tx> GlobalStateTree<'tx, '_> {
 
 /// Merkle tree which contains Starknet's class commitment.
 ///
-/// This tree maps a class's [ClassHash] to its [CompiledClassHash]
+/// This tree maps a class's [SierraHash] to its [CasmHash]
 pub struct ClassCommitmentTree<'tx, 'queries> {
     // FIXME(v0.11.0): This may be Poseidon hash depending.
     tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PoseidonHash>,
