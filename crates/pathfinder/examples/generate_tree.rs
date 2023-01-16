@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_merkle_tree::PedersenHash;
 use stark_hash::{stark_hash, Felt};
 use std::cell::RefCell;
 use std::io::BufRead;
@@ -52,7 +53,7 @@ Above generates the py/test_call.py::populate_test_contract_with_132_on_3 tree_g
 
     let mut line_number = 0;
 
-    let mut tree = pathfinder_merkle_tree::merkle_tree::MerkleTree::empty(
+    let mut tree = pathfinder_merkle_tree::merkle_tree::MerkleTree::<_, PedersenHash>::empty(
         RefCell::new(Default::default()),
         251,
     );

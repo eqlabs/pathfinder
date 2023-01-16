@@ -148,7 +148,7 @@ impl std::fmt::Debug for RcNodeStorage<'_, '_> {
 
 /// Queries used by the [`RcNodeStorage`].
 ///
-/// We have `static ref` for the two table names pathfinder really uses. For other tables (in
+/// We have `static ref` for the three table names pathfinder really uses. For other tables (in
 /// tests) new queries are built at initialization.
 struct Queries<'a> {
     create: Cow<'a, str>,
@@ -166,8 +166,9 @@ struct Queries<'a> {
 }
 
 lazy_static::lazy_static! {
-    static ref GLOBAL: Queries<'static> = Queries::format("tree_global");
-    static ref CONTRACTS: Queries<'static> = Queries::format("tree_contracts");
+    static ref GLOBAL_STORAGE_TABLE: Queries<'static> = Queries::format("tree_global");
+    static ref CONTRACTS_STORAGE_TABLE: Queries<'static> = Queries::format("tree_contracts");
+    static ref CLASS_TREE_TABLE: Queries<'static> = Queries::format("tree_class");
 }
 
 impl Queries<'static> {
@@ -356,12 +357,13 @@ impl<'tx, 'queries> RcNodeStorage<'tx, 'queries> {
     pub fn open(table: &str, transaction: &'tx Transaction<'tx>) -> anyhow::Result<Self> {
         let queries = match table {
             "tree_global" => {
-                let q = GLOBAL.borrow();
+                let q = GLOBAL_STORAGE_TABLE.borrow();
                 // this assertion exists to prove that the reborrowing works.
                 debug_assert!(matches!(q.create, Cow::Borrowed(_)));
                 q
             }
-            "tree_contracts" => CONTRACTS.borrow(),
+            "tree_contracts" => CONTRACTS_STORAGE_TABLE.borrow(),
+            "tree_class" => CLASS_TREE_TABLE.borrow(),
             other => Queries::format(other),
         };
 

@@ -36,6 +36,27 @@ pub struct ContractAddressSalt(pub Felt);
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ClassHash(pub Felt);
 
+/// The hash of a StarkNet Sierra class.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
+pub struct SierraHash(pub Felt);
+
+macros::starkhash251::newtype!(SierraHash);
+macros::starkhash251::deserialization!(SierraHash);
+
+/// The hash of a StarkNet Cairo assembly class.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
+pub struct CasmHash(pub Felt);
+
+macros::starkhash251::newtype!(CasmHash);
+macros::starkhash251::deserialization!(CasmHash);
+
+/// The root of a class commitment tree.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct ClassCommitment(pub Felt);
+
+macros::starkhash251::newtype!(ClassCommitment);
+macros::starkhash251::deserialization!(ClassCommitment);
+
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -425,6 +446,18 @@ macros::starkhash::to_from_sql!(StarknetTransactionHash);
 macros::fmt::thin_debug!(ClassHash);
 macros::fmt::thin_display!(ClassHash);
 macros::starkhash::to_from_sql!(ClassHash);
+
+macros::fmt::thin_debug!(SierraHash);
+macros::fmt::thin_display!(SierraHash);
+macros::starkhash::to_from_sql!(SierraHash);
+
+macros::fmt::thin_debug!(CasmHash);
+macros::fmt::thin_display!(CasmHash);
+macros::starkhash::to_from_sql!(CasmHash);
+
+macros::fmt::thin_debug!(ClassCommitment);
+macros::fmt::thin_display!(ClassCommitment);
+macros::starkhash::to_from_sql!(ClassCommitment);
 
 macros::starkhash::common_newtype!(
     ContractAddressSalt,
