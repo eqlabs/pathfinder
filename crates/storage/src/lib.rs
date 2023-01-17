@@ -36,6 +36,7 @@ type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 
 /// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
 /// of the [Storage].
+#[derive(Clone, Copy)]
 pub enum JournalMode {
     Rollback,
     WAL,
@@ -66,29 +67,11 @@ impl Storage {
     ///
     /// May be cloned safely.
     pub fn migrate(database_path: PathBuf, journal_mode: JournalMode) -> anyhow::Result<Self> {
-        let manager = SqliteConnectionManager::file(&database_path);
+        let manager = SqliteConnectionManager::file(&database_path)
+            .with_init(move |c| setup_connection(c, journal_mode));
         let pool = Pool::builder().build(manager)?;
 
         let mut conn = pool.get()?;
-        match journal_mode {
-            JournalMode::Rollback => conn
-                .pragma_update(None, "journal_mode", "DELETE")
-                .context("Disabling WAL journal mode")?,
-            JournalMode::WAL => {
-                conn.pragma_update(None, "journal_mode", "WAL")
-                    .context("Enabling WAL journal mode")?;
-                // set journal size limit to 1 GB
-                conn.pragma_update(
-                    None,
-                    "journal_size_limit",
-                    (1024usize * 1024 * 1024).to_string(),
-                )
-                .context("Set journal size limit")?;
-                // According to the documentation NORMAL is a good choice for WAL mode.
-                conn.pragma_update(None, "synchronous", "normal")
-                    .context("Setting synchronous flag to NORMAL")?;
-            }
-        }
         migrate_database(&mut conn).context("Migrate database")?;
 
         let inner = Inner {
@@ -134,10 +117,38 @@ impl Storage {
     }
 }
 
+fn setup_connection(
+    connection: &mut rusqlite::Connection,
+    journal_mode: JournalMode,
+) -> Result<(), rusqlite::Error> {
+    // set journal mode related pragmas
+    match journal_mode {
+        JournalMode::Rollback => connection.pragma_update(None, "journal_mode", "DELETE")?,
+        JournalMode::WAL => {
+            connection.pragma_update(None, "journal_mode", "WAL")?;
+            // set journal size limit to 1 GB
+            connection.pragma_update(
+                None,
+                "journal_size_limit",
+                (1024usize * 1024 * 1024).to_string(),
+            )?;
+            // According to the documentation NORMAL is a good choice for WAL mode.
+            connection.pragma_update(None, "synchronous", "normal")?;
+        }
+    }
+
+    // enable foreign keys
+    connection.set_db_config(
+        rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY,
+        true,
+    )?;
+
+    Ok(())
+}
+
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
 fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
-    enable_foreign_keys(connection).context("Failed to enable foreign key support")?;
     let version = schema_version(connection)?;
     let migrations = schema::migrations();
 
@@ -188,13 +199,6 @@ fn schema_version(connection: &Connection) -> anyhow::Result<usize> {
     Ok(version)
 }
 
-/// Enables foreign key support for the database.
-fn enable_foreign_keys(connection: &Connection) -> anyhow::Result<()> {
-    use rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY;
-    connection.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,7 +246,8 @@ mod tests {
             .unwrap();
 
         // Enable foreign key support.
-        enable_foreign_keys(&conn).unwrap();
+        conn.set_db_config(SQLITE_DBCONFIG_ENABLE_FKEY, true)
+            .unwrap();
 
         // Create tables with a parent-child foreign key requirement.
         conn.execute_batch(
