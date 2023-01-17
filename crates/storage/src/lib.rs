@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 pub use contract::{ContractCodeTable, ContractsTable};
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
+use rusqlite::functions::FunctionFlags;
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent,
@@ -142,7 +143,40 @@ fn setup_connection(
         true,
     )?;
 
+    connection.create_scalar_function(
+        "base64_felts_to_index_prefixed_base32_felts",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        move |ctx| {
+            assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
+            let base64_felts = ctx
+                .get_raw(0)
+                .as_str()
+                .map_err(|e| rusqlite::Error::UserFunctionError(e.into()))?;
+
+            Ok(base64_felts_to_index_prefixed_base32_felts(base64_felts))
+        },
+    )?;
+
     Ok(())
+}
+
+fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
+    let strings = base64_felts
+        .split(' ')
+        // Convert only the first 256 elements so that the index fits into one u8
+        // we will use as a prefix byte.
+        .take(256)
+        .enumerate()
+        .map(|(index, key)| {
+            let mut buf: [u8; 33] = [0u8; 33];
+            buf[0] = index as u8;
+            base64::decode_config_slice(key, base64::STANDARD, &mut buf[1..]).unwrap();
+            data_encoding::BASE32_NOPAD.encode(&buf)
+        })
+        .collect::<Vec<_>>();
+
+    strings.join(" ")
 }
 
 /// Migrates the database to the latest version. This __MUST__ be called
@@ -185,6 +219,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
 
     Ok(())
 }
+
 /// Returns the current schema version of the existing database,
 /// or `0` if database does not yet exist.
 fn schema_version(connection: &Connection) -> anyhow::Result<usize> {
@@ -200,6 +235,9 @@ fn schema_version(connection: &Connection) -> anyhow::Result<usize> {
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::felt;
+    use stark_hash::Felt;
+
     use super::*;
 
     #[test]
@@ -214,6 +252,7 @@ mod tests {
     #[test]
     fn full_migration() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        setup_connection(&mut conn, JournalMode::Rollback).unwrap();
         migrate_database(&mut conn).unwrap();
         let version = schema_version(&conn).unwrap();
         let expected = schema::migrations().len();
@@ -223,6 +262,7 @@ mod tests {
     #[test]
     fn migration_fails_if_db_is_newer() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        setup_connection(&mut conn, JournalMode::Rollback).unwrap();
 
         // Force the schema to a newer version
         let current_version = schema::migrations().len();
@@ -270,5 +310,30 @@ mod tests {
             .unwrap();
         conn.execute("INSERT INTO child (id, parent_id) VALUES (1, 1)", [])
             .unwrap_err();
+    }
+
+    #[test]
+    fn felts_to_index_prefixed_base32_strings() {
+        let input: String = [felt!("0x901823"), felt!("0x901823"), felt!("0x901825")]
+            .iter()
+            .map(|f| base64::encode(f.as_be_bytes()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            super::base64_felts_to_index_prefixed_base32_felts(&input),
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAMCG AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAMCG AIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAMCK".to_owned()
+        );
+    }
+
+    #[test]
+    fn felts_to_index_prefixed_base32_strings_encodes_the_first_256_felts() {
+        let input = [Felt::ZERO; 257]
+            .iter()
+            .map(|f| base64::encode(f.as_be_bytes()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let output = super::base64_felts_to_index_prefixed_base32_felts(&input);
+
+        assert_eq!(output.split(' ').count(), 256);
     }
 }
