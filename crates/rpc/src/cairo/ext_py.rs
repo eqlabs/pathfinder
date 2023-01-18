@@ -807,6 +807,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
+                transaction_commitment: None,
+                event_commitment: None,
             },
             None,
         )
@@ -865,6 +867,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
+                transaction_commitment: None,
+                event_commitment: None,
             },
             None,
         )

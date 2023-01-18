@@ -82,6 +82,8 @@ impl StarknetBlock {
                 .expect("block timestamp out of range"),
             gas_price: GasPrice(n as u128 + 2000),
             sequencer_address: SequencerAddress(hash!(2, n)),
+            transaction_commitment: None,
+            event_commitment: None,
         }
     }
 }

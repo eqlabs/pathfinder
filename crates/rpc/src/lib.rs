@@ -269,6 +269,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
+            transaction_commitment: None,
+            event_commitment: None,
         };
         let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
         let block1 = StarknetBlock {
@@ -278,6 +280,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
+            transaction_commitment: None,
+            event_commitment: None,
         };
         let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
         let block2 = StarknetBlock {
@@ -287,6 +291,8 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
+            transaction_commitment: None,
+            event_commitment: None,
         };
         StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
         StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();

@@ -35,6 +35,8 @@ pub(crate) fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
             timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
             gas_price: GasPrice::from(i as u64),
             sequencer_address: SequencerAddress(Felt::from_be_slice(&[i as u8]).unwrap()),
+            transaction_commitment: None,
+            event_commitment: None,
         })
         .collect::<Vec<_>>()
         .try_into()

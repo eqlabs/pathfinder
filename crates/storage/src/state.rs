@@ -7,8 +7,9 @@ use pathfinder_common::{
     },
     Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-    EthereumTransactionIndex, EventData, EventKey, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    EthereumTransactionIndex, EventCommitment, EventData, EventKey, GasPrice, GlobalRoot,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StarknetTransactionHash, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
@@ -232,8 +233,8 @@ impl StarknetBlocksTable {
         };
 
         tx.execute(
-            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id)
-                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id)",
+            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment)
+                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment)",
             named_params! {
                 ":number": block.number,
                 ":hash": block.hash,
@@ -242,6 +243,8 @@ impl StarknetBlocksTable {
                 ":gas_price": &block.gas_price.to_be_bytes(),
                 ":sequencer_address": block.sequencer_address,
                 ":version_id": version_id,
+                ":transaction_commitment": block.transaction_commitment, 
+                ":event_commitment": block.event_commitment,
             },
         )?;
 
@@ -255,15 +258,15 @@ impl StarknetBlocksTable {
     ) -> anyhow::Result<Option<StarknetBlock>> {
         let mut statement = match block {
             StarknetBlocksBlockId::Number(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
                     FROM starknet_blocks WHERE number = ?",
             ),
             StarknetBlocksBlockId::Hash(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
                     FROM starknet_blocks WHERE hash = ?",
             ),
             StarknetBlocksBlockId::Latest => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
                     FROM starknet_blocks ORDER BY number DESC LIMIT 1",
             ),
         }?;
@@ -291,6 +294,10 @@ impl StarknetBlocksTable {
 
                 let sequencer_address = row.get_unwrap("sequencer_address");
 
+                let transaction_commitment: Option<TransactionCommitment> =
+                    row.get_unwrap("transaction_commitment");
+                let event_commitment: Option<EventCommitment> = row.get_unwrap("event_commitment");
+
                 let block = StarknetBlock {
                     number,
                     hash,
@@ -298,6 +305,8 @@ impl StarknetBlocksTable {
                     timestamp,
                     gas_price,
                     sequencer_address,
+                    transaction_commitment,
+                    event_commitment,
                 };
 
                 Ok(Some(block))
@@ -525,25 +534,56 @@ impl StarknetTransactionsTable {
         Ok(())
     }
 
+    pub fn update_block_commitments(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksBlockId,
+        transaction_commitment: TransactionCommitment,
+        event_commitment: EventCommitment,
+    ) -> anyhow::Result<()> {
+        let block_hash = match Self::get_block_hash(tx, block)? {
+            Some(hash) => hash,
+            None => return Ok(()),
+        };
+
+        let sql = r"UPDATE starknet_blocks SET
+                transaction_commitment = :transaction_commitment,
+                event_commitment = :event_commitment
+            WHERE hash = :block_hash";
+        tx.execute(
+            sql,
+            named_params![
+                ":transaction_commitment": transaction_commitment,
+                ":event_commitment": event_commitment,
+                ":block_hash": block_hash,
+            ],
+        )
+        .context("Update transaction and event commitments")?;
+
+        Ok(())
+    }
+
+    fn get_block_hash(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksBlockId,
+    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+        Ok(match block {
+            StarknetBlocksBlockId::Hash(hash) => Some(hash),
+            StarknetBlocksBlockId::Number(number) => {
+                StarknetBlocksTable::get(tx, number.into())?.map(|block| block.hash)
+            }
+            StarknetBlocksBlockId::Latest => {
+                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)?.map(|block| block.hash)
+            }
+        })
+    }
+
     pub fn get_transaction_data_for_block(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Vec<(transaction::Transaction, transaction::Receipt)>> {
-        // Identify block hash
-        let block_hash = match block {
-            StarknetBlocksBlockId::Number(number) => {
-                match StarknetBlocksTable::get(tx, number.into())? {
-                    Some(block) => block.hash,
-                    None => return Ok(Vec::new()),
-                }
-            }
-            StarknetBlocksBlockId::Hash(hash) => hash,
-            StarknetBlocksBlockId::Latest => {
-                match StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)? {
-                    Some(block) => block.hash,
-                    None => return Ok(Vec::new()),
-                }
-            }
+        let block_hash = match Self::get_block_hash(tx, block)? {
+            Some(hash) => hash,
+            None => return Ok(Vec::new()),
         };
 
         let mut stmt = tx
@@ -1091,6 +1131,8 @@ pub struct StarknetBlock {
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
+    pub transaction_commitment: Option<TransactionCommitment>,
+    pub event_commitment: Option<EventCommitment>,
 }
 
 /// StarknetVersionsTable tracks `starknet_versions` table, which just interns the version
@@ -1869,6 +1911,8 @@ mod tests {
                         timestamp: blocks[0].timestamp,
                         gas_price: blocks[0].gas_price,
                         sequencer_address: blocks[0].sequencer_address,
+                        transaction_commitment: None,
+                        event_commitment: None,
                     };
 
                     assert_eq!(
@@ -2137,6 +2181,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(felt!("0x1234")),
+                transaction_commitment: None,
+                event_commitment: None,
             };
 
             // Note: hashes are reverse ordered to trigger the sorting bug.

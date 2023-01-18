@@ -1464,6 +1464,8 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
                 sequencer_address: SequencerAddress(felt_bytes!(&[3u8])),
+                transaction_commitment: None,
+                event_commitment: None,
             };
 
             StarknetBlocksTable::insert(transaction, &block3, None).unwrap();

@@ -166,6 +166,22 @@ macros::i64_backed_u64::to_from_sql!(StarknetBlockTimestamp);
 macros::i64_backed_u64::new_get_partialeq!(StarknetBlockTimestamp);
 macros::i64_backed_u64::serdes!(StarknetBlockTimestamp);
 
+/// A StarkNet events commitment of a block.
+#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct EventCommitment(pub Felt);
+
+impl EventCommitment {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
+
+/// A StarkNet transactions commitment of a block.
+#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TransactionCommitment(pub Felt);
+
+impl TransactionCommitment {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
+
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetTransactionHash(pub Felt);
@@ -475,6 +491,8 @@ macros::starkhash::common_newtype!(
     StorageValue,
     GlobalRoot,
     StarknetBlockHash,
+    EventCommitment,
+    TransactionCommitment,
     TransactionSignatureElem,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
