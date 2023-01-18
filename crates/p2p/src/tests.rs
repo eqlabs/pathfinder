@@ -101,14 +101,10 @@ fn filter_events<T: Debug + Send + 'static>(
     tokio::spawn(async move {
         loop {
             tokio::select! {
-                event = event_receiver.recv() => match event {
-                    Some(event) => {
-                        match f(event) {
-                            Some(data) => tx.send(data).await.unwrap(),
-                            None => {},
-                        }
-                    },
-                    None => {},
+                event = event_receiver.recv() => if let Some(event) = event {
+                    if let Some(data) = f(event) {
+                        tx.send(data).await.unwrap()
+                    }
                 }
             }
         }
@@ -191,7 +187,7 @@ async fn periodic_bootstrap() {
 
     consume_events(boot.event_receiver);
 
-    let peer_id2 = peer2.peer_id.clone();
+    let peer_id2 = peer2.peer_id;
 
     let mut peer2_added_to_dht_of_peer1 =
         filter_events(peer1.event_receiver, move |event| match event {
@@ -209,12 +205,9 @@ async fn periodic_bootstrap() {
     let dht1 = peer1.client.for_test().get_peers_from_dht().await;
     let dht2 = peer2.client.for_test().get_peers_from_dht().await;
 
-    assert_eq!(
-        boot_dht,
-        [peer1.peer_id.clone(), peer2.peer_id.clone()].into()
-    );
-    assert_eq!(dht1, [boot.peer_id.clone(), peer2.peer_id.clone()].into());
-    assert_eq!(dht2, [boot.peer_id.clone(), peer1.peer_id.clone()].into());
+    assert_eq!(boot_dht, [peer1.peer_id, peer2.peer_id].into());
+    assert_eq!(dht1, [boot.peer_id, peer2.peer_id].into());
+    assert_eq!(dht2, [boot.peer_id, peer1.peer_id].into());
 }
 
 #[test_log::test(tokio::test)]
