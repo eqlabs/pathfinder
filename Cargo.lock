@@ -3759,6 +3759,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec 0.20.4",
  "cairo-lang-starknet",
+ "criterion",
  "ethers",
  "hex-literal",
  "metrics",
