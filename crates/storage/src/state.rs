@@ -1882,6 +1882,13 @@ mod tests {
             }
         }
 
+        mod get_state_commitment {
+            #[test]
+            fn todo() {
+                todo!("implement the tests");
+            }
+        }
+
         mod reorg {
             use super::*;
 
