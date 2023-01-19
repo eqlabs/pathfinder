@@ -10,7 +10,7 @@ pub async fn poll_pending(
     sequencer: &impl starknet_gateway_client::ClientApi,
     head: (
         pathfinder_common::StarknetBlockHash,
-        pathfinder_common::GlobalRoot,
+        pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
 ) -> anyhow::Result<()> {
@@ -76,8 +76,8 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        felt, felt_bytes, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp,
+        felt, felt_bytes, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StateCommitment,
     };
     use starknet_gateway_client::MockClientApi;
     use starknet_gateway_types::reply::{
@@ -86,7 +86,7 @@ mod tests {
 
     lazy_static::lazy_static!(
         pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(felt!("0x1234"));
-        pub static ref PARENT_ROOT: GlobalRoot = GlobalRoot(felt_bytes!(b"parent root"));
+        pub static ref PARENT_ROOT: StateCommitment = StateCommitment(felt_bytes!(b"parent root"));
 
         pub static ref NEXT_BLOCK: Block = Block{
             block_hash: StarknetBlockHash(felt!("0xabcd")),
@@ -104,7 +104,7 @@ mod tests {
 
         pub static ref PENDING_DIFF: StateUpdate = StateUpdate {
             block_hash: None,
-            new_root: GlobalRoot(felt_bytes!(b"new root")),
+            new_root: StateCommitment(felt_bytes!(b"new root")),
             old_root: *PARENT_ROOT,
             state_diff: StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
@@ -235,7 +235,7 @@ mod tests {
             .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
         let mut disconnected_diff = PENDING_DIFF.clone();
-        disconnected_diff.old_root = GlobalRoot(felt_bytes!(b"different old root"));
+        disconnected_diff.old_root = StateCommitment(felt_bytes!(b"different old root"));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(disconnected_diff.clone()));

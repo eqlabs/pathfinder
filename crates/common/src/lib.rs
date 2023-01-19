@@ -138,7 +138,7 @@ pub struct StorageValue(pub Felt);
 /// A commitment root of the global StarkNet state. This is the entry-point
 /// for the global state at a specific point in time via the global state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct GlobalRoot(pub Felt);
+pub struct StateCommitment(pub Felt);
 
 /// A StarkNet block hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -489,7 +489,7 @@ macros::starkhash::common_newtype!(
     ByteCodeWord,
     StorageAddress,
     StorageValue,
-    GlobalRoot,
+    StateCommitment,
     StarknetBlockHash,
     EventCommitment,
     TransactionCommitment,

@@ -82,8 +82,8 @@ mod tests {
     use crate::v02::RpcContext;
     use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
-        BlockId, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        BlockId, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
     };
 
     mod parsing {
@@ -244,8 +244,8 @@ mod tests {
         // We only care about the nonce data, but the rest is required for setting up pending data.
         let state_update = starknet_gateway_types::reply::StateUpdate {
             block_hash: None,
-            new_root: GlobalRoot(felt_bytes!(b"dont care")),
-            old_root: GlobalRoot(felt_bytes!(b"dont care")),
+            new_root: StateCommitment(felt_bytes!(b"dont care")),
+            old_root: StateCommitment(felt_bytes!(b"dont care")),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),

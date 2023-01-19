@@ -30,10 +30,10 @@ mod tests {
         // };
 
         // // The global root that we start with
-        // let global_root = GlobalRoot(Felt::ZERO);
+        // let global_root = StateCommitment(Felt::ZERO);
 
         // // The global root that we end with
-        // let expected_global_root = GlobalRoot(
+        // let expected_global_root = StateCommitment(
         //     StarkHash::from_hex_str(
         //         "04BA80F86439D380FF9EC91EE316C9FEA4C5AD2CAEFA8D5CC098AED72DE445B8",
         //     )
@@ -182,7 +182,7 @@ mod tests {
         //     }],
         // };
 
-        // let global_root = GlobalRoot(Felt::ZERO);
+        // let global_root = StateCommitment(Felt::ZERO);
         // let update_log = StateUpdateLog {
         //     origin: EthOrigin {
         //         block: BlockOrigin {
@@ -195,7 +195,7 @@ mod tests {
         //         },
         //         log_index: EthereumLogIndex(0),
         //     },
-        //     global_root: GlobalRoot(Felt::ZERO),
+        //     global_root: StateCommitment(Felt::ZERO),
         //     block_number: StarknetBlockNumber(0),
         // };
 
@@ -251,7 +251,7 @@ mod tests {
         todo!("Update me to new sync process when possible");
         // use pathfinder_common::{
         //     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        //     EthereumTransactionIndex, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        //     EthereumTransactionIndex, StateCommitment, StarknetBlockHash, StarknetBlockNumber,
         // };
         // use pathfinder_ethereum::{
         //     log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
@@ -291,7 +291,7 @@ mod tests {
         //         },
         //         log_index: EthereumLogIndex(23),
         //     },
-        //     global_root: GlobalRoot(
+        //     global_root: StateCommitment(
         //         StarkHash::from_hex_str(
         //             "02c2bb91714f8448ed814bdac274ab6fcdbafc22d835f9e847e5bee8c2e5444e",
         //         )
@@ -312,7 +312,7 @@ mod tests {
         // /*
         // update(
         //     &transport,
-        //     GlobalRoot(Felt::ZERO),
+        //     StateCommitment(Felt::ZERO),
         //     &genesis,
         //     &transaction,
         //     &sequencer,

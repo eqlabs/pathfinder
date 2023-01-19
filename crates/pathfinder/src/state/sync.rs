@@ -5,8 +5,8 @@ mod pending;
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
-    Chain, ClassHash, ContractNonce, ContractRoot, EventCommitment, GasPrice, GlobalRoot,
-    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, TransactionCommitment,
+    Chain, ClassHash, ContractNonce, ContractRoot, EventCommitment, GasPrice, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StateCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
@@ -57,7 +57,7 @@ where
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
-            Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
+            Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
             Chain,
             Option<std::time::Duration>,
             l2::BlockValidationMode,
@@ -87,7 +87,7 @@ where
         // Seems a better choice for an invalid block number than 0
         StarknetBlockNumber::MAX,
         StarknetBlockHash(Felt::ZERO),
-        GlobalRoot(Felt::ZERO),
+        StateCommitment(Felt::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
@@ -353,7 +353,7 @@ where
                             .context("Create database transaction")?;
                         let new_root = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
                         tx.rollback()?;
-                        anyhow::Result::<GlobalRoot>::Ok(new_root)
+                        anyhow::Result::<StateCommitment>::Ok(new_root)
                     }).context("Calculate pending state root")?;
 
                     match new_root == state_update.new_root {
@@ -541,7 +541,7 @@ async fn l1_reorg(
     })
 }
 
-/// Returns the new [GlobalRoot] after the update.
+/// Returns the new [StateCommitment] after the update.
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
@@ -687,11 +687,11 @@ async fn l2_reorg(
 fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
-) -> anyhow::Result<GlobalRoot> {
+) -> anyhow::Result<StateCommitment> {
     let global_root = StarknetBlocksTable::get(transaction, StarknetBlocksBlockId::Latest)
         .context("Query latest state root")?
         .map(|block| block.root)
-        .unwrap_or(GlobalRoot(Felt::ZERO));
+        .unwrap_or(StateCommitment(Felt::ZERO));
     let mut global_tree =
         GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;
 
@@ -893,9 +893,9 @@ mod tests {
         BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
-        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        StarknetTransactionHash, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1072,7 +1072,7 @@ mod tests {
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
         _: impl ClientApi,
-        _: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
+        _: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
         _: Chain,
         _: Option<std::time::Duration>,
         _: l2::BlockValidationMode,
@@ -1099,12 +1099,12 @@ mod tests {
         pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::GENESIS,
             // State update actually doesn't change the state hence 0 root
-            global_root: GlobalRoot(Felt::ZERO),
+            global_root: StateCommitment(Felt::ZERO),
             origin: ETH_ORIG.clone(),
         };
         pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::new_or_panic(1),
-            global_root: GlobalRoot(*B),
+            global_root: StateCommitment(*B),
             origin: ETH_ORIG.clone(),
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
@@ -1113,7 +1113,7 @@ mod tests {
             gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(Felt::ZERO),
             sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-            state_commitment: GlobalRoot(Felt::ZERO),
+            state_commitment: StateCommitment(Felt::ZERO),
             status: reply::Status::AcceptedOnL1,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
@@ -1126,7 +1126,7 @@ mod tests {
             gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
-            state_commitment: GlobalRoot(*B),
+            state_commitment: StateCommitment(*B),
             status: reply::Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
@@ -1136,7 +1136,7 @@ mod tests {
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: StarknetBlockHash(*A),
-            root: GlobalRoot(Felt::ZERO),
+            root: StateCommitment(Felt::ZERO),
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
@@ -1146,7 +1146,7 @@ mod tests {
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: StarknetBlockHash(*B),
-            root: GlobalRoot(*B),
+            root: StateCommitment(*B),
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
@@ -1156,8 +1156,8 @@ mod tests {
         // Causes root to remain 0
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
             block_hash: Some(StarknetBlockHash(*A)),
-            new_root: GlobalRoot(Felt::ZERO),
-            old_root: GlobalRoot(Felt::ZERO),
+            new_root: StateCommitment(Felt::ZERO),
+            old_root: StateCommitment(Felt::ZERO),
             state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],

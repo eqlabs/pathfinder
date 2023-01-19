@@ -112,9 +112,9 @@ mod tests {
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
         felt, felt_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData,
-        EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
-        TransactionVersion,
+        EventKey, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StateCommitment,
+        StorageAddress, TransactionVersion,
     };
     use pathfinder_merkle_tree::state_tree::GlobalStateTree;
     use pathfinder_storage::{
@@ -210,7 +210,7 @@ mod tests {
         ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(Felt::ZERO)).unwrap();
+        let mut global_tree = GlobalStateTree::load(&db_txn, StateCommitment(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,

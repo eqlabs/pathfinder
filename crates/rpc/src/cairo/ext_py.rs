@@ -351,8 +351,8 @@ mod tests {
     use pathfinder_common::{
         felt, felt_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
         ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
-        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
+        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        StateCommitment, StorageAddress, StorageValue, TransactionVersion,
     };
     use pathfinder_storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
@@ -735,8 +735,8 @@ mod tests {
 
         let update = std::sync::Arc::new(StateUpdate {
             block_hash: None,
-            old_root: GlobalRoot(Felt::ZERO),
-            new_root: GlobalRoot(Felt::ZERO),
+            old_root: StateCommitment(Felt::ZERO),
+            new_root: StateCommitment(Felt::ZERO),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: {
                     let mut map = std::collections::HashMap::new();
@@ -789,9 +789,11 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree =
-            pathfinder_merkle_tree::state_tree::GlobalStateTree::load(tx, GlobalRoot(Felt::ZERO))
-                .unwrap();
+        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
+            tx,
+            StateCommitment(Felt::ZERO),
+        )
+        .unwrap();
 
         global_tree
             .set(test_contract_address, test_contract_state_hash)
@@ -849,9 +851,11 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree =
-            pathfinder_merkle_tree::state_tree::GlobalStateTree::load(tx, GlobalRoot(Felt::ZERO))
-                .unwrap();
+        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
+            tx,
+            StateCommitment(Felt::ZERO),
+        )
+        .unwrap();
 
         global_tree
             .set(account_contract_address, account_contract_state_hash)

@@ -24,10 +24,10 @@ use jsonrpsee::{
 };
 use pathfinder_common::{
     BlockId, CallResultValue, ChainId, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, GlobalRoot,
-    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    StarknetTransactionIndex, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
 use pathfinder_merkle_tree::state_tree::GlobalStateTree;
 use pathfinder_storage::{
@@ -56,9 +56,9 @@ pub struct RpcApi {
 pub struct RawBlock {
     pub number: StarknetBlockNumber,
     pub hash: StarknetBlockHash,
-    pub root: GlobalRoot,
+    pub root: StateCommitment,
     pub parent_hash: StarknetBlockHash,
-    pub parent_root: GlobalRoot,
+    pub parent_root: StateCommitment,
     pub timestamp: StarknetBlockTimestamp,
     pub status: BlockStatus,
     pub sequencer: SequencerAddress,
@@ -230,7 +230,9 @@ impl RpcApi {
         let block_status = Self::get_block_status(transaction, block.number)?;
 
         let (parent_hash, parent_root) = match block.number {
-            StarknetBlockNumber::GENESIS => (StarknetBlockHash(Felt::ZERO), GlobalRoot(Felt::ZERO)),
+            StarknetBlockNumber::GENESIS => {
+                (StarknetBlockHash(Felt::ZERO), StateCommitment(Felt::ZERO))
+            }
             other => {
                 let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                     .context("Read parent block from database")

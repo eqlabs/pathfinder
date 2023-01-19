@@ -4,8 +4,8 @@ use super::{
 use ethers::types::H128;
 use pathfinder_common::{
     felt, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-    EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-    StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex,
+    EventData, EventKey, Fee, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StateCommitment,
     TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
@@ -31,7 +31,7 @@ pub(crate) fn create_blocks() -> [StarknetBlock; NUM_BLOCKS] {
         .map(|i| StarknetBlock {
             number: StarknetBlockNumber::GENESIS + i as u64,
             hash: StarknetBlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
-            root: GlobalRoot(Felt::from_hex_str(&"f".repeat(i + 3)).unwrap()),
+            root: StateCommitment(Felt::from_hex_str(&"f".repeat(i + 3)).unwrap()),
             timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
             gas_price: GasPrice::from(i as u64),
             sequencer_address: SequencerAddress(Felt::from_be_slice(&[i as u8]).unwrap()),

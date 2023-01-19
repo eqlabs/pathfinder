@@ -1,7 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
-    EthereumAddress, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
-    StarknetBlockNumber, StarknetBlockTimestamp,
+    EthereumAddress, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    StarknetBlockTimestamp, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
@@ -24,7 +24,7 @@ pub struct Block {
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
     #[serde(alias = "state_root")]
-    pub state_commitment: GlobalRoot,
+    pub state_commitment: StateCommitment,
     pub status: Status,
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
@@ -645,8 +645,8 @@ pub mod transaction {
 pub struct StateUpdate {
     /// This field is absent for a `pending` state update
     pub block_hash: Option<StarknetBlockHash>,
-    pub new_root: GlobalRoot,
-    pub old_root: GlobalRoot,
+    pub new_root: StateCommitment,
+    pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }
 

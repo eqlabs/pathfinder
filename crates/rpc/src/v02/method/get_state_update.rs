@@ -69,8 +69,8 @@ pub async fn get_state_update(
 
 mod types {
     use pathfinder_common::{
-        ClassHash, ContractAddress, ContractNonce, GlobalRoot, StarknetBlockHash, StorageAddress,
-        StorageValue,
+        ClassHash, ContractAddress, ContractNonce, StarknetBlockHash, StateCommitment,
+        StorageAddress, StorageValue,
     };
     use serde::Serialize;
     use serde_with::skip_serializing_none;
@@ -84,8 +84,8 @@ mod types {
         /// None for `pending`
         #[serde(default)]
         pub block_hash: Option<StarknetBlockHash>,
-        pub new_root: GlobalRoot,
-        pub old_root: GlobalRoot,
+        pub new_root: StateCommitment,
+        pub old_root: StateCommitment,
         pub state_diff: StateDiff,
     }
 
@@ -283,8 +283,8 @@ mod types {
         fn receipt() {
             let state_update = StateUpdate {
                 block_hash: Some(StarknetBlockHash(felt!("0xdeadbeef"))),
-                new_root: GlobalRoot(felt!("0x1")),
-                old_root: GlobalRoot(felt!("0x2")),
+                new_root: StateCommitment(felt!("0x1")),
+                old_root: StateCommitment(felt!("0x2")),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
                         address: ContractAddress::new_or_panic(felt!("0xadc")),
@@ -335,7 +335,7 @@ mod tests {
     use jsonrpsee::types::Params;
     use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
-        Chain, ClassHash, ContractAddress, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+        Chain, ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
         StorageAddress, StorageValue,
     };
     use stark_hash::Felt;
@@ -497,10 +497,10 @@ mod tests {
 
         let expected = StateUpdate {
             block_hash: None,
-            new_root: GlobalRoot(felt!(
+            new_root: StateCommitment(felt!(
                 "06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
             )),
-            old_root: GlobalRoot(felt!(
+            old_root: StateCommitment(felt!(
                 "0300e3d0ce5f0da1a086ab49734bab6f302efbf544b56226b7db665716b621c8"
             )),
             state_diff: StateDiff {

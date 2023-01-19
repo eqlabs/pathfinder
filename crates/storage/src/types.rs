@@ -1,4 +1,4 @@
-use pathfinder_common::{ClassHash, GlobalRoot, StarknetBlockHash};
+use pathfinder_common::{ClassHash, StarknetBlockHash, StateCommitment};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -30,8 +30,8 @@ pub struct StateUpdate {
     /// None for `pending`
     #[serde(default)]
     pub block_hash: Option<StarknetBlockHash>,
-    pub new_root: GlobalRoot,
-    pub old_root: GlobalRoot,
+    pub new_root: StateCommitment,
+    pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }
 

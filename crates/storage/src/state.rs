@@ -7,9 +7,9 @@ use pathfinder_common::{
     },
     Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-    EthereumTransactionIndex, EventCommitment, EventData, EventKey, GasPrice, GlobalRoot,
-    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StarknetTransactionHash, TransactionCommitment,
+    EthereumTransactionIndex, EventCommitment, EventData, EventKey, GasPrice, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    StateCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
@@ -76,11 +76,11 @@ impl L1StateTable {
         Ok(())
     }
 
-    /// Returns the [root](GlobalRoot) of the given block.
+    /// Returns the [root](StateCommitment) of the given block.
     pub fn get_root(
         tx: &Transaction<'_>,
         block: L1TableBlockId,
-    ) -> anyhow::Result<Option<GlobalRoot>> {
+    ) -> anyhow::Result<Option<StateCommitment>> {
         let mut statement = match block {
             L1TableBlockId::Number(_) => {
                 tx.prepare("SELECT starknet_global_root FROM l1_state WHERE starknet_block_number = ?")
@@ -315,11 +315,11 @@ impl StarknetBlocksTable {
         }
     }
 
-    /// Returns the [root](GlobalRoot) of the given block.
+    /// Returns the [root](StateCommitment) of the given block.
     pub fn get_root(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<Option<GlobalRoot>> {
+    ) -> anyhow::Result<Option<StateCommitment>> {
         match block {
             StarknetBlocksBlockId::Number(number) => tx.query_row(
                 "SELECT root FROM starknet_blocks WHERE number = ?",
@@ -1127,7 +1127,7 @@ impl StarknetEventsTable {
 pub struct StarknetBlock {
     pub number: StarknetBlockNumber,
     pub hash: StarknetBlockHash,
-    pub root: GlobalRoot,
+    pub root: StateCommitment,
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
@@ -1443,7 +1443,7 @@ mod tests {
                         },
                         log_index: EthereumLogIndex(i + 500),
                     },
-                    global_root: GlobalRoot(
+                    global_root: StateCommitment(
                         Felt::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
                     ),
                     block_number: StarknetBlockNumber::GENESIS + i,
@@ -2178,7 +2178,7 @@ mod tests {
             let block = StarknetBlock {
                 number: StarknetBlockNumber::GENESIS,
                 hash: StarknetBlockHash(felt!("0x1234")),
-                root: GlobalRoot(felt!("0x1234")),
+                root: StateCommitment(felt!("0x1234")),
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(felt!("0x1234")),

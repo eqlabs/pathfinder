@@ -1,7 +1,7 @@
 use crate::v02::common::get_block_status;
 use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{BlockId, GlobalRoot, StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockId, StarknetBlockHash, StarknetBlockNumber, StateCommitment};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -104,7 +104,9 @@ fn get_raw_block(
     let block_status = get_block_status(transaction, block.number)?;
 
     let (parent_hash, parent_root) = match block.number {
-        StarknetBlockNumber::GENESIS => (StarknetBlockHash(Felt::ZERO), GlobalRoot(Felt::ZERO)),
+        StarknetBlockNumber::GENESIS => {
+            (StarknetBlockHash(Felt::ZERO), StateCommitment(Felt::ZERO))
+        }
         other => {
             let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                 .context("Read parent block from database")?
@@ -158,8 +160,8 @@ fn get_block_transactions(
 mod types {
     use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
-        GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash,
+        GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        StarknetTransactionHash, StateCommitment,
     };
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -192,7 +194,7 @@ mod types {
         pub block_hash: Option<StarknetBlockHash>,
         pub parent_hash: StarknetBlockHash,
         pub block_number: Option<StarknetBlockNumber>,
-        pub new_root: Option<GlobalRoot>,
+        pub new_root: Option<StateCommitment>,
         pub timestamp: StarknetBlockTimestamp,
         pub sequencer_address: SequencerAddress,
         pub transactions: Transactions,
@@ -203,9 +205,9 @@ mod types {
     pub struct RawBlock {
         pub number: StarknetBlockNumber,
         pub hash: StarknetBlockHash,
-        pub root: GlobalRoot,
+        pub root: StateCommitment,
         pub parent_hash: StarknetBlockHash,
-        pub parent_root: GlobalRoot,
+        pub parent_root: StateCommitment,
         pub timestamp: StarknetBlockTimestamp,
         pub status: BlockStatus,
         pub sequencer: SequencerAddress,

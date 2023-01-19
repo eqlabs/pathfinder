@@ -8,8 +8,8 @@ use crate::{
     {StarknetBlock, Storage},
 };
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
+    ClassHash, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,
+    StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment, StorageAddress, StorageValue,
 };
 use rusqlite::Transaction;
 use stark_hash::Felt;
@@ -47,8 +47,8 @@ impl StateUpdate {
     pub fn with_block_hash(h: u8) -> Self {
         Self {
             block_hash: Some(StarknetBlockHash(hash!(h))),
-            new_root: GlobalRoot(hash!(1, h)),
-            old_root: GlobalRoot(hash!(2, h)),
+            new_root: StateCommitment(hash!(1, h)),
+            old_root: StateCommitment(hash!(2, h)),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
                     address: ContractAddress::new_or_panic(hash!(3, h)),
@@ -77,7 +77,7 @@ impl StarknetBlock {
         Self {
             number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
             hash: StarknetBlockHash(hash!(n)),
-            root: GlobalRoot(hash!(1, n)),
+            root: StateCommitment(hash!(1, n)),
             timestamp: StarknetBlockTimestamp::new(n as u64 + 1000)
                 .expect("block timestamp out of range"),
             gas_price: GasPrice(n as u128 + 2000),
