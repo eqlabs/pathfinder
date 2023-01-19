@@ -1,0 +1,28 @@
+[package]
+name = "stark_poseidon"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "stark_poseidon"
+path = "src/lib.rs"
+
+[build-dependencies]
+num-bigint = "0.4"
+stark_curve = { path = "../stark_curve" }
+stark_hash = { path = "../stark_hash" }
+
+[dependencies]
+stark_curve = { path = "../stark_curve" }
+stark_hash = { path = "../stark_hash" }
+
+[dev-dependencies]
+criterion = "0.4"
+hex = "0.4.3"
+rand = "0.8"
+
+[[bench]]
+name = "stark_poseidon"
+harness = false
