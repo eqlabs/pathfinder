@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package starknet.sync;
+
+import "common.proto";
+import "propagation.proto";
+
+message Request {
+  oneof request {
+    GetBlockHeaders get_block_headers = 1;
+    GetBlockBodies get_block_bodies = 2;
+    GetStateDiffs get_state_diffs = 3;
+    Status status = 4;
+  }
+}
+
+message Response {
+  oneof response {
+    BlockHeaders block_headers = 1;
+    BlockBodies block_bodies = 2;
+    StateDiffs state_diffs = 3;
+    Status status = 4;
+  }
+}
+
+enum Direction {
+  FORWARD = 0;
+  BACKWARD = 1;
+}
+
+message GetBlockHeaders {
+  starknet.common.FieldElement start_block =
+      2;            // block hash of the starting block
+  uint64 count = 3; // how many block, at most, to retrieve from this requested
+                    // starting point
+  uint64 size_limit = 4; // limit on size of returned messages.
+
+  Direction direction = 5;
+}
+
+/*
+    A response to GetBlockHeaders, returning a consecutive `count` of blocks (or
+   less if there are less available)
+ */
+message BlockHeaders { repeated starknet.common.BlockHeader headers = 2; }
+
+message GetBlockBodies {
+  starknet.common.FieldElement start_block =
+      2;            // block hash of the starting block
+  uint64 count = 3; // how many block, at most, to retrieve from this requested
+                    // starting point
+  uint64 size_limit = 4;
+
+  Direction direction = 5;
+}
+
+message BlockBodies { repeated starknet.common.BlockBody block_bodies = 2; }
+
+message GetStateDiffs {
+  starknet.common.FieldElement start_block =
+      2;            // block hash of the starting block
+  uint64 count = 3; // how many block, at most, to retrieve from this requested
+                    // starting point
+  uint64 size_limit = 4;
+
+  Direction direction = 5;
+}
+
+message StateDiffs {
+  message BlockStateUpdateWithHash {
+    starknet.common.FieldElement block_hash = 1;
+    starknet.propagation.BlockStateUpdate state_update = 2;
+  }
+
+  repeated BlockStateUpdateWithHash block_state_updates = 2;
+}
+
+message Status {
+  uint64 height = 1;
+  starknet.common.FieldElement hash = 2;
+  starknet.common.FieldElement chain_id = 3;
+}

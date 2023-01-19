@@ -13,6 +13,7 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 rpc-full-serde = []
+p2p = ["dep:p2p", "dep:p2p_proto"]
 
 [dependencies]
 anyhow = "1.0.66"
@@ -27,6 +28,8 @@ hex-literal = "0.3"
 lazy_static = "1.4.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
+p2p = { path = "../p2p", optional = true }
+p2p_proto = { path = "../p2p_proto", optional = true }
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }

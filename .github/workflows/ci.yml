@@ -18,6 +18,9 @@ jobs:
         with:
           mold-version: 1.4.1
           make-default: false
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - name: Enable mold
         run: |
           mkdir -p $HOME/.cargo
@@ -98,7 +101,9 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - uses: actions/setup-python@v4
         id: setup_python
         with:
@@ -115,7 +120,7 @@ jobs:
 
       # We want to strip the debug info as some of these test binaries are 100MB+ and pathfinder_lib is 1GB+
       - name: Execute tests
-        run: timeout 15m cargo test --all-targets --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
+        run: timeout 25m cargo test --all-targets --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
 
   clippy:
     runs-on: ubuntu-latest
@@ -125,6 +130,9 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
 
   rustfmt:
@@ -145,6 +153,9 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - run: cargo doc --no-deps --document-private-items
 
   dep-sort:
