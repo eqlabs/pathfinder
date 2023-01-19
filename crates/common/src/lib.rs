@@ -55,6 +55,10 @@ macros::starkhash251::deserialization!(CasmHash);
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct ClassCommitment(pub Felt);
 
+impl ClassCommitment {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
+
 macros::starkhash251::newtype!(ClassCommitment);
 macros::starkhash251::deserialization!(ClassCommitment);
 
@@ -135,10 +139,31 @@ macros::starkhash251::deserialization!(StorageAddress);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageValue(pub Felt);
 
-/// A commitment root of the global StarkNet state. This is the entry-point
-/// for the global state at a specific point in time via the global state tree.
+/// A global state commitment root for Starknet state starting from Starknet v0.11.0,
+/// when Declare v2 transactions became part of the state commitment.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StateCommitment(pub Felt);
+
+impl From<(StorageCommitment, ClassCommitment)> for StateCommitment {
+    fn from((storage_commitment, class_commitment): (StorageCommitment, ClassCommitment)) -> Self {
+        if class_commitment == ClassCommitment::ZERO {
+            Self(storage_commitment.0)
+        } else {
+            // FIXME 0.11.0 make sure which hash to use Pedersen or Poseidon
+            StateCommitment(stark_hash::stark_hash(
+                storage_commitment.0,
+                class_commitment.0,
+            ))
+        }
+    }
+}
+
+/// A global state commitment root for Starknet state up to Starknet v0.11.0.
+/// This is the entry-point for the global storage state at a specific point in time via
+/// the global storage state tree. This is also the global state commitment for all
+/// the blocks that were produced before Starknet was updated to v0.11.0.
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct StorageCommitment(pub Felt);
 
 /// A StarkNet block hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -487,9 +512,10 @@ macros::starkhash::common_newtype!(
     ConstructorParam,
     CallResultValue,
     ByteCodeWord,
+    StateCommitment,
     StorageAddress,
     StorageValue,
-    StateCommitment,
+    StorageCommitment,
     StarknetBlockHash,
     EventCommitment,
     TransactionCommitment,
