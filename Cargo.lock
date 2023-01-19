@@ -5122,6 +5122,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "stark_poseidon"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "hex",
+ "num-bigint 0.4.3",
+ "rand",
+ "stark_curve",
+ "stark_hash",
+]
+
+[[package]]
 name = "starknet-crypto"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

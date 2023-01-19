@@ -15,6 +15,33 @@ use ff::PrimeField;
 pub struct FieldElement([u64; 4]);
 
 impl FieldElement {
+    /// Montgomery representation of zero
+    pub const ZERO: FieldElement = FieldElement([0, 0, 0, 0]);
+
+    /// Montgomery representation of one
+    pub const ONE: FieldElement = FieldElement([
+        18446744073709551585,
+        18446744073709551615,
+        18446744073709551615,
+        576460752303422960,
+    ]);
+
+    /// Montgomery representation of two
+    pub const TWO: FieldElement = FieldElement([
+        18446744073709551553,
+        18446744073709551615,
+        18446744073709551615,
+        576460752303422416,
+    ]);
+
+    /// Montgomery representation of three
+    pub const THREE: FieldElement = FieldElement([
+        18446744073709551521,
+        18446744073709551615,
+        18446744073709551615,
+        576460752303421872,
+    ]);
+
     /// Construct a field element constant from montgomery representation
     pub const fn new(v: [u64; 4]) -> Self {
         Self(v)
@@ -48,28 +75,6 @@ impl FieldElement {
         }
     }
 }
-
-/// Montgomery representation of one
-pub const FIELD_ONE: FieldElement = FieldElement([
-    18446744073709551585,
-    18446744073709551615,
-    18446744073709551615,
-    576460752303422960,
-]);
-/// Montgomery representation of two
-pub const FIELD_TWO: FieldElement = FieldElement([
-    18446744073709551553,
-    18446744073709551615,
-    18446744073709551615,
-    576460752303422416,
-]);
-/// Montgomery representation of three
-pub const FIELD_THREE: FieldElement = FieldElement([
-    18446744073709551521,
-    18446744073709551615,
-    18446744073709551615,
-    576460752303421872,
-]);
 
 #[cfg(test)]
 mod tests {
@@ -110,8 +115,8 @@ mod tests {
         let one = FieldElement::from(1);
         let two = FieldElement::from(2);
         let three = FieldElement::from(3);
-        assert_eq!(FIELD_ONE, one);
-        assert_eq!(FIELD_TWO, two);
-        assert_eq!(FIELD_THREE, three);
+        assert_eq!(FieldElement::ONE, one);
+        assert_eq!(FieldElement::TWO, two);
+        assert_eq!(FieldElement::THREE, three);
     }
 }

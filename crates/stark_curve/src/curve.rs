@@ -1,4 +1,4 @@
-use crate::field::{FieldElement, FIELD_ONE, FIELD_THREE, FIELD_TWO};
+use crate::field::FieldElement;
 use bitvec::{order::Lsb0, slice::BitSlice};
 use ff::Field;
 
@@ -47,8 +47,8 @@ impl AffinePoint {
 
         // l = (3x^2+a)/2y with a=1 from stark curve
         let lambda = {
-            let dividend = FIELD_THREE * (self.x * self.x) + FieldElement::one();
-            let divisor_inv = (FIELD_TWO * self.y).invert().unwrap();
+            let dividend = FieldElement::THREE * (self.x * self.x) + FieldElement::one();
+            let divisor_inv = (FieldElement::TWO * self.y).invert().unwrap();
             dividend * divisor_inv
         };
 
@@ -113,7 +113,7 @@ impl From<&AffinePoint> for ProjectivePoint {
     fn from(p: &AffinePoint) -> Self {
         let x = p.x;
         let y = p.y;
-        let z = FIELD_ONE;
+        let z = FieldElement::ONE;
         ProjectivePoint {
             x,
             y,
@@ -128,7 +128,7 @@ impl ProjectivePoint {
         Self {
             x: FieldElement::zero(),
             y: FieldElement::zero(),
-            z: FIELD_ONE,
+            z: FieldElement::ONE,
             infinity: true,
         }
     }
@@ -139,15 +139,15 @@ impl ProjectivePoint {
         }
 
         // t=3x^2+az^2 with a=1 from stark curve
-        let t = FIELD_THREE * self.x * self.x + self.z * self.z;
-        let u = FIELD_TWO * self.y * self.z;
-        let v = FIELD_TWO * u * self.x * self.y;
-        let w = t * t - FIELD_TWO * v;
+        let t = FieldElement::THREE * self.x * self.x + self.z * self.z;
+        let u = FieldElement::TWO * self.y * self.z;
+        let v = FieldElement::TWO * u * self.x * self.y;
+        let w = t * t - FieldElement::TWO * v;
 
         let uy = u * self.y;
 
         let x = u * w;
-        let y = t * (v - w) - FIELD_TWO * uy * uy;
+        let y = t * (v - w) - FieldElement::TWO * uy * uy;
         let z = u * u * u;
 
         self.x = x;
@@ -203,7 +203,7 @@ impl ProjectivePoint {
         if self.infinity {
             self.x = other.x;
             self.y = other.y;
-            self.z = FIELD_ONE;
+            self.z = FieldElement::ONE;
             self.infinity = other.infinity;
             return;
         }
@@ -265,7 +265,7 @@ pub const CURVE_G: ProjectivePoint = ProjectivePoint {
         18147424675297964973,
         405578048423154473,
     ]),
-    z: FIELD_ONE,
+    z: FieldElement::ONE,
     infinity: false,
 };
 
@@ -283,7 +283,7 @@ pub const PEDERSEN_P0: ProjectivePoint = ProjectivePoint {
         4798858472748676776,
         81375596133053150,
     ]),
-    z: FIELD_ONE,
+    z: FieldElement::ONE,
     infinity: false,
 };
 
@@ -301,7 +301,7 @@ pub const PEDERSEN_P1: ProjectivePoint = ProjectivePoint {
         433857700841878496,
         368891789801938570,
     ]),
-    z: FIELD_ONE,
+    z: FieldElement::ONE,
     infinity: false,
 };
 
@@ -319,7 +319,7 @@ pub const PEDERSEN_P2: ProjectivePoint = ProjectivePoint {
         5191292837124484988,
         285630633187035523,
     ]),
-    z: FIELD_ONE,
+    z: FieldElement::ONE,
     infinity: false,
 };
 
@@ -337,7 +337,7 @@ pub const PEDERSEN_P3: ProjectivePoint = ProjectivePoint {
         11088962269971685343,
         161068411212710156,
     ]),
-    z: FIELD_ONE,
+    z: FieldElement::ONE,
     infinity: false,
 };
 
@@ -355,7 +355,7 @@ pub const PEDERSEN_P4: ProjectivePoint = ProjectivePoint {
         6033691581221864148,
         345457391846365716,
     ]),
-    z: FIELD_ONE,
+    z: FieldElement::ONE,
     infinity: false,
 };
 
@@ -381,7 +381,7 @@ mod tests {
         ProjectivePoint {
             x,
             y,
-            z: FIELD_ONE,
+            z: FieldElement::ONE,
             infinity: false,
         }
     }
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn projective_multiply() {
-        let three = FIELD_THREE.into_bits();
+        let three = FieldElement::THREE.into_bits();
         let g = CURVE_G;
         let g_triple = AffinePoint::from(&g.multiply(&three));
         let expected = affine_from_xy_str(
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn affine_projective_multiply() {
-        let three = FIELD_THREE.into_bits();
+        let three = FieldElement::THREE.into_bits();
 
         let ag = AffinePoint::from(&CURVE_G);
         let ag_triple = ag.multiply(&three);
