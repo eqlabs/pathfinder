@@ -225,6 +225,8 @@ impl StarknetBlocksTable {
         tx: &Transaction<'_>,
         block: &StarknetBlock,
         version: Option<&str>,
+        storage_commitment: StorageCommitment,
+        class_commitment: ClassCommitment,
     ) -> anyhow::Result<()> {
         let version_id = if let Some(version) = version {
             Some(StarknetVersionsTable::intern(tx, version)?)
@@ -232,19 +234,26 @@ impl StarknetBlocksTable {
             None
         };
 
+        let class_commitment = if class_commitment == ClassCommitment::ZERO {
+            None
+        } else {
+            Some(class_commitment)
+        };
+
         tx.execute(
-            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment)
-                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment)",
+            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment, class_commitment)
+                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
             named_params! {
                 ":number": block.number,
                 ":hash": block.hash,
-                ":root": block.root,
+                ":root": storage_commitment,
                 ":timestamp": block.timestamp,
                 ":gas_price": &block.gas_price.to_be_bytes(),
                 ":sequencer_address": block.sequencer_address,
                 ":version_id": version_id,
                 ":transaction_commitment": block.transaction_commitment, 
                 ":event_commitment": block.event_commitment,
+                ":class_commitment": class_commitment,
             },
         )?;
 
@@ -258,15 +267,15 @@ impl StarknetBlocksTable {
     ) -> anyhow::Result<Option<StarknetBlock>> {
         let mut statement = match block {
             StarknetBlocksBlockId::Number(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
                     FROM starknet_blocks WHERE number = ?",
             ),
             StarknetBlocksBlockId::Hash(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
                     FROM starknet_blocks WHERE hash = ?",
             ),
             StarknetBlocksBlockId::Latest => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment
+                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
                     FROM starknet_blocks ORDER BY number DESC LIMIT 1",
             ),
         }?;
@@ -285,7 +294,7 @@ impl StarknetBlocksTable {
 
                 let hash = row.get_unwrap("hash");
 
-                let root = row.get_unwrap("root");
+                let state_commitment = row.get_unwrap("root");
 
                 let timestamp = row.get_unwrap("timestamp");
 
@@ -297,6 +306,11 @@ impl StarknetBlocksTable {
                 let transaction_commitment: Option<TransactionCommitment> =
                     row.get_unwrap("transaction_commitment");
                 let event_commitment: Option<EventCommitment> = row.get_unwrap("event_commitment");
+
+                let class_commitment = row
+                    .get_unwrap::<_, Option<_>>("class_commitment")
+                    .unwrap_or(ClassCommitment::ZERO);
+                let root = (state_commitment, class_commitment).into();
 
                 let block = StarknetBlock {
                     number,

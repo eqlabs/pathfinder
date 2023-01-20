@@ -352,7 +352,7 @@ where
                         let tx = db_conn
                             .transaction_with_behavior(TransactionBehavior::Immediate)
                             .context("Create database transaction")?;
-                        let new_root = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
+                        let new_root = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?.into();
                         tx.rollback()?;
                         anyhow::Result::<StateCommitment>::Ok(new_root)
                     }).context("Calculate pending state root")?;
@@ -557,8 +557,10 @@ async fn l2_update(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        let new_root = update_starknet_state(&transaction, &state_update)
-            .context("Updating Starknet state")?;
+        let (new_storage_commitment, new_class_commitment) =
+            update_starknet_state(&transaction, &state_update)
+                .context("Updating Starknet state")?;
+        let new_root: StateCommitment = (new_storage_commitment, new_class_commitment).into();
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
         anyhow::ensure!(new_root == block.state_commitment, "State root mismatch");
@@ -583,6 +585,8 @@ async fn l2_update(
             &transaction,
             &starknet_block,
             block.starknet_version.as_deref(),
+            new_storage_commitment,
+            new_class_commitment,
         )
         .context("Insert block into database")?;
 
@@ -688,7 +692,7 @@ async fn l2_reorg(
 fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
-) -> anyhow::Result<StateCommitment> {
+) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
     let (storage_commitment, class_commitment) =
         StarknetBlocksTable::get_state_commitment(transaction, StarknetBlocksBlockId::Latest)
             .context("Query latest state commitment")?
@@ -763,7 +767,7 @@ fn update_starknet_state(
         .apply()
         .context("Apply class commitment tree updates")?;
 
-    Ok((new_storage_commitment, new_class_commitment).into())
+    Ok((new_storage_commitment, new_class_commitment))
 }
 
 fn deploy_contract(
