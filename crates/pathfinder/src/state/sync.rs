@@ -11,7 +11,7 @@ use pathfinder_common::{
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
-    state_tree::GlobalStateTree,
+    state_tree::StorageCommitmentTree,
 };
 use pathfinder_rpc::{
     v01::types::reply::{syncing, syncing::NumberedBlock, Syncing},
@@ -692,8 +692,8 @@ fn update_starknet_state(
         .context("Query latest state root")?
         .map(|block| block.root)
         .unwrap_or(StateCommitment(Felt::ZERO));
-    let mut global_tree =
-        GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;
+    let mut global_tree = StorageCommitmentTree::load(transaction, global_root)
+        .context("Loading global state tree")?;
 
     for contract in &state_update.state_diff.deployed_contracts {
         deploy_contract(transaction, &mut global_tree, contract).context("Deploying contract")?;
@@ -742,7 +742,7 @@ fn update_starknet_state(
 
 fn deploy_contract(
     transaction: &Transaction<'_>,
-    global_tree: &mut GlobalStateTree<'_, '_>,
+    global_tree: &mut StorageCommitmentTree<'_, '_>,
     contract: &DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.

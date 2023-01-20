@@ -7,7 +7,7 @@ use pathfinder_common::{
     StorageAddress,
 };
 use pathfinder_merkle_tree::merkle_tree::ProofNode;
-use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
+use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use stark_hash::Felt;
 
@@ -177,7 +177,7 @@ pub async fn get_proof(
             .ok_or(GetProofError::BlockNotFound)?;
 
         let global_state_tree =
-            GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
+            StorageCommitmentTree::load(&tx, global_root).context("Global state tree")?;
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.

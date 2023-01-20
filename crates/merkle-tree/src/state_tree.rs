@@ -1,4 +1,4 @@
-//! Contains the [GlobalStateTree] and [ContractsStateTree] trees, which combined
+//! Contains the [StorageCommitmentTree] and [ContractsStateTree] trees, which combined
 //! store the total StarkNet state.
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
@@ -61,13 +61,12 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     }
 }
 
-/// A Binary Merkle-Patricia Tree which contains
-/// the global state of StarkNet.
-pub struct GlobalStateTree<'tx, 'queries> {
+/// A Binary Merkle-Patricia Tree which contains StarkNet's storage commitment.
+pub struct StorageCommitmentTree<'tx, 'queries> {
     tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash>,
 }
 
-impl<'tx> GlobalStateTree<'tx, '_> {
+impl<'tx> StorageCommitmentTree<'tx, '_> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: StateCommitment) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
         let tree = MerkleTree::load("tree_global", transaction, root.0)?;

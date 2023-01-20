@@ -789,7 +789,7 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
+        let mut global_tree = pathfinder_merkle_tree::state_tree::StorageCommitmentTree::load(
             tx,
             StateCommitment(Felt::ZERO),
         )
@@ -851,7 +851,7 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree = pathfinder_merkle_tree::state_tree::GlobalStateTree::load(
+        let mut global_tree = pathfinder_merkle_tree::state_tree::StorageCommitmentTree::load(
             tx,
             StateCommitment(Felt::ZERO),
         )

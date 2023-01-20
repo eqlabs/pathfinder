@@ -15,7 +15,7 @@ pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<ContractNonce, GetNonceError> {
-    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 
     // We can potentially read the nonce from pending without having to reach out to the database.
@@ -45,7 +45,7 @@ pub async fn get_nonce(
             .ok_or(GetNonceError::BlockNotFound)?;
 
         let global_state_tree =
-            GlobalStateTree::load(&tx, global_root).context("Loading global state tree")?;
+            StorageCommitmentTree::load(&tx, global_root).context("Loading global state tree")?;
 
         let state_hash = global_state_tree
             .get(input.contract_address)

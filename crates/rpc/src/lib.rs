@@ -116,7 +116,7 @@ mod tests {
         StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StateCommitment,
         StorageAddress, TransactionVersion,
     };
-    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, ContractsTable,
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
@@ -210,7 +210,8 @@ mod tests {
         ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, StateCommitment(Felt::ZERO)).unwrap();
+        let mut global_tree =
+            StorageCommitmentTree::load(&db_txn, StateCommitment(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
@@ -224,7 +225,7 @@ mod tests {
             .unwrap();
         let global_root0 = global_tree.apply().unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
+        let mut global_tree = StorageCommitmentTree::load(&db_txn, global_root0).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
@@ -249,7 +250,7 @@ mod tests {
             .unwrap();
         let global_root1 = global_tree.apply().unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
+        let mut global_tree = StorageCommitmentTree::load(&db_txn, global_root1).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
@@ -561,7 +562,7 @@ mod tests {
         let pending_root = tokio::task::spawn_blocking(move || {
             let mut db = storage.connection().unwrap();
             let tmp_tx = db.transaction().unwrap();
-            let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
+            let mut global_tree = StorageCommitmentTree::load(&tmp_tx, latest.root).unwrap();
             for deployed in state_diff2.deployed_contracts {
                 ContractsTable::upsert(&tmp_tx, deployed.address, deployed.class_hash).unwrap();
             }

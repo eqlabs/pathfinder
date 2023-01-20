@@ -2,7 +2,7 @@ use crate::v02::types::ContractClass;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
@@ -99,7 +99,7 @@ fn get_definition_at(
         .context("Reading global root from database")?
         .ok_or(GetClassAtError::BlockNotFound)?;
 
-    let tree = GlobalStateTree::load(tx, global_root).context("Loading global state tree")?;
+    let tree = StorageCommitmentTree::load(tx, global_root).context("Loading global state tree")?;
     let state_hash = tree
         .get(contract)
         .context("Fetching contract leaf in global tree")?

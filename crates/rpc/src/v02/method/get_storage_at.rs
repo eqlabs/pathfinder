@@ -1,7 +1,7 @@
 use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
-use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
+use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -72,7 +72,7 @@ pub async fn get_storage_at(
             .ok_or(GetStorageAtError::BlockNotFound)?;
 
         let global_state_tree =
-            GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
+            StorageCommitmentTree::load(&tx, global_root).context("Global state tree")?;
 
         let contract_state_hash = global_state_tree
             .get(input.contract_address)

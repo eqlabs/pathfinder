@@ -359,7 +359,7 @@ mod tests {
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress,
         TransactionNonce,
     };
-    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
@@ -1444,7 +1444,7 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-            let mut global_tree = GlobalStateTree::load(transaction, block2.root).unwrap();
+            let mut global_tree = StorageCommitmentTree::load(transaction, block2.root).unwrap();
             let contract_state_hash = update_contract_state(
                 contract_address,
                 &storage_diff,

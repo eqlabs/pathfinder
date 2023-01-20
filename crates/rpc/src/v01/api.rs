@@ -29,7 +29,7 @@ use pathfinder_common::{
     StarknetTransactionIndex, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
-use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
 use pathfinder_storage::{
     types::StateUpdate, ContractCodeTable, ContractsStateTable, ContractsTable, EventFilterError,
     RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventFilter,
@@ -377,7 +377,7 @@ impl RpcApi {
                 // by using a dedicated error code from the RPC API spec
                 .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
 
-            let global_state_tree = GlobalStateTree::load(&tx, global_root)
+            let global_state_tree = StorageCommitmentTree::load(&tx, global_root)
                 .context("Global state tree")
                 .map_err(internal_server_error)?;
 
@@ -713,7 +713,7 @@ impl RpcApi {
             None => return Ok(false),
         };
         let global_state_tree =
-            GlobalStateTree::load(tx, global_root).context("Loading global state tree")?;
+            StorageCommitmentTree::load(tx, global_root).context("Loading global state tree")?;
         let contract_state_hash = global_state_tree
             .get(contract_address)
             .context("Fetching contract leaf in global tree")?;
@@ -1022,7 +1022,7 @@ impl RpcApi {
                 .context("No global root found")
                 .map_err(internal_server_error)?;
 
-            let global_state_tree = GlobalStateTree::load(&tx, global_root)
+            let global_state_tree = StorageCommitmentTree::load(&tx, global_root)
                 .context("Loading global state tree")
                 .map_err(internal_server_error)?;
 
