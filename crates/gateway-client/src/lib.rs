@@ -1942,4 +1942,88 @@ mod tests {
             });
         }
     }
+
+    mod version_check {
+        // Ensures the versions in the pathfinder_common::version_check! macro are kept in sync with reality.
+        //
+        // The tests are kept here to prevent crate dependency cycles while keeping the macro widely available.
+        use pathfinder_common::version_check;
+
+        use crate::{Client, ClientApi};
+        use anyhow::Context;
+        use pathfinder_common::BlockId;
+
+        async fn get_latest_version(client: &Client) -> anyhow::Result<(u64, u64, u64)> {
+            let version = client
+                .block(BlockId::Latest)
+                .await?
+                .as_block()
+                .context("Latest gateway block was of type pending")?
+                .starknet_version
+                .context("Latest gateway block has no version")?;
+
+            let mut split = version.split('.');
+            let major = split
+                .next()
+                .context("Version string is empty")?
+                .parse::<u64>()
+                .context("Parsing major component")?;
+            let minor = split
+                .next()
+                .context("Version string is missing minor component")?
+                .parse::<u64>()
+                .context("Parsing minor component")?;
+            let patch = split
+                .next()
+                .context("Version string is missing patch component")?
+                .parse::<u64>()
+                .context("Parsing patch component")?;
+
+            Ok((major, minor, patch))
+        }
+
+        #[tokio::test]
+        async fn integration() {
+            version_check!(Integration == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::integration()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Integration gateway version has changed, update version_check"
+            );
+        }
+
+        #[tokio::test]
+        async fn mainnet() {
+            version_check!(Integration == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::mainnet()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Mainnet gateway version has changed, update version_check"
+            );
+        }
+
+        #[tokio::test]
+        async fn testnet() {
+            version_check!(Integration == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::testnet()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Testnet gateway version has changed, update version_check"
+            );
+        }
+
+        #[tokio::test]
+        async fn testnet2() {
+            version_check!(Integration == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::testnet()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Testnet gateway version has changed, update version_check"
+            );
+        }
+    }
 }
