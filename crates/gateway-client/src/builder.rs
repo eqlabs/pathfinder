@@ -42,7 +42,6 @@ pub mod stage {
     /// - [get_class_by_hash](super::Request::get_class_by_hash)
     /// - [get_storage_at](super::Request::get_storage_at)
     /// - [get_transaction](super::Request::get_transaction)
-    /// - [get_transaction_status](super::Request::get_transaction_status)
     /// - [get_state_update](super::Request::get_state_update)
     /// - [get_contract_addresses](super::Request::get_contract_addresses)
     pub struct Method;
@@ -142,7 +141,6 @@ impl<'a> Request<'a, stage::Method> {
         get_class_by_hash,
         get_storage_at,
         get_transaction,
-        get_transaction_status,
         get_state_update,
         get_contract_addresses,
         get_compiled_class,

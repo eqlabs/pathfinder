@@ -46,11 +46,6 @@ pub trait ClientApi {
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError>;
 
-    async fn transaction_status(
-        &self,
-        transaction_hash: StarknetTransactionHash,
-    ) -> Result<reply::TransactionStatus, SequencerError>;
-
     async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError>;
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
@@ -286,20 +281,6 @@ impl ClientApi for Client {
     ) -> Result<reply::Transaction, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction()
-            .with_transaction_hash(transaction_hash)
-            .with_retry(Self::RETRY)
-            .get()
-            .await
-    }
-
-    /// Gets transaction status by transaction hash.
-    #[tracing::instrument(skip(self))]
-    async fn transaction_status(
-        &self,
-        transaction_hash: StarknetTransactionHash,
-    ) -> Result<reply::TransactionStatus, SequencerError> {
-        self.feeder_gateway_request()
-            .get_transaction_status()
             .with_transaction_hash(transaction_hash)
             .with_retry(Self::RETRY)
             .get()
@@ -1161,48 +1142,6 @@ mod tests {
             assert_eq!(
                 client.transaction(INVALID_TX_HASH).await.unwrap().status,
                 Status::NotReceived,
-            );
-        }
-    }
-
-    mod transaction_status {
-        use super::{reply::Status, *};
-        use pathfinder_common::felt;
-
-        #[tokio::test]
-        async fn accepted() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction_status?transactionHash=0x79cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205",
-                (v0_9_0::transaction::STATUS, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction_status(StarknetTransactionHash(felt!(
-                        "079cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205"
-                    )))
-                    .await
-                    .unwrap()
-                    .tx_status,
-                Status::AcceptedOnL1
-            );
-        }
-
-        #[tokio::test]
-        async fn invalid_hash() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_transaction_status?transactionHash={}",
-                    INVALID_TX_HASH.0.to_hex_str()
-                ),
-                (r#"{"tx_status": "NOT_RECEIVED"}"#, 200),
-            )]);
-            assert_eq!(
-                client
-                    .transaction_status(INVALID_TX_HASH)
-                    .await
-                    .unwrap()
-                    .tx_status,
-                Status::NotReceived
             );
         }
     }

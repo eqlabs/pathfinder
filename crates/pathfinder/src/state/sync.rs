@@ -990,13 +990,6 @@ mod tests {
             unimplemented!()
         }
 
-        async fn transaction_status(
-            &self,
-            _: StarknetTransactionHash,
-        ) -> Result<reply::TransactionStatus, SequencerError> {
-            unimplemented!()
-        }
-
         async fn state_update(&self, _: BlockId) -> Result<reply::StateUpdate, SequencerError> {
             unimplemented!()
         }
