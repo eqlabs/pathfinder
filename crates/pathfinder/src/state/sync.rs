@@ -326,8 +326,10 @@ where
                         .iter()
                         .filter_map(|tx| {
                             use starknet_gateway_types::reply::transaction::Transaction::*;
+                            use starknet_gateway_types::reply::transaction::DeclareTransaction;
                             match tx {
-                                Declare(tx) => Some(tx.class_hash),
+                                Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
+                                Declare(DeclareTransaction::V1(_)) => todo!("v0.11.0: This maybe needs to be handled differently"),
                                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
                             }
                         });

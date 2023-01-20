@@ -183,10 +183,10 @@ pub struct TransactionStatus {
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
     use pathfinder_common::{
-        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-        EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+        EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
+        StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -321,7 +321,10 @@ pub mod transaction {
         /// Returns hash of the transaction
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
-                Transaction::Declare(t) => t.transaction_hash,
+                Transaction::Declare(t) => match t {
+                    DeclareTransaction::V0(t) => t.transaction_hash,
+                    DeclareTransaction::V1(t) => t.transaction_hash,
+                },
                 Transaction::Deploy(t) => t.transaction_hash,
                 Transaction::DeployAccount(t) => t.transaction_hash,
                 Transaction::Invoke(t) => match t {
@@ -334,7 +337,8 @@ pub mod transaction {
 
         pub fn contract_address(&self) -> ContractAddress {
             match self {
-                Transaction::Declare(t) => t.sender_address,
+                Transaction::Declare(DeclareTransaction::V0(t)) => t.sender_address,
+                Transaction::Declare(DeclareTransaction::V1(t)) => t.sender_address,
                 Transaction::Deploy(t) => t.contract_address,
                 Transaction::DeployAccount(t) => t.contract_address,
                 Transaction::Invoke(t) => match t {
@@ -346,11 +350,54 @@ pub mod transaction {
         }
     }
 
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[serde(tag = "version")]
+    pub enum DeclareTransaction {
+        #[serde(rename = "0x0")]
+        V0(DeclareTransactionV0),
+        #[serde(rename = "0x1")]
+        V1(DeclareTransactionV1),
+    }
+
+    impl<'de> Deserialize<'de> for DeclareTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use ethers::types::H256;
+            use serde::de;
+
+            #[serde_as]
+            #[derive(Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                #[serde(default = "transaction_version_zero")]
+                pub version: TransactionVersion,
+            }
+
+            let mut v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            v.as_object_mut()
+                .expect("must be an object because deserializing version succeeded")
+                .remove("version");
+            match version.version {
+                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
+                    DeclareTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                    DeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 0 or 1")),
+            }
+        }
+    }
+
     /// Represents deserialized L2 declare transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct DeclareTransaction {
+    pub struct DeclareTransactionV0 {
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
@@ -360,8 +407,22 @@ pub mod transaction {
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeclareTransactionV1 {
+        pub class_hash: ClassHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        pub nonce: TransactionNonce,
+        pub sender_address: ContractAddress,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        #[serde(default)]
+        pub signature: Vec<TransactionSignatureElem>,
+        pub transaction_hash: StarknetTransactionHash,
+        pub compiled_class_hash: CasmHash,
     }
 
     fn transaction_version_zero() -> TransactionVersion {

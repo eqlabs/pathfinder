@@ -507,7 +507,9 @@ pub mod reply {
 
     impl From<&starknet_gateway_types::reply::transaction::Transaction> for Transaction {
         fn from(txn: &starknet_gateway_types::reply::transaction::Transaction) -> Self {
-            use starknet_gateway_types::reply::transaction::{InvokeTransaction, Transaction::*};
+            use starknet_gateway_types::reply::transaction::{
+                DeclareTransaction, InvokeTransaction, Transaction::*,
+            };
 
             match txn {
                 Invoke(txn) => {
@@ -546,17 +548,20 @@ pub mod reply {
                         }
                     }
                 }
-                Declare(txn) => Self::Declare(DeclareTransaction {
+                Declare(DeclareTransaction::V0(txn)) => Self::Declare(self::DeclareTransaction {
                     common: CommonTransactionProperties {
                         hash: txn.transaction_hash,
                         max_fee: txn.max_fee,
-                        version: txn.version,
+                        version: TransactionVersion::ZERO,
                         signature: txn.signature.clone(),
                         nonce: txn.nonce,
                     },
                     class_hash: txn.class_hash,
                     sender_address: txn.sender_address,
                 }),
+                Declare(DeclareTransaction::V1(_)) => {
+                    todo!("v0.11.0: once RPC has v2 declare implemented")
+                }
                 Deploy(txn) => Self::Deploy(DeployTransaction {
                     hash: txn.transaction_hash,
                     version: txn.version,
