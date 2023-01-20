@@ -7,9 +7,9 @@ mod ethereum;
 pub mod merkle_tree;
 mod schema;
 mod state;
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 pub mod test_fixtures;
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 pub mod types;
 
