@@ -7,6 +7,7 @@ use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
 use serde_with::serde_as;
 
+pathfinder_common::version_check!(Mainnet < 0 - 11 - 0, "Remove state_commitment alias");
 /// Used to deserialize replies to StarkNet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
@@ -22,7 +23,8 @@ pub struct Block {
     /// Excluded in blocks prior to StarkNet 0.8
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
-    pub state_root: GlobalRoot,
+    #[serde(alias = "state_root")]
+    pub state_commitment: GlobalRoot,
     pub status: Status,
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,

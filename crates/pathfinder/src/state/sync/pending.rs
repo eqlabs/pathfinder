@@ -94,7 +94,7 @@ mod tests {
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
             sequencer_address: None,
-            state_root: *PARENT_ROOT,
+            state_commitment: *PARENT_ROOT,
             status: Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),

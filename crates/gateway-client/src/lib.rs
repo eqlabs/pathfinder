@@ -652,7 +652,7 @@ mod tests {
                     gas_price: None,
                     parent_block_hash: StarknetBlockHash(Felt::ZERO),
                     sequencer_address: None,
-                    state_root: pathfinder_common::GlobalRoot(Felt::ZERO),
+                    state_commitment: pathfinder_common::GlobalRoot(Felt::ZERO),
                     status: Status::NotReceived,
                     timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],

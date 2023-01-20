@@ -221,7 +221,7 @@ pub mod reply {
                     block_hash: Some(block.block_hash),
                     parent_hash: block.parent_block_hash,
                     block_number: Some(block.block_number),
-                    new_root: Some(block.state_root),
+                    new_root: Some(block.state_commitment),
                     timestamp: block.timestamp,
                     sequencer_address: block
                         .sequencer_address

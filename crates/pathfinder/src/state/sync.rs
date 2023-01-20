@@ -554,7 +554,7 @@ async fn l2_update(
             .context("Updating Starknet state")?;
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
-        anyhow::ensure!(new_root == block.state_root, "State root mismatch");
+        anyhow::ensure!(new_root == block.state_commitment, "State root mismatch");
 
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
@@ -562,7 +562,7 @@ async fn l2_update(
         let starknet_block = StarknetBlock {
             number: block.block_number,
             hash: block.block_hash,
-            root: block.state_root,
+            root: block.state_commitment,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
             gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
@@ -1113,7 +1113,7 @@ mod tests {
             gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(Felt::ZERO),
             sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-            state_root: GlobalRoot(Felt::ZERO),
+            state_commitment: GlobalRoot(Felt::ZERO),
             status: reply::Status::AcceptedOnL1,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
@@ -1126,7 +1126,7 @@ mod tests {
             gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
-            state_root: GlobalRoot(*B),
+            state_commitment: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
