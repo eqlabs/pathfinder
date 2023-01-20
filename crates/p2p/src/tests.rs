@@ -76,7 +76,7 @@ impl TestPeer {
             .await
             .connected()
             .map(Clone::clone)
-            .collect::<HashSet<_>>()
+            .collect()
     }
 }
 
