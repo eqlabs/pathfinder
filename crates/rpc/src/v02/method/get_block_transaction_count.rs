@@ -48,7 +48,7 @@ pub async fn get_block_transaction_count(
         // Check if the value was 0 because there were no transactions, or because the block hash is invalid.
         if block_transaction_count == 0 {
             // get_root is cheaper than querying the full block.
-            let root = StarknetBlocksTable::get_root(&tx, block_id)
+            let root = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
                 .context("Reading block from database")?;
             return if root.is_some() {
                 Ok(0)

@@ -45,7 +45,7 @@ pub async fn get_class_hash_at(
         //
         // (2) can also be achieved by fetching it directly from the `contracts` table,
         // but it felt more "correct" to continue using the global state mechanism.
-        let global_root = StarknetBlocksTable::get_root(&tx, block_id)
+        let global_root = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
             .context("Reading global root from database")?
             .ok_or(GetClassHashAtError::BlockNotFound)?;
 

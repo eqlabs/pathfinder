@@ -371,7 +371,7 @@ impl RpcApi {
 
             // Use internal_server_error to indicate that the process of querying for a particular block failed,
             // which is not the same as being sure that the block is not in the db.
-            let global_root = StarknetBlocksTable::get_root(&tx, block_id)
+            let global_root = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
                 .map_err(internal_server_error)?
                 // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
                 // by using a dedicated error code from the RPC API spec
@@ -519,7 +519,7 @@ impl RpcApi {
                     // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
                     //
                     // get_root is cheaper than querying the full block.
-                    match StarknetBlocksTable::get_root(&db_tx, block_id)
+                    match StarknetBlocksTable::get_storage_commitment(&db_tx, block_id)
                         .context("Reading block from database")?
                     {
                         Some(_) => Err(ErrorCode::InvalidTransactionIndex.into()),
@@ -708,7 +708,7 @@ impl RpcApi {
         contract_address: ContractAddress,
         block_id: StarknetBlocksBlockId,
     ) -> anyhow::Result<bool> {
-        let global_root = match StarknetBlocksTable::get_root(tx, block_id)? {
+        let global_root = match StarknetBlocksTable::get_storage_commitment(tx, block_id)? {
             Some(root) => root,
             None => return Ok(false),
         };
@@ -864,7 +864,7 @@ impl RpcApi {
                     // is invalid.
                     //
                     // get_root is cheaper than querying the full block.
-                    match StarknetBlocksTable::get_root(&tx, block_id)
+                    match StarknetBlocksTable::get_storage_commitment(&tx, block_id)
                         .context("Reading block from database")?
                     {
                         Some(_) => Ok(0),
@@ -1017,10 +1017,11 @@ impl RpcApi {
 
             // Use internal_server_error to indicate that the process of querying for a particular block failed,
             // which is not the same as being sure that the block is not in the db.
-            let global_root = StarknetBlocksTable::get_root(&tx, StarknetBlocksBlockId::Latest)
-                .map_err(internal_server_error)?
-                .context("No global root found")
-                .map_err(internal_server_error)?;
+            let global_root =
+                StarknetBlocksTable::get_storage_commitment(&tx, StarknetBlocksBlockId::Latest)
+                    .map_err(internal_server_error)?
+                    .context("No global root found")
+                    .map_err(internal_server_error)?;
 
             let storage_commitment_tree = StorageCommitmentTree::load(&tx, global_root)
                 .context("Loading global state tree")

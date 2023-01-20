@@ -315,8 +315,8 @@ impl StarknetBlocksTable {
         }
     }
 
-    /// Returns the [root](StateCommitment) of the given block.
-    pub fn get_root(
+    /// Returns the [storage_commitment](StateCommitment) of the given block.
+    pub fn get_storage_commitment(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
     ) -> anyhow::Result<Option<StateCommitment>> {
@@ -1793,7 +1793,7 @@ mod tests {
             }
         }
 
-        mod get_root {
+        mod get_storage_commitment {
             use super::*;
 
             mod by_number {
@@ -1803,9 +1803,12 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let root = StarknetBlocksTable::get_root(tx, block.number.into())
-                                .unwrap()
-                                .unwrap();
+                            let root = StarknetBlocksTable::get_storage_commitment(
+                                tx,
+                                block.number.into(),
+                            )
+                            .unwrap()
+                            .unwrap();
 
                             assert_eq!(root, block.root);
                         }
@@ -1817,7 +1820,8 @@ mod tests {
                     with_default_blocks(|tx, blocks| {
                         let non_existent = blocks.last().unwrap().number + 1;
                         assert_eq!(
-                            StarknetBlocksTable::get_root(tx, non_existent.into()).unwrap(),
+                            StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
+                                .unwrap(),
                             None
                         );
                     })
@@ -1831,9 +1835,10 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let root = StarknetBlocksTable::get_root(tx, block.hash.into())
-                                .unwrap()
-                                .unwrap();
+                            let root =
+                                StarknetBlocksTable::get_storage_commitment(tx, block.hash.into())
+                                    .unwrap()
+                                    .unwrap();
 
                             assert_eq!(root, block.root);
                         }
@@ -1846,7 +1851,8 @@ mod tests {
                         let non_existent =
                             StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
-                            StarknetBlocksTable::get_root(tx, non_existent.into()).unwrap(),
+                            StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
+                                .unwrap(),
                             None
                         );
                     })
@@ -1861,10 +1867,12 @@ mod tests {
                     with_default_blocks(|tx, blocks| {
                         let expected = blocks.last().map(|block| block.root).unwrap();
 
-                        let latest =
-                            StarknetBlocksTable::get_root(tx, StarknetBlocksBlockId::Latest)
-                                .unwrap()
-                                .unwrap();
+                        let latest = StarknetBlocksTable::get_storage_commitment(
+                            tx,
+                            StarknetBlocksBlockId::Latest,
+                        )
+                        .unwrap()
+                        .unwrap();
                         assert_eq!(latest, expected);
                     })
                 }
@@ -1875,8 +1883,11 @@ mod tests {
                     let mut connection = storage.connection().unwrap();
                     let tx = connection.transaction().unwrap();
 
-                    let latest_root =
-                        StarknetBlocksTable::get_root(&tx, StarknetBlocksBlockId::Latest).unwrap();
+                    let latest_root = StarknetBlocksTable::get_storage_commitment(
+                        &tx,
+                        StarknetBlocksBlockId::Latest,
+                    )
+                    .unwrap();
                     assert_eq!(latest_root, None);
                 }
             }

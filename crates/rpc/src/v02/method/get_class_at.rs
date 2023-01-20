@@ -95,7 +95,7 @@ fn get_definition_at(
     block: StarknetBlocksBlockId,
     contract: ContractAddress,
 ) -> Result<Vec<u8>, GetClassAtError> {
-    let global_root = StarknetBlocksTable::get_root(tx, block)
+    let global_root = StarknetBlocksTable::get_storage_commitment(tx, block)
         .context("Reading global root from database")?
         .ok_or(GetClassAtError::BlockNotFound)?;
 

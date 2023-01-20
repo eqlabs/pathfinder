@@ -40,7 +40,7 @@ pub async fn get_nonce(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let global_root = StarknetBlocksTable::get_root(&tx, block_id)
+        let global_root = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
             .context("Fetching global root")?
             .ok_or(GetNonceError::BlockNotFound)?;
 
