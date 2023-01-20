@@ -5,13 +5,14 @@ mod pending;
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
-    Chain, ClassHash, ContractNonce, ContractRoot, EventCommitment, GasPrice, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StateCommitment, TransactionCommitment,
+    Chain, ClassCommitment, ClassHash, ContractNonce, ContractRoot, EventCommitment, GasPrice,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment, StorageCommitment,
+    TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
-    state_tree::StorageCommitmentTree,
+    state_tree::{ClassCommitmentTree, StorageCommitmentTree},
 };
 use pathfinder_rpc::{
     v01::types::reply::{syncing, syncing::NumberedBlock, Syncing},
@@ -688,12 +689,13 @@ fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
 ) -> anyhow::Result<StateCommitment> {
-    let global_root = StarknetBlocksTable::get(transaction, StarknetBlocksBlockId::Latest)
-        .context("Query latest state root")?
-        .map(|block| block.root)
-        .unwrap_or(StateCommitment(Felt::ZERO));
-    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, global_root)
-        .context("Loading global state tree")?;
+    let (storage_commitment, class_commitment) =
+        StarknetBlocksTable::get_state_commitment(transaction, StarknetBlocksBlockId::Latest)
+            .context("Query latest state commitment")?
+            .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
+
+    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
+        .context("Loading storage commitment tree")?;
 
     for contract in &state_update.state_diff.deployed_contracts {
         deploy_contract(transaction, &mut storage_commitment_tree, contract)
@@ -720,7 +722,7 @@ fn update_starknet_state(
         // Update the global state tree.
         storage_commitment_tree
             .set(*contract_address, contract_state_hash)
-            .context("Updating global state tree")?;
+            .context("Updating storage commitment tree")?;
     }
 
     // Apply all remaining nonces (without storage updates).
@@ -737,13 +739,31 @@ fn update_starknet_state(
         // Update the global state tree.
         storage_commitment_tree
             .set(contract_address, contract_state_hash)
-            .context("Updating global state tree")?;
+            .context("Updating storage commitment tree")?;
     }
 
-    // Apply all global tree changes.
-    storage_commitment_tree
+    // Apply storage commitment tree changes.
+    let new_storage_commitment = storage_commitment_tree
         .apply()
-        .context("Apply global state tree updates")
+        .context("Apply storage commitment tree updates")?;
+
+    let class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment)
+        .context("Loading class commitment tree")?;
+
+    // FIXME 0.11.0 once the gateway's StateUpdate gets the declared_classes field
+    #[cfg(fixme_0_11_0)]
+    for (sierra_hash, casm_hash) in declared_classes.into_iter() {
+        class_tree
+            .set(sierra_hash, casm_hash)
+            .context("Update class commitment tree")?;
+    }
+
+    // Apply all class commitment tree changes.
+    let new_class_commitment = class_commitment_tree
+        .apply()
+        .context("Apply class commitment tree updates")?;
+
+    Ok((new_storage_commitment, new_class_commitment).into())
 }
 
 fn deploy_contract(

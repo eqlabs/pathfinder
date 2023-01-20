@@ -165,6 +165,10 @@ impl From<(StorageCommitment, ClassCommitment)> for StateCommitment {
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StorageCommitment(pub Felt);
 
+impl StorageCommitment {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
+
 /// A StarkNet block hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StarknetBlockHash(pub Felt);

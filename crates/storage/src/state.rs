@@ -5,11 +5,11 @@ use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     },
-    Chain, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
-    EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-    EthereumTransactionIndex, EventCommitment, EventData, EventKey, GasPrice, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    StateCommitment, TransactionCommitment,
+    Chain, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
+    ContractStateHash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
+    EthereumTransactionHash, EthereumTransactionIndex, EventCommitment, EventData, EventKey,
+    GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StarknetTransactionHash, StateCommitment, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
@@ -339,6 +339,44 @@ impl StarknetBlocksTable {
         }
         .optional()
         .map_err(|e| e.into())
+    }
+
+    /// Returns the state commitment of the given block.
+    pub fn get_state_commitment(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksBlockId,
+    ) -> anyhow::Result<Option<(StorageCommitment, ClassCommitment)>> {
+        let mut statement = match block {
+            StarknetBlocksBlockId::Number(_) => {
+                tx.prepare("SELECT root, class_commitment FROM starknet_blocks WHERE number = ?")
+            }
+            StarknetBlocksBlockId::Hash(_) => {
+                tx.prepare("SELECT root, class_commitment FROM starknet_blocks WHERE hash = ?")
+            }
+            StarknetBlocksBlockId::Latest => tx.prepare(
+                "SELECT root, class_commitment FROM starknet_blocks ORDER BY number DESC LIMIT 1",
+            ),
+        }?;
+
+        let mut rows = match block {
+            StarknetBlocksBlockId::Number(number) => statement.query([number]),
+            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
+            StarknetBlocksBlockId::Latest => statement.query([]),
+        }?;
+
+        let row = rows.next().context("Iterate rows")?;
+
+        match row {
+            Some(row) => {
+                let storage_commitment = row.get_unwrap("root");
+                let class_commitment = row
+                    .get_unwrap::<_, Option<_>>("class_commitment")
+                    .unwrap_or(ClassCommitment::ZERO);
+
+                Ok(Some((storage_commitment, class_commitment)))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Deletes all rows from __head down-to reorg_tail__
@@ -1794,6 +1832,7 @@ mod tests {
         }
 
         // FIXME 0.11.0
+        #[cfg(fixme_0_11_0)]
         mod get_storage_commitment {
             use super::*;
 
