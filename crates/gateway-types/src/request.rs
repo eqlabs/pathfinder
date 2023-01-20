@@ -157,6 +157,11 @@ pub mod add_transaction {
     use serde_with::serde_as;
     use std::collections::HashMap;
 
+    pathfinder_common::version_check!(
+        Mainnet < 0 - 11 - 0,
+        "contract_address deprecated in favor of sender_address for Invoke and Deploy and Declare"
+    );
+
     /// Definition of a contract.
     ///
     /// This is somewhat different compared to the contract definition we're using
