@@ -1,3 +1,5 @@
+#[cfg(feature = "test-utils")]
+use fake::{Dummy, Fake};
 use stark_hash::Felt;
 
 use crate::{ToProtobuf, TryFromProtobuf};
@@ -86,12 +88,14 @@ impl ToProtobuf<proto::propagation::Message> for Message {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::NewBlockHeader")]
 pub struct NewBlockHeader {
     pub header: BlockHeader,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::NewBlockBody")]
 pub struct NewBlockBody {
     pub block_hash: Felt,
@@ -99,6 +103,7 @@ pub struct NewBlockBody {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::NewBlockState")]
 pub struct NewBlockState {
     pub block_hash: Felt,
@@ -106,6 +111,7 @@ pub struct NewBlockState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::BlockStateUpdate")]
 pub struct BlockStateUpdate {
     pub contract_diffs: Vec<ContractDiff>,
@@ -114,6 +120,7 @@ pub struct BlockStateUpdate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::ContractDiff")]
 pub struct ContractDiff {
     pub contract_address: Felt,
@@ -122,6 +129,7 @@ pub struct ContractDiff {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::StorageDiff")]
 pub struct StorageDiff {
     pub key: Felt,
@@ -129,6 +137,7 @@ pub struct StorageDiff {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::DeployedContract")]
 pub struct DeployedContract {
     pub contract_address: Felt,

@@ -6,6 +6,9 @@ use stark_curve::{FieldElement, FieldElementRepr};
 use bitvec::{order::Msb0, slice::BitSlice, view::BitView};
 use stark_curve::ff::PrimeField;
 
+#[cfg(feature = "test-utils")]
+use fake::Dummy;
+
 /// The Starknet elliptic curve Field Element.
 ///
 /// Forms the basic building block of most Starknet interactions.
@@ -40,6 +43,17 @@ impl std::fmt::UpperHex for Felt {
 impl std::default::Default for Felt {
     fn default() -> Self {
         Felt::ZERO
+    }
+}
+
+#[cfg(feature = "test-utils")]
+impl<T> Dummy<T> for Felt {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let mut bytes = [0u8; 32];
+        rng.fill_bytes(&mut bytes);
+        // Some 252 bit values are fine too but we don't really care here
+        bytes[0] &= 0x03;
+        Self(bytes)
     }
 }
 

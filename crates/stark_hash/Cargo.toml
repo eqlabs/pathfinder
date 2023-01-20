@@ -5,6 +5,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+test-utils = ["dep:rand", "dep:fake"]
+
 [lib]
 name = "stark_hash"
 path = "src/lib.rs"
@@ -15,6 +18,8 @@ stark_curve = { path = "../stark_curve" }
 [dependencies]
 # paritys scale codec locks us here
 bitvec = "0.20.4"
+fake = { version = "2.5.0", features = ["derive"], optional = true }
+rand = { version = "0.8.5", optional = true }
 rand_core = "0.6.4"
 serde = "1.0.149"
 stark_curve = { path = "../stark_curve" }

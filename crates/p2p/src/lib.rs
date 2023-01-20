@@ -8,7 +8,8 @@ use delay_map::HashSetDelay;
 use futures::StreamExt;
 use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
 use libp2p::identity::Keypair;
-use libp2p::kad::KademliaEvent;
+use libp2p::kad::record::Key;
+use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
 use libp2p::request_response::{
     RequestId, RequestResponseEvent, RequestResponseMessage, ResponseChannel,
 };
@@ -21,6 +22,10 @@ mod behaviour;
 mod executor;
 mod peers;
 mod sync;
+#[cfg(test)]
+mod test_utils;
+#[cfg(test)]
+mod tests;
 mod transport;
 
 pub use peers::Peers;
@@ -30,7 +35,7 @@ pub use libp2p;
 pub fn new(
     keypair: Keypair,
     peers: Arc<RwLock<peers::Peers>>,
-    periodic_status_interval: Duration,
+    periodic_cfg: PeriodicTaskConfig,
 ) -> (Client, EventReceiver, MainLoop) {
     let peer_id = keypair.public().to_peer_id();
 
@@ -52,23 +57,41 @@ pub fn new(
             sender: command_sender,
         },
         event_receiver,
-        MainLoop::new(
-            swarm,
-            command_receiver,
-            event_sender,
-            peers,
-            periodic_status_interval,
-        ),
+        MainLoop::new(swarm, command_receiver, event_sender, peers, periodic_cfg),
     )
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug)]
+pub struct PeriodicTaskConfig {
+    pub bootstrap: BootstrapConfig,
+    pub status_period: Duration,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BootstrapConfig {
+    pub start_offset: Duration,
+    pub period: Duration,
+}
+
+impl Default for PeriodicTaskConfig {
+    fn default() -> Self {
+        Self {
+            bootstrap: BootstrapConfig {
+                start_offset: Duration::from_secs(5),
+                period: Duration::from_secs(10 * 60),
+            },
+            status_period: Duration::from_secs(30),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<Command>,
 }
 
 impl Client {
-    pub async fn start_listening(&mut self, addr: Multiaddr) -> anyhow::Result<()> {
+    pub async fn start_listening(&self, addr: Multiaddr) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::StarListening { addr, sender })
@@ -77,7 +100,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn dial(&mut self, peer_id: PeerId, addr: Multiaddr) -> anyhow::Result<()> {
+    pub async fn dial(&self, peer_id: PeerId, addr: Multiaddr) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::Dial {
@@ -90,7 +113,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn provide_capability(&mut self, capability: &str) -> anyhow::Result<()> {
+    pub async fn provide_capability(&self, capability: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::ProvideCapability {
@@ -102,7 +125,7 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn subscribe_topic(&mut self, topic: &str) -> anyhow::Result<()> {
+    pub async fn subscribe_topic(&self, topic: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);
         self.sender
@@ -113,7 +136,7 @@ impl Client {
     }
 
     pub async fn send_sync_request(
-        &mut self,
+        &self,
         peer_id: PeerId,
         request: p2p_proto::sync::Request,
     ) -> anyhow::Result<p2p_proto::sync::Response> {
@@ -130,7 +153,7 @@ impl Client {
     }
 
     pub async fn send_sync_response(
-        &mut self,
+        &self,
         channel: ResponseChannel<p2p_proto::sync::Response>,
         response: p2p_proto::sync::Response,
     ) {
@@ -141,7 +164,7 @@ impl Client {
     }
 
     pub async fn publish_propagation_message(
-        &mut self,
+        &self,
         topic: &str,
         message: p2p_proto::propagation::Message,
     ) -> anyhow::Result<()> {
@@ -158,15 +181,16 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn send_sync_status_request(
-        &mut self,
-        peer_id: PeerId,
-        status: p2p_proto::sync::Status,
-    ) {
+    pub async fn send_sync_status_request(&self, peer_id: PeerId, status: p2p_proto::sync::Status) {
         self.sender
             .send(Command::SendSyncStatusRequest { peer_id, status })
             .await
             .expect("Command receiver not to be dropped");
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(&self) -> test_utils::Client {
+        test_utils::Client::new(self.sender.clone())
     }
 }
 
@@ -209,6 +233,17 @@ enum Command {
         message: p2p_proto::propagation::Message,
         sender: EmptyResultSender,
     },
+    /// For testing purposes only
+    _Test(TestCommand),
+}
+
+#[derive(Debug)]
+pub enum TestCommand {
+    GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
+    GetProviders {
+        key: Vec<u8>,
+        sender: mpsc::Sender<Result<HashSet<PeerId>, ()>>,
+    },
 }
 
 #[derive(Debug)]
@@ -225,6 +260,19 @@ pub enum Event {
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
     BlockPropagation(p2p_proto::propagation::Message),
+    /// For testing purposes only
+    Test(TestEvent),
+}
+
+#[derive(Debug)]
+pub enum TestEvent {
+    NewListenAddress(Multiaddr),
+    PeriodicBootstrapCompleted(Result<PeerId, PeerId>),
+    StartProvidingCompleted(Result<Key, Key>),
+    ConnectionEstablished { outbound: bool, remote: PeerId },
+    Subscribed { remote: PeerId, topic: String },
+    PeerAddedToDHT { remote: PeerId },
+    Dummy,
 }
 
 pub type EventReceiver = mpsc::Receiver<Event>;
@@ -242,6 +290,9 @@ pub struct MainLoop {
     pending_block_sync_status_requests: HashSet<RequestId>,
 
     request_sync_status: HashSetDelay<PeerId>,
+
+    bootstrap_cfg: BootstrapConfig,
+    _pending_test_queries: TestQueries,
 }
 
 impl MainLoop {
@@ -250,7 +301,7 @@ impl MainLoop {
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
         peers: Arc<RwLock<peers::Peers>>,
-        periodic_status_interval: Duration,
+        periodic_cfg: PeriodicTaskConfig,
     ) -> Self {
         Self {
             swarm,
@@ -260,15 +311,17 @@ impl MainLoop {
             pending_dials: Default::default(),
             pending_block_sync_requests: Default::default(),
             pending_block_sync_status_requests: Default::default(),
-            request_sync_status: HashSetDelay::new(periodic_status_interval),
+            request_sync_status: HashSetDelay::new(periodic_cfg.status_period),
+            bootstrap_cfg: periodic_cfg.bootstrap,
+            _pending_test_queries: Default::default(),
         }
     }
 
     pub async fn run(mut self) {
-        const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(10 * 60);
-        // delay bootstrap so that by the time we attempt it we've connected to the bootstrap node
-        let bootstrap_start = tokio::time::Instant::now() + Duration::from_secs(5);
-        let mut bootstrap_interval = tokio::time::interval_at(bootstrap_start, BOOTSTRAP_INTERVAL);
+        // Delay bootstrap so that by the time we attempt it we've connected to the bootstrap node
+        let bootstrap_start = tokio::time::Instant::now() + self.bootstrap_cfg.start_offset;
+        let mut bootstrap_interval =
+            tokio::time::interval_at(bootstrap_start, self.bootstrap_cfg.period);
 
         loop {
             let bootstrap_interval_tick = bootstrap_interval.tick();
@@ -318,9 +371,20 @@ impl MainLoop {
                         let _ = sender.send(Ok(()));
                         tracing::debug!(%peer_id, "Established outbound connection");
                     }
+                    // FIXME else: trigger an error?
                 } else {
                     tracing::debug!(%peer_id, "Established inbound connection");
                 }
+
+                send_test_event(
+                    &self.event_sender,
+                    TestEvent::ConnectionEstablished {
+                        outbound: endpoint.is_dialer(),
+                        remote: peer_id,
+                    },
+                )
+                .await;
+
                 Ok(())
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => {
@@ -376,7 +440,12 @@ impl MainLoop {
                                 .kademlia
                                 .add_address(&peer_id, addr.clone());
                         }
-                        tracing::debug!(%peer_id, "Added peer to DHT");
+
+                        if listen_addrs.is_empty() {
+                            tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
+                        } else {
+                            tracing::debug!(%peer_id, "Added peer to DHT");
+                        }
                     }
 
                     if protocols
@@ -427,15 +496,54 @@ impl MainLoop {
             // Discovery
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => {
-                if let KademliaEvent::OutboundQueryProgressed { step, .. } = e {
-                    if step.last {
-                        let network_info = self.swarm.network_info();
-                        let num_peers = network_info.num_peers();
-                        let connection_counters = network_info.connection_counters();
-                        let num_connections = connection_counters.num_connections();
-                        tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                match e {
+                    KademliaEvent::OutboundQueryProgressed {
+                        step, result, id, ..
+                    } => {
+                        if step.last {
+                            match result {
+                                libp2p::kad::QueryResult::Bootstrap(result) => {
+                                    let network_info = self.swarm.network_info();
+                                    let num_peers = network_info.num_peers();
+                                    let connection_counters = network_info.connection_counters();
+                                    let num_connections = connection_counters.num_connections();
+
+                                    let result = match result {
+                                        Ok(BootstrapOk { peer, .. }) => {
+                                            tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                                            Ok(peer)
+                                        }
+                                        Err(BootstrapError::Timeout { peer, .. }) => {
+                                            tracing::warn!(%num_peers, %num_connections, "Periodic bootstrap failed");
+                                            Err(peer)
+                                        }
+                                    };
+                                    send_test_event(
+                                        &self.event_sender,
+                                        TestEvent::PeriodicBootstrapCompleted(result),
+                                    )
+                                    .await;
+                                }
+                                _ => self.test_query_completed(id, result).await,
+                            }
+                        } else {
+                            self.test_query_progressed(id, result).await;
+                        }
                     }
+                    KademliaEvent::RoutingUpdated {
+                        peer, is_new_peer, ..
+                    } => {
+                        if is_new_peer {
+                            send_test_event(
+                                &self.event_sender,
+                                TestEvent::PeerAddedToDHT { remote: peer },
+                            )
+                            .await
+                        }
+                    }
+                    _ => {}
                 }
+
                 Ok(())
             }
             // ===========================
@@ -519,9 +627,13 @@ impl MainLoop {
                 tracing::debug!(?event, "DCUtR event");
                 Ok(())
             }
-
+            // ===========================
+            // Ignored or forwarded for
+            // test purposes
+            // ===========================
             event => {
                 tracing::trace!(?event, "Ignoring event");
+                self.handle_event_for_test(event).await;
                 Ok(())
             }
         }
@@ -626,6 +738,7 @@ impl MainLoop {
                 let result = self.publish_data(topic, &data);
                 let _ = sender.send(result);
             }
+            Command::_Test(command) => self.handle_test_command(command).await,
         };
     }
 
@@ -646,4 +759,54 @@ impl MainLoop {
             self.request_sync_status.insert(peer_id);
         }
     }
+
+    /// No-op outside tests
+    async fn handle_event_for_test<E: std::fmt::Debug>(
+        &mut self,
+        _event: SwarmEvent<behaviour::Event, E>,
+    ) {
+        #[cfg(test)]
+        test_utils::handle_event(&self.event_sender, _event).await
+    }
+
+    /// No-op outside tests
+    async fn handle_test_command(&mut self, _command: TestCommand) {
+        #[cfg(test)]
+        test_utils::handle_command(
+            self.swarm.behaviour_mut(),
+            _command,
+            &mut self._pending_test_queries.inner,
+        )
+        .await;
+    }
+
+    /// Handle the final stage of the query, no-op outside tests
+    async fn test_query_completed(&mut self, _id: QueryId, _result: QueryResult) {
+        #[cfg(test)]
+        test_utils::query_completed(
+            &mut self._pending_test_queries.inner,
+            &self.event_sender,
+            _id,
+            _result,
+        )
+        .await;
+    }
+
+    /// Handle all stages except the final one, no-op outside tests
+    async fn test_query_progressed(&mut self, _id: QueryId, _result: QueryResult) {
+        #[cfg(test)]
+        test_utils::query_progressed(&self._pending_test_queries.inner, _id, _result).await
+    }
+}
+
+/// No-op outside tests
+async fn send_test_event(_event_sender: &mpsc::Sender<Event>, _event: TestEvent) {
+    #[cfg(test)]
+    test_utils::send_event(_event_sender, _event).await
+}
+
+#[derive(Debug, Default)]
+struct TestQueries {
+    #[cfg(test)]
+    inner: test_utils::PendingQueries,
 }

@@ -5,11 +5,16 @@ edition = "2021"
 license = "MIT"
 build = "build.rs"
 
+[features]
+test-utils = ["dep:rand", "dep:fake"]
+
 [dependencies]
 anyhow = "1.0.62"
+fake = { version = "2.5.0", features = ["derive"], optional = true }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 primitive-types = "0.12.1"
 prost = "0.11.0"
+rand = { version = "0.8.5", optional = true }
 stark_hash = { path = "../stark_hash" }
 zstd = "0.12.0"
 

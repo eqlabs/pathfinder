@@ -43,8 +43,6 @@ impl zeroize::Zeroize for IdentityConfig {
     }
 }
 
-const PERIODIC_STATUS_INTERVAL: Duration = Duration::from_secs(30);
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
@@ -70,8 +68,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(%peer_id, "Starting up");
 
     let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
-    let (mut p2p_client, mut p2p_events, p2p_main_loop) =
-        p2p::new(keypair, peers.clone(), PERIODIC_STATUS_INTERVAL);
+    let (p2p_client, mut p2p_events, p2p_main_loop) =
+        p2p::new(keypair, peers.clone(), Default::default());
 
     let _p2p_task = tokio::task::spawn(p2p_main_loop.run());
 
@@ -102,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     p2p_client.subscribe_topic(&block_propagation_topic).await?;
 
     if args.emit_events {
-        let mut client = p2p_client.clone();
+        let client = p2p_client.clone();
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(10));
             loop {
@@ -166,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
             p2p::Event::BlockPropagation(block_propagation) => {
                 tracing::info!(?block_propagation, "Block Propagation");
             }
+            p2p::Event::Test(_) => {}
         }
     }
 
