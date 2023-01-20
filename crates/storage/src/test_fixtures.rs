@@ -27,13 +27,21 @@ pub(crate) use hash;
 pub mod init {
     use super::*;
     use crate::{StarknetBlocksTable, StarknetStateUpdatesTable};
+    use pathfinder_common::{ClassCommitment, StorageCommitment};
 
     /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
         (0..n)
             .into_iter()
             .map(|n| {
-                StarknetBlocksTable::insert(tx, &StarknetBlock::nth(n), None).unwrap();
+                StarknetBlocksTable::insert(
+                    tx,
+                    &StarknetBlock::nth(n),
+                    None,
+                    StorageCommitment(hash!(11, n)),
+                    ClassCommitment(hash!(12, n)),
+                )
+                .unwrap();
                 let update = StateUpdate::with_block_hash(n);
                 StarknetStateUpdatesTable::insert(tx, update.block_hash.unwrap(), &update).unwrap();
                 update

@@ -1706,15 +1706,15 @@ mod tests {
 
     mod starknet_blocks {
         use super::*;
-        use crate::test_utils;
+        use crate::test_utils::{self, BlockWithCommitment};
 
-        fn create_blocks() -> [StarknetBlock; test_utils::NUM_BLOCKS] {
+        fn create_blocks() -> [BlockWithCommitment; test_utils::NUM_BLOCKS] {
             test_utils::create_blocks()
         }
 
         fn with_default_blocks<F>(f: F)
         where
-            F: FnOnce(&Transaction<'_>, [StarknetBlock; test_utils::NUM_BLOCKS]),
+            F: FnOnce(&Transaction<'_>, [BlockWithCommitment; test_utils::NUM_BLOCKS]),
         {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
@@ -1722,7 +1722,14 @@ mod tests {
 
             let blocks = create_blocks();
             for block in &blocks {
-                StarknetBlocksTable::insert(&tx, block, None).unwrap();
+                StarknetBlocksTable::insert(
+                    &tx,
+                    &block.block,
+                    None,
+                    block.storage_commitment,
+                    block.class_commitment,
+                )
+                .unwrap();
             }
 
             f(&tx, blocks)
@@ -1738,11 +1745,11 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let result = StarknetBlocksTable::get(tx, block.number.into())
+                            let result = StarknetBlocksTable::get(tx, block.block.number.into())
                                 .unwrap()
                                 .unwrap();
 
-                            assert_eq!(result, block);
+                            assert_eq!(result, block.block);
                         }
                     })
                 }
@@ -1750,7 +1757,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, blocks| {
-                        let non_existent = blocks.last().unwrap().number + 1;
+                        let non_existent = blocks.last().unwrap().block.number + 1;
                         assert_eq!(
                             StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
                             None
@@ -1766,11 +1773,11 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let result = StarknetBlocksTable::get(tx, block.hash.into())
+                            let result = StarknetBlocksTable::get(tx, block.block.hash.into())
                                 .unwrap()
                                 .unwrap();
 
-                            assert_eq!(result, block);
+                            assert_eq!(result, block.block);
                         }
                     });
                 }
@@ -1794,7 +1801,7 @@ mod tests {
                 #[test]
                 fn some() {
                     with_default_blocks(|tx, blocks| {
-                        let expected = blocks.last().unwrap();
+                        let expected = &blocks.last().unwrap().block;
 
                         let latest = StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)
                             .unwrap()
@@ -1822,11 +1829,11 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let result = StarknetBlocksTable::get_number(tx, block.hash)
+                            let result = StarknetBlocksTable::get_number(tx, block.block.hash)
                                 .unwrap()
                                 .unwrap();
 
-                            assert_eq!(result, block.number);
+                            assert_eq!(result, block.block.number);
                         }
                     });
                 }
@@ -1947,6 +1954,9 @@ mod tests {
             }
         }
 
+        // FIXME 0.11.0
+        #[cfg(fixme_0_11_0)]
+
         mod get_state_commitment {
             #[test]
             fn todo() {
@@ -1973,16 +1983,16 @@ mod tests {
             #[test]
             fn partial() {
                 with_default_blocks(|tx, blocks| {
-                    let reorg_tail = blocks[1].number;
+                    let reorg_tail = blocks[1].block.number;
                     StarknetBlocksTable::reorg(tx, reorg_tail).unwrap();
 
                     let expected = StarknetBlock {
-                        number: blocks[0].number,
-                        hash: blocks[0].hash,
-                        root: blocks[0].root,
-                        timestamp: blocks[0].timestamp,
-                        gas_price: blocks[0].gas_price,
-                        sequencer_address: blocks[0].sequencer_address,
+                        number: blocks[0].block.number,
+                        hash: blocks[0].block.hash,
+                        root: blocks[0].block.root,
+                        timestamp: blocks[0].block.timestamp,
+                        gas_price: blocks[0].block.gas_price,
+                        sequencer_address: blocks[0].block.sequencer_address,
                         transaction_commitment: None,
                         event_commitment: None,
                     };
@@ -1998,6 +2008,7 @@ mod tests {
         mod interned_version {
             use super::super::Storage;
             use super::StarknetBlocksTable;
+            use pathfinder_common::{ClassCommitment, StorageCommitment};
 
             #[test]
             fn duplicate_versions_interned() {
@@ -2013,7 +2024,14 @@ mod tests {
                 let mut inserted = 0;
 
                 for (block, version) in blocks.iter().zip(versions) {
-                    StarknetBlocksTable::insert(&tx, block, Some(version)).unwrap();
+                    StarknetBlocksTable::insert(
+                        &tx,
+                        &block.block,
+                        Some(version),
+                        StorageCommitment::ZERO,
+                        ClassCommitment::ZERO,
+                    )
+                    .unwrap();
                     inserted += 1;
                 }
 
@@ -2042,7 +2060,7 @@ mod tests {
             #[test]
             fn some() {
                 with_default_blocks(|tx, blocks| {
-                    let latest = blocks.last().unwrap().number;
+                    let latest = blocks.last().unwrap().block.number;
                     assert_eq!(
                         StarknetBlocksTable::get_latest_number(tx).unwrap(),
                         Some(latest)
@@ -2066,7 +2084,7 @@ mod tests {
             #[test]
             fn some() {
                 with_default_blocks(|tx, blocks| {
-                    let latest = blocks.last().unwrap();
+                    let latest = &blocks.last().unwrap().block;
                     assert_eq!(
                         StarknetBlocksTable::get_latest_hash_and_number(tx).unwrap(),
                         Some((latest.hash, latest.number))
@@ -2097,11 +2115,12 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let result = StarknetBlocksTable::get_hash(tx, block.number.into())
-                                .unwrap()
-                                .unwrap();
+                            let result =
+                                StarknetBlocksTable::get_hash(tx, block.block.number.into())
+                                    .unwrap()
+                                    .unwrap();
 
-                            assert_eq!(result, block.hash);
+                            assert_eq!(result, block.block.hash);
                         }
                     })
                 }
@@ -2109,7 +2128,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, blocks| {
-                        let non_existent = blocks.last().unwrap().number + 1;
+                        let non_existent = blocks.last().unwrap().block.number + 1;
                         assert_eq!(
                             StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
                             None
@@ -2124,7 +2143,7 @@ mod tests {
                 #[test]
                 fn some() {
                     with_default_blocks(|tx, blocks| {
-                        let expected = blocks.last().unwrap().hash;
+                        let expected = blocks.last().unwrap().block.hash;
 
                         let latest =
                             StarknetBlocksTable::get_hash(tx, StarknetBlocksNumberOrLatest::Latest)
@@ -2325,7 +2344,14 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            StarknetBlocksTable::insert(&tx, &block, None).unwrap();
+            StarknetBlocksTable::insert(
+                &tx,
+                &block,
+                None,
+                StorageCommitment::ZERO,
+                ClassCommitment::ZERO,
+            )
+            .unwrap();
             CanonicalBlocksTable::insert(&tx, block.number, block.hash).unwrap();
             StarknetTransactionsTable::upsert(
                 &tx,

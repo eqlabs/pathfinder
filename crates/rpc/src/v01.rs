@@ -1393,7 +1393,7 @@ mod tests {
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
-        use pathfinder_common::{felt, StorageValue};
+        use pathfinder_common::{felt, ClassCommitment, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
         use pathfinder_storage::{ContractCodeTable, ContractsTable, StarknetBlocksBlockId};
         use pretty_assertions::assert_eq;
@@ -1438,14 +1438,16 @@ mod tests {
                 key: storage_addr,
                 value: StorageValue(felt_bytes!(b"storage_value")),
             }];
-            let block2 = StarknetBlocksTable::get(
-                transaction,
-                StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(2)),
-            )
-            .unwrap()
-            .unwrap();
+            let block_number2 = StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(2));
+            let block2 = StarknetBlocksTable::get(transaction, block_number2)
+                .unwrap()
+                .unwrap();
+            let (storage_commitment2, class_commitment2) =
+                StarknetBlocksTable::get_state_commitment(transaction, block_number2)
+                    .unwrap()
+                    .unwrap();
             let mut storage_commitment_tree =
-                StorageCommitmentTree::load(transaction, block2.root).unwrap();
+                StorageCommitmentTree::load(transaction, storage_commitment2).unwrap();
             let contract_state_hash = update_contract_state(
                 contract_address,
                 &storage_diff,
@@ -1458,10 +1460,11 @@ mod tests {
                 .set(contract_address, contract_state_hash)
                 .unwrap();
 
+            let storage_commitment3 = storage_commitment_tree.apply().unwrap();
             let block3 = StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(3),
                 hash: StarknetBlockHash(felt_bytes!(b"block 3 hash")),
-                root: storage_commitment_tree.apply().unwrap(),
+                root: (storage_commitment3, ClassCommitment::ZERO).into(),
                 timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
                 sequencer_address: SequencerAddress(felt_bytes!(&[3u8])),
@@ -1469,7 +1472,14 @@ mod tests {
                 event_commitment: None,
             };
 
-            StarknetBlocksTable::insert(transaction, &block3, None).unwrap();
+            StarknetBlocksTable::insert(
+                transaction,
+                &block3,
+                None,
+                storage_commitment3,
+                ClassCommitment::ZERO,
+            )
+            .unwrap();
 
             Ok((contract_address, hash, program, entry_points))
         }

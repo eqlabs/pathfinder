@@ -501,7 +501,7 @@ mod tests {
                 "06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
             )),
             old_root: StateCommitment(felt!(
-                "0300e3d0ce5f0da1a086ab49734bab6f302efbf544b56226b7db665716b621c8"
+                "0712DA727C748FC3B118B7DE7A50EECD50693203CBA42973755AF13AB729684D"
             )),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
@@ -541,6 +541,6 @@ mod tests {
                 nonces: vec![],
             },
         };
-        assert_eq!(result, expected);
+        pretty_assertions::assert_eq!(result, expected);
     }
 }
