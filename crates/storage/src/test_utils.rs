@@ -50,7 +50,7 @@ pub(crate) fn create_transactions_and_receipts(
         x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
             transaction::Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![CallParam(Felt::from_hex_str(&"0".repeat(i + 3)).unwrap())],
-                contract_address: ContractAddress::new_or_panic(
+                sender_address: ContractAddress::new_or_panic(
                     Felt::from_hex_str(&"1".repeat(i + 3)).unwrap(),
                 ),
                 entry_point_selector: EntryPoint(Felt::from_hex_str(&"2".repeat(i + 3)).unwrap()),

@@ -308,7 +308,7 @@ mod tests {
         // TODO introduce other types of transactions too
         let txn0 = InvokeTransactionV0 {
             calldata: vec![],
-            contract_address: contract0_addr,
+            sender_address: contract0_addr,
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(Felt::ZERO),
             max_fee: pathfinder_common::Fee(H128::zero()),
@@ -340,14 +340,14 @@ mod tests {
         let mut txn3 = txn0.clone();
         let mut txn4 = txn0.clone();
         txn1.transaction_hash = txn1_hash;
-        txn1.contract_address = contract1_addr;
+        txn1.sender_address = contract1_addr;
         txn2.transaction_hash = txn2_hash;
-        txn2.contract_address = contract1_addr;
+        txn2.sender_address = contract1_addr;
         txn3.transaction_hash = txn3_hash;
-        txn3.contract_address = contract1_addr;
+        txn3.sender_address = contract1_addr;
         txn4.transaction_hash = txn4_hash;
 
-        txn4.contract_address = ContractAddress::new_or_panic(Felt::ZERO);
+        txn4.sender_address = ContractAddress::new_or_panic(Felt::ZERO);
         let mut txn5 = txn4.clone();
         txn5.transaction_hash = txn5_hash;
         let txn0 = Transaction::Invoke(txn0.into());
@@ -408,7 +408,7 @@ mod tests {
         let transactions: Vec<Transaction> = vec![
             InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![],
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(
+                sender_address: ContractAddress::new_or_panic(felt_bytes!(
                     b"pending contract addr 0"
                 )),
                 entry_point_selector: EntryPoint(felt_bytes!(b"entry point 0")),

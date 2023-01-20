@@ -482,7 +482,7 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
-            contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(felt!("0xe")),
             max_fee: Fee(0u128.to_be_bytes().into()),

@@ -522,7 +522,7 @@ pub mod reply {
                                     // no `nonce` in v0 invoke transactions
                                     nonce: TransactionNonce(Default::default()),
                                 },
-                                contract_address: txn.contract_address,
+                                contract_address: txn.sender_address,
                                 entry_point_selector: txn.entry_point_selector,
                                 calldata: txn.calldata.clone(),
                             })

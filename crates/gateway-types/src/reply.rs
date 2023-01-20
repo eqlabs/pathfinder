@@ -338,7 +338,7 @@ pub mod transaction {
                 Transaction::Deploy(t) => t.contract_address,
                 Transaction::DeployAccount(t) => t.contract_address,
                 Transaction::Invoke(t) => match t {
-                    InvokeTransaction::V0(t) => t.contract_address,
+                    InvokeTransaction::V0(t) => t.sender_address,
                     InvokeTransaction::V1(t) => t.sender_address,
                 },
                 Transaction::L1Handler(t) => t.contract_address,
@@ -463,7 +463,12 @@ pub mod transaction {
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        pub contract_address: ContractAddress,
+        // contract_address is the historic name for this field. sender_address was
+        // introduced with starknet v0.11. Although the gateway no longer uses the historic
+        // name at all, this alias must be kept until a database migration fixes all historic
+        // transaction naming, or until regenesis removes them all.
+        #[serde(alias = "contract_address")]
+        pub sender_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub entry_point_type: Option<EntryPointType>,
@@ -474,6 +479,10 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
+    pathfinder_common::version_check!(
+        Mainnet < 0 - 11 - 0,
+        "Remove sender_address alias - beware storage impact"
+    );
     /// Represents deserialized L2 invoke transaction v1 data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

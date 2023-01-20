@@ -2192,7 +2192,7 @@ mod tests {
                     transaction::InvokeTransactionV0 {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
-                        contract_address: ContractAddress::new_or_panic(Felt::ZERO),
+                        sender_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
@@ -2204,7 +2204,7 @@ mod tests {
                     transaction::InvokeTransactionV0 {
                         calldata: vec![],
                         // Only required because event insert rejects if this is None
-                        contract_address: ContractAddress::new_or_panic(Felt::ZERO),
+                        sender_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee(H128::zero()),
