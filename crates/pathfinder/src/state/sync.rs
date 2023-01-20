@@ -884,7 +884,7 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
+        BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
@@ -967,6 +967,10 @@ mod tests {
         }
 
         async fn class_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn compiled_class(&self, _: CasmHash) -> Result<bytes::Bytes, SequencerError> {
             unimplemented!()
         }
 

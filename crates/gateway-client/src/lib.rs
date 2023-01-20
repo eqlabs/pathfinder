@@ -1,8 +1,8 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-    EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
+    ContractAddressSalt, EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash,
+    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
@@ -31,6 +31,8 @@ pub trait ClientApi {
     ) -> Result<bytes::Bytes, SequencerError>;
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
+
+    async fn compiled_class(&self, class_hash: CasmHash) -> Result<bytes::Bytes, SequencerError>;
 
     async fn storage(
         &self,
@@ -220,6 +222,16 @@ impl ClientApi for Client {
             .with_block(block)
             .with_retry(Self::RETRY)
             .get()
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn compiled_class(&self, hash: CasmHash) -> Result<bytes::Bytes, SequencerError> {
+        self.feeder_gateway_request()
+            .get_compiled_class()
+            .with_casm_hash(hash)
+            .with_retry(Self::RETRY)
+            .get_as_bytes()
             .await
     }
 
@@ -898,6 +910,53 @@ mod tests {
                 (r#"{"hello":"world"}"#, 200),
             )]);
             let bytes = client.class_by_hash(VALID_CLASS_HASH).await.unwrap();
+            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
+        }
+    }
+
+    mod compiled_class {
+        use super::*;
+        use pathfinder_common::{felt, version_check};
+        use pretty_assertions::assert_eq;
+
+        #[test_log::test(tokio::test)]
+        async fn invalid_hash() {
+            version_check!(
+                Integration < 0 - 11 - 0,
+                "Verify this test's types and params"
+            );
+
+            const INVALID_HASH: CasmHash = CasmHash(felt!("0xaaaaa"));
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_compiled_class?classHash={}",
+                    INVALID_HASH.0.to_hex_str()
+                ),
+                response_from(StarknetErrorCode::UndeclaredClass),
+            )]);
+            let error = client.compiled_class(INVALID_HASH).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UndeclaredClass)
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            version_check!(
+                Integration < 0 - 11 - 0,
+                "Verify this test's types, params and add a fixture"
+            );
+
+            const VALID_HASH: CasmHash = CasmHash(felt!("0xbbbbb"));
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_compiled_class?classHash={}",
+                    VALID_HASH.0.to_hex_str()
+                ),
+                (r#"{"fake":"fixture"}"#, 200),
+            )]);
+            let bytes = client.compiled_class(VALID_HASH).await.unwrap();
             serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
         }
     }
