@@ -319,7 +319,7 @@ impl StarknetBlocksTable {
     pub fn get_storage_commitment(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<Option<StateCommitment>> {
+    ) -> anyhow::Result<Option<StorageCommitment>> {
         match block {
             StarknetBlocksBlockId::Number(number) => tx.query_row(
                 "SELECT root FROM starknet_blocks WHERE number = ?",

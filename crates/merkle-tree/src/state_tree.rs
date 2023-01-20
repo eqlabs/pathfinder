@@ -11,7 +11,7 @@ use crate::{PedersenHash, PoseidonHash};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
     CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash, SierraHash,
-    StateCommitment, StorageAddress, StorageValue,
+    StorageAddress, StorageCommitment, StorageValue,
 };
 use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
@@ -67,7 +67,10 @@ pub struct StorageCommitmentTree<'tx, 'queries> {
 }
 
 impl<'tx> StorageCommitmentTree<'tx, '_> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: StateCommitment) -> anyhow::Result<Self> {
+    pub fn load(
+        transaction: &'tx Transaction<'tx>,
+        root: StorageCommitment,
+    ) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
         let tree = MerkleTree::load("tree_global", transaction, root.0)?;
 
@@ -88,9 +91,9 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
     }
 
     /// Applies and persists any changes. Returns the new global root.
-    pub fn apply(self) -> anyhow::Result<StateCommitment> {
+    pub fn apply(self) -> anyhow::Result<StorageCommitment> {
         let root = self.tree.commit()?;
-        Ok(StateCommitment(root))
+        Ok(StorageCommitment(root))
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
