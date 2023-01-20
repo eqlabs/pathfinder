@@ -1,4 +1,12 @@
-use super::*;
+use super::{behaviour, Command, Event, TestCommand, TestEvent};
+use libp2p::{
+    gossipsub::GossipsubEvent,
+    kad::{QueryId, QueryResult},
+    swarm::SwarmEvent,
+    PeerId,
+};
+use std::collections::{HashMap, HashSet};
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone)]
 pub(super) struct Client {
