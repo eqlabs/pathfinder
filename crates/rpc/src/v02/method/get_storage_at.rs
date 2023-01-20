@@ -71,10 +71,10 @@ pub async fn get_storage_at(
             // by using a dedicated error code from the RPC API spec
             .ok_or(GetStorageAtError::BlockNotFound)?;
 
-        let global_state_tree =
+        let storage_commitment_tree =
             StorageCommitmentTree::load(&tx, global_root).context("Global state tree")?;
 
-        let contract_state_hash = global_state_tree
+        let contract_state_hash = storage_commitment_tree
             .get(input.contract_address)
             .context("Get contract state hash from global state tree")?
             .ok_or(GetStorageAtError::ContractNotFound)?;

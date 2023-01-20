@@ -692,11 +692,12 @@ fn update_starknet_state(
         .context("Query latest state root")?
         .map(|block| block.root)
         .unwrap_or(StateCommitment(Felt::ZERO));
-    let mut global_tree = StorageCommitmentTree::load(transaction, global_root)
+    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, global_root)
         .context("Loading global state tree")?;
 
     for contract in &state_update.state_diff.deployed_contracts {
-        deploy_contract(transaction, &mut global_tree, contract).context("Deploying contract")?;
+        deploy_contract(transaction, &mut storage_commitment_tree, contract)
+            .context("Deploying contract")?;
     }
 
     // Copied so we can mutate the map. This lets us remove used nonces from the list.
@@ -707,12 +708,17 @@ fn update_starknet_state(
         // Remove the nonce so we don't update it again in the next stage.
         let nonce = nonces.remove(contract_address);
 
-        let contract_state_hash =
-            update_contract_state(*contract_address, updates, nonce, &global_tree, transaction)
-                .context("Update contract state")?;
+        let contract_state_hash = update_contract_state(
+            *contract_address,
+            updates,
+            nonce,
+            &storage_commitment_tree,
+            transaction,
+        )
+        .context("Update contract state")?;
 
         // Update the global state tree.
-        global_tree
+        storage_commitment_tree
             .set(*contract_address, contract_state_hash)
             .context("Updating global state tree")?;
     }
@@ -723,26 +729,26 @@ fn update_starknet_state(
             contract_address,
             &[],
             Some(nonce),
-            &global_tree,
+            &storage_commitment_tree,
             transaction,
         )
         .context("Update contract nonce")?;
 
         // Update the global state tree.
-        global_tree
+        storage_commitment_tree
             .set(contract_address, contract_state_hash)
             .context("Updating global state tree")?;
     }
 
     // Apply all global tree changes.
-    global_tree
+    storage_commitment_tree
         .apply()
         .context("Apply global state tree updates")
 }
 
 fn deploy_contract(
     transaction: &Transaction<'_>,
-    global_tree: &mut StorageCommitmentTree<'_, '_>,
+    storage_commitment_tree: &mut StorageCommitmentTree<'_, '_>,
     contract: &DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
@@ -753,7 +759,7 @@ fn deploy_contract(
     // name for `class_hash`.
     let class_hash = contract.class_hash;
     let state_hash = calculate_contract_state_hash(class_hash, contract_root, contract_nonce);
-    global_tree
+    storage_commitment_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
     ContractsStateTable::upsert(

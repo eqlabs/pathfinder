@@ -44,10 +44,10 @@ pub async fn get_nonce(
             .context("Fetching global root")?
             .ok_or(GetNonceError::BlockNotFound)?;
 
-        let global_state_tree =
+        let storage_commitment_tree =
             StorageCommitmentTree::load(&tx, global_root).context("Loading global state tree")?;
 
-        let state_hash = global_state_tree
+        let state_hash = storage_commitment_tree
             .get(input.contract_address)
             .context("Get contract state hash from global state tree")?
             .ok_or(GetNonceError::ContractNotFound)?;

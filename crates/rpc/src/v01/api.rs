@@ -377,11 +377,11 @@ impl RpcApi {
                 // by using a dedicated error code from the RPC API spec
                 .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
 
-            let global_state_tree = StorageCommitmentTree::load(&tx, global_root)
+            let storage_commitment_tree = StorageCommitmentTree::load(&tx, global_root)
                 .context("Global state tree")
                 .map_err(internal_server_error)?;
 
-            let contract_state_hash = global_state_tree
+            let contract_state_hash = storage_commitment_tree
                 .get(contract_address)
                 .context("Get contract state hash from global state tree")
                 .map_err(internal_server_error)?
@@ -712,9 +712,9 @@ impl RpcApi {
             Some(root) => root,
             None => return Ok(false),
         };
-        let global_state_tree =
+        let storage_commitment_tree =
             StorageCommitmentTree::load(tx, global_root).context("Loading global state tree")?;
-        let contract_state_hash = global_state_tree
+        let contract_state_hash = storage_commitment_tree
             .get(contract_address)
             .context("Fetching contract leaf in global tree")?;
         Ok(contract_state_hash.is_some())
@@ -1022,11 +1022,11 @@ impl RpcApi {
                 .context("No global root found")
                 .map_err(internal_server_error)?;
 
-            let global_state_tree = StorageCommitmentTree::load(&tx, global_root)
+            let storage_commitment_tree = StorageCommitmentTree::load(&tx, global_root)
                 .context("Loading global state tree")
                 .map_err(internal_server_error)?;
 
-            let state_hash = global_state_tree
+            let state_hash = storage_commitment_tree
                 .get(contract)
                 .context("Get contract state hash from global state tree")
                 .map_err(internal_server_error)?

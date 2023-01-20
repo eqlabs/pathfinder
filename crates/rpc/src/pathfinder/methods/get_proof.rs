@@ -176,15 +176,15 @@ pub async fn get_proof(
             // by using a dedicated error code from the RPC API spec
             .ok_or(GetProofError::BlockNotFound)?;
 
-        let global_state_tree =
+        let storage_commitment_tree =
             StorageCommitmentTree::load(&tx, global_root).context("Global state tree")?;
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
-        let contract_proof = global_state_tree.get_proof(&input.contract_address)?;
+        let contract_proof = storage_commitment_tree.get_proof(&input.contract_address)?;
         let contract_proof = Proof(contract_proof);
 
-        let contract_state_hash = match global_state_tree.get(input.contract_address)? {
+        let contract_state_hash = match storage_commitment_tree.get(input.contract_address)? {
             Some(contract_state_hash) => contract_state_hash,
             None => {
                 // Contract not found: return the proof of non membership that we generated earlier.

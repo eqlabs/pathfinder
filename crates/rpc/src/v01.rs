@@ -1444,23 +1444,24 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-            let mut global_tree = StorageCommitmentTree::load(transaction, block2.root).unwrap();
+            let mut storage_commitment_tree =
+                StorageCommitmentTree::load(transaction, block2.root).unwrap();
             let contract_state_hash = update_contract_state(
                 contract_address,
                 &storage_diff,
                 None,
-                &global_tree,
+                &storage_commitment_tree,
                 transaction,
             )
             .unwrap();
-            global_tree
+            storage_commitment_tree
                 .set(contract_address, contract_state_hash)
                 .unwrap();
 
             let block3 = StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(3),
                 hash: StarknetBlockHash(felt_bytes!(b"block 3 hash")),
-                root: global_tree.apply().unwrap(),
+                root: storage_commitment_tree.apply().unwrap(),
                 timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
                 sequencer_address: SequencerAddress(felt_bytes!(&[3u8])),

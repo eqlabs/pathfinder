@@ -210,59 +210,61 @@ mod tests {
         ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
-        let mut global_tree =
+        let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StateCommitment(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
             Some(ContractNonce(felt!("0x1"))),
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
-        let global_root0 = global_tree.apply().unwrap();
+        let global_root0 = storage_commitment_tree.apply().unwrap();
 
-        let mut global_tree = StorageCommitmentTree::load(&db_txn, global_root0).unwrap();
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, global_root0).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
             None,
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update1,
             None,
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let global_root1 = global_tree.apply().unwrap();
+        let global_root1 = storage_commitment_tree.apply().unwrap();
 
-        let mut global_tree = StorageCommitmentTree::load(&db_txn, global_root1).unwrap();
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, global_root1).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
             Some(ContractNonce(felt!("0x10"))),
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let global_root2 = global_tree.apply().unwrap();
+        let global_root2 = storage_commitment_tree.apply().unwrap();
 
         let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {
@@ -562,7 +564,8 @@ mod tests {
         let pending_root = tokio::task::spawn_blocking(move || {
             let mut db = storage.connection().unwrap();
             let tmp_tx = db.transaction().unwrap();
-            let mut global_tree = StorageCommitmentTree::load(&tmp_tx, latest.root).unwrap();
+            let mut storage_commitment_tree =
+                StorageCommitmentTree::load(&tmp_tx, latest.root).unwrap();
             for deployed in state_diff2.deployed_contracts {
                 ContractsTable::upsert(&tmp_tx, deployed.address, deployed.class_hash).unwrap();
             }
@@ -572,13 +575,15 @@ mod tests {
                     contract_address,
                     &storage_diffs,
                     None,
-                    &global_tree,
+                    &storage_commitment_tree,
                     &tmp_tx,
                 )
                 .unwrap();
-                global_tree.set(contract_address, state_hash).unwrap();
+                storage_commitment_tree
+                    .set(contract_address, state_hash)
+                    .unwrap();
             }
-            let pending_root = global_tree.apply().unwrap();
+            let pending_root = storage_commitment_tree.apply().unwrap();
             tmp_tx.rollback().unwrap();
             pending_root
         })
