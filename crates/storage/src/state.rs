@@ -1793,6 +1793,7 @@ mod tests {
             }
         }
 
+        // FIXME 0.11.0
         mod get_storage_commitment {
             use super::*;
 

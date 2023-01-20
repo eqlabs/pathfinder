@@ -133,6 +133,7 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
+/// FIXME v0.11.0
 /// Returns all the necessary data to trustlessly verify storage slots for a particular contract.
 pub async fn get_proof(
     context: RpcContext,
@@ -170,14 +171,14 @@ pub async fn get_proof(
 
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let global_root = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
             .context("Get global root for block")?
             // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
             // by using a dedicated error code from the RPC API spec
             .ok_or(GetProofError::BlockNotFound)?;
 
         let storage_commitment_tree =
-            StorageCommitmentTree::load(&tx, global_root).context("Global state tree")?;
+            StorageCommitmentTree::load(&tx, storage_commitment).context("Global state tree")?;
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.

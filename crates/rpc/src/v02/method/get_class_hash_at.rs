@@ -40,17 +40,17 @@ pub async fn get_class_hash_at(
         let tx = db.transaction().context("Creating database transaction")?;
 
         // Read the class hash via the state tree. This involves:
-        //  1. Reading the state_hash for this contract from the global tree
+        //  1. Reading the state_hash for this contract from the storage commitment tree
         //  2. Fetching the class hash from the `contract_states` table
         //
         // (2) can also be achieved by fetching it directly from the `contracts` table,
         // but it felt more "correct" to continue using the global state mechanism.
-        let global_root = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
             .context("Reading global root from database")?
             .ok_or(GetClassHashAtError::BlockNotFound)?;
 
-        let tree =
-            StorageCommitmentTree::load(&tx, global_root).context("Loading global state tree")?;
+        let tree = StorageCommitmentTree::load(&tx, storage_commitment)
+            .context("Loading global state tree")?;
         let state_hash = tree
             .get(input.contract_address)
             .context("Fetching contract leaf in global tree")?
