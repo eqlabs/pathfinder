@@ -305,11 +305,11 @@ macro_rules! felt_bytes {
 ///
 /// Usage:
 /// ```rust
-/// version_check!(<network> <comparitor> <version>, <optional assert message>);
+/// version_check!(<network> <operator> <version>, <optional assert message>);
 /// version_check!(Testnet < 0-11-0, "Will not compile once Testnet has launched v0.11.0+");
 /// ```
 ///
-/// `<comparitor>` supports any of `<, <=, ==, >=, >`.
+/// Supported operators: `<, <=, ==, >=, >`.
 ///
 /// Example:
 /// ```rust
@@ -322,7 +322,7 @@ macro_rules! felt_bytes {
 /// ```
 #[macro_export]
 macro_rules! version_check {
-    ($network:ident $comparitor:tt $major:literal-$minor:literal-$patch:literal $(,$msg:literal)?) => {
+    ($network:ident $operator:tt $major:literal-$minor:literal-$patch:literal $(,$msg:literal)?) => {
         #[allow(dead_code)]
         const NETWORK: (u64, u64, u64) = match pathfinder_common::Chain::$network {
             pathfinder_common::Chain::Mainnet => (0, 10, 3),
@@ -335,7 +335,7 @@ macro_rules! version_check {
 
         // Supress comparisons with `0` warnings.
         #[allow(unused_comparisons, dead_code)]
-        const ASSERT: bool = pathfinder_common::version_check!(@compare NETWORK $comparitor INPUT);
+        const ASSERT: bool = pathfinder_common::version_check!(@compare NETWORK $operator INPUT);
 
         #[cfg(test)]
         const _: () = assert!(ASSERT, $($msg)?);

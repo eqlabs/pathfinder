@@ -222,6 +222,11 @@ impl ClientApi for Client {
 
     #[tracing::instrument(skip(self))]
     async fn compiled_class(&self, hash: CasmHash) -> Result<bytes::Bytes, SequencerError> {
+        pathfinder_common::version_check!(
+            Integration < 0 - 11 - 0,
+            "Check whether hash should be Sierra or Casm"
+        );
+
         self.feeder_gateway_request()
             .get_compiled_class()
             .with_casm_hash(hash)
