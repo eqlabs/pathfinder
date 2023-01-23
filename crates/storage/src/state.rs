@@ -1852,9 +1852,7 @@ mod tests {
             }
         }
 
-        // FIXME 0.11.0
-        #[cfg(fixme_0_11_0)]
-        mod get_storage_commitment {
+        mod get_storage_and_state_commitments {
             use super::*;
 
             mod by_number {
@@ -1864,14 +1862,23 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let root = StarknetBlocksTable::get_storage_commitment(
+                            let storage_commitment = StarknetBlocksTable::get_storage_commitment(
                                 tx,
-                                block.number.into(),
+                                block.block.number.into(),
+                            )
+                            .unwrap()
+                            .unwrap();
+                            let state_commitment = StarknetBlocksTable::get_state_commitment(
+                                tx,
+                                block.block.number.into(),
                             )
                             .unwrap()
                             .unwrap();
 
-                            assert_eq!(root, block.root);
+                            assert_eq!(storage_commitment, state_commitment.0);
+                            assert_eq!(state_commitment.0, block.storage_commitment);
+                            assert_eq!(state_commitment.1, block.class_commitment);
+                            assert_eq!(StateCommitment::from(state_commitment), block.block.root);
                         }
                     })
                 }
@@ -1879,9 +1886,14 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, blocks| {
-                        let non_existent = blocks.last().unwrap().number + 1;
+                        let non_existent = blocks.last().unwrap().block.number + 1;
                         assert_eq!(
                             StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
+                                .unwrap(),
+                            None
+                        );
+                        assert_eq!(
+                            StarknetBlocksTable::get_state_commitment(tx, non_existent.into())
                                 .unwrap(),
                             None
                         );
@@ -1896,12 +1908,23 @@ mod tests {
                 fn some() {
                     with_default_blocks(|tx, blocks| {
                         for block in blocks {
-                            let root =
-                                StarknetBlocksTable::get_storage_commitment(tx, block.hash.into())
-                                    .unwrap()
-                                    .unwrap();
+                            let storage_commitment = StarknetBlocksTable::get_storage_commitment(
+                                tx,
+                                block.block.hash.into(),
+                            )
+                            .unwrap()
+                            .unwrap();
+                            let state_commitment = StarknetBlocksTable::get_state_commitment(
+                                tx,
+                                block.block.hash.into(),
+                            )
+                            .unwrap()
+                            .unwrap();
 
-                            assert_eq!(root, block.root);
+                            assert_eq!(storage_commitment, state_commitment.0);
+                            assert_eq!(state_commitment.0, block.storage_commitment);
+                            assert_eq!(state_commitment.1, block.class_commitment);
+                            assert_eq!(StateCommitment::from(state_commitment), block.block.root);
                         }
                     })
                 }
@@ -1916,6 +1939,11 @@ mod tests {
                                 .unwrap(),
                             None
                         );
+                        assert_eq!(
+                            StarknetBlocksTable::get_state_commitment(tx, non_existent.into())
+                                .unwrap(),
+                            None
+                        );
                     })
                 }
             }
@@ -1926,15 +1954,25 @@ mod tests {
                 #[test]
                 fn some() {
                     with_default_blocks(|tx, blocks| {
-                        let expected = blocks.last().map(|block| block.root).unwrap();
+                        let expected = blocks.last().unwrap();
 
-                        let latest = StarknetBlocksTable::get_storage_commitment(
+                        let storage_commitment = StarknetBlocksTable::get_storage_commitment(
                             tx,
                             StarknetBlocksBlockId::Latest,
                         )
                         .unwrap()
                         .unwrap();
-                        assert_eq!(latest, expected);
+                        let state_commitment = StarknetBlocksTable::get_state_commitment(
+                            tx,
+                            StarknetBlocksBlockId::Latest,
+                        )
+                        .unwrap()
+                        .unwrap();
+
+                        assert_eq!(storage_commitment, state_commitment.0);
+                        assert_eq!(state_commitment.0, expected.storage_commitment);
+                        assert_eq!(state_commitment.1, expected.class_commitment);
+                        assert_eq!(StateCommitment::from(state_commitment), expected.block.root);
                     })
                 }
 
@@ -1944,23 +1982,23 @@ mod tests {
                     let mut connection = storage.connection().unwrap();
                     let tx = connection.transaction().unwrap();
 
-                    let latest_root = StarknetBlocksTable::get_storage_commitment(
-                        &tx,
-                        StarknetBlocksBlockId::Latest,
-                    )
-                    .unwrap();
-                    assert_eq!(latest_root, None);
+                    assert_eq!(
+                        StarknetBlocksTable::get_storage_commitment(
+                            &tx,
+                            StarknetBlocksBlockId::Latest,
+                        )
+                        .unwrap(),
+                        None
+                    );
+                    assert_eq!(
+                        StarknetBlocksTable::get_state_commitment(
+                            &tx,
+                            StarknetBlocksBlockId::Latest,
+                        )
+                        .unwrap(),
+                        None
+                    );
                 }
-            }
-        }
-
-        // FIXME 0.11.0
-        #[cfg(fixme_0_11_0)]
-
-        mod get_state_commitment {
-            #[test]
-            fn todo() {
-                todo!("implement the tests");
             }
         }
 
