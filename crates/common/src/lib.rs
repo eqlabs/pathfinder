@@ -159,13 +159,11 @@ impl From<(StorageCommitment, ClassCommitment)> for StateCommitment {
     }
 }
 
-/// A global state commitment root for Starknet state up to Starknet v0.11.0.
-/// This is the entry-point for the global storage state at a specific point in time via
-/// the global storage state tree. This is also the global state commitment for all
-/// the blocks that were produced before Starknet was updated to v0.11.0.
+/// The commitment for all contracts' storage of a StarkNet block.
+///
+/// Before StarkNet v0.11.0 this was equivalent to [StateCommitment].
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StorageCommitment(pub Felt);
-
 impl StorageCommitment {
     pub const ZERO: Self = Self(Felt::ZERO);
 }
