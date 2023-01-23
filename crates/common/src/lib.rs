@@ -145,8 +145,11 @@ pub struct StorageValue(pub Felt);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StateCommitment(pub Felt);
 
-impl From<(StorageCommitment, ClassCommitment)> for StateCommitment {
-    fn from((storage_commitment, class_commitment): (StorageCommitment, ClassCommitment)) -> Self {
+impl StateCommitment {
+    pub fn calculate(
+        storage_commitment: StorageCommitment,
+        class_commitment: ClassCommitment,
+    ) -> Self {
         if class_commitment == ClassCommitment::ZERO {
             Self(storage_commitment.0)
         } else {

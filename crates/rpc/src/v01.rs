@@ -1393,7 +1393,7 @@ mod tests {
         use anyhow::Context;
         use bytes::Bytes;
         use flate2::{write::GzEncoder, Compression};
-        use pathfinder_common::{felt, ClassCommitment, StorageValue};
+        use pathfinder_common::{felt, ClassCommitment, StateCommitment, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
         use pathfinder_storage::{ContractCodeTable, ContractsTable, StarknetBlocksBlockId};
         use pretty_assertions::assert_eq;
@@ -1461,7 +1461,7 @@ mod tests {
             let block3 = StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(3),
                 hash: StarknetBlockHash(felt_bytes!(b"block 3 hash")),
-                root: (storage_commitment3, ClassCommitment::ZERO).into(),
+                root: StateCommitment::calculate(storage_commitment3, ClassCommitment::ZERO),
                 timestamp: StarknetBlockTimestamp::new_or_panic(3),
                 gas_price: GasPrice::from(3),
                 sequencer_address: SequencerAddress(felt_bytes!(&[3u8])),

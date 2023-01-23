@@ -114,7 +114,8 @@ mod tests {
         felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
         EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StorageAddress, StorageCommitment, TransactionVersion,
+        StarknetTransactionIndex, StateCommitment, StorageAddress, StorageCommitment,
+        TransactionVersion,
     };
     use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -275,7 +276,7 @@ mod tests {
         let block0 = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
-            root: (storage_commitment0, class_commitment0).into(),
+            root: StateCommitment::calculate(storage_commitment0, class_commitment0),
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
@@ -286,7 +287,7 @@ mod tests {
         let block1 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: block1_hash,
-            root: (storage_commitment1, class_commitment1).into(),
+            root: StateCommitment::calculate(storage_commitment1, class_commitment1),
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
@@ -297,7 +298,7 @@ mod tests {
         let block2 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(2),
             hash: latest_hash,
-            root: (storage_commitment2, class_commitment2).into(),
+            root: StateCommitment::calculate(storage_commitment2, class_commitment2),
             timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
@@ -624,7 +625,7 @@ mod tests {
         let state_update = starknet_gateway_types::reply::StateUpdate {
             // This must be `None` for a pending state update.
             block_hash: None,
-            new_root: (pending_storage_commitment, ClassCommitment::ZERO).into(),
+            new_root: StateCommitment::calculate(pending_storage_commitment, ClassCommitment::ZERO),
             old_root: latest.root,
             state_diff,
         };

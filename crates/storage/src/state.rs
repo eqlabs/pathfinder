@@ -310,7 +310,7 @@ impl StarknetBlocksTable {
                 let class_commitment = row
                     .get_unwrap::<_, Option<_>>("class_commitment")
                     .unwrap_or(ClassCommitment::ZERO);
-                let root = (state_commitment, class_commitment).into();
+                let root = StateCommitment::calculate(state_commitment, class_commitment);
 
                 let block = StarknetBlock {
                     number,
@@ -1878,7 +1878,10 @@ mod tests {
                             assert_eq!(storage_commitment, state_commitment.0);
                             assert_eq!(state_commitment.0, block.storage_commitment);
                             assert_eq!(state_commitment.1, block.class_commitment);
-                            assert_eq!(StateCommitment::from(state_commitment), block.block.root);
+                            assert_eq!(
+                                StateCommitment::calculate(state_commitment.0, state_commitment.1),
+                                block.block.root
+                            );
                         }
                     })
                 }
@@ -1924,7 +1927,10 @@ mod tests {
                             assert_eq!(storage_commitment, state_commitment.0);
                             assert_eq!(state_commitment.0, block.storage_commitment);
                             assert_eq!(state_commitment.1, block.class_commitment);
-                            assert_eq!(StateCommitment::from(state_commitment), block.block.root);
+                            assert_eq!(
+                                StateCommitment::calculate(state_commitment.0, state_commitment.1),
+                                block.block.root
+                            );
                         }
                     })
                 }
@@ -1972,7 +1978,10 @@ mod tests {
                         assert_eq!(storage_commitment, state_commitment.0);
                         assert_eq!(state_commitment.0, expected.storage_commitment);
                         assert_eq!(state_commitment.1, expected.class_commitment);
-                        assert_eq!(StateCommitment::from(state_commitment), expected.block.root);
+                        assert_eq!(
+                            StateCommitment::calculate(state_commitment.0, state_commitment.1),
+                            expected.block.root
+                        );
                     })
                 }
 

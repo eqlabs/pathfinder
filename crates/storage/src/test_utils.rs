@@ -6,8 +6,8 @@ use pathfinder_common::{
     felt, CallParam, ClassCommitment, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, EntryPoint, EventData, EventKey, Fee, GasPrice, SequencerAddress,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    StarknetTransactionIndex, StorageCommitment, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+    StarknetTransactionIndex, StateCommitment, StorageCommitment, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
@@ -37,7 +37,7 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
                 block: StarknetBlock {
                     number: StarknetBlockNumber::GENESIS + i as u64,
                     hash: StarknetBlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
-                    root: (storage_commitment, class_commitment).into(),
+                    root: StateCommitment::calculate(storage_commitment, class_commitment),
                     timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
                     gas_price: GasPrice::from(i as u64),
                     sequencer_address: SequencerAddress(Felt::from_be_slice(&[i as u8]).unwrap()),

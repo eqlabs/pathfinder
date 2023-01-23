@@ -352,7 +352,8 @@ where
                         let tx = db_conn
                             .transaction_with_behavior(TransactionBehavior::Immediate)
                             .context("Create database transaction")?;
-                        let new_root = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?.into();
+                        let (new_storage_commitment, new_class_commitment) = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
+                        let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
                         tx.rollback()?;
                         anyhow::Result::<StateCommitment>::Ok(new_root)
                     }).context("Calculate pending state root")?;
@@ -494,7 +495,7 @@ async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> a
                         update.block_number.into(),
                     )
                     .context("Query L2 root")?
-                    .map(StateCommitment::from);
+                    .map(|(a, b)| StateCommitment::calculate(a, b));
 
                     match l2_root {
                         Some(l2_root) if l2_root == update.global_root => {
@@ -562,7 +563,7 @@ async fn l2_update(
         let (new_storage_commitment, new_class_commitment) =
             update_starknet_state(&transaction, &state_update)
                 .context("Updating Starknet state")?;
-        let new_root: StateCommitment = (new_storage_commitment, new_class_commitment).into();
+        let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
         anyhow::ensure!(new_root == block.state_commitment, "State root mismatch");
@@ -1121,8 +1122,8 @@ mod tests {
         static ref STORAGE_COMMITMENT1: StorageCommitment = StorageCommitment(Felt::from_be_slice(&[0xC]).unwrap());
         static ref CLASS_COMMITMENT0: ClassCommitment = ClassCommitment::ZERO;
         static ref CLASS_COMMITMENT1: ClassCommitment = ClassCommitment(Felt::from_be_slice(&[0xD]).unwrap());
-        static ref STATE_COMMITMENT0: StateCommitment = (*STORAGE_COMMITMENT0, *CLASS_COMMITMENT0).into();
-        static ref STATE_COMMITMENT1: StateCommitment = (*STORAGE_COMMITMENT1, *CLASS_COMMITMENT1).into();
+        static ref STATE_COMMITMENT0: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT0, *CLASS_COMMITMENT0);
+        static ref STATE_COMMITMENT1: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT1, *CLASS_COMMITMENT1);
 
         static ref ETH_ORIG: pathfinder_ethereum::EthOrigin = pathfinder_ethereum::EthOrigin {
             block: pathfinder_ethereum::BlockOrigin {
