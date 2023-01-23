@@ -559,7 +559,18 @@ pub mod reply {
                     class_hash: txn.class_hash,
                     sender_address: txn.sender_address,
                 }),
-                Declare(DeclareTransaction::V1(_)) => {
+                Declare(DeclareTransaction::V1(txn)) => Self::Declare(self::DeclareTransaction {
+                    common: CommonTransactionProperties {
+                        hash: txn.transaction_hash,
+                        max_fee: txn.max_fee,
+                        version: TransactionVersion::ONE,
+                        signature: txn.signature.clone(),
+                        nonce: txn.nonce,
+                    },
+                    class_hash: txn.class_hash,
+                    sender_address: txn.sender_address,
+                }),
+                Declare(DeclareTransaction::V2(_)) => {
                     todo!("v0.11.0: once RPC has v2 declare implemented")
                 }
                 Deploy(txn) => Self::Deploy(DeployTransaction {

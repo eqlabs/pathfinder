@@ -542,7 +542,20 @@ pub mod reply {
                         sender_address: txn.sender_address,
                     })
                 }
-                GatewayTransaction::Declare(GatewayDeclare::V1(_)) => {
+                GatewayTransaction::Declare(GatewayDeclare::V1(txn)) => {
+                    Self::Declare(DeclareTransaction {
+                        common: CommonTransactionProperties {
+                            hash: txn.transaction_hash,
+                            max_fee: txn.max_fee,
+                            version: TransactionVersion::ONE,
+                            signature: txn.signature.clone(),
+                            nonce: txn.nonce,
+                        },
+                        class_hash: txn.class_hash,
+                        sender_address: txn.sender_address,
+                    })
+                }
+                GatewayTransaction::Declare(GatewayDeclare::V2(_)) => {
                     todo!("v0.11.0: once v1 declare is implemented in RPC")
                 }
                 GatewayTransaction::Deploy(txn) => Self::Deploy(DeployTransaction {

@@ -324,6 +324,7 @@ pub mod transaction {
                 Transaction::Declare(t) => match t {
                     DeclareTransaction::V0(t) => t.transaction_hash,
                     DeclareTransaction::V1(t) => t.transaction_hash,
+                    DeclareTransaction::V2(t) => t.transaction_hash,
                 },
                 Transaction::Deploy(t) => t.transaction_hash,
                 Transaction::DeployAccount(t) => t.transaction_hash,
@@ -339,6 +340,7 @@ pub mod transaction {
             match self {
                 Transaction::Declare(DeclareTransaction::V0(t)) => t.sender_address,
                 Transaction::Declare(DeclareTransaction::V1(t)) => t.sender_address,
+                Transaction::Declare(DeclareTransaction::V2(t)) => t.sender_address,
                 Transaction::Deploy(t) => t.contract_address,
                 Transaction::DeployAccount(t) => t.contract_address,
                 Transaction::Invoke(t) => match t {
@@ -354,9 +356,11 @@ pub mod transaction {
     #[serde(tag = "version")]
     pub enum DeclareTransaction {
         #[serde(rename = "0x0")]
-        V0(DeclareTransactionV0),
+        V0(DeclareTransactionV0V1),
         #[serde(rename = "0x1")]
-        V1(DeclareTransactionV1),
+        V1(DeclareTransactionV0V1),
+        #[serde(rename = "0x2")]
+        V2(DeclareTransactionV2),
     }
 
     impl<'de> Deserialize<'de> for DeclareTransaction {
@@ -383,21 +387,24 @@ pub mod transaction {
                 .remove("version");
             match version.version {
                 TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
-                    DeclareTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
+                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
-                    DeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 0 or 1")),
+                TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
+                    DeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
             }
         }
     }
 
-    /// Represents deserialized L2 declare transaction data.
+    /// A version 0 or 1 declare transaction.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct DeclareTransactionV0 {
+    pub struct DeclareTransactionV0V1 {
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
@@ -409,10 +416,11 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
+    /// A version 2 declare transaction.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct DeclareTransactionV1 {
+    pub struct DeclareTransactionV2 {
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
