@@ -1998,7 +1998,7 @@ mod tests {
 
         #[tokio::test]
         async fn mainnet() {
-            version_check!(Integration == 0 - 10 - 3);
+            version_check!(Mainnet == 0 - 10 - 3);
             let actual = get_latest_version(&Client::mainnet()).await.unwrap();
             assert_eq!(
                 actual,
@@ -2009,7 +2009,7 @@ mod tests {
 
         #[tokio::test]
         async fn testnet() {
-            version_check!(Integration == 0 - 10 - 3);
+            version_check!(Testnet == 0 - 10 - 3);
             let actual = get_latest_version(&Client::testnet()).await.unwrap();
             assert_eq!(
                 actual,
@@ -2020,8 +2020,8 @@ mod tests {
 
         #[tokio::test]
         async fn testnet2() {
-            version_check!(Integration == 0 - 10 - 3);
-            let actual = get_latest_version(&Client::testnet()).await.unwrap();
+            version_check!(Testnet2 == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::testnet2()).await.unwrap();
             assert_eq!(
                 actual,
                 (0, 10, 3),
