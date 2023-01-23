@@ -40,16 +40,16 @@ pub async fn get_nonce(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let global_root = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-            .context("Fetching global root")?
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+            .context("Fetching storage commitment")?
             .ok_or(GetNonceError::BlockNotFound)?;
 
-        let storage_commitment_tree =
-            StorageCommitmentTree::load(&tx, global_root).context("Loading global state tree")?;
+        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
+            .context("Loading storage commitment tree")?;
 
         let state_hash = storage_commitment_tree
             .get(input.contract_address)
-            .context("Get contract state hash from global state tree")?
+            .context("Get contract state hash from storage commitment tree")?
             .ok_or(GetNonceError::ContractNotFound)?;
 
         let nonce = ContractsStateTable::get_nonce(&tx, state_hash)

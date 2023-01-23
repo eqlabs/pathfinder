@@ -378,12 +378,12 @@ impl RpcApi {
                 .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
 
             let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
-                .context("Global state tree")
+                .context("Storage commitment tree")
                 .map_err(internal_server_error)?;
 
             let contract_state_hash = storage_commitment_tree
                 .get(contract_address)
-                .context("Get contract state hash from global state tree")
+                .context("Get contract state hash from storage commitment tree")
                 .map_err(internal_server_error)?
                 .ok_or_else(|| Error::from(ErrorCode::ContractNotFound))?;
 
@@ -518,7 +518,7 @@ impl RpcApi {
                     // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                     // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
                     //
-                    // get_root is cheaper than querying the full block.
+                    // get_storage_commitment is cheaper than querying the full block.
                     match StarknetBlocksTable::get_storage_commitment(&db_tx, block_id)
                         .context("Reading block from database")?
                     {
@@ -713,10 +713,10 @@ impl RpcApi {
             None => return Ok(false),
         };
         let storage_commitment_tree = StorageCommitmentTree::load(tx, storage_commitment)
-            .context("Loading global state tree")?;
+            .context("Loading storage commitment tree")?;
         let contract_state_hash = storage_commitment_tree
             .get(contract_address)
-            .context("Fetching contract leaf in global tree")?;
+            .context("Fetching contract leaf in storage commitment tree")?;
         Ok(contract_state_hash.is_some())
     }
 
@@ -865,7 +865,7 @@ impl RpcApi {
                     //
                     // get_storage_commitment is cheaper than querying the full block.
                     match StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-                        .context("Reading block from database")?
+                        .context("Reading storage commitment from database")?
                     {
                         Some(_) => Ok(0),
                         None => Err(ErrorCode::InvalidBlockId.into()),
@@ -1020,7 +1020,7 @@ impl RpcApi {
             let storage_commitment =
                 StarknetBlocksTable::get_storage_commitment(&tx, StarknetBlocksBlockId::Latest)
                     .map_err(internal_server_error)?
-                    .context("No global root found")
+                    .context("No storage commitment found")
                     .map_err(internal_server_error)?;
 
             let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)

@@ -329,7 +329,7 @@ impl StarknetBlocksTable {
         }
     }
 
-    /// Returns the [storage_commitment](StateCommitment) of the given block.
+    /// Returns the [storage_commitment](StorageCommitment) of the given block.
     pub fn get_storage_commitment(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,

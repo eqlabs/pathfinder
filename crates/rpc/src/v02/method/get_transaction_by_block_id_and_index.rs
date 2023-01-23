@@ -55,7 +55,7 @@ pub async fn get_transaction_by_block_id_and_index(
                 // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                 // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
                 //
-                // get_root is cheaper than querying the full block.
+                // get_storage_commitment is cheaper than querying the full block.
                 match StarknetBlocksTable::get_storage_commitment(&db_tx, block_id)
                     .context("Reading block from database")?
                 {

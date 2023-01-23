@@ -49,7 +49,7 @@ pub async fn get_block_transaction_count(
         if block_transaction_count == 0 {
             // get_storage_commitment is cheaper than querying the full block.
             let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-                .context("Reading block from database")?;
+                .context("Reading storage commitment from database")?;
             return if storage_commitment.is_some() {
                 Ok(0)
             } else {

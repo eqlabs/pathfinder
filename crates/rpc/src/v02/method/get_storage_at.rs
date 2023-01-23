@@ -66,7 +66,7 @@ pub async fn get_storage_at(
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
         let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-            .context("Get global root for block")?
+            .context("Get storage commitment for block")?
             // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
             // by using a dedicated error code from the RPC API spec
             .ok_or(GetStorageAtError::BlockNotFound)?;

@@ -96,14 +96,14 @@ fn get_definition_at(
     contract: ContractAddress,
 ) -> Result<Vec<u8>, GetClassAtError> {
     let storage_commitment = StarknetBlocksTable::get_storage_commitment(tx, block)
-        .context("Reading global root from database")?
+        .context("Reading storage commitment from database")?
         .ok_or(GetClassAtError::BlockNotFound)?;
 
-    let tree =
-        StorageCommitmentTree::load(tx, storage_commitment).context("Loading global state tree")?;
+    let tree = StorageCommitmentTree::load(tx, storage_commitment)
+        .context("Loading storage commitment tree")?;
     let state_hash = tree
         .get(contract)
-        .context("Fetching contract leaf in global tree")?
+        .context("Fetching contract leaf in storage commitment tree")?
         .ok_or(GetClassAtError::ContractNotFound)?;
 
     let definition = tx
