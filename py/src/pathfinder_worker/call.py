@@ -59,6 +59,7 @@ try:
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.definitions import fields
+    from starkware.starknet.definitions.error_codes import StarknetErrorCode
     from starkware.starknet.definitions.general_config import (
         N_STEPS_RESOURCE,
         StarknetChainId,
@@ -73,7 +74,7 @@ try:
     from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
         PatriciaTree,
     )
-    from starkware.starkware_utils.error_handling import WebFriendlyException
+    from starkware.starkware_utils.error_handling import StarkException
     from starkware.storage.storage import FactFetchingContext, Storage
 
 except ModuleNotFoundError:
@@ -342,14 +343,23 @@ def do_loop(connection, input_gen, output_file):
         except marshmallow.exceptions.MarshmallowError as exc:
             logger.error(f"Failed to parse command: {exc}")
             out = {"status": "error", "kind": "INVALID_INPUT"}
-        except WebFriendlyException as exc:
-            if str(exc.code) == "StarknetErrorCode.UNINITIALIZED_CONTRACT":
+        except StarkException as exc:
+            if exc.code == StarknetErrorCode.UNINITIALIZED_CONTRACT:
                 out = {"status": "error", "kind": "NO_SUCH_CONTRACT"}
-            elif str(exc.code) == "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT":
+            elif exc.code == StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT:
                 out = {"status": "error", "kind": "INVALID_ENTRY_POINT"}
             else:
                 report_failed(logger, command, exc)
-                out = {"status": "failed", "exception": str(exc.code)}
+
+                if exc.message:
+                    message = exc.message
+                    if len(message) > 200:
+                        message = message[:197] + "..."
+                    exception_message = f"{exc.code}: {message}"
+                else:
+                    exception_message = str(exc.code)
+
+                out = {"status": "failed", "exception": exception_message}
         except Exception as exc:
             stringified = str(exc)
 
