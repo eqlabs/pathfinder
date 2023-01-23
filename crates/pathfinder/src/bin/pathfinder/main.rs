@@ -263,6 +263,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         state::l2::sync,
         pending_state.clone(),
         pending_interval,
+        state::l2::BlockValidationMode::Strict,
     ));
 
     let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(eth_transport));

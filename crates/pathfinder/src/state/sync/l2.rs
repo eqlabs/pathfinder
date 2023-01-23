@@ -63,6 +63,7 @@ pub async fn sync(
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
     chain: Chain,
     pending_poll_interval: Option<Duration>,
+    block_validation_mode: BlockValidationMode,
 ) -> anyhow::Result<()> {
     use crate::state::sync::head_poll_interval;
 
@@ -75,7 +76,15 @@ pub async fn sync(
         let t_block = std::time::Instant::now();
 
         let (block, commitments) = loop {
-            match download_block(next, chain, head_meta.map(|h| h.1), &sequencer).await? {
+            match download_block(
+                next,
+                chain,
+                head_meta.map(|h| h.1),
+                &sequencer,
+                block_validation_mode,
+            )
+            .await?
+            {
                 DownloadBlock::Block(block, commitments) => break (block, commitments),
                 DownloadBlock::AtHead => {
                     // Poll pending if it is enabled, otherwise just wait to poll head again.
@@ -102,9 +111,15 @@ pub async fn sync(
                 }
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
-                    head = reorg(some_head, chain, &tx_event, &sequencer)
-                        .await
-                        .context("L2 reorg")?;
+                    head = reorg(
+                        some_head,
+                        chain,
+                        &tx_event,
+                        &sequencer,
+                        block_validation_mode,
+                    )
+                    .await
+                    .context("L2 reorg")?;
 
                     continue 'outer;
                 }
@@ -114,9 +129,15 @@ pub async fn sync(
 
         if let Some(some_head) = head {
             if some_head.1 != block.parent_block_hash {
-                head = reorg(some_head, chain, &tx_event, &sequencer)
-                    .await
-                    .context("L2 reorg")?;
+                head = reorg(
+                    some_head,
+                    chain,
+                    &tx_event,
+                    &sequencer,
+                    block_validation_mode,
+                )
+                .await
+                .context("L2 reorg")?;
 
                 continue 'outer;
             }
@@ -250,11 +271,21 @@ enum DownloadBlock {
     Reorg,
 }
 
+#[derive(Copy, Clone, Default)]
+pub enum BlockValidationMode {
+    #[default]
+    Strict,
+
+    // For testing only (test block hashes won't match)
+    AllowMismatch,
+}
+
 async fn download_block(
     block_number: StarknetBlockNumber,
     chain: Chain,
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl ClientApi,
+    mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
     use pathfinder_common::BlockId;
     use starknet_gateway_types::{
@@ -275,25 +306,23 @@ async fn download_block(
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
-            match (block.status, verify_result) {
-                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Match(commitments)) => {
-                    Ok(DownloadBlock::Block(block, commitments))
-                }
-                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::NotVerifiable) => {
+            match (block.status, verify_result, mode) {
+                (
+                    Status::AcceptedOnL1 | Status::AcceptedOnL2,
+                    VerifyResult::Match(commitments),
+                    _,
+                ) => Ok(DownloadBlock::Block(block, commitments)),
+                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::NotVerifiable, _) => {
                     Ok(DownloadBlock::Block(block, Default::default()))
                 }
-
-                #[cfg(test)]
-                // FIXME: test block hashes aren't correct so `VerifyResult::Mismatch` breaks tests.
-                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Mismatch) => {
-                    Ok(DownloadBlock::Block(block, Default::default()))
-                }
-
-                #[cfg(not(test))]
-                (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Mismatch) => {
+                (
+                    Status::AcceptedOnL1 | Status::AcceptedOnL2,
+                    VerifyResult::Mismatch,
+                    BlockValidationMode::AllowMismatch,
+                ) => Ok(DownloadBlock::Block(block, Default::default())),
+                (_, VerifyResult::Mismatch, BlockValidationMode::Strict) => {
                     Err(anyhow!("Block hash mismatch"))
                 }
-
                 _ => Err(anyhow!(
                     "Rejecting block as its status is {}, and only accepted blocks are allowed",
                     block.status
@@ -339,6 +368,7 @@ async fn reorg(
     chain: Chain,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl ClientApi,
+    mode: BlockValidationMode,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
@@ -362,9 +392,15 @@ async fn reorg(
             None => break None,
         };
 
-        match download_block(previous_block_number, chain, Some(previous.0), sequencer)
-            .await
-            .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
+        match download_block(
+            previous_block_number,
+            chain,
+            Some(previous.0),
+            sequencer,
+            mode,
+        )
+        .await
+        .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
         {
             DownloadBlock::Block(block, _) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
@@ -554,7 +590,7 @@ async fn download_and_compress_contract(
 #[cfg(test)]
 mod tests {
     mod sync {
-        use super::super::{sync, Event};
+        use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
             BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
@@ -568,6 +604,8 @@ mod tests {
             reply,
         };
         use std::collections::HashMap;
+
+        const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;
 
         const DEF0: &str = r#"{
             "abi": [],
@@ -922,7 +960,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1007,6 +1045,7 @@ mod tests {
                     Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
                     Chain::Testnet,
                     None,
+                    MODE,
                 ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
@@ -1046,7 +1085,7 @@ mod tests {
                 block.status = Status::Reverted;
                 expect_block(&mut mock, &mut seq, BLOCK0_NUMBER.into(), Ok(block.into()));
 
-                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
                 let error = jh.await.unwrap().unwrap_err();
                 assert_eq!(
                     &error.to_string(),
@@ -1149,7 +1188,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1354,7 +1393,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1634,7 +1673,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1841,7 +1880,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2037,7 +2076,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2114,7 +2153,7 @@ mod tests {
                 );
 
                 // Run the UUT
-                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None));
+                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
 
                 // Wrap this in a timeout so we don't wait forever in case of test failure.
                 // Right now closing the channel causes an error.
