@@ -139,8 +139,9 @@ macros::starkhash251::deserialization!(StorageAddress);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageValue(pub Felt);
 
-/// A global state commitment root for Starknet state starting from Starknet v0.11.0,
-/// when Declare v2 transactions became part of the state commitment.
+/// The commitment for the state of a StarkNet block.
+///
+/// Before StarkNet v0.11.0 this was equivalent to [StorageCommitment].
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StateCommitment(pub Felt);
 
