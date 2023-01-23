@@ -489,10 +489,12 @@ async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> a
             Some(update) if update.block_number == expected_next => {
                 let mut next_head = None;
                 for update in updates {
-                    let l2_root =
-                        StarknetBlocksTable::get(&transaction, update.block_number.into())
-                            .context("Query L2 root")?
-                            .map(|block| block.root);
+                    let l2_root = StarknetBlocksTable::get_state_commitment(
+                        &transaction,
+                        update.block_number.into(),
+                    )
+                    .context("Query L2 root")?
+                    .map(StateCommitment::from);
 
                     match l2_root {
                         Some(l2_root) if l2_root == update.global_root => {
