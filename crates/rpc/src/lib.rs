@@ -519,7 +519,8 @@ mod tests {
         let state_diff = starknet_gateway_types::reply::state_update::StateDiff {
             storage_diffs,
             deployed_contracts,
-            declared_contracts: Vec::new(),
+            old_declared_classes: Vec::new(),
+            declared_classes: std::collections::HashMap::new(),
             nonces: std::collections::HashMap::new(),
         };
 

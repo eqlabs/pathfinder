@@ -168,7 +168,7 @@ async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> boo
         None => return false,
     };
 
-    let declared = state_diff.state_diff.declared_contracts.iter().cloned();
+    let declared = state_diff.state_diff.old_declared_classes.iter().cloned();
     let deployed = state_diff
         .state_diff
         .deployed_contracts

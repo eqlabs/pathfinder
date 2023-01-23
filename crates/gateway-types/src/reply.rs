@@ -645,12 +645,17 @@ pub struct StateUpdate {
 /// Types used when deserializing state update related data.
 pub mod state_update {
     use pathfinder_common::{
-        ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
+        StorageValue,
     };
     use serde::Deserialize;
     use serde_with::serde_as;
     use std::collections::HashMap;
 
+    pathfinder_common::version_check!(
+        Mainnet < 0 - 11 - 0,
+        "Check whether the alias and defaults can be removed from StateDiff (esp. in historical blocks)"
+    );
     /// L2 state diff.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -659,7 +664,11 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
-        pub declared_contracts: Vec<ClassHash>,
+        #[serde(alias = "declared_contracts")]
+        pub old_declared_classes: Vec<ClassHash>,
+        /// Not present in StarkNet versions < v0.11.0.
+        #[serde(default)]
+        pub declared_classes: HashMap<SierraHash, CasmHash>,
         /// Old state diffs have no "nonces"
         #[serde(default)]
         pub nonces: HashMap<ContractAddress, ContractNonce>,

@@ -84,7 +84,7 @@ pub mod state_update {
                     })
                     .collect(),
                 declared_contracts: x
-                    .declared_contracts
+                    .old_declared_classes
                     .into_iter()
                     .map(|class_hash| DeclaredContract { class_hash })
                     .collect(),
