@@ -1439,11 +1439,8 @@ mod tests {
                 value: StorageValue(felt_bytes!(b"storage_value")),
             }];
             let block_number2 = StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(2));
-            let block2 = StarknetBlocksTable::get(transaction, block_number2)
-                .unwrap()
-                .unwrap();
-            let (storage_commitment2, class_commitment2) =
-                StarknetBlocksTable::get_state_commitment(transaction, block_number2)
+            let storage_commitment2 =
+                StarknetBlocksTable::get_storage_commitment(transaction, block_number2)
                     .unwrap()
                     .unwrap();
             let mut storage_commitment_tree =

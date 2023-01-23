@@ -590,8 +590,8 @@ mod tests {
             let mut db = storage.connection().unwrap();
             let tmp_tx = db.transaction().unwrap();
 
-            let (latest_storage_commitment, latest_class_commitment) =
-                StarknetBlocksTable::get_state_commitment(&tmp_tx, StarknetBlocksBlockId::Latest)
+            let latest_storage_commitment =
+                StarknetBlocksTable::get_storage_commitment(&tmp_tx, StarknetBlocksBlockId::Latest)
                     .unwrap()
                     .unwrap();
 
