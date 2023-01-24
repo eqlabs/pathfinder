@@ -7,7 +7,7 @@ use pathfinder_common::{
     StorageAddress,
 };
 use pathfinder_merkle_tree::merkle_tree::ProofNode;
-use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
+use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use stark_hash::Felt;
 
@@ -133,6 +133,7 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
+/// FIXME v0.11.0
 /// Returns all the necessary data to trustlessly verify storage slots for a particular contract.
 pub async fn get_proof(
     context: RpcContext,
@@ -170,21 +171,21 @@ pub async fn get_proof(
 
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let global_root = StarknetBlocksTable::get_root(&tx, block_id)
-            .context("Get global root for block")?
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+            .context("Get storage commitment for block")?
             // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
             // by using a dedicated error code from the RPC API spec
             .ok_or(GetProofError::BlockNotFound)?;
 
-        let global_state_tree =
-            GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
+        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
+            .context("Storage commitment tree")?;
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
-        let contract_proof = global_state_tree.get_proof(&input.contract_address)?;
+        let contract_proof = storage_commitment_tree.get_proof(&input.contract_address)?;
         let contract_proof = Proof(contract_proof);
 
-        let contract_state_hash = match global_state_tree.get(input.contract_address)? {
+        let contract_state_hash = match storage_commitment_tree.get(input.contract_address)? {
             Some(contract_state_hash) => contract_state_hash,
             None => {
                 // Contract not found: return the proof of non membership that we generated earlier.

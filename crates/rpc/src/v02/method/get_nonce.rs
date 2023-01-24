@@ -15,7 +15,7 @@ pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<ContractNonce, GetNonceError> {
-    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 
     // We can potentially read the nonce from pending without having to reach out to the database.
@@ -40,16 +40,16 @@ pub async fn get_nonce(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let global_root = StarknetBlocksTable::get_root(&tx, block_id)
-            .context("Fetching global root")?
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+            .context("Fetching storage commitment")?
             .ok_or(GetNonceError::BlockNotFound)?;
 
-        let global_state_tree =
-            GlobalStateTree::load(&tx, global_root).context("Loading global state tree")?;
+        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
+            .context("Loading storage commitment tree")?;
 
-        let state_hash = global_state_tree
+        let state_hash = storage_commitment_tree
             .get(input.contract_address)
-            .context("Get contract state hash from global state tree")?
+            .context("Get contract state hash from storage commitment tree")?
             .ok_or(GetNonceError::ContractNotFound)?;
 
         let nonce = ContractsStateTable::get_nonce(&tx, state_hash)
@@ -82,8 +82,8 @@ mod tests {
     use crate::v02::RpcContext;
     use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
-        BlockId, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-        StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        BlockId, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
     };
 
     mod parsing {
@@ -244,8 +244,8 @@ mod tests {
         // We only care about the nonce data, but the rest is required for setting up pending data.
         let state_update = starknet_gateway_types::reply::StateUpdate {
             block_hash: None,
-            new_root: GlobalRoot(felt_bytes!(b"dont care")),
-            old_root: GlobalRoot(felt_bytes!(b"dont care")),
+            new_root: StateCommitment(felt_bytes!(b"dont care")),
+            old_root: StateCommitment(felt_bytes!(b"dont care")),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),

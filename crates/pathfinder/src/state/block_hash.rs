@@ -1,8 +1,8 @@
 use anyhow::{Context, Error, Result};
 use bitvec::prelude::BitView;
 use pathfinder_common::{
-    Chain, EventCommitment, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp, TransactionCommitment,
+    Chain, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    StarknetBlockTimestamp, StateCommitment, TransactionCommitment,
 };
 use pathfinder_merkle_tree::merkle_tree::MerkleTree;
 use stark_hash::{stark_hash, Felt, HashChain};
@@ -212,7 +212,7 @@ mod meta {
 ///   * event number and event commitment
 fn compute_final_hash_pre_0_7(
     block_number: StarknetBlockNumber,
-    state_root: GlobalRoot,
+    state_root: StateCommitment,
     num_transactions: u64,
     transaction_commitment: Felt,
     parent_block_hash: StarknetBlockHash,
@@ -252,7 +252,7 @@ fn compute_final_hash_pre_0_7(
 #[allow(clippy::too_many_arguments)]
 fn compute_final_hash(
     block_number: StarknetBlockNumber,
-    state_root: GlobalRoot,
+    state_root: StateCommitment,
     sequencer_address: &SequencerAddress,
     timestamp: StarknetBlockTimestamp,
     num_transactions: u64,

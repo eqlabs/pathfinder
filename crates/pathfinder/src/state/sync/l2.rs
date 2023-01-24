@@ -1,7 +1,7 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    Chain, ClassHash, EventCommitment, GlobalRoot, StarknetBlockHash, StarknetBlockNumber,
+    Chain, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
     TransactionCommitment,
 };
 use pathfinder_storage::types::CompressedContract;
@@ -41,12 +41,12 @@ pub enum Event {
     Reorg(StarknetBlockNumber),
     /// A new unique L2 [contract](CompressedContract) was found.
     NewContract(CompressedContract),
-    /// Query for the [block hash](StarknetBlockHash) and [root](GlobalRoot) of the given block.
+    /// Query for the [block hash](StarknetBlockHash) and [root](StateCommitment) of the given block.
     ///
     /// The receiver should return the data using the [oneshot::channel].
     QueryBlock(
         StarknetBlockNumber,
-        oneshot::Sender<Option<(StarknetBlockHash, GlobalRoot)>>,
+        oneshot::Sender<Option<(StarknetBlockHash, StateCommitment)>>,
     ),
     /// Query for the existance of the the given [contracts](ClassHash) in storage.
     ///
@@ -60,7 +60,7 @@ pub enum Event {
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: impl ClientApi,
-    mut head: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
+    mut head: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
     chain: Chain,
     pending_poll_interval: Option<Duration>,
     block_validation_mode: BlockValidationMode,
@@ -369,12 +369,12 @@ async fn download_block(
 }
 
 async fn reorg(
-    head: (StarknetBlockNumber, StarknetBlockHash, GlobalRoot),
+    head: (StarknetBlockNumber, StarknetBlockHash, StateCommitment),
     chain: Chain,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl ClientApi,
     mode: BlockValidationMode,
-) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>> {
+) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
     let mut reorg_tail = head;
@@ -598,8 +598,8 @@ mod tests {
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
-            BlockId, ClassHash, ContractAddress, GasPrice, GlobalRoot, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress,
+            BlockId, ClassHash, ContractAddress, GasPrice, SequencerAddress, StarknetBlockHash,
+            StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment, StorageAddress,
             StorageValue,
         };
         use stark_hash::Felt;
@@ -643,13 +643,13 @@ mod tests {
             static ref BLOCK2_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
             static ref BLOCK3_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
 
-            static ref GLOBAL_ROOT0: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 0").unwrap());
-            static ref GLOBAL_ROOT0_V2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 0 v2").unwrap());
-            static ref GLOBAL_ROOT1: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 1").unwrap());
-            static ref GLOBAL_ROOT1_V2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 1 v2").unwrap());
-            static ref GLOBAL_ROOT2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 2").unwrap());
-            static ref GLOBAL_ROOT2_V2: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 2 v2").unwrap());
-            static ref GLOBAL_ROOT3: GlobalRoot = GlobalRoot(Felt::from_be_slice(b"global root 3").unwrap());
+            static ref GLOBAL_ROOT0: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0").unwrap());
+            static ref GLOBAL_ROOT0_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0 v2").unwrap());
+            static ref GLOBAL_ROOT1: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 1").unwrap());
+            static ref GLOBAL_ROOT1_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 1 v2").unwrap());
+            static ref GLOBAL_ROOT2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 2").unwrap());
+            static ref GLOBAL_ROOT2_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 2 v2").unwrap());
+            static ref GLOBAL_ROOT3: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 3").unwrap());
 
             static ref CONTRACT0_ADDR: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr").unwrap());
             static ref CONTRACT0_ADDR_V2: ContractAddress = ContractAddress::new_or_panic(Felt::from_be_slice(b"contract 0 addr v2").unwrap());
@@ -741,7 +741,7 @@ mod tests {
             static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK0_HASH),
                 new_root: *GLOBAL_ROOT0,
-                old_root: GlobalRoot(Felt::ZERO),
+                old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR,
@@ -762,7 +762,7 @@ mod tests {
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK0_HASH_V2),
                 new_root: *GLOBAL_ROOT0_V2,
-                old_root: GlobalRoot(Felt::ZERO),
+                old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
                         address: *CONTRACT0_ADDR_V2,

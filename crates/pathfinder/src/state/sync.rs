@@ -5,13 +5,14 @@ mod pending;
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
-    Chain, ClassHash, ContractNonce, ContractRoot, EventCommitment, GasPrice, GlobalRoot,
-    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, TransactionCommitment,
+    Chain, ClassCommitment, ClassHash, ContractNonce, ContractRoot, EventCommitment, GasPrice,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment, StorageCommitment,
+    TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
-    state_tree::GlobalStateTree,
+    state_tree::{ClassCommitmentTree, StorageCommitmentTree},
 };
 use pathfinder_rpc::{
     v01::types::reply::{syncing, syncing::NumberedBlock, Syncing},
@@ -57,7 +58,7 @@ where
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
-            Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
+            Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
             Chain,
             Option<std::time::Duration>,
             l2::BlockValidationMode,
@@ -87,7 +88,7 @@ where
         // Seems a better choice for an invalid block number than 0
         StarknetBlockNumber::MAX,
         StarknetBlockHash(Felt::ZERO),
-        GlobalRoot(Felt::ZERO),
+        StateCommitment(Felt::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
@@ -351,9 +352,10 @@ where
                         let tx = db_conn
                             .transaction_with_behavior(TransactionBehavior::Immediate)
                             .context("Create database transaction")?;
-                        let new_root = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
+                        let (new_storage_commitment, new_class_commitment) = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
+                        let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
                         tx.rollback()?;
-                        anyhow::Result::<GlobalRoot>::Ok(new_root)
+                        anyhow::Result::<StateCommitment>::Ok(new_root)
                     }).context("Calculate pending state root")?;
 
                     match new_root == state_update.new_root {
@@ -488,10 +490,12 @@ async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> a
             Some(update) if update.block_number == expected_next => {
                 let mut next_head = None;
                 for update in updates {
-                    let l2_root =
-                        StarknetBlocksTable::get(&transaction, update.block_number.into())
-                            .context("Query L2 root")?
-                            .map(|block| block.root);
+                    let l2_root = StarknetBlocksTable::get_state_commitment(
+                        &transaction,
+                        update.block_number.into(),
+                    )
+                    .context("Query L2 root")?
+                    .map(|(a, b)| StateCommitment::calculate(a, b));
 
                     match l2_root {
                         Some(l2_root) if l2_root == update.global_root => {
@@ -541,7 +545,7 @@ async fn l1_reorg(
     })
 }
 
-/// Returns the new [GlobalRoot] after the update.
+/// Returns the new [StateCommitment] after the update.
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
@@ -556,8 +560,10 @@ async fn l2_update(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        let new_root = update_starknet_state(&transaction, &state_update)
-            .context("Updating Starknet state")?;
+        let (new_storage_commitment, new_class_commitment) =
+            update_starknet_state(&transaction, &state_update)
+                .context("Updating Starknet state")?;
+        let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
         anyhow::ensure!(new_root == block.state_commitment, "State root mismatch");
@@ -582,6 +588,8 @@ async fn l2_update(
             &transaction,
             &starknet_block,
             block.starknet_version.as_deref(),
+            new_storage_commitment,
+            new_class_commitment,
         )
         .context("Insert block into database")?;
 
@@ -636,8 +644,9 @@ async fn l2_update(
             .unwrap_or(StarknetBlockNumber::GENESIS);
 
         if expected_next == starknet_block.number {
-            let l1_root = L1StateTable::get_root(&transaction, starknet_block.number.into())
-                .context("Query L1 root")?;
+            let l1_root =
+                L1StateTable::get_state_commitment(&transaction, starknet_block.number.into())
+                    .context("Query L1 root")?;
             if l1_root == Some(starknet_block.root) {
                 RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
                     .context("Update L1-L2 head")?;
@@ -687,16 +696,18 @@ async fn l2_reorg(
 fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
-) -> anyhow::Result<GlobalRoot> {
-    let global_root = StarknetBlocksTable::get(transaction, StarknetBlocksBlockId::Latest)
-        .context("Query latest state root")?
-        .map(|block| block.root)
-        .unwrap_or(GlobalRoot(Felt::ZERO));
-    let mut global_tree =
-        GlobalStateTree::load(transaction, global_root).context("Loading global state tree")?;
+) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
+    let (storage_commitment, class_commitment) =
+        StarknetBlocksTable::get_state_commitment(transaction, StarknetBlocksBlockId::Latest)
+            .context("Query latest state commitment")?
+            .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
+
+    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
+        .context("Loading storage commitment tree")?;
 
     for contract in &state_update.state_diff.deployed_contracts {
-        deploy_contract(transaction, &mut global_tree, contract).context("Deploying contract")?;
+        deploy_contract(transaction, &mut storage_commitment_tree, contract)
+            .context("Deploying contract")?;
     }
 
     // Copied so we can mutate the map. This lets us remove used nonces from the list.
@@ -707,14 +718,19 @@ fn update_starknet_state(
         // Remove the nonce so we don't update it again in the next stage.
         let nonce = nonces.remove(contract_address);
 
-        let contract_state_hash =
-            update_contract_state(*contract_address, updates, nonce, &global_tree, transaction)
-                .context("Update contract state")?;
+        let contract_state_hash = update_contract_state(
+            *contract_address,
+            updates,
+            nonce,
+            &storage_commitment_tree,
+            transaction,
+        )
+        .context("Update contract state")?;
 
         // Update the global state tree.
-        global_tree
+        storage_commitment_tree
             .set(*contract_address, contract_state_hash)
-            .context("Updating global state tree")?;
+            .context("Updating storage commitment tree")?;
     }
 
     // Apply all remaining nonces (without storage updates).
@@ -723,26 +739,44 @@ fn update_starknet_state(
             contract_address,
             &[],
             Some(nonce),
-            &global_tree,
+            &storage_commitment_tree,
             transaction,
         )
         .context("Update contract nonce")?;
 
         // Update the global state tree.
-        global_tree
+        storage_commitment_tree
             .set(contract_address, contract_state_hash)
-            .context("Updating global state tree")?;
+            .context("Updating storage commitment tree")?;
     }
 
-    // Apply all global tree changes.
-    global_tree
+    // Apply storage commitment tree changes.
+    let new_storage_commitment = storage_commitment_tree
         .apply()
-        .context("Apply global state tree updates")
+        .context("Apply storage commitment tree updates")?;
+
+    let class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment)
+        .context("Loading class commitment tree")?;
+
+    // FIXME 0.11.0 once the gateway's StateUpdate gets the declared_classes field
+    #[cfg(fixme_0_11_0)]
+    for (sierra_hash, casm_hash) in declared_classes.into_iter() {
+        class_tree
+            .set(sierra_hash, casm_hash)
+            .context("Update class commitment tree")?;
+    }
+
+    // Apply all class commitment tree changes.
+    let new_class_commitment = class_commitment_tree
+        .apply()
+        .context("Apply class commitment tree updates")?;
+
+    Ok((new_storage_commitment, new_class_commitment))
 }
 
 fn deploy_contract(
     transaction: &Transaction<'_>,
-    global_tree: &mut GlobalStateTree<'_, '_>,
+    storage_commitment_tree: &mut StorageCommitmentTree<'_, '_>,
     contract: &DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.
@@ -753,7 +787,7 @@ fn deploy_contract(
     // name for `class_hash`.
     let class_hash = contract.class_hash;
     let state_hash = calculate_contract_state_hash(class_hash, contract_root, contract_nonce);
-    global_tree
+    storage_commitment_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
     ContractsStateTable::upsert(
@@ -890,11 +924,11 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
-        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
-        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StorageAddress, StorageValue,
+        BlockId, CallParam, CasmHash, Chain, ClassCommitment, ClassHash, ConstructorParam,
+        ContractAddress, ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber,
+        EthereumChain, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee,
+        GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        StarknetTransactionHash, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_rpc::SyncState;
@@ -1072,7 +1106,7 @@ mod tests {
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
         _: impl ClientApi,
-        _: Option<(StarknetBlockNumber, StarknetBlockHash, GlobalRoot)>,
+        _: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
         _: Chain,
         _: Option<std::time::Duration>,
         _: l2::BlockValidationMode,
@@ -1085,6 +1119,13 @@ mod tests {
     lazy_static::lazy_static! {
         static ref A: Felt = Felt::from_be_slice(&[0xA]).unwrap();
         static ref B: Felt = Felt::from_be_slice(&[0xB]).unwrap();
+        static ref STORAGE_COMMITMENT0: StorageCommitment = StorageCommitment::ZERO;
+        static ref STORAGE_COMMITMENT1: StorageCommitment = StorageCommitment(Felt::from_be_slice(&[0xC]).unwrap());
+        static ref CLASS_COMMITMENT0: ClassCommitment = ClassCommitment::ZERO;
+        static ref CLASS_COMMITMENT1: ClassCommitment = ClassCommitment(Felt::from_be_slice(&[0xD]).unwrap());
+        static ref STATE_COMMITMENT0: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT0, *CLASS_COMMITMENT0);
+        static ref STATE_COMMITMENT1: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT1, *CLASS_COMMITMENT1);
+
         static ref ETH_ORIG: pathfinder_ethereum::EthOrigin = pathfinder_ethereum::EthOrigin {
             block: pathfinder_ethereum::BlockOrigin {
                 hash: EthereumBlockHash(H256::zero()),
@@ -1098,13 +1139,12 @@ mod tests {
         };
         pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::GENESIS,
-            // State update actually doesn't change the state hence 0 root
-            global_root: GlobalRoot(Felt::ZERO),
+            global_root: *STATE_COMMITMENT0,
             origin: ETH_ORIG.clone(),
         };
         pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
             block_number: StarknetBlockNumber::new_or_panic(1),
-            global_root: GlobalRoot(*B),
+            global_root: *STATE_COMMITMENT1,
             origin: ETH_ORIG.clone(),
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
@@ -1113,7 +1153,7 @@ mod tests {
             gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(Felt::ZERO),
             sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-            state_commitment: GlobalRoot(Felt::ZERO),
+            state_commitment: *STATE_COMMITMENT0,
             status: reply::Status::AcceptedOnL1,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
@@ -1126,7 +1166,7 @@ mod tests {
             gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
-            state_commitment: GlobalRoot(*B),
+            state_commitment: *STATE_COMMITMENT1,
             status: reply::Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
@@ -1136,7 +1176,7 @@ mod tests {
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: StarknetBlockHash(*A),
-            root: GlobalRoot(Felt::ZERO),
+            root: *STATE_COMMITMENT0,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
@@ -1146,18 +1186,18 @@ mod tests {
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: StarknetBlockHash(*B),
-            root: GlobalRoot(*B),
+            root: *STATE_COMMITMENT1,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
             transaction_commitment: None,
             event_commitment: None,
         };
-        // Causes root to remain 0
+        // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
             block_hash: Some(StarknetBlockHash(*A)),
-            new_root: GlobalRoot(Felt::ZERO),
-            old_root: GlobalRoot(Felt::ZERO),
+            new_root: *STATE_COMMITMENT0,
+            old_root: *STATE_COMMITMENT0,
             state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],
@@ -1197,9 +1237,24 @@ mod tests {
             // Case 0: no L2 head
             None,
             // Case 1: some L2 head
-            Some(vec![STORAGE_BLOCK0.clone()]),
+            Some(vec![(
+                STORAGE_BLOCK0.clone(),
+                *STORAGE_COMMITMENT0,
+                *CLASS_COMMITMENT0,
+            )]),
             // Case 2: some L2 head, update contains more than one item
-            Some(vec![STORAGE_BLOCK0.clone(), STORAGE_BLOCK1.clone()]),
+            Some(vec![
+                (
+                    STORAGE_BLOCK0.clone(),
+                    *STORAGE_COMMITMENT0,
+                    *CLASS_COMMITMENT0,
+                ),
+                (
+                    STORAGE_BLOCK1.clone(),
+                    *STORAGE_COMMITMENT1,
+                    *CLASS_COMMITMENT1,
+                ),
+            ]),
         ]
         .into_iter()
         .map(|blocks| async {
@@ -1207,13 +1262,20 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            blocks
-                .iter()
-                .flatten()
-                .for_each(|block| StarknetBlocksTable::insert(&tx, block, None).unwrap());
+            blocks.into_iter().flatten().for_each(
+                |(block, storage_commitment, class_commitment)| {
+                    StarknetBlocksTable::insert(
+                        &tx,
+                        &block,
+                        None,
+                        storage_commitment,
+                        class_commitment,
+                    )
+                    .unwrap()
+                },
+            );
 
             tx.commit().unwrap();
-            drop(blocks);
 
             // UUT
             let _jh = tokio::spawn(state::sync(
@@ -1253,7 +1315,6 @@ mod tests {
             ]
         );
     }
-
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_reorg() {
         let results = [
@@ -1515,9 +1576,30 @@ mod tests {
     async fn l2_reorg() {
         let results = [
             // Case 0: single block in L2, reorg on genesis
-            (vec![STORAGE_BLOCK0.clone()], 0),
+            (
+                vec![(
+                    STORAGE_BLOCK0.clone(),
+                    *STORAGE_COMMITMENT0,
+                    *CLASS_COMMITMENT0,
+                )],
+                0,
+            ),
             // Case 1: 2 blocks in L2, reorg on block #1
-            (vec![STORAGE_BLOCK0.clone(), STORAGE_BLOCK1.clone()], 1),
+            (
+                vec![
+                    (
+                        STORAGE_BLOCK0.clone(),
+                        *STORAGE_COMMITMENT0,
+                        *CLASS_COMMITMENT0,
+                    ),
+                    (
+                        STORAGE_BLOCK1.clone(),
+                        *STORAGE_COMMITMENT1,
+                        *CLASS_COMMITMENT1,
+                    ),
+                ],
+                1,
+            ),
         ]
         .into_iter()
         .map(|(updates, reorg_on_block)| async move {
@@ -1540,7 +1622,16 @@ mod tests {
                 .unwrap();
             updates
                 .into_iter()
-                .for_each(|block| StarknetBlocksTable::insert(&tx, &block, None).unwrap());
+                .for_each(|(block, storage_commitment, class_commitment)| {
+                    StarknetBlocksTable::insert(
+                        &tx,
+                        &block,
+                        None,
+                        storage_commitment,
+                        class_commitment,
+                    )
+                    .unwrap()
+                });
 
             tx.commit().unwrap();
 
@@ -1639,7 +1730,14 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         // This is what we're asking for
-        StarknetBlocksTable::insert(&tx, &STORAGE_BLOCK0, None).unwrap();
+        StarknetBlocksTable::insert(
+            &tx,
+            &STORAGE_BLOCK0,
+            None,
+            StorageCommitment::ZERO,
+            ClassCommitment::ZERO,
+        )
+        .unwrap();
 
         // A simple L2 sync task which does the request and checks he result
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {

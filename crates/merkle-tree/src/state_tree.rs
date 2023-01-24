@@ -1,4 +1,4 @@
-//! Contains the [GlobalStateTree] and [ContractsStateTree] trees, which combined
+//! Contains the [StorageCommitmentTree] and [ContractsStateTree] trees, which combined
 //! store the total StarkNet state.
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
@@ -10,8 +10,8 @@ use crate::{
 use crate::{PedersenHash, PoseidonHash};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
-    CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash, GlobalRoot,
-    SierraHash, StorageAddress, StorageValue,
+    CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash, SierraHash,
+    StorageAddress, StorageCommitment, StorageValue,
 };
 use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
@@ -61,14 +61,16 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     }
 }
 
-/// A Binary Merkle-Patricia Tree which contains
-/// the global state of StarkNet.
-pub struct GlobalStateTree<'tx, 'queries> {
+/// A Binary Merkle-Patricia Tree which contains StarkNet's storage commitment.
+pub struct StorageCommitmentTree<'tx, 'queries> {
     tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash>,
 }
 
-impl<'tx> GlobalStateTree<'tx, '_> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: GlobalRoot) -> anyhow::Result<Self> {
+impl<'tx> StorageCommitmentTree<'tx, '_> {
+    pub fn load(
+        transaction: &'tx Transaction<'tx>,
+        root: StorageCommitment,
+    ) -> anyhow::Result<Self> {
         // TODO: move the string into storage.
         let tree = MerkleTree::load("tree_global", transaction, root.0)?;
 
@@ -89,9 +91,9 @@ impl<'tx> GlobalStateTree<'tx, '_> {
     }
 
     /// Applies and persists any changes. Returns the new global root.
-    pub fn apply(self) -> anyhow::Result<GlobalRoot> {
+    pub fn apply(self) -> anyhow::Result<StorageCommitment> {
         let root = self.tree.commit()?;
-        Ok(GlobalRoot(root))
+        Ok(StorageCommitment(root))
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].

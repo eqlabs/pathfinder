@@ -100,8 +100,8 @@ pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-        EventData, EventKey, Fee, GlobalRoot, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash, TransactionNonce,
+        EventData, EventKey, Fee, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
@@ -167,7 +167,7 @@ pub mod reply {
         pub block_hash: Option<StarknetBlockHash>,
         pub parent_hash: StarknetBlockHash,
         pub block_number: Option<StarknetBlockNumber>,
-        pub new_root: Option<GlobalRoot>,
+        pub new_root: Option<StateCommitment>,
         pub timestamp: StarknetBlockTimestamp,
         pub sequencer_address: SequencerAddress,
         pub transactions: Transactions,
@@ -1129,7 +1129,7 @@ pub mod reply {
                             block_hash: Some(StarknetBlockHash(felt!("0x0"))),
                             parent_hash: StarknetBlockHash(felt!("0x1")),
                             block_number: Some(StarknetBlockNumber::GENESIS),
-                            new_root: Some(GlobalRoot(felt!("0x2"))),
+                            new_root: Some(StateCommitment(felt!("0x2"))),
                             timestamp: StarknetBlockTimestamp::new_or_panic(1),
                             sequencer_address: SequencerAddress(felt!("0x3")),
                             transactions: Transactions::Full(vec![

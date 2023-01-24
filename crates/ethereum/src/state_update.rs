@@ -324,7 +324,7 @@ mod tests {
 
         use pathfinder_common::{
             felt, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-            EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
+            EthereumTransactionHash, EthereumTransactionIndex, StateCommitment,
         };
 
         use crate::{
@@ -357,7 +357,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(11),
                 },
-                global_root: GlobalRoot(felt!("0x12354")),
+                global_root: StateCommitment(felt!("0x12354")),
                 block_number: StarknetBlockNumber::new_or_panic(3),
             };
 
@@ -387,7 +387,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(11),
                 },
-                global_root: GlobalRoot(felt!("0x12354")),
+                global_root: StateCommitment(felt!("0x12354")),
                 block_number: StarknetBlockNumber::new_or_panic(3),
             };
 

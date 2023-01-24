@@ -55,6 +55,10 @@ macros::starkhash251::deserialization!(CasmHash);
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct ClassCommitment(pub Felt);
 
+impl ClassCommitment {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
+
 macros::starkhash251::newtype!(ClassCommitment);
 macros::starkhash251::deserialization!(ClassCommitment);
 
@@ -135,10 +139,37 @@ macros::starkhash251::deserialization!(StorageAddress);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageValue(pub Felt);
 
-/// A commitment root of the global StarkNet state. This is the entry-point
-/// for the global state at a specific point in time via the global state tree.
+/// The commitment for the state of a StarkNet block.
+///
+/// Before StarkNet v0.11.0 this was equivalent to [StorageCommitment].
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct GlobalRoot(pub Felt);
+pub struct StateCommitment(pub Felt);
+
+impl StateCommitment {
+    pub fn calculate(
+        storage_commitment: StorageCommitment,
+        class_commitment: ClassCommitment,
+    ) -> Self {
+        if class_commitment == ClassCommitment::ZERO {
+            Self(storage_commitment.0)
+        } else {
+            // FIXME 0.11.0 make sure which hash to use Pedersen or Poseidon
+            StateCommitment(stark_hash::stark_hash(
+                storage_commitment.0,
+                class_commitment.0,
+            ))
+        }
+    }
+}
+
+/// The commitment for all contracts' storage of a StarkNet block.
+///
+/// Before StarkNet v0.11.0 this was equivalent to [StateCommitment].
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct StorageCommitment(pub Felt);
+impl StorageCommitment {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
 
 /// A StarkNet block hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -487,9 +518,10 @@ macros::starkhash::common_newtype!(
     ConstructorParam,
     CallResultValue,
     ByteCodeWord,
+    StateCommitment,
     StorageAddress,
     StorageValue,
-    GlobalRoot,
+    StorageCommitment,
     StarknetBlockHash,
     EventCommitment,
     TransactionCommitment,

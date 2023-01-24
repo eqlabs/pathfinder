@@ -1,4 +1,4 @@
-use crate::state_tree::{ContractsStateTree, GlobalStateTree};
+use crate::state_tree::{ContractsStateTree, StorageCommitmentTree};
 use anyhow::Context;
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
@@ -16,11 +16,11 @@ pub fn update_contract_state(
     contract_address: ContractAddress,
     updates: &[StorageDiff],
     new_nonce: Option<ContractNonce>,
-    global_tree: &GlobalStateTree<'_, '_>,
+    storage_commitment_tree: &StorageCommitmentTree<'_, '_>,
     db: &Transaction<'_>,
 ) -> anyhow::Result<ContractStateHash> {
     // Update the contract state tree.
-    let state_hash = global_tree
+    let state_hash = storage_commitment_tree
         .get(contract_address)
         .context("Get contract state hash from global state tree")?
         .unwrap_or(ContractStateHash(Felt::ZERO));

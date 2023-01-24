@@ -24,12 +24,12 @@ use jsonrpsee::{
 };
 use pathfinder_common::{
     BlockId, CallResultValue, ChainId, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, GlobalRoot,
-    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StarknetTransactionHash, StarknetTransactionIndex, StorageAddress, StorageValue,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    ContractAddressSalt, ContractClass, ContractNonce, EventKey, Fee, GasPrice, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    StarknetTransactionIndex, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
-use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
 use pathfinder_storage::{
     types::StateUpdate, ContractCodeTable, ContractsStateTable, ContractsTable, EventFilterError,
     RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventFilter,
@@ -56,9 +56,9 @@ pub struct RpcApi {
 pub struct RawBlock {
     pub number: StarknetBlockNumber,
     pub hash: StarknetBlockHash,
-    pub root: GlobalRoot,
+    pub root: StateCommitment,
     pub parent_hash: StarknetBlockHash,
-    pub parent_root: GlobalRoot,
+    pub parent_root: StateCommitment,
     pub timestamp: StarknetBlockTimestamp,
     pub status: BlockStatus,
     pub sequencer: SequencerAddress,
@@ -230,7 +230,9 @@ impl RpcApi {
         let block_status = Self::get_block_status(transaction, block.number)?;
 
         let (parent_hash, parent_root) = match block.number {
-            StarknetBlockNumber::GENESIS => (StarknetBlockHash(Felt::ZERO), GlobalRoot(Felt::ZERO)),
+            StarknetBlockNumber::GENESIS => {
+                (StarknetBlockHash(Felt::ZERO), StateCommitment(Felt::ZERO))
+            }
             other => {
                 let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                     .context("Read parent block from database")
@@ -369,19 +371,19 @@ impl RpcApi {
 
             // Use internal_server_error to indicate that the process of querying for a particular block failed,
             // which is not the same as being sure that the block is not in the db.
-            let global_root = StarknetBlocksTable::get_root(&tx, block_id)
+            let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
                 .map_err(internal_server_error)?
                 // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
                 // by using a dedicated error code from the RPC API spec
                 .ok_or_else(|| Error::from(ErrorCode::InvalidBlockId))?;
 
-            let global_state_tree = GlobalStateTree::load(&tx, global_root)
-                .context("Global state tree")
+            let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
+                .context("Storage commitment tree")
                 .map_err(internal_server_error)?;
 
-            let contract_state_hash = global_state_tree
+            let contract_state_hash = storage_commitment_tree
                 .get(contract_address)
-                .context("Get contract state hash from global state tree")
+                .context("Get contract state hash from storage commitment tree")
                 .map_err(internal_server_error)?
                 .ok_or_else(|| Error::from(ErrorCode::ContractNotFound))?;
 
@@ -516,8 +518,8 @@ impl RpcApi {
                     // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                     // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
                     //
-                    // get_root is cheaper than querying the full block.
-                    match StarknetBlocksTable::get_root(&db_tx, block_id)
+                    // get_storage_commitment is cheaper than querying the full block.
+                    match StarknetBlocksTable::get_storage_commitment(&db_tx, block_id)
                         .context("Reading block from database")?
                     {
                         Some(_) => Err(ErrorCode::InvalidTransactionIndex.into()),
@@ -706,15 +708,15 @@ impl RpcApi {
         contract_address: ContractAddress,
         block_id: StarknetBlocksBlockId,
     ) -> anyhow::Result<bool> {
-        let global_root = match StarknetBlocksTable::get_root(tx, block_id)? {
+        let storage_commitment = match StarknetBlocksTable::get_storage_commitment(tx, block_id)? {
             Some(root) => root,
             None => return Ok(false),
         };
-        let global_state_tree =
-            GlobalStateTree::load(tx, global_root).context("Loading global state tree")?;
-        let contract_state_hash = global_state_tree
+        let storage_commitment_tree = StorageCommitmentTree::load(tx, storage_commitment)
+            .context("Loading storage commitment tree")?;
+        let contract_state_hash = storage_commitment_tree
             .get(contract_address)
-            .context("Fetching contract leaf in global tree")?;
+            .context("Fetching contract leaf in storage commitment tree")?;
         Ok(contract_state_hash.is_some())
     }
 
@@ -861,9 +863,9 @@ impl RpcApi {
                     // We need to check if the value was 0 because there were no transactions, or because the block hash
                     // is invalid.
                     //
-                    // get_root is cheaper than querying the full block.
-                    match StarknetBlocksTable::get_root(&tx, block_id)
-                        .context("Reading block from database")?
+                    // get_storage_commitment is cheaper than querying the full block.
+                    match StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+                        .context("Reading storage commitment from database")?
                     {
                         Some(_) => Ok(0),
                         None => Err(ErrorCode::InvalidBlockId.into()),
@@ -1015,16 +1017,17 @@ impl RpcApi {
 
             // Use internal_server_error to indicate that the process of querying for a particular block failed,
             // which is not the same as being sure that the block is not in the db.
-            let global_root = StarknetBlocksTable::get_root(&tx, StarknetBlocksBlockId::Latest)
-                .map_err(internal_server_error)?
-                .context("No global root found")
-                .map_err(internal_server_error)?;
+            let storage_commitment =
+                StarknetBlocksTable::get_storage_commitment(&tx, StarknetBlocksBlockId::Latest)
+                    .map_err(internal_server_error)?
+                    .context("No storage commitment found")
+                    .map_err(internal_server_error)?;
 
-            let global_state_tree = GlobalStateTree::load(&tx, global_root)
+            let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
                 .context("Loading global state tree")
                 .map_err(internal_server_error)?;
 
-            let state_hash = global_state_tree
+            let state_hash = storage_commitment_tree
                 .get(contract)
                 .context("Get contract state hash from global state tree")
                 .map_err(internal_server_error)?

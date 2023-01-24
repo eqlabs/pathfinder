@@ -349,10 +349,11 @@ mod tests {
         BroadcastedInvokeTransactionV0, BroadcastedTransaction,
     };
     use pathfinder_common::{
-        felt, felt_bytes, CallParam, CallResultValue, Chain, ClassHash, ContractAddress,
-        ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice,
-        GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StorageAddress, StorageValue, TransactionVersion,
+        felt, felt_bytes, CallParam, CallResultValue, Chain, ClassCommitment, ClassHash,
+        ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash,
+        EntryPoint, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
+        TransactionVersion,
     };
     use pathfinder_storage::{
         ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
@@ -735,8 +736,8 @@ mod tests {
 
         let update = std::sync::Arc::new(StateUpdate {
             block_hash: None,
-            old_root: GlobalRoot(Felt::ZERO),
-            new_root: GlobalRoot(Felt::ZERO),
+            old_root: StateCommitment(Felt::ZERO),
+            new_root: StateCommitment(Felt::ZERO),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: {
                     let mut map = std::collections::HashMap::new();
@@ -789,14 +790,18 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree =
-            pathfinder_merkle_tree::state_tree::GlobalStateTree::load(tx, GlobalRoot(Felt::ZERO))
-                .unwrap();
+        let mut storage_commitment_tree =
+            pathfinder_merkle_tree::state_tree::StorageCommitmentTree::load(
+                tx,
+                StorageCommitment(Felt::ZERO),
+            )
+            .unwrap();
 
-        global_tree
+        storage_commitment_tree
             .set(test_contract_address, test_contract_state_hash)
             .unwrap();
-        let global_root = global_tree.apply().unwrap();
+        let storage_commitment = storage_commitment_tree.apply().unwrap();
+        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment"));
 
         // create a block with the global root
         StarknetBlocksTable::insert(
@@ -804,7 +809,7 @@ mod tests {
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
                 hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
-                root: global_root,
+                root: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
@@ -812,6 +817,8 @@ mod tests {
                 event_commitment: None,
             },
             None,
+            storage_commitment,
+            class_commitment,
         )
         .unwrap();
 
@@ -849,14 +856,18 @@ mod tests {
         );
 
         // and then add the contract states to the global tree
-        let mut global_tree =
-            pathfinder_merkle_tree::state_tree::GlobalStateTree::load(tx, GlobalRoot(Felt::ZERO))
-                .unwrap();
+        let mut storage_commitment_tree =
+            pathfinder_merkle_tree::state_tree::StorageCommitmentTree::load(
+                tx,
+                StorageCommitment(Felt::ZERO),
+            )
+            .unwrap();
 
-        global_tree
+        storage_commitment_tree
             .set(account_contract_address, account_contract_state_hash)
             .unwrap();
-        let global_root = global_tree.apply().unwrap();
+        let storage_commitment = storage_commitment_tree.apply().unwrap();
+        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment"));
 
         // create a block with the global root
         StarknetBlocksTable::insert(
@@ -864,7 +875,7 @@ mod tests {
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
                 hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
-                root: global_root,
+                root: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
@@ -872,6 +883,8 @@ mod tests {
                 event_commitment: None,
             },
             None,
+            storage_commitment,
+            class_commitment,
         )
         .unwrap();
 

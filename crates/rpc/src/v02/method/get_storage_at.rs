@@ -1,7 +1,7 @@
 use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
-use pathfinder_merkle_tree::state_tree::{ContractsStateTree, GlobalStateTree};
+use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -65,16 +65,16 @@ pub async fn get_storage_at(
 
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let global_root = StarknetBlocksTable::get_root(&tx, block_id)
-            .context("Get global root for block")?
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+            .context("Get storage commitment for block")?
             // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
             // by using a dedicated error code from the RPC API spec
             .ok_or(GetStorageAtError::BlockNotFound)?;
 
-        let global_state_tree =
-            GlobalStateTree::load(&tx, global_root).context("Global state tree")?;
+        let storage_commitment_tree =
+            StorageCommitmentTree::load(&tx, storage_commitment).context("Global state tree")?;
 
-        let contract_state_hash = global_state_tree
+        let contract_state_hash = storage_commitment_tree
             .get(input.contract_address)
             .context("Get contract state hash from global state tree")?
             .ok_or(GetStorageAtError::ContractNotFound)?;

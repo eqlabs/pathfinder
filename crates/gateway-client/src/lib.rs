@@ -638,7 +638,7 @@ mod tests {
                     gas_price: None,
                     parent_block_hash: StarknetBlockHash(Felt::ZERO),
                     sequencer_address: None,
-                    state_commitment: pathfinder_common::GlobalRoot(Felt::ZERO),
+                    state_commitment: pathfinder_common::StateCommitment(Felt::ZERO),
                     status: Status::NotReceived,
                     timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
@@ -1160,7 +1160,7 @@ mod tests {
             *,
         };
         use pathfinder_common::{
-            felt, test_utils::metrics::RecorderGuard, ContractAddress, GlobalRoot,
+            felt, test_utils::metrics::RecorderGuard, ContractAddress, StateCommitment,
         };
         use pretty_assertions::assert_eq;
         use std::collections::{BTreeSet, HashMap};
@@ -1173,8 +1173,8 @@ mod tests {
 
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct OrderedStateUpdate {
-            pub new_root: GlobalRoot,
-            pub old_root: GlobalRoot,
+            pub new_root: StateCommitment,
+            pub old_root: StateCommitment,
             pub state_diff: OrderedStateDiff,
         }
 

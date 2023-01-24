@@ -34,5 +34,3 @@ resolver = "2"
 fake = { version = "2.5.0", features = ["derive"] }
 rand = "0.8.5"
 tokio = "1.24.0"
-
-[workspace.dev-dependencies]

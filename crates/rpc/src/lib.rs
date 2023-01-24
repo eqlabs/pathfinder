@@ -111,15 +111,17 @@ mod tests {
     use ethers::types::H256;
     use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
-        felt, felt_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData,
-        EventKey, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StorageAddress,
+        felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
+        EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+        StarknetTransactionIndex, StateCommitment, StorageAddress, StorageCommitment,
         TransactionVersion,
     };
-    use pathfinder_merkle_tree::state_tree::GlobalStateTree;
+    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, ContractsTable,
-        StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage,
+        StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable,
+        Storage,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::{
@@ -168,6 +170,10 @@ mod tests {
         let mut connection = storage.connection().unwrap();
         let db_txn = connection.transaction().unwrap();
 
+        let class_commitment0 = ClassCommitment(felt_bytes!(b"class commitment 0"));
+        let class_commitment1 = ClassCommitment(felt_bytes!(b"class commitment 0"));
+        let class_commitment2 = ClassCommitment(felt_bytes!(b"class commitment 0"));
+
         let contract0_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
         let contract1_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
 
@@ -210,64 +216,67 @@ mod tests {
         ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, GlobalRoot(Felt::ZERO)).unwrap();
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
             Some(ContractNonce(felt!("0x1"))),
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
-        let global_root0 = global_tree.apply().unwrap();
+        let storage_commitment0 = storage_commitment_tree.apply().unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, global_root0).unwrap();
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, storage_commitment0).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
             None,
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update1,
             None,
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let global_root1 = global_tree.apply().unwrap();
+        let storage_commitment1 = storage_commitment_tree.apply().unwrap();
 
-        let mut global_tree = GlobalStateTree::load(&db_txn, global_root1).unwrap();
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, storage_commitment1).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
             Some(ContractNonce(felt!("0x10"))),
-            &global_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
-        global_tree
+        storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let global_root2 = global_tree.apply().unwrap();
+        let storage_commitment2 = storage_commitment_tree.apply().unwrap();
 
         let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
-            root: global_root0,
+            root: StateCommitment::calculate(storage_commitment0, class_commitment0),
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
@@ -278,7 +287,7 @@ mod tests {
         let block1 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: block1_hash,
-            root: global_root1,
+            root: StateCommitment::calculate(storage_commitment1, class_commitment1),
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
@@ -289,16 +298,37 @@ mod tests {
         let block2 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(2),
             hash: latest_hash,
-            root: global_root2,
+            root: StateCommitment::calculate(storage_commitment2, class_commitment2),
             timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
             transaction_commitment: None,
             event_commitment: None,
         };
-        StarknetBlocksTable::insert(&db_txn, &block0, None).unwrap();
-        StarknetBlocksTable::insert(&db_txn, &block1, None).unwrap();
-        StarknetBlocksTable::insert(&db_txn, &block2, None).unwrap();
+        StarknetBlocksTable::insert(
+            &db_txn,
+            &block0,
+            None,
+            storage_commitment0,
+            class_commitment0,
+        )
+        .unwrap();
+        StarknetBlocksTable::insert(
+            &db_txn,
+            &block1,
+            None,
+            storage_commitment1,
+            class_commitment1,
+        )
+        .unwrap();
+        StarknetBlocksTable::insert(
+            &db_txn,
+            &block2,
+            None,
+            storage_commitment2,
+            class_commitment2,
+        )
+        .unwrap();
 
         CanonicalBlocksTable::insert(&db_txn, block0.number, block0.hash).unwrap();
         CanonicalBlocksTable::insert(&db_txn, block1.number, block1.hash).unwrap();
@@ -399,7 +429,6 @@ mod tests {
             let mut db = storage2.connection().unwrap();
             let tx = db.transaction().unwrap();
 
-            use pathfinder_storage::StarknetBlocksBlockId;
             StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
                 .unwrap()
                 .expect("Storage should contain a latest block")
@@ -558,10 +587,17 @@ mod tests {
         //
         // Load from latest block in storage's root.
         let state_diff2 = state_diff.clone();
-        let pending_root = tokio::task::spawn_blocking(move || {
+        let pending_storage_commitment = tokio::task::spawn_blocking(move || {
             let mut db = storage.connection().unwrap();
             let tmp_tx = db.transaction().unwrap();
-            let mut global_tree = GlobalStateTree::load(&tmp_tx, latest.root).unwrap();
+
+            let latest_storage_commitment =
+                StarknetBlocksTable::get_storage_commitment(&tmp_tx, StarknetBlocksBlockId::Latest)
+                    .unwrap()
+                    .unwrap();
+
+            let mut storage_commitment_tree =
+                StorageCommitmentTree::load(&tmp_tx, latest_storage_commitment).unwrap();
             for deployed in state_diff2.deployed_contracts {
                 ContractsTable::upsert(&tmp_tx, deployed.address, deployed.class_hash).unwrap();
             }
@@ -571,15 +607,17 @@ mod tests {
                     contract_address,
                     &storage_diffs,
                     None,
-                    &global_tree,
+                    &storage_commitment_tree,
                     &tmp_tx,
                 )
                 .unwrap();
-                global_tree.set(contract_address, state_hash).unwrap();
+                storage_commitment_tree
+                    .set(contract_address, state_hash)
+                    .unwrap();
             }
-            let pending_root = global_tree.apply().unwrap();
+            let pending_storage_commitment = storage_commitment_tree.apply().unwrap();
             tmp_tx.rollback().unwrap();
-            pending_root
+            pending_storage_commitment
         })
         .await
         .unwrap();
@@ -587,7 +625,7 @@ mod tests {
         let state_update = starknet_gateway_types::reply::StateUpdate {
             // This must be `None` for a pending state update.
             block_hash: None,
-            new_root: pending_root,
+            new_root: StateCommitment::calculate(pending_storage_commitment, ClassCommitment::ZERO),
             old_root: latest.root,
             state_diff,
         };

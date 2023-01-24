@@ -8,8 +8,8 @@ use crate::{
     {StarknetBlock, Storage},
 };
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, GasPrice, GlobalRoot, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StorageAddress, StorageValue,
+    ClassHash, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,
+    StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment, StorageAddress, StorageValue,
 };
 use rusqlite::Transaction;
 use stark_hash::Felt;
@@ -27,13 +27,21 @@ pub(crate) use hash;
 pub mod init {
     use super::*;
     use crate::{StarknetBlocksTable, StarknetStateUpdatesTable};
+    use pathfinder_common::{ClassCommitment, StorageCommitment};
 
     /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
         (0..n)
             .into_iter()
             .map(|n| {
-                StarknetBlocksTable::insert(tx, &StarknetBlock::nth(n), None).unwrap();
+                StarknetBlocksTable::insert(
+                    tx,
+                    &StarknetBlock::nth(n),
+                    None,
+                    StorageCommitment(hash!(11, n)),
+                    ClassCommitment(hash!(12, n)),
+                )
+                .unwrap();
                 let update = StateUpdate::with_block_hash(n);
                 StarknetStateUpdatesTable::insert(tx, update.block_hash.unwrap(), &update).unwrap();
                 update
@@ -47,8 +55,8 @@ impl StateUpdate {
     pub fn with_block_hash(h: u8) -> Self {
         Self {
             block_hash: Some(StarknetBlockHash(hash!(h))),
-            new_root: GlobalRoot(hash!(1, h)),
-            old_root: GlobalRoot(hash!(2, h)),
+            new_root: StateCommitment(hash!(1, h)),
+            old_root: StateCommitment(hash!(2, h)),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
                     address: ContractAddress::new_or_panic(hash!(3, h)),
@@ -77,7 +85,7 @@ impl StarknetBlock {
         Self {
             number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
             hash: StarknetBlockHash(hash!(n)),
-            root: GlobalRoot(hash!(1, n)),
+            root: StateCommitment(hash!(1, n)),
             timestamp: StarknetBlockTimestamp::new(n as u64 + 1000)
                 .expect("block timestamp out of range"),
             gas_price: GasPrice(n as u128 + 2000),

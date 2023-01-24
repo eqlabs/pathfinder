@@ -271,7 +271,8 @@ mod tests {
         use super::*;
         use ethers::types::H256;
         use pathfinder_common::{
-            felt, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, GlobalRoot,
+            felt, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex,
+            StateCommitment,
         };
         use pathfinder_ethereum::{BlockOrigin, EthOrigin, TransactionOrigin};
         use stark_hash::Felt;
@@ -302,7 +303,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(10),
                 },
-                global_root: GlobalRoot(felt!("0x123")),
+                global_root: StateCommitment(felt!("0x123")),
                 block_number: StarknetBlockNumber::GENESIS,
             }];
 
@@ -318,7 +319,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(2),
                 },
-                global_root: GlobalRoot(felt!("0x456abc")),
+                global_root: StateCommitment(felt!("0x456abc")),
                 block_number: StarknetBlockNumber::new_or_panic(1),
             }];
 
@@ -376,7 +377,7 @@ mod tests {
                     },
                     log_index: EthereumLogIndex(10),
                 },
-                global_root: GlobalRoot(felt!("0x123")),
+                global_root: StateCommitment(felt!("0x123")),
                 block_number: StarknetBlockNumber::GENESIS,
             }];
 
@@ -418,7 +419,7 @@ mod tests {
                             },
                             log_index: EthereumLogIndex(i + 3),
                         },
-                        global_root: GlobalRoot(
+                        global_root: StateCommitment(
                             Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
                         block_number: StarknetBlockNumber::new_or_panic(i),
@@ -517,7 +518,7 @@ mod tests {
                             },
                             log_index: EthereumLogIndex(i + 3),
                         },
-                        global_root: GlobalRoot(
+                        global_root: StateCommitment(
                             Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
                         block_number: StarknetBlockNumber::new_or_panic(i),
@@ -605,7 +606,7 @@ mod tests {
                             },
                             log_index: EthereumLogIndex(i + 3),
                         },
-                        global_root: GlobalRoot(
+                        global_root: StateCommitment(
                             Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
                         block_number: StarknetBlockNumber::new_or_panic(i),
