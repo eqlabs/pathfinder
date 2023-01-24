@@ -644,8 +644,9 @@ async fn l2_update(
             .unwrap_or(StarknetBlockNumber::GENESIS);
 
         if expected_next == starknet_block.number {
-            let l1_root = L1StateTable::get_root(&transaction, starknet_block.number.into())
-                .context("Query L1 root")?;
+            let l1_root =
+                L1StateTable::get_state_commitment(&transaction, starknet_block.number.into())
+                    .context("Query L1 root")?;
             if l1_root == Some(starknet_block.root) {
                 RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
                     .context("Update L1-L2 head")?;

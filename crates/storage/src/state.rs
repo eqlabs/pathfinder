@@ -76,8 +76,8 @@ impl L1StateTable {
         Ok(())
     }
 
-    /// Returns the [root](StateCommitment) of the given block.
-    pub fn get_root(
+    /// Returns the [state commitment](StateCommitment) of the given block.
+    pub fn get_state_commitment(
         tx: &Transaction<'_>,
         block: L1TableBlockId,
     ) -> anyhow::Result<Option<StateCommitment>> {
@@ -1598,7 +1598,7 @@ mod tests {
 
                 let non_existent = updates.last().unwrap().block_number + 1;
                 assert_eq!(
-                    L1StateTable::get_root(&tx, non_existent.into()).unwrap(),
+                    L1StateTable::get_state_commitment(&tx, non_existent.into()).unwrap(),
                     None
                 );
             }
@@ -1616,7 +1616,8 @@ mod tests {
 
                 for (idx, update) in updates.iter().enumerate() {
                     assert_eq!(
-                        L1StateTable::get_root(&tx, update.block_number.into()).unwrap(),
+                        L1StateTable::get_state_commitment(&tx, update.block_number.into())
+                            .unwrap(),
                         Some(update.global_root),
                         "Update {}",
                         idx
@@ -1634,7 +1635,7 @@ mod tests {
                     let tx = connection.transaction().unwrap();
 
                     assert_eq!(
-                        L1StateTable::get_root(&tx, L1TableBlockId::Latest).unwrap(),
+                        L1StateTable::get_state_commitment(&tx, L1TableBlockId::Latest).unwrap(),
                         None
                     );
                 }
@@ -1651,7 +1652,7 @@ mod tests {
                     }
 
                     assert_eq!(
-                        L1StateTable::get_root(&tx, L1TableBlockId::Latest).unwrap(),
+                        L1StateTable::get_state_commitment(&tx, L1TableBlockId::Latest).unwrap(),
                         Some(updates.last().unwrap().global_root)
                     );
                 }
