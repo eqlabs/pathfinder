@@ -37,7 +37,7 @@ pub(super) use get_class_hash_at::get_class_hash_at;
 pub(super) use get_events::get_events;
 pub(crate) use get_nonce::get_nonce;
 pub(super) use get_state_update::get_state_update;
-pub(super) use get_storage_at::get_storage_at;
+pub(crate) use get_storage_at::get_storage_at;
 pub(super) use get_transaction_by_block_id_and_index::get_transaction_by_block_id_and_index;
 pub(super) use get_transaction_by_hash::get_transaction_by_hash;
 pub(super) use get_transaction_receipt::get_transaction_receipt;

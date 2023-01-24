@@ -20,6 +20,7 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             v02_method::get_block_transaction_count,
         )?
         .register_method("starknet_getNonce", v02_method::get_nonce)?
+        .register_method("starknet_getStorageAt", v02_method::get_storage_at)?
         .register_method_with_no_input("starknet_syncing", v02_method::syncing)?
         .build();
 
