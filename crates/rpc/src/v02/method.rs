@@ -30,7 +30,7 @@ pub(super) use call::call;
 pub(crate) use chain_id::chain_id;
 pub(super) use estimate_fee::estimate_fee;
 pub(super) use get_block::{get_block_with_tx_hashes, get_block_with_txs};
-pub(super) use get_block_transaction_count::get_block_transaction_count;
+pub(crate) use get_block_transaction_count::get_block_transaction_count;
 pub(super) use get_class::get_class;
 pub(super) use get_class_at::get_class_at;
 pub(super) use get_class_hash_at::get_class_hash_at;
