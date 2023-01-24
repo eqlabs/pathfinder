@@ -27,7 +27,7 @@ pub(super) use add_deploy_transaction::add_deploy_transaction;
 pub(super) use add_invoke_transaction::add_invoke_transaction;
 pub(super) use block_hash_and_number::{block_hash_and_number, block_number};
 pub(super) use call::call;
-pub(super) use chain_id::chain_id;
+pub(crate) use chain_id::chain_id;
 pub(super) use estimate_fee::estimate_fee;
 pub(super) use get_block::{get_block_with_tx_hashes, get_block_with_txs};
 pub(super) use get_block_transaction_count::get_block_transaction_count;
