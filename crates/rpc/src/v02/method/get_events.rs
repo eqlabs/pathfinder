@@ -2,7 +2,7 @@ use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use pathfinder_storage::{
-    EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable,
+    EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable, V02KeyFilter,
 };
 use serde::Deserialize;
 use starknet_gateway_types::pending::PendingData;
@@ -112,7 +112,7 @@ pub async fn get_events(
     }
 
     let storage = context.storage.clone();
-    let keys = request.keys.clone();
+    let keys = V02KeyFilter(request.keys.clone());
 
     // blocking task to perform database event query and optionally, the event count
     // required for (4d).
@@ -158,7 +158,7 @@ pub async fn get_events(
                 from_block,
                 to_block,
                 request.address,
-                keys,
+                &keys,
             )?;
 
             Some(count)

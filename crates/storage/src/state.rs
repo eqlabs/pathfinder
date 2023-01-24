@@ -842,11 +842,11 @@ impl StarknetTransactionsTable {
     }
 }
 
-pub struct StarknetEventFilter {
+pub struct StarknetEventFilter<K: KeyFilter> {
     pub from_block: Option<StarknetBlockNumber>,
     pub to_block: Option<StarknetBlockNumber>,
     pub contract_address: Option<ContractAddress>,
-    pub keys: Vec<EventKey>,
+    pub keys: K,
     pub page_size: usize,
     pub offset: usize,
 }
@@ -871,6 +871,58 @@ pub enum EventFilterError {
 pub struct PageOfEvents {
     pub events: Vec<StarknetEmittedEvent>,
     pub is_last_page: bool,
+}
+
+pub trait KeyFilter {
+    fn apply<'a>(&self, key_fts_expression: &'a mut String) -> Option<KeyFilterResult<'a>>;
+}
+
+pub struct KeyFilterResult<'a> {
+    pub base_query: &'static str,
+    pub where_statement: &'static str,
+    pub param: (&'static str, &'a str),
+}
+
+#[derive(Clone)]
+pub struct V02KeyFilter(pub Vec<EventKey>);
+
+impl KeyFilter for V02KeyFilter {
+    fn apply<'arg>(&self, key_fts_expression: &'arg mut String) -> Option<KeyFilterResult<'arg>> {
+        let keys = &self.0;
+        if !keys.is_empty() {
+            let needed =
+                (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len());
+            if let Some(more) = needed.checked_sub(key_fts_expression.capacity()) {
+                key_fts_expression.reserve(more);
+            }
+
+            let _capacity = key_fts_expression.capacity();
+
+            keys.iter().enumerate().for_each(|(i, key)| {
+                key_fts_expression.push('"');
+                StarknetEventsTable::encode_event_key_to_base64(key, key_fts_expression);
+                key_fts_expression.push('"');
+
+                if i != keys.len() - 1 {
+                    key_fts_expression.push_str(" OR ");
+                }
+            });
+
+            debug_assert_eq!(
+                _capacity,
+                key_fts_expression.capacity(),
+                "pre-reservation was not enough"
+            );
+
+            Some(KeyFilterResult {
+                base_query: " INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
+                where_statement: "starknet_events_keys.keys MATCH :events_match",
+                param: (":events_match", key_fts_expression),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 pub struct StarknetEventsTable {}
@@ -945,7 +997,7 @@ impl StarknetEventsTable {
         from_block: Option<&'arg StarknetBlockNumber>,
         to_block: Option<&'arg StarknetBlockNumber>,
         contract_address: Option<&'arg ContractAddress>,
-        keys: &'arg [EventKey],
+        keys: &dyn KeyFilter,
         key_fts_expression: &'arg mut String,
     ) -> (
         std::borrow::Cow<'query, str>,
@@ -983,34 +1035,10 @@ impl StarknetEventsTable {
         // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
         // The idea is that we convert keys to a space-separated list of Bas64 encoded string
         // representation and then use the full-text index to find events matching the events.
-        if !keys.is_empty() {
-            let needed =
-                (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len());
-            if let Some(more) = needed.checked_sub(key_fts_expression.capacity()) {
-                key_fts_expression.reserve(more);
-            }
-
-            let _capacity = key_fts_expression.capacity();
-
-            keys.iter().enumerate().for_each(|(i, key)| {
-                key_fts_expression.push('"');
-                Self::encode_event_key_to_base64(key, key_fts_expression);
-                key_fts_expression.push('"');
-
-                if i != keys.len() - 1 {
-                    key_fts_expression.push_str(" OR ");
-                }
-            });
-
-            debug_assert_eq!(
-                _capacity,
-                key_fts_expression.capacity(),
-                "pre-reservation was not enough"
-            );
-
-            base_query.to_mut().push_str(" INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid");
-            where_statement_parts.push("starknet_events_keys.keys MATCH :events_match");
-            params.push((":events_match", &*key_fts_expression));
+        if let Some(result) = keys.apply(key_fts_expression) {
+            base_query.to_mut().push_str(result.base_query);
+            where_statement_parts.push(result.where_statement);
+            params.push((result.param.0, key_fts_expression));
         }
 
         if !where_statement_parts.is_empty() {
@@ -1050,7 +1078,7 @@ impl StarknetEventsTable {
         from_block: Option<StarknetBlockNumber>,
         to_block: Option<StarknetBlockNumber>,
         contract_address: Option<ContractAddress>,
-        keys: Vec<EventKey>,
+        keys: &dyn KeyFilter,
     ) -> anyhow::Result<usize> {
         let mut key_fts_expression = String::new();
         let (query, params) = Self::event_query(
@@ -1058,7 +1086,7 @@ impl StarknetEventsTable {
             from_block.as_ref(),
             to_block.as_ref(),
             contract_address.as_ref(),
-            &keys,
+            keys,
             &mut key_fts_expression,
         );
 
@@ -1067,9 +1095,9 @@ impl StarknetEventsTable {
         Ok(count)
     }
 
-    pub fn get_events(
+    pub fn get_events<K: KeyFilter>(
         tx: &Transaction<'_>,
-        filter: &StarknetEventFilter,
+        filter: &StarknetEventFilter<K>,
     ) -> anyhow::Result<PageOfEvents> {
         if filter.page_size > Self::PAGE_SIZE_LIMIT {
             return Err(EventFilterError::PageSizeTooBig(Self::PAGE_SIZE_LIMIT).into());
@@ -2278,7 +2306,7 @@ mod tests {
                 to_block: Some(expected_event.block_number),
                 contract_address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
-                keys: vec![EventKey(felt!("0xdeadbeef"))],
+                keys: V02KeyFilter(vec![EventKey(felt!("0xdeadbeef"))]),
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2416,7 +2444,7 @@ mod tests {
                     from_block: None,
                     to_block: None,
                     contract_address: None,
-                    keys: vec![],
+                    keys: V02KeyFilter(vec![]),
                     page_size: 1024,
                     offset: 0,
                 },
@@ -2447,7 +2475,7 @@ mod tests {
                 from_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
                 to_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2476,7 +2504,7 @@ mod tests {
                 from_block: None,
                 to_block: Some(StarknetBlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2505,7 +2533,7 @@ mod tests {
                 from_block: Some(StarknetBlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2535,7 +2563,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: Some(expected_event.from_address),
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2562,7 +2590,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![expected_event.keys[0]],
+                keys: V02KeyFilter(vec![expected_event.keys[0]]),
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2588,7 +2616,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: test_utils::NUM_EVENTS,
                 offset: 0,
             };
@@ -2614,7 +2642,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: 10,
                 offset: 0,
             };
@@ -2631,7 +2659,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: 10,
                 offset: 10,
             };
@@ -2648,7 +2676,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: 10,
                 offset: 30,
             };
@@ -2673,7 +2701,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: PAGE_SIZE,
                 // _after_ the last one
                 offset: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK,
@@ -2698,7 +2726,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: 0,
                 offset: 0,
             };
@@ -2710,7 +2738,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: vec![],
+                keys: V02KeyFilter(vec![]),
                 page_size: StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
                 offset: 0,
             };
@@ -2730,8 +2758,8 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             let expected_events = &emitted_events[27..32];
-            let keys_for_expected_events: Vec<_> =
-                expected_events.iter().map(|e| e.keys[0]).collect();
+            let keys_for_expected_events =
+                V02KeyFilter(expected_events.iter().map(|e| e.keys[0]).collect());
 
             let filter = StarknetEventFilter {
                 from_block: None,
@@ -2793,7 +2821,9 @@ mod tests {
 
             let block = Some(StarknetBlockNumber::new_or_panic(2));
 
-            let count = StarknetEventsTable::event_count(&tx, block, block, None, vec![]).unwrap();
+            let count =
+                StarknetEventsTable::event_count(&tx, block, block, None, &V02KeyFilter(vec![]))
+                    .unwrap();
             assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
         }
 
@@ -2815,7 +2845,7 @@ mod tests {
                 Some(StarknetBlockNumber::GENESIS),
                 Some(StarknetBlockNumber::MAX),
                 Some(addr),
-                vec![],
+                &V02KeyFilter(vec![]),
             )
             .unwrap();
             assert_eq!(count, expected);
@@ -2839,7 +2869,7 @@ mod tests {
                 Some(StarknetBlockNumber::GENESIS),
                 Some(StarknetBlockNumber::MAX),
                 None,
-                vec![key],
+                &V02KeyFilter(vec![key]),
             )
             .unwrap();
             assert_eq!(count, expected);
