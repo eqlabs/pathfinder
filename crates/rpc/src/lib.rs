@@ -12,6 +12,7 @@ pub mod test_client;
 pub mod test_setup;
 pub mod v01;
 pub mod v02;
+pub mod v03;
 
 use crate::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
 use jsonrpsee::{
@@ -71,20 +72,21 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             })?;
         let local_addr = server.local_addr()?;
 
-        let context_v02: context::RpcContext = (&self.api).into();
-        let pathfinder_context = context_v02.clone();
+        let context: context::RpcContext = (&self.api).into();
 
         let mut module_v01 = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
         v01::register_all_methods(&mut module_v01)?;
         let module_v01: Methods = module_v01.into_inner().into();
 
-        let module_v02 = v02::register_methods(context_v02)?;
-        let pathfinder_module = pathfinder::register_methods(pathfinder_context)?;
+        let module_v02 = v02::register_methods(context.clone())?;
+        let pathfinder_module = pathfinder::register_methods(context.clone())?;
+        let module_v03 = v03::register_methods(context)?;
 
         Ok(server
             .start_with_paths([
                 (vec!["/rpc/v0.1"], module_v01),
                 (vec!["/", "/rpc/v0.2"], module_v02),
+                (vec!["/rpc/v0.3"], module_v03),
                 (vec!["/rpc/pathfinder/v0.1"], pathfinder_module),
             ])
             .map(|handle| (handle, local_addr))?)
