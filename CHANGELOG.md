@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - support for state commitment and class commitment in pathfinder_getProof
 
+### Changed
+
+- `starknet_call` and `starknet_estimateFee` JSON-RPC methods return more detailed error messages
+
 ## [0.4.5] - 2022-12-21
 
 ### Added
