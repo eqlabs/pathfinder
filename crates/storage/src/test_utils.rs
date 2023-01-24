@@ -1,7 +1,7 @@
 use super::{
     StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
 };
-use ethers::types::{H128, H256};
+use ethers::types::H128;
 use pathfinder_common::{
     felt, CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
     EventData, EventKey, Fee, GasPrice, GlobalRoot, SequencerAddress, StarknetBlockHash,
@@ -10,8 +10,8 @@ use pathfinder_common::{
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
-    self, DeclareTransaction, DeployTransaction, EntryPointType, InvokeTransaction,
-    InvokeTransactionV0, Receipt,
+    self, DeclareTransaction, DeclareTransactionV0V1, DeployTransaction, EntryPointType,
+    InvokeTransaction, InvokeTransactionV0, Receipt,
 };
 
 pub const NUM_BLOCKS: usize = 4;
@@ -50,7 +50,7 @@ pub(crate) fn create_transactions_and_receipts(
         x if x < INVOKE_TRANSACTIONS_PER_BLOCK => {
             transaction::Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![CallParam(Felt::from_hex_str(&"0".repeat(i + 3)).unwrap())],
-                contract_address: ContractAddress::new_or_panic(
+                sender_address: ContractAddress::new_or_panic(
                     Felt::from_hex_str(&"1".repeat(i + 3)).unwrap(),
                 ),
                 entry_point_selector: EntryPoint(Felt::from_hex_str(&"2".repeat(i + 3)).unwrap()),
@@ -89,7 +89,7 @@ pub(crate) fn create_transactions_and_receipts(
                 version: TransactionVersion(ethers::types::H256::zero()),
             })
         }
-        _ => transaction::Transaction::Declare(DeclareTransaction {
+        _ => transaction::Transaction::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {
             class_hash: ClassHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
             max_fee: Fee(H128::zero()),
             nonce: TransactionNonce(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap()),
@@ -102,8 +102,7 @@ pub(crate) fn create_transactions_and_receipts(
             transaction_hash: StarknetTransactionHash(
                 Felt::from_hex_str(&"e".repeat(i + 3)).unwrap(),
             ),
-            version: TransactionVersion(H256::zero()),
-        }),
+        })),
     });
 
     let tx_receipt = transactions.enumerate().map(|(i, tx)| {

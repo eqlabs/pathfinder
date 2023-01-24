@@ -134,7 +134,7 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                declared_contract_hashes: state_diff.declared_contracts,
+                declared_contract_hashes: state_diff.old_declared_classes,
                 deployed_contracts: state_diff
                     .deployed_contracts
                     .into_iter()

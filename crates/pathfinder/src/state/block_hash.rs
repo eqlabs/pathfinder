@@ -62,7 +62,7 @@ pub fn verify_block_hash(
 
         let block_hash = compute_final_hash_pre_0_7(
             block.block_number,
-            block.state_root,
+            block.state_commitment,
             num_transactions,
             transaction_commitment.0,
             block.parent_block_hash,
@@ -82,7 +82,7 @@ pub fn verify_block_hash(
             .any(|address| {
                 let block_hash = compute_final_hash(
                     block.block_number,
-                    block.state_root,
+                    block.state_commitment,
                     address,
                     block.timestamp,
                     num_transactions,
@@ -482,7 +482,7 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
-            contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(felt!("0xe")),
             max_fee: Fee(0u128.to_be_bytes().into()),

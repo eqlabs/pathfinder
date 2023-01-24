@@ -56,7 +56,7 @@ fn main() -> anyhow::Result<()> {
             gas_price: Some(block.gas_price),
             parent_block_hash,
             sequencer_address: Some(block.sequencer_address),
-            state_root: block.root,
+            state_commitment: block.root,
             status: Status::AcceptedOnL1,
             timestamp: block.timestamp,
             transaction_receipts: receipts,

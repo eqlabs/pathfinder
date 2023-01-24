@@ -249,7 +249,8 @@ mod tests {
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),
-                declared_contracts: Vec::new(),
+                old_declared_classes: Vec::new(),
+                declared_classes: std::collections::HashMap::new(),
                 nonces: [(valid_1, nonce_1), (valid_2, nonce_2)]
                     .into_iter()
                     .collect(),

@@ -207,9 +207,14 @@ async fn declare_classes(
         .transactions
         .iter()
         .filter_map(|tx| {
+            use starknet_gateway_types::reply::transaction::DeclareTransaction;
             use starknet_gateway_types::reply::transaction::Transaction::*;
             match tx {
-                Declare(tx) => Some(tx.class_hash),
+                Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
+                Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
+                Declare(DeclareTransaction::V2(_)) => {
+                    todo!("v0.11.0: This maybe needs to be handled differently")
+                }
                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
             }
         })
@@ -686,7 +691,7 @@ mod tests {
                 gas_price: Some(GasPrice::ZERO),
                 parent_block_hash: StarknetBlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-                state_root: *GLOBAL_ROOT0,
+                state_commitment: *GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 transaction_receipts: vec![],
@@ -699,7 +704,7 @@ mod tests {
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
                 parent_block_hash: StarknetBlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
-                state_root: *GLOBAL_ROOT0_V2,
+                state_commitment: *GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,
                 timestamp: StarknetBlockTimestamp::new_or_panic(10),
                 transaction_receipts: vec![],
@@ -712,7 +717,7 @@ mod tests {
                 gas_price: Some(GasPrice::from(1)),
                 parent_block_hash: *BLOCK0_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
-                state_root: *GLOBAL_ROOT1,
+                state_commitment: *GLOBAL_ROOT1,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 transaction_receipts: vec![],
@@ -725,7 +730,7 @@ mod tests {
                 gas_price: Some(GasPrice::from(2)),
                 parent_block_hash: *BLOCK1_HASH,
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
-                state_root: *GLOBAL_ROOT2,
+                state_commitment: *GLOBAL_ROOT2,
                 status: reply::Status::AcceptedOnL1,
                 timestamp: StarknetBlockTimestamp::new_or_panic(2),
                 transaction_receipts: vec![],
@@ -749,8 +754,9 @@ mod tests {
                             value: *STORAGE_VAL0,
                         }],
                     )]),
-                    declared_contracts: Vec::new(),
-                    nonces: std::collections::HashMap::new(),
+                    old_declared_classes: Vec::new(),
+                    declared_classes: HashMap::new(),
+                    nonces: HashMap::new(),
                 },
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
@@ -763,8 +769,9 @@ mod tests {
                         class_hash: *CONTRACT0_HASH_V2,
                     }],
                     storage_diffs: HashMap::new(),
-                    declared_contracts: Vec::new(),
-                    nonces: std::collections::HashMap::new(),
+                    old_declared_classes: Vec::new(),
+                    declared_classes: HashMap::new(),
+                    nonces: HashMap::new(),
                 },
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
@@ -792,8 +799,9 @@ mod tests {
                             }],
                         ),
                     ]),
-                    declared_contracts: Vec::new(),
-                    nonces: std::collections::HashMap::new(),
+                    old_declared_classes: Vec::new(),
+                    declared_classes: HashMap::new(),
+                    nonces: HashMap::new(),
                 },
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
@@ -803,8 +811,9 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    declared_contracts: Vec::new(),
-                    nonces: std::collections::HashMap::new(),
+                    old_declared_classes: Vec::new(),
+                    declared_classes: HashMap::new(),
+                    nonces: HashMap::new(),
                 },
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
@@ -814,8 +823,9 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    declared_contracts: Vec::new(),
-                    nonces: std::collections::HashMap::new(),
+                    old_declared_classes: Vec::new(),
+                    declared_classes: HashMap::new(),
+                    nonces: HashMap::new(),
                 },
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
@@ -825,8 +835,9 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    declared_contracts: Vec::new(),
-                    nonces: std::collections::HashMap::new(),
+                    old_declared_classes: Vec::new(),
+                    declared_classes: HashMap::new(),
+                    nonces: HashMap::new(),
                 },
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
@@ -836,8 +847,9 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    declared_contracts: Vec::new(),
-                    nonces: std::collections::HashMap::new(),
+                    old_declared_classes: Vec::new(),
+                    declared_classes: HashMap::new(),
+                    nonces: HashMap::new(),
                 },
             };
         }
@@ -1252,7 +1264,7 @@ mod tests {
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_root: *GLOBAL_ROOT1_V2,
+                    state_commitment: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1491,7 +1503,7 @@ mod tests {
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_root: *GLOBAL_ROOT1_V2,
+                    state_commitment: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1506,7 +1518,7 @@ mod tests {
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_root: *GLOBAL_ROOT2_V2,
+                    state_commitment: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1521,7 +1533,7 @@ mod tests {
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 3").unwrap(),
                     )),
-                    state_root: *GLOBAL_ROOT3,
+                    state_commitment: *GLOBAL_ROOT3,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp::new_or_panic(3),
                     transaction_receipts: vec![],
@@ -1766,7 +1778,7 @@ mod tests {
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 2 v2").unwrap(),
                     )),
-                    state_root: *GLOBAL_ROOT2_V2,
+                    state_commitment: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
@@ -1955,7 +1967,7 @@ mod tests {
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer addr. 1 v2").unwrap(),
                     )),
-                    state_root: *GLOBAL_ROOT1_V2,
+                    state_commitment: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
                     timestamp: StarknetBlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
@@ -1970,7 +1982,7 @@ mod tests {
                     sequencer_address: Some(SequencerAddress(
                         Felt::from_be_slice(b"sequencer address 2").unwrap(),
                     )),
-                    state_root: *GLOBAL_ROOT2,
+                    state_commitment: *GLOBAL_ROOT2,
                     status: reply::Status::AcceptedOnL1,
                     timestamp: StarknetBlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],

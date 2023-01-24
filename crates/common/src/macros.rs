@@ -296,3 +296,86 @@ macro_rules! felt_bytes {
         }
     }};
 }
+
+/// Asserts a condition against the StarkNet version on a given network. This is intended to let you mark code which may need refactoring
+/// once a certain StarkNet version condition comes false. For example, you can remind yourself that a field alias may be safely removed once
+/// v0.11.0 of StarkNet is released on mainnet.
+///
+/// Note that the assertion only occurs for `#[cfg(test)]`.
+///
+/// Usage:
+/// ```rust
+/// version_check!(<network> <operator> <version>, <optional assert message>);
+/// version_check!(Testnet < 0-11-0, "Will not compile once Testnet has launched v0.11.0+");
+/// ```
+///
+/// Supported operators: `<, <=, ==, >=, >`.
+///
+/// Example:
+/// ```rust
+/// version_check!(Mainnet < 0-11-0, "Drop field alias");
+/// #[derive(serde::Serialize)]
+/// struct MyType {
+///     #[serde(alias = old_name)]
+///     field: u32,
+/// }
+/// ```
+#[macro_export]
+macro_rules! version_check {
+    ($network:ident $operator:tt $major:literal-$minor:literal-$patch:literal $(,$msg:literal)?) => {
+        #[allow(dead_code)]
+        const NETWORK: (u64, u64, u64) = match pathfinder_common::Chain::$network {
+            pathfinder_common::Chain::Mainnet => (0, 10, 3),
+            pathfinder_common::Chain::Testnet => (0, 10, 3),
+            pathfinder_common::Chain::Testnet2 => (0, 10, 3),
+            pathfinder_common::Chain::Integration => (0, 10, 3),
+            pathfinder_common::Chain::Custom => panic!("Custom networks are not supported"),
+        };
+        const INPUT: (u64, u64, u64) = ($major, $minor, $patch);
+
+        // Supress comparisons with `0` warnings.
+        #[allow(unused_comparisons, dead_code)]
+        const ASSERT: bool = pathfinder_common::version_check!(@compare NETWORK $operator INPUT);
+
+        #[cfg(test)]
+        const _: () = assert!(ASSERT, $($msg)?);
+    };
+    (@compare $left:ident < $right:ident) => {
+        match ($left, $right) {
+            (l, r) if l.0 < r.0 => true,
+            (l, r) if l.0 == r.0 && l.1 < r.1 => true,
+            (l, r) if l.0 == r.0 && l.1 == r.1 && l.2 < r.2 => true,
+            _ => false,
+        }
+    };
+    (@compare $left:ident <= $right:ident) => {
+        match ($left, $right) {
+            (l, r) if l.0 < r.0 => true,
+            (l, r) if l.0 == r.0 && l.1 < r.1 => true,
+            (l, r) if l.0 == r.0 && l.1 == r.1 && l.2 <= r.2 => true,
+            _ => false,
+        }
+    };
+    (@compare $left:ident > $right:ident) => {
+        match ($left, $right) {
+            (l, r) if l.0 > r.0 => true,F
+            (l, r) if l.0 == r.0 && l.1 > r.1 => true,
+            (l, r) if l.0 == r.0 && l.1 == r.1 && l.2 > r.2 => true,
+            _ => false,
+        }
+    };
+    (@compare $left:ident >= $right:ident) => {
+        match ($left, $right) {
+            (l, r) if l.0 > r.0 => true,
+            (l, r) if l.0 == r.0 && l.1 > r.1 => true,
+            (l, r) if l.0 == r.0 && l.1 == r.1 && l.2 >= r.2 => true,
+            _ => false,
+        }
+    };
+    (@compare $left:ident == $right:ident) => {
+        $left.0 == $right.0 && $left.1 == $right.1 && $left.2 == $right.2
+    };
+    (@compare $left:ident != $right:ident) => {
+        $left.0 != $right.0 && $left.1 != $right.1 && $left.2 != $right.2
+    };
+}

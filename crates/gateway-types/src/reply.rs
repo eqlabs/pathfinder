@@ -7,6 +7,7 @@ use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
 use serde_with::serde_as;
 
+pathfinder_common::version_check!(Mainnet < 0 - 11 - 0, "Remove state_commitment alias");
 /// Used to deserialize replies to StarkNet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
@@ -22,7 +23,8 @@ pub struct Block {
     /// Excluded in blocks prior to StarkNet 0.8
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
-    pub state_root: GlobalRoot,
+    #[serde(alias = "state_root")]
+    pub state_commitment: GlobalRoot,
     pub status: Status,
     pub timestamp: StarknetBlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
@@ -181,10 +183,10 @@ pub struct TransactionStatus {
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
     use pathfinder_common::{
-        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-        EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+        EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
+        StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -319,7 +321,11 @@ pub mod transaction {
         /// Returns hash of the transaction
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
-                Transaction::Declare(t) => t.transaction_hash,
+                Transaction::Declare(t) => match t {
+                    DeclareTransaction::V0(t) => t.transaction_hash,
+                    DeclareTransaction::V1(t) => t.transaction_hash,
+                    DeclareTransaction::V2(t) => t.transaction_hash,
+                },
                 Transaction::Deploy(t) => t.transaction_hash,
                 Transaction::DeployAccount(t) => t.transaction_hash,
                 Transaction::Invoke(t) => match t {
@@ -332,11 +338,13 @@ pub mod transaction {
 
         pub fn contract_address(&self) -> ContractAddress {
             match self {
-                Transaction::Declare(t) => t.sender_address,
+                Transaction::Declare(DeclareTransaction::V0(t)) => t.sender_address,
+                Transaction::Declare(DeclareTransaction::V1(t)) => t.sender_address,
+                Transaction::Declare(DeclareTransaction::V2(t)) => t.sender_address,
                 Transaction::Deploy(t) => t.contract_address,
                 Transaction::DeployAccount(t) => t.contract_address,
                 Transaction::Invoke(t) => match t {
-                    InvokeTransaction::V0(t) => t.contract_address,
+                    InvokeTransaction::V0(t) => t.sender_address,
                     InvokeTransaction::V1(t) => t.sender_address,
                 },
                 Transaction::L1Handler(t) => t.contract_address,
@@ -344,11 +352,59 @@ pub mod transaction {
         }
     }
 
-    /// Represents deserialized L2 declare transaction data.
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[serde(tag = "version")]
+    pub enum DeclareTransaction {
+        #[serde(rename = "0x0")]
+        V0(DeclareTransactionV0V1),
+        #[serde(rename = "0x1")]
+        V1(DeclareTransactionV0V1),
+        #[serde(rename = "0x2")]
+        V2(DeclareTransactionV2),
+    }
+
+    impl<'de> Deserialize<'de> for DeclareTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use ethers::types::H256;
+            use serde::de;
+
+            #[serde_as]
+            #[derive(Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                #[serde(default = "transaction_version_zero")]
+                pub version: TransactionVersion,
+            }
+
+            let mut v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            // remove "version", since v0 and v1 transactions use deny_unknown_fields
+            v.as_object_mut()
+                .expect("must be an object because deserializing version succeeded")
+                .remove("version");
+            match version.version {
+                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
+                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
+                    DeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
+            }
+        }
+    }
+
+    /// A version 0 or 1 declare transaction.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct DeclareTransaction {
+    pub struct DeclareTransactionV0V1 {
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
@@ -358,8 +414,23 @@ pub mod transaction {
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
         pub transaction_hash: StarknetTransactionHash,
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
+    }
+
+    /// A version 2 declare transaction.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeclareTransactionV2 {
+        pub class_hash: ClassHash,
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        pub nonce: TransactionNonce,
+        pub sender_address: ContractAddress,
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        #[serde(default)]
+        pub signature: Vec<TransactionSignatureElem>,
+        pub transaction_hash: StarknetTransactionHash,
+        pub compiled_class_hash: CasmHash,
     }
 
     fn transaction_version_zero() -> TransactionVersion {
@@ -461,7 +532,12 @@ pub mod transaction {
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
-        pub contract_address: ContractAddress,
+        // contract_address is the historic name for this field. sender_address was
+        // introduced with starknet v0.11. Although the gateway no longer uses the historic
+        // name at all, this alias must be kept until a database migration fixes all historic
+        // transaction naming, or until regenesis removes them all.
+        #[serde(alias = "contract_address")]
+        pub sender_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub entry_point_type: Option<EntryPointType>,
@@ -472,6 +548,10 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
+    pathfinder_common::version_check!(
+        Mainnet < 0 - 11 - 0,
+        "Remove sender_address alias - beware storage impact"
+    );
     /// Represents deserialized L2 invoke transaction v1 data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -573,12 +653,17 @@ pub struct StateUpdate {
 /// Types used when deserializing state update related data.
 pub mod state_update {
     use pathfinder_common::{
-        ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
+        StorageValue,
     };
     use serde::Deserialize;
     use serde_with::serde_as;
     use std::collections::HashMap;
 
+    pathfinder_common::version_check!(
+        Mainnet < 0 - 11 - 0,
+        "Check whether the alias and defaults can be removed from StateDiff (esp. in historical blocks)"
+    );
     /// L2 state diff.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -587,7 +672,11 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
-        pub declared_contracts: Vec<ClassHash>,
+        #[serde(alias = "declared_contracts")]
+        pub old_declared_classes: Vec<ClassHash>,
+        /// Not present in StarkNet versions < v0.11.0.
+        #[serde(default)]
+        pub declared_classes: HashMap<SierraHash, CasmHash>,
         /// Old state diffs have no "nonces"
         #[serde(default)]
         pub nonces: HashMap<ContractAddress, ContractNonce>,

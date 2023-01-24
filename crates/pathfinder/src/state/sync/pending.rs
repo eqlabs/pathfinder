@@ -94,7 +94,7 @@ mod tests {
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
             sequencer_address: None,
-            state_root: *PARENT_ROOT,
+            state_commitment: *PARENT_ROOT,
             status: Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),
@@ -109,7 +109,8 @@ mod tests {
             state_diff: StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),
-                declared_contracts: Vec::new(),
+                old_declared_classes: Vec::new(),
+                declared_classes: std::collections::HashMap::new(),
                 nonces: std::collections::HashMap::new(),
             }
         };

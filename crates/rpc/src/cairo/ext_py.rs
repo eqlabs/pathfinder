@@ -750,7 +750,8 @@ mod tests {
                     map
                 },
                 deployed_contracts: vec![],
-                declared_contracts: vec![],
+                old_declared_classes: vec![],
+                declared_classes: std::collections::HashMap::new(),
                 nonces: std::collections::HashMap::new(),
             },
         });

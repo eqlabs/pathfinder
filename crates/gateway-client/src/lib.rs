@@ -1,8 +1,8 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-    EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
+    ContractAddressSalt, EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash,
+    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
@@ -32,6 +32,8 @@ pub trait ClientApi {
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
+    async fn compiled_class(&self, class_hash: CasmHash) -> Result<bytes::Bytes, SequencerError>;
+
     async fn storage(
         &self,
         contract_addr: ContractAddress,
@@ -43,11 +45,6 @@ pub trait ClientApi {
         &self,
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError>;
-
-    async fn transaction_status(
-        &self,
-        transaction_hash: StarknetTransactionHash,
-    ) -> Result<reply::TransactionStatus, SequencerError>;
 
     async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError>;
 
@@ -223,6 +220,21 @@ impl ClientApi for Client {
             .await
     }
 
+    #[tracing::instrument(skip(self))]
+    async fn compiled_class(&self, hash: CasmHash) -> Result<bytes::Bytes, SequencerError> {
+        pathfinder_common::version_check!(
+            Integration < 0 - 11 - 0,
+            "Check whether hash should be Sierra or Casm"
+        );
+
+        self.feeder_gateway_request()
+            .get_compiled_class()
+            .with_casm_hash(hash)
+            .with_retry(Self::RETRY)
+            .get_as_bytes()
+            .await
+    }
+
     /// Gets full contract definition.
     #[tracing::instrument(skip(self))]
     async fn full_contract(
@@ -274,20 +286,6 @@ impl ClientApi for Client {
     ) -> Result<reply::Transaction, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction()
-            .with_transaction_hash(transaction_hash)
-            .with_retry(Self::RETRY)
-            .get()
-            .await
-    }
-
-    /// Gets transaction status by transaction hash.
-    #[tracing::instrument(skip(self))]
-    async fn transaction_status(
-        &self,
-        transaction_hash: StarknetTransactionHash,
-    ) -> Result<reply::TransactionStatus, SequencerError> {
-        self.feeder_gateway_request()
-            .get_transaction_status()
             .with_transaction_hash(transaction_hash)
             .with_retry(Self::RETRY)
             .get()
@@ -640,7 +638,7 @@ mod tests {
                     gas_price: None,
                     parent_block_hash: StarknetBlockHash(Felt::ZERO),
                     sequencer_address: None,
-                    state_root: pathfinder_common::GlobalRoot(Felt::ZERO),
+                    state_commitment: pathfinder_common::GlobalRoot(Felt::ZERO),
                     status: Status::NotReceived,
                     timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
@@ -902,6 +900,53 @@ mod tests {
         }
     }
 
+    mod compiled_class {
+        use super::*;
+        use pathfinder_common::{felt, version_check};
+        use pretty_assertions::assert_eq;
+
+        #[test_log::test(tokio::test)]
+        async fn invalid_hash() {
+            version_check!(
+                Integration < 0 - 11 - 0,
+                "Verify this test's types and params"
+            );
+
+            const INVALID_HASH: CasmHash = CasmHash(felt!("0xaaaaa"));
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_compiled_class?classHash={}",
+                    INVALID_HASH.0.to_hex_str()
+                ),
+                response_from(StarknetErrorCode::UndeclaredClass),
+            )]);
+            let error = client.compiled_class(INVALID_HASH).await.unwrap_err();
+            assert_matches!(
+                error,
+                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UndeclaredClass)
+            );
+        }
+
+        #[tokio::test]
+        async fn success() {
+            version_check!(
+                Integration < 0 - 11 - 0,
+                "Verify this test's types, params and add a fixture"
+            );
+
+            const VALID_HASH: CasmHash = CasmHash(felt!("0xbbbbb"));
+            let (_jh, client) = setup([(
+                format!(
+                    "/feeder_gateway/get_compiled_class?classHash={}",
+                    VALID_HASH.0.to_hex_str()
+                ),
+                (r#"{"fake":"fixture"}"#, 200),
+            )]);
+            let bytes = client.compiled_class(VALID_HASH).await.unwrap();
+            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
+        }
+    }
+
     mod storage {
         use super::*;
         use pathfinder_common::felt;
@@ -1102,48 +1147,6 @@ mod tests {
             assert_eq!(
                 client.transaction(INVALID_TX_HASH).await.unwrap().status,
                 Status::NotReceived,
-            );
-        }
-    }
-
-    mod transaction_status {
-        use super::{reply::Status, *};
-        use pathfinder_common::felt;
-
-        #[tokio::test]
-        async fn accepted() {
-            let (_jh, client) = setup([(
-                "/feeder_gateway/get_transaction_status?transactionHash=0x79cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205",
-                (v0_9_0::transaction::STATUS, 200)
-            )]);
-            assert_eq!(
-                client
-                    .transaction_status(StarknetTransactionHash(felt!(
-                        "079cc07feed4f4046276aea23ddcea8b2f956d14f2bfe97382fa333a11169205"
-                    )))
-                    .await
-                    .unwrap()
-                    .tx_status,
-                Status::AcceptedOnL1
-            );
-        }
-
-        #[tokio::test]
-        async fn invalid_hash() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_transaction_status?transactionHash={}",
-                    INVALID_TX_HASH.0.to_hex_str()
-                ),
-                (r#"{"tx_status": "NOT_RECEIVED"}"#, 200),
-            )]);
-            assert_eq!(
-                client
-                    .transaction_status(INVALID_TX_HASH)
-                    .await
-                    .unwrap()
-                    .tx_status,
-                Status::NotReceived
             );
         }
     }
@@ -1940,6 +1943,90 @@ mod tests {
                     ),
                 }
             });
+        }
+    }
+
+    mod version_check {
+        // Ensures the versions in the pathfinder_common::version_check! macro are kept in sync with reality.
+        //
+        // The tests are kept here to prevent crate dependency cycles while keeping the macro widely available.
+        use pathfinder_common::version_check;
+
+        use crate::{Client, ClientApi};
+        use anyhow::Context;
+        use pathfinder_common::BlockId;
+
+        async fn get_latest_version(client: &Client) -> anyhow::Result<(u64, u64, u64)> {
+            let version = client
+                .block(BlockId::Latest)
+                .await?
+                .as_block()
+                .context("Latest gateway block was of type pending")?
+                .starknet_version
+                .context("Latest gateway block has no version")?;
+
+            let mut split = version.split('.');
+            let major = split
+                .next()
+                .context("Version string is empty")?
+                .parse::<u64>()
+                .context("Parsing major component")?;
+            let minor = split
+                .next()
+                .context("Version string is missing minor component")?
+                .parse::<u64>()
+                .context("Parsing minor component")?;
+            let patch = split
+                .next()
+                .context("Version string is missing patch component")?
+                .parse::<u64>()
+                .context("Parsing patch component")?;
+
+            Ok((major, minor, patch))
+        }
+
+        #[tokio::test]
+        async fn integration() {
+            version_check!(Integration == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::integration()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Integration gateway version has changed, update version_check"
+            );
+        }
+
+        #[tokio::test]
+        async fn mainnet() {
+            version_check!(Mainnet == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::mainnet()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Mainnet gateway version has changed, update version_check"
+            );
+        }
+
+        #[tokio::test]
+        async fn testnet() {
+            version_check!(Testnet == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::testnet()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Testnet gateway version has changed, update version_check"
+            );
+        }
+
+        #[tokio::test]
+        async fn testnet2() {
+            version_check!(Testnet2 == 0 - 10 - 3);
+            let actual = get_latest_version(&Client::testnet2()).await.unwrap();
+            assert_eq!(
+                actual,
+                (0, 10, 3),
+                "Testnet gateway version has changed, update version_check"
+            );
         }
     }
 }

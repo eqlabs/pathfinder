@@ -323,14 +323,17 @@ where
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
                     let deployed_classes = state_update.state_diff.deployed_contracts.iter().map(|x| x.class_hash);
-                    let declared_classes = state_update.state_diff.declared_contracts.iter().cloned();
+                    let declared_classes = state_update.state_diff.old_declared_classes.iter().cloned();
                     let declared_classes_block = block
                         .transactions
                         .iter()
                         .filter_map(|tx| {
                             use starknet_gateway_types::reply::transaction::Transaction::*;
+                            use starknet_gateway_types::reply::transaction::DeclareTransaction;
                             match tx {
-                                Declare(tx) => Some(tx.class_hash),
+                                Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
+                                Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
+                                Declare(DeclareTransaction::V2(_)) => todo!("v0.11.0: This maybe needs to be handled differently"),
                                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
                             }
                         });
@@ -557,7 +560,7 @@ async fn l2_update(
             .context("Updating Starknet state")?;
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
-        anyhow::ensure!(new_root == block.state_root, "State root mismatch");
+        anyhow::ensure!(new_root == block.state_commitment, "State root mismatch");
 
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
@@ -565,7 +568,7 @@ async fn l2_update(
         let starknet_block = StarknetBlock {
             number: block.block_number,
             hash: block.block_hash,
-            root: block.state_root,
+            root: block.state_commitment,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
             gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
@@ -887,7 +890,7 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress,
+        BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
         GlobalRoot, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
@@ -973,6 +976,10 @@ mod tests {
             unimplemented!()
         }
 
+        async fn compiled_class(&self, _: CasmHash) -> Result<bytes::Bytes, SequencerError> {
+            unimplemented!()
+        }
+
         async fn storage(
             &self,
             _: ContractAddress,
@@ -986,13 +993,6 @@ mod tests {
             &self,
             _: StarknetTransactionHash,
         ) -> Result<reply::Transaction, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn transaction_status(
-            &self,
-            _: StarknetTransactionHash,
-        ) -> Result<reply::TransactionStatus, SequencerError> {
             unimplemented!()
         }
 
@@ -1113,7 +1113,7 @@ mod tests {
             gas_price: Some(GasPrice::ZERO),
             parent_block_hash: StarknetBlockHash(Felt::ZERO),
             sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-            state_root: GlobalRoot(Felt::ZERO),
+            state_commitment: GlobalRoot(Felt::ZERO),
             status: reply::Status::AcceptedOnL1,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
@@ -1126,7 +1126,7 @@ mod tests {
             gas_price: Some(GasPrice::from(1)),
             parent_block_hash: StarknetBlockHash(*A),
             sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
-            state_root: GlobalRoot(*B),
+            state_commitment: GlobalRoot(*B),
             status: reply::Status::AcceptedOnL2,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
@@ -1161,8 +1161,9 @@ mod tests {
             state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],
-                declared_contracts: vec![],
+                old_declared_classes: vec![],
                 nonces: std::collections::HashMap::new(),
+                declared_classes: std::collections::HashMap::new(),
             },
         };
     }

@@ -283,6 +283,8 @@ pub mod reply {
     use serde_with::serde_as;
     use std::convert::From;
 
+    use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
+
     /// L2 transaction as returned by the RPC API.
     ///
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -487,16 +489,17 @@ pub mod reply {
         }
     }
 
-    impl From<starknet_gateway_types::reply::transaction::Transaction> for Transaction {
-        fn from(txn: starknet_gateway_types::reply::transaction::Transaction) -> Self {
+    impl From<GatewayTransaction> for Transaction {
+        fn from(txn: GatewayTransaction) -> Self {
             Self::from(&txn)
         }
     }
 
-    impl From<&starknet_gateway_types::reply::transaction::Transaction> for Transaction {
-        fn from(txn: &starknet_gateway_types::reply::transaction::Transaction) -> Self {
+    impl From<&GatewayTransaction> for Transaction {
+        fn from(txn: &GatewayTransaction) -> Self {
+            use starknet_gateway_types::reply::transaction::DeclareTransaction as GatewayDeclare;
             match txn {
-                starknet_gateway_types::reply::transaction::Transaction::Invoke(txn) => {
+                GatewayTransaction::Invoke(txn) => {
                     match txn {
                         starknet_gateway_types::reply::transaction::InvokeTransaction::V0(txn) => {
                             Self::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
@@ -507,7 +510,7 @@ pub mod reply {
                                     // no `nonce` in v0 invoke transactions
                                     nonce: TransactionNonce(Default::default()),
                                 },
-                                contract_address: txn.contract_address,
+                                contract_address: txn.sender_address,
                                 entry_point_selector: txn.entry_point_selector,
                                 calldata: txn.calldata.clone(),
                             }))
@@ -526,12 +529,12 @@ pub mod reply {
                         }
                     }
                 }
-                starknet_gateway_types::reply::transaction::Transaction::Declare(txn) => {
+                GatewayTransaction::Declare(GatewayDeclare::V0(txn)) => {
                     Self::Declare(DeclareTransaction {
                         common: CommonTransactionProperties {
                             hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
-                            version: txn.version,
+                            version: TransactionVersion::ZERO,
                             signature: txn.signature.clone(),
                             nonce: txn.nonce,
                         },
@@ -539,16 +542,30 @@ pub mod reply {
                         sender_address: txn.sender_address,
                     })
                 }
-                starknet_gateway_types::reply::transaction::Transaction::Deploy(txn) => {
-                    Self::Deploy(DeployTransaction {
-                        hash: txn.transaction_hash,
+                GatewayTransaction::Declare(GatewayDeclare::V1(txn)) => {
+                    Self::Declare(DeclareTransaction {
+                        common: CommonTransactionProperties {
+                            hash: txn.transaction_hash,
+                            max_fee: txn.max_fee,
+                            version: TransactionVersion::ONE,
+                            signature: txn.signature.clone(),
+                            nonce: txn.nonce,
+                        },
                         class_hash: txn.class_hash,
-                        version: txn.version,
-                        contract_address_salt: txn.contract_address_salt,
-                        constructor_calldata: txn.constructor_calldata.clone(),
+                        sender_address: txn.sender_address,
                     })
                 }
-                starknet_gateway_types::reply::transaction::Transaction::DeployAccount(txn) => {
+                GatewayTransaction::Declare(GatewayDeclare::V2(_)) => {
+                    todo!("v0.11.0: once v1 declare is implemented in RPC")
+                }
+                GatewayTransaction::Deploy(txn) => Self::Deploy(DeployTransaction {
+                    hash: txn.transaction_hash,
+                    class_hash: txn.class_hash,
+                    version: txn.version,
+                    contract_address_salt: txn.contract_address_salt,
+                    constructor_calldata: txn.constructor_calldata.clone(),
+                }),
+                GatewayTransaction::DeployAccount(txn) => {
                     Self::DeployAccount(DeployAccountTransaction {
                         common: CommonTransactionProperties {
                             hash: txn.transaction_hash,
@@ -562,16 +579,14 @@ pub mod reply {
                         class_hash: txn.class_hash,
                     })
                 }
-                starknet_gateway_types::reply::transaction::Transaction::L1Handler(txn) => {
-                    Self::L1Handler(L1HandlerTransaction {
-                        hash: txn.transaction_hash,
-                        version: txn.version,
-                        nonce: txn.nonce,
-                        contract_address: txn.contract_address,
-                        entry_point_selector: txn.entry_point_selector,
-                        calldata: txn.calldata.clone(),
-                    })
-                }
+                GatewayTransaction::L1Handler(txn) => Self::L1Handler(L1HandlerTransaction {
+                    hash: txn.transaction_hash,
+                    version: txn.version,
+                    nonce: txn.nonce,
+                    contract_address: txn.contract_address,
+                    entry_point_selector: txn.entry_point_selector,
+                    calldata: txn.calldata.clone(),
+                }),
             }
         }
     }
