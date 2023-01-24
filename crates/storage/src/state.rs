@@ -877,6 +877,7 @@ pub trait KeyFilter {
     fn apply<'a>(&self, key_fts_expression: &'a mut String) -> Option<KeyFilterResult<'a>>;
 }
 
+#[derive(Debug, PartialEq)]
 pub struct KeyFilterResult<'a> {
     pub base_query: &'static str,
     pub where_statement: &'static str,
@@ -884,6 +885,10 @@ pub struct KeyFilterResult<'a> {
 }
 
 #[derive(Clone)]
+/// Event key filter for the v0.1 and v0.2 JSON-RPC API
+///
+/// In these API versions events are matched against a list of keys. An event
+/// matches the filter if _any_ key matches.
 pub struct V02KeyFilter(pub Vec<EventKey>);
 
 impl KeyFilter for V02KeyFilter {
@@ -925,6 +930,55 @@ impl KeyFilter for V02KeyFilter {
     }
 }
 
+#[derive(Clone)]
+/// Event key filter for v0.3 of the JSON-RPC API
+///
+/// Here the filter is an array of array of keys. Each position in the array contains
+/// a list of matching values for that position of the key.
+///
+/// [["key1_value1", "key1_value2"], [], ["key3_value1"]] means:
+/// ((key1 == "key1_value1" OR key1 == "key1_value2") AND (key3 == "key3_value1")).
+pub struct V03KeyFilter(pub Vec<Vec<EventKey>>);
+
+impl KeyFilter for V03KeyFilter {
+    fn apply<'a>(&self, key_fts_expression: &'a mut String) -> Option<KeyFilterResult<'a>> {
+        let filter_count = self.0.iter().flatten().count();
+
+        if filter_count > 0 {
+            self.0.iter().enumerate().for_each(|(i, values)| {
+                if !values.is_empty() {
+                    if key_fts_expression.ends_with(')') {
+                        key_fts_expression.push_str(" AND ");
+                    }
+
+                    key_fts_expression.push('(');
+                    values.iter().enumerate().for_each(|(j, key)| {
+                        key_fts_expression.push('"');
+                        StarknetEventsTable::encode_event_key_and_index_to_base32(
+                            i as u8,
+                            key,
+                            key_fts_expression,
+                        );
+                        key_fts_expression.push('"');
+
+                        if j != values.len() - 1 {
+                            key_fts_expression.push_str(" OR ")
+                        }
+                    });
+                    key_fts_expression.push(')');
+                }
+            });
+            Some(KeyFilterResult {
+                base_query: " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                where_statement: "starknet_events_keys_03.keys MATCH :events_match",
+                param: (":events_match", key_fts_expression),
+            })
+        } else {
+            None
+        }
+    }
+}
+
 pub struct StarknetEventsTable {}
 
 impl StarknetEventsTable {
@@ -934,6 +988,13 @@ impl StarknetEventsTable {
 
     fn encode_event_key_to_base64(key: &EventKey, buf: &mut String) {
         base64::encode_config_buf(key.0.as_be_bytes(), base64::STANDARD, buf);
+    }
+
+    fn encode_event_key_and_index_to_base32(index: u8, key: &EventKey, output: &mut String) {
+        let mut buf = [0u8; 33];
+        buf[0] = index;
+        buf[1..].copy_from_slice(key.0.as_be_bytes());
+        data_encoding::BASE32_NOPAD.encode_append(&buf, output);
     }
 
     pub fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
@@ -2244,6 +2305,7 @@ mod tests {
     mod starknet_events {
         use super::*;
         use crate::test_utils;
+        use assert_matches::assert_matches;
         use ethers::types::H128;
         use pathfinder_common::felt;
         use pathfinder_common::{EntryPoint, EventData, Fee};
@@ -2579,7 +2641,7 @@ mod tests {
         }
 
         #[test]
-        fn get_events_by_key() {
+        fn get_events_by_key_v02() {
             let (storage, test_data) = test_utils::setup_test_storage();
             let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
@@ -2600,6 +2662,53 @@ mod tests {
                 events,
                 PageOfEvents {
                     events: vec![expected_event.clone()],
+                    is_last_page: true,
+                }
+            );
+        }
+
+        #[test]
+        fn get_events_by_key_v03() {
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let expected_event = &emitted_events[27];
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: V03KeyFilter(vec![
+                    vec![expected_event.keys[0]],
+                    vec![expected_event.keys[1]],
+                ]),
+                page_size: test_utils::NUM_EVENTS,
+                offset: 0,
+            };
+
+            let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
+            assert_eq!(
+                events,
+                PageOfEvents {
+                    events: vec![expected_event.clone()],
+                    is_last_page: true,
+                }
+            );
+
+            // try event keys in the wrong order, should not match
+            let filter = StarknetEventFilter {
+                keys: V03KeyFilter(vec![
+                    vec![expected_event.keys[1]],
+                    vec![expected_event.keys[0]],
+                ]),
+                ..filter
+            };
+            let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
+            assert_eq!(
+                events,
+                PageOfEvents {
+                    events: vec![],
                     is_last_page: true,
                 }
             );
@@ -2751,7 +2860,7 @@ mod tests {
         }
 
         #[test]
-        fn get_events_by_key_with_paging() {
+        fn get_events_by_key_v02_with_paging() {
             let (storage, test_data) = test_utils::setup_test_storage();
             let emitted_events = test_data.events;
             let mut connection = storage.connection().unwrap();
@@ -2760,6 +2869,71 @@ mod tests {
             let expected_events = &emitted_events[27..32];
             let keys_for_expected_events =
                 V02KeyFilter(expected_events.iter().map(|e| e.keys[0]).collect());
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: 2,
+                offset: 0,
+            };
+            let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
+            assert_eq!(
+                events,
+                PageOfEvents {
+                    events: expected_events[..2].to_vec(),
+                    is_last_page: false,
+                }
+            );
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: keys_for_expected_events.clone(),
+                page_size: 2,
+                offset: 2,
+            };
+            let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
+            assert_eq!(
+                events,
+                PageOfEvents {
+                    events: expected_events[2..4].to_vec(),
+                    is_last_page: false,
+                }
+            );
+
+            let filter = StarknetEventFilter {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: keys_for_expected_events,
+                page_size: 2,
+                offset: 4,
+            };
+            let events = StarknetEventsTable::get_events(&tx, &filter).unwrap();
+            assert_eq!(
+                events,
+                PageOfEvents {
+                    events: expected_events[4..].to_vec(),
+                    is_last_page: true,
+                }
+            );
+        }
+
+        #[test]
+        fn get_events_by_key_v03_with_paging() {
+            let (storage, test_data) = test_utils::setup_test_storage();
+            let emitted_events = test_data.events;
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let expected_events = &emitted_events[27..32];
+            let keys_for_expected_events = V03KeyFilter(vec![
+                expected_events.iter().map(|e| e.keys[0]).collect(),
+                expected_events.iter().map(|e| e.keys[1]).collect(),
+            ]);
 
             let filter = StarknetEventFilter {
                 from_block: None,
@@ -2873,6 +3047,37 @@ mod tests {
             )
             .unwrap();
             assert_eq!(count, expected);
+        }
+
+        #[test]
+        fn v03_key_filter() {
+            check_v03_filter(vec![], None);
+            check_v03_filter(vec![vec![], vec![]], None);
+            check_v03_filter(
+                vec![
+                    vec![],
+                    vec![EventKey(felt!("01")), EventKey(felt!("02"))],
+                    vec![],
+                    vec![EventKey(felt!("01")), EventKey(felt!("03"))],
+                    vec![],
+                ],
+                Some("(\"AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC\" OR \"AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE\") AND (\"AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC\" OR \"AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG\")"),
+            );
+        }
+
+        fn check_v03_filter(filter: Vec<Vec<EventKey>>, expected_fts_expression: Option<&str>) {
+            let mut fts_expression = String::new();
+            let filter = V03KeyFilter(filter);
+            let result = filter.apply(&mut fts_expression);
+
+            match expected_fts_expression {
+                Some(expected_fts_expression) => assert_matches!(
+                    result,
+                    Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                     where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression) })}
+                ),
+                None => assert_eq!(result, None),
+            }
         }
     }
 
