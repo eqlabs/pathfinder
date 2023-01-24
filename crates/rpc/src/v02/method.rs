@@ -35,7 +35,7 @@ pub(super) use get_class::get_class;
 pub(super) use get_class_at::get_class_at;
 pub(super) use get_class_hash_at::get_class_hash_at;
 pub(super) use get_events::get_events;
-pub(super) use get_nonce::get_nonce;
+pub(crate) use get_nonce::get_nonce;
 pub(super) use get_state_update::get_state_update;
 pub(super) use get_storage_at::get_storage_at;
 pub(super) use get_transaction_by_block_id_and_index::get_transaction_by_block_id_and_index;
