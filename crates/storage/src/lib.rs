@@ -22,7 +22,7 @@ pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent,
     StarknetEventFilter, StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
-    V02KeyFilter,
+    V02KeyFilter, V03KeyFilter,
 };
 
 use anyhow::Context;
