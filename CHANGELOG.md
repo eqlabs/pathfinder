@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- support for state commitment and class commitment in pathfinder_getProof
 
 ## [0.4.5] - 2022-12-21
 
