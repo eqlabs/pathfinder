@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
 use pathfinder_common::{
-    BlockId, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
-    StorageAddress,
+    BlockId, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
+    ContractStateHash, StateCommitment, StorageAddress,
 };
 use pathfinder_merkle_tree::merkle_tree::ProofNode;
 use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
@@ -125,7 +126,15 @@ pub struct ContractData {
 
 /// Holds the membership/non-membership of a contract and its associated contract contract if the contract exists.
 #[derive(Debug, Serialize)]
+#[skip_serializing_none]
 pub struct GetProofOutput {
+    /// The global state commitment for StarkNet 0.11.0 blocks onwards, if absent the hash
+    /// of the first node in the [contract_proof](GetProofOutput#contract_proof) is the global state commitment.
+    state_commitment: Option<StateCommitment>,
+    /// Required to verify that the hash of the class commitment and the root of the [contract_proof](GetProofOutput::contract_proof)
+    /// matches the [state_commitment](Self#state_commitment). Present only for StarkNet blocks 0.11.0 onwards.
+    class_commitment: Option<ClassCommitment>,
+
     /// Membership / Non-membership proof for the queried contract
     contract_proof: Proof,
 
@@ -133,7 +142,6 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-/// FIXME v0.11.0
 /// Returns all the necessary data to trustlessly verify storage slots for a particular contract.
 pub async fn get_proof(
     context: RpcContext,
@@ -171,11 +179,24 @@ pub async fn get_proof(
 
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-            .context("Get storage commitment for block")?
-            // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
-            // by using a dedicated error code from the RPC API spec
-            .ok_or(GetProofError::BlockNotFound)?;
+        let (storage_commitment, class_commitment) =
+            StarknetBlocksTable::get_state_commitment(&tx, block_id)
+                .context("Get state commitment for block")?
+                // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
+                // by using a dedicated error code from the RPC API spec
+                .ok_or(GetProofError::BlockNotFound)?;
+
+        let (state_commitment, class_commitment) = if class_commitment == ClassCommitment::ZERO {
+            (None, None)
+        } else {
+            (
+                Some(StateCommitment::calculate(
+                    storage_commitment,
+                    class_commitment,
+                )),
+                Some(class_commitment),
+            )
+        };
 
         let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
             .context("Storage commitment tree")?;
@@ -190,6 +211,8 @@ pub async fn get_proof(
             None => {
                 // Contract not found: return the proof of non membership that we generated earlier.
                 return Ok(GetProofOutput {
+                    state_commitment,
+                    class_commitment,
                     contract_proof,
                     contract_data: None,
                 });
@@ -235,6 +258,8 @@ pub async fn get_proof(
         };
 
         Ok(GetProofOutput {
+            state_commitment,
+            class_commitment,
             contract_proof,
             contract_data: Some(contract_data),
         })

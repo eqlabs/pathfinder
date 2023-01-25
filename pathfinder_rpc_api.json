@@ -60,6 +60,15 @@
                     "type": "object",
                     "description": "Contains the requested contract's state proofs",
                     "properties": {
+                        "state_commitment": {
+                            "title": "StarkNet state commitment",
+                            "description": "The commitment for the state of a StarkNet block. Before StarkNet v0.11.0 this was equivalent to storage commitment, which is the hash of the first node in the contract proof",
+                            "$ref": "#/components/schemas/FELT"
+                        },
+                        "class_commitment": {
+                            "title": "The root of the class commitment tree",
+                            "$ref": "#/components/schemas/FELT"
+                        },
                         "contract_proof": {
                             "title": "Proof of the contract state hash",
                             "$ref": "#/components/schemas/PROOF"
