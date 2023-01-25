@@ -1052,6 +1052,7 @@ impl StarknetEventsTable {
     }
 
     pub const PAGE_SIZE_LIMIT: usize = 1024;
+    pub const KEY_FILTER_LIMIT: usize = 256;
 
     fn event_query<'query, 'arg>(
         base: &'query str,

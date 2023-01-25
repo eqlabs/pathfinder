@@ -167,7 +167,7 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
         .split(' ')
         // Convert only the first 256 elements so that the index fits into one u8
         // we will use as a prefix byte.
-        .take(256)
+        .take(crate::StarknetEventsTable::KEY_FILTER_LIMIT)
         .enumerate()
         .map(|(index, key)| {
             let mut buf: [u8; 33] = [0u8; 33];

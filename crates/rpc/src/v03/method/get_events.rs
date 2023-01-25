@@ -99,6 +99,13 @@ pub async fn get_events(
         None => None,
     };
 
+    if request.keys.len() > pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT {
+        return Err(GetEventsError::TooManyKeysInFilter {
+            limit: pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT,
+            requested: request.keys.len(),
+        });
+    }
+
     // Handle the trivial (1) and (2) cases.
     match (request.from_block, request.to_block) {
         (Some(Pending), non_pending) if non_pending != Some(Pending) => {
@@ -654,6 +661,40 @@ mod tests {
         let error = get_events(context, input).await.unwrap_err();
 
         assert_eq!(GetEventsError::PageSizeTooBig, error);
+    }
+
+    #[tokio::test]
+    async fn get_events_with_too_many_keys_in_filter() {
+        let (context, _) = setup();
+
+        let limit = pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT;
+
+        let keys = [vec![EventKey(felt!("01"))]]
+            .iter()
+            .cloned()
+            .cycle()
+            .take(limit + 1)
+            .collect::<Vec<_>>();
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys,
+                chunk_size: 10,
+                continuation_token: None,
+            },
+        };
+        let error = get_events(context, input).await.unwrap_err();
+
+        assert_eq!(
+            GetEventsError::TooManyKeysInFilter {
+                limit,
+                requested: limit + 1
+            },
+            error
+        );
     }
 
     #[tokio::test]
