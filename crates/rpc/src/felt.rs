@@ -3,12 +3,20 @@
 //!
 //! The wrappers implement [serde_with::SerializeAs] which allows annotating
 //! struct fields `serde_as(as = "RpcFelt")`to use the RPC compliant serialization.
+//! It also allows specifying container types such as [Option], [Vec] etc: `serde_as(as = "Vec<RpcFelt>")`.
 //!
-//! ```rust
+//! ```
 //! #[serde_with::serde_as]
-//! struct RpcOutput {
-//!     serde_as(as = "RpcFelt")`
+//! #[derive(serde::Serialize)]
+//! struct Example {
+//!     #[serde_as(as = "RpcFelt")]
 //!     hash: StarknetTransactionHash,
+//!
+//!     #[serde_as(as = "Option<RpcFelt>")]
+//!     maybe_hash: Option<StarknetTransactionHash>,
+//!
+//!     #[serde_as(as = "Vec<RpcFelt>")]
+//!     many_hashes: Vec<StarknetTransactionHash>,
 //! }
 //! ```
 
@@ -49,46 +57,61 @@ impl From<RpcFelt> for Felt {
 #[derive(serde::Serialize)]
 pub struct RpcFelt251(RpcFelt);
 
-impl serde::Serialize for RpcFelt {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+mod serialization {
+    //! Blanket [serde::Serialize] and [serde_with::SerializeAs] implementations for [RpcFelt] and [RpcFelt251]
+    //! supported types.
+
+    use super::*;
+
+    impl serde::Serialize for RpcFelt {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            // StarkHash has a leading "0x" and at most 64 digits
+            let mut buf = [0u8; 2 + 64];
+            let s = self.0.as_hex_str(&mut buf);
+            serializer.serialize_str(s)
+        }
+    }
+
+    impl<T> serde_with::SerializeAs<T> for RpcFelt
     where
-        S: serde::Serializer,
+        T: Into<RpcFelt> + Clone,
     {
-        // StarkHash has a leading "0x" and at most 64 digits
-        let mut buf = [0u8; 2 + 64];
-        let s = self.0.as_hex_str(&mut buf);
-        serializer.serialize_str(s)
+        fn serialize_as<S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            use serde::Serialize;
+
+            RpcFelt::serialize(&value.clone().into(), serializer)
+        }
+    }
+
+    impl<T> serde_with::SerializeAs<T> for RpcFelt251
+    where
+        T: Into<RpcFelt251> + Clone,
+    {
+        fn serialize_as<S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            use serde::Serialize;
+
+            RpcFelt251::serialize(&value.clone().into(), serializer)
+        }
     }
 }
 
-impl<T> serde_with::SerializeAs<T> for RpcFelt
-where
-    T: Into<RpcFelt> + Clone,
-{
-    fn serialize_as<S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::Serialize;
-
-        RpcFelt::serialize(&value.clone().into(), serializer)
-    }
-}
-
-impl<T> serde_with::SerializeAs<T> for RpcFelt251
-where
-    T: Into<RpcFelt251> + Clone,
-{
-    fn serialize_as<S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::Serialize;
-
-        RpcFelt251::serialize(&value.clone().into(), serializer)
-    }
-}
-
+/// Generates the required `From` implementations required for the target type
+/// to support `#[serde_as(as = "RpcFelt")]` and similar annotations.
+///
+/// In particular, it generates:
+/// - `From<$target> for RpcFelt`
+/// - `From<RpcFelt> for $target`
+///
+/// The target types must be a [Felt] newtype.
 macro_rules! rpc_felt_serde {
     ($target:ident) => {
         impl From<$target> for RpcFelt {
@@ -111,6 +134,15 @@ macro_rules! rpc_felt_serde {
     };
 }
 
+/// Generates the required `From` implementations required for the target type
+/// to support `#[serde_as(as = "RpcFelt251")]` and similar annotations.
+///
+/// In particular, it generates:
+/// - `From<$target> for RpcFelt251`
+/// - `From<RpcFelt251> for $target`
+///
+/// The target types must be a private [Felt] newtype i.e. `$target::get() -> &Felt`
+/// must exist.
 macro_rules! rpc_felt_251_serde {
     ($target:ident) => {
         impl From<$target> for RpcFelt251 {
@@ -158,6 +190,8 @@ rpc_felt_serde!(
 rpc_felt_251_serde!(ContractAddress, StorageAddress);
 
 mod deserialization {
+    //! Blanket [serde::Deserialize] and [serde_with::DeserializeAs] implementations for [RpcFelt] and [RpcFelt251]
+    //! supported types.
     use super::*;
 
     impl<'de, T> serde_with::DeserializeAs<'de, T> for RpcFelt
