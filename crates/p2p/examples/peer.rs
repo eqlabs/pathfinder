@@ -96,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
 
     // SN_GOERLI chain ID
     const GOERLI_CHAIN_ID: u128 = 0x534e5f474f45524c49u128;
-    let block_propagation_topic = format!("blocks/{:#x}", GOERLI_CHAIN_ID);
+    let block_propagation_topic = format!("blocks/{GOERLI_CHAIN_ID:#x}");
     p2p_client.subscribe_topic(&block_propagation_topic).await?;
 
     if args.emit_events {

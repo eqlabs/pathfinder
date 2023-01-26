@@ -905,7 +905,7 @@ pub mod reply {
             match self {
                 Syncing::False(_) => f.write_str("false"),
                 Syncing::Status(status) => {
-                    write!(f, "{}", status)
+                    write!(f, "{status}")
                 }
             }
         }
@@ -1003,8 +1003,8 @@ pub mod reply {
             let parsed = serde_json::from_str::<Syncing>(input).unwrap();
             let output = serde_json::to_string(&parsed).unwrap();
 
-            assert_eq!(parsed, expected, "example from line {}", line);
-            assert_eq!(&output, input, "example from line {}", line);
+            assert_eq!(parsed, expected, "example from line {line}");
+            assert_eq!(&output, input, "example from line {line}");
         }
     }
 

@@ -830,7 +830,7 @@ mod tests {
             while let Some(row) = rows.next().unwrap() {
                 let first = row.get_ref(0).expect("get column");
 
-                println!("{:?}", first);
+                println!("{first:?}");
 
                 let first = first.as_blob().expect("cannot read it as a blob");
                 println!("{}", hex::encode(first));
@@ -896,7 +896,7 @@ mod tests {
             while let Some(row) = rows.next().unwrap() {
                 let first = row.get_ref(0).expect("get column");
 
-                println!("{:?}", first);
+                println!("{first:?}");
 
                 let first = first.as_blob().expect("cannot read it as a blob");
                 println!("{}", hex::encode(first));

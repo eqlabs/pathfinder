@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn ethereum_url() {
         let value = "value".to_owned();
-        let toml = format!(r#"ethereum.url = "{}""#, value);
+        let toml = format!(r#"ethereum.url = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumHttpUrl), Some(value));
     }
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn ethereum_password() {
         let value = "value".to_owned();
-        let toml = format!(r#"ethereum.password = "{}""#, value);
+        let toml = format!(r#"ethereum.password = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
     }
@@ -87,9 +87,8 @@ mod tests {
 
         let toml = format!(
             r#"[ethereum]
-url = "{}"
-password = "{}""#,
-            url, password
+url = "{url}"
+password = "{password}""#
         );
 
         let mut cfg = config_from_str(&toml).unwrap();
@@ -100,7 +99,7 @@ password = "{}""#,
     #[test]
     fn http_rpc() {
         let value = "value".to_owned();
-        let toml = format!(r#"http-rpc = "{}""#, value);
+        let toml = format!(r#"http-rpc = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
     }
@@ -108,7 +107,7 @@ password = "{}""#,
     #[test]
     fn data_directory() {
         let value = "value".to_owned();
-        let toml = format!(r#"data-directory = "{}""#, value);
+        let toml = format!(r#"data-directory = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
     }
@@ -116,7 +115,7 @@ password = "{}""#,
     #[test]
     fn sequencer_url() {
         let value = "value".to_owned();
-        let toml = format!(r#"sequencer-url = "{}""#, value);
+        let toml = format!(r#"sequencer-url = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
     }
@@ -124,7 +123,7 @@ password = "{}""#,
     #[test]
     fn python_subprocesses() {
         let value = "5".to_owned();
-        let toml = format!(r#"python-subprocesses = "{}""#, value);
+        let toml = format!(r#"python-subprocesses = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::PythonSubprocesses), Some(value));
     }
@@ -132,7 +131,7 @@ password = "{}""#,
     #[test]
     fn sqlite_wal() {
         let value = "true".to_owned();
-        let toml = format!(r#"sqlite-wal = "{}""#, value);
+        let toml = format!(r#"sqlite-wal = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(
             cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
@@ -143,7 +142,7 @@ password = "{}""#,
     #[test]
     fn poll_pending() {
         let value = "true".to_owned();
-        let toml = format!(r#"poll-pending = "{}""#, value);
+        let toml = format!(r#"poll-pending = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
     }
@@ -151,7 +150,7 @@ password = "{}""#,
     #[test]
     fn monitor_address() {
         let value = "address".to_owned();
-        let toml = format!(r#"monitor-address = "{}""#, value);
+        let toml = format!(r#"monitor-address = "{value}""#);
         let mut cfg = config_from_str(&toml).unwrap();
         assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
     }

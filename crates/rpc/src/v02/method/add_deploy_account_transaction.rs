@@ -78,7 +78,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_input_named() {
-        let json = format!("{{\"deploy_account_transaction\":{}}}", INPUT_JSON);
+        let json = format!("{{\"deploy_account_transaction\":{INPUT_JSON}}}");
         let input: AddDeployAccountTransactionInput =
             serde_json::from_str(&json).expect("parse named input");
 
@@ -87,7 +87,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_input_positional() {
-        let json = format!("[{}]", INPUT_JSON);
+        let json = format!("[{INPUT_JSON}]");
         let input: AddDeployAccountTransactionInput =
             serde_json::from_str(&json).expect("parse positional input");
 

@@ -1869,9 +1869,9 @@ mod tests {
         }
 
         /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
-        fn get_proofs<'a, 'tx, H: crate::Hash>(
-            keys: &'a [&BitSlice<Msb0, u8>],
-            tree: &MerkleTree<RcNodeStorage<'tx, '_>, H>,
+        fn get_proofs<H: crate::Hash>(
+            keys: &'_ [&BitSlice<Msb0, u8>],
+            tree: &MerkleTree<RcNodeStorage<'_, '_>, H>,
         ) -> anyhow::Result<Vec<Vec<ProofNode>>> {
             keys.iter().map(|k| tree.get_proof(k)).collect()
         }

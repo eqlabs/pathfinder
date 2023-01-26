@@ -1540,8 +1540,7 @@ mod tests {
                             .unwrap()
                             .as_ref(),
                         Some(update),
-                        "Update {}",
-                        idx
+                        "Update {idx}"
                     );
                 }
             }
@@ -1619,8 +1618,7 @@ mod tests {
                         L1StateTable::get_state_commitment(&tx, update.block_number.into())
                             .unwrap(),
                         Some(update.global_root),
-                        "Update {}",
-                        idx
+                        "Update {idx}"
                     );
                 }
             }

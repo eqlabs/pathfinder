@@ -133,7 +133,7 @@ where
                     let last = updates.last().map(|u| u.block_number.get());
 
                     l1_update(&mut db_conn, &updates).await.with_context(|| {
-                        format!("Update L1 state with blocks {:?}-{:?}", first, last)
+                        format!("Update L1 state with blocks {first:?}-{last:?}")
                     })?;
 
                     match updates.as_slice() {
@@ -153,7 +153,7 @@ where
                 Some(l1::Event::Reorg(reorg_tail)) => {
                     l1_reorg(&mut db_conn, reorg_tail)
                         .await
-                        .with_context(|| format!("Reorg L1 state to block {}", reorg_tail))?;
+                        .with_context(|| format!("Reorg L1 state to block {reorg_tail}"))?;
 
                     let new_head = match reorg_tail {
                         StarknetBlockNumber::GENESIS => None,
@@ -173,7 +173,7 @@ where
                             let tx = db_conn.transaction()?;
                             L1StateTable::get(&tx, block.into())
                         })
-                        .with_context(|| format!("Query L1 state table for block {:?}", block))?;
+                        .with_context(|| format!("Query L1 state table for block {block:?}"))?;
 
                     let _ = tx.send(update);
 
@@ -218,7 +218,7 @@ where
                     let update_t = std::time::Instant::now();
                     l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
                         .await
-                        .with_context(|| format!("Update L2 state to {}", block_number))?;
+                        .with_context(|| format!("Update L2 state to {block_number}"))?;
                     let block_time = last_block_start.elapsed();
                     let update_t = update_t.elapsed();
                     last_block_start = std::time::Instant::now();
@@ -269,7 +269,7 @@ where
 
                     l2_reorg(&mut db_conn, reorg_tail)
                         .await
-                        .with_context(|| format!("Reorg L2 state to {:?}", reorg_tail))?;
+                        .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
                     let new_head = match reorg_tail {
                         StarknetBlockNumber::GENESIS => None,
@@ -310,7 +310,7 @@ where
                             ContractCodeTable::exists(&tx, &contracts)
                         })
                         .with_context(|| {
-                            format!("Query storage for existance of contracts {:?}", contracts)
+                            format!("Query storage for existance of contracts {contracts:?}")
                         })?;
                     let count = exists.iter().filter(|b| **b).count();
 
@@ -825,7 +825,7 @@ async fn download_verify_and_insert_missing_classes<
         let transaction = connection.transaction()?;
         ContractCodeTable::exists(&transaction, &classes)
     })
-    .with_context(|| format!("Query storage for existance of classes {:?}", classes))?;
+    .with_context(|| format!("Query storage for existance of classes {classes:?}"))?;
     anyhow::ensure!(
         exists.len() == classes.len(),
         "Length mismatch when querying for class existance. Expected {} but got {}.",

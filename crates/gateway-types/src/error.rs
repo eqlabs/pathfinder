@@ -29,7 +29,7 @@ impl std::error::Error for StarknetError {}
 
 impl std::fmt::Display for StarknetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

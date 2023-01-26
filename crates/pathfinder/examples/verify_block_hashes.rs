@@ -69,13 +69,11 @@ fn main() -> anyhow::Result<()> {
         match result {
             VerifyResult::Match(_) => {}
             VerifyResult::NotVerifiable => println!(
-                "Block hash cannot be verified for block number {} hash {:?}",
-                block_number, block_hash
+                "Block hash cannot be verified for block number {block_number} hash {block_hash:?}"
             ),
-            VerifyResult::Mismatch => println!(
-                "Block hash mismatch at block number {} hash {:?}",
-                block_number, block_hash
-            ),
+            VerifyResult::Mismatch => {
+                println!("Block hash mismatch at block number {block_number} hash {block_hash:?}")
+            }
         }
     }
 

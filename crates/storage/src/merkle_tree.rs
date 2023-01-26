@@ -175,32 +175,29 @@ impl Queries<'static> {
     fn format(table: &str) -> Queries<'static> {
         Queries {
             create: format!(
-                r"CREATE TABLE IF NOT EXISTS {}(
+                r"CREATE TABLE IF NOT EXISTS {table}(
                     hash        BLOB PRIMARY KEY,
                     data        BLOB,
                     ref_count   INTEGER
-                )",
-                table
+                )"
             )
             .into(),
             insert: format!(
-                "INSERT OR IGNORE INTO {} (hash, data, ref_count) VALUES (?, ?, ?)",
-                table
+                "INSERT OR IGNORE INTO {table} (hash, data, ref_count) VALUES (?, ?, ?)"
             )
             .into(),
-            update: format!("UPDATE {} SET data=?, ref_count=? WHERE hash=?", table).into(),
-            get: format!("SELECT data FROM {} WHERE hash = ?", table).into(),
+            update: format!("UPDATE {table} SET data=?, ref_count=? WHERE hash=?").into(),
+            get: format!("SELECT data FROM {table} WHERE hash = ?").into(),
             #[cfg(any(feature = "test-utils", test))]
-            delete_node: format!("DELETE FROM {} WHERE hash = ?", table).into(),
+            delete_node: format!("DELETE FROM {table} WHERE hash = ?").into(),
             #[cfg(any(feature = "test-utils", test))]
-            set_ref_count: format!("UPDATE {} SET ref_count = ? WHERE hash = ?", table).into(),
+            set_ref_count: format!("UPDATE {table} SET ref_count = ? WHERE hash = ?").into(),
             increment_ref_count: format!(
-                "UPDATE {} SET ref_count = ref_count + 1 WHERE hash = ?",
-                table
+                "UPDATE {table} SET ref_count = ref_count + 1 WHERE hash = ?"
             )
             .into(),
             #[cfg(any(feature = "test-utils", test))]
-            get_ref_count: format!("SELECT ref_count FROM {} WHERE hash = ?", table).into(),
+            get_ref_count: format!("SELECT ref_count FROM {table} WHERE hash = ?").into(),
         }
     }
 

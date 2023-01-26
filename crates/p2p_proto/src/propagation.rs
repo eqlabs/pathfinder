@@ -54,7 +54,7 @@ impl TryFromProtobuf<proto::propagation::Message> for Message {
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Missing field {}", field_name),
+                format!("Missing field {field_name}"),
             )),
         }
     }

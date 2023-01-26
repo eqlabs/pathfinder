@@ -176,6 +176,6 @@ struct Hex<'a>(&'a [u8]);
 
 impl std::fmt::LowerHex for Hex<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.iter().try_for_each(|x| write!(f, "{:02x}", x))
+        self.0.iter().try_for_each(|x| write!(f, "{x:02x}"))
     }
 }

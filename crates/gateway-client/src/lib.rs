@@ -537,7 +537,7 @@ mod tests {
             let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
             let server_handle = tokio::spawn(serve_fut);
             let client =
-                Client::with_base_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap())
+                Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap())
                     .unwrap();
             (Some(server_handle), client)
         }
@@ -608,8 +608,7 @@ mod tests {
         let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
         let server_handle = tokio::spawn(serve_fut);
         let client =
-            Client::with_base_url(reqwest::Url::parse(&format!("http://{}", addr)).unwrap())
-                .unwrap();
+            Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap()).unwrap();
         (Some(server_handle), client)
     }
 
@@ -655,7 +654,7 @@ mod tests {
             });
         let server_handle = tokio::spawn(run_srv);
 
-        let url = format!("http://{}", addr);
+        let url = format!("http://{addr}");
         let url = Url::parse(&url).unwrap();
         let client = Client::with_base_url(url).unwrap();
 
@@ -673,14 +672,11 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
-                    format!("/feeder_gateway/get_block?blockHash={}", GENESIS_BLOCK_HASH),
+                    format!("/feeder_gateway/get_block?blockHash={GENESIS_BLOCK_HASH}"),
                     (v0_9_0::block::GENESIS, 200),
                 ),
                 (
-                    format!(
-                        "/feeder_gateway/get_block?blockNumber={}",
-                        GENESIS_BLOCK_NUMBER
-                    ),
+                    format!("/feeder_gateway/get_block?blockNumber={GENESIS_BLOCK_NUMBER}"),
                     (v0_9_0::block::GENESIS, 200),
                 ),
             ]);
@@ -754,7 +750,7 @@ mod tests {
         async fn invalid_hash() {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
-                format!("/feeder_gateway/get_block?blockHash={}", INVALID_BLOCK_HASH),
+                format!("/feeder_gateway/get_block?blockHash={INVALID_BLOCK_HASH}"),
                 response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
@@ -771,10 +767,7 @@ mod tests {
         async fn invalid_number() {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_block?blockNumber={}",
-                    INVALID_BLOCK_NUMBER
-                ),
+                format!("/feeder_gateway/get_block?blockNumber={INVALID_BLOCK_NUMBER}"),
                 response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
@@ -1205,10 +1198,7 @@ mod tests {
                     (v0_9_1::state_update::GENESIS, 200),
                 ),
                 (
-                    format!(
-                        "/feeder_gateway/get_state_update?blockHash={}",
-                        GENESIS_BLOCK_HASH
-                    ),
+                    format!("/feeder_gateway/get_state_update?blockHash={GENESIS_BLOCK_HASH}"),
                     (v0_9_1::state_update::GENESIS, 200),
                 ),
             ]);
@@ -1267,10 +1257,7 @@ mod tests {
         async fn invalid_number() {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_state_update?blockNumber={}",
-                    INVALID_BLOCK_NUMBER
-                ),
+                format!("/feeder_gateway/get_state_update?blockNumber={INVALID_BLOCK_NUMBER}"),
                 response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
@@ -1287,10 +1274,7 @@ mod tests {
         async fn invalid_hash() {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_state_update?blockHash={}",
-                    INVALID_BLOCK_HASH
-                ),
+                format!("/feeder_gateway/get_state_update?blockHash={INVALID_BLOCK_HASH}"),
                 response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
@@ -1746,10 +1730,9 @@ mod tests {
 
                 let (addr, serve_fut) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
                 let server_handle = tokio::spawn(serve_fut);
-                let client = Client::with_base_url(
-                    reqwest::Url::parse(&format!("http://{}", addr)).unwrap(),
-                )
-                .unwrap();
+                let client =
+                    Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap())
+                        .unwrap();
 
                 (Some(server_handle), client)
             }

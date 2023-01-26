@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn odd() {
         let original = Felt::from_hex_str(ODD).unwrap();
-        let expected = format!("\"{}\"", ODD);
+        let expected = format!("\"{ODD}\"");
         assert_eq!(serde_json::to_string(&original).unwrap(), expected);
         assert_eq!(serde_json::from_str::<Felt>(&expected).unwrap(), original);
     }
@@ -72,7 +72,7 @@ mod tests {
     #[test]
     fn even() {
         let original = Felt::from_hex_str(EVEN).unwrap();
-        let expected = format!("\"{}\"", EVEN);
+        let expected = format!("\"{EVEN}\"");
         assert_eq!(serde_json::to_string(&original).unwrap(), expected);
         assert_eq!(serde_json::from_str::<Felt>(&expected).unwrap(), original);
     }
@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn max() {
         let original = Felt::from_hex_str(MAX).unwrap();
-        let expected = format!("\"{}\"", MAX);
+        let expected = format!("\"{MAX}\"");
         assert_eq!(serde_json::to_string(&original).unwrap(), expected);
         assert_eq!(serde_json::from_str::<Felt>(&expected).unwrap(), original);
     }

@@ -91,7 +91,7 @@ fn clap_app() -> clap::Command<'static> {
     use super::DEFAULT_HTTP_RPC_ADDR;
     lazy_static::lazy_static! {
         static ref HTTP_RPC_HELP: String =
-            format!("HTTP-RPC listening address [default: {}]", DEFAULT_HTTP_RPC_ADDR);
+            format!("HTTP-RPC listening address [default: {DEFAULT_HTTP_RPC_ADDR}]");
     }
 
     let version = pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT;

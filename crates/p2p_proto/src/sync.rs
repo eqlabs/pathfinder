@@ -69,7 +69,7 @@ impl TryFromProtobuf<proto::sync::Request> for Request {
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Missing field {}", field_name),
+                format!("Missing field {field_name}"),
             )),
         }
     }
@@ -106,7 +106,7 @@ impl TryFromProtobuf<i32> for Direction {
         let input = proto::sync::Direction::from_i32(input).ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Failed to parse {}", field_name),
+                format!("Failed to parse {field_name}"),
             )
         })?;
         Ok(match input {
@@ -215,7 +215,7 @@ impl TryFromProtobuf<proto::sync::Response> for Response {
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Missing field {}", field_name),
+                format!("Missing field {field_name}"),
             )),
         }
     }

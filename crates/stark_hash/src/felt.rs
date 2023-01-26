@@ -17,26 +17,26 @@ pub struct Felt([u8; 32]);
 
 impl std::fmt::Debug for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StarkHash({})", self)
+        write!(f, "StarkHash({self})")
     }
 }
 
 impl std::fmt::Display for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // 0xABCDEF1234567890
-        write!(f, "0x{:X}", self)
+        write!(f, "0x{self:X}")
     }
 }
 
 impl std::fmt::LowerHex for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.iter().try_for_each(|&b| write!(f, "{:02x}", b))
+        self.0.iter().try_for_each(|&b| write!(f, "{b:02x}"))
     }
 }
 
 impl std::fmt::UpperHex for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.iter().try_for_each(|&b| write!(f, "{:02X}", b))
+        self.0.iter().try_for_each(|&b| write!(f, "{b:02X}"))
     }
 }
 
@@ -583,11 +583,11 @@ mod tests {
         fn debug() {
             let hex_str = "1234567890abcdef000edcba0987654321";
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
-            let result = format!("{:?}", starkhash);
+            let result = format!("{starkhash:?}");
 
             let mut expected = "0".repeat(64 - hex_str.len());
             expected.push_str(hex_str);
-            let expected = format!("StarkHash({})", starkhash);
+            let expected = format!("StarkHash({starkhash})");
 
             assert_eq!(result, expected);
         }
@@ -596,7 +596,7 @@ mod tests {
         fn fmt() {
             let hex_str = "1234567890abcdef000edcba0987654321";
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
-            let result = format!("{:x}", starkhash);
+            let result = format!("{starkhash:x}");
 
             let mut expected = "0".repeat(64 - hex_str.len());
             expected.push_str(hex_str);
@@ -609,7 +609,7 @@ mod tests {
         fn lower_hex() {
             let hex_str = "1234567890abcdef000edcba0987654321";
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
-            let result = format!("{:x}", starkhash);
+            let result = format!("{starkhash:x}");
 
             let mut expected = "0".repeat(64 - hex_str.len());
             expected.push_str(hex_str);
@@ -621,7 +621,7 @@ mod tests {
         fn upper_hex() {
             let hex_str = "1234567890abcdef000edcba0987654321";
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
-            let result = format!("{:X}", starkhash);
+            let result = format!("{starkhash:X}");
 
             let mut expected = "0".repeat(64 - hex_str.len());
             expected.push_str(hex_str);
@@ -664,21 +664,21 @@ mod tests {
         #[test]
         fn prefix() {
             let (test_str, expected) = test_data();
-            let uut = Felt::from_hex_str(&format!("0x{}", test_str)).unwrap();
+            let uut = Felt::from_hex_str(&format!("0x{test_str}")).unwrap();
             assert_eq!(uut, expected);
         }
 
         #[test]
         fn leading_zeros() {
             let (test_str, expected) = test_data();
-            let uut = Felt::from_hex_str(&format!("000000000{}", test_str)).unwrap();
+            let uut = Felt::from_hex_str(&format!("000000000{test_str}")).unwrap();
             assert_eq!(uut, expected);
         }
 
         #[test]
         fn prefix_and_leading_zeros() {
             let (test_str, expected) = test_data();
-            let uut = Felt::from_hex_str(&format!("0x000000000{}", test_str)).unwrap();
+            let uut = Felt::from_hex_str(&format!("0x000000000{test_str}")).unwrap();
             assert_eq!(uut, expected);
         }
 

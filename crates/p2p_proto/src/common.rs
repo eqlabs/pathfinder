@@ -69,7 +69,7 @@ impl TryFromProtobuf<proto::common::Transaction> for Transaction {
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Failed to parse {}: missing txn field", field_name),
+                format!("Failed to parse {field_name}: missing txn field"),
             )),
         }
     }
@@ -283,7 +283,7 @@ impl TryFromProtobuf<proto::common::Receipt> for Receipt {
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Failed to parse {}: missing receipt field", field_name),
+                format!("Failed to parse {field_name}: missing receipt field"),
             )),
         }
     }
