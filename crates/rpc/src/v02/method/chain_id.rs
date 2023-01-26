@@ -1,12 +1,16 @@
 use pathfinder_common::ChainId;
 
+use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 
 crate::error::generate_rpc_error_subset!(ChainIdError);
 
-#[allow(dead_code)]
-pub async fn chain_id(context: RpcContext) -> Result<ChainId, ChainIdError> {
-    Ok(context.chain_id)
+#[serde_with::serde_as]
+#[derive(serde::Serialize)]
+pub struct ChainIdOutput(#[serde_as(as = "RpcFelt")] ChainId);
+
+pub async fn chain_id(context: RpcContext) -> Result<ChainIdOutput, ChainIdError> {
+    Ok(ChainIdOutput(context.chain_id))
 }
 
 #[cfg(test)]
