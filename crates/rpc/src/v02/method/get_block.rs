@@ -146,7 +146,8 @@ fn get_block_transactions(
             transactions_receipts
                 .into_iter()
                 .map(|(t, _)| t.hash())
-                .collect(),
+                .collect::<Vec<_>>()
+                .into(),
         )),
         types::BlockResponseScope::FullTransactions => Ok(types::Transactions::Full(
             transactions_receipts
@@ -158,6 +159,7 @@ fn get_block_transactions(
 }
 
 mod types {
+    use crate::felt::RpcFelt;
     use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
         GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
@@ -181,7 +183,18 @@ mod types {
     #[serde(untagged)]
     pub enum Transactions {
         Full(Vec<Transaction>),
-        HashesOnly(Vec<StarknetTransactionHash>),
+        HashesOnly(TransactionHashes),
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct TransactionHashes(#[serde_as(as = "Vec<RpcFelt>")] Vec<StarknetTransactionHash>);
+
+    impl From<Vec<StarknetTransactionHash>> for TransactionHashes {
+        fn from(value: Vec<StarknetTransactionHash>) -> Self {
+            Self(value)
+        }
     }
 
     /// L2 Block as returned by the RPC API.
@@ -191,11 +204,15 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct Block {
         pub status: BlockStatus,
+        #[serde_as(as = "Option<RpcFelt>")]
         pub block_hash: Option<StarknetBlockHash>,
+        #[serde_as(as = "RpcFelt")]
         pub parent_hash: StarknetBlockHash,
         pub block_number: Option<StarknetBlockNumber>,
+        #[serde_as(as = "Option<RpcFelt>")]
         pub new_root: Option<StateCommitment>,
         pub timestamp: StarknetBlockTimestamp,
+        #[serde_as(as = "RpcFelt")]
         pub sequencer_address: SequencerAddress,
         pub transactions: Transactions,
     }
@@ -236,7 +253,12 @@ mod types {
         ) -> Self {
             let transactions = match scope {
                 BlockResponseScope::TransactionHashes => {
-                    let hashes = block.transactions().iter().map(|t| t.hash()).collect();
+                    let hashes = block
+                        .transactions()
+                        .iter()
+                        .map(|t| t.hash())
+                        .collect::<Vec<_>>()
+                        .into();
 
                     Transactions::HashesOnly(hashes)
                 }
