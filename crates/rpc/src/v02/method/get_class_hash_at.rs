@@ -1,3 +1,4 @@
+use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress, ContractStateHash};
@@ -13,17 +14,21 @@ pub struct GetClassHashAtInput {
     contract_address: ContractAddress,
 }
 
+#[serde_with::serde_as]
+#[derive(serde::Serialize, Debug)]
+pub struct GetClassHashOutput(#[serde_as(as = "RpcFelt")] ClassHash);
+
 pub async fn get_class_hash_at(
     context: RpcContext,
     input: GetClassHashAtInput,
-) -> Result<ClassHash, GetClassHashAtError> {
+) -> Result<GetClassHashOutput, GetClassHashAtError> {
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
         BlockId::Latest => StarknetBlocksBlockId::Latest,
         BlockId::Pending => {
             match get_pending_class_hash(context.pending_data, input.contract_address).await {
-                Some(class_hash) => return Ok(class_hash),
+                Some(class_hash) => return Ok(GetClassHashOutput(class_hash)),
                 None => StarknetBlocksBlockId::Latest,
             }
         }
@@ -63,6 +68,7 @@ pub async fn get_class_hash_at(
                 tracing::error!(%state_hash, "Class hash is missing in `contract_states` table");
                 anyhow::anyhow!("State table missing row for state_hash={}", state_hash).into()
             })
+            .map(GetClassHashOutput)
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -183,7 +189,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let result = get_class_hash_at(context, input).await.unwrap();
-        assert_eq!(result, expected);
+        assert_eq!(result.0, expected);
     }
 
     #[tokio::test]
@@ -207,14 +213,14 @@ mod tests {
             contract_address: address,
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
-        assert_eq!(result, expected);
+        assert_eq!(result.0, expected);
 
         let input = GetClassHashAtInput {
             block_id: StarknetBlockNumber::new_or_panic(2).into(),
             contract_address: address,
         };
         let result = get_class_hash_at(context, input).await.unwrap();
-        assert_eq!(result, expected);
+        assert_eq!(result.0, expected);
     }
 
     #[tokio::test]
@@ -227,7 +233,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let result = get_class_hash_at(context, input).await.unwrap();
-        assert_eq!(result, expected);
+        assert_eq!(result.0, expected);
     }
 
     #[tokio::test]
@@ -241,7 +247,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
-        assert_eq!(result, expected);
+        assert_eq!(result.0, expected);
 
         // This is an actual pending deployed contract.
         let expected = ClassHash(felt_bytes!(b"pending contract 0 hash"));
@@ -252,7 +258,7 @@ mod tests {
             )),
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
-        assert_eq!(result, expected);
+        assert_eq!(result.0, expected);
 
         // This one remains missing.
         let input = GetClassHashAtInput {
