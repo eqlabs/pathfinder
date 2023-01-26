@@ -161,8 +161,11 @@ Finally, you can start the node:
 cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
-Note the extra "`--`" which separate the Rust `cargo` command options from the options for our node.
-For more information on these options see the [Configuration](#configuration) section.
+Note the extra "`--`" which separate the Rust `cargo` command options from the configuration options for our node.
+You can list these configuration options using `--help`:
+```bash
+cargo run --release --bin pathfinder -- --help
+```
 
 It may take a while to first compile the node on the first invocation if you didn't do the [compilation step](#compiling-pathfinder).
 
