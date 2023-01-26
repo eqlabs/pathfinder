@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     setup_tracing();
 
     let config =
-        config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
+        config::Configuration::parse_cmd_line().context("Parsing configuration")?;
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)

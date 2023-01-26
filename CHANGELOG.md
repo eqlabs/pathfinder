@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_call` and `starknet_estimateFee` JSON-RPC methods return more detailed error messages
 
+### Removed
+
+- file configuration (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
+- `--config` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
+
 ## [0.4.5] - 2022-12-21
 
 ### Added

@@ -21,17 +21,6 @@ impl ConfigBuilder {
         self
     }
 
-    /// Merges two [ConfigBuilder] options together, preferring the values
-    /// from [self] if they're not [None].
-    pub fn merge(mut self, other: Self) -> Self {
-        // `extend` has the opposite effect that we want, so we swop
-        // self and other's maps.
-        let mut merged = other.0;
-        merged.extend(self.0.into_iter());
-        self.0 = merged;
-        self
-    }
-
     /// Attempts to generate a [Configuration] from the options. Performs type checking
     /// and parsing as required by [Configuration] types. Also ensures that all
     /// required options are set.
@@ -265,79 +254,6 @@ mod tests {
         let mut builder = ConfigBuilder::default();
         for option in enum_iterator::all::<ConfigOption>() {
             assert_eq!(builder.take(option), None);
-        }
-    }
-
-    mod merge {
-        //! Tests the [ConfigBuilder] merge order permutations, to ensure that
-        //! all fields follow the convention that `x.merge(y)` should prefer
-        //! `x` unless it is [`None`].
-        use std::collections::HashMap;
-
-        use super::*;
-
-        /// Generates a [ConfigBuilder] with all fields set. Values for each field
-        /// are unique and prefixed with `prefix`. Also returns the values set.
-        fn some_builder_with_prefix(
-            prefix: &str,
-        ) -> (ConfigBuilder, HashMap<ConfigOption, Option<String>>) {
-            let mut builder = ConfigBuilder::default();
-            let mut values = HashMap::new();
-
-            for (idx, option) in enum_iterator::all::<ConfigOption>().enumerate() {
-                let value = Some(format!("{prefix} {idx}"));
-
-                builder = builder.with(option, value.clone());
-                values.insert(option, value);
-            }
-
-            (builder, values)
-        }
-
-        #[test]
-        fn some_some() {
-            let (some_1, mut values_1) = some_builder_with_prefix("a");
-            let (some_2, _) = some_builder_with_prefix("b");
-
-            let mut merged = some_1.merge(some_2);
-
-            for option in enum_iterator::all::<ConfigOption>() {
-                assert_eq!(merged.take(option), values_1.remove(&option).unwrap());
-            }
-        }
-
-        #[test]
-        fn some_none() {
-            let (some, mut values) = some_builder_with_prefix("a");
-            let none = ConfigBuilder::default();
-
-            let mut merged = some.merge(none);
-
-            for option in enum_iterator::all::<ConfigOption>() {
-                assert_eq!(merged.take(option), values.remove(&option).unwrap());
-            }
-        }
-
-        #[test]
-        fn none_some() {
-            let (some, mut values) = some_builder_with_prefix("a");
-            let none = ConfigBuilder::default();
-
-            let mut merged = none.merge(some);
-
-            for option in enum_iterator::all::<ConfigOption>() {
-                assert_eq!(merged.take(option), values.remove(&option).unwrap());
-            }
-        }
-
-        #[test]
-        fn none_none() {
-            let none_1 = ConfigBuilder::default();
-            let none_2 = ConfigBuilder::default();
-
-            let merged = none_1.merge(none_2);
-
-            assert_eq!(merged, ConfigBuilder::default());
         }
     }
 

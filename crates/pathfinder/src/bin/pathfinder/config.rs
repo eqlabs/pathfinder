@@ -1,11 +1,9 @@
 //! Contains the node configuration parsing code.
 mod builder;
 mod cli;
-mod file;
 
-use std::{fmt::Display, net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{fmt::Display, net::SocketAddr, path::PathBuf};
 
-use anyhow::Context;
 use enum_iterator::Sequence;
 use reqwest::Url;
 
@@ -114,43 +112,14 @@ pub struct Configuration {
 
 impl Configuration {
     /// Creates a [node configuration](Configuration) based on the options specified
-    /// via the command-line and config file.
-    ///
-    /// The config filepath may be specified as a command-line parameter.
-    ///
-    /// Options from the command-line and config file will be merged, with the
-    /// command-line taking precedence. It is valid for no configuration file to exist,
-    /// so long as all required options are covered by the command-line arguments.
-    ///
-    /// Errors if the configuration file couldn't be parsed, or if any required options
-    /// are not specified.
+    /// via the command-line.
     ///
     /// Note: This will terminate the program if invalid command-line arguments are supplied.
     ///       This is intended, as [clap] will show the program usage / help.
-    pub fn parse_cmd_line_and_cfg_file() -> anyhow::Result<Self> {
+    pub fn parse_cmd_line() -> anyhow::Result<Self> {
         // Parse command-line arguments. This must be first in order to use
         // users config filepath (if supplied).
-        let (cfg_filepath, cli_cfg) = cli::parse_cmd_line();
-
-        if cfg_filepath.is_some() {
-            tracing::warn!("'--config' is deprecated. Consider using environment variables in .env files to retain the same functionality.");
-        }
-
-        // Parse configuration file if specified.
-        let file_cfg = match cfg_filepath {
-            Some(filepath) => {
-                let filepath = PathBuf::from_str(&filepath).context("Parsig config filepath")?;
-                Some(file::config_from_filepath(&filepath)?)
-            }
-            None => None,
-        };
-
-        let cfg = match file_cfg {
-            Some(cfg) => cli_cfg.merge(cfg),
-            None => cli_cfg,
-        };
-
-        let cfg = cfg.try_build()?;
+        let cfg = cli::parse_cmd_line().try_build()?;
 
         match (&cfg.network, cfg.integration, cfg.testnet2) {
             (_, true, true) => anyhow::bail!("Cannot use both integration and testnet 2 at the same time."),
