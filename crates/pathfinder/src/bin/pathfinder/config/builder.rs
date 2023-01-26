@@ -50,19 +50,6 @@ Hint: Register your own account or run your own Ethereum node and put the real U
 
         // Optional parameters.
         let eth_password = self.take(ConfigOption::EthereumPassword);
-        let sequencer_url = match self.take(ConfigOption::SequencerHttpUrl) {
-            Some(url) => {
-                let url = url.parse::<Url>().map_err(|err| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        format!("Invalid Sequencer URL ({url}): {err}"),
-                    )
-                })?;
-
-                Some(url)
-            }
-            None => None,
-        };
 
         let monitoring_addr = self
             .take(ConfigOption::MonitorAddress)
@@ -203,7 +190,6 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             },
             http_rpc_addr,
             data_directory,
-            sequencer_url,
             python_subprocesses,
             sqlite_wal,
             poll_pending,

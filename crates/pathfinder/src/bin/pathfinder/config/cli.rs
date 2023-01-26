@@ -10,7 +10,6 @@ const DATA_DIR_KEY: &str = "data-directory";
 const ETH_URL_KEY: &str = "ethereum.url";
 const ETH_PASS_KEY: &str = "ethereum.password";
 const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
-const SEQ_URL_KEY: &str = "sequencer-url";
 const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 const SQLITE_WAL: &str = "sqlite-wal";
 const POLL_PENDING: &str = "poll-pending";
@@ -46,7 +45,6 @@ where
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
     let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
     let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
-    let sequencer_url = args.value_of(SEQ_URL_KEY).map(|s| s.to_owned());
     let python_subprocesses = args.value_of(PYTHON_SUBPROCESSES_KEY).map(|s| s.to_owned());
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
     let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
@@ -61,7 +59,6 @@ where
         .with(ConfigOption::EthereumPassword, ethereum_password)
         .with(ConfigOption::HttpRpcAddress, http_rpc_addr)
         .with(ConfigOption::DataDirectory, data_directory)
-        .with(ConfigOption::SequencerHttpUrl, sequencer_url)
         .with(ConfigOption::PythonSubprocesses, python_subprocesses)
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
         .with(ConfigOption::PollPending, poll_pending)
@@ -122,15 +119,6 @@ Examples:
                 .takes_value(true)
                 .value_name("PATH")
                 .env("PATHFINDER_DATA_DIRECTORY")
-        )
-        .arg(
-            Arg::new(SEQ_URL_KEY)
-                .long(SEQ_URL_KEY)
-                .help("Sequencer REST API endpoint")
-                .long_help("Lets you customise the Sequencer address. Useful if you have a proxy in front of the Sequencer.")
-                .takes_value(true)
-                .value_name("HTTP(s) URL")
-                .env("PATHFINDER_SEQUENCER_URL")
         )
         .arg(
             Arg::new(PYTHON_SUBPROCESSES_KEY)
@@ -227,7 +215,6 @@ mod tests {
         env::remove_var("PATHFINDER_ETHEREUM_API_URL");
         env::remove_var("PATHFINDER_HTTP_RPC_ADDRESS");
         env::remove_var("PATHFINDER_DATA_DIRECTORY");
-        env::remove_var("PATHFINDER_SEQUENCER_URL");
         env::remove_var("PATHFINDER_PYTHON_SUBPROCESSES");
         env::remove_var("PATHFINDER_SQLITE_WAL");
         env::remove_var("PATHFINDER_POLL_PENDING");
@@ -320,27 +307,6 @@ mod tests {
         env::set_var("PATHFINDER_DATA_DIRECTORY", &value);
         let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
-    }
-
-    #[test]
-    fn sequencer_url_long() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let value = "value".to_owned();
-        let mut cfg = parse_args(vec!["bin name", "--sequencer-url", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
-    }
-
-    #[test]
-    fn sequencer_url_environment_variable() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let value = "value".to_owned();
-        env::set_var("PATHFINDER_SEQUENCER_URL", &value);
-        let mut cfg = parse_args(vec!["bin name"]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
     }
 
     #[test]

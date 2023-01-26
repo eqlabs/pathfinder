@@ -94,27 +94,23 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         None => (None, None),
     };
 
-    let gateway_client = match (network, custom_gateway_urls, config.sequencer_url) {
-        (Chain::Custom, None, _) => {
+    let gateway_client = match (network, custom_gateway_urls) {
+        (Chain::Custom, None) => {
             anyhow::bail!(
                 "'--network custom' requires setting '--gateway-url' and '--feeder-gateway-url'."
             );
         }
-        (Chain::Custom, Some((gateway, feeder)), _) => {
+        (Chain::Custom, Some((gateway, feeder))) => {
             starknet_gateway_client::Client::with_urls(gateway, feeder)
                 .context("Creating gateway client")?
         }
-        (_, Some(_), _) => anyhow::bail!(
+        (_, Some(_)) => anyhow::bail!(
             "'--gateway-url' and '--feeder-gateway-url' are only valid with '--network custom'"
         ),
-        (Chain::Mainnet, None, None) => starknet_gateway_client::Client::mainnet(),
-        (Chain::Testnet, None, None) => starknet_gateway_client::Client::testnet(),
-        (Chain::Testnet2, None, None) => starknet_gateway_client::Client::testnet2(),
-        (Chain::Integration, None, None) => starknet_gateway_client::Client::integration(),
-        (_, _, Some(sequencer_url)) => {
-            starknet_gateway_client::Client::with_base_url(sequencer_url)
-                .context("Creating gateway client")?
-        }
+        (Chain::Mainnet, None) => starknet_gateway_client::Client::mainnet(),
+        (Chain::Testnet, None) => starknet_gateway_client::Client::testnet(),
+        (Chain::Testnet2, None) => starknet_gateway_client::Client::testnet2(),
+        (Chain::Integration, None) => starknet_gateway_client::Client::integration(),
     };
 
     // Get database path before we mutate network.

@@ -20,8 +20,6 @@ pub enum ConfigOption {
     HttpRpcAddress,
     /// Path to the node's data directory.
     DataDirectory,
-    /// The Sequencer's HTTP URL.
-    SequencerHttpUrl,
     /// Number of Python sub-processes to start.
     PythonSubprocesses,
     /// Enable SQLite write-ahead logging.
@@ -47,7 +45,6 @@ impl Display for ConfigOption {
             ConfigOption::EthereumPassword => f.write_str("Ethereum password"),
             ConfigOption::DataDirectory => f.write_str("Data directory"),
             ConfigOption::HttpRpcAddress => f.write_str("HTTP-RPC socket address"),
-            ConfigOption::SequencerHttpUrl => f.write_str("Sequencer HTTP URL"),
             ConfigOption::PythonSubprocesses => f.write_str("Number of Python subprocesses"),
             ConfigOption::EnableSQLiteWriteAheadLogging => {
                 f.write_str("Enable SQLite write-ahead logging")
@@ -82,8 +79,6 @@ pub struct Configuration {
     pub http_rpc_addr: SocketAddr,
     /// The node's data directory.
     pub data_directory: PathBuf,
-    /// The Sequencer's HTTP URL.
-    pub sequencer_url: Option<Url>,
     /// The number of Python subprocesses to start.
     pub python_subprocesses: std::num::NonZeroUsize,
     /// Enable SQLite write-ahead logging.
@@ -110,14 +105,6 @@ impl Configuration {
         // Parse command-line arguments. This must be first in order to use
         // users config filepath (if supplied).
         let cfg = cli::parse_cmd_line().try_build()?;
-
-        match (&cfg.custom_gateway, &cfg.sequencer_url) {
-            (None, Some(_)) => tracing::warn!(
-                "'--sequencer-url' is deprecated, please use '--network custom' instead. Note that you'll need to rename your database to 'custom.sqlite' for this."
-            ),
-            (Some(_), Some(_)) => anyhow::bail!("Cannot use both custom gateway and sequencer-url at the same time. Please use gateway only."),
-            _ => {},
-        }
 
         Ok(cfg)
     }
