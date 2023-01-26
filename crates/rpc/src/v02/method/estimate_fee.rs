@@ -249,7 +249,8 @@ mod tests {
     mod ext_py {
         use super::*;
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeployTransaction,
+            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
+            BroadcastedDeclareTransactionV2, BroadcastedDeployTransaction,
             BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::ContractClass;
@@ -389,11 +390,11 @@ mod tests {
         }
 
         #[test_log::test(tokio::test)]
-        async fn successful_declare() {
+        async fn successful_declare_v0() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
-            let declare_transaction =
-                BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V1(BroadcastedDeclareTransactionV1 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(Default::default()),
                     signature: vec![],
@@ -402,7 +403,42 @@ mod tests {
                     sender_address: ContractAddress::new_or_panic(felt!(
                         "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                     )),
-                });
+                }),
+            );
+
+            let input = EstimateFeeInput {
+                request: declare_transaction,
+                block_id: BLOCK_5,
+            };
+            let result = estimate_fee(context, input).await.unwrap();
+            assert_eq!(
+                result,
+                FeeEstimate {
+                    gas_consumed: Default::default(),
+                    gas_price: Default::default(),
+                    overall_fee: Default::default()
+                }
+            );
+        }
+
+        #[ignore = "fixme for v0.11.0"]
+        #[test_log::test(tokio::test)]
+        async fn successful_declare_v2() {
+            let (context, _join_handle) = test_context_with_call_handling().await;
+
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
+                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                    max_fee: Fee(Default::default()),
+                    signature: vec![],
+                    nonce: TransactionNonce(Default::default()),
+                    contract_class: todo!("fixme v0.11.0"),
+                    sender_address: ContractAddress::new_or_panic(felt!(
+                        "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
+                    )),
+                    compiled_class_hash: todo!("fixme v0.11.0"),
+                }),
+            );
 
             let input = EstimateFeeInput {
                 request: declare_transaction,

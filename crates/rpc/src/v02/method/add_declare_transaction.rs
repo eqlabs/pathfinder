@@ -49,35 +49,41 @@ pub async fn add_declare_transaction(
     context: RpcContext,
     input: AddDeclareTransactionInput,
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
-    let Transaction::Declare(tx) = input.declare_transaction;
-    let contract_definition: ContractDefinition = tx
-        .contract_class
-        .try_into()
-        .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
+    match input.declare_transaction {
+        Transaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
+            let contract_definition: ContractDefinition = tx
+                .contract_class
+                .try_into()
+                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
 
-    let response = context
-        .sequencer
-        .add_declare_transaction(
-            tx.version,
-            tx.max_fee,
-            tx.signature,
-            tx.nonce,
-            contract_definition,
-            tx.sender_address,
-            input.token,
-        )
-        .await?;
+            let response = context
+                .sequencer
+                .add_declare_transaction(
+                    tx.version,
+                    tx.max_fee,
+                    tx.signature,
+                    tx.nonce,
+                    contract_definition,
+                    tx.sender_address,
+                    input.token,
+                )
+                .await?;
 
-    Ok(AddDeclareTransactionOutput {
-        transaction_hash: response.transaction_hash,
-        class_hash: response.class_hash,
-    })
+            Ok(AddDeclareTransactionOutput {
+                transaction_hash: response.transaction_hash,
+                class_hash: response.class_hash,
+            })
+        }
+        Transaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => todo!("fixme 0.11.0"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::v02::types::request::BroadcastedDeclareTransaction;
+    use crate::v02::types::request::{
+        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
+    };
     use crate::v02::types::ContractClass;
     use pathfinder_common::{felt, ContractAddress, Fee, TransactionNonce, TransactionVersion};
     use stark_hash::Felt;
@@ -97,17 +103,22 @@ mod tests {
     }
 
     mod parsing {
+        use crate::v02::types::request::BroadcastedDeclareTransactionV1;
+
         use super::*;
 
         fn test_declare_txn() -> Transaction {
-            Transaction::Declare(BroadcastedDeclareTransaction {
-                max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
-                version: TransactionVersion::ZERO,
-                signature: vec![],
-                nonce: TransactionNonce(Felt::ZERO),
-                contract_class: CONTRACT_CLASS.clone(),
-                sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
-            })
+            // Fixme v0.11.0 only allow v2?
+            Transaction::Declare(BroadcastedDeclareTransaction::V1(
+                BroadcastedDeclareTransactionV1 {
+                    max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
+                    version: TransactionVersion::ONE,
+                    signature: vec![],
+                    nonce: TransactionNonce(Felt::ZERO),
+                    contract_class: CONTRACT_CLASS.clone(),
+                    sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
+                },
+            ))
         }
 
         #[test]
@@ -118,7 +129,7 @@ mod tests {
                 r#"[
                     {{
                         "type": "DECLARE",
-                        "version": "0x0",
+                        "version": "0x1",
                         "max_fee": "0x1",
                         "signature": [],
                         "nonce": "0x0",
@@ -146,7 +157,7 @@ mod tests {
                 r#"{{
                     "declare_transaction": {{
                         "type": "DECLARE",
-                        "version": "0x0",
+                        "version": "0x1",
                         "max_fee": "0x1",
                         "signature": [],
                         "nonce": "0x0",
@@ -178,14 +189,17 @@ mod tests {
             ..CONTRACT_CLASS.clone()
         };
 
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction {
-            version: TransactionVersion::ZERO,
-            max_fee: Fee(Default::default()),
-            signature: vec![],
-            nonce: TransactionNonce(Default::default()),
-            contract_class: invalid_contract_class,
-            sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
-        });
+        // Fixme v0.11.0 only allow v2?
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
+                version: TransactionVersion::ONE,
+                max_fee: Fee(Default::default()),
+                signature: vec![],
+                nonce: TransactionNonce(Default::default()),
+                contract_class: invalid_contract_class,
+                sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
+            },
+        ));
 
         let input = AddDeclareTransactionInput {
             declare_transaction,
@@ -200,14 +214,17 @@ mod tests {
     async fn successful_declare() {
         let context = RpcContext::for_tests();
 
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction {
-            version: TransactionVersion::ZERO,
-            max_fee: Fee(Default::default()),
-            signature: vec![],
-            nonce: TransactionNonce(Default::default()),
-            contract_class: CONTRACT_CLASS.clone(),
-            sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
-        });
+        // Fixme v0.11.0 only allow v2?
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
+                version: TransactionVersion::ONE,
+                max_fee: Fee(Default::default()),
+                signature: vec![],
+                nonce: TransactionNonce(Default::default()),
+                contract_class: CONTRACT_CLASS.clone(),
+                sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
+            },
+        ));
 
         let input = AddDeclareTransactionInput {
             declare_transaction,

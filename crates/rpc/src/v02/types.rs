@@ -6,8 +6,8 @@ pub use class::*;
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use pathfinder_common::{
-        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-        Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+        EntryPoint, Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::Deserialize;
@@ -32,11 +32,57 @@ pub mod request {
         DeployAccount(BroadcastedDeployAccountTransaction),
     }
 
+    // TODO make sure deserialization is not ambiguous between V1 and V2
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(
+        any(test, feature = "rpc-full-serde"),
+        derive(serde::Serialize),
+        serde(untagged)
+    )]
+    pub enum BroadcastedDeclareTransaction {
+        V1(BroadcastedDeclareTransactionV1),
+        V2(BroadcastedDeclareTransactionV2),
+    }
+
+    impl<'de> serde::Deserialize<'de> for BroadcastedDeclareTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use ethers::types::H256;
+            use serde::de;
+
+            fn transaction_version_one() -> TransactionVersion {
+                TransactionVersion(H256::from_low_u64_be(1))
+            }
+
+            #[serde_as]
+            #[derive(serde::Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                #[serde(default = "transaction_version_one")]
+                pub version: TransactionVersion,
+            }
+
+            let v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            match version.version {
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                    BroadcastedDeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
+                    BroadcastedDeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 1 or 2")),
+            }
+        }
+    }
+
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
-    pub struct BroadcastedDeclareTransaction {
+    pub struct BroadcastedDeclareTransactionV1 {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
@@ -48,6 +94,27 @@ pub mod request {
         pub nonce: TransactionNonce,
 
         pub contract_class: super::ContractClass,
+        pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeclareTransactionV2 {
+        // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
+        // here in a flattened struct, but `flatten` doesn't work with
+        // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
+        #[serde_as(as = "FeeAsHexStr")]
+        pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+        pub nonce: TransactionNonce,
+
+        #[serde(default)]
+        pub compiled_class_hash: Option<CasmHash>,
+        pub contract_class: super::SierraContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -177,7 +244,7 @@ pub mod request {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/0.44.0/", $file_name))
+                include_str!(concat!("../../fixtures/0.50.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }
@@ -193,7 +260,10 @@ pub mod request {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use crate::v02::types::{ContractClass, ContractEntryPoints};
+            use crate::v02::types::{
+                ContractClass, ContractEntryPoints, SierraContractClass, SierraEntryPoint,
+                SierraEntryPoints,
+            };
             use pathfinder_common::felt;
             use pretty_assertions::assert_eq;
 
@@ -209,14 +279,43 @@ pub mod request {
                     abi: None,
                 };
                 let txs = vec![
-                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
-                        max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
-                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
-                        signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                        nonce: TransactionNonce(felt!("0x8")),
-                        contract_class: contract_class.clone(),
-                        sender_address: ContractAddress::new_or_panic(felt!("0xa")),
-                    }),
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
+                        BroadcastedDeclareTransactionV1 {
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x1)),
+                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                            nonce: TransactionNonce(felt!("0x8")),
+                            contract_class: contract_class.clone(),
+                            sender_address: ContractAddress::new_or_panic(felt!("0xa")),
+                        },
+                    )),
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(
+                        BroadcastedDeclareTransactionV2 {
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x51)),
+                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x2)),
+                            signature: vec![TransactionSignatureElem(felt!("0x71"))],
+                            nonce: TransactionNonce(felt!("0x81")),
+                            compiled_class_hash: Some(CasmHash(felt!("0x91"))),
+                            contract_class: SierraContractClass {
+                                entry_points_by_type: SierraEntryPoints {
+                                    constructor: vec![SierraEntryPoint {
+                                        function_idx: 1,
+                                        selector: felt!("0x1"),
+                                    }],
+                                    external: vec![SierraEntryPoint {
+                                        function_idx: 2,
+                                        selector: felt!("0x2"),
+                                    }],
+                                    l1_handler: vec![SierraEntryPoint {
+                                        function_idx: 3,
+                                        selector: felt!("0x3"),
+                                    }],
+                                },
+                                sierra_program: vec![felt!("0x4"), felt!("0x5")],
+                            },
+                            sender_address: ContractAddress::new_or_panic(felt!("0xa1")),
+                        },
+                    )),
                     BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
                         contract_address_salt: ContractAddressSalt(felt!("0xdd")),
