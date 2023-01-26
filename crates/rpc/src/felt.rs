@@ -1,9 +1,9 @@
-//! Contains the [RpcFelt] and [RpcFelt251] wrappers around [Felt](stark_hash::Felt) which 
+//! Contains the [RpcFelt] and [RpcFelt251] wrappers around [Felt](stark_hash::Felt) which
 //! implement RPC compliant serialization.
 //!
 //! The wrappers implement [serde_with::SerializeAs] which allows annotating
 //! struct fields `serde_as(as = "RpcFelt")`to use the RPC compliant serialization.
-//! 
+//!
 //! ```rust
 //! #[serde_with::serde_as]
 //! struct RpcOutput {
@@ -13,8 +13,9 @@
 //! ```
 
 use pathfinder_common::{
-    ChainId, ClassHash, ContractAddress, StarknetBlockHash, StarknetTransactionHash,
-    TransactionNonce, TransactionSignatureElem,
+    CallParam, ChainId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+    EntryPoint, StarknetBlockHash, StarknetTransactionHash, TransactionNonce,
+    TransactionSignatureElem,
 };
 
 /// An RPC specific wrapper around [Felt] which implements
@@ -123,8 +124,12 @@ macro_rules! rpc_felt_251_serde {
 }
 
 rpc_felt_serde!(
+    CallParam,
     ChainId,
     ClassHash,
+    ContractAddressSalt,
+    ConstructorParam,
+    EntryPoint,
     StarknetBlockHash,
     StarknetTransactionHash,
     TransactionNonce,
