@@ -15,8 +15,8 @@
 use pathfinder_common::{
     CallParam, ChainId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
     ContractNonce, EntryPoint, EventData, EventKey, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetTransactionHash, TransactionNonce,
-    TransactionSignatureElem,
+    L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetTransactionHash, StorageValue,
+    TransactionNonce, TransactionSignatureElem,
 };
 
 /// An RPC specific wrapper around [Felt] which implements
@@ -138,6 +138,7 @@ rpc_felt_serde!(
     L2ToL1MessagePayloadElem,
     StarknetBlockHash,
     StarknetTransactionHash,
+    StorageValue,
     TransactionNonce,
     TransactionSignatureElem,
 );
