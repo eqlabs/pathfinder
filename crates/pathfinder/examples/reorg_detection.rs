@@ -176,8 +176,8 @@ async fn get_next_block(
 fn setup_provider() -> Provider<Http> {
     let key_prefix = "PATHFINDER_ETHEREUM_HTTP_GOERLI";
 
-    let url_key = format!("{}_URL", key_prefix);
-    let password_key = format!("{}_PASSWORD", key_prefix);
+    let url_key = format!("{key_prefix}_URL");
+    let password_key = format!("{key_prefix}_PASSWORD");
 
     let url = std::env::var(&url_key)
         .unwrap_or_else(|_| panic!("Ethereum URL environment var not set {url_key}"));

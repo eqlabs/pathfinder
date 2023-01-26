@@ -5,11 +5,11 @@
 pub fn main() {
     let force_version_env_var_name = "PATHFINDER_FORCE_VERSION";
 
-    println!("cargo:rerun-if-env-changed={}", force_version_env_var_name);
+    println!("cargo:rerun-if-env-changed={force_version_env_var_name}");
 
     if let Ok(version) = std::env::var(force_version_env_var_name) {
         if !version.is_empty() {
-            println!("cargo:rustc-env=VERGEN_GIT_SEMVER_LIGHTWEIGHT={}", version);
+            println!("cargo:rustc-env=VERGEN_GIT_SEMVER_LIGHTWEIGHT={version}");
             return;
         }
     }

@@ -101,7 +101,7 @@ impl Storage {
         let unique_mem_db = {
             let mut count = COUNT.lock().unwrap();
             // &cache=shared allows other threads to see and access the inmemory database
-            let unique_mem_db = format!("file:memdb{}?mode=memory&cache=shared", count);
+            let unique_mem_db = format!("file:memdb{count}?mode=memory&cache=shared");
             *count += 1;
             unique_mem_db
         };
@@ -191,7 +191,7 @@ fn schema_version(connection: &Connection) -> anyhow::Result<usize> {
     // We store the schema version in the Sqlite provided PRAGMA "user_version",
     // which stores an INTEGER and defaults to 0.
     let version = connection.query_row(
-        &format!("SELECT {} FROM pragma_user_version;", VERSION_KEY),
+        &format!("SELECT {VERSION_KEY} FROM pragma_user_version;"),
         [],
         |row| row.get::<_, usize>(0),
     )?;

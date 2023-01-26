@@ -8,7 +8,7 @@ use stark_curve::*;
 fn generate_consts(bits: u32) -> Result<String, std::fmt::Error> {
     let mut buf = String::with_capacity(10 * 1024 * 1024);
 
-    write!(buf, "pub const CURVE_CONSTS_BITS: usize = {};\n\n", bits)?;
+    write!(buf, "pub const CURVE_CONSTS_BITS: usize = {bits};\n\n")?;
 
     push_points(&mut buf, "P1", &PEDERSEN_P1, 248, bits)?;
     buf.push_str("\n\n\n");
@@ -38,8 +38,7 @@ fn push_points(
 
     writeln!(
         buf,
-        "pub const CURVE_CONSTS_{}: [AffinePoint; {}] = [",
-        name, len
+        "pub const CURVE_CONSTS_{name}: [AffinePoint; {len}] = ["
     )?;
 
     let mut bits_left = max_bits;
@@ -48,7 +47,7 @@ fn push_points(
         let eat_bits = std::cmp::min(bits_left, bits);
         let table_size = (1 << eat_bits) - 1;
 
-        println!("Processing {} bits, remaining: {}", eat_bits, bits_left);
+        println!("Processing {eat_bits} bits, remaining: {bits_left}");
 
         // Loop through each possible bit combination except zero
         let mut inner_point = outer_point.clone();

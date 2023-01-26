@@ -71,7 +71,7 @@ fn get_log_param(log: &ethers::abi::Log, param: &str) -> anyhow::Result<LogParam
         .iter()
         .find(|p| p.name == param)
         .cloned()
-        .with_context(|| format!("parameter {} not found", param))
+        .with_context(|| format!("parameter {param} not found"))
 }
 
 #[cfg(test)]

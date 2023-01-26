@@ -36,7 +36,7 @@ fn parse_attribute(
     attrs: &[syn::Attribute],
     name: &syn::Ident,
 ) -> Result<syn::TypePath, syn::Error> {
-    let mut protobuf_type_name = format!("crate::proto::{}", name);
+    let mut protobuf_type_name = format!("crate::proto::{name}");
 
     // Find matching attribute and parse the "name" parameter as a string
     for attr in attrs {

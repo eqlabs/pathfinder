@@ -55,7 +55,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
         let eth_url = eth_url.parse::<Url>().map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid Ethereum URL ({}): {}", eth_url, err),
+                format!("Invalid Ethereum URL ({eth_url}): {err}"),
             )
         })?;
 
@@ -66,7 +66,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                 let url = url.parse::<Url>().map_err(|err| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        format!("Invalid Sequencer URL ({}): {}", url, err),
+                        format!("Invalid Sequencer URL ({url}): {err}"),
                     )
                 })?;
 
@@ -81,10 +81,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                 addr.parse::<SocketAddr>().map_err(|err| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        format!(
-                            "Invalid monitoring listening interface and port ({}): {}",
-                            addr, err
-                        ),
+                        format!("Invalid monitoring listening interface and port ({addr}): {err}"),
                     )
                 })
             })
@@ -99,7 +96,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                 let url = url.parse::<Url>().map_err(|err| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        format!("Invalid StarkNet gateway URL ({}): {}", url, err),
+                        format!("Invalid StarkNet gateway URL ({url}): {err}"),
                     )
                 })?;
 
@@ -112,7 +109,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                 let url = url.parse::<Url>().map_err(|err| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        format!("Invalid StarkNet feeder gateway URL ({}): {}", url, err),
+                        format!("Invalid StarkNet feeder gateway URL ({url}): {err}"),
                     )
                 })?;
 
@@ -159,8 +156,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         format!(
-                            "Invalid number for Python subprocesses ({}): {}",
-                            python_subprocesses, err
+                            "Invalid number for Python subprocesses ({python_subprocesses}): {err}"
                         ),
                     )
                 })?;
@@ -181,7 +177,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                     "false" => Ok(false),
                     _ => Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        format!("Invalid value '{}' for enable SQLite WAL mode option, must be true|false", enable)
+                        format!("Invalid value '{enable}' for enable SQLite WAL mode option, must be true|false")
                     )),
                 }
             }
@@ -192,10 +188,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
         let http_rpc_addr = http_rpc_addr.parse::<SocketAddr>().map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid HTTP-RPC listening interface and port ({}): {}",
-                    http_rpc_addr, err
-                ),
+                format!("Invalid HTTP-RPC listening interface and port ({http_rpc_addr}): {err}"),
             )
         })?;
 
@@ -208,8 +201,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                     _ => Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         format!(
-                            "Invalid value '{}' for enable poll pending option, must be true|false",
-                            enable
+                            "Invalid value '{enable}' for enable poll pending option, must be true|false"
                         ),
                     )),
                 }
@@ -241,7 +233,7 @@ Hint: Register your own account or run your own Ethereum node and put the real U
         self.take(option).ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("{} is a required parameter", option),
+                format!("{option} is a required parameter"),
             )
         })
     }
@@ -293,7 +285,7 @@ mod tests {
             let mut values = HashMap::new();
 
             for (idx, option) in enum_iterator::all::<ConfigOption>().enumerate() {
-                let value = Some(format!("{} {}", prefix, idx));
+                let value = Some(format!("{prefix} {idx}"));
 
                 builder = builder.with(option, value.clone());
                 values.insert(option, value);

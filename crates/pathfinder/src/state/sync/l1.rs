@@ -495,7 +495,7 @@ mod tests {
                     Event::Reorg(recv_tail) => {
                         assert_eq!(recv_tail, expected_tail.block_number)
                     }
-                    _other => panic!("Expected Reorg event, got {:?}", _other),
+                    _other => panic!("Expected Reorg event, got {_other:?}"),
                 }
             }
 
@@ -672,7 +672,7 @@ mod tests {
                     Event::Reorg(recv_tail) => {
                         assert_eq!(recv_tail, StarknetBlockNumber::GENESIS)
                     }
-                    _other => panic!("Expected Reorg event, got {:?}", _other),
+                    _other => panic!("Expected Reorg event, got {_other:?}"),
                 }
             }
         }

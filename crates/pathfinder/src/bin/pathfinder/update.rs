@@ -164,7 +164,7 @@ mod tests {
         use super::UpdateResult;
         let release = match release {
             UpdateResult::Update(r) => r,
-            other => panic!("Expected an update, but got {:?}", other),
+            other => panic!("Expected an update, but got {other:?}"),
         };
 
         // Second check should result in no new update (as etag is set to latest release).

@@ -149,7 +149,7 @@ pub async fn sync(
         let state_update = sequencer
             .state_update(block_hash.into())
             .await
-            .with_context(|| format!("Fetch state diff for block {:?} from sequencer", next))?;
+            .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?;
         let state_update_block_hash = state_update.block_hash.unwrap();
         // An extra sanity check for the state update API.
         anyhow::ensure!(
@@ -164,14 +164,14 @@ pub async fn sync(
         let t_declare = std::time::Instant::now();
         declare_classes(&block, &sequencer, &tx_event)
             .await
-            .with_context(|| format!("Handling newly declared classes for block {:?}", next))?;
+            .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
 
         // Download and emit any newly deployed (but undeclared) classes.
         let t_deploy = std::time::Instant::now();
         deploy_contracts(&tx_event, &sequencer, &state_update.state_diff)
             .await
-            .with_context(|| format!("Deploying new contracts for block {:?}", next))?;
+            .with_context(|| format!("Deploying new contracts for block {next:?}"))?;
         let t_deploy = t_deploy.elapsed();
 
         head = Some((next, block_hash, state_update.new_root));
@@ -307,7 +307,7 @@ async fn download_block(
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
                 let verify_result = verify_block_hash(&block, chain, expected_block_hash)
-                    .with_context(move || format!("Verify block {}", block_number))?;
+                    .with_context(move || format!("Verify block {block_number}"))?;
                 Ok((block, verify_result))
             });
             let (block, verify_result) = verify_hash.await.context("Verify block hash")??;
@@ -405,7 +405,7 @@ async fn reorg(
             mode,
         )
         .await
-        .with_context(|| format!("Download block {} from sequencer", previous_block_number))?
+        .with_context(|| format!("Download block {previous_block_number} from sequencer"))?
         {
             DownloadBlock::Block(block, _) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
@@ -674,9 +674,9 @@ mod tests {
                 .unwrap(),
             );
 
-            static ref CONTRACT0_DEF: bytes::Bytes = bytes::Bytes::from(format!("{}0{}", DEF0, DEF1));
-            static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{}0 v2{}", DEF0, DEF1));
-            static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{}1{}", DEF0, DEF1));
+            static ref CONTRACT0_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0{DEF1}"));
+            static ref CONTRACT0_DEF_V2: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}0 v2{DEF1}"));
+            static ref CONTRACT1_DEF: bytes::Bytes = bytes::Bytes::from(format!("{DEF0}1{DEF1}"));
 
             static ref STORAGE_KEY0: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 0 storage addr 0").unwrap());
             static ref STORAGE_KEY1: StorageAddress = StorageAddress::new_or_panic(Felt::from_be_slice(b"contract 1 storage addr 0").unwrap());

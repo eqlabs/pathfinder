@@ -72,10 +72,10 @@ mod tests {
         use super::*;
 
         fn check(chunk: &str, block_id: BlockId) {
-            let json = format!("{{ \"block_id\": {} }}", chunk);
+            let json = format!("{{ \"block_id\": {chunk} }}");
             let input =
                 serde_json::from_str::<GetBlockTransactionCountInput>(&json).expect("JSON parsing");
-            assert_eq!(input.block_id, block_id, "JSON: '{}'", json);
+            assert_eq!(input.block_id, block_id, "JSON: '{json}'");
         }
 
         #[test]

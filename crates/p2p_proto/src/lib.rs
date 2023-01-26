@@ -92,7 +92,7 @@ impl TryFromProtobuf<proto::common::FieldElement> for Felt {
         let stark_hash = Felt::from_be_slice(&input.elements).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Invalid field element {}: {}", field_name, e),
+                format!("Invalid field element {field_name}: {e}"),
             )
         })?;
         Ok(stark_hash)
@@ -107,7 +107,7 @@ impl TryFromProtobuf<proto::common::EthereumAddress> for primitive_types::H160 {
         if input.elements.len() != primitive_types::H160::len_bytes() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Invalid length for Ethereum address {}", field_name),
+                format!("Invalid length for Ethereum address {field_name}"),
             ));
         }
 
@@ -125,7 +125,7 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Option<U>> for T {
         let input = input.ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Missing field {}", field_name),
+                format!("Missing field {field_name}"),
             )
         })?;
         TryFromProtobuf::try_from_protobuf(input, field_name)
@@ -141,7 +141,7 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
             .map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Failed to parse {}: {}", field_name, e),
+                    format!("Failed to parse {field_name}: {e}"),
                 )
             })
     }

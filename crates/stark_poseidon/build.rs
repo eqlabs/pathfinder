@@ -71,7 +71,7 @@ pub fn generate_code(rcs: &Vec<[u64; 4]>) -> String {
     let push_point = |buf: &mut String, rc: &[u64; 4]| {
         buf.push_str("\n    FieldElement::new([");
         for r in rc {
-            write!(buf, "\n        {}u64,", r).unwrap();
+            write!(buf, "\n        {r}u64,").unwrap();
         }
         buf.push_str("\n    ]),");
     };
