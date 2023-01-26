@@ -78,6 +78,7 @@ pub async fn get_transaction_receipt(
 }
 
 mod types {
+    use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
         ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
@@ -125,10 +126,12 @@ mod types {
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonTransactionReceiptProperties {
+        #[serde_as(as = "RpcFelt")]
         pub transaction_hash: StarknetTransactionHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub actual_fee: Fee,
         pub status: TransactionStatus,
+        #[serde_as(as = "RpcFelt")]
         pub block_hash: StarknetBlockHash,
         pub block_number: StarknetBlockNumber,
         pub messages_sent: Vec<MessageToL1>,
@@ -142,21 +145,23 @@ mod types {
         pub common: CommonTransactionReceiptProperties,
     }
 
+    #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
-
+        #[serde_as(as = "RpcFelt251")]
         pub contract_address: ContractAddress,
     }
 
+    #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct DeployAccountTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
-
+        #[serde_as(as = "RpcFelt251")]
         pub contract_address: ContractAddress,
     }
 
@@ -320,6 +325,7 @@ mod types {
     pub struct MessageToL1 {
         #[serde_as(as = "EthereumAddressAsHexStr")]
         pub to_address: EthereumAddress,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<L2ToL1MessagePayloadElem>,
     }
 
@@ -340,6 +346,7 @@ mod types {
     pub struct MessageToL2 {
         #[serde_as(as = "EthereumAddressAsHexStr")]
         pub from_address: EthereumAddress,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<L1ToL2MessagePayloadElem>,
     }
 
@@ -353,12 +360,16 @@ mod types {
     }
 
     /// Event emitted as a part of a transaction.
+    #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Event {
+        #[serde_as(as = "RpcFelt251")]
         pub from_address: ContractAddress,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub keys: Vec<EventKey>,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<EventData>,
     }
 
