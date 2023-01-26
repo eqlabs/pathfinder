@@ -1,3 +1,4 @@
+use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedInvokeTransaction;
 use crate::v02::RpcContext;
 use anyhow::Context;
@@ -18,8 +19,10 @@ pub struct AddInvokeTransactionInput {
     invoke_transaction: Transaction,
 }
 
+#[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddInvokeTransactionOutput {
+    #[serde_as(as = "RpcFelt")]
     transaction_hash: StarknetTransactionHash,
 }
 

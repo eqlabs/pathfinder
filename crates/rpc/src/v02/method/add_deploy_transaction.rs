@@ -1,3 +1,4 @@
+use crate::felt::{RpcFelt, RpcFelt251};
 use crate::v02::types::request::BroadcastedDeployTransaction;
 use crate::v02::RpcContext;
 use pathfinder_common::{ContractAddress, StarknetTransactionHash};
@@ -35,9 +36,12 @@ pub struct AddDeployTransactionInput {
     token: Option<String>,
 }
 
+#[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddDeployTransactionOutput {
+    #[serde_as(as = "RpcFelt")]
     transaction_hash: StarknetTransactionHash,
+    #[serde_as(as = "RpcFelt251")]
     contract_address: ContractAddress,
 }
 

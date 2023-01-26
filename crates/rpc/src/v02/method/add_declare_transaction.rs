@@ -1,3 +1,4 @@
+use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedDeclareTransaction;
 use crate::v02::RpcContext;
 use pathfinder_common::{ClassHash, StarknetTransactionHash};
@@ -35,9 +36,12 @@ pub struct AddDeclareTransactionInput {
     token: Option<String>,
 }
 
+#[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddDeclareTransactionOutput {
+    #[serde_as(as = "RpcFelt")]
     transaction_hash: StarknetTransactionHash,
+    #[serde_as(as = "RpcFelt")]
     class_hash: ClassHash,
 }
 
