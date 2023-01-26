@@ -30,10 +30,6 @@ pub enum ConfigOption {
     PollPending,
     /// Enables and sets the monitoring endpoint
     MonitorAddress,
-    /// Chooses Integration network instead of testnet.
-    Integration,
-    /// Chooses Testnet 2 network.
-    Testnet2,
     /// Specify the network.
     Network,
     /// Specify the StarkNet gateway URL.
@@ -58,8 +54,6 @@ impl Display for ConfigOption {
             }
             ConfigOption::PollPending => f.write_str("Enable pending block polling"),
             ConfigOption::MonitorAddress => f.write_str("Pathfinder monitoring address"),
-            ConfigOption::Integration => f.write_str("Select integration network"),
-            ConfigOption::Testnet2 => f.write_str("Select Testnet 2 network"),
             ConfigOption::Network => f.write_str("Specify the StarkNet network"),
             ConfigOption::GatewayUrl => f.write_str("Specify the StarkNet gateway URL"),
             ConfigOption::FeederGatewayUrl => {
@@ -98,10 +92,6 @@ pub struct Configuration {
     pub poll_pending: bool,
     /// The node's monitoring address and port.
     pub monitoring_addr: Option<SocketAddr>,
-    /// Select integration network.
-    pub integration: bool,
-    /// Select testnet 2 network.
-    pub testnet2: bool,
     /// The StarkNet network.
     pub network: Option<String>,
     /// Custom StarkNet gateway URLs.
@@ -120,15 +110,6 @@ impl Configuration {
         // Parse command-line arguments. This must be first in order to use
         // users config filepath (if supplied).
         let cfg = cli::parse_cmd_line().try_build()?;
-
-        match (&cfg.network, cfg.integration, cfg.testnet2) {
-            (_, true, true) => anyhow::bail!("Cannot use both integration and testnet 2 at the same time."),
-            (Some(_), true, false) => anyhow::bail!("Cannot specify both network and integration options at the same time. Please use network only."),
-            (Some(_), false, true) => anyhow::bail!("Cannot specify both network and testnet2 options at the same time. Please use network only."),
-            (None, true, false) => tracing::warn!("'--integration' is deprecated, please use '--network integration' instead"),
-            (None, false, true) => tracing::warn!("'--testnet2' is deprecated, please use '--network testnet2' instead"),
-            _ => {},
-        }
 
         match (&cfg.custom_gateway, &cfg.sequencer_url) {
             (None, Some(_)) => tracing::warn!(

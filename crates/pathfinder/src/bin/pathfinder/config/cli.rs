@@ -15,8 +15,6 @@ const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 const SQLITE_WAL: &str = "sqlite-wal";
 const POLL_PENDING: &str = "poll-pending";
 const MONITOR_ADDRESS: &str = "monitor-address";
-const INTEGRATION: &str = "integration";
-const TESTNET2: &str = "testnet2";
 const NETWORK: &str = "network";
 const GATEWAY: &str = "gateway-url";
 const FEEDER_GATEWAY: &str = "feeder-gateway-url";
@@ -57,9 +55,6 @@ where
     let gateway = args.value_of(GATEWAY).map(|s| s.to_owned());
     let feeder_gateway = args.value_of(FEEDER_GATEWAY).map(|s| s.to_owned());
     let chain_id = args.value_of(CHAIN_ID).map(|s| s.to_owned());
-    // Hack around our builder requiring Strings, but these args just needs to be present.
-    let integration = args.is_present(INTEGRATION).then_some(String::new());
-    let testnet2: Option<String> = args.is_present(TESTNET2).then_some(String::new());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
@@ -71,8 +66,6 @@ where
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
         .with(ConfigOption::PollPending, poll_pending)
         .with(ConfigOption::MonitorAddress, monitor_address)
-        .with(ConfigOption::Integration, integration)
-        .with(ConfigOption::Testnet2, testnet2)
         .with(ConfigOption::Network, network)
         .with(ConfigOption::GatewayUrl, gateway)
         .with(ConfigOption::FeederGatewayUrl, feeder_gateway)
@@ -171,18 +164,6 @@ Examples:
                 .takes_value(true)
                 .value_name("IP:PORT")
                 .env("PATHFINDER_MONITOR_ADDRESS")
-        )
-        .arg(
-            Arg::new(INTEGRATION)
-                .long(INTEGRATION)
-                .hide(true)
-                .takes_value(false)
-        )
-        .arg(
-            Arg::new(TESTNET2)
-            .long(TESTNET2)
-            .help("Use Testnet 2 on Ethereum Goerli")
-            .takes_value(false)
         )
         .arg(
             Arg::new(NETWORK)
@@ -450,15 +431,6 @@ mod tests {
         env::set_var("PATHFINDER_MONITOR_ADDRESS", &value);
         let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
-    }
-
-    #[test]
-    fn testnet2_long() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let mut cfg = parse_args(vec!["bin name", "--testnet2"]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::Testnet2), Some("".to_owned()));
     }
 
     #[test]

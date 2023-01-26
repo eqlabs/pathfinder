@@ -75,8 +75,6 @@ Hint: Register your own account or run your own Ethereum node and put the real U
                 })
             })
             .transpose()?;
-        let integration = self.take(ConfigOption::Integration).is_some();
-        let testnet2: bool = self.take(ConfigOption::Testnet2).is_some();
 
         let network = self.take(ConfigOption::Network);
 
@@ -210,8 +208,6 @@ Hint: Register your own account or run your own Ethereum node and put the real U
             sqlite_wal,
             poll_pending,
             monitoring_addr,
-            integration,
-            testnet2,
             network,
             custom_gateway,
         })
