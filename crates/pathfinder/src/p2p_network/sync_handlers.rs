@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use p2p_proto as proto;
 use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetTransactionsTable, Storage};
@@ -79,11 +79,15 @@ fn fetch_block_headers(
             transaction_count: transaction_count
                 .try_into()
                 .context("Too many transactions")?,
-            // TODO: how to get these values. We'd have to store these (along with the parent hash) as part of the starknet_blocks table
-            // so that we can implement this effectively. Unfortunately re-computing these values is slow...
-            transaction_commitment: Felt::ZERO,
+            transaction_commitment: block
+                .transaction_commitment
+                .map(|tx| tx.0)
+                .ok_or(anyhow!("Transaction commitment missing"))?,
             event_count: 0,
-            event_commitment: Felt::ZERO,
+            event_commitment: block
+                .event_commitment
+                .map(|ev| ev.0)
+                .ok_or(anyhow!("Event commitment missing"))?,
             // TODO: what's the protocol version?
             protocol_version: 0,
         });
@@ -151,7 +155,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[0].hash.0,
+                start_block: test_data.blocks[0].block.hash.0,
                 count: COUNT as u64,
                 size_limit: 100,
                 direction: Direction::Forward,
@@ -165,7 +169,7 @@ mod tests {
                 .blocks
                 .iter()
                 .take(COUNT)
-                .map(|b| b.number.get())
+                .map(|b| b.block.number.get())
                 .collect::<Vec<_>>()
         );
         assert_eq!(
@@ -177,7 +181,7 @@ mod tests {
                 .blocks
                 .iter()
                 .take(COUNT)
-                .map(|b| b.timestamp.get())
+                .map(|b| b.block.timestamp.get())
                 .collect::<Vec<_>>()
         );
 
@@ -192,7 +196,24 @@ mod tests {
                 .blocks
                 .iter()
                 .take(COUNT - 1)
-                .map(|b| b.hash.0)
+                .map(|b| b.block.hash.0)
+                .collect::<Vec<_>>()
+        );
+
+        // check that event & transaction commitments match
+        assert_eq!(
+            headers
+                .iter()
+                .map(|h| (h.event_commitment, h.transaction_commitment))
+                .collect::<Vec<_>>(),
+            test_data
+                .blocks
+                .iter()
+                .take(COUNT)
+                .map(|b| (
+                    b.block.event_commitment.unwrap_or_default().0,
+                    b.block.transaction_commitment.unwrap_or_default().0
+                ))
                 .collect::<Vec<_>>()
         );
     }
@@ -206,7 +227,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[0].hash.0,
+                start_block: test_data.blocks[0].block.hash.0,
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
                 direction: Direction::Forward,
@@ -219,7 +240,7 @@ mod tests {
             test_data
                 .blocks
                 .iter()
-                .map(|b| b.number.get())
+                .map(|b| b.block.number.get())
                 .collect::<Vec<_>>()
         );
         assert_eq!(
@@ -230,7 +251,7 @@ mod tests {
             test_data
                 .blocks
                 .iter()
-                .map(|b| b.timestamp.get())
+                .map(|b| b.block.timestamp.get())
                 .collect::<Vec<_>>()
         );
 
@@ -245,7 +266,23 @@ mod tests {
                 .blocks
                 .iter()
                 .take(test_data.blocks.len() - 1)
-                .map(|b| b.hash.0)
+                .map(|b| b.block.hash.0)
+                .collect::<Vec<_>>()
+        );
+
+        // check that event & transaction commitments match
+        assert_eq!(
+            headers
+                .iter()
+                .map(|h| (h.event_commitment, h.transaction_commitment))
+                .collect::<Vec<_>>(),
+            test_data
+                .blocks
+                .iter()
+                .map(|b| (
+                    b.block.event_commitment.unwrap_or_default().0,
+                    b.block.transaction_commitment.unwrap_or_default().0
+                ))
                 .collect::<Vec<_>>()
         );
     }
@@ -260,7 +297,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[3].hash.0,
+                start_block: test_data.blocks[3].block.hash.0,
                 count: COUNT as u64,
                 size_limit: 100,
                 direction: Direction::Backward,
@@ -275,7 +312,7 @@ mod tests {
                 .iter()
                 .rev()
                 .take(COUNT)
-                .map(|b| b.number.get())
+                .map(|b| b.block.number.get())
                 .collect::<Vec<_>>()
         );
         assert_eq!(
@@ -288,7 +325,7 @@ mod tests {
                 .iter()
                 .rev()
                 .take(COUNT)
-                .map(|b| b.timestamp.get())
+                .map(|b| b.block.timestamp.get())
                 .collect::<Vec<_>>()
         );
 
@@ -305,7 +342,25 @@ mod tests {
                 .rev()
                 .skip(1)
                 .take(COUNT - 1)
-                .map(|b| b.hash.0)
+                .map(|b| b.block.hash.0)
+                .collect::<Vec<_>>()
+        );
+
+        // check that event & transaction commitments match
+        assert_eq!(
+            headers
+                .iter()
+                .map(|h| (h.event_commitment, h.transaction_commitment))
+                .collect::<Vec<_>>(),
+            test_data
+                .blocks
+                .iter()
+                .rev()
+                .take(COUNT)
+                .map(|b| (
+                    b.block.event_commitment.unwrap_or_default().0,
+                    b.block.transaction_commitment.unwrap_or_default().0
+                ))
                 .collect::<Vec<_>>()
         );
     }
@@ -319,7 +374,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[3].hash.0,
+                start_block: test_data.blocks[3].block.hash.0,
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
                 direction: Direction::Backward,
@@ -333,7 +388,7 @@ mod tests {
                 .blocks
                 .iter()
                 .rev()
-                .map(|b| b.number.get())
+                .map(|b| b.block.number.get())
                 .collect::<Vec<_>>()
         );
         assert_eq!(
@@ -345,7 +400,7 @@ mod tests {
                 .blocks
                 .iter()
                 .rev()
-                .map(|b| b.timestamp.get())
+                .map(|b| b.block.timestamp.get())
                 .collect::<Vec<_>>()
         );
 
@@ -362,7 +417,24 @@ mod tests {
                 .rev()
                 .skip(1)
                 .take(test_data.blocks.len() - 1)
-                .map(|b| b.hash.0)
+                .map(|b| b.block.hash.0)
+                .collect::<Vec<_>>()
+        );
+
+        // check that event & transaction commitments match
+        assert_eq!(
+            headers
+                .iter()
+                .map(|h| (h.event_commitment, h.transaction_commitment))
+                .collect::<Vec<_>>(),
+            test_data
+                .blocks
+                .iter()
+                .rev()
+                .map(|b| (
+                    b.block.event_commitment.unwrap_or_default().0,
+                    b.block.transaction_commitment.unwrap_or_default().0
+                ))
                 .collect::<Vec<_>>()
         );
     }
