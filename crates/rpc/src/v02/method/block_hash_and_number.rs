@@ -1,10 +1,13 @@
+use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_storage::StarknetBlocksTable;
 
+#[serde_with::serde_as]
 #[derive(serde::Serialize)]
 pub struct BlockHashAndNumber {
+    #[serde_as(as = "RpcFelt")]
     pub block_hash: StarknetBlockHash,
     pub block_number: StarknetBlockNumber,
 }
