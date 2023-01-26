@@ -116,6 +116,7 @@ pub struct ContractEntryPoints {
 pub struct ContractEntryPoint {
     #[serde_as(as = "U64AsHexStr")]
     pub offset: u64,
+    #[serde_as(as = "crate::felt::RpcFelt")]
     pub selector: Felt,
 }
 

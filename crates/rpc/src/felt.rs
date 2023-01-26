@@ -18,6 +18,7 @@ use pathfinder_common::{
     L2ToL1MessagePayloadElem, SequencerAddress, StarknetBlockHash, StarknetTransactionHash,
     StateCommitment, StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
 };
+use stark_hash::Felt;
 
 /// An RPC specific wrapper around [Felt] which implements
 /// [serde::Serialize] in accordance with RPC specifications.
@@ -25,9 +26,19 @@ use pathfinder_common::{
 /// RPC output types should use this type for serialization instead of [Felt].
 ///
 /// This can be easily accomplished by marking a field with `#[serde_as(as = "RpcFelt")]`.
-///
-/// [Felt]: stark_hash::Felt
-pub struct RpcFelt(stark_hash::Felt);
+pub struct RpcFelt(pub Felt);
+
+impl From<Felt> for RpcFelt {
+    fn from(value: Felt) -> Self {
+        Self(value)
+    }
+}
+
+impl From<RpcFelt> for Felt {
+    fn from(value: RpcFelt) -> Self {
+        value.0
+    }
+}
 
 /// An RPC specific wrapper around [Felt] for types which are restricted to 251 bits. It implements
 /// [serde::Serialize] in accordance with RPC specifications.
@@ -35,8 +46,6 @@ pub struct RpcFelt(stark_hash::Felt);
 /// RPC output types should use this type for serialization instead of [Felt].
 ///
 /// This can be easily accomplished by marking a field with `#[serde_as(as = "RpcFelt251")]`.
-///
-/// [Felt]: stark_hash::Felt
 #[derive(serde::Serialize)]
 pub struct RpcFelt251(RpcFelt);
 
@@ -148,7 +157,6 @@ rpc_felt_serde!(
 
 rpc_felt_251_serde!(ContractAddress, StorageAddress);
 
-#[cfg(any(test, feature = "rpc-full-serde"))]
 mod deserialization {
     use super::*;
 
