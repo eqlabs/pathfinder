@@ -68,6 +68,7 @@ pub async fn get_state_update(
 }
 
 mod types {
+    use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
         ClassHash, ContractAddress, ContractNonce, StarknetBlockHash, StateCommitment,
         StorageAddress, StorageValue,
@@ -76,6 +77,7 @@ mod types {
     use serde_with::skip_serializing_none;
     use std::collections::HashMap;
 
+    #[serde_with::serde_as]
     #[skip_serializing_none]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
@@ -83,8 +85,11 @@ mod types {
     pub struct StateUpdate {
         /// None for `pending`
         #[serde(default)]
+        #[serde_as(as = "Option<RpcFelt>")]
         pub block_hash: Option<StarknetBlockHash>,
+        #[serde_as(as = "RpcFelt")]
         pub new_root: StateCommitment,
+        #[serde_as(as = "RpcFelt")]
         pub old_root: StateCommitment,
         pub state_diff: StateDiff,
     }
@@ -112,11 +117,13 @@ mod types {
     }
 
     /// L2 state diff.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub declared_contract_hashes: Vec<ClassHash>,
         pub deployed_contracts: Vec<DeployedContract>,
         pub nonces: Vec<Nonce>,
@@ -203,20 +210,25 @@ mod types {
     }
 
     /// L2 storage diff of a contract.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageDiff {
+        #[serde_as(as = "RpcFelt251")]
         pub address: ContractAddress,
         pub storage_entries: Vec<StorageEntry>,
     }
 
     /// A key-value entry of a storage diff.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageEntry {
+        #[serde_as(as = "RpcFelt251")]
         pub key: StorageAddress,
+        #[serde_as(as = "RpcFelt")]
         pub value: StorageValue,
     }
 
@@ -230,11 +242,14 @@ mod types {
     }
 
     /// L2 state diff deployed contract item.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct DeployedContract {
+        #[serde_as(as = "RpcFelt251")]
         pub address: ContractAddress,
+        #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -257,11 +272,14 @@ mod types {
     }
 
     /// L2 state diff nonce item.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Nonce {
+        #[serde_as(as = "RpcFelt251")]
         pub contract_address: ContractAddress,
+        #[serde_as(as = "RpcFelt")]
         pub nonce: ContractNonce,
     }
 

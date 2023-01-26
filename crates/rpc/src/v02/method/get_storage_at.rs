@@ -1,3 +1,4 @@
+use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
@@ -13,13 +14,17 @@ pub struct GetStorageAtInput {
     pub block_id: BlockId,
 }
 
+#[serde_with::serde_as]
+#[derive(serde::Serialize)]
+pub struct GetStorageOutput(#[serde_as(as = "RpcFelt")] StorageValue);
+
 crate::error::generate_rpc_error_subset!(GetStorageAtError: ContractNotFound, BlockNotFound);
 
 /// Get the value of the storage at the given address and key.
 pub async fn get_storage_at(
     context: RpcContext,
     input: GetStorageAtInput,
-) -> Result<StorageValue, GetStorageAtError> {
+) -> Result<GetStorageOutput, GetStorageAtError> {
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
@@ -43,7 +48,7 @@ pub async fn get_storage_at(
                         });
 
                     match pending_value {
-                        Some(value) => return Ok(value),
+                        Some(value) => return Ok(GetStorageOutput(value)),
                         None => StarknetBlocksBlockId::Latest,
                     }
                 }
@@ -96,7 +101,7 @@ pub async fn get_storage_at(
             .context("Get value from contract state tree")?
             .unwrap_or(StorageValue(Felt::ZERO));
 
-        Ok(storage_val)
+        Ok(GetStorageOutput(storage_val))
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -157,7 +162,8 @@ mod tests {
                 block_id: *block_id,
             },
         )
-        .await;
+        .await
+        .map(|x| x.0);
         f(test_case_idx, &result);
     }
 

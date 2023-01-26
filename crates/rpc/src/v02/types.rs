@@ -273,6 +273,7 @@ pub mod request {
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
+    use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
@@ -286,7 +287,6 @@ pub mod reply {
     use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 
     /// L2 transaction as returned by the RPC API.
-    ///
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(tag = "type")]
@@ -321,12 +321,15 @@ pub mod reply {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonTransactionProperties {
         #[serde(rename = "transaction_hash")]
+        #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub signature: Vec<TransactionSignatureElem>,
+        #[serde_as(as = "RpcFelt")]
         pub nonce: TransactionNonce,
     }
 
@@ -338,7 +341,9 @@ pub mod reply {
         pub common: CommonTransactionProperties,
 
         // DECLARE_TXN
+        #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
+        #[serde_as(as = "RpcFelt251")]
         pub sender_address: ContractAddress,
     }
 
@@ -350,8 +355,11 @@ pub mod reply {
         pub common: CommonTransactionProperties,
 
         // DEPLOY_ACCOUNT_TXN
+        #[serde_as(as = "RpcFelt")]
         pub contract_address_salt: ContractAddressSalt,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub constructor_calldata: Vec<CallParam>,
+        #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -412,8 +420,11 @@ pub mod reply {
         pub common: CommonInvokeTransactionProperties,
 
         // INVOKE_TXN_V0
+        #[serde_as(as = "RpcFelt251")]
         pub contract_address: ContractAddress,
+        #[serde_as(as = "RpcFelt")]
         pub entry_point_selector: EntryPoint,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub calldata: Vec<CallParam>,
     }
 
@@ -425,7 +436,9 @@ pub mod reply {
         pub common: CommonInvokeTransactionProperties,
 
         // INVOKE_TXN_V1
+        #[serde_as(as = "RpcFelt251")]
         pub sender_address: ContractAddress,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub calldata: Vec<CallParam>,
     }
 
@@ -437,10 +450,13 @@ pub mod reply {
     // Version is now a property of the type embedding common properties.
     pub struct CommonInvokeTransactionProperties {
         #[serde(rename = "transaction_hash")]
+        #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub signature: Vec<TransactionSignatureElem>,
+        #[serde_as(as = "RpcFelt")]
         pub nonce: TransactionNonce,
     }
 
@@ -450,13 +466,17 @@ pub mod reply {
     pub struct DeployTransaction {
         // DEPLOY_TXN
         #[serde(rename = "transaction_hash")]
+        #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
+        #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
 
         // DEPLOY_TXN_PROPERTIES
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
+        #[serde_as(as = "RpcFelt")]
         pub contract_address_salt: ContractAddressSalt,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub constructor_calldata: Vec<ConstructorParam>,
     }
 
@@ -466,14 +486,19 @@ pub mod reply {
     pub struct L1HandlerTransaction {
         // This part is a subset of CommonTransactionProperties
         #[serde(rename = "transaction_hash")]
+        #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
+        #[serde_as(as = "RpcFelt")]
         pub nonce: TransactionNonce,
 
         // FUNCTION_CALL
+        #[serde_as(as = "RpcFelt251")]
         pub contract_address: ContractAddress,
+        #[serde_as(as = "RpcFelt")]
         pub entry_point_selector: EntryPoint,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub calldata: Vec<CallParam>,
     }
 

@@ -1,3 +1,4 @@
+use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
@@ -53,10 +54,11 @@ impl From<FunctionCall> for crate::v01::types::request::Call {
     }
 }
 
-pub async fn call(
-    context: RpcContext,
-    input: CallInput,
-) -> Result<Vec<CallResultValue>, CallError> {
+#[serde_with::serde_as]
+#[derive(serde::Serialize, Debug)]
+pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);
+
+pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
     let handle = context
         .call_handle
         .as_ref()
@@ -75,7 +77,7 @@ pub async fn call(
         )
         .await?;
 
-    Ok(result)
+    Ok(CallOutput(result))
 }
 
 #[cfg(test)]
@@ -237,7 +239,7 @@ mod tests {
             };
 
             let result = call(context, input).await.unwrap();
-            assert_eq!(result, vec![]);
+            assert_eq!(result.0, vec![]);
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
@@ -9,12 +10,16 @@ pub struct GetNonceInput {
     contract_address: ContractAddress,
 }
 
+#[serde_with::serde_as]
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct GetNonceOutput(#[serde_as(as = "RpcFelt")] ContractNonce);
+
 crate::error::generate_rpc_error_subset!(GetNonceError: BlockNotFound, ContractNotFound);
 
 pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
-) -> Result<ContractNonce, GetNonceError> {
+) -> Result<GetNonceOutput, GetNonceError> {
     use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 
@@ -22,7 +27,7 @@ pub async fn get_nonce(
     let block_id = match input.block_id {
         BlockId::Pending => {
             match get_pending_nonce(&context.pending_data, input.contract_address).await {
-                Some(nonce) => return Ok(nonce),
+                Some(nonce) => return Ok(GetNonceOutput(nonce)),
                 None => StarknetBlocksBlockId::Latest,
             }
         }
@@ -33,7 +38,7 @@ pub async fn get_nonce(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-    let jh = tokio::task::spawn_blocking(move || -> Result<ContractNonce, GetNonceError> {
+    let jh = tokio::task::spawn_blocking(move || -> Result<_, GetNonceError> {
         let _g = span.enter();
         let mut db = storage
             .connection()
@@ -57,7 +62,7 @@ pub async fn get_nonce(
             // Since the contract does exist, the nonce should not be missing.
             .context("Contract nonce is missing from database")?;
 
-        Ok(nonce)
+        Ok(GetNonceOutput(nonce))
     });
     jh.await.context("Database read panic or shutting down")?
 }
@@ -171,7 +176,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce, ContractNonce(felt!("0x1")));
+        assert_eq!(nonce.0, ContractNonce(felt!("0x1")));
     }
 
     #[tokio::test]
@@ -185,7 +190,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce, ContractNonce(felt!("0x10")));
+        assert_eq!(nonce.0, ContractNonce(felt!("0x10")));
     }
 
     #[tokio::test]
@@ -199,7 +204,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce, ContractNonce(felt!("0x1")));
+        assert_eq!(nonce.0, ContractNonce(felt!("0x1")));
     }
 
     #[tokio::test]
@@ -213,7 +218,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce, ContractNonce::ZERO);
+        assert_eq!(nonce.0, ContractNonce::ZERO);
     }
 
     #[tokio::test]

@@ -1,3 +1,4 @@
+use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_serde::StarknetBlockNumberAsHexStr;
@@ -57,8 +58,11 @@ pub struct SyncingStatus {
     current_block_num: StarknetBlockNumber,
     #[serde_as(as = "StarknetBlockNumberAsHexStr")]
     highest_block_num: StarknetBlockNumber,
+    #[serde_as(as = "RpcFelt")]
     starting_block_hash: StarknetBlockHash,
+    #[serde_as(as = "RpcFelt")]
     current_block_hash: StarknetBlockHash,
+    #[serde_as(as = "RpcFelt")]
     highest_block_hash: StarknetBlockHash,
 }
 
