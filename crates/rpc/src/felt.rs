@@ -15,8 +15,8 @@
 use pathfinder_common::{
     CallParam, ChainId, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
     ContractNonce, EntryPoint, EventData, EventKey, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetTransactionHash, StorageValue,
-    TransactionNonce, TransactionSignatureElem,
+    L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetTransactionHash, StateCommitment,
+    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
 };
 
 /// An RPC specific wrapper around [Felt] which implements
@@ -138,12 +138,13 @@ rpc_felt_serde!(
     L2ToL1MessagePayloadElem,
     StarknetBlockHash,
     StarknetTransactionHash,
+    StateCommitment,
     StorageValue,
     TransactionNonce,
     TransactionSignatureElem,
 );
 
-rpc_felt_251_serde!(ContractAddress);
+rpc_felt_251_serde!(ContractAddress, StorageAddress,);
 
 #[cfg(any(test, feature = "rpc-full-serde"))]
 mod deserialization {
