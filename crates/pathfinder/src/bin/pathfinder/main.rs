@@ -28,8 +28,7 @@ async fn main() -> anyhow::Result<()> {
 
     setup_tracing();
 
-    let config =
-        config::Configuration::parse_cmd_line_and_cfg_file().context("Parsing configuration")?;
+    let config = config::Configuration::parse_cmd_line().context("Parsing configuration")?;
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -65,8 +64,8 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
 
     // Note that network testnet2 integration are mutually exclusive, which is already
     // checked in the config builder.
-    let network = match (config.network, config.testnet2, config.integration) {
-        (Some(network), _, _) => match network.as_str() {
+    let network = match config.network {
+        Some(network) => match network.as_str() {
             "mainnet" => Chain::Mainnet,
             "testnet" => Chain::Testnet,
             "testnet2" => Chain::Testnet2,
@@ -76,10 +75,8 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
             }
         },
-        (None, true, _) => Chain::Testnet2,
-        (None, _, true) => Chain::Integration,
         // Defaults if not specified
-        (None, _, _) => match ethereum_chain {
+        None => match ethereum_chain {
             EthereumChain::Mainnet => Chain::Mainnet,
             EthereumChain::Goerli => Chain::Testnet,
             EthereumChain::Other(id) => anyhow::bail!(
@@ -97,27 +94,23 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         None => (None, None),
     };
 
-    let gateway_client = match (network, custom_gateway_urls, config.sequencer_url) {
-        (Chain::Custom, None, _) => {
+    let gateway_client = match (network, custom_gateway_urls) {
+        (Chain::Custom, None) => {
             anyhow::bail!(
                 "'--network custom' requires setting '--gateway-url' and '--feeder-gateway-url'."
             );
         }
-        (Chain::Custom, Some((gateway, feeder)), _) => {
+        (Chain::Custom, Some((gateway, feeder))) => {
             starknet_gateway_client::Client::with_urls(gateway, feeder)
                 .context("Creating gateway client")?
         }
-        (_, Some(_), _) => anyhow::bail!(
+        (_, Some(_)) => anyhow::bail!(
             "'--gateway-url' and '--feeder-gateway-url' are only valid with '--network custom'"
         ),
-        (Chain::Mainnet, None, None) => starknet_gateway_client::Client::mainnet(),
-        (Chain::Testnet, None, None) => starknet_gateway_client::Client::testnet(),
-        (Chain::Testnet2, None, None) => starknet_gateway_client::Client::testnet2(),
-        (Chain::Integration, None, None) => starknet_gateway_client::Client::integration(),
-        (_, _, Some(sequencer_url)) => {
-            starknet_gateway_client::Client::with_base_url(sequencer_url)
-                .context("Creating gateway client")?
-        }
+        (Chain::Mainnet, None) => starknet_gateway_client::Client::mainnet(),
+        (Chain::Testnet, None) => starknet_gateway_client::Client::testnet(),
+        (Chain::Testnet2, None) => starknet_gateway_client::Client::testnet2(),
+        (Chain::Integration, None) => starknet_gateway_client::Client::integration(),
     };
 
     // Get database path before we mutate network.

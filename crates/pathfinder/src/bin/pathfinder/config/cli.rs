@@ -6,29 +6,24 @@ use crate::config::builder::ConfigBuilder;
 
 use super::ConfigOption;
 
-const CONFIG_KEY: &str = "config";
 const DATA_DIR_KEY: &str = "data-directory";
 const ETH_URL_KEY: &str = "ethereum.url";
 const ETH_PASS_KEY: &str = "ethereum.password";
 const HTTP_RPC_ADDR_KEY: &str = "http-rpc";
-const SEQ_URL_KEY: &str = "sequencer-url";
 const PYTHON_SUBPROCESSES_KEY: &str = "python-subprocesses";
 const SQLITE_WAL: &str = "sqlite-wal";
 const POLL_PENDING: &str = "poll-pending";
 const MONITOR_ADDRESS: &str = "monitor-address";
-const INTEGRATION: &str = "integration";
-const TESTNET2: &str = "testnet2";
 const NETWORK: &str = "network";
 const GATEWAY: &str = "gateway-url";
 const FEEDER_GATEWAY: &str = "feeder-gateway-url";
 const CHAIN_ID: &str = "chain-id";
 
-/// Parses the cmd line arguments and returns the optional
-/// configuration file's path and the specified configuration options.
+/// Parses the cmd line arguments and returns the specified configuration options.
 ///
 /// Note: This will terminate the program if invalid arguments are supplied.
 ///       This is intended, as [clap] will show the program usage / help.
-pub fn parse_cmd_line() -> (Option<String>, ConfigBuilder) {
+pub fn parse_cmd_line() -> ConfigBuilder {
     // A thin wrapper around `parse_args()`. This should be kept thin
     // to enable test coverage without requiring cmd line arg input.
     match parse_args(std::env::args_os()) {
@@ -39,19 +34,17 @@ pub fn parse_cmd_line() -> (Option<String>, ConfigBuilder) {
 
 /// A wrapper around [clap::Command]'s `get_matches_from_safe()` which returns
 /// a [ConfigOption].
-fn parse_args<I, T>(args: I) -> clap::Result<(Option<String>, ConfigBuilder)>
+fn parse_args<I, T>(args: I) -> clap::Result<ConfigBuilder>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
     let args = clap_app().try_get_matches_from(args)?;
 
-    let config_filepath = args.value_of(CONFIG_KEY).map(|s| s.to_owned());
     let data_directory = args.value_of(DATA_DIR_KEY).map(|s| s.to_owned());
     let ethereum_url = args.value_of(ETH_URL_KEY).map(|s| s.to_owned());
     let ethereum_password = args.value_of(ETH_PASS_KEY).map(|s| s.to_owned());
     let http_rpc_addr = args.value_of(HTTP_RPC_ADDR_KEY).map(|s| s.to_owned());
-    let sequencer_url = args.value_of(SEQ_URL_KEY).map(|s| s.to_owned());
     let python_subprocesses = args.value_of(PYTHON_SUBPROCESSES_KEY).map(|s| s.to_owned());
     let sqlite_wal = args.value_of(SQLITE_WAL).map(|s| s.to_owned());
     let poll_pending = args.value_of(POLL_PENDING).map(|s| s.to_owned());
@@ -60,28 +53,22 @@ where
     let gateway = args.value_of(GATEWAY).map(|s| s.to_owned());
     let feeder_gateway = args.value_of(FEEDER_GATEWAY).map(|s| s.to_owned());
     let chain_id = args.value_of(CHAIN_ID).map(|s| s.to_owned());
-    // Hack around our builder requiring Strings, but these args just needs to be present.
-    let integration = args.is_present(INTEGRATION).then_some(String::new());
-    let testnet2: Option<String> = args.is_present(TESTNET2).then_some(String::new());
 
     let cfg = ConfigBuilder::default()
         .with(ConfigOption::EthereumHttpUrl, ethereum_url)
         .with(ConfigOption::EthereumPassword, ethereum_password)
         .with(ConfigOption::HttpRpcAddress, http_rpc_addr)
         .with(ConfigOption::DataDirectory, data_directory)
-        .with(ConfigOption::SequencerHttpUrl, sequencer_url)
         .with(ConfigOption::PythonSubprocesses, python_subprocesses)
         .with(ConfigOption::EnableSQLiteWriteAheadLogging, sqlite_wal)
         .with(ConfigOption::PollPending, poll_pending)
         .with(ConfigOption::MonitorAddress, monitor_address)
-        .with(ConfigOption::Integration, integration)
-        .with(ConfigOption::Testnet2, testnet2)
         .with(ConfigOption::Network, network)
         .with(ConfigOption::GatewayUrl, gateway)
         .with(ConfigOption::FeederGatewayUrl, feeder_gateway)
         .with(ConfigOption::ChainId, chain_id);
 
-    Ok((config_filepath, cfg))
+    Ok(cfg)
 }
 
 /// Defines our command-line interface using [clap::Command].
@@ -98,14 +85,6 @@ fn clap_app() -> clap::Command<'static> {
     clap::Command::new("Pathfinder")
         .version(version)
         .about("A StarkNet node implemented by Equilibrium. Submit bug reports and issues at https://github.com/eqlabs/pathfinder.")
-        .arg(
-            Arg::new(CONFIG_KEY)
-                .short('c')
-                .long(CONFIG_KEY)
-                .help("Path to the configuration file.")
-                .value_name("FILE")
-                .takes_value(true),
-        )
         .arg(
             Arg::new(ETH_PASS_KEY)
                 .long(ETH_PASS_KEY)
@@ -142,15 +121,6 @@ Examples:
                 .env("PATHFINDER_DATA_DIRECTORY")
         )
         .arg(
-            Arg::new(SEQ_URL_KEY)
-                .long(SEQ_URL_KEY)
-                .help("Sequencer REST API endpoint")
-                .long_help("Lets you customise the Sequencer address. Useful if you have a proxy in front of the Sequencer.")
-                .takes_value(true)
-                .value_name("HTTP(s) URL")
-                .env("PATHFINDER_SEQUENCER_URL")
-        )
-        .arg(
             Arg::new(PYTHON_SUBPROCESSES_KEY)
                 .long(PYTHON_SUBPROCESSES_KEY)
                 .help("Number of Python subprocesses to start")
@@ -182,18 +152,6 @@ Examples:
                 .takes_value(true)
                 .value_name("IP:PORT")
                 .env("PATHFINDER_MONITOR_ADDRESS")
-        )
-        .arg(
-            Arg::new(INTEGRATION)
-                .long(INTEGRATION)
-                .hide(true)
-                .takes_value(false)
-        )
-        .arg(
-            Arg::new(TESTNET2)
-            .long(TESTNET2)
-            .help("Use Testnet 2 on Ethereum Goerli")
-            .takes_value(false)
         )
         .arg(
             Arg::new(NETWORK)
@@ -257,7 +215,6 @@ mod tests {
         env::remove_var("PATHFINDER_ETHEREUM_API_URL");
         env::remove_var("PATHFINDER_HTTP_RPC_ADDRESS");
         env::remove_var("PATHFINDER_DATA_DIRECTORY");
-        env::remove_var("PATHFINDER_SEQUENCER_URL");
         env::remove_var("PATHFINDER_PYTHON_SUBPROCESSES");
         env::remove_var("PATHFINDER_SQLITE_WAL");
         env::remove_var("PATHFINDER_POLL_PENDING");
@@ -274,7 +231,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.url", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--ethereum.url", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumHttpUrl), Some(value));
     }
 
@@ -285,7 +242,7 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_ETHEREUM_API_URL", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumHttpUrl), Some(value));
     }
 
@@ -295,7 +252,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--ethereum.password", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--ethereum.password", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
     }
 
@@ -306,28 +263,8 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_ETHEREUM_API_PASSWORD", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::EthereumPassword), Some(value));
-    }
-
-    #[test]
-    fn config_filepath_short() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let value = "value".to_owned();
-        let (filepath, _) = parse_args(vec!["bin name", "-c", &value]).unwrap();
-        assert_eq!(filepath, Some(value));
-    }
-
-    #[test]
-    fn config_filepath_long() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let value = "value".to_owned();
-        let (filepath, _) = parse_args(vec!["bin name", "--config", &value]).unwrap();
-        assert_eq!(filepath, Some(value));
     }
 
     #[test]
@@ -336,7 +273,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--http-rpc", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--http-rpc", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
     }
 
@@ -347,7 +284,7 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_HTTP_RPC_ADDRESS", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::HttpRpcAddress), Some(value));
     }
 
@@ -357,7 +294,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--data-directory", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--data-directory", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
     }
 
@@ -368,29 +305,8 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_DATA_DIRECTORY", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::DataDirectory), Some(value));
-    }
-
-    #[test]
-    fn sequencer_url_long() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--sequencer-url", &value]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
-    }
-
-    #[test]
-    fn sequencer_url_environment_variable() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let value = "value".to_owned();
-        env::set_var("PATHFINDER_SEQUENCER_URL", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::SequencerHttpUrl), Some(value));
     }
 
     #[test]
@@ -399,7 +315,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--python-subprocesses", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--python-subprocesses", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::PythonSubprocesses), Some(value));
     }
 
@@ -410,7 +326,7 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_PYTHON_SUBPROCESSES", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::PythonSubprocesses), Some(value));
     }
 
@@ -420,7 +336,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--sqlite-wal", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--sqlite-wal", &value]).unwrap();
         assert_eq!(
             cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
             Some(value)
@@ -434,7 +350,7 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_SQLITE_WAL", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(
             cfg.take(ConfigOption::EnableSQLiteWriteAheadLogging),
             Some(value)
@@ -447,7 +363,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--poll-pending", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--poll-pending", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
     }
 
@@ -458,7 +374,7 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_POLL_PENDING", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::PollPending), Some(value));
     }
 
@@ -468,7 +384,7 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--monitor-address", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--monitor-address", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
     }
 
@@ -479,17 +395,8 @@ mod tests {
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_MONITOR_ADDRESS", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::MonitorAddress), Some(value));
-    }
-
-    #[test]
-    fn testnet2_long() {
-        let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        clear_environment();
-
-        let (_, mut cfg) = parse_args(vec!["bin name", "--testnet2"]).unwrap();
-        assert_eq!(cfg.take(ConfigOption::Testnet2), Some("".to_owned()));
     }
 
     #[test]
@@ -498,12 +405,12 @@ mod tests {
         clear_environment();
 
         let value = "mainnet".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--network", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--network", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::Network), Some(value));
 
         let value = "mainnet".to_owned();
         env::set_var("PATHFINDER_NETWORK", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::Network), Some(value));
     }
 
@@ -513,12 +420,12 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--gateway-url", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--gateway-url", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_GATEWAY_URL", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::GatewayUrl), Some(value));
     }
 
@@ -528,12 +435,12 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--feeder-gateway-url", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--feeder-gateway-url", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::FeederGatewayUrl), Some(value));
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_FEEDER_GATEWAY_URL", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::FeederGatewayUrl), Some(value));
     }
 
@@ -543,12 +450,12 @@ mod tests {
         clear_environment();
 
         let value = "value".to_owned();
-        let (_, mut cfg) = parse_args(vec!["bin name", "--chain-id", &value]).unwrap();
+        let mut cfg = parse_args(vec!["bin name", "--chain-id", &value]).unwrap();
         assert_eq!(cfg.take(ConfigOption::ChainId), Some(value));
 
         let value = "value".to_owned();
         env::set_var("PATHFINDER_CHAIN_ID", &value);
-        let (_, mut cfg) = parse_args(vec!["bin name"]).unwrap();
+        let mut cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg.take(ConfigOption::ChainId), Some(value));
     }
 
@@ -557,8 +464,7 @@ mod tests {
         let _env_guard = ENV_VAR_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         clear_environment();
 
-        let (filepath, cfg) = parse_args(vec!["bin name"]).unwrap();
-        assert_eq!(filepath, None);
+        let cfg = parse_args(vec!["bin name"]).unwrap();
         assert_eq!(cfg, ConfigBuilder::default());
     }
 }
