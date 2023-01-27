@@ -35,6 +35,8 @@ pub enum RpcError {
     InvalidContractClass,
     #[error("Too many storage keys requested")]
     ProofLimitExceeded { limit: u32, requested: u32 },
+    #[error("Too many keys provided in a filter")]
+    TooManyKeysInFilter { limit: usize, requested: usize },
     #[error(transparent)]
     Internal(anyhow::Error),
 }
@@ -53,6 +55,7 @@ impl RpcError {
             RpcError::PageSizeTooBig => 31,
             RpcError::NoBlocks => 32,
             RpcError::InvalidContinuationToken => 33,
+            RpcError::TooManyKeysInFilter { .. } => 34,
             RpcError::ContractError => 40,
             RpcError::InvalidContractClass => 50,
             RpcError::ProofLimitExceeded { .. } => 10000,
@@ -71,6 +74,18 @@ impl From<RpcError> for jsonrpsee::core::error::Error {
                 struct Data {
                     limit: u32,
                     requested: u32,
+                }
+
+                let data = Data { limit, requested };
+
+                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
+                    .into()
+            }
+            RpcError::TooManyKeysInFilter { limit, requested } => {
+                #[derive(serde::Serialize)]
+                struct Data {
+                    limit: usize,
+                    requested: usize,
                 }
 
                 let data = Data { limit, requested };

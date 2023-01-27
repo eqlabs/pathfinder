@@ -1,18 +1,41 @@
-use crate::v02::RpcContext;
+use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use pathfinder_storage::{
-    EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable, V02KeyFilter,
+    EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable, V03KeyFilter,
 };
 use serde::Deserialize;
 use starknet_gateway_types::pending::PendingData;
 use tokio::task::JoinHandle;
 
-crate::error::generate_rpc_error_subset!(
-    GetEventsError: BlockNotFound,
+#[derive(Debug)]
+pub enum GetEventsError {
+    Internal(anyhow::Error),
+    BlockNotFound,
     PageSizeTooBig,
-    InvalidContinuationToken
-);
+    InvalidContinuationToken,
+    TooManyKeysInFilter { limit: usize, requested: usize },
+}
+
+impl From<anyhow::Error> for GetEventsError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
+    }
+}
+
+impl From<GetEventsError> for crate::error::RpcError {
+    fn from(e: GetEventsError) -> Self {
+        match e {
+            GetEventsError::Internal(internal) => Self::Internal(internal),
+            GetEventsError::BlockNotFound => Self::BlockNotFound,
+            GetEventsError::PageSizeTooBig => Self::PageSizeTooBig,
+            GetEventsError::InvalidContinuationToken => Self::InvalidContinuationToken,
+            GetEventsError::TooManyKeysInFilter { limit, requested } => {
+                Self::TooManyKeysInFilter { limit, requested }
+            }
+        }
+    }
+}
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Clone))]
@@ -32,7 +55,7 @@ pub struct EventFilter {
     #[serde(default)]
     pub address: Option<ContractAddress>,
     #[serde(default)]
-    pub keys: Vec<EventKey>,
+    pub keys: Vec<Vec<EventKey>>,
 
     // These are inlined here because serde flatten and deny_unknown_fields
     // don't work together.
@@ -76,6 +99,13 @@ pub async fn get_events(
         None => None,
     };
 
+    if request.keys.len() > pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT {
+        return Err(GetEventsError::TooManyKeysInFilter {
+            limit: pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT,
+            requested: request.keys.len(),
+        });
+    }
+
     // Handle the trivial (1) and (2) cases.
     match (request.from_block, request.to_block) {
         (Some(Pending), non_pending) if non_pending != Some(Pending) => {
@@ -87,6 +117,12 @@ pub async fn get_events(
         (Some(Pending), Some(Pending)) => {
             let skip = requested_offset.unwrap_or_default();
 
+            let keys: Vec<std::collections::HashSet<_>> = request
+                .keys
+                .into_iter()
+                .map(|keys| keys.into_iter().collect())
+                .collect();
+
             let mut events = Vec::new();
             let is_last_page = append_pending_events(
                 &context.pending_data,
@@ -94,7 +130,7 @@ pub async fn get_events(
                 skip,
                 request.chunk_size,
                 request.address,
-                request.keys.into_iter().collect(),
+                keys,
             )
             .await;
 
@@ -112,7 +148,7 @@ pub async fn get_events(
     }
 
     let storage = context.storage.clone();
-    let keys = V02KeyFilter(request.keys.clone());
+    let keys = V03KeyFilter(request.keys.clone());
 
     // blocking task to perform database event query and optionally, the event count
     // required for (4d).
@@ -184,10 +220,11 @@ pub async fn get_events(
 
     // Append pending data if required.
     if matches!(request.to_block, Some(Pending)) && events.events.len() < request.chunk_size {
-        let keys = request
+        let keys: Vec<std::collections::HashSet<_>> = request
             .keys
             .into_iter()
-            .collect::<std::collections::HashSet<_>>();
+            .map(|keys| keys.into_iter().collect())
+            .collect();
 
         let amount = request.chunk_size - events.events.len();
 
@@ -280,7 +317,7 @@ async fn append_pending_events(
     skip: usize,
     amount: usize,
     address: Option<ContractAddress>,
-    keys: std::collections::HashSet<EventKey>,
+    keys: Vec<std::collections::HashSet<EventKey>>,
 ) -> bool {
     let pending_block = match pending_data.as_ref() {
         Some(data) => match data.block().await {
@@ -291,6 +328,8 @@ async fn append_pending_events(
     };
 
     let original_len = dst.len();
+
+    let key_filter_is_empty = keys.iter().flatten().count() == 0;
 
     let pending_events = pending_block
         .transaction_receipts
@@ -306,16 +345,18 @@ async fn append_pending_events(
             None => true,
         })
         .filter(|(event, _)| {
-            if keys.is_empty() {
+            if key_filter_is_empty {
                 return true;
             }
 
-            for ek in &event.keys {
-                if keys.contains(ek) {
-                    return true;
-                }
-            }
-            false
+            let keys_to_check = std::cmp::min(keys.len(), event.keys.len());
+
+            event
+                .keys
+                .iter()
+                .zip(keys.iter())
+                .take(keys_to_check)
+                .all(|(key, filter)| filter.contains(key))
         })
         .skip(skip)
         // We need to take an extra event to determine is_last_page.
@@ -369,7 +410,6 @@ fn next_continuation_token(
 }
 
 mod types {
-    use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
         ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
         StarknetTransactionHash,
@@ -378,22 +418,16 @@ mod types {
     use serde::Serialize;
 
     /// Describes an emitted event returned by starknet_getEvents
-    #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct EmittedEvent {
-        #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<EventData>,
-        #[serde_as(as = "Vec<RpcFelt>")]
         pub keys: Vec<EventKey>,
-        #[serde_as(as = "RpcFelt251")]
         pub from_address: ContractAddress,
         /// [None] for pending events.
-        #[serde_as(as = "Option<RpcFelt>")]
         pub block_hash: Option<StarknetBlockHash>,
         /// [None] for pending events.
         pub block_number: Option<StarknetBlockNumber>,
-        #[serde_as(as = "RpcFelt")]
         pub transaction_hash: StarknetTransactionHash,
     }
 
@@ -438,7 +472,7 @@ mod tests {
             from_block: Some(BlockId::Number(StarknetBlockNumber::new_or_panic(0))),
             to_block: Some(BlockId::Latest),
             address: Some(ContractAddress::new_or_panic(felt!("0x1"))),
-            keys: vec![EventKey(felt!("0x2"))],
+            keys: vec![vec![EventKey(felt!("0x2"))], vec![]],
             chunk_size: 3,
             continuation_token: Some("4".to_string()),
         };
@@ -453,11 +487,11 @@ mod tests {
 
         [
             (
-                r#"[{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}]"#,
+                r#"[{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":[["0x2"],[]],"chunk_size":3,"continuation_token":"4"}]"#,
                 optional_present.clone(),
             ),
             (
-                r#"{"filter":{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":["0x2"],"chunk_size":3,"continuation_token":"4"}}"#,
+                r#"{"filter":{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":[["0x2"],[]],"chunk_size":3,"continuation_token":"4"}}"#,
                 optional_present
             ),
             (r#"[{"chunk_size":5}]"#, optional_absent.clone()),
@@ -538,7 +572,7 @@ mod tests {
                 to_block: Some(expected_event.block_number.unwrap().into()),
                 address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
-                keys: vec![EventKey(felt!("0xdeadbeef"))],
+                keys: vec![vec![], vec![EventKey(felt!("0xdeadbeef"))]],
                 chunk_size: test_utils::NUM_EVENTS,
                 continuation_token: None,
             },
@@ -630,11 +664,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_events_with_too_many_keys_in_filter() {
+        let (context, _) = setup();
+
+        let limit = pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT;
+
+        let keys = [vec![EventKey(felt!("01"))]]
+            .iter()
+            .cloned()
+            .cycle()
+            .take(limit + 1)
+            .collect::<Vec<_>>();
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: None,
+                to_block: None,
+                address: None,
+                keys,
+                chunk_size: 10,
+                continuation_token: None,
+            },
+        };
+        let error = get_events(context, input).await.unwrap_err();
+
+        assert_eq!(
+            GetEventsError::TooManyKeysInFilter {
+                limit,
+                requested: limit + 1
+            },
+            error
+        );
+    }
+
+    #[tokio::test]
     async fn get_events_by_key_with_paging() {
         let (context, events) = setup();
 
         let expected_events = &events[27..33];
-        let keys_for_expected_events: Vec<_> = expected_events.iter().map(|e| e.keys[0]).collect();
+        let keys_for_expected_events: Vec<Vec<_>> =
+            vec![expected_events.iter().map(|e| e.keys[0]).collect()];
 
         let input = GetEventsInput {
             filter: EventFilter {

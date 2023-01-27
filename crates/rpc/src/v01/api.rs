@@ -34,6 +34,7 @@ use pathfinder_storage::{
     types::StateUpdate, ContractCodeTable, ContractsStateTable, ContractsTable, EventFilterError,
     RefsTable, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEventFilter,
     StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+    V02KeyFilter,
 };
 use stark_hash::Felt;
 use starknet_gateway_client::{Client, ClientApi};
@@ -1242,7 +1243,7 @@ impl RpcApi {
                 from_block,
                 to_block,
                 contract_address: request.address,
-                keys: keys.clone(),
+                keys: V02KeyFilter(keys.clone()),
                 page_size: request.page_size,
                 offset: request.page_number * request.page_size,
             };
@@ -1275,7 +1276,7 @@ impl RpcApi {
                     from_block,
                     to_block,
                     request.address,
-                    keys,
+                    &V02KeyFilter(keys),
                 )
                 .map_err(internal_server_error)?;
 
