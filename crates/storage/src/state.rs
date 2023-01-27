@@ -2129,8 +2129,8 @@ mod tests {
                         timestamp: blocks[0].block.timestamp,
                         gas_price: blocks[0].block.gas_price,
                         sequencer_address: blocks[0].block.sequencer_address,
-                        transaction_commitment: None,
-                        event_commitment: None,
+                        transaction_commitment: Some(TransactionCommitment(Felt::ZERO)),
+                        event_commitment: Some(EventCommitment(Felt::ZERO)),
                     };
 
                     assert_eq!(

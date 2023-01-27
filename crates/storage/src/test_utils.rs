@@ -4,10 +4,10 @@ use super::{
 use ethers::types::H128;
 use pathfinder_common::{
     felt, CallParam, ClassCommitment, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, EntryPoint, EventData, EventKey, Fee, GasPrice, SequencerAddress,
-    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-    StarknetTransactionIndex, StateCommitment, StorageCommitment, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    StarknetTransactionHash, StarknetTransactionIndex, StateCommitment, StorageCommitment,
+    TransactionCommitment, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
@@ -33,6 +33,7 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
             let storage_commitment =
                 StorageCommitment(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap());
             let class_commitment = ClassCommitment(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap());
+            let index_as_felt = Felt::from_be_slice(&[i as u8]).unwrap();
             BlockWithCommitment {
                 block: StarknetBlock {
                     number: StarknetBlockNumber::GENESIS + i as u64,
@@ -40,9 +41,9 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
                     root: StateCommitment::calculate(storage_commitment, class_commitment),
                     timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
                     gas_price: GasPrice::from(i as u64),
-                    sequencer_address: SequencerAddress(Felt::from_be_slice(&[i as u8]).unwrap()),
-                    transaction_commitment: None,
-                    event_commitment: None,
+                    sequencer_address: SequencerAddress(index_as_felt),
+                    transaction_commitment: Some(TransactionCommitment(index_as_felt)),
+                    event_commitment: Some(EventCommitment(index_as_felt)),
                 },
                 class_commitment,
                 storage_commitment,
