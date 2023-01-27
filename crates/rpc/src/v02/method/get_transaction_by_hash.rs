@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
-                common: reply::CommonInvokeTransactionProperties {
+                common: reply::CommonDeclareInvokeTransactionProperties {
                     hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
                     max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
-                common: reply::CommonInvokeTransactionProperties {
+                common: reply::CommonDeclareInvokeTransactionProperties {
                     hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
                     max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],

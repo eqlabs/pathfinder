@@ -21,7 +21,7 @@
 //! ```
 
 use pathfinder_common::{
-    CallParam, CallResultValue, ChainId, ClassHash, ConstructorParam, ContractAddress,
+    CallParam, CallResultValue, CasmHash, ChainId, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey, L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem, SequencerAddress, StarknetBlockHash, StarknetTransactionHash,
     StateCommitment, StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
@@ -168,6 +168,7 @@ macro_rules! rpc_felt_251_serde {
 rpc_felt_serde!(
     CallParam,
     CallResultValue,
+    CasmHash,
     ChainId,
     ClassHash,
     ConstructorParam,

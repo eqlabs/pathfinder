@@ -1,15 +1,28 @@
 [
     {
         "type": "DECLARE",
+        "version": "0x1",
         "transaction_hash": "0x4",
         "max_fee": "0x5",
-        "version": "0x0",
         "signature": [
             "0x7"
         ],
         "nonce": "0x8",
         "class_hash": "0x9",
         "sender_address": "0xa"
+    },
+    {
+        "type": "DECLARE",
+        "version": "0x2",
+        "transaction_hash": "0x44",
+        "max_fee": "0x55",
+        "signature": [
+            "0x77"
+        ],
+        "nonce": "0x88",
+        "class_hash": "0x90",
+        "sender_address": "0xa0",
+        "compiled_class_hash": "0xb0"
     },
     {
         "type": "INVOKE",

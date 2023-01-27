@@ -19,7 +19,7 @@ pub async fn pending_transactions(context: RpcContext) -> Result<Vec<Transaction
 mod tests {
     use super::*;
     use crate::v02::types::reply::{
-        CommonInvokeTransactionProperties, DeployTransaction, InvokeTransaction,
+        CommonDeclareInvokeTransactionProperties, DeployTransaction, InvokeTransaction,
         InvokeTransactionV0,
     };
     use pathfinder_common::{
@@ -31,7 +31,7 @@ mod tests {
     async fn pending() {
         // Transcribed from the `RpcContext::for_tests_with_pending` transactions.
         let tx0 = InvokeTransactionV0 {
-            common: CommonInvokeTransactionProperties {
+            common: CommonDeclareInvokeTransactionProperties {
                 hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
                 max_fee: crate::v01::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],

@@ -374,8 +374,8 @@ pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
-        CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-        Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+        CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+        EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
     };
     use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
@@ -405,7 +405,8 @@ pub mod reply {
     impl Transaction {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
-                Transaction::Declare(declare) => declare.common.hash,
+                Transaction::Declare(DeclareTransaction::V1(declare)) => declare.common.hash,
+                Transaction::Declare(DeclareTransaction::V2(declare)) => declare.common.hash,
                 Transaction::Invoke(InvokeTransaction::V0(invoke)) => invoke.common.hash,
                 Transaction::Invoke(InvokeTransaction::V1(invoke)) => invoke.common.hash,
                 Transaction::Deploy(deploy) => deploy.hash,
@@ -432,18 +433,82 @@ pub mod reply {
         pub nonce: TransactionNonce,
     }
 
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[serde(tag = "version")]
+    pub enum DeclareTransaction {
+        #[serde(rename = "0x1")]
+        V1(DeclareTransactionV1),
+        #[serde(rename = "0x2")]
+        V2(DeclareTransactionV2),
+    }
+
+    #[cfg(any(test, feature = "rpc-full-serde"))]
+    impl<'de> serde::Deserialize<'de> for DeclareTransaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use ethers::types::H256;
+            use serde::de;
+
+            fn transaction_version_one() -> TransactionVersion {
+                TransactionVersion(H256::from_low_u64_be(1))
+            }
+
+            #[serde_as]
+            #[derive(serde::Deserialize)]
+            struct Version {
+                #[serde_as(as = "TransactionVersionAsHexStr")]
+                #[serde(default = "transaction_version_one")]
+                pub version: TransactionVersion,
+            }
+
+            let mut v = serde_json::Value::deserialize(deserializer)?;
+            let version = Version::deserialize(&v).map_err(de::Error::custom)?;
+            // remove "version", since v1 and v2 transactions use deny_unknown_fields
+            v.as_object_mut()
+                .expect("must be an object because deserializing version succeeded")
+                .remove("version");
+            match version.version {
+                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
+                    DeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
+                    DeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
+                )),
+                _v => Err(de::Error::custom("version must be 1 or 2")),
+            }
+        }
+    }
+
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeclareTransaction {
+    pub struct DeclareTransactionV1 {
         #[serde(flatten)]
-        pub common: CommonTransactionProperties,
+        pub common: CommonDeclareInvokeTransactionProperties,
 
-        // DECLARE_TXN
+        // DECLARE_TXN_V1
         #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "RpcFelt251")]
         pub sender_address: ContractAddress,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    pub struct DeclareTransactionV2 {
+        #[serde(flatten)]
+        pub common: CommonDeclareInvokeTransactionProperties,
+
+        // DECLARE_TXN_V2
+        #[serde_as(as = "RpcFelt")]
+        pub class_hash: ClassHash,
+        #[serde_as(as = "RpcFelt251")]
+        pub sender_address: ContractAddress,
+        #[serde_as(as = "RpcFelt")]
+        pub compiled_class_hash: CasmHash,
     }
 
     #[serde_as]
@@ -516,7 +581,7 @@ pub mod reply {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct InvokeTransactionV0 {
         #[serde(flatten)]
-        pub common: CommonInvokeTransactionProperties,
+        pub common: CommonDeclareInvokeTransactionProperties,
 
         // INVOKE_TXN_V0
         #[serde_as(as = "RpcFelt251")]
@@ -532,7 +597,7 @@ pub mod reply {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct InvokeTransactionV1 {
         #[serde(flatten)]
-        pub common: CommonInvokeTransactionProperties,
+        pub common: CommonDeclareInvokeTransactionProperties,
 
         // INVOKE_TXN_V1
         #[serde_as(as = "RpcFelt251")]
@@ -547,7 +612,7 @@ pub mod reply {
     // The same as `CommonTransactionProperties` except that it doesn't have version.
     //
     // Version is now a property of the type embedding common properties.
-    pub struct CommonInvokeTransactionProperties {
+    pub struct CommonDeclareInvokeTransactionProperties {
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
@@ -627,7 +692,7 @@ pub mod reply {
                     match txn {
                         starknet_gateway_types::reply::transaction::InvokeTransaction::V0(txn) => {
                             Self::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
-                                common: CommonInvokeTransactionProperties {
+                                common: CommonDeclareInvokeTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
                                     signature: txn.signature.clone(),
@@ -641,7 +706,7 @@ pub mod reply {
                         }
                         starknet_gateway_types::reply::transaction::InvokeTransaction::V1(txn) => {
                             Self::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
-                                common: CommonInvokeTransactionProperties {
+                                common: CommonDeclareInvokeTransactionProperties {
                                     hash: txn.transaction_hash,
                                     max_fee: txn.max_fee,
                                     signature: txn.signature.clone(),
@@ -654,33 +719,41 @@ pub mod reply {
                     }
                 }
                 GatewayTransaction::Declare(GatewayDeclare::V0(txn)) => {
-                    Self::Declare(DeclareTransaction {
-                        common: CommonTransactionProperties {
+                    Self::Declare(DeclareTransaction::V1(DeclareTransactionV1 {
+                        common: CommonDeclareInvokeTransactionProperties {
                             hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
-                            version: TransactionVersion::ZERO,
                             signature: txn.signature.clone(),
                             nonce: txn.nonce,
                         },
                         class_hash: txn.class_hash,
                         sender_address: txn.sender_address,
-                    })
+                    }))
                 }
                 GatewayTransaction::Declare(GatewayDeclare::V1(txn)) => {
-                    Self::Declare(DeclareTransaction {
-                        common: CommonTransactionProperties {
+                    Self::Declare(DeclareTransaction::V1(DeclareTransactionV1 {
+                        common: CommonDeclareInvokeTransactionProperties {
                             hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
-                            version: TransactionVersion::ONE,
                             signature: txn.signature.clone(),
                             nonce: txn.nonce,
                         },
                         class_hash: txn.class_hash,
                         sender_address: txn.sender_address,
-                    })
+                    }))
                 }
-                GatewayTransaction::Declare(GatewayDeclare::V2(_)) => {
-                    todo!("v0.11.0: once v1 declare is implemented in RPC")
+                GatewayTransaction::Declare(GatewayDeclare::V2(txn)) => {
+                    Self::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
+                        common: CommonDeclareInvokeTransactionProperties {
+                            hash: txn.transaction_hash,
+                            max_fee: txn.max_fee,
+                            signature: txn.signature.clone(),
+                            nonce: txn.nonce,
+                        },
+                        class_hash: txn.class_hash,
+                        sender_address: txn.sender_address,
+                        compiled_class_hash: txn.compiled_class_hash,
+                    }))
                 }
                 GatewayTransaction::Deploy(txn) => Self::Deploy(DeployTransaction {
                     hash: txn.transaction_hash,
@@ -752,7 +825,7 @@ pub mod reply {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/0.44.0/", $file_name))
+                include_str!(concat!("../../fixtures/0.50.0/", $file_name))
                     .replace(&[' ', '\n'], "")
             };
         }
@@ -773,22 +846,30 @@ pub mod reply {
 
             #[test]
             fn transaction() {
-                let common = CommonTransactionProperties {
-                    hash: StarknetTransactionHash(felt!("0x4")),
-                    max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
-                    version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
-                    signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                    nonce: TransactionNonce(felt!("0x8")),
-                };
-
                 let transactions = vec![
-                    Transaction::Declare(DeclareTransaction {
-                        common: common.clone(),
+                    Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV1 {
+                        common: CommonDeclareInvokeTransactionProperties {
+                            hash: StarknetTransactionHash(felt!("0x4")),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                            nonce: TransactionNonce(felt!("0x8")),
+                        },
                         class_hash: ClassHash(felt!("0x9")),
                         sender_address: ContractAddress::new_or_panic(felt!("0xa")),
-                    }),
+                    })),
+                    Transaction::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
+                        common: CommonDeclareInvokeTransactionProperties {
+                            hash: StarknetTransactionHash(felt!("0x44")),
+                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x55)),
+                            signature: vec![TransactionSignatureElem(felt!("0x77"))],
+                            nonce: TransactionNonce(felt!("0x88")),
+                        },
+                        class_hash: ClassHash(felt!("0x90")),
+                        sender_address: ContractAddress::new_or_panic(felt!("0xa0")),
+                        compiled_class_hash: CasmHash(felt!("0xb0")),
+                    })),
                     Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
-                        common: CommonInvokeTransactionProperties {
+                        common: CommonDeclareInvokeTransactionProperties {
                             hash: StarknetTransactionHash(felt!("0xb")),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x999)),
                             signature: vec![TransactionSignatureElem(felt!("0x777"))],
@@ -799,7 +880,7 @@ pub mod reply {
                         calldata: vec![CallParam(felt!("0xd"))],
                     })),
                     Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
-                        common: CommonInvokeTransactionProperties {
+                        common: CommonDeclareInvokeTransactionProperties {
                             hash: StarknetTransactionHash(felt!("0xbbb")),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x9999)),
                             signature: vec![TransactionSignatureElem(felt!("0xeee"))],
@@ -818,7 +899,7 @@ pub mod reply {
                     Transaction::L1Handler(L1HandlerTransaction {
                         hash: StarknetTransactionHash(felt!("0xf")),
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
-                        nonce: common.nonce,
+                        nonce: TransactionNonce(felt!("0x8")),
                         contract_address: ContractAddress::new_or_panic(felt!("0xfff")),
                         entry_point_selector: EntryPoint(felt!("0xf")),
                         calldata: vec![CallParam(felt!("0xf"))],
