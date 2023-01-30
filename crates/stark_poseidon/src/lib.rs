@@ -1,2 +1,5 @@
-pub mod hash;
-pub mod poseidon;
+mod hash;
+mod poseidon;
+
+pub use hash::{poseidon_hash, PoseidonHasher};
+pub use poseidon::{permute, permute_comp, PoseidonState};

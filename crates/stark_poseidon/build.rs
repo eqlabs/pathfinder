@@ -6,6 +6,9 @@ use std::io::{self, BufRead};
 use std::str::FromStr;
 use std::{env, fs, path::Path};
 
+const FULL_ROUNDS: usize = 8;
+const PARTIAL_ROUNDS: usize = 83;
+
 /// Generates poseidon_consts.rs
 pub fn main() {
     let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").unwrap();
@@ -26,19 +29,23 @@ pub fn main() {
 /// Generates Rust code to a string
 fn generate_consts() -> String {
     // Read constants
-    let rcs = extract_roundkeys();
+    let constants = extract_roundkeys();
 
     // Convert into field elements
-    let rcs = convert_roundkeys(&rcs);
+    let roundkeys = convert_roundkeys(&constants);
 
     // Flatten the roundkeys
-    let rcs = flatten_roundkeys(&rcs);
+    let flat = flatten_roundkeys(&roundkeys);
+    let flat_serialized = serialize_roundkeys(&flat);
 
-    // Serialize the roundkeys to u64s
-    let rcs = serialize_roundkeys(&rcs);
+    // Compress roundkeys
+    let comp = compress_roundkeys(&roundkeys);
+    let comp_serialized = serialize_roundkeys(&comp);
 
     // Write them to the buffer
-    generate_code(&rcs)
+    let code_flat = generate_code("POSEIDON_CONSTS", &flat_serialized);
+    let code_comp = generate_code("POSEIDON_COMP_CONSTS", &comp_serialized);
+    format!("{code_flat}\n\n{code_comp}")
 }
 
 /// Flattens the roundkeys
@@ -52,28 +59,82 @@ pub fn flatten_roundkeys(rcs: &[[FieldElement; 3]]) -> Vec<FieldElement> {
     result
 }
 
+/// Compress roundkeys
+pub fn compress_roundkeys(rcs: &[[FieldElement; 3]]) -> Vec<FieldElement> {
+    let mut result = Vec::new();
+
+    // Add first full rounds
+    result.extend(rcs[..FULL_ROUNDS / 2].iter().flatten());
+
+    // Add compressed partial rounds and first of the last full rounds
+    result.extend(compress_roundkeys_partial(rcs));
+
+    // Add last full rounds except the first of them
+    result.extend(
+        rcs[(FULL_ROUNDS / 2 + PARTIAL_ROUNDS + 1)..]
+            .iter()
+            .flatten(),
+    );
+
+    result
+}
+
+pub fn compress_roundkeys_partial(rcs: &[[FieldElement; 3]]) -> Vec<FieldElement> {
+    let mut result = Vec::new();
+
+    let mut idx = FULL_ROUNDS / 2;
+    let mut state: [FieldElement; 3] = [FieldElement::ZERO; 3];
+
+    // Add keys for partial rounds
+    for _ in 0..PARTIAL_ROUNDS {
+        // AddRoundKey
+        state[0] += rcs[idx][0];
+        state[1] += rcs[idx][1];
+        state[2] += rcs[idx][2];
+
+        // Add last state
+        result.push(state[2]);
+
+        // Reset last state
+        state[2] = FieldElement::ZERO;
+
+        // MixLayer
+        let t = state[0] + state[1] + state[2];
+        state[0] = t + FieldElement::TWO * state[0];
+        state[1] = t - FieldElement::TWO * state[1];
+        state[2] = t - FieldElement::THREE * state[2];
+
+        idx += 1;
+    }
+
+    // Add keys for first of the last full rounds
+    state[0] += rcs[idx][0];
+    state[1] += rcs[idx][1];
+    state[2] += rcs[idx][2];
+    result.push(state[0]);
+    result.push(state[1]);
+    result.push(state[2]);
+
+    result
+}
+
 /// Serializes roundkeys to u64
 pub fn serialize_roundkeys(rcs: &[FieldElement]) -> Vec<[u64; 4]> {
     rcs.iter().map(|v| v.inner()).collect()
 }
 
 /// Generates the Rust code
-pub fn generate_code(rcs: &Vec<[u64; 4]>) -> String {
+pub fn generate_code(name: &str, rcs: &[[u64; 4]]) -> String {
     let mut buf = String::with_capacity(1024 * 1024);
 
-    write!(
-        buf,
-        "pub const POSEIDON_CONSTS: [FieldElement; {}] = [",
-        rcs.len()
-    )
-    .unwrap();
+    write!(buf, "pub const {}: [FieldElement; {}] = [", name, rcs.len()).unwrap();
 
     let push_point = |buf: &mut String, rc: &[u64; 4]| {
         buf.push_str("\n    FieldElement::new([");
         for r in rc {
-            write!(buf, "\n        {r}u64,").unwrap();
+            write!(buf, "{r:>20}u64,").unwrap();
         }
-        buf.push_str("\n    ]),");
+        buf.push_str("]),");
     };
 
     for rc in rcs.iter() {
