@@ -13,7 +13,7 @@ Pathfinder is currently in alpha so expect some rough edges but it is already us
   - this means the contract code and storage are now locally verified
 - implements the [StarkNet JSON-RPC API](#json-rpc-api)
   - Starknet APIs like [starknet.js](https://www.starknetjs.com/) or [starknet.py](https://github.com/software-mansion/starknet.py)
-    fully support using our JSON-RPC API for interacting with Starknet
+    full support using our JSON-RPC API for interacting with Starknet
 - run StarkNet functions without requiring a StarkNet transaction
   - executed against the local state
 - do fee estimation for transactions
@@ -91,7 +91,7 @@ that was used above to start the node:
 sudo docker stop pathfinder
 # This removes the current instance (using the old version of pathfinder)
 sudo docker rm pathfinder
-# This command re-createst the container instance with the latest version
+# This command re-creates the container instance with the latest version
 sudo docker run \
   --name pathfinder \
   --restart unless-stopped \
@@ -129,7 +129,7 @@ To check if it's running well use `docker-compose logs -f`.
 
 The `pathfinder` node options can be configured via the command line as well as environment variables.
 
-The command line options are passed in after the after the `docker run` options, as follows:
+The command line options are passed in after the `docker run` options, as follows:
 
 ```bash
 sudo docker run --name pathfinder [...] eqlabs/pathfinder:latest <pathfinder options>
@@ -143,7 +143,7 @@ sudo docker run --rm eqlabs/pathfinder:latest --help
 
 ### Pending Support
 
-Block times on `mainnet` can be prohibitively long for certain applications. As a work-around, StarkNet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
+Block times on `mainnet` can be prohibitively long for certain applications. As a workaround, StarkNet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
 
 Note that `pending` support is disabled by default and must be enabled by setting `poll-pending=true` in the configuration options.
 
@@ -168,7 +168,7 @@ error
 
 ### Network Selection
 
-The StarkNet network can be selecting with the `--network` configuration option.
+The StarkNet network can be selected with the `--network` configuration option.
 
 If `--network` is not specified, network selection will default to match your Ethereum endpoint:
 
@@ -199,7 +199,7 @@ Note that the pathfinder extension is versioned separately from the StarkNet spe
 
 Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the following changes:
 
-- The `starknet_protocolVersion` method is not implemented. This method will be removed from the specification in its next version as its semantics and usage was questionable. We decided to not implement it.
+- The `starknet_protocolVersion` method is not implemented. This method will be removed from the specification in its next version as its semantics and usage were questionable. We decided to not implement it.
 - To be able to represent L1 handler transactions introduced in Starknet 0.10.0, we use the `L1_HANDLER_TXN` type from `v0.2.1` of the JSON-RPC specification.
 - To be able to represent DEPLOY_ACCOUNT transactions introduced in Starknet 0.10.1, we use the `DEPLOY_ACCOUNT_TXN` type from `v0.2.1` of the JSON-RPC specification.
 
@@ -211,7 +211,7 @@ When browsing the specification project, please be aware of the following pitfal
 
 ### Transaction write API `v0.1.0`
 
-Pathfinder also support's submitting StarkNet transaction's to the StarkNet gateway. Here are links to the [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_write_api.json) and the [playground](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://gist.githubusercontent.com/Mirko-von-Leipzig/f4515d423775edee68ab08c3f4b6afec/raw/65ce9b3adfb97393152450b2f36d6d3572ee2354/StarkNet%2520Write%2520API%2520v0.1.0.json).
+Pathfinder also supports submitting StarkNet transactions to the StarkNet gateway. Here are links to the [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_write_api.json) and the [playground](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://gist.githubusercontent.com/Mirko-von-Leipzig/f4515d423775edee68ab08c3f4b6afec/raw/65ce9b3adfb97393152450b2f36d6d3572ee2354/StarkNet%2520Write%2520API%2520v0.1.0.json).
 
 Note that:
 
@@ -249,7 +249,7 @@ Pathfinder has a monitoring API which can be enabled with the `--monitor-address
 
 `/health` provides a method to check the health status of your `pathfinder` node, and is commonly useful in Kubernetes docker setups. It returns a `200 OK` status if the node is healthy.
 
-### Readyness
+### Readiness
 
 `pathfinder` does several things before it is ready to respond to RPC queries. In most cases this startup time is less than a second, however there are certain scenarios where this can be considerably longer. For example, applying an expensive database migration after an upgrade could take several minutes (or even longer) on testnet. Or perhaps our startup network checks fail many times due to connection issues.
 
