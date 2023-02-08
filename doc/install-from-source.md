@@ -83,7 +83,7 @@ PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
 PIP_REQUIRE_VIRTUALENV=true pip install -e .[dev]
 ```
 
-Finally, run our python tests to make sure you were succesful.
+Finally, run our python tests to make sure you were successful.
 
 ```bash
 # This should run the tests (and they should pass).
@@ -100,7 +100,7 @@ cargo build --release --bin pathfinder
 
 ## Updating `pathfinder`
 
-Updating a `pathfinder` node from source is fairly straight forward and is a simpler variant of the installation and compilation described above.
+Updating a `pathfinder` node from source is fairly straightforward and is a simpler variant of the installation and compilation described above.
 
 ### `pathfinder` repository
 
@@ -161,7 +161,7 @@ Finally, you can start the node:
 cargo run --release --bin pathfinder -- <pathfinder options>
 ```
 
-Note the extra "`--`" which separate the Rust `cargo` command options from the configuration options for our node.
+Note the extra "`--`" which separates the Rust `cargo` command options from the configuration options for our node.
 You can list these configuration options using `--help`:
 ```bash
 cargo run --release --bin pathfinder -- --help
