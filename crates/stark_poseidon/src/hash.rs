@@ -1,4 +1,4 @@
-use crate::poseidon::{permute, PoseidonState};
+use crate::{permute_comp, PoseidonState};
 use stark_curve::FieldElement;
 
 /// Hashes a number of messages using the Poseidon hash
@@ -6,7 +6,7 @@ pub fn poseidon_hash(msgs: &[FieldElement]) -> FieldElement {
     let mut state = [FieldElement::ZERO, FieldElement::ZERO, FieldElement::ZERO];
     for msg in msgs {
         state[0] += msg;
-        permute(&mut state);
+        permute_comp(&mut state);
     }
     state[0]
 }
@@ -27,13 +27,13 @@ impl PoseidonHasher {
     /// Absorbs message into the hash
     pub fn write(&mut self, msg: FieldElement) {
         self.state[0] += msg;
-        permute(&mut self.state);
+        permute_comp(&mut self.state);
     }
 
     /// Extracts a single hash output
     pub fn extract(&mut self) -> FieldElement {
         let hash = self.state[0];
-        permute(&mut self.state);
+        permute_comp(&mut self.state);
         hash
     }
 
