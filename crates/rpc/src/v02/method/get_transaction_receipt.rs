@@ -11,7 +11,6 @@ pub struct GetTransactionReceiptInput {
 
 crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
 
-#[allow(dead_code)]
 pub async fn get_transaction_receipt(
     context: RpcContext,
     input: GetTransactionReceiptInput,
@@ -109,6 +108,9 @@ mod types {
         Declare(DeclareTransactionReceipt),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTransactionReceipt),
+        // FIXME regenesis: remove Deploy receipt type after regenesis
+        // We are keeping this type of receipt until regenesis
+        // only to support older pre-0.11.0 blocks
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransactionReceipt),
         #[serde(rename = "DEPLOY_ACCOUNT")]

@@ -11,7 +11,6 @@ pub struct GetTransactionByHashInput {
 
 crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
 
-#[allow(dead_code)]
 pub async fn get_transaction_by_hash(
     context: RpcContext,
     input: GetTransactionByHashInput,
