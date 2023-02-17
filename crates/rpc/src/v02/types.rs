@@ -6,8 +6,8 @@ pub use class::*;
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use pathfinder_common::{
-        CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-        EntryPoint, Fee, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        CallParam, CasmHash, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, Fee,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::Deserialize;
@@ -26,8 +26,6 @@ pub mod request {
         Declare(BroadcastedDeclareTransaction),
         #[serde(rename = "INVOKE")]
         Invoke(BroadcastedInvokeTransaction),
-        #[serde(rename = "DEPLOY")]
-        Deploy(BroadcastedDeployTransaction),
         #[serde(rename = "DEPLOY_ACCOUNT")]
         DeployAccount(BroadcastedDeployAccountTransaction),
     }
@@ -116,20 +114,6 @@ pub mod request {
         pub compiled_class_hash: Option<CasmHash>,
         pub contract_class: super::SierraContractClass,
         pub sender_address: ContractAddress,
-    }
-
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct BroadcastedDeployTransaction {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
-        pub contract_address_salt: ContractAddressSalt,
-        pub constructor_calldata: Vec<ConstructorParam>,
-
-        /// The class of the contract that will be deployed.
-        pub contract_class: super::ContractClass,
     }
 
     #[serde_as]
@@ -316,12 +300,6 @@ pub mod request {
                             sender_address: ContractAddress::new_or_panic(felt!("0xa1")),
                         },
                     )),
-                    BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
-                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x0)),
-                        contract_address_salt: ContractAddressSalt(felt!("0xdd")),
-                        constructor_calldata: vec![ConstructorParam(felt!("0x11"))],
-                        contract_class,
-                    }),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                         BroadcastedInvokeTransactionV0 {
                             version: TransactionVersion(ethers::types::H256::zero()),
@@ -394,6 +372,9 @@ pub mod reply {
         Declare(DeclareTransaction),
         #[serde(rename = "INVOKE")]
         Invoke(InvokeTransaction),
+        // FIXME regenesis: remove Deploy txn type after regenesis
+        // We are keeping this type of transaction until regenesis
+        // only to support older pre-0.11.0 blocks
         #[serde(rename = "DEPLOY")]
         Deploy(DeployTransaction),
         #[serde(rename = "DEPLOY_ACCOUNT")]

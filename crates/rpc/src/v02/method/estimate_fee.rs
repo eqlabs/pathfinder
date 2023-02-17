@@ -250,11 +250,10 @@ mod tests {
         use super::*;
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
-            BroadcastedDeclareTransactionV2, BroadcastedDeployTransaction,
-            BroadcastedInvokeTransactionV0,
+            BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::ContractClass;
-        use pathfinder_common::{felt_bytes, ContractAddressSalt};
+        use pathfinder_common::felt_bytes;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
@@ -442,34 +441,6 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: declare_transaction,
-                block_id: BLOCK_5,
-            };
-            let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(
-                result,
-                FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }
-            );
-        }
-
-        // The cairo-lang Python implementation does not support estimating deploy transactions.
-        // According to Starkware these transactions are subsidized so the fee should be zero.
-        #[test_log::test(tokio::test)]
-        async fn deploy_returns_zero() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
-
-            let deploy_transaction = BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
-                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                contract_address_salt: ContractAddressSalt(felt!("0xdeadbeef")),
-                constructor_calldata: vec![],
-                contract_class: CONTRACT_CLASS.clone(),
-            });
-
-            let input = EstimateFeeInput {
-                request: deploy_transaction,
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();

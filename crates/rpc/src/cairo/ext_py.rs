@@ -98,14 +98,6 @@ impl Handle {
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
         let transaction = match transaction {
-            BroadcastedTransaction::Deploy(_) => {
-                const ZERO: ethers::types::H256 = ethers::types::H256::zero();
-                return Ok(FeeEstimate {
-                    consumed: ZERO,
-                    gas_price: ZERO,
-                    fee: ZERO,
-                });
-            }
             BroadcastedTransaction::DeployAccount(tx) => {
                 add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
                     version: tx.version,

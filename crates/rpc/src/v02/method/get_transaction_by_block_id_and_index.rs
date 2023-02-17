@@ -15,7 +15,6 @@ crate::error::generate_rpc_error_subset!(
     InvalidTxnIndex
 );
 
-#[allow(dead_code)]
 pub async fn get_transaction_by_block_id_and_index(
     context: RpcContext,
     input: GetTransactionByBlockIdAndIndexInput,

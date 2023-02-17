@@ -308,6 +308,9 @@ pub mod transaction {
         #[serde(rename = "DECLARE")]
         Declare(DeclareTransaction),
         #[serde(rename = "DEPLOY")]
+        // FIXME regenesis: remove Deploy txn type after regenesis
+        // We are keeping this type of transaction until regenesis
+        // only to support older pre-0.11.0 blocks
         Deploy(DeployTransaction),
         #[serde(rename = "DEPLOY_ACCOUNT")]
         DeployAccount(DeployAccountTransaction),

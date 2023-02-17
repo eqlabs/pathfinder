@@ -56,23 +56,6 @@
         "sender_address": "0xa1"
     },
     {
-        "type": "DEPLOY",
-        "version": "0x0",
-        "contract_address_salt": "0xdd",
-        "constructor_calldata": [
-            "0x11"
-        ],
-        "contract_class": {
-            "program": "program",
-            "entry_points_by_type": {
-                "CONSTRUCTOR": [],
-                "EXTERNAL": [],
-                "L1_HANDLER": []
-            },
-            "abi": null
-        }
-    },
-    {
         "type": "INVOKE",
         "version": "0x0",
         "max_fee": "0x6",

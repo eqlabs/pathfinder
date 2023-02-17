@@ -59,10 +59,6 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             method::add_declare_transaction,
         )?
         .register_method(
-            "starknet_addDeployTransaction",
-            method::add_deploy_transaction,
-        )?
-        .register_method(
             "starknet_addDeployAccountTransaction",
             method::add_deploy_account_transaction,
         )?
