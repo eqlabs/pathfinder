@@ -13,7 +13,9 @@ pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }
 rand = "0.8"
 rusqlite = { version = "0.28.0", features = ["bundled"] }
+stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
+stark_poseidon = { path = "../stark_poseidon" }
 starknet-gateway-types = { path = "../gateway-types" }
 
 [dev-dependencies]
