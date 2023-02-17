@@ -101,9 +101,9 @@ pub trait ClientApi {
 /// Retry is performed on __all__ types of errors __except for__
 /// [StarkNet specific errors](starknet_gateway_types::error::StarknetError).
 ///
-/// Initial backoff time is 30 seconds and saturates at 1 hour:
+/// Initial backoff time is 30 seconds and saturates at 10 minutes:
 ///
-/// `backoff [secs] = min((2 ^ N) * 15, 3600) [secs]`
+/// `backoff [secs] = min((2 ^ N) * 15, 600) [secs]`
 ///
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Debug, Clone)]

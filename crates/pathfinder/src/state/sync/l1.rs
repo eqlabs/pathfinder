@@ -79,7 +79,7 @@ where
 {
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
         .factor(NonZeroU64::new(15).unwrap())
-        .max_delay(Duration::from_secs(60 * 60))
+        .max_delay(Duration::from_secs(10 * 60))
         .when(retry_condition)
         .await
 }

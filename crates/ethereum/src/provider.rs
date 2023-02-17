@@ -36,9 +36,9 @@ pub trait EthereumTransport {
 
 /// An implementation of [`EthereumTransport`] wrapped with a [exponential backoff retry utility](Retry).
 ///
-/// Initial backoff time is 30 seconds and saturates at 1 hour:
+/// Initial backoff time is 30 seconds and saturates at 10 minutes:
 ///
-/// `backoff [secs] = min((2 ^ N) * 15, 3600) [secs]`
+/// `backoff [secs] = min((2 ^ N) * 15, 600) [secs]`
 ///
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Clone, Debug)]
@@ -193,7 +193,7 @@ where
 {
     Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
         .factor(NonZeroU64::new(15).unwrap())
-        .max_delay(Duration::from_secs(60 * 60))
+        .max_delay(Duration::from_secs(10 * 60))
         .when(retry_condition)
         .await
 }
