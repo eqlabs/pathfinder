@@ -250,7 +250,7 @@ mod tests {
         use super::*;
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
-            BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV0,
+            BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::ContractClass;
         use pathfinder_common::felt_bytes;
@@ -423,6 +423,7 @@ mod tests {
         #[ignore = "fixme for v0.11.0"]
         #[test_log::test(tokio::test)]
         async fn successful_declare_v2() {
+            /*
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let declare_transaction = BroadcastedTransaction::Declare(
@@ -452,6 +453,7 @@ mod tests {
                     overall_fee: Default::default()
                 }
             );
+            */
         }
     }
 }

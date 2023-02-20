@@ -269,7 +269,7 @@ pub mod request {
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x1)),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
-                            contract_class: contract_class.clone(),
+                            contract_class,
                             sender_address: ContractAddress::new_or_panic(felt!("0xa")),
                         },
                     )),
