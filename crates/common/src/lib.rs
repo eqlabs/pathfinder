@@ -153,11 +153,16 @@ impl StateCommitment {
         if class_commitment == ClassCommitment::ZERO {
             Self(storage_commitment.0)
         } else {
-            // FIXME 0.11.0 make sure which hash to use Pedersen or Poseidon
-            StateCommitment(stark_hash::stark_hash(
-                storage_commitment.0,
-                class_commitment.0,
-            ))
+            const COMMITMENT_VERSION: stark_curve::FieldElement = stark_curve::FieldElement::ZERO;
+
+            StateCommitment(
+                stark_poseidon::poseidon_hash(&[
+                    storage_commitment.0.into(),
+                    class_commitment.0.into(),
+                    COMMITMENT_VERSION,
+                ])
+                .into(),
+            )
         }
     }
 }

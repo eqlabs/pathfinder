@@ -17,7 +17,9 @@ rusqlite = { version = "0.28.0", features = ["bundled"] }
 serde = { version = "1.0.149", features = ["derive"] }
 serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
 sha3 = "0.10"
+stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
+stark_poseidon = { path = "../stark_poseidon" }
 thiserror = "1.0.37"
 
 [build-dependencies]

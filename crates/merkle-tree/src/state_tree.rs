@@ -114,11 +114,12 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
 ///
 /// This tree maps a class's [SierraHash] to its [CasmHash]
 pub struct ClassCommitmentTree<'tx, 'queries> {
-    // FIXME(v0.11.0): This may be Poseidon hash depending.
     tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PoseidonHash>,
 }
 
 impl<'tx> ClassCommitmentTree<'tx, '_> {
+    const LEAF_VERSION: stark_curve::FieldElement = stark_curve::FieldElement::ZERO;
+
     pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
         // TODO: migration to support this.
         let tree = MerkleTree::load("tree_class", transaction, root.0)?;
@@ -126,13 +127,9 @@ impl<'tx> ClassCommitmentTree<'tx, '_> {
         Ok(Self { tree })
     }
 
-    pub fn get(&self, class: SierraHash) -> anyhow::Result<Option<CasmHash>> {
-        let value = self.tree.get(class.view_bits())?;
-        Ok(value.map(CasmHash))
-    }
-
     pub fn set(&mut self, class: SierraHash, value: CasmHash) -> anyhow::Result<()> {
-        self.tree.set(class.view_bits(), value.0)
+        let leaf_value = stark_poseidon::poseidon_hash(&[value.0.into(), Self::LEAF_VERSION]);
+        self.tree.set(class.view_bits(), leaf_value.into())
     }
 
     /// Applies and persists any changes. Returns the new global root.

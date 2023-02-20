@@ -5335,7 +5335,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
+ "stark_curve",
  "stark_hash",
+ "stark_poseidon",
  "thiserror",
  "vergen",
 ]
@@ -5374,7 +5376,9 @@ dependencies = [
  "pretty_assertions",
  "rand 0.8.5",
  "rusqlite",
+ "stark_curve",
  "stark_hash",
+ "stark_poseidon",
  "starknet-gateway-types",
 ]
 
