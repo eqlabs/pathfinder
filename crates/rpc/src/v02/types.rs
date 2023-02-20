@@ -38,7 +38,7 @@ pub mod request {
         serde(untagged)
     )]
     pub enum BroadcastedDeclareTransaction {
-        V1(BroadcastedDeclareTransactionV1),
+        V0V1(BroadcastedDeclareTransactionV0V1),
         V2(BroadcastedDeclareTransactionV2),
     }
 
@@ -47,31 +47,26 @@ pub mod request {
         where
             D: serde::Deserializer<'de>,
         {
-            use ethers::types::H256;
             use serde::de;
-
-            fn transaction_version_one() -> TransactionVersion {
-                TransactionVersion(H256::from_low_u64_be(1))
-            }
 
             #[serde_as]
             #[derive(serde::Deserialize)]
             struct Version {
                 #[serde_as(as = "TransactionVersionAsHexStr")]
-                #[serde(default = "transaction_version_one")]
                 pub version: TransactionVersion,
             }
 
             let v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
-            match version.version {
-                TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
-                    BroadcastedDeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+            match version.version.without_query_version() {
+                0 | 1 => Ok(Self::V0V1(
+                    BroadcastedDeclareTransactionV0V1::deserialize(&v)
+                        .map_err(de::Error::custom)?,
                 )),
-                TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
+                2 => Ok(Self::V2(
                     BroadcastedDeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 1 or 2")),
+                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
             }
         }
     }
@@ -80,7 +75,7 @@ pub mod request {
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
-    pub struct BroadcastedDeclareTransactionV1 {
+    pub struct BroadcastedDeclareTransactionV0V1 {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
@@ -263,8 +258,8 @@ pub mod request {
                     abi: None,
                 };
                 let txs = vec![
-                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
-                        BroadcastedDeclareTransactionV1 {
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(
+                        BroadcastedDeclareTransactionV0V1 {
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x1)),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
@@ -386,6 +381,7 @@ pub mod reply {
     impl Transaction {
         pub fn hash(&self) -> StarknetTransactionHash {
             match self {
+                Transaction::Declare(DeclareTransaction::V0(declare)) => declare.common.hash,
                 Transaction::Declare(DeclareTransaction::V1(declare)) => declare.common.hash,
                 Transaction::Declare(DeclareTransaction::V2(declare)) => declare.common.hash,
                 Transaction::Invoke(InvokeTransaction::V0(invoke)) => invoke.common.hash,
@@ -417,8 +413,10 @@ pub mod reply {
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "version")]
     pub enum DeclareTransaction {
+        #[serde(rename = "0x0")]
+        V0(DeclareTransactionV0V1),
         #[serde(rename = "0x1")]
-        V1(DeclareTransactionV1),
+        V1(DeclareTransactionV0V1),
         #[serde(rename = "0x2")]
         V2(DeclareTransactionV2),
     }
@@ -451,13 +449,16 @@ pub mod reply {
                 .expect("must be an object because deserializing version succeeded")
                 .remove("version");
             match version.version {
+                TransactionVersion(x) if x == H256::from_low_u64_be(0) => Ok(Self::V0(
+                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
+                )),
                 TransactionVersion(x) if x == H256::from_low_u64_be(1) => Ok(Self::V1(
-                    DeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
+                    DeclareTransactionV0V1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 TransactionVersion(x) if x == H256::from_low_u64_be(2) => Ok(Self::V2(
                     DeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 1 or 2")),
+                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
             }
         }
     }
@@ -465,10 +466,11 @@ pub mod reply {
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct DeclareTransactionV1 {
+    pub struct DeclareTransactionV0V1 {
         #[serde(flatten)]
         pub common: CommonDeclareInvokeTransactionProperties,
 
+        // DECLARE_TXN_V0
         // DECLARE_TXN_V1
         #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
@@ -700,7 +702,7 @@ pub mod reply {
                     }
                 }
                 GatewayTransaction::Declare(GatewayDeclare::V0(txn)) => {
-                    Self::Declare(DeclareTransaction::V1(DeclareTransactionV1 {
+                    Self::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {
                         common: CommonDeclareInvokeTransactionProperties {
                             hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
@@ -712,7 +714,7 @@ pub mod reply {
                     }))
                 }
                 GatewayTransaction::Declare(GatewayDeclare::V1(txn)) => {
-                    Self::Declare(DeclareTransaction::V1(DeclareTransactionV1 {
+                    Self::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
                         common: CommonDeclareInvokeTransactionProperties {
                             hash: txn.transaction_hash,
                             max_fee: txn.max_fee,
@@ -828,7 +830,7 @@ pub mod reply {
             #[test]
             fn transaction() {
                 let transactions = vec![
-                    Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV1 {
+                    Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
                         common: CommonDeclareInvokeTransactionProperties {
                             hash: StarknetTransactionHash(felt!("0x4")),
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),

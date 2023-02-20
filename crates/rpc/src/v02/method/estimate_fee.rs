@@ -249,7 +249,7 @@ mod tests {
     mod ext_py {
         use super::*;
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
+            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
             BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::ContractClass;
@@ -393,7 +393,7 @@ mod tests {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let declare_transaction = BroadcastedTransaction::Declare(
-                BroadcastedDeclareTransaction::V1(BroadcastedDeclareTransactionV1 {
+                BroadcastedDeclareTransaction::V0V1(BroadcastedDeclareTransactionV0V1 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(Default::default()),
                     signature: vec![],

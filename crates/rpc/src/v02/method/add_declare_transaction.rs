@@ -50,7 +50,7 @@ pub async fn add_declare_transaction(
     input: AddDeclareTransactionInput,
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
     match input.declare_transaction {
-        Transaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
+        Transaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
             let contract_definition: ContractDefinition = tx
                 .contract_class
                 .try_into()
@@ -82,7 +82,7 @@ pub async fn add_declare_transaction(
 mod tests {
     use super::*;
     use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
+        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
     };
     use crate::v02::types::ContractClass;
     use pathfinder_common::{felt, ContractAddress, Fee, TransactionNonce, TransactionVersion};
@@ -103,14 +103,14 @@ mod tests {
     }
 
     mod parsing {
-        use crate::v02::types::request::BroadcastedDeclareTransactionV1;
+        use crate::v02::types::request::BroadcastedDeclareTransactionV0V1;
 
         use super::*;
 
         fn test_declare_txn() -> Transaction {
             // Fixme v0.11.0 only allow v2?
-            Transaction::Declare(BroadcastedDeclareTransaction::V1(
-                BroadcastedDeclareTransactionV1 {
+            Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
+                BroadcastedDeclareTransactionV0V1 {
                     max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
                     version: TransactionVersion::ONE,
                     signature: vec![],
@@ -190,8 +190,8 @@ mod tests {
         };
 
         // Fixme v0.11.0 only allow v2?
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
-            BroadcastedDeclareTransactionV1 {
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
+            BroadcastedDeclareTransactionV0V1 {
                 version: TransactionVersion::ONE,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
@@ -215,8 +215,8 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // Fixme v0.11.0 only allow v2?
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
-            BroadcastedDeclareTransactionV1 {
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
+            BroadcastedDeclareTransactionV0V1 {
                 version: TransactionVersion::ONE,
                 max_fee: Fee(Default::default()),
                 signature: vec![],

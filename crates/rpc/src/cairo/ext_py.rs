@@ -109,7 +109,7 @@ impl Handle {
                     constructor_calldata: tx.constructor_calldata,
                 })
             }
-            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
+            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
                 add_transaction::AddTransaction::Declare(add_transaction::Declare {
                     version: tx.version,
                     max_fee: tx.max_fee,
