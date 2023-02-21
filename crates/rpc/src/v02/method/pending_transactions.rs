@@ -33,7 +33,7 @@ mod tests {
         let tx0 = InvokeTransactionV0 {
             common: CommonDeclareInvokeTransactionProperties {
                 hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
-                max_fee: crate::v01::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 nonce: TransactionNonce::ZERO,
             },

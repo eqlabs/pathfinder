@@ -15,9 +15,9 @@
 //! global_state, and after that, calls can be made to it's `block_hash` for which we probably need
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
-use crate::v01::types::{reply::FeeEstimate, request::Call};
+use crate::v02::types::reply::FeeEstimate;
 use crate::v02::types::request::{
-    BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction,
+    BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
 use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
 use starknet_gateway_types::{reply::StateUpdate, request::add_transaction};
@@ -519,10 +519,10 @@ mod tests {
 
         assert_eq!(
             at_block_fee,
-            crate::v01::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0x55a),
+            crate::v02::types::reply::FeeEstimate {
+                gas_consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(0x55a),
+                overall_fee: H256::from_low_u64_be(0x55a),
             }
         );
 
@@ -540,10 +540,10 @@ mod tests {
 
         assert_eq!(
             current_fee,
-            crate::v01::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0x55a),
+            crate::v02::types::reply::FeeEstimate {
+                gas_consumed: H256::from_low_u64_be(0x55a),
                 gas_price: H256::from_low_u64_be(10),
-                fee: H256::from_low_u64_be(0x3584),
+                overall_fee: H256::from_low_u64_be(0x3584),
             }
         );
 
@@ -608,10 +608,10 @@ mod tests {
 
         assert_eq!(
             at_block_fee,
-            crate::v01::types::reply::FeeEstimate {
-                consumed: H256::from_low_u64_be(0xa2c),
+            crate::v02::types::reply::FeeEstimate {
+                gas_consumed: H256::from_low_u64_be(0xa2c),
                 gas_price: H256::from_low_u64_be(1),
-                fee: H256::from_low_u64_be(0xa2c),
+                overall_fee: H256::from_low_u64_be(0xa2c),
             }
         );
 

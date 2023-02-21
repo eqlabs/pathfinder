@@ -133,7 +133,7 @@ async fn handle_p2p_event(
 
 async fn current_status(chain_id: ChainId, sync_state: &SyncState) -> p2p_proto::sync::Status {
     use p2p_proto::sync::Status;
-    use pathfinder_rpc::v01::types::reply::Syncing;
+    use pathfinder_rpc::v02::types::syncing::Syncing;
 
     let sync_status = { sync_state.status.read().await.clone() };
     match sync_status {

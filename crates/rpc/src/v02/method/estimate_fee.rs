@@ -1,10 +1,11 @@
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    v02::{types::request::BroadcastedTransaction, RpcContext},
+    v02::{
+        types::{reply::FeeEstimate, request::BroadcastedTransaction},
+        RpcContext,
+    },
 };
 use pathfinder_common::{BlockId, StarknetBlockTimestamp};
-use serde::Serialize;
-use serde_with::serde_as;
 use starknet_gateway_types::pending::PendingData;
 use std::sync::Arc;
 
@@ -79,7 +80,7 @@ pub async fn estimate_fee(
         )
         .await?;
 
-    Ok(result.into())
+    Ok(result)
 }
 
 /// Transforms the request to call or estimate fee at some point in time to the type expected
@@ -124,32 +125,6 @@ pub(super) async fn base_block_and_pending_for_call(
                     "Pending data not supported in this configuration"
                 )),
             }
-        }
-    }
-}
-
-#[serde_as]
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-#[serde(deny_unknown_fields)]
-pub struct FeeEstimate {
-    /// The Ethereum gas cost of the transaction
-    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_consumed: ethers::types::H256,
-    /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
-    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_price: ethers::types::H256,
-    /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
-    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub overall_fee: ethers::types::H256,
-}
-
-impl From<crate::v01::types::reply::FeeEstimate> for FeeEstimate {
-    fn from(v01: crate::v01::types::reply::FeeEstimate) -> Self {
-        Self {
-            gas_consumed: v01.consumed,
-            gas_price: v01.gas_price,
-            overall_fee: v01.fee,
         }
     }
 }

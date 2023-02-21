@@ -276,20 +276,20 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         }
     };
 
-    let api = pathfinder_rpc::v01::api::RpcApi::new(
+    let context = pathfinder_rpc::context::RpcContext::new(
         storage.clone(),
-        gateway_client,
-        chain_id,
         sync_state.clone(),
+        chain_id,
+        gateway_client,
     )
     .with_call_handling(call_handle)
     .with_eth_gas_price(shared);
-    let api = match config.poll_pending {
-        true => api.with_pending_data(pending_state),
-        false => api,
+    let context = match config.poll_pending {
+        true => context.with_pending_data(pending_state),
+        false => context,
     };
 
-    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.http_rpc_addr, api)
+    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.http_rpc_addr, context)
         .with_middleware(RpcMetricsMiddleware)
         .run()
         .await

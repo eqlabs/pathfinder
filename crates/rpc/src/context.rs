@@ -96,20 +96,3 @@ impl RpcContext {
         }
     }
 }
-
-// FIXME
-// We could as well extract rpc version agnostic context to be fed into both v01::RpcApi and v02::RpcContext.
-// Rework once all v0.2 methods are implemented.
-impl From<&crate::v01::api::RpcApi> for RpcContext {
-    fn from(v01: &crate::v01::api::RpcApi) -> Self {
-        Self {
-            storage: v01.storage.clone(),
-            pending_data: v01.pending_data.clone(),
-            sync_status: v01.sync_state.clone(),
-            chain_id: v01.chain_id,
-            call_handle: v01.call_handle.clone(),
-            eth_gas_price: v01.shared_gas_price.clone(),
-            sequencer: v01.sequencer.clone(),
-        }
-    }
-}

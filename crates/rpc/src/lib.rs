@@ -1,6 +1,6 @@
 //! StarkNet node JSON-RPC related modules.
 pub mod cairo;
-mod context;
+pub mod context;
 mod error;
 mod felt;
 pub mod gas_price;
@@ -9,32 +9,27 @@ mod module;
 mod pathfinder;
 #[cfg(test)]
 pub mod test_client;
-#[cfg(test)]
-pub mod test_setup;
-pub mod v01;
 pub mod v02;
 pub mod v03;
 
 use crate::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
-use jsonrpsee::{
-    core::server::rpc_module::Methods,
-    http_server::{HttpServerBuilder, HttpServerHandle, RpcModule},
-};
+use crate::v02::types::syncing::Syncing;
+use context::RpcContext;
+use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle};
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
-use v01::{api::RpcApi, types::reply::Syncing};
 
 pub struct RpcServer {
     addr: SocketAddr,
-    api: RpcApi,
+    context: RpcContext,
     middleware: MaybeRpcMetricsMiddleware,
 }
 
 impl RpcServer {
-    pub fn new(addr: SocketAddr, api: RpcApi) -> Self {
+    pub fn new(addr: SocketAddr, context: RpcContext) -> Self {
         Self {
             addr,
-            api,
+            context,
             middleware: MaybeRpcMetricsMiddleware::NoOp,
         }
     }
@@ -73,19 +68,12 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             })?;
         let local_addr = server.local_addr()?;
 
-        let context: context::RpcContext = (&self.api).into();
-
-        let mut module_v01 = v01::RpcModuleWrapper::new(RpcModule::new(self.api));
-        v01::register_all_methods(&mut module_v01)?;
-        let module_v01: Methods = module_v01.into_inner().into();
-
-        let module_v02 = v02::register_methods(context.clone())?;
-        let pathfinder_module = pathfinder::register_methods(context.clone())?;
-        let module_v03 = v03::register_methods(context)?;
+        let module_v02 = v02::register_methods(self.context.clone())?;
+        let pathfinder_module = pathfinder::register_methods(self.context.clone())?;
+        let module_v03 = v03::register_methods(self.context)?;
 
         Ok(server
             .start_with_paths([
-                (vec!["/rpc/v0.1"], module_v01),
                 (vec!["/", "/rpc/v0.2"], module_v02),
                 (vec!["/rpc/v0.3"], module_v03),
                 (vec!["/rpc/pathfinder/v0.1"], pathfinder_module),
@@ -108,9 +96,7 @@ impl Default for SyncState {
 
 #[cfg(test)]
 mod tests {
-    use crate::RpcServer;
     use ethers::types::H256;
-    use jsonrpsee::{http_server::HttpServerHandle, types::ParamsSer};
     use pathfinder_common::{
         felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
         EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
@@ -137,25 +123,9 @@ mod tests {
         },
     };
     use std::{
-        collections::BTreeMap,
         net::{Ipv4Addr, SocketAddr, SocketAddrV4},
         sync::Arc,
     };
-
-    /// Starts the HTTP-RPC server.
-    pub async fn run_server(
-        addr: SocketAddr,
-        api: super::v01::api::RpcApi,
-    ) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
-        RpcServer::new(addr, api).run().await
-    }
-
-    /// Helper function: produces named rpc method args map.
-    pub fn by_name<const N: usize>(
-        params: [(&'_ str, serde_json::Value); N],
-    ) -> Option<ParamsSer<'_>> {
-        Some(BTreeMap::from(params).into())
-    }
 
     lazy_static::lazy_static! {
         pub static ref LOCALHOST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
@@ -445,7 +415,7 @@ mod tests {
                 )),
                 entry_point_selector: EntryPoint(felt_bytes!(b"entry point 0")),
                 entry_point_type: Some(EntryPointType::External),
-                max_fee: crate::v01::types::request::Call::DEFAULT_MAX_FEE,
+                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
             })
@@ -636,5 +606,33 @@ mod tests {
             .set(Arc::new(block), Arc::new(state_update))
             .await;
         pending_data
+    }
+
+    #[test]
+    fn roundtrip_syncing() {
+        use crate::v02::types::syncing::{NumberedBlock, Status, Syncing};
+
+        let examples = [
+            (line!(), "false", Syncing::False(false)),
+            // this shouldn't exist but it exists now
+            (line!(), "true", Syncing::False(true)),
+            (
+                line!(),
+                r#"{"starting_block_hash":"0xa","starting_block_num":"0x1","current_block_hash":"0xb","current_block_num":"0x2","highest_block_hash":"0xc","highest_block_num":"0x3"}"#,
+                Syncing::Status(Status {
+                    starting: NumberedBlock::from(("a", 1)),
+                    current: NumberedBlock::from(("b", 2)),
+                    highest: NumberedBlock::from(("c", 3)),
+                }),
+            ),
+        ];
+
+        for (line, input, expected) in examples {
+            let parsed = serde_json::from_str::<Syncing>(input).unwrap();
+            let output = serde_json::to_string(&parsed).unwrap();
+
+            assert_eq!(parsed, expected, "example from line {line}");
+            assert_eq!(&output, input, "example from line {line}");
+        }
     }
 }
