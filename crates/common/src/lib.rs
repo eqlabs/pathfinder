@@ -124,10 +124,6 @@ pub struct ConstructorParam(pub Felt);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CallResultValue(pub Felt);
 
-/// A word from a StarkNet contract bytecode.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ByteCodeWord(pub Felt);
-
 /// The address of a storage element for a StarkNet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord)]
 pub struct StorageAddress(Felt);
@@ -522,7 +518,6 @@ macros::starkhash::common_newtype!(
     CallParam,
     ConstructorParam,
     CallResultValue,
-    ByteCodeWord,
     StateCommitment,
     StorageAddress,
     StorageValue,

@@ -249,11 +249,11 @@ mod tests {
     mod ext_py {
         use super::*;
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeployTransaction,
+            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
             BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::ContractClass;
-        use pathfinder_common::{felt_bytes, ContractAddressSalt};
+        use pathfinder_common::felt_bytes;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
@@ -389,11 +389,11 @@ mod tests {
         }
 
         #[test_log::test(tokio::test)]
-        async fn successful_declare() {
+        async fn successful_declare_v0() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
-            let declare_transaction =
-                BroadcastedTransaction::Declare(BroadcastedDeclareTransaction {
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V0V1(BroadcastedDeclareTransactionV0V1 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(Default::default()),
                     signature: vec![],
@@ -402,7 +402,8 @@ mod tests {
                     sender_address: ContractAddress::new_or_panic(felt!(
                         "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                     )),
-                });
+                }),
+            );
 
             let input = EstimateFeeInput {
                 request: declare_transaction,
@@ -419,21 +420,28 @@ mod tests {
             );
         }
 
-        // The cairo-lang Python implementation does not support estimating deploy transactions.
-        // According to Starkware these transactions are subsidized so the fee should be zero.
+        #[ignore = "fixme for v0.11.0"]
         #[test_log::test(tokio::test)]
-        async fn deploy_returns_zero() {
+        async fn successful_declare_v2() {
+            /*
             let (context, _join_handle) = test_context_with_call_handling().await;
 
-            let deploy_transaction = BroadcastedTransaction::Deploy(BroadcastedDeployTransaction {
-                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                contract_address_salt: ContractAddressSalt(felt!("0xdeadbeef")),
-                constructor_calldata: vec![],
-                contract_class: CONTRACT_CLASS.clone(),
-            });
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
+                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                    max_fee: Fee(Default::default()),
+                    signature: vec![],
+                    nonce: TransactionNonce(Default::default()),
+                    contract_class: todo!("fixme v0.11.0"),
+                    sender_address: ContractAddress::new_or_panic(felt!(
+                        "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
+                    )),
+                    compiled_class_hash: todo!("fixme v0.11.0"),
+                }),
+            );
 
             let input = EstimateFeeInput {
-                request: deploy_transaction,
+                request: declare_transaction,
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
@@ -445,6 +453,7 @@ mod tests {
                     overall_fee: Default::default()
                 }
             );
+            */
         }
     }
 }

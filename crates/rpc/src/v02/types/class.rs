@@ -94,6 +94,7 @@ impl TryFrom<ContractClass>
     }
 }
 
+// FIXME rename to DeprecatedContractClass?
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ContractClass {
     pub program: String,
@@ -234,4 +235,32 @@ pub struct FunctionAbiEntry {
 pub struct TypedParameter {
     name: String,
     r#type: String,
+}
+
+// FIXME rename to ContractClass?
+#[serde_with::serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SierraContractClass {
+    pub entry_points_by_type: SierraEntryPoints,
+    #[serde_as(as = "Vec<crate::felt::RpcFelt>")]
+    pub sierra_program: Vec<Felt>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(deny_unknown_fields)]
+pub struct SierraEntryPoints {
+    pub constructor: Vec<SierraEntryPoint>,
+    pub external: Vec<SierraEntryPoint>,
+    pub l1_handler: Vec<SierraEntryPoint>,
+}
+
+#[serde_with::serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SierraEntryPoint {
+    pub function_idx: u64,
+    #[serde_as(as = "crate::felt::RpcFelt")]
+    pub selector: Felt,
 }

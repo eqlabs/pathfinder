@@ -16,7 +16,9 @@
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
 use crate::v01::types::{reply::FeeEstimate, request::Call};
-use crate::v02::types::request::{BroadcastedInvokeTransaction, BroadcastedTransaction};
+use crate::v02::types::request::{
+    BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction,
+};
 use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
 use starknet_gateway_types::{reply::StateUpdate, request::add_transaction};
 use std::sync::Arc;
@@ -96,14 +98,6 @@ impl Handle {
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
         let transaction = match transaction {
-            BroadcastedTransaction::Deploy(_) => {
-                const ZERO: ethers::types::H256 = ethers::types::H256::zero();
-                return Ok(FeeEstimate {
-                    consumed: ZERO,
-                    gas_price: ZERO,
-                    fee: ZERO,
-                });
-            }
             BroadcastedTransaction::DeployAccount(tx) => {
                 add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
                     version: tx.version,
@@ -115,7 +109,7 @@ impl Handle {
                     constructor_calldata: tx.constructor_calldata,
                 })
             }
-            BroadcastedTransaction::Declare(tx) => {
+            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
                 add_transaction::AddTransaction::Declare(add_transaction::Declare {
                     version: tx.version,
                     max_fee: tx.max_fee,
@@ -126,6 +120,9 @@ impl Handle {
                     sender_address: tx.sender_address,
                     nonce: tx.nonce,
                 })
+            }
+            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => {
+                todo!("fixme 0.11.0")
             }
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
                 add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {

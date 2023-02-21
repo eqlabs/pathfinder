@@ -11,7 +11,6 @@ pub struct GetTransactionByHashInput {
 
 crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
 
-#[allow(dead_code)]
 pub async fn get_transaction_by_hash(
     context: RpcContext,
     input: GetTransactionByHashInput,
@@ -129,7 +128,7 @@ mod tests {
         assert_eq!(
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
-                common: reply::CommonInvokeTransactionProperties {
+                common: reply::CommonDeclareInvokeTransactionProperties {
                     hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
                     max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
@@ -155,7 +154,7 @@ mod tests {
         assert_eq!(
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
-                common: reply::CommonInvokeTransactionProperties {
+                common: reply::CommonDeclareInvokeTransactionProperties {
                     hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
                     max_fee: Fee(ethers::types::H128::zero()),
                     signature: vec![],
