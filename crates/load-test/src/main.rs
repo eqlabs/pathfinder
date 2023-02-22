@@ -15,66 +15,6 @@ mod requests;
 mod tasks;
 mod types;
 
-fn register_v01(attack: GooseAttack) -> GooseAttack {
-    use tasks::v01::*;
-
-    attack
-        // primitive operations using the database
-        .register_scenario(
-            scenario!("v01_block_by_number")
-                .register_transaction(transaction!(task_block_by_number)),
-        )
-        .register_scenario(
-            scenario!("v01_block_by_hash").register_transaction(transaction!(task_block_by_hash)),
-        )
-        .register_scenario(
-            scenario!("v01_block_transaction_count_by_hash")
-                .register_transaction(transaction!(task_block_transaction_count_by_hash)),
-        )
-        .register_scenario(
-            scenario!("v01_block_transaction_count_by_number")
-                .register_transaction(transaction!(task_block_transaction_count_by_number)),
-        )
-        .register_scenario(
-            scenario!("v01_transaction_by_hash")
-                .register_transaction(transaction!(task_transaction_by_hash)),
-        )
-        .register_scenario(
-            scenario!("v01_transaction_by_block_number_and_index")
-                .register_transaction(transaction!(task_transaction_by_block_number_and_index)),
-        )
-        .register_scenario(
-            scenario!("v01_transaction_by_block_hash_and_index")
-                .register_transaction(transaction!(task_transaction_by_block_hash_and_index)),
-        )
-        .register_scenario(
-            scenario!("v01_transaction_receipt_by_hash")
-                .register_transaction(transaction!(task_transaction_receipt_by_hash)),
-        )
-        .register_scenario(
-            scenario!("v01_block_number").register_transaction(transaction!(task_block_number)),
-        )
-        .register_scenario(
-            scenario!("v01_get_events").register_transaction(transaction!(task_get_events)),
-        )
-        .register_scenario(
-            scenario!("v01_get_storage_at").register_transaction(transaction!(task_get_storage_at)),
-        )
-        // primitive operations that don't use the database
-        .register_scenario(
-            scenario!("v01_syncing").register_transaction(transaction!(task_syncing)),
-        )
-        .register_scenario(
-            scenario!("v01_chain_id").register_transaction(transaction!(task_chain_id)),
-        )
-        // primitive operation utilizing the Cairo Python subprocesses
-        .register_scenario(scenario!("v01_call").register_transaction(transaction!(task_call)))
-        // composite scenario
-        .register_scenario(
-            scenario!("v01_block_explorer").register_transaction(transaction!(block_explorer)),
-        )
-}
-
 fn register_v02(attack: GooseAttack) -> GooseAttack {
     use tasks::v02::*;
 
@@ -155,7 +95,6 @@ fn register_v02(attack: GooseAttack) -> GooseAttack {
 #[tokio::main]
 async fn main() -> Result<(), GooseError> {
     let attack = GooseAttack::initialize()?;
-    let attack = register_v01(attack);
     let attack = register_v02(attack);
 
     attack.execute().await?;
