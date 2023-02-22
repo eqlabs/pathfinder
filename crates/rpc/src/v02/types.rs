@@ -2,6 +2,7 @@
 
 pub(crate) mod class;
 pub use class::*;
+pub mod syncing;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
@@ -9,7 +10,9 @@ pub mod request {
         CallParam, CasmHash, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, Fee,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
-    use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
+    use pathfinder_serde::{
+        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+    };
     use serde::Deserialize;
     use serde_with::serde_as;
 
@@ -219,6 +222,51 @@ pub mod request {
         pub calldata: Vec<CallParam>,
     }
 
+    /// Contains parameters passed to `starknet_call`.
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct Call {
+        pub contract_address: ContractAddress,
+        pub calldata: Vec<CallParam>,
+        pub entry_point_selector: Option<EntryPoint>,
+        /// EstimateFee hurry: it doesn't make any sense to use decimal numbers for one field
+        #[serde(default)]
+        #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
+        pub signature: Vec<TransactionSignatureElem>,
+        /// EstimateFee hurry: max fee is needed if there's a signature
+        #[serde_as(as = "FeeAsHexStr")]
+        #[serde(default = "call_default_max_fee")]
+        pub max_fee: Fee,
+        /// EstimateFee hurry: transaction version might be interesting, might not be around for
+        /// long
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        #[serde(default = "call_default_version")]
+        pub version: TransactionVersion,
+        #[serde(default = "call_default_nonce")]
+        pub nonce: TransactionNonce,
+    }
+
+    const fn call_default_max_fee() -> Fee {
+        Call::DEFAULT_MAX_FEE
+    }
+
+    const fn call_default_version() -> TransactionVersion {
+        Call::DEFAULT_VERSION
+    }
+
+    const fn call_default_nonce() -> TransactionNonce {
+        Call::DEFAULT_NONCE
+    }
+
+    impl Call {
+        pub const DEFAULT_MAX_FEE: Fee = Fee(ethers::types::H128::zero());
+        pub const DEFAULT_VERSION: TransactionVersion =
+            TransactionVersion(ethers::types::H256::zero());
+        pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(stark_hash::Felt::ZERO);
+    }
+
     #[cfg(test)]
     mod tests {
         macro_rules! fixture {
@@ -352,11 +400,10 @@ pub mod reply {
         TransactionVersion,
     };
     use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
-    use std::convert::From;
-
     use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
+    use std::convert::From;
 
     /// L2 transaction as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -802,6 +849,22 @@ pub mod reply {
                 Aborted => BlockStatus::Rejected,
             }
         }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct FeeEstimate {
+        /// The Ethereum gas cost of the transaction
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
+        pub gas_consumed: ethers::types::H256,
+        /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
+        pub gas_price: ethers::types::H256,
+        /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
+        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
+        pub overall_fee: ethers::types::H256,
     }
 
     #[cfg(test)]

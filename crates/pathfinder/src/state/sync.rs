@@ -15,7 +15,7 @@ use pathfinder_merkle_tree::{
     state_tree::{ClassCommitmentTree, StorageCommitmentTree},
 };
 use pathfinder_rpc::{
-    v01::types::reply::{syncing, syncing::NumberedBlock, Syncing},
+    v02::types::syncing::{self, NumberedBlock, Syncing},
     SyncState,
 };
 use pathfinder_storage::{

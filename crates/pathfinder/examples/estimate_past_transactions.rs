@@ -77,7 +77,7 @@ struct Work {
 struct ReadyResult {
     actual_fee: ethers::types::H256,
     result: Result<
-        pathfinder_rpc::v01::types::reply::FeeEstimate,
+        pathfinder_rpc::v02::types::reply::FeeEstimate,
         pathfinder_rpc::cairo::ext_py::CallFailure,
     >,
     span: tracing::Span,
@@ -287,14 +287,14 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
     {
         let _g = span.enter();
         match result {
-            Ok(fees) if fees.fee == actual_fee => {
+            Ok(fees) if fees.overall_fee == actual_fee => {
                 eq += 1;
                 tracing::info!(eq, ne, fail, "ok");
             }
             Ok(fees) => {
                 ne += 1;
 
-                let fee = ethers::types::U256::from_big_endian(fees.fee.as_bytes());
+                let fee = ethers::types::U256::from_big_endian(fees.overall_fee.as_bytes());
                 let actual_fee = ethers::types::U256::from_big_endian(actual_fee.as_bytes());
                 let gas_price = ethers::types::U256::from_big_endian(fees.gas_price.as_bytes());
 
@@ -388,7 +388,7 @@ struct SimpleInvoke {
 }
 
 fn default_transaction_nonce() -> pathfinder_common::TransactionNonce {
-    pathfinder_rpc::v01::types::request::Call::DEFAULT_NONCE
+    pathfinder_rpc::v02::types::request::Call::DEFAULT_NONCE
 }
 
 impl From<SimpleInvoke> for pathfinder_rpc::v02::types::request::BroadcastedTransaction {

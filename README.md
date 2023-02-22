@@ -186,45 +186,21 @@ This can be used to interact with a custom StarkNet gateway, or to use a gateway
 
 You can interact with StarkNet using the JSON-RPC API. Pathfinder supports the official StarkNet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
-Currently pathfinder supports both `v0.1` and `v0.2.1` versions of the StarkNet JSON-RPC specification. `v0.1` will be supported until the ecosystem has moved onto the next version.
+Currently pathfinder supports both `v0.2.1` and `v0.3.0` versions of the StarkNet JSON-RPC specification. `v0.1` is not supported anymore.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
-- the `v0.1.0` API is exposed on the `/rpc/v0.1` path
 - the `v0.2.1` API is exposed on the `/` and `/rpc/v0.2` paths
+- the `v0.3.0` API is exposed on the `/rpc/v0.3` path
 - the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1`
 
 Note that the pathfinder extension is versioned separately from the StarkNet specification itself.
 
-### API `v0.1.0`
-
-Pathfinder supports version `v0.1.0` of the StarkNet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_api_openrpc.json), with the following changes:
-
-- The `starknet_protocolVersion` method is not implemented. This method will be removed from the specification in its next version as its semantics and usage were questionable. We decided to not implement it.
-- To be able to represent L1 handler transactions introduced in Starknet 0.10.0, we use the `L1_HANDLER_TXN` type from `v0.2.1` of the JSON-RPC specification.
-- To be able to represent DEPLOY_ACCOUNT transactions introduced in Starknet 0.10.1, we use the `DEPLOY_ACCOUNT_TXN` type from `v0.2.1` of the JSON-RPC specification.
-
-When browsing the specification project, please be aware of the following pitfalls:
-
-- It uses git tags for release versions. The link above should take you to the version supported by pathfinder.
-- The `master` branch is an active development branch and may contain unreleased specification changes.
-- The playground link listed there does not link to the specific version, but instead reflects the `master` branch. Here is a corrected [playground link](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://raw.githubusercontent.com/starkware-libs/starknet-specs/v0.1.0/api/starknet_api_openrpc.json&uiSchema).
-
-### Transaction write API `v0.1.0`
-
-Pathfinder also supports submitting StarkNet transactions to the StarkNet gateway. Here are links to the [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.1.0/api/starknet_write_api.json) and the [playground](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://gist.githubusercontent.com/Mirko-von-Leipzig/f4515d423775edee68ab08c3f4b6afec/raw/65ce9b3adfb97393152450b2f36d6d3572ee2354/StarkNet%2520Write%2520API%2520v0.1.0.json).
-
-Note that:
-
-- `mainnet` requires an additional `token` parameter to submit deploy and declare transactions
-- `starknet_addInvokeTransaction` allows an optional `nonce` parameter to support version 1 invoke
-  transactions. To keep compatibility with existing clients using positional parameters the `nonce`
-  parameter is the last in the list.
-- `starknet_addDeployTransaction` and `starknet_addDeclareTransaction` allow an optional `abi` property
-  within the contract definition JSON object.
-
 ### API `v0.2.1`
 
-Pathfinder supports `v0.2.1` of the Starknet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.2.1/api/starknet_api_openrpc.json).
+Pathfinder supports `v0.2.1` of the Starknet JSON-RPC [specification](https://github.com/starkware-libs/starknet-specs/blob/v0.2.1/api/starknet_api_openrpc.json), with the following changes:
+
+- To be able to represent DECLARE V2 transactions introduced in Starknet 0.11.0 we use `DECLARE_TXN` type from `v0.3.0` of the JSON-RPC specification.
+- DECLARE transactions prior to introduction of DECLARE V1 are represented the same way as `DECLARE_TXN_V1` type from `v0.3.0` of the JSON-RPC specification, except for their `version` field being set to `0`.
 
 Use the [playground link](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://raw.githubusercontent.com/starkware-libs/starknet-specs/v0.2.1/api/starknet_api_openrpc.json&uiSchema) to check the list of methods and the parameters.
 
@@ -234,7 +210,9 @@ Here are links to the [specification](https://github.com/starkware-libs/starknet
 
 Note that:
 
-- `mainnet` requires an additional `token` parameter to submit deploy and declare transactions
+- `mainnet` requires an additional `token` parameter to submit deploy and declare transactions.
+- `starknet_addDeployTransaction` is not supported.
+- To be able to represent BROADCASTED DECLARE V2 transactions introduced in Starknet 0.11.0 we use `BROADCASTED_DECLARE_TXN` type from `v0.3.0` of the JSON-RPC specification.
 
 ### pathfinder extension API
 

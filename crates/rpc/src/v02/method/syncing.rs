@@ -10,7 +10,7 @@ pub async fn syncing(context: RpcContext) -> Result<SyncingOuput, SyncingError> 
     // Scoped so I don't have to think too hard about mutex guard drop semantics.
     let value = { context.sync_status.status.read().await.clone() };
 
-    use crate::v01::types::reply::Syncing;
+    use crate::v02::types::syncing::Syncing;
     let value = match value {
         Syncing::False(_) => SyncingOuput::False,
         Syncing::Status(status) => {
@@ -109,12 +109,12 @@ mod tests {
 
     #[tokio::test]
     async fn syncing() {
-        use crate::v01::types::reply::syncing::NumberedBlock;
-        use crate::v01::types::reply::syncing::Status as V1Status;
-        use crate::v01::types::reply::Syncing as V1Syncing;
+        use crate::v02::types::syncing::NumberedBlock;
+        use crate::v02::types::syncing::Status as V2Status;
+        use crate::v02::types::syncing::Syncing as V2Syncing;
         use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 
-        let status = V1Syncing::Status(V1Status {
+        let status = V2Syncing::Status(V2Status {
             starting: NumberedBlock::from(("aabb", 1)),
             current: NumberedBlock::from(("ccddee", 2)),
             highest: NumberedBlock::from(("eeffaacc", 3)),
@@ -140,7 +140,7 @@ mod tests {
 
     #[tokio::test]
     async fn not_syncing() {
-        let status = crate::v01::types::reply::Syncing::False(false);
+        let status = crate::v02::types::syncing::Syncing::False(false);
 
         let context = RpcContext::for_tests();
         *context.sync_status.status.write().await = status;

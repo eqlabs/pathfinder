@@ -37,7 +37,7 @@ pub struct FunctionCall {
     pub calldata: Vec<CallParam>,
 }
 
-impl From<FunctionCall> for crate::v01::types::request::Call {
+impl From<FunctionCall> for crate::v02::types::request::Call {
     fn from(call: FunctionCall) -> Self {
         Self {
             contract_address: call.contract_address,
