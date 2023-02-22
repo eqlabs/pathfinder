@@ -924,12 +924,13 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CallParam, CasmHash, Chain, ClassCommitment, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber,
-        EthereumChain, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee,
-        GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        BlockId, CallParam, Chain, ClassCommitment, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
+        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
+        SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
+        StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, StorageAddress,
+        StorageCommitment, StorageValue, TransactionNonce, TransactionSignatureElem,
+        TransactionVersion,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1010,7 +1011,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn compiled_class(&self, _: CasmHash) -> Result<bytes::Bytes, SequencerError> {
+        async fn compiled_class(&self, _: SierraHash) -> Result<bytes::Bytes, SequencerError> {
             unimplemented!()
         }
 
