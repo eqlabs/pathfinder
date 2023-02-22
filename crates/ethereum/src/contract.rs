@@ -53,11 +53,12 @@ pub const TESTNET2_ADDRESSES: ContractAddresses = ContractAddresses {
 /// Starknet contract addresses on L1 Goerli for integration.
 pub const INTEGRATION_ADDRESSES: ContractAddresses = ContractAddresses {
     core: H160([
-        213, 195, 37, 209, 131, 197, 146, 201, 73, 152, 0, 12, 94, 14, 237, 158, 102, 85, 192, 32,
+        0xd5, 0xc3, 0x25, 0xD1, 0x83, 0xC5, 0x92, 0xC9, 0x49, 0x98, 0x00, 0x0C, 0x5e, 0x0E, 0xED,
+        0x9e, 0x66, 0x55, 0xc0, 0x20,
     ]),
     gps: H160([
-        171, 67, 186, 72, 201, 237, 244, 194, 196, 187, 1, 35, 115, 72, 209, 215, 178, 142, 241,
-        104,
+        0x8f, 0x97, 0x97, 0x0a, 0xC5, 0xa9, 0xaa, 0x8D, 0x13, 0x0d, 0x35, 0x14, 0x6F, 0x5b, 0x59,
+        0xc4, 0xae, 0xf5, 0x79, 0x63,
     ]),
     // FIXME: This was copied from testnet addresses as this info is not available from the gateway.
     //        Currently not important as it is not used.
@@ -178,9 +179,9 @@ mod tests {
                 // update the address and more importantly, the ABI once it reaches testnet.
 
                 // The current address of Starknet's core contract implementation.
-                const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
+                const CORE_IMPL_ADDR: &str = "0xb42f1FDB956e693A44Ec3E9781dA9b3C8756aF3F";
                 let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
-                let provider = HttpProvider::test_provider(Chain::Testnet);
+                let provider = HttpProvider::test_provider(Chain::Integration);
                 let provider = std::sync::Arc::new(&*provider);
 
                 ethers::contract::abigen!(
@@ -258,7 +259,7 @@ mod tests {
 
             #[test]
             fn gps() {
-                let expect = H160::from_str("0xAB43bA48c9edF4C2C4bB01237348D1D7B28ef168").unwrap();
+                let expect = H160::from_str("0x8f97970aC5a9aa8D130d35146F5b59c4aef57963").unwrap();
                 assert_eq!(INTEGRATION_ADDRESSES.gps, expect);
             }
 

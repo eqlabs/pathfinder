@@ -1968,6 +1968,7 @@ mod tests {
             Ok((major, minor, patch))
         }
 
+        #[ignore = "fixme 0.11.0: integration version related issues in coming PRs"]
         #[tokio::test]
         async fn integration() {
             version_check!(Integration == 0 - 10 - 3);
