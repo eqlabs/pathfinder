@@ -1962,7 +1962,6 @@ mod tests {
             Ok((major, minor, patch))
         }
 
-        #[ignore = "fixme 0.11.0: integration version related issues in coming PRs"]
         #[tokio::test]
         async fn integration() {
             let actual = get_latest_version(&Client::integration()).await.unwrap();
