@@ -25,8 +25,7 @@ pub struct Transaction {
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
 pub struct TransactionReceipt {
-    #[serde(default)]
-    pub r#type: Option<String>, // Absent in v0.1
+    pub r#type: String,
     pub transaction_hash: Felt,
 }
 
