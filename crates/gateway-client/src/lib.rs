@@ -1965,11 +1965,10 @@ mod tests {
         #[ignore = "fixme 0.11.0: integration version related issues in coming PRs"]
         #[tokio::test]
         async fn integration() {
-            version_check!(Integration == 0 - 10 - 3);
             let actual = get_latest_version(&Client::integration()).await.unwrap();
             assert_eq!(
                 actual,
-                (0, 10, 3),
+                (0, 11, 0),
                 "Integration gateway version has changed, update version_check"
             );
         }
