@@ -1,8 +1,8 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, EntryPoint, Fee, StarknetBlockNumber, StarknetTransactionHash,
-    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+    EntryPoint, Fee, SierraHash, StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
+    StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
@@ -32,7 +32,7 @@ pub trait ClientApi {
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
-    async fn compiled_class(&self, class_hash: CasmHash) -> Result<bytes::Bytes, SequencerError>;
+    async fn compiled_class(&self, class_hash: SierraHash) -> Result<bytes::Bytes, SequencerError>;
 
     async fn storage(
         &self,
@@ -221,15 +221,12 @@ impl ClientApi for Client {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn compiled_class(&self, hash: CasmHash) -> Result<bytes::Bytes, SequencerError> {
-        pathfinder_common::version_check!(
-            Integration < 0 - 11 - 0,
-            "Check whether hash should be Sierra or Casm"
-        );
-
+    async fn compiled_class(&self, hash: SierraHash) -> Result<bytes::Bytes, SequencerError> {
         self.feeder_gateway_request()
-            .get_compiled_class()
-            .with_casm_hash(hash)
+            .get_compiled_class_by_class_hash()
+            // Let's not introduce an equivalent of `with_class_hash` for `SierraHash`
+            // which is conceptually the same thing here
+            .with_class_hash(ClassHash(hash.0))
             .with_retry(Self::RETRY)
             .get_as_bytes()
             .await
@@ -501,6 +498,8 @@ mod tests {
     {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
             (None, Client::new(Chain::Testnet).unwrap())
+        } else if std::env::var_os("SEQUENCER_TESTS_LIVE_API_INTEGRATION").is_some() {
+            (None, Client::new(Chain::Integration).unwrap())
         } else {
             use warp::Filter;
             let opt_query_raw = warp::query::raw()
@@ -900,15 +899,10 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_hash() {
-            version_check!(
-                Integration < 0 - 11 - 0,
-                "Verify this test's types and params"
-            );
-
-            const INVALID_HASH: CasmHash = CasmHash(felt!("0xaaaaa"));
+            const INVALID_HASH: SierraHash = SierraHash(felt!("0xaaaaa"));
             let (_jh, client) = setup([(
                 format!(
-                    "/feeder_gateway/get_compiled_class?classHash={}",
+                    "/feeder_gateway/get_compiled_class_by_class_hash?classHash={}",
                     INVALID_HASH.0.to_hex_str()
                 ),
                 response_from(StarknetErrorCode::UndeclaredClass),
@@ -923,14 +917,16 @@ mod tests {
         #[tokio::test]
         async fn success() {
             version_check!(
-                Integration < 0 - 11 - 0,
-                "Verify this test's types, params and add a fixture"
+                Testnet < 0 - 11 - 0,
+                "Update sierra class hash for testnet, current value is from integration"
             );
 
-            const VALID_HASH: CasmHash = CasmHash(felt!("0xbbbbb"));
+            const VALID_HASH: SierraHash = SierraHash(felt!(
+                "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
+            ));
             let (_jh, client) = setup([(
                 format!(
-                    "/feeder_gateway/get_compiled_class?classHash={}",
+                    "/feeder_gateway/get_compiled_class_by_class_hash?classHash={}",
                     VALID_HASH.0.to_hex_str()
                 ),
                 (r#"{"fake":"fixture"}"#, 200),
@@ -1968,14 +1964,12 @@ mod tests {
             Ok((major, minor, patch))
         }
 
-        #[ignore = "fixme 0.11.0: integration version related issues in coming PRs"]
         #[tokio::test]
         async fn integration() {
-            version_check!(Integration == 0 - 10 - 3);
             let actual = get_latest_version(&Client::integration()).await.unwrap();
             assert_eq!(
                 actual,
-                (0, 10, 3),
+                (0, 11, 0),
                 "Integration gateway version has changed, update version_check"
             );
         }

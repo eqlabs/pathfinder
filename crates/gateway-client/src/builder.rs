@@ -11,7 +11,7 @@
 //!   4. [Final](stage::Final) where you select the REST operation type, which is then executed.
 use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
 use pathfinder_common::{
-    BlockId, CasmHash, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
+    BlockId, ClassHash, ContractAddress, StarknetTransactionHash, StorageAddress,
 };
 use starknet_gateway_types::error::SequencerError;
 
@@ -40,6 +40,7 @@ pub mod stage {
     /// - [get_block](super::Request::get_block)
     /// - [get_full_contract](super::Request::get_full_contract)
     /// - [get_class_by_hash](super::Request::get_class_by_hash)
+    /// - [get_compiled_class_by_class_hash](super::Request::get_compiled_class_by_class_hash)
     /// - [get_storage_at](super::Request::get_storage_at)
     /// - [get_transaction](super::Request::get_transaction)
     /// - [get_state_update](super::Request::get_state_update)
@@ -143,7 +144,7 @@ impl<'a> Request<'a, stage::Method> {
         get_transaction,
         get_state_update,
         get_contract_addresses,
-        get_compiled_class,
+        get_compiled_class_by_class_hash,
     );
 
     /// Appends the given method to the request url.
@@ -189,11 +190,6 @@ impl<'a> Request<'a, stage::Params> {
 
     pub fn with_class_hash(self, class_hash: ClassHash) -> Self {
         self.add_param("classHash", &class_hash.0.to_hex_str())
-    }
-
-    pub fn with_casm_hash(self, hash: CasmHash) -> Self {
-        pathfinder_common::version_check!(Integration < 0 - 11 - 0, "Confirm parameter name");
-        self.add_param("classHash", &hash.0.to_hex_str())
     }
 
     pub fn with_optional_token(self, token: Option<&str>) -> Self {

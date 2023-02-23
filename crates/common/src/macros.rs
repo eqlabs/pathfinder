@@ -328,7 +328,7 @@ macro_rules! version_check {
             pathfinder_common::Chain::Mainnet => (0, 10, 3),
             pathfinder_common::Chain::Testnet => (0, 10, 3),
             pathfinder_common::Chain::Testnet2 => (0, 10, 3),
-            pathfinder_common::Chain::Integration => (0, 10, 3),
+            pathfinder_common::Chain::Integration => (0, 11, 0),
             pathfinder_common::Chain::Custom => panic!("Custom networks are not supported"),
         };
         const INPUT: (u64, u64, u64) = ($major, $minor, $patch);
