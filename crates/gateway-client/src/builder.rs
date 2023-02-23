@@ -51,7 +51,6 @@ pub mod stage {
     /// - [at_block](super::Request::with_block)
     /// - [with_contract_address](super::Request::with_contract_address)
     /// - [with_class_hash](super::Request::with_class_hash)
-    /// - [with_sierra_hash](super::Request::with_sierra_hash)
     /// - [with_optional_token](super::Request::with_optional_token)
     /// - [with_storage_address](super::Request::with_storage_address)
     /// - [with_transaction_hash](super::Request::with_transaction_hash)
