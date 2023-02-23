@@ -224,7 +224,9 @@ impl ClientApi for Client {
     async fn compiled_class(&self, hash: SierraHash) -> Result<bytes::Bytes, SequencerError> {
         self.feeder_gateway_request()
             .get_compiled_class_by_class_hash()
-            .with_sierra_hash(hash)
+            // Let's not introduce an equivalent of `with_class_hash` for `SierraHash`
+            // which is conceptually the same thing here
+            .with_class_hash(ClassHash(hash.0))
             .with_retry(Self::RETRY)
             .get_as_bytes()
             .await
