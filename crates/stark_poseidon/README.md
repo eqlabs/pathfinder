@@ -6,7 +6,7 @@ This crate implements the StarkWare Poseidon hash function. The chosen parameter
 Check out [Sagemath script](/crates/stark_poseidon/poseidon.ipynb) for an easy overview and computed test vectors.
 
 ### Sponge construction
-The hash function is a sponge construction as depicted below (image source, wikipedia) with rate $r=1$ and capacity $c=2$, i.e. total state width of $n=3$. Each entry is a finite field element of integers modulo $p=2^{251} + 17*2^{192} + 1$.
+The hash function is a sponge construction as depicted below (image source, wikipedia) with rate $r=2$ and capacity $c=1$, i.e. total state width of $n=3$. Each entry is a finite field element of integers modulo $p=2^{251} + 17\cdot 2^{192} + 1$.
 
 ![Sponge function](spec/sponge.png)
 
