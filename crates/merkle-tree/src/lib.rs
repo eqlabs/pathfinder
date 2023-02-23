@@ -24,6 +24,6 @@ impl Hash for PedersenHash {
 struct PoseidonHash;
 impl crate::Hash for PoseidonHash {
     fn hash(left: Felt, right: Felt) -> Felt {
-        stark_poseidon::poseidon_hash(&[left.into(), right.into()]).into()
+        stark_poseidon::poseidon_hash(left.into(), right.into()).into()
     }
 }
