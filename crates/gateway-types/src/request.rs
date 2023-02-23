@@ -142,6 +142,14 @@ pub mod contract {
         pub selector: EntryPoint,
         pub offset: ByteCodeOffset,
     }
+
+    /// Descriptor of an entry point in a Sierra class.
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct SelectorAndFunctionIndex {
+        pub selector: EntryPoint,
+        pub function_idx: u64,
+    }
 }
 
 pub mod add_transaction {

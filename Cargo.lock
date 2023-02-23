@@ -7165,6 +7165,7 @@ dependencies = [
  "serde_with",
  "sha3",
  "stark_hash",
+ "stark_poseidon",
  "starknet-gateway-test-fixtures",
  "thiserror",
  "tokio",

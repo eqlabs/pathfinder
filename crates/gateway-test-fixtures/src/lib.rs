@@ -108,6 +108,8 @@ pub mod zstd_compressed_contracts {
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x0424e799d610433168a31aab44c0d3e38b45d97387b45de80089f56c184fa315
     pub const CAIRO_0_10_TUPLES_GOERLI: &[u8] =
         bytes_fixture!("contracts/cairo-0.10-tuples-goerli.json.zst");
+    // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c
+    pub const CAIRO_0_11_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-0.11.json.zst");
 }
 
 pub mod testnet {
