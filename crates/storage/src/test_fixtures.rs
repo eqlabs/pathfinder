@@ -2,14 +2,18 @@
 
 use crate::{
     types::{
-        state_update::{DeclaredContract, DeployedContract, Nonce, StateDiff, StorageDiff},
+        state_update::{
+            DeclaredCairoClass, DeclaredSierraClass, DeployedContract, Nonce, ReplacedClass,
+            StateDiff, StorageDiff,
+        },
         StateUpdate,
     },
     {StarknetBlock, Storage},
 };
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,
-    StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment, StorageAddress, StorageValue,
+    CasmHash, ClassHash, ContractAddress, ContractNonce, GasPrice, SequencerAddress, SierraHash,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
+    StorageAddress, StorageValue,
 };
 use rusqlite::Transaction;
 use stark_hash::Felt;
@@ -63,7 +67,7 @@ impl StateUpdate {
                     key: StorageAddress::new_or_panic(hash!(4, h)),
                     value: StorageValue(hash!(5, h)),
                 }],
-                declared_contracts: vec![DeclaredContract {
+                declared_contracts: vec![DeclaredCairoClass {
                     class_hash: ClassHash(hash!(6, h)),
                 }],
                 deployed_contracts: vec![DeployedContract {
@@ -73,6 +77,14 @@ impl StateUpdate {
                 nonces: vec![Nonce {
                     contract_address: ContractAddress::new_or_panic(hash!(9, h)),
                     nonce: ContractNonce(hash!(10, h)),
+                }],
+                declared_sierra_classes: vec![DeclaredSierraClass {
+                    class_hash: SierraHash(hash!(11, h)),
+                    compiled_class_hash: CasmHash(hash!(12, h)),
+                }],
+                replaced_classes: vec![ReplacedClass {
+                    address: ContractAddress::new_or_panic(hash!(13, h)),
+                    class_hash: ClassHash(hash!(14, h)),
                 }],
             },
         }

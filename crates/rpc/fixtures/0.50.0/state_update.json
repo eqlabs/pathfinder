@@ -15,9 +15,15 @@
                     ]
                 }
             ],
-            "declared_contract_hashes": [
+            "deprecated_declared_contract_hashes": [
                 "0xcdef",
                 "0xcdee"
+            ],
+            "declared_contract_hashes": [
+                {
+                    "class_hash": "0xabcd",
+                    "compiled_class_hash": "0xdcba"
+                }
             ],
             "deployed_contracts": [
                 {
@@ -48,9 +54,15 @@
                     ]
                 }
             ],
-            "declared_contract_hashes": [
+            "deprecated_declared_contract_hashes": [
                 "0xcdef",
                 "0xcdee"
+            ],
+            "declared_contract_hashes": [
+                {
+                    "class_hash": "0xabcd",
+                    "compiled_class_hash": "0xdcba"
+                }
             ],
             "deployed_contracts": [
                 {

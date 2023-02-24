@@ -679,10 +679,12 @@ pub mod state_update {
         pub old_declared_classes: Vec<ClassHash>,
         /// Not present in StarkNet versions < v0.11.0.
         #[serde(default)]
-        pub declared_classes: HashMap<SierraHash, CasmHash>,
+        pub declared_classes: Vec<DeclaredSierraClass>,
         /// Old state diffs have no "nonces"
         #[serde(default)]
         pub nonces: HashMap<ContractAddress, ContractNonce>,
+        #[serde(default)]
+        pub replaced_classes: Vec<ReplacedClass>,
     }
 
     /// L2 storage diff.
@@ -701,6 +703,22 @@ pub mod state_update {
         /// `class_hash` is the field name from cairo 0.9.0 onwards
         /// `contract_hash` is the name from cairo before 0.9.0
         #[serde(alias = "contract_hash")]
+        pub class_hash: ClassHash,
+    }
+
+    /// Describes a newly declared class. Maps Sierra class hash to a Casm hash.
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeclaredSierraClass {
+        pub class_hash: SierraHash,
+        pub compiled_class_hash: CasmHash,
+    }
+
+    /// Describes a newly replaced class. Maps contract address to a new class.
+    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[serde(deny_unknown_fields)]
+    pub struct ReplacedClass {
+        pub address: ContractAddress,
         pub class_hash: ClassHash,
     }
 

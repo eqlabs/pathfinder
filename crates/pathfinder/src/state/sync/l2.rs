@@ -742,9 +742,10 @@ mod tests {
                             value: *STORAGE_VAL0,
                         }],
                     )]),
-                    old_declared_classes: Vec::new(),
-                    declared_classes: HashMap::new(),
+                    old_declared_classes: vec![],
+                    declared_classes: vec![],
                     nonces: HashMap::new(),
+                    replaced_classes: vec![],
                 },
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
@@ -757,9 +758,10 @@ mod tests {
                         class_hash: *CONTRACT0_HASH_V2,
                     }],
                     storage_diffs: HashMap::new(),
-                    old_declared_classes: Vec::new(),
-                    declared_classes: HashMap::new(),
+                    old_declared_classes: vec![],
+                    declared_classes: vec![],
                     nonces: HashMap::new(),
+                    replaced_classes: vec![],
                 },
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
@@ -787,9 +789,10 @@ mod tests {
                             }],
                         ),
                     ]),
-                    old_declared_classes: Vec::new(),
-                    declared_classes: HashMap::new(),
+                    old_declared_classes: vec![],
+                    declared_classes: vec![],
                     nonces: HashMap::new(),
+                    replaced_classes: vec![],
                 },
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
@@ -799,9 +802,10 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    old_declared_classes: Vec::new(),
-                    declared_classes: HashMap::new(),
+                    old_declared_classes: vec![],
+                    declared_classes: vec![],
                     nonces: HashMap::new(),
+                    replaced_classes: vec![],
                 },
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
@@ -811,9 +815,10 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    old_declared_classes: Vec::new(),
-                    declared_classes: HashMap::new(),
+                    old_declared_classes: vec![],
+                    declared_classes: vec![],
                     nonces: HashMap::new(),
+                    replaced_classes: vec![],
                 },
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
@@ -823,9 +828,10 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    old_declared_classes: Vec::new(),
-                    declared_classes: HashMap::new(),
+                    old_declared_classes: vec![],
+                    declared_classes: vec![],
                     nonces: HashMap::new(),
+                    replaced_classes: vec![],
                 },
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
@@ -835,9 +841,10 @@ mod tests {
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
                     storage_diffs: HashMap::new(),
-                    old_declared_classes: Vec::new(),
-                    declared_classes: HashMap::new(),
+                    old_declared_classes: vec![],
+                    declared_classes: vec![],
                     nonces: HashMap::new(),
+                    replaced_classes: vec![],
                 },
             };
         }

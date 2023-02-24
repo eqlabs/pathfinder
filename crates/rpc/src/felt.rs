@@ -23,8 +23,9 @@
 use pathfinder_common::{
     CallParam, CallResultValue, CasmHash, ChainId, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, SequencerAddress, StarknetBlockHash, StarknetTransactionHash,
-    StateCommitment, StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem,
+    L2ToL1MessagePayloadElem, SequencerAddress, SierraHash, StarknetBlockHash,
+    StarknetTransactionHash, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
+    TransactionSignatureElem,
 };
 use stark_hash::Felt;
 
@@ -180,6 +181,7 @@ rpc_felt_serde!(
     L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem,
     SequencerAddress,
+    SierraHash,
     StarknetBlockHash,
     StarknetTransactionHash,
     StateCommitment,
