@@ -547,9 +547,9 @@ async fn download_and_compress_contract(
     sequencer: &impl ClientApi,
 ) -> anyhow::Result<CompressedContract> {
     let contract_definition = sequencer
-        .full_contract(contract.address)
+        .class_by_hash(contract.class_hash)
         .await
-        .context("Download contract from sequencer")?;
+        .context("Download contract class from sequencer")?;
 
     // Parse the contract definition for ABI, code and calculate the class hash. This can
     // be expensive, so perform in a blocking task.
@@ -887,14 +887,14 @@ mod tests {
         }
 
         /// Convenience wrapper
-        fn expect_full_contract(
+        fn expect_class_by_hash(
             mock: &mut MockClientApi,
             seq: &mut mockall::Sequence,
-            contract_address: ContractAddress,
+            class_hash: ClassHash,
             returned_result: Result<bytes::Bytes, SequencerError>,
         ) {
-            mock.expect_full_contract()
-                .withf(move |x| x == &contract_address)
+            mock.expect_class_by_hash()
+                .withf(move |x| x == &class_hash)
                 .times(1)
                 .in_sequence(seq)
                 .return_once(|_| returned_result);
@@ -932,10 +932,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Downlad block #1 with respective state update and contracts
@@ -951,10 +951,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Stay at head, no more blocks available
@@ -1025,10 +1025,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
 
@@ -1132,10 +1132,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
 
@@ -1170,10 +1170,10 @@ mod tests {
                     (*BLOCK0_HASH_V2).into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR_V2,
+                    *CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
 
@@ -1275,10 +1275,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1294,10 +1294,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1359,10 +1359,10 @@ mod tests {
                     (*BLOCK0_HASH_V2).into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR_V2,
+                    *CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
                 // Fetch the new block #1 from the fork with respective state update and contracts
@@ -1538,10 +1538,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1557,10 +1557,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1779,10 +1779,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1798,10 +1798,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1979,10 +1979,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1998,10 +1998,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 whose parent hash does not match block #1 hash
