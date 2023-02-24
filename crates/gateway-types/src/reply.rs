@@ -874,7 +874,10 @@ mod tests {
             serde_json::from_str::<StateUpdate>(v0_9_1::state_update::GENESIS).unwrap();
             serde_json::from_str::<StateUpdate>(v0_9_1::state_update::PENDING).unwrap();
             // This is from integration starknet_version 0.10 and contains the new nonces field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_216572).unwrap();
+            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283364).unwrap();
+            // This is from integration starknet_version 0.11 and contains the new declared_classes field.
+            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283428).unwrap();
+            // This is from integration starknet_version 0.11 and contains the new replaced_classes field.
         }
 
         #[test]
