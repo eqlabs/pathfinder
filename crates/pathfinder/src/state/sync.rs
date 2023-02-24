@@ -969,10 +969,6 @@ mod tests {
             }
         }
 
-        async fn full_contract(&self, _: ContractAddress) -> Result<bytes::Bytes, SequencerError> {
-            unimplemented!()
-        }
-
         async fn class_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
             unimplemented!()
         }
