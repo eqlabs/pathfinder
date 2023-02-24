@@ -70,8 +70,8 @@ pub async fn get_state_update(
 mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
-        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StarknetBlockHash,
-        StateCommitment, StorageAddress, StorageValue,
+        ClassHash, ContractAddress, ContractNonce, StarknetBlockHash, StateCommitment,
+        StorageAddress, StorageValue,
     };
     use serde::Serialize;
     use serde_with::skip_serializing_none;
@@ -124,15 +124,13 @@ mod types {
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
         #[serde_as(as = "Vec<RpcFelt>")]
-        pub deprecated_declared_contract_hashes: Vec<ClassHash>,
-        pub declared_contract_hashes: Vec<DeclaredClass>,
+        pub declared_contract_hashes: Vec<ClassHash>,
         pub deployed_contracts: Vec<DeployedContract>,
         pub nonces: Vec<Nonce>,
     }
 
     impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
         fn from(state_diff: starknet_gateway_types::reply::state_update::StateDiff) -> Self {
-            // FIXME v0.11.0 declare V1s declare V2s replaced
             let storage_diffs: Vec<StorageDiff> = state_diff
                 .storage_diffs
                 .into_iter()
@@ -143,12 +141,7 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                deprecated_declared_contract_hashes: state_diff.old_declared_contracts,
-                declared_contract_hashes: state_diff
-                    .declared_classes
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
+                declared_contract_hashes: state_diff.old_declared_contracts,
                 deployed_contracts: state_diff
                     .deployed_contracts
                     .into_iter()
@@ -201,15 +194,10 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                deprecated_declared_contract_hashes: diff
+                declared_contract_hashes: diff
                     .declared_contracts
                     .into_iter()
                     .map(|d| d.class_hash)
-                    .collect(),
-                declared_contract_hashes: diff
-                    .declared_sierra_classes
-                    .into_iter()
-                    .map(Into::into)
                     .collect(),
                 deployed_contracts: diff
                     .deployed_contracts
@@ -249,36 +237,6 @@ mod types {
             Self {
                 key: diff.key,
                 value: diff.value,
-            }
-        }
-    }
-
-    /// L2 state diff declared Sierra class item.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct DeclaredClass {
-        #[serde_as(as = "RpcFelt")]
-        pub class_hash: SierraHash,
-        #[serde_as(as = "RpcFelt")]
-        pub compiled_class_hash: CasmHash,
-    }
-
-    impl From<starknet_gateway_types::reply::state_update::DeclaredSierraClass> for DeclaredClass {
-        fn from(d: starknet_gateway_types::reply::state_update::DeclaredSierraClass) -> Self {
-            Self {
-                class_hash: d.class_hash,
-                compiled_class_hash: d.compiled_class_hash,
-            }
-        }
-    }
-
-    impl From<pathfinder_storage::types::state_update::DeclaredSierraClass> for DeclaredClass {
-        fn from(d: pathfinder_storage::types::state_update::DeclaredSierraClass) -> Self {
-            Self {
-                class_hash: d.class_hash,
-                compiled_class_hash: d.compiled_class_hash,
             }
         }
     }
@@ -353,14 +311,10 @@ mod types {
                             value: StorageValue(felt!("0x55")),
                         }],
                     }],
-                    deprecated_declared_contract_hashes: vec![
+                    declared_contract_hashes: vec![
                         ClassHash(felt!("0xcdef")),
                         ClassHash(felt!("0xcdee")),
                     ],
-                    declared_contract_hashes: vec![DeclaredClass {
-                        class_hash: SierraHash(felt!("0xabcd")),
-                        compiled_class_hash: CasmHash(felt!("0xdcba")),
-                    }],
                     deployed_contracts: vec![DeployedContract {
                         address: ContractAddress::new_or_panic(felt!("0xadd")),
                         class_hash: ClassHash(felt!("0xcdef")),
@@ -380,7 +334,7 @@ mod types {
             ];
 
             let fixture =
-                include_str!("../../../fixtures/0.50.0/state_update.json").replace([' ', '\n'], "");
+                include_str!("../../../fixtures/0.44.0/state_update.json").replace([' ', '\n'], "");
 
             pretty_assertions::assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
             pretty_assertions::assert_eq!(
@@ -587,7 +541,6 @@ mod tests {
                         },
                     ],
                 }],
-                deprecated_declared_contract_hashes: vec![],
                 declared_contract_hashes: vec![],
                 deployed_contracts: vec![
                     DeployedContract {
