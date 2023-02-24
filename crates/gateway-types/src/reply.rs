@@ -676,7 +676,7 @@ pub mod state_update {
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
         #[serde(alias = "declared_contracts")]
-        pub old_declared_classes: Vec<ClassHash>,
+        pub old_declared_contracts: Vec<ClassHash>,
         /// Not present in StarkNet versions < v0.11.0.
         #[serde(default)]
         pub declared_classes: Vec<DeclaredSierraClass>,

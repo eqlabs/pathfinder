@@ -143,7 +143,7 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                deprecated_declared_contract_hashes: state_diff.old_declared_classes,
+                deprecated_declared_contract_hashes: state_diff.old_declared_contracts,
                 declared_contract_hashes: state_diff
                     .declared_classes
                     .into_iter()

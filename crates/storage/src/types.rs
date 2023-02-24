@@ -69,8 +69,10 @@ pub mod state_update {
         pub deployed_contracts: Vec<DeployedContract>,
         pub nonces: Vec<Nonce>,
         /// Refers to Declare V2 txns, these contain Sierra classes
+        #[serde(default)]
         pub declared_sierra_classes: Vec<DeclaredSierraClass>,
         /// Replaced classes, introduced in Starknet 0.11.0
+        #[serde(default)]
         pub replaced_classes: Vec<ReplacedClass>,
     }
 
@@ -89,7 +91,7 @@ pub mod state_update {
                     })
                     .collect(),
                 declared_contracts: x
-                    .old_declared_classes
+                    .old_declared_contracts
                     .into_iter()
                     .map(|class_hash| DeclaredCairoClass { class_hash })
                     .collect(),

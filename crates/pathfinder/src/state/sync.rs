@@ -324,7 +324,7 @@ where
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
                     let deployed_classes = state_update.state_diff.deployed_contracts.iter().map(|x| x.class_hash);
-                    let declared_classes = state_update.state_diff.old_declared_classes.iter().cloned();
+                    let declared_classes = state_update.state_diff.old_declared_contracts.iter().cloned();
                     let declared_classes_block = block
                         .transactions
                         .iter()
@@ -1195,7 +1195,7 @@ mod tests {
             state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: vec![],
-                old_declared_classes: vec![],
+                old_declared_contracts: vec![],
                 nonces: std::collections::HashMap::new(),
                 declared_classes: vec![],
                 replaced_classes: vec![],
