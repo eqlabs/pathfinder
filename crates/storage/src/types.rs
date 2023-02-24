@@ -4,8 +4,6 @@ use serde_with::skip_serializing_none;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct CompressedContract {
-    pub abi: Vec<u8>,
-    pub bytecode: Vec<u8>,
     pub definition: Vec<u8>,
     pub hash: ClassHash,
 }
@@ -14,8 +12,8 @@ impl std::fmt::Debug for CompressedContract {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "CompressedContract {{ sizes: {:?}, hash: {} }}",
-            (self.abi.len(), self.bytecode.len(), self.definition.len()),
+            "CompressedContract {{ size: {}, hash: {} }}",
+            self.definition.len(),
             self.hash.0
         )
     }

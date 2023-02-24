@@ -167,14 +167,9 @@ mod tests {
             value: StorageValue(felt_bytes!(b"storage value 2")),
         }];
 
-        // We need to set the magic bytes for zstd compression to simulate a compressed
-        // contract definition, as this is asserted for internally
-        let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
         let contract_definition =
             starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION.to_vec();
         let contract0_code = CompressedContract {
-            abi: zstd_magic.clone(),
-            bytecode: zstd_magic,
             definition: contract_definition,
             hash: class0_hash,
         };
@@ -538,10 +533,7 @@ mod tests {
             for deployed in deployed_contracts {
                 // The abi, bytecode, definition are expected to be zstd compressed, and are
                 // checked for the magic bytes.
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
                 let contract = CompressedContract {
-                    abi: zstd_magic.clone(),
-                    bytecode: zstd_magic.clone(),
                     definition: compressed_definition.to_vec(),
                     hash: deployed.class_hash,
                 };

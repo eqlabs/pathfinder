@@ -7,7 +7,7 @@ use pathfinder_common::{
 use pathfinder_storage::types::CompressedContract;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::{
-    class_hash::extract_abi_code_hash,
+    class_hash::compute_class_hash,
     error::SequencerError,
     reply::{
         state_update::{DeployedContract, StateDiff},
@@ -502,44 +502,38 @@ async fn download_and_compress_class(
         .await
         .context("Downloading contract from sequencer")?;
 
-    // Parse the contract definition for ABI, code and calculate the class hash. This can
+    // Parse the contract definition and calculate the class hash. This can
     // be expensive, so perform in a blocking task.
     let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let (abi, bytecode, hash) = extract_abi_code_hash(&definition)?;
-        Ok((definition, abi, bytecode, hash))
+        let hash = compute_class_hash(&definition)?;
+        Ok((definition, hash))
     });
-    let (definition, abi, bytecode, hash) = extract
+    let (definition, hash) = extract
         .await
         .context("Parse class definition and compute hash")??;
 
     // Sanity check.
     anyhow::ensure!(
-        class_hash == hash,
+        class_hash == hash.hash(),
         "Class hash mismatch, {} instead of {}",
-        hash.0,
+        hash.hash(),
         class_hash.0
     );
 
     let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
 
-        let abi = compressor.compress(&abi).context("Compress ABI")?;
-        let bytecode = compressor
-            .compress(&bytecode)
-            .context("Compress bytecode")?;
         let definition = compressor
             .compress(&definition)
             .context("Compress definition")?;
 
-        Ok((abi, bytecode, definition))
+        Ok(definition)
     });
-    let (abi, bytecode, definition) = compress.await.context("Compress contract")??;
+    let definition = compress.await.context("Compress contract")??;
 
     Ok(CompressedContract {
-        abi,
-        bytecode,
         definition,
-        hash,
+        hash: hash.hash(),
     })
 }
 
@@ -555,16 +549,16 @@ async fn download_and_compress_contract(
     // Parse the contract definition for ABI, code and calculate the class hash. This can
     // be expensive, so perform in a blocking task.
     let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
-        Ok((contract_definition, abi, bytecode, hash))
+        let hash = compute_class_hash(&contract_definition)?;
+        Ok((contract_definition, hash))
     });
-    let (contract_definition, abi, bytecode, hash) = extract
+    let (contract_definition, hash) = extract
         .await
         .context("Parse contract definition and compute hash")??;
 
     // Sanity check.
     anyhow::ensure!(
-        contract.class_hash == hash,
+        contract.class_hash == hash.hash(),
         "Class hash mismatch for contract {:?}",
         contract.address
     );
@@ -572,23 +566,17 @@ async fn download_and_compress_contract(
     let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
 
-        let abi = compressor.compress(&abi).context("Compress ABI")?;
-        let bytecode = compressor
-            .compress(&bytecode)
-            .context("Compress bytecode")?;
         let definition = compressor
             .compress(&contract_definition)
             .context("Compress definition")?;
 
-        Ok((abi, bytecode, definition))
+        Ok(definition)
     });
-    let (abi, bytecode, definition) = compress.await.context("Compress contract")??;
+    let definition = compress.await.context("Compress contract")??;
 
     Ok(CompressedContract {
-        abi,
-        bytecode,
         definition,
-        hash,
+        hash: hash.hash(),
     })
 }
 
@@ -983,8 +971,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -999,8 +985,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1069,8 +1053,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1211,8 +1193,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1231,8 +1211,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
                 });
@@ -1416,8 +1394,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1432,8 +1408,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1464,8 +1438,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
                 });
@@ -1696,8 +1668,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1712,8 +1682,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1903,8 +1871,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1919,8 +1885,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -2099,8 +2063,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -2115,8 +2077,6 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.abi[..4], zstd_magic);
-                        assert_eq!(compressed_contract.bytecode[..4], zstd_magic);
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });

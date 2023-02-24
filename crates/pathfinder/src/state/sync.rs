@@ -812,7 +812,7 @@ async fn download_verify_and_insert_missing_classes<
     connection: &mut Connection,
     classes: ClassIter,
 ) -> anyhow::Result<()> {
-    use starknet_gateway_types::class_hash::extract_abi_code_hash;
+    use starknet_gateway_types::class_hash::compute_class_hash;
 
     // Make list unique.
     let classes = classes
@@ -844,21 +844,20 @@ async fn download_verify_and_insert_missing_classes<
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
-        // Parse the contract definition for ABI, code and calculate the class hash. This can
-        // be expensive, so perform in a blocking task.
+        // Calculate the class hash. This can be expensive, so perform in a blocking task.
         let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let (abi, bytecode, hash) = extract_abi_code_hash(&definition)?;
-            Ok((definition, abi, bytecode, hash))
+            let hash = compute_class_hash(&definition)?;
+            Ok((definition, hash))
         });
-        let (definition, abi, bytecode, hash) = extract
+        let (definition, hash) = extract
             .await
             .context("Parse class definition and compute hash")??;
 
         // Sanity check.
         anyhow::ensure!(
-            class_hash == hash,
+            class_hash == hash.hash(),
             "Class hash mismatch, {} instead of {}",
-            hash.0,
+            hash.hash(),
             class_hash.0
         );
 
@@ -866,22 +865,16 @@ async fn download_verify_and_insert_missing_classes<
             let mut compressor =
                 zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
 
-            let abi = compressor.compress(&abi).context("Compress ABI")?;
-            let bytecode = compressor
-                .compress(&bytecode)
-                .context("Compress bytecode")?;
             let definition = compressor
                 .compress(&definition)
                 .context("Compress definition")?;
 
-            Ok((abi, bytecode, definition))
+            Ok(definition)
         });
-        let (abi, bytecode, definition) = compress.await.context("Compress class")??;
+        let definition = compress.await.context("Compress class")??;
         let compressed = pathfinder_storage::types::CompressedContract {
-            abi,
-            bytecode,
             definition,
-            hash,
+            hash: hash.hash(),
         };
 
         tokio::task::block_in_place(|| {
@@ -1688,8 +1681,6 @@ mod tests {
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewContract(CompressedContract {
-                abi: zstd_magic.clone(),
-                bytecode: zstd_magic.clone(),
                 definition: zstd_magic,
                 hash: ClassHash(*A),
             }))
@@ -1782,8 +1773,6 @@ mod tests {
         ContractCodeTable::insert_compressed(
             &connection,
             &CompressedContract {
-                abi: zstd_magic.clone(),
-                bytecode: zstd_magic.clone(),
                 definition: zstd_magic,
                 hash: ClassHash(*A),
             },

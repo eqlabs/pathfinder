@@ -107,7 +107,7 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
                 }
                 duplicates += 1;
             } else {
-                crate::ContractCodeTable::insert(tx, hash, &abi, &code, &raw_definition)?;
+                storage::contract_code_insert(tx, hash, &abi, &code, &raw_definition)?;
                 uniq_contracts += 1;
             }
 
@@ -157,4 +157,73 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
     println!("table contracts_v1 dropped in {:?}", started_at.elapsed());
 
     Ok(())
+}
+
+/// These are copies of storage code we had matching the database schema for this migration.
+mod storage {
+    use anyhow::Context;
+    use rusqlite::{named_params, Transaction};
+
+    use pathfinder_common::ClassHash;
+
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct CompressedContract {
+        pub abi: Vec<u8>,
+        pub bytecode: Vec<u8>,
+        pub definition: Vec<u8>,
+        pub hash: ClassHash,
+    }
+
+    /// Insert a class into the table.
+    ///
+    /// Does nothing if the class [hash](ClassHash) is already populated.
+    pub fn contract_code_insert(
+        transaction: &Transaction<'_>,
+        hash: ClassHash,
+        abi: &[u8],
+        bytecode: &[u8],
+        definition: &[u8],
+    ) -> anyhow::Result<()> {
+        let mut compressor = zstd::bulk::Compressor::new(10)
+            .context("Couldn't create zstd compressor for ContractCodeTable")?;
+        let abi = compressor.compress(abi).context("Failed to compress ABI")?;
+        let bytecode = compressor
+            .compress(bytecode)
+            .context("Failed to compress bytecode")?;
+        let definition = compressor
+            .compress(definition)
+            .context("Failed to compress definition")?;
+
+        let contract = CompressedContract {
+            abi,
+            bytecode,
+            definition,
+            hash,
+        };
+
+        contract_code_insert_compressed(transaction, &contract)
+    }
+
+    pub fn contract_code_insert_compressed(
+        transaction: &Transaction<'_>,
+        contract: &CompressedContract,
+    ) -> anyhow::Result<()> {
+        // check magics to verify these are zstd compressed files
+        let magic = &[0x28, 0xb5, 0x2f, 0xfd];
+        assert_eq!(&contract.abi[..4], magic);
+        assert_eq!(&contract.bytecode[..4], magic);
+        assert_eq!(&contract.definition[..4], magic);
+
+        transaction.execute(
+            r"INSERT INTO contract_code ( hash,  bytecode,  abi,  definition)
+                             VALUES (:hash, :bytecode, :abi, :definition)",
+            named_params! {
+                ":hash": &contract.hash.0.to_be_bytes()[..],
+                ":bytecode": &contract.bytecode[..],
+                ":abi": &contract.abi[..],
+                ":definition": &contract.definition[..],
+            },
+        )?;
+        Ok(())
+    }
 }

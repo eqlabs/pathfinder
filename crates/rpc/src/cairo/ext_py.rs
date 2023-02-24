@@ -909,11 +909,12 @@ mod tests {
         contract_definition: &[u8],
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {
-        let (abi, bytecode, class_hash) =
-            starknet_gateway_types::class_hash::extract_abi_code_hash(contract_definition).unwrap();
+        let class_hash =
+            starknet_gateway_types::class_hash::compute_class_hash(contract_definition).unwrap();
+        let class_hash = class_hash.hash();
 
         // create class
-        ContractCodeTable::insert(tx, class_hash, &abi, &bytecode, contract_definition).unwrap();
+        ContractCodeTable::insert(tx, class_hash, contract_definition).unwrap();
 
         // create contract
         ContractsTable::upsert(tx, contract_address, class_hash).unwrap();

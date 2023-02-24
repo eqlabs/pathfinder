@@ -20,26 +20,15 @@ impl ContractCodeTable {
     pub fn insert(
         transaction: &Transaction<'_>,
         hash: ClassHash,
-        abi: &[u8],
-        bytecode: &[u8],
         definition: &[u8],
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10)
             .context("Couldn't create zstd compressor for ContractCodeTable")?;
-        let abi = compressor.compress(abi).context("Failed to compress ABI")?;
-        let bytecode = compressor
-            .compress(bytecode)
-            .context("Failed to compress bytecode")?;
         let definition = compressor
             .compress(definition)
             .context("Failed to compress definition")?;
 
-        let contract = CompressedContract {
-            abi,
-            bytecode,
-            definition,
-            hash,
-        };
+        let contract = CompressedContract { definition, hash };
 
         Self::insert_compressed(transaction, &contract)
     }
@@ -50,17 +39,13 @@ impl ContractCodeTable {
     ) -> anyhow::Result<()> {
         // check magics to verify these are zstd compressed files
         let magic = &[0x28, 0xb5, 0x2f, 0xfd];
-        assert_eq!(&contract.abi[..4], magic);
-        assert_eq!(&contract.bytecode[..4], magic);
         assert_eq!(&contract.definition[..4], magic);
 
         connection.execute(
-            r"INSERT INTO contract_code ( hash,  bytecode,  abi,  definition)
-                             VALUES (:hash, :bytecode, :abi, :definition)",
+            r"INSERT INTO contract_code (hash, definition)
+                             VALUES (:hash, :definition)",
             named_params! {
                 ":hash": &contract.hash.0.to_be_bytes()[..],
-                ":bytecode": &contract.bytecode[..],
-                ":abi": &contract.abi[..],
                 ":definition": &contract.definition[..],
             },
         )?;
@@ -208,7 +193,7 @@ mod tests {
         let hash = ClassHash(felt!("0x123"));
         let definition = vec![9, 13, 25];
 
-        ContractCodeTable::insert(&transaction, hash, &[][..], &[][..], &definition[..]).unwrap();
+        ContractCodeTable::insert(&transaction, hash, &definition[..]).unwrap();
         ContractsTable::upsert(&transaction, address, hash).unwrap();
 
         let result = ContractsTable::get_hash(&transaction, address).unwrap();
@@ -244,12 +229,8 @@ mod tests {
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
         let hash = ClassHash(felt!("0x123"));
 
-        // list of objects
-        let abi = br#"[{"this":"looks"},{"like": "this"}]"#;
-        // this is list of hex
-        let code = br#"["0x40780017fff7fff","0x1","0x208b7fff7fff7ffe"]"#;
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
-        ContractCodeTable::insert(transaction, hash, &abi[..], &code[..], &definition[..]).unwrap();
+        ContractCodeTable::insert(transaction, hash, &definition[..]).unwrap();
 
         (
             hash,

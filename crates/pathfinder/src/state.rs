@@ -92,8 +92,6 @@ mod tests {
         // let contract_fetched_compressed = FetchedCompressedContract {
         //     deploy_info: contract_deploy,
         //     payload: Some(CompressedContract {
-        //         abi: zstd_magic.clone(),
-        //         bytecode: zstd_magic.clone(),
         //         definition: zstd_magic,
         //         hash: contract_hash,
         //     }),
