@@ -755,14 +755,13 @@ fn update_starknet_state(
         .apply()
         .context("Apply storage commitment tree updates")?;
 
-    let class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment)
+    // Add new Sierra classes to class commitment tree.
+    let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment)
         .context("Loading class commitment tree")?;
 
-    // FIXME 0.11.0 once the gateway's StateUpdate gets the declared_classes field
-    #[cfg(fixme_0_11_0)]
-    for (sierra_hash, casm_hash) in declared_classes.into_iter() {
-        class_tree
-            .set(sierra_hash, casm_hash)
+    for sierra_class in &state_update.state_diff.declared_classes {
+        class_commitment_tree
+            .set(sierra_class.class_hash, sierra_class.compiled_class_hash)
             .context("Update class commitment tree")?;
     }
 
