@@ -334,7 +334,7 @@ where
                             match tx {
                                 Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
                                 Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
-                                Declare(DeclareTransaction::V2(_)) => todo!("v0.11.0: This maybe needs to be handled differently"),
+                                Declare(DeclareTransaction::V2(tx)) => Some(tx.class_hash),
                                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
                             }
                         });
