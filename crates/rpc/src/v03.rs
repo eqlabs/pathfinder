@@ -27,6 +27,7 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
         .register_method("starknet_getEvents", method::get_events)?
         .register_method("starknet_getNonce", v02_method::get_nonce)?
         .register_method("starknet_getStorageAt", v02_method::get_storage_at)?
+        .register_method("starknet_getStateUpdate", method::get_state_update)?
         .register_method(
             "starknet_getTransactionByBlockIdAndIndex",
             v02_method::get_transaction_by_block_id_and_index,
