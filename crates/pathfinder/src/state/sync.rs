@@ -282,15 +282,27 @@ where
                         None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
                 }
-                Some(l2::Event::NewContract(contract)) => {
+                Some(l2::Event::NewCairoContract(contract)) => {
                     tokio::task::block_in_place(|| {
                         ContractCodeTable::insert_compressed(&db_conn, &contract)
                     })
                     .with_context(|| {
-                        format!("Insert contract definition with hash: {:?}", contract.hash)
+                        format!("Insert Cairo contract definition with hash: {:?}", contract.hash)
                     })?;
 
-                    tracing::trace!("Inserted new contract {}", contract.hash.0.to_hex_str());
+                    tracing::trace!("Inserted new Cairo contract {}", contract.hash.0.to_hex_str());
+                }
+                Some(l2::Event::NewSierraContract(sierra_contract, _casm_class)) => {
+                    tokio::task::block_in_place(|| {
+                        ContractCodeTable::insert_compressed(&db_conn, &sierra_contract)
+                    })
+                    .with_context(|| {
+                        format!("Insert Sierra contract definition with hash: {:?}", sierra_contract.hash)
+                    })?;
+
+                    tracing::trace!("Inserted new Sierra contract {}", sierra_contract.hash.0.to_hex_str());
+
+                    // FIXME: insert Casm class to storage
                 }
                 Some(l2::Event::QueryBlock(number, tx)) => {
                     let block = tokio::task::block_in_place(|| {
@@ -819,8 +831,6 @@ async fn download_verify_and_insert_missing_classes<
     connection: &mut Connection,
     classes: ClassIter,
 ) -> anyhow::Result<()> {
-    use starknet_gateway_types::class_hash::compute_class_hash;
-
     // Make list unique.
     let classes = classes
         .collect::<std::collections::HashSet<_>>()
@@ -846,55 +856,116 @@ async fn download_verify_and_insert_missing_classes<
 
     // For each missing, download, verify and insert definition.
     for class_hash in missing {
-        let definition = sequencer
-            .class_by_hash(class_hash)
-            .await
-            .with_context(|| format!("Downloading class {}", class_hash.0))?;
-
-        // Calculate the class hash. This can be expensive, so perform in a blocking task.
-        let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let hash = compute_class_hash(&definition)?;
-            Ok((definition, hash))
-        });
-        let (definition, hash) = extract
-            .await
-            .context("Parse class definition and compute hash")??;
-
-        // Sanity check.
-        anyhow::ensure!(
-            class_hash == hash.hash(),
-            "Class hash mismatch, {} instead of {}",
-            hash.hash(),
-            class_hash.0
-        );
-
-        let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let mut compressor =
-                zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-            let definition = compressor
-                .compress(&definition)
-                .context("Compress definition")?;
-
-            Ok(definition)
-        });
-        let definition = compress.await.context("Compress class")??;
-        let compressed = pathfinder_storage::types::CompressedContract {
-            definition,
-            hash: hash.hash(),
-        };
-
-        tokio::task::block_in_place(|| {
-            let transaction =
-                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            ContractCodeTable::insert_compressed(&transaction, &compressed)?;
-            transaction.commit()?;
-            anyhow::Result::<()>::Ok(())
-        })
-        .with_context(|| format!("Insert class definition with hash: {:?}", compressed.hash))?;
-
-        tracing::trace!("Inserted new class {}", compressed.hash.0.to_hex_str());
+        download_class(&sequencer, class_hash, connection).await?;
     }
+
+    Ok(())
+}
+
+async fn download_class<SequencerClient: ClientApi>(
+    sequencer: &SequencerClient,
+    class_hash: ClassHash,
+    connection: &mut Connection,
+) -> Result<(), anyhow::Error> {
+    use starknet_gateway_types::class_hash::compute_class_hash;
+
+    let definition = sequencer
+        .class_by_hash(class_hash)
+        .await
+        .with_context(|| format!("Downloading class {}", class_hash.0))?;
+
+    let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let hash = compute_class_hash(&definition)?;
+        Ok((definition, hash))
+    });
+    let (definition, hash) = extract
+        .await
+        .context("Parse class definition and compute hash")??;
+
+    anyhow::ensure!(
+        class_hash == hash.hash(),
+        "Class hash mismatch, {} instead of {}",
+        hash.hash(),
+        class_hash.0
+    );
+
+    match hash {
+        starknet_gateway_types::class_hash::ComputedClassHash::Cairo(hash) => {
+            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let mut compressor =
+                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+
+                let definition = compressor
+                    .compress(&definition)
+                    .context("Compress definition")?;
+
+                Ok(definition)
+            });
+            let compressed_definition = compress.await.context("Compress class")??;
+
+            let compressed = pathfinder_storage::types::CompressedContract {
+                definition: compressed_definition,
+                hash,
+            };
+
+            tokio::task::block_in_place(|| {
+                let transaction =
+                    connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                ContractCodeTable::insert_compressed(&transaction, &compressed)?;
+                transaction.commit()?;
+                anyhow::Result::<()>::Ok(())
+            })
+            .with_context(|| format!("Insert class definition with hash: {:?}", compressed.hash))?;
+        }
+        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
+            let casm_definition =
+                crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class")?;
+
+            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let mut compressor =
+                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+
+                let definition = compressor
+                    .compress(&definition)
+                    .context("Compress definition")?;
+
+                let definition = compressor
+                    .compress(&casm_definition)
+                    .context("Compress CASM definition")?;
+
+                Ok((definition, casm_definition))
+            });
+            let (compressed_definition, compressed_casm_definition) =
+                compress.await.context("Compress class")??;
+
+            let compressed_sierra_class = pathfinder_storage::types::CompressedContract {
+                definition: compressed_definition,
+                hash,
+            };
+
+            let compressed_casm_class = pathfinder_storage::types::CompressedCasmClass {
+                definition: compressed_casm_definition,
+                hash,
+            };
+
+            tokio::task::block_in_place(|| {
+                let transaction =
+                    connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                ContractCodeTable::insert_compressed(&transaction, &compressed_sierra_class)?;
+                // FIXME: insert Casm class to storage
+                transaction.commit()?;
+                anyhow::Result::<()>::Ok(())
+            })
+            .with_context(|| {
+                format!(
+                    "Insert class definition with hash: {:?}",
+                    compressed_sierra_class.hash
+                )
+            })?;
+        }
+    }
+
+    tracing::trace!("Inserted new class {}", hash.hash().0.to_hex_str());
 
     Ok(())
 }
@@ -1688,7 +1759,7 @@ mod tests {
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-            tx.send(l2::Event::NewContract(CompressedContract {
+            tx.send(l2::Event::NewCairoContract(CompressedContract {
                 definition: zstd_magic,
                 hash: ClassHash(*A),
             }))

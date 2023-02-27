@@ -4,7 +4,7 @@ use pathfinder_common::{
     Chain, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
     TransactionCommitment,
 };
-use pathfinder_storage::types::CompressedContract;
+use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::{
     class_hash::compute_class_hash,
@@ -38,8 +38,10 @@ pub enum Event {
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
     Reorg(StarknetBlockNumber),
-    /// A new unique L2 [contract](CompressedContract) was found.
-    NewContract(CompressedContract),
+    /// A new unique L2 Cairo 0.x [contract](CompressedContract) was found.
+    NewCairoContract(CompressedContract),
+    /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
+    NewSierraContract(CompressedContract, CompressedCasmClass),
     /// Query for the [block hash](StarknetBlockHash) and [root](StateCommitment) of the given block.
     ///
     /// The receiver should return the data using the [oneshot::channel].
@@ -260,15 +262,26 @@ async fn download_new_classes(
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
-        tx_event
-            .send(Event::NewContract(class))
-            .await
-            .with_context(|| {
-                format!(
-                    "Sending Event::NewContract for declared class {}",
-                    class_hash.0
-                )
-            })?;
+        match class {
+            DownloadedClass::Cairo(class) => tx_event
+                .send(Event::NewCairoContract(class))
+                .await
+                .with_context(|| {
+                    format!(
+                        "Sending Event::NewContract for declared class {}",
+                        class_hash.0
+                    )
+                })?,
+            DownloadedClass::Sierra(sierra_class, casm_class) => tx_event
+                .send(Event::NewSierraContract(sierra_class, casm_class))
+                .await
+                .with_context(|| {
+                    format!(
+                        "Sending Event::NewContract for declared class {}",
+                        class_hash.0
+                    )
+                })?,
+        }
     }
 
     Ok(())
@@ -432,10 +445,15 @@ async fn reorg(
     Ok(new_head)
 }
 
+enum DownloadedClass {
+    Cairo(CompressedContract),
+    Sierra(CompressedContract, CompressedCasmClass),
+}
+
 async fn download_and_compress_class(
     class_hash: ClassHash,
     sequencer: &impl ClientApi,
-) -> anyhow::Result<CompressedContract> {
+) -> anyhow::Result<DownloadedClass> {
     let definition = sequencer
         .class_by_hash(class_hash)
         .await
@@ -459,21 +477,58 @@ async fn download_and_compress_class(
         class_hash.0
     );
 
-    let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+    match hash {
+        starknet_gateway_types::class_hash::ComputedClassHash::Cairo(hash) => {
+            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let mut compressor =
+                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
 
-        let definition = compressor
-            .compress(&definition)
-            .context("Compress definition")?;
+                let definition = compressor
+                    .compress(&definition)
+                    .context("Compress definition")?;
 
-        Ok(definition)
-    });
-    let definition = compress.await.context("Compress contract")??;
+                Ok(definition)
+            });
+            let compressed_definition = compress.await.context("Compress contract")??;
 
-    Ok(CompressedContract {
-        definition,
-        hash: hash.hash(),
-    })
+            Ok(DownloadedClass::Cairo(CompressedContract {
+                definition: compressed_definition,
+                hash,
+            }))
+        }
+        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
+            let casm_definition =
+                crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class")?;
+
+            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+                let mut compressor =
+                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+
+                let definition = compressor
+                    .compress(&definition)
+                    .context("Compress definition")?;
+
+                let casm_definition = compressor
+                    .compress(&casm_definition)
+                    .context("Compress CASM definition")?;
+
+                Ok((definition, casm_definition))
+            });
+            let (compressed_definition, compressed_casm_definition) =
+                compress.await.context("Compress CASM definition")??;
+
+            Ok(DownloadedClass::Sierra(
+                CompressedContract {
+                    definition: compressed_definition,
+                    hash,
+                },
+                CompressedCasmClass {
+                    definition: compressed_casm_definition,
+                    hash,
+                },
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -873,7 +928,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -887,7 +942,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -955,7 +1010,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1095,7 +1150,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1113,7 +1168,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
                 });
@@ -1296,7 +1351,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1310,7 +1365,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1340,7 +1395,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
                 });
@@ -1570,7 +1625,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1584,7 +1639,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1773,7 +1828,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1787,7 +1842,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
@@ -1965,7 +2020,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
                 });
@@ -1979,7 +2034,7 @@ mod tests {
                     sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewContract(compressed_contract) => {
+                    Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
                         assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
                 });
