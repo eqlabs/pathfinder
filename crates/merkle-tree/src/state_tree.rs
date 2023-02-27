@@ -10,8 +10,8 @@ use crate::{
 use crate::{PedersenHash, PoseidonHash};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
-    CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash, SierraHash,
-    StorageAddress, StorageCommitment, StorageValue,
+    felt_bytes, CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash,
+    SierraHash, StorageAddress, StorageCommitment, StorageValue,
 };
 use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
@@ -118,7 +118,7 @@ pub struct ClassCommitmentTree<'tx, 'queries> {
 }
 
 impl<'tx> ClassCommitmentTree<'tx, '_> {
-    const LEAF_VERSION: stark_curve::FieldElement = stark_curve::FieldElement::ZERO;
+    const CONTRACT_CLASS_HASH_VERSION: stark_hash::Felt = felt_bytes!(b"CONTRACT_CLASS_LEAF_V0");
 
     pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
         // TODO: migration to support this.
@@ -127,8 +127,14 @@ impl<'tx> ClassCommitmentTree<'tx, '_> {
         Ok(Self { tree })
     }
 
+    /// Adds a leaf node for a Sierra -> CASM commitment.
+    ///
+    /// Note that the leaf value is _not_ the Cairo hash, but a hashed value based on that.
+    /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
+    /// for details.
     pub fn set(&mut self, class: SierraHash, value: CasmHash) -> anyhow::Result<()> {
-        let leaf_value = stark_poseidon::poseidon_hash(&[value.0.into(), Self::LEAF_VERSION]);
+        let leaf_value =
+            stark_poseidon::poseidon_hash(Self::CONTRACT_CLASS_HASH_VERSION.into(), value.0.into());
         self.tree.set(class.view_bits(), leaf_value.into())
     }
 

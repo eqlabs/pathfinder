@@ -142,6 +142,11 @@ pub struct StorageValue(pub Felt);
 pub struct StateCommitment(pub Felt);
 
 impl StateCommitment {
+    /// Calculates  global state commitment by combining the storage and class commitment.
+    ///
+    /// See
+    /// <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L125>
+    /// for details.
     pub fn calculate(
         storage_commitment: StorageCommitment,
         class_commitment: ClassCommitment,
@@ -149,13 +154,13 @@ impl StateCommitment {
         if class_commitment == ClassCommitment::ZERO {
             Self(storage_commitment.0)
         } else {
-            const COMMITMENT_VERSION: stark_curve::FieldElement = stark_curve::FieldElement::ZERO;
+            const GLOBAL_STATE_VERSION: Felt = felt_bytes!(b"STARKNET_STATE_V0");
 
             StateCommitment(
-                stark_poseidon::poseidon_hash(&[
+                stark_poseidon::poseidon_hash_many(&[
+                    GLOBAL_STATE_VERSION.into(),
                     storage_commitment.0.into(),
                     class_commitment.0.into(),
-                    COMMITMENT_VERSION,
                 ])
                 .into(),
             )

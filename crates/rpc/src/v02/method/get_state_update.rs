@@ -516,10 +516,10 @@ mod tests {
         let expected = StateUpdate {
             block_hash: None,
             new_root: StateCommitment(felt!(
-                "06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
+                "0x06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
             )),
             old_root: StateCommitment(felt!(
-                "0786B86566E547D4F0D3DA87419C9821CC9BCF10425C466CAD298084CC2FC7A9"
+                "0x04F53E3D1AD8AE22475BF02414088FA4D1DC1A837BBA4E34461FEA4DBCBB76D8"
             )),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {
