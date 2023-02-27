@@ -198,6 +198,7 @@ mod tests {
             contract0_addr,
             &contract0_update,
             Some(ContractNonce(felt!("0x1"))),
+            None,
             &storage_commitment_tree,
             &db_txn,
         )
@@ -213,6 +214,7 @@ mod tests {
             contract1_addr,
             &contract1_update0,
             None,
+            None,
             &storage_commitment_tree,
             &db_txn,
         )
@@ -223,6 +225,7 @@ mod tests {
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update1,
+            None,
             None,
             &storage_commitment_tree,
             &db_txn,
@@ -239,6 +242,7 @@ mod tests {
             contract1_addr,
             &contract1_update2,
             Some(ContractNonce(felt!("0x10"))),
+            None,
             &storage_commitment_tree,
             &db_txn,
         )
@@ -250,6 +254,7 @@ mod tests {
             contract2_addr,
             &[],
             Some(ContractNonce(felt!("0xfeed"))),
+            Some(class2_hash),
             &storage_commitment_tree,
             &db_txn,
         )

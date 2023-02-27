@@ -16,6 +16,7 @@ pub fn update_contract_state(
     contract_address: ContractAddress,
     updates: &[StorageDiff],
     new_nonce: Option<ContractNonce>,
+    new_class_hash: Option<ClassHash>,
     storage_commitment_tree: &StorageCommitmentTree<'_, '_>,
     db: &Transaction<'_>,
 ) -> anyhow::Result<ContractStateHash> {
@@ -52,9 +53,12 @@ pub fn update_contract_state(
     };
 
     // Calculate contract state hash, update global state tree and persist pre-image.
-    let class_hash = ContractsTable::get_hash(db, contract_address)
-        .context("Read class hash from contracts table")?
-        .context("Class hash is missing from contracts table")?;
+    let class_hash = match new_class_hash {
+        Some(class_hash) => class_hash,
+        None => ContractsTable::get_hash(db, contract_address)
+            .context("Read class hash from contracts table")?
+            .context("Class hash is missing from contracts table")?,
+    };
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
 
     ContractsStateTable::upsert(db, contract_state_hash, class_hash, new_root, new_nonce)

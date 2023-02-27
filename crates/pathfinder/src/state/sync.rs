@@ -28,10 +28,13 @@ use stark_hash::Felt;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::{
     pending::PendingData,
-    reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
+    reply::{
+        state_update::{DeployedContract, ReplacedClass},
+        Block, MaybePendingBlock, StateUpdate,
+    },
 };
-use std::future::Future;
 use std::sync::Arc;
+use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
@@ -684,18 +687,32 @@ fn update_starknet_state(
             .context("Deploying contract")?;
     }
 
+    for replaced_class in &state_update.state_diff.replaced_classes {
+        replace_class(transaction, replaced_class).context("Replacing class hash for contract")?;
+    }
+
     // Copied so we can mutate the map. This lets us remove used nonces from the list.
     let mut nonces = state_update.state_diff.nonces.clone();
+
+    let mut replaced_classes = state_update
+        .state_diff
+        .replaced_classes
+        .iter()
+        .map(|r| (r.address, r.class_hash))
+        .collect::<HashMap<_, _>>();
 
     // Apply contract storage updates.
     for (contract_address, updates) in &state_update.state_diff.storage_diffs {
         // Remove the nonce so we don't update it again in the next stage.
         let nonce = nonces.remove(contract_address);
+        // Remove from replaced classes so we don't update it again in the next stage.
+        let replaced_class_hash = replaced_classes.remove(contract_address);
 
         let contract_state_hash = update_contract_state(
             *contract_address,
             updates,
             nonce,
+            replaced_class_hash,
             &storage_commitment_tree,
             transaction,
         )
@@ -709,10 +726,32 @@ fn update_starknet_state(
 
     // Apply all remaining nonces (without storage updates).
     for (contract_address, nonce) in nonces {
+        // Remove from replaced classes so we don't update it again in the next stage.
+        let replaced_class_hash = replaced_classes.remove(&contract_address);
+
         let contract_state_hash = update_contract_state(
             contract_address,
             &[],
             Some(nonce),
+            replaced_class_hash,
+            &storage_commitment_tree,
+            transaction,
+        )
+        .context("Update contract nonce")?;
+
+        // Update the global state tree.
+        storage_commitment_tree
+            .set(contract_address, contract_state_hash)
+            .context("Updating storage commitment tree")?;
+    }
+
+    // Apply all remaining replaced classes.
+    for (contract_address, new_class_hash) in replaced_classes {
+        let contract_state_hash = update_contract_state(
+            contract_address,
+            &[],
+            None,
+            Some(new_class_hash),
             &storage_commitment_tree,
             transaction,
         )
@@ -773,6 +812,18 @@ fn deploy_contract(
     .context("Insert constract state hash into contracts state table")?;
     ContractsTable::upsert(transaction, contract.address, class_hash)
         .context("Inserting class hash into contracts table")
+}
+
+fn replace_class(
+    transaction: &Transaction<'_>,
+    replaced_class: &ReplacedClass,
+) -> anyhow::Result<()> {
+    ContractsTable::upsert(
+        transaction,
+        replaced_class.address,
+        replaced_class.class_hash,
+    )
+    .context("Updating class hash in contracts table")
 }
 
 /// Downloads and inserts class definitions for any classes in the
