@@ -59,7 +59,7 @@ impl StateUpdate {
     pub fn with_block_hash(h: u8) -> Self {
         Self {
             block_hash: Some(StarknetBlockHash(hash!(h))),
-            new_root: StateCommitment(hash!(1, h)),
+            new_root: Some(StateCommitment(hash!(1, h))),
             old_root: StateCommitment(hash!(2, h)),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {

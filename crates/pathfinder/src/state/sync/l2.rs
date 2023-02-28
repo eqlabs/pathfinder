@@ -174,7 +174,9 @@ pub async fn sync(
             .with_context(|| format!("Deploying new contracts for block {next:?}"))?;
         let t_deploy = t_deploy.elapsed();
 
-        head = Some((next, block_hash, state_update.new_root));
+        // Unwrap is safe becaue `new_root` always exists (except for the pending state update).
+        let state_update_new_root = state_update.new_root.unwrap();
+        head = Some((next, block_hash, state_update_new_root));
 
         let timings = Timings {
             block_download: t_block,
@@ -728,7 +730,7 @@ mod tests {
 
             static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK0_HASH),
-                new_root: *GLOBAL_ROOT0,
+                new_root: Some(*GLOBAL_ROOT0),
                 old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
@@ -750,7 +752,7 @@ mod tests {
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK0_HASH_V2),
-                new_root: *GLOBAL_ROOT0_V2,
+                new_root: Some(*GLOBAL_ROOT0_V2),
                 old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
@@ -766,7 +768,7 @@ mod tests {
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK1_HASH),
-                new_root: *GLOBAL_ROOT1,
+                new_root: Some(*GLOBAL_ROOT1),
                 old_root: *GLOBAL_ROOT0,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
@@ -797,7 +799,7 @@ mod tests {
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK1_HASH_V2),
-                new_root: *GLOBAL_ROOT1_V2,
+                new_root: Some(*GLOBAL_ROOT1_V2),
                 old_root: *GLOBAL_ROOT0_V2,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
@@ -810,7 +812,7 @@ mod tests {
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK2_HASH),
-                new_root: *GLOBAL_ROOT2,
+                new_root: Some(*GLOBAL_ROOT2),
                 old_root: *GLOBAL_ROOT1,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
@@ -823,7 +825,7 @@ mod tests {
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK2_HASH_V2),
-                new_root: *GLOBAL_ROOT2_V2,
+                new_root: Some(*GLOBAL_ROOT2_V2),
                 old_root: *GLOBAL_ROOT1_V2,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
@@ -836,7 +838,7 @@ mod tests {
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
                 block_hash: Some(*BLOCK3_HASH),
-                new_root: *GLOBAL_ROOT3,
+                new_root: Some(*GLOBAL_ROOT3),
                 old_root: *GLOBAL_ROOT2,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],

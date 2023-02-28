@@ -647,8 +647,11 @@ pub mod transaction {
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
     /// This field is absent for a `pending` state update
+    #[serde(default)]
     pub block_hash: Option<StarknetBlockHash>,
-    pub new_root: StateCommitment,
+    /// This field is absent for a `pending` state update
+    #[serde(default)]
+    pub new_root: Option<StateCommitment>,
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }

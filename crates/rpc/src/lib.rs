@@ -589,7 +589,10 @@ mod tests {
         let state_update = starknet_gateway_types::reply::StateUpdate {
             // This must be `None` for a pending state update.
             block_hash: None,
-            new_root: StateCommitment::calculate(pending_storage_commitment, ClassCommitment::ZERO),
+            new_root: Some(StateCommitment::calculate(
+                pending_storage_commitment,
+                ClassCommitment::ZERO,
+            )),
             old_root: latest.root,
             state_diff,
         };

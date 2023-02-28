@@ -104,7 +104,7 @@ mod tests {
 
         pub static ref PENDING_DIFF: StateUpdate = StateUpdate {
             block_hash: None,
-            new_root: StateCommitment(felt_bytes!(b"new root")),
+            new_root: Some(StateCommitment(felt_bytes!(b"new root"))),
             old_root: *PARENT_ROOT,
             state_diff: StateDiff {
                 storage_diffs: std::collections::HashMap::new(),

@@ -28,7 +28,9 @@ pub struct StateUpdate {
     /// None for `pending`
     #[serde(default)]
     pub block_hash: Option<StarknetBlockHash>,
-    pub new_root: StateCommitment,
+    /// None for `pending`
+    #[serde(default)]
+    pub new_root: Option<StateCommitment>,
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }

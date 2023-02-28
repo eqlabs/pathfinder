@@ -734,7 +734,7 @@ mod tests {
         let update = std::sync::Arc::new(StateUpdate {
             block_hash: None,
             old_root: StateCommitment(Felt::ZERO),
-            new_root: StateCommitment(Felt::ZERO),
+            new_root: Some(StateCommitment(Felt::ZERO)),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: {
                     let mut map = std::collections::HashMap::new();

@@ -345,32 +345,34 @@ where
                         .await
                         .context("Downloading missing classes for pending block")?;
 
-                    // Collect all potentially new classes.
-                    let new_root = tokio::task::block_in_place(|| {
-                        // Update state tree to determine new state root, but rollback the changes as we do
-                        // not want to persist them.
-                        let tx = db_conn
-                            .transaction_with_behavior(TransactionBehavior::Immediate)
-                            .context("Create database transaction")?;
-                        let (new_storage_commitment, new_class_commitment) = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
-                        let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
-                        tx.rollback()?;
-                        anyhow::Result::<StateCommitment>::Ok(new_root)
-                    }).context("Calculate pending state root")?;
+                    if let Some(expected_new_root) = state_update.new_root {
+                        // Collect all potentially new classes.
+                        let new_root = tokio::task::block_in_place(|| {
+                            // Update state tree to determine new state root, but rollback the changes as we do
+                            // not want to persist them.
+                            let tx = db_conn
+                                .transaction_with_behavior(TransactionBehavior::Immediate)
+                                .context("Create database transaction")?;
+                            let (new_storage_commitment, new_class_commitment) = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
+                            let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
+                            tx.rollback()?;
+                            anyhow::Result::<StateCommitment>::Ok(new_root)
+                        }).context("Calculate pending state root")?;
 
-                    match new_root == state_update.new_root {
-                        true => {
-                            pending_data.set(block, state_update).await;
-                            tracing::debug!("Updated pending data");
-                        }
-                        false => {
-                            pending_data.clear().await;
-                            tracing::error!(
-                                head=%state_update.old_root,
-                                pending=%state_update.new_root,
-                                calculated=%new_root,
-                                "Pending state root mismatch"
-                            );
+                        match new_root == expected_new_root {
+                            true => {
+                                pending_data.set(block, state_update).await;
+                                tracing::debug!("Updated pending data");
+                            }
+                            false => {
+                                pending_data.clear().await;
+                                tracing::error!(
+                                    head=%state_update.old_root,
+                                    pending=%expected_new_root,
+                                    calculated=%new_root,
+                                    "Pending state root mismatch"
+                                );
+                            }
                         }
                     }
                 }
@@ -1189,7 +1191,7 @@ mod tests {
         // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
             block_hash: Some(StarknetBlockHash(*A)),
-            new_root: *STATE_COMMITMENT0,
+            new_root: Some(*STATE_COMMITMENT0),
             old_root: *STATE_COMMITMENT0,
             state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),
