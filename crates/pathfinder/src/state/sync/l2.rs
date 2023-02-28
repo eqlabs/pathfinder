@@ -10,8 +10,8 @@ use starknet_gateway_types::{
     class_hash::compute_class_hash,
     error::SequencerError,
     reply::{
-        state_update::{DeployedContract, StateDiff},
-        Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate, StateUpdate, Status,
+        state_update::StateDiff, Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate,
+        StateUpdate, Status,
     },
 };
 use std::time::Duration;
@@ -22,7 +22,6 @@ use tokio::sync::{mpsc, oneshot};
 pub struct Timings {
     pub block_download: Duration,
     pub state_diff_download: Duration,
-    pub contract_deployment: Duration,
     pub class_declaration: Duration,
 }
 
@@ -169,24 +168,16 @@ pub async fn sync(
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        declare_classes(&block, &sequencer, &tx_event)
+        download_new_classes(&block, &state_update.state_diff, &sequencer, &tx_event)
             .await
             .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
-
-        // Download and emit any newly deployed (but undeclared) classes.
-        let t_deploy = std::time::Instant::now();
-        deploy_contracts(&tx_event, &sequencer, &state_update.state_diff)
-            .await
-            .with_context(|| format!("Deploying new contracts for block {next:?}"))?;
-        let t_deploy = t_deploy.elapsed();
 
         head = Some((next, block_hash, state_update.new_root));
 
         let timings = Timings {
             block_download: t_block,
             state_diff_download: t_update,
-            contract_deployment: t_deploy,
             class_declaration: t_declare,
         };
 
@@ -201,34 +192,47 @@ pub async fn sync(
     }
 }
 
-/// Download and emit newly declared contract classes.
+/// Download and emit new contract classes.
 ///
-/// We cannot remove the older way using `deploy_contracts` as this
-/// is required to handle older blocks which don't have declare transactions.
-async fn declare_classes(
+/// New classes can come from:
+/// - DECLARE transactions
+/// - `old_declared_contracts` from the state diff (Cairo 0.x classes)
+/// - `declared_classes` from the state diff (Cairo 1.0 classes)
+/// - `deployed_contracts` from the state diff (DEPLOY transactions)
+///
+async fn download_new_classes(
     block: &Block,
+    state_diff: &StateDiff,
     sequencer: &impl ClientApi,
     tx_event: &mpsc::Sender<Event>,
 ) -> Result<(), anyhow::Error> {
-    let declared_classes = block
-        .transactions
+    let deployed_classes = state_diff.deployed_contracts.iter().map(|x| x.class_hash);
+    let declared_cairo_classes = state_diff.old_declared_contracts.iter().cloned();
+    let declared_sierra_classes = state_diff
+        .declared_classes
         .iter()
-        .filter_map(|tx| {
-            use starknet_gateway_types::reply::transaction::DeclareTransaction;
-            use starknet_gateway_types::reply::transaction::Transaction::*;
-            match tx {
-                Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
-                Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
-                Declare(DeclareTransaction::V2(tx)) => Some(tx.class_hash),
-                Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
-            }
-        })
+        .map(|x| ClassHash(x.class_hash.0));
+    let classes_declared_in_transactions = block.transactions.iter().filter_map(|tx| {
+        use starknet_gateway_types::reply::transaction::DeclareTransaction;
+        use starknet_gateway_types::reply::transaction::Transaction::*;
+        match tx {
+            Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
+            Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
+            Declare(DeclareTransaction::V2(tx)) => Some(tx.class_hash),
+            Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
+        }
+    });
+
+    let new_classes = deployed_classes
+        .chain(declared_cairo_classes)
+        .chain(declared_sierra_classes)
+        .chain(classes_declared_in_transactions)
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
 
-    if declared_classes.is_empty() {
+    if new_classes.is_empty() {
         return Ok(());
     }
 
@@ -236,18 +240,18 @@ async fn declare_classes(
     // due to a reorg or an earlier deploy of this class (which is possible!).
     let (tx, rx) = oneshot::channel();
     tx_event
-        .send(Event::QueryContractExistance(declared_classes.clone(), tx))
+        .send(Event::QueryContractExistance(new_classes.clone(), tx))
         .await
         .context("Querying for class existing")?;
     let already_downloaded = rx.await.context("Oneshot channel closed")?;
     anyhow::ensure!(
-        already_downloaded.len() == declared_classes.len(),
+        already_downloaded.len() == new_classes.len(),
         "Query for existance of classes in storage returned {} values instead of the expected {}",
         already_downloaded.len(),
-        declared_classes.len()
+        new_classes.len()
     );
 
-    let require_downloading = declared_classes
+    let require_downloading = new_classes
         .into_iter()
         .zip(already_downloaded.into_iter())
         .filter_map(|(class, exists)| match exists {
@@ -433,71 +437,6 @@ async fn reorg(
     Ok(new_head)
 }
 
-async fn deploy_contracts(
-    tx_event: &mpsc::Sender<Event>,
-    sequencer: &impl ClientApi,
-    state_diff: &StateDiff,
-) -> anyhow::Result<()> {
-    let unique_contracts = state_diff
-        .deployed_contracts
-        .iter()
-        .map(|contract| contract.class_hash)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-
-    if unique_contracts.is_empty() {
-        return Ok(());
-    }
-
-    // Query database to see which of these contracts still needs downloading.
-    let (tx, rx) = oneshot::channel();
-    tx_event
-        .send(Event::QueryContractExistance(unique_contracts.clone(), tx))
-        .await
-        .context("Event channel closed")?;
-    let already_downloaded = rx.await.context("Oneshot channel closed")?;
-    anyhow::ensure!(
-        already_downloaded.len() == unique_contracts.len(),
-        "Query for existance of contracts in storage returned {} values instead of the expected {}",
-        already_downloaded.len(),
-        unique_contracts.len()
-    );
-
-    let require_downloading = unique_contracts
-        .into_iter()
-        .zip(already_downloaded.into_iter())
-        .filter_map(|(contract, exists)| match exists {
-            false => Some(contract),
-            true => None,
-        })
-        .collect::<Vec<_>>();
-
-    // Download each contract and push it to storage.
-    for contract_hash in require_downloading {
-        // Find the relevant contract address.
-        let contract = state_diff
-            .deployed_contracts
-            .iter()
-            .find(|contract| contract.class_hash == contract_hash)
-            .unwrap();
-
-        let contract = download_and_compress_contract(contract, sequencer)
-            .await
-            .with_context(|| format!("Download and compress contract {:?}", contract.address))?;
-
-        tx_event
-            .send(Event::NewContract(contract))
-            .await
-            .context("Event channel closed")?;
-    }
-
-    Ok(())
-}
-
-/// A copy of [download_and_compress_contract] that uses the new `class_by_hash` API.
-///
-/// These should eventually be deduplicated, but right now we are just aiming at functional.
 async fn download_and_compress_class(
     class_hash: ClassHash,
     sequencer: &impl ClientApi,
@@ -530,49 +469,6 @@ async fn download_and_compress_class(
 
         let definition = compressor
             .compress(&definition)
-            .context("Compress definition")?;
-
-        Ok(definition)
-    });
-    let definition = compress.await.context("Compress contract")??;
-
-    Ok(CompressedContract {
-        definition,
-        hash: hash.hash(),
-    })
-}
-
-async fn download_and_compress_contract(
-    contract: &DeployedContract,
-    sequencer: &impl ClientApi,
-) -> anyhow::Result<CompressedContract> {
-    let contract_definition = sequencer
-        .class_by_hash(contract.class_hash)
-        .await
-        .context("Download contract class from sequencer")?;
-
-    // Parse the contract definition for ABI, code and calculate the class hash. This can
-    // be expensive, so perform in a blocking task.
-    let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let hash = compute_class_hash(&contract_definition)?;
-        Ok((contract_definition, hash))
-    });
-    let (contract_definition, hash) = extract
-        .await
-        .context("Parse contract definition and compute hash")??;
-
-    // Sanity check.
-    anyhow::ensure!(
-        contract.class_hash == hash.hash(),
-        "Class hash mismatch for contract {:?}",
-        contract.address
-    );
-
-    let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-        let definition = compressor
-            .compress(&contract_definition)
             .context("Compress definition")?;
 
         Ok(definition)

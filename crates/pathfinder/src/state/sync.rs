@@ -258,7 +258,7 @@ where
                                 block_time_avg.as_secs_f32(),
                                 existed.0,
                                 existed.0 - existed.1,
-                                timings.contract_deployment.as_secs_f32(),
+                                timings.class_declaration.as_secs_f32(),
                                 storage_updates,
                                 update_t.as_secs_f32(),
                                 timings.block_download.as_secs_f32(),
@@ -1520,7 +1520,6 @@ mod tests {
         let timings = l2::Timings {
             block_download: Duration::default(),
             state_diff_download: Duration::default(),
-            contract_deployment: Duration::default(),
             class_declaration: Duration::default(),
         };
 
