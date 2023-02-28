@@ -1,11 +1,87 @@
 use crate::request::contract::EntryPointType;
 use anyhow::{Context, Error, Result};
-use pathfinder_common::ClassHash;
+use pathfinder_common::{felt_bytes, ClassHash};
 use serde::Serialize;
 use sha3::Digest;
 use stark_hash::{Felt, HashChain};
+use stark_poseidon::PoseidonHasher;
 
-/// Computes the starknet class hash for given class definition json blob.
+#[derive(Debug, PartialEq)]
+pub enum ComputedClassHash {
+    Cairo(ClassHash),
+    Sierra(ClassHash),
+}
+
+/// Computes the starknet class hash for given class definition JSON blob.
+///
+/// This function first parses the JSON blob to decide if it's a Cairo or Sierra class
+/// definition and then calls the appropriate function to compute the class hash
+/// with the parsed definition.
+pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ComputedClassHash> {
+    let contract_definition = parse_contract_definition(contract_definition_dump)
+        .context("Failed to parse contract definition")?;
+
+    match contract_definition {
+        json::ContractDefinition::Sierra(definition) => compute_sierra_class_hash(definition)
+            .map(ComputedClassHash::Sierra)
+            .context("Compute class hash"),
+        json::ContractDefinition::Cairo(definition) => compute_cairo_class_hash(definition)
+            .map(ComputedClassHash::Cairo)
+            .context("Compute class hash"),
+    }
+}
+
+/// Parse either a Sierra or a Cairo contract definition.
+///
+/// Due to an issue in serde_json we can't use an untagged enum and simply derive a Deserialize
+/// implementation: <https://github.com/serde-rs/json/issues/559>
+fn parse_contract_definition(
+    contract_definition_dump: &[u8],
+) -> serde_json::Result<json::ContractDefinition<'_>> {
+    serde_json::from_slice::<json::SierraContractDefinition<'_>>(contract_definition_dump)
+        .map(json::ContractDefinition::Sierra)
+        .or_else(|_| {
+            serde_json::from_slice::<json::CairoContractDefinition<'_>>(contract_definition_dump)
+                .map(json::ContractDefinition::Cairo)
+        })
+}
+
+/// Sibling functionality to only [`compute_class_hash`], returning also the ABI, and bytecode
+/// parts as json bytes.
+pub fn extract_abi_code_hash(
+    contract_definition_dump: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
+    let contract_definition = parse_contract_definition(contract_definition_dump)
+        .context("Failed to parse contract definition")?;
+
+    match contract_definition {
+        json::ContractDefinition::Sierra(contract_definition) => {
+            let abi = serde_json::to_vec(&contract_definition.abi)
+                .context("Serialize contract_definition.abi")?;
+            let code = serde_json::to_vec(&contract_definition.sierra_program)
+                .context("Serialize contract_definition.sierra_program")?;
+
+            let hash =
+                compute_sierra_class_hash(contract_definition).context("Compute class hash")?;
+
+            Ok((abi, code, hash))
+        }
+        json::ContractDefinition::Cairo(contract_definition) => {
+            // just in case we'd accidentially modify these in the compute_class_hash0
+            let abi = serde_json::to_vec(&contract_definition.abi)
+                .context("Serialize contract_definition.abi")?;
+            let code = serde_json::to_vec(&contract_definition.program.data)
+                .context("Serialize contract_definition.program.data")?;
+
+            let hash =
+                compute_cairo_class_hash(contract_definition).context("Compute class hash")?;
+
+            Ok((abi, code, hash))
+        }
+    }
+}
+
+/// Computes the class hash for given Cairo class definition.
 ///
 /// The structure of the blob is not strictly defined, so it lives in privacy under `json` module
 /// of this module. The class hash has [official documentation][starknet-doc] and [cairo-lang
@@ -20,42 +96,15 @@ use stark_hash::{Felt, HashChain};
 /// 3. each of the hashchains is hash chained together to produce a final class hash
 ///
 /// Hash chain construction is explained at the [official documentation][starknet-doc], but it's
-/// text explanations are much more complex than the actual implementation in `HashChain`, which
-/// you can find from source file of this function.
+/// text explanations are much more complex than the actual implementation in `HashChain`.
 ///
-/// [starknet-doc]: https://starknet.io/documentation/contracts/#contract_hash
+/// [starknet-doc]: https://docs.starknet.io/documentation/architecture_and_concepts/Contracts/class-hash/
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
 /// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
 /// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
-pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ClassHash> {
-    let contract_definition =
-        serde_json::from_slice::<json::ContractDefinition<'_>>(contract_definition_dump)
-            .context("Failed to parse contract_definition")?;
-
-    compute_class_hash0(contract_definition).context("Compute class hash")
-}
-
-/// Sibling functionality to only [`compute_class_hash`], returning also the ABI, and bytecode
-/// parts as json bytes.
-pub fn extract_abi_code_hash(
-    contract_definition_dump: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
-    let contract_definition =
-        serde_json::from_slice::<json::ContractDefinition<'_>>(contract_definition_dump)
-            .context("Failed to parse contract_definition")?;
-
-    // just in case we'd accidentially modify these in the compute_class_hash0
-    let abi = serde_json::to_vec(&contract_definition.abi)
-        .context("Serialize contract_definition.abi")?;
-    let code = serde_json::to_vec(&contract_definition.program.data)
-        .context("Serialize contract_definition.program.data")?;
-
-    let hash = compute_class_hash0(contract_definition).context("Compute class hash")?;
-
-    Ok((abi, code, hash))
-}
-
-fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) -> Result<ClassHash> {
+fn compute_cairo_class_hash(
+    mut contract_definition: json::CairoContractDefinition<'_>,
+) -> Result<ClassHash> {
     use EntryPointType::*;
 
     // the other modification is handled by skipping if the attributes vec is empty
@@ -231,6 +280,76 @@ fn compute_class_hash0(mut contract_definition: json::ContractDefinition<'_>) ->
     Ok(ClassHash(outer.finalize()))
 }
 
+/// Computes the class hash for a Sierra class definition.
+///
+/// This matches the (not very precise) [official documentation][starknet-doc] and the [cairo-lang
+/// implementation][cairo-compute] written in Cairo.
+///
+/// Calculation is somewhat simpler than for Cairo classes, since it does _not_ involve serializing
+/// JSON and calculating hashes for the JSON output. Instead, ABI is handled as a string and all other
+/// relevant parts of the class definition are transformed into Felts and hashed using Poseidon.
+///
+/// [starknet-doc]: https://docs.starknet.io/documentation/architecture_and_concepts/Contracts/class-hash/
+/// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/contract_class/contract_class.cairo#L42
+fn compute_sierra_class_hash(
+    contract_definition: json::SierraContractDefinition<'_>,
+) -> Result<ClassHash> {
+    use EntryPointType::*;
+
+    if contract_definition.contract_class_version != "0.1.0" {
+        anyhow::bail!("Unsupported Sierra class version");
+    }
+
+    let mut hash = PoseidonHasher::default();
+
+    const SIERRA_VERSION: Felt = felt_bytes!(b"CONTRACT_CLASS_V0.1.0");
+    hash.write(SIERRA_VERSION.into());
+
+    // It is important to process the different entrypoint hashchains in correct order.
+    // Each of the entrypoint lists gets updated into the `outer` hashchain.
+    //
+    // This implementation doesn't preparse the strings, which makes it a bit more noisy. Late
+    // parsing is made in an attempt to lean on the one big string allocation we've already got,
+    // but these three hash chains could be constructed at deserialization time.
+    [External, L1Handler, Constructor]
+        .iter()
+        .map(|key| {
+            contract_definition
+                .entry_points_by_type
+                .get(key)
+                .unwrap_or(&Vec::new())
+                .iter()
+                // flatten each entry point to get a list of (selector, function_idx, selector, function_idx, ...)
+                .flat_map(|x| [x.selector.0, x.function_idx.into()].into_iter())
+                .fold(PoseidonHasher::default(), |mut hc, next| {
+                    hc.write(next.into());
+                    hc
+                })
+        })
+        .for_each(|x| hash.write(x.finish()));
+
+    let abi_truncated_keccak = {
+        let mut keccak = sha3::Keccak256::default();
+        keccak.update(contract_definition.abi.as_bytes());
+        truncated_keccak(<[u8; 32]>::from(keccak.finalize()))
+    };
+    hash.write(abi_truncated_keccak.into());
+
+    let program_hash = {
+        let program_hash = contract_definition.sierra_program.iter().fold(
+            PoseidonHasher::default(),
+            |mut hc, next| {
+                hc.write((*next).into());
+                hc
+            },
+        );
+        program_hash.finish()
+    };
+    hash.write(program_hash);
+
+    Ok(ClassHash(hash.finish().into()))
+}
+
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
 pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
@@ -296,9 +415,32 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
 }
 
 mod json {
-    use crate::request::contract::{EntryPointType, SelectorAndOffset};
+    use crate::request::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
+
+    pub enum ContractDefinition<'a> {
+        Cairo(CairoContractDefinition<'a>),
+        Sierra(SierraContractDefinition<'a>),
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct SierraContractDefinition<'a> {
+        /// Contract ABI.
+        #[serde(borrow)]
+        pub abi: Cow<'a, str>,
+
+        /// Main program definition.
+        pub sierra_program: Vec<stark_hash::Felt>,
+
+        // Version
+        #[serde(borrow)]
+        pub contract_class_version: Cow<'a, str>,
+
+        /// The contract entry points
+        pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>>,
+    }
 
     /// Our version of the cairo contract definition used to deserialize and re-serialize a
     /// modified version for a hash of the contract definition.
@@ -315,13 +457,13 @@ mod json {
     /// types.
     #[derive(serde::Deserialize, serde::Serialize)]
     #[serde(deny_unknown_fields)]
-    pub struct ContractDefinition<'a> {
+    pub struct CairoContractDefinition<'a> {
         /// Contract ABI, which has no schema definition.
         pub abi: serde_json::Value,
 
         /// Main program definition.
         #[serde(borrow)]
-        pub program: Program<'a>,
+        pub program: CairoProgram<'a>,
 
         /// The contract entry points.
         ///
@@ -335,7 +477,7 @@ mod json {
     // sorted order for the keccak hashed representation.
     #[derive(serde::Deserialize, serde::Serialize)]
     #[serde(deny_unknown_fields)]
-    pub struct Program<'a> {
+    pub struct CairoProgram<'a> {
         #[serde(skip_serializing_if = "Vec::is_empty", default)]
         pub attributes: Vec<serde_json::Value>,
 
@@ -369,31 +511,9 @@ mod json {
     }
 
     #[cfg(test)]
-    mod roundtrip_tests {
-        // FIXME: we should have many test cases utilizing this.
-        #[allow(unused)]
-        fn roundtrips<'a, T>(input: &'a str)
-        where
-            T: serde::Deserialize<'a> + serde::Serialize,
-        {
-            use super::super::PythonDefaultFormatter;
-
-            let parsed: T = serde_json::from_str(input).unwrap();
-            let mut ser =
-                serde_json::Serializer::with_formatter(Vec::new(), PythonDefaultFormatter);
-            parsed.serialize(&mut ser).unwrap();
-            let bytes = ser.into_inner();
-            let output = std::str::from_utf8(&bytes).expect("serde does this unchecked");
-
-            // these need to be byte for byte equal because we hash this
-            assert_eq!(input, output);
-        }
-    }
-
-    #[cfg(test)]
     mod test_vectors {
-        use super::super::compute_class_hash;
-        use pathfinder_common::felt;
+        use super::super::{compute_class_hash, ComputedClassHash};
+        use pathfinder_common::{felt, ClassHash};
         use starknet_gateway_test_fixtures::zstd_compressed_contracts::*;
 
         #[tokio::test]
@@ -402,8 +522,10 @@ mod json {
             let hash = compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
-                hash.0,
-                felt!("0x031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576")
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0x031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576"
+                )))
             );
         }
 
@@ -413,8 +535,10 @@ mod json {
             let hash = super::super::compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
-                hash.0,
-                felt!("0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b")
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+                )))
             );
         }
 
@@ -424,8 +548,10 @@ mod json {
             let hash = compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
-                hash.0,
-                felt!("0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8")
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                )))
             );
         }
 
@@ -433,24 +559,22 @@ mod json {
         async fn cairo_0_8() {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
-            use super::super::extract_abi_code_hash;
             use felt;
-            use pathfinder_common::ClassHash;
 
-            let expected = ClassHash(felt!(
+            let expected = ComputedClassHash::Cairo(ClassHash(felt!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
-            ));
+            )));
 
             // Known contract which triggered a hash mismatch failure.
             let contract_definition = zstd::decode_all(CAIRO_0_8_NEW_ATTRIBUTES).unwrap();
 
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let (abi, bytecode, hash) = extract_abi_code_hash(&contract_definition)?;
-                Ok((contract_definition, abi, bytecode, hash))
+                let hash = compute_class_hash(&contract_definition)?;
+                Ok(hash)
             });
-            let (_, _, _, calculate_hash) = extract.await.unwrap().unwrap();
+            let calculated_hash = extract.await.unwrap().unwrap();
 
-            assert_eq!(calculate_hash, expected);
+            assert_eq!(calculated_hash, expected);
         }
 
         #[tokio::test]
@@ -460,8 +584,10 @@ mod json {
             let hash = compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
-                hash.0,
-                felt!("0xa69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6")
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0xa69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6"
+                )))
             );
         }
 
@@ -473,8 +599,10 @@ mod json {
             let hash = compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
-                hash.0,
-                felt!("0x542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f")
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0x542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
+                )))
             );
         }
 
@@ -486,9 +614,24 @@ mod json {
             let hash = compute_class_hash(&contract_definition).unwrap();
 
             assert_eq!(
-                hash.0,
-                felt!("0x66af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157")
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0x66af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157"
+                )))
             );
+        }
+
+        #[tokio::test]
+        async fn cairo_0_11_sierra() {
+            let contract_definition = zstd::decode_all(CAIRO_0_11_SIERRA).unwrap();
+            let hash = compute_class_hash(&contract_definition).unwrap();
+
+            assert_eq!(
+                hash,
+                ComputedClassHash::Sierra(ClassHash(felt!(
+                    "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
+                )))
+            )
         }
     }
 

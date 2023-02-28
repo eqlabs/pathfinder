@@ -17,6 +17,7 @@ serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value
 serde_with = "2.1.0"
 sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
+stark_poseidon = { path = "../stark_poseidon" }
 thiserror = "1.0.37"
 tokio = { workspace = true }
 
