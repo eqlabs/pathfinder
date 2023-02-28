@@ -199,7 +199,12 @@ pub async fn sync(
 /// - `old_declared_contracts` from the state diff (Cairo 0.x classes)
 /// - `declared_classes` from the state diff (Cairo 1.0 classes)
 /// - `deployed_contracts` from the state diff (DEPLOY transactions)
+/// - `replaced_classes` from the state diff
 ///
+/// Note that due to an issue with the sequencer previously undeclared classes
+/// can show up in `replaced_classes`. This is caused by DECLARE v0 transactions
+/// that were _failing_ but the sequencer has still added the class to its list of
+/// known classes...
 async fn download_new_classes(
     block: &Block,
     state_diff: &StateDiff,
@@ -222,11 +227,13 @@ async fn download_new_classes(
             Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
         }
     });
+    let replaced_classes = state_diff.replaced_classes.iter().map(|x| x.class_hash);
 
     let new_classes = deployed_classes
         .chain(declared_cairo_classes)
         .chain(declared_sierra_classes)
         .chain(classes_declared_in_transactions)
+        .chain(replaced_classes)
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
         .into_iter()

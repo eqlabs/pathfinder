@@ -327,8 +327,12 @@ where
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
                     let deployed_classes = state_update.state_diff.deployed_contracts.iter().map(|x| x.class_hash);
-                    let declared_classes = state_update.state_diff.old_declared_contracts.iter().cloned();
-                    let declared_classes_block = block
+                    let declared_cairo_classes = state_update.state_diff.old_declared_contracts.iter().cloned();
+                    let declared_sierra_classes = state_update.state_diff
+                        .declared_classes
+                        .iter()
+                        .map(|x| ClassHash(x.class_hash.0));
+                    let declared_classes_in_transactions = block
                         .transactions
                         .iter()
                         .filter_map(|tx| {
@@ -341,9 +345,13 @@ where
                                 Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
                             }
                         });
+                    let replaced_classes = state_update.state_diff.replaced_classes.iter().map(|x| x.class_hash);
+
                     let classes = deployed_classes
-                        .chain(declared_classes)
-                        .chain(declared_classes_block);
+                        .chain(declared_cairo_classes)
+                        .chain(declared_sierra_classes)
+                        .chain(declared_classes_in_transactions)
+                        .chain(replaced_classes);
                     download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, classes)
                         .await
                         .context("Downloading missing classes for pending block")?;
