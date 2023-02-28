@@ -1,4 +1,3 @@
-use crate::types::CompressedContract;
 #[allow(unused)]
 use anyhow::Context;
 use pathfinder_common::{Chain, ClassHash};
@@ -73,7 +72,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
             let bytecode = compressor.compress(&code).unwrap();
 
             ready_tx
-                .send(CompressedContract {
+                .send(storage::CompressedContract {
                     abi,
                     bytecode,
                     definition,
@@ -152,7 +151,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
     drop(already_processing);
 
     for cc in ready_rx.iter() {
-        crate::ContractCodeTable::insert_compressed(transaction, &cc)
+        storage::contract_code_insert_compressed(transaction, &cc)
             .with_context(|| format!("Failed to save class {}", cc.hash.0))?;
     }
 
@@ -178,4 +177,42 @@ struct SlimTransaction {
     r#type: TransactionType,
     #[serde(default)]
     class_hash: Option<ClassHash>,
+}
+
+/// These are copies of storage code we had matching the database schema for this migration.
+mod storage {
+    use rusqlite::{named_params, Transaction};
+
+    use pathfinder_common::ClassHash;
+
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct CompressedContract {
+        pub abi: Vec<u8>,
+        pub bytecode: Vec<u8>,
+        pub definition: Vec<u8>,
+        pub hash: ClassHash,
+    }
+
+    pub fn contract_code_insert_compressed(
+        transaction: &Transaction<'_>,
+        contract: &CompressedContract,
+    ) -> anyhow::Result<()> {
+        // check magics to verify these are zstd compressed files
+        let magic = &[0x28, 0xb5, 0x2f, 0xfd];
+        assert_eq!(&contract.abi[..4], magic);
+        assert_eq!(&contract.bytecode[..4], magic);
+        assert_eq!(&contract.definition[..4], magic);
+
+        transaction.execute(
+            r"INSERT INTO contract_code ( hash,  bytecode,  abi,  definition)
+                             VALUES (:hash, :bytecode, :abi, :definition)",
+            named_params! {
+                ":hash": &contract.hash.0.to_be_bytes()[..],
+                ":bytecode": &contract.bytecode[..],
+                ":abi": &contract.abi[..],
+                ":definition": &contract.definition[..],
+            },
+        )?;
+        Ok(())
+    }
 }

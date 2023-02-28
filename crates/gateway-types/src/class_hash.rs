@@ -12,6 +12,15 @@ pub enum ComputedClassHash {
     Sierra(ClassHash),
 }
 
+impl ComputedClassHash {
+    pub fn hash(&self) -> ClassHash {
+        match self {
+            ComputedClassHash::Cairo(h) => *h,
+            ComputedClassHash::Sierra(h) => *h,
+        }
+    }
+}
+
 /// Computes the starknet class hash for given class definition JSON blob.
 ///
 /// This function first parses the JSON blob to decide if it's a Cairo or Sierra class
@@ -48,6 +57,9 @@ fn parse_contract_definition(
 
 /// Sibling functionality to only [`compute_class_hash`], returning also the ABI, and bytecode
 /// parts as json bytes.
+///
+/// NOTE: This function is deprecated. We no longer store ABI and bytecode in the database,
+/// and this function is only used by _old_ database migration steps.
 pub fn extract_abi_code_hash(
     contract_definition_dump: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
