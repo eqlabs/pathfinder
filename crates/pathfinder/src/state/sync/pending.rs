@@ -19,7 +19,7 @@ pub async fn poll_pending(
     use std::sync::Arc;
 
     loop {
-        use starknet_gateway_types::reply::MaybePendingBlock;
+        use starknet_gateway_types::reply::{MaybePendingBlock, MaybePendingStateUpdate};
 
         let pending_block = match sequencer
             .block(BlockId::Pending)
@@ -51,23 +51,31 @@ pub async fn poll_pending(
             .state_update(BlockId::Pending)
             .await
             .context("Download pending state update")?;
-        if state_update.block_hash.is_some() {
-            tracing::trace!("Found full state update, exiting pending mode.");
-            return Ok(());
-        }
-        if state_update.old_root != head.1 {
-            tracing::trace!(pending=%state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
-            return Ok(());
-        }
 
-        // Emit new pending data.
-        use crate::state::l2::Event::Pending;
-        tx_event
-            .send(Pending(Arc::new(pending_block), Arc::new(state_update)))
-            .await
-            .context("Event channel closed")?;
+        match state_update {
+            MaybePendingStateUpdate::StateUpdate(_) => {
+                tracing::trace!("Found full state update, exiting pending mode.");
+                return Ok(());
+            }
+            MaybePendingStateUpdate::Pending(pending_state_update) => {
+                if pending_state_update.old_root != head.1 {
+                    tracing::trace!(pending=%pending_state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
+                    return Ok(());
+                }
 
-        tokio::time::sleep(poll_interval).await;
+                // Emit new pending data.
+                use crate::state::l2::Event::Pending;
+                tx_event
+                    .send(Pending(
+                        Arc::new(pending_block),
+                        Arc::new(pending_state_update),
+                    ))
+                    .await
+                    .context("Event channel closed")?;
+
+                tokio::time::sleep(poll_interval).await;
+            }
+        }
     }
 }
 

@@ -642,16 +642,27 @@ pub mod transaction {
     }
 }
 
-/// Used to deserialize replies to StarkNet state update requests.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum MaybePendingStateUpdate {
+    StateUpdate(StateUpdate),
+    Pending(PendingStateUpdate),
+}
+
+/// Used to deserialize replies to StarkNet state update requests except for the pending one.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
-    /// This field is absent for a `pending` state update
-    #[serde(default)]
-    pub block_hash: Option<StarknetBlockHash>,
-    /// This field is absent for a `pending` state update
-    #[serde(default)]
-    pub new_root: Option<StateCommitment>,
+    pub block_hash: StarknetBlockHash,
+    pub new_root: StateCommitment,
+    pub old_root: StateCommitment,
+    pub state_diff: state_update::StateDiff,
+}
+
+/// Used to deserialize replies to StarkNet pending state update requests.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PendingStateUpdate {
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }

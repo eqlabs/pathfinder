@@ -25,12 +25,11 @@ impl std::fmt::Debug for CompressedContract {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
-    /// None for `pending`
+    /// Keeping optional because not sure if all serialized state updates contain this field
+    // FIXME regenesis: remove Option<>
     #[serde(default)]
     pub block_hash: Option<StarknetBlockHash>,
-    /// None for `pending`
-    #[serde(default)]
-    pub new_root: Option<StateCommitment>,
+    pub new_root: StateCommitment,
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }
@@ -38,7 +37,7 @@ pub struct StateUpdate {
 impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
     fn from(x: starknet_gateway_types::reply::StateUpdate) -> Self {
         Self {
-            block_hash: x.block_hash,
+            block_hash: Some(x.block_hash),
             new_root: x.new_root,
             old_root: x.old_root,
             state_diff: x.state_diff.into(),

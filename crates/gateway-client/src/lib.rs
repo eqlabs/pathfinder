@@ -46,7 +46,10 @@ pub trait ClientApi {
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError>;
 
-    async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError>;
+    async fn state_update(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingStateUpdate, SequencerError>;
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
 
@@ -290,7 +293,10 @@ impl ClientApi for Client {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError> {
+    async fn state_update(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
         self.feeder_gateway_request()
             .get_state_update()
             .with_block(block)

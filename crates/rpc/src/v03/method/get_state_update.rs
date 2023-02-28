@@ -96,11 +96,11 @@ mod types {
         pub state_diff: StateDiff,
     }
 
-    impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
-        fn from(x: starknet_gateway_types::reply::StateUpdate) -> Self {
+    impl From<starknet_gateway_types::reply::PendingStateUpdate> for StateUpdate {
+        fn from(x: starknet_gateway_types::reply::PendingStateUpdate) -> Self {
             Self {
-                block_hash: x.block_hash,
-                new_root: x.new_root,
+                block_hash: None,
+                new_root: None,
                 old_root: x.old_root,
                 state_diff: x.state_diff.into(),
             }
@@ -111,7 +111,7 @@ mod types {
         fn from(x: pathfinder_storage::types::StateUpdate) -> Self {
             Self {
                 block_hash: x.block_hash,
-                new_root: x.new_root,
+                new_root: Some(x.new_root),
                 old_root: x.old_root,
                 state_diff: x.state_diff.into(),
             }

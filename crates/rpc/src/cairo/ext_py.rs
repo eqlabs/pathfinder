@@ -20,7 +20,7 @@ use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
 use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
-use starknet_gateway_types::{reply::StateUpdate, request::add_transaction};
+use starknet_gateway_types::{reply::PendingStateUpdate, request::add_transaction};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -52,7 +52,7 @@ impl Handle {
         &self,
         call: Call,
         at_block: BlockHashNumberOrLatest,
-        diffs: Option<Arc<StateUpdate>>,
+        diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
@@ -89,7 +89,7 @@ impl Handle {
         transaction: BroadcastedTransaction,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
-        diffs: Option<Arc<StateUpdate>>,
+        diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
     ) -> Result<FeeEstimate, CallFailure> {
         use tracing::field::Empty;
@@ -241,7 +241,7 @@ enum Command {
         call: Call,
         at_block: BlockHashNumberOrLatest,
         chain: UsedChain,
-        diffs: Option<Arc<StateUpdate>>,
+        diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
@@ -251,7 +251,7 @@ enum Command {
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,
-        diffs: Option<Arc<StateUpdate>>,
+        diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
