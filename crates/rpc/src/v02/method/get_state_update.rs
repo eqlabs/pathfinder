@@ -141,7 +141,7 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                declared_contract_hashes: state_diff.old_declared_classes,
+                declared_contract_hashes: state_diff.old_declared_contracts,
                 deployed_contracts: state_diff
                     .deployed_contracts
                     .into_iter()
@@ -336,8 +336,8 @@ mod types {
             let fixture =
                 include_str!("../../../fixtures/0.44.0/state_update.json").replace([' ', '\n'], "");
 
-            assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
-            assert_eq!(
+            pretty_assertions::assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
+            pretty_assertions::assert_eq!(
                 serde_json::from_str::<Vec<StateUpdate>>(&fixture).unwrap(),
                 data
             );

@@ -232,7 +232,7 @@ fn compute_cairo_class_hash(
     // number of items in this class_hash.
     outer.update(API_VERSION);
 
-    // It is important process the different entrypoint hashchains in correct order.
+    // It is important to process the different entrypoint hashchains in correct order.
     // Each of the entrypoint lists gets updated into the `outer` hashchain.
     //
     // This implementation doesn't preparse the strings, which makes it a bit more noisy. Late

@@ -82,7 +82,10 @@ pub mod integration {
     }
 
     pub mod state_update {
-        pub const NUMBER_216572: &str = str_fixture!("integration/state-update/216572.json");
+        // Contains declared_classes from 0.11.0
+        pub const NUMBER_283364: &str = str_fixture!("integration/state-update/283364.json");
+        // Contains replaced_classes from 0.11.0
+        pub const NUMBER_283428: &str = str_fixture!("integration/state-update/283428.json");
     }
 }
 

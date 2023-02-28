@@ -53,7 +53,8 @@ impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
 /// stored in the DB as compressed raw JSON bytes.
 pub mod state_update {
     use pathfinder_common::{
-        ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
+        StorageValue,
     };
     use serde::{Deserialize, Serialize};
 
@@ -62,9 +63,17 @@ pub mod state_update {
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
-        pub declared_contracts: Vec<DeclaredContract>,
+        /// Refers to Declare V0 & V1 txns, these contain Cairo classes
+        pub declared_contracts: Vec<DeclaredCairoClass>,
+        /// Refers to pre-Starknet-0.11.0 Deploy txns
         pub deployed_contracts: Vec<DeployedContract>,
         pub nonces: Vec<Nonce>,
+        /// Refers to Declare V2 txns, these contain Sierra classes
+        #[serde(default)]
+        pub declared_sierra_classes: Vec<DeclaredSierraClass>,
+        /// Replaced classes, introduced in Starknet 0.11.0
+        #[serde(default)]
+        pub replaced_classes: Vec<ReplacedClass>,
     }
 
     impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
@@ -82,9 +91,9 @@ pub mod state_update {
                     })
                     .collect(),
                 declared_contracts: x
-                    .old_declared_classes
+                    .old_declared_contracts
                     .into_iter()
-                    .map(|class_hash| DeclaredContract { class_hash })
+                    .map(|class_hash| DeclaredCairoClass { class_hash })
                     .collect(),
                 deployed_contracts: x
                     .deployed_contracts
@@ -102,6 +111,8 @@ pub mod state_update {
                         nonce,
                     })
                     .collect(),
+                declared_sierra_classes: x.declared_classes.into_iter().map(Into::into).collect(),
+                replaced_classes: x.replaced_classes.into_iter().map(Into::into).collect(),
             }
         }
     }
@@ -115,10 +126,10 @@ pub mod state_update {
         pub value: StorageValue,
     }
 
-    /// L2 state diff declared contract item.
+    /// L2 state diff Declared V1 class item.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct DeclaredContract {
+    pub struct DeclaredCairoClass {
         pub class_hash: ClassHash,
     }
 
@@ -136,5 +147,41 @@ pub mod state_update {
     pub struct Nonce {
         pub contract_address: ContractAddress,
         pub nonce: ContractNonce,
+    }
+
+    /// L2 state diff Declared V2 class item. Maps Sierra class hash to a Casm hash.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct DeclaredSierraClass {
+        pub class_hash: SierraHash,
+        pub compiled_class_hash: CasmHash,
+    }
+
+    impl From<starknet_gateway_types::reply::state_update::DeclaredSierraClass>
+        for DeclaredSierraClass
+    {
+        fn from(x: starknet_gateway_types::reply::state_update::DeclaredSierraClass) -> Self {
+            Self {
+                class_hash: x.class_hash,
+                compiled_class_hash: x.compiled_class_hash,
+            }
+        }
+    }
+
+    /// L2 state diff replaced class item. Maps contract address to a new class.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct ReplacedClass {
+        pub address: ContractAddress,
+        pub class_hash: ClassHash,
+    }
+
+    impl From<starknet_gateway_types::reply::state_update::ReplacedClass> for ReplacedClass {
+        fn from(x: starknet_gateway_types::reply::state_update::ReplacedClass) -> Self {
+            Self {
+                address: x.address,
+                class_hash: x.class_hash,
+            }
+        }
     }
 }

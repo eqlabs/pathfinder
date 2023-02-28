@@ -748,9 +748,10 @@ mod tests {
                     map
                 },
                 deployed_contracts: vec![],
-                old_declared_classes: vec![],
-                declared_classes: std::collections::HashMap::new(),
+                old_declared_contracts: vec![],
+                declared_classes: vec![],
                 nonces: std::collections::HashMap::new(),
+                replaced_classes: vec![],
             },
         });
 

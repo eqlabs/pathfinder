@@ -109,9 +109,10 @@ mod tests {
             state_diff: StateDiff {
                 storage_diffs: std::collections::HashMap::new(),
                 deployed_contracts: Vec::new(),
-                old_declared_classes: Vec::new(),
-                declared_classes: std::collections::HashMap::new(),
+                old_declared_contracts: Vec::new(),
+                declared_classes: Vec::new(),
                 nonces: std::collections::HashMap::new(),
+                replaced_classes: Vec::new(),
             }
         };
 
