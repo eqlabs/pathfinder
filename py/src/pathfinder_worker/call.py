@@ -85,7 +85,7 @@ except ModuleNotFoundError:
 
 
 # used from tests, and the query which asserts that the schema is of expected version.
-EXPECTED_SCHEMA_REVISION = 27
+EXPECTED_SCHEMA_REVISION = 28
 EXPECTED_CAIRO_VERSION = "0.10.3"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
@@ -763,7 +763,7 @@ class SqliteAdapter(Storage):
     def fetch_contract_definition(self, suffix):
         # assert False, "we must rebuild the full json out of our columns"
         cursor = self.connection.execute(
-            "select definition from contract_code where hash = ?", [suffix]
+            "select definition from class_definitions where hash = ?", [suffix]
         )
         [only] = next(cursor, [None])
 

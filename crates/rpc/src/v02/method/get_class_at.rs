@@ -77,7 +77,7 @@ pub async fn get_class_at(
 fn get_definition(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> anyhow::Result<Vec<u8>> {
     let definition = tx
         .query_row(
-            "SELECT definition FROM contract_code WHERE hash=?",
+            "SELECT definition FROM class_definitions WHERE hash=?",
             [class],
             |row| {
                 let data = row.get_ref_unwrap(0).as_blob()?.to_vec();
@@ -109,7 +109,7 @@ fn get_definition_at(
 
     let definition = tx
         .query_row(
-            "SELECT definition FROM contract_code code JOIN contract_states states ON (code.hash = states.hash) WHERE states.state_hash=?",
+            "SELECT definition FROM class_definitions code JOIN contract_states states ON (code.hash = states.hash) WHERE states.state_hash=?",
             [state_hash],
             |row| {
                 let data = row.get_ref_unwrap(0).as_blob()?.to_vec();

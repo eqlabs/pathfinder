@@ -42,7 +42,7 @@ impl ContractCodeTable {
         assert_eq!(&contract.definition[..4], magic);
 
         connection.execute(
-            r"INSERT INTO contract_code (hash, definition)
+            r"INSERT INTO class_definitions (hash, definition)
                              VALUES (:hash, :definition)",
             named_params! {
                 ":hash": &contract.hash.0.to_be_bytes()[..],
@@ -58,7 +58,7 @@ impl ContractCodeTable {
         block: StarknetBlockHash,
     ) -> anyhow::Result<bool> {
         let rows_changed = transaction.execute(
-            "UPDATE contract_code SET declared_on=? WHERE hash=? AND declared_on IS NULL",
+            "UPDATE class_definitions SET declared_on=? WHERE hash=? AND declared_on IS NULL",
             rusqlite::params![block, class],
         )?;
 
@@ -76,7 +76,7 @@ impl ContractCodeTable {
         let row = transaction
             .query_row(
                 "SELECT definition
-                FROM contract_code
+                FROM class_definitions
                 WHERE hash = :hash",
                 named_params! {
                     ":hash": &hash.0.to_be_bytes()
@@ -117,7 +117,7 @@ impl ContractCodeTable {
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
     pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = connection.prepare("select 1 from contract_code where hash = ?")?;
+        let mut stmt = connection.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
 
         Ok(classes
             .iter()
