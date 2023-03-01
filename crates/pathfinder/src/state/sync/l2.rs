@@ -1,8 +1,8 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    Chain, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
-    TransactionCommitment,
+    CasmHash, Chain, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber,
+    StateCommitment, TransactionCommitment,
 };
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use starknet_gateway_client::ClientApi;
@@ -41,7 +41,7 @@ pub enum Event {
     /// A new unique L2 Cairo 0.x [contract](CompressedContract) was found.
     NewCairoContract(CompressedContract),
     /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
-    NewSierraContract(CompressedContract, CompressedCasmClass),
+    NewSierraContract(CompressedContract, CompressedCasmClass, CasmHash),
     /// Query for the [block hash](StarknetBlockHash) and [root](StateCommitment) of the given block.
     ///
     /// The receiver should return the data using the [oneshot::channel].
@@ -268,19 +268,38 @@ async fn download_new_classes(
                 .await
                 .with_context(|| {
                     format!(
-                        "Sending Event::NewContract for declared class {}",
+                        "Sending Event::NewCairoContract for declared class {}",
                         class_hash.0
                     )
                 })?,
-            DownloadedClass::Sierra(sierra_class, casm_class) => tx_event
-                .send(Event::NewSierraContract(sierra_class, casm_class))
-                .await
-                .with_context(|| {
-                    format!(
-                        "Sending Event::NewContract for declared class {}",
-                        class_hash.0
-                    )
-                })?,
+            DownloadedClass::Sierra(sierra_class, casm_class) => {
+                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
+                // since that's what has been added to the class commitment tree.
+                let compiled_class_hash = state_diff
+                    .declared_classes
+                    .iter()
+                    .find_map(|declared_class| {
+                        if declared_class.class_hash.0 == class_hash.0 {
+                            Some(declared_class.compiled_class_hash)
+                        } else {
+                            None
+                        }
+                    })
+                    .context("Sierra class hash not in declared classes")?;
+                tx_event
+                    .send(Event::NewSierraContract(
+                        sierra_class,
+                        casm_class,
+                        compiled_class_hash,
+                    ))
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Sending Event::NewSierraContract for declared class {}",
+                            class_hash.0
+                        )
+                    })?
+            }
         }
     }
 

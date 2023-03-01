@@ -1,15 +1,13 @@
-use crate::types::CompressedContract;
+use crate::types::{CompressedCasmClass, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
-use pathfinder_common::{ClassHash, ContractClass, StarknetBlockHash};
+use pathfinder_common::{CasmHash, ClassHash, ContractClass, StarknetBlockHash};
 use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's
 ///
 /// - [hash](ClassHash)
-/// - byte code
-/// - ABI
 /// - definition
 pub struct ContractCodeTable {}
 
@@ -118,6 +116,42 @@ impl ContractCodeTable {
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
     pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         let mut stmt = connection.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+
+        Ok(classes
+            .iter()
+            .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+}
+
+/// Stores compiled CASM for Sierra classes
+///
+/// Sierra classes need to be compiled to Cairo assembly so that we can execute them.
+pub struct CasmClassTable {}
+
+impl CasmClassTable {
+    /// Insert a CASM class into the table.
+    ///
+    /// Note that the class hash must reference a class stored in [ContractCodeTable].
+    pub fn upsert_compressed(
+        connection: &Connection,
+        class: &CompressedCasmClass,
+        compiled_class_hash: &CasmHash,
+    ) -> anyhow::Result<()> {
+        connection.execute(
+            r"INSERT OR REPLACE INTO casm_definitions (hash, definition, compiled_class_hash) VALUES (:hash, :definition, :compiled_class_hash)",
+            named_params! {
+                ":hash": class.hash,
+                ":definition": &class.definition[..],
+                ":compiled_class_hash": compiled_class_hash,
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Returns true for each [ClassHash] if the class definition already exists in the table.
+    pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+        let mut stmt = connection.prepare("SELECT 1 FROM casm_definitions WHERE hash = ?")?;
 
         Ok(classes
             .iter()
