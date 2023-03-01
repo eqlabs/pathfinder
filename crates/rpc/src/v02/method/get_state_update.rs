@@ -517,9 +517,7 @@ mod tests {
 
         let expected = StateUpdate {
             block_hash: None,
-            new_root: Some(StateCommitment(felt!(
-                "0x06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
-            ))),
+            new_root: None,
             old_root: StateCommitment(felt!(
                 "0x04F53E3D1AD8AE22475BF02414088FA4D1DC1A837BBA4E34461FEA4DBCBB76D8"
             )),

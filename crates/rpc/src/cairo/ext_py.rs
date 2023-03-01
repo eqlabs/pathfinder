@@ -680,7 +680,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn call_with_pending_updates() {
-        use starknet_gateway_types::{reply::StateUpdate, request::Tag};
+        use starknet_gateway_types::{reply::PendingStateUpdate, request::Tag};
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -731,10 +731,8 @@ mod tests {
 
         assert_eq!(res, &[CallResultValue(Felt::from(3u64))]);
 
-        let update = std::sync::Arc::new(StateUpdate {
-            block_hash: None,
+        let update = std::sync::Arc::new(PendingStateUpdate {
             old_root: StateCommitment(Felt::ZERO),
-            new_root: Some(StateCommitment(Felt::ZERO)),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: {
                     let mut map = std::collections::HashMap::new();

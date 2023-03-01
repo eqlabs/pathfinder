@@ -26,7 +26,7 @@ impl std::fmt::Debug for CompressedContract {
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
     /// Keeping optional because not sure if all serialized state updates contain this field
-    // FIXME regenesis: remove Option<>
+    // FIXME regenesis: remove Option<> around block_hash
     #[serde(default)]
     pub block_hash: Option<StarknetBlockHash>,
     pub new_root: StateCommitment,

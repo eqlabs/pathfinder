@@ -997,7 +997,10 @@ mod tests {
             unimplemented!()
         }
 
-        async fn state_update(&self, _: BlockId) -> Result<reply::StateUpdate, SequencerError> {
+        async fn state_update(
+            &self,
+            _: BlockId,
+        ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
             unimplemented!()
         }
 
@@ -1162,8 +1165,8 @@ mod tests {
         };
         // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-            block_hash: Some(StarknetBlockHash(*A)),
-            new_root: Some(*STATE_COMMITMENT0),
+            block_hash: StarknetBlockHash(*A),
+            new_root: *STATE_COMMITMENT0,
             old_root: *STATE_COMMITMENT0,
             state_diff: reply::state_update::StateDiff{
                 storage_diffs: std::collections::HashMap::new(),

@@ -660,11 +660,34 @@ pub struct StateUpdate {
 }
 
 /// Used to deserialize replies to StarkNet pending state update requests.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingStateUpdate {
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
+}
+
+// FIXME: move to a simple derive once mainnet moves to 0.11.0 and we don't have to care for new_root anymore
+impl<'de> Deserialize<'de> for PendingStateUpdate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        pub struct BackwardCompatiblePendingStateUpdate {
+            /// Unused but present for backwards compatibility as long as mainnet remains on 0.10.3
+            #[serde(default, rename = "new_root")]
+            pub _unused: Option<StateCommitment>,
+            pub old_root: StateCommitment,
+            pub state_diff: state_update::StateDiff,
+        }
+
+        let psu = BackwardCompatiblePendingStateUpdate::deserialize(deserializer)?;
+        Ok(PendingStateUpdate {
+            old_root: psu.old_root,
+            state_diff: psu.state_diff,
+        })
+    }
 }
 
 /// Types used when deserializing state update related data.
@@ -860,7 +883,7 @@ mod tests {
     /// previous version of cairo while at the same time the goerli sequencer is
     /// already using a newer version.
     mod backward_compatibility {
-        use super::super::{StateUpdate, Transaction};
+        use super::super::{MaybePendingStateUpdate, Transaction};
         use starknet_gateway_test_fixtures::*;
 
         #[test]
@@ -882,16 +905,20 @@ mod tests {
 
         #[test]
         fn state_update() {
-            // FIXME(0.10): update these fixtures once 0.10 is on mainnet
-
             // These fixtures do not contain nonces property (0.10 owards).
-            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::GENESIS).unwrap();
-            serde_json::from_str::<StateUpdate>(v0_9_1::state_update::PENDING).unwrap();
-            // This is from integration starknet_version 0.10 and contains the new nonces field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283364).unwrap();
+            serde_json::from_str::<MaybePendingStateUpdate>(v0_9_1::state_update::GENESIS).unwrap();
+            serde_json::from_str::<MaybePendingStateUpdate>(v0_9_1::state_update::PENDING).unwrap();
+
             // This is from integration starknet_version 0.11 and contains the new declared_classes field.
-            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283428).unwrap();
+            serde_json::from_str::<MaybePendingStateUpdate>(
+                integration::state_update::NUMBER_283364,
+            )
+            .unwrap();
             // This is from integration starknet_version 0.11 and contains the new replaced_classes field.
+            serde_json::from_str::<MaybePendingStateUpdate>(
+                integration::state_update::NUMBER_283428,
+            )
+            .unwrap();
         }
 
         #[test]

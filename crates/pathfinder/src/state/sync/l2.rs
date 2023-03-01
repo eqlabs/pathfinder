@@ -734,8 +734,8 @@ mod tests {
             };
 
             static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK0_HASH),
-                new_root: Some(*GLOBAL_ROOT0),
+                block_hash: *BLOCK0_HASH,
+                new_root: *GLOBAL_ROOT0,
                 old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
@@ -756,8 +756,8 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK0_HASH_V2),
-                new_root: Some(*GLOBAL_ROOT0_V2),
+                block_hash: *BLOCK0_HASH_V2,
+                new_root: *GLOBAL_ROOT0_V2,
                 old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
@@ -772,8 +772,8 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK1_HASH),
-                new_root: Some(*GLOBAL_ROOT1),
+                block_hash: *BLOCK1_HASH,
+                new_root: *GLOBAL_ROOT1,
                 old_root: *GLOBAL_ROOT0,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![reply::state_update::DeployedContract {
@@ -803,8 +803,8 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK1_HASH_V2),
-                new_root: Some(*GLOBAL_ROOT1_V2),
+                block_hash: *BLOCK1_HASH_V2,
+                new_root: *GLOBAL_ROOT1_V2,
                 old_root: *GLOBAL_ROOT0_V2,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
@@ -816,8 +816,8 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK2_HASH),
-                new_root: Some(*GLOBAL_ROOT2),
+                block_hash: *BLOCK2_HASH,
+                new_root: *GLOBAL_ROOT2,
                 old_root: *GLOBAL_ROOT1,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
@@ -829,8 +829,8 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK2_HASH_V2),
-                new_root: Some(*GLOBAL_ROOT2_V2),
+                block_hash: *BLOCK2_HASH_V2,
+                new_root: *GLOBAL_ROOT2_V2,
                 old_root: *GLOBAL_ROOT1_V2,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
@@ -842,8 +842,8 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK3_HASH),
-                new_root: Some(*GLOBAL_ROOT3),
+                block_hash: *BLOCK3_HASH,
+                new_root: *GLOBAL_ROOT3,
                 old_root: *GLOBAL_ROOT2,
                 state_diff: reply::state_update::StateDiff {
                     deployed_contracts: vec![],
@@ -885,7 +885,7 @@ mod tests {
                 .with(eq(block))
                 .times(1)
                 .in_sequence(seq)
-                .return_once(|_| returned_result);
+                .return_once(|_| returned_result.map(reply::MaybePendingStateUpdate::StateUpdate));
         }
 
         /// Convenience wrapper
