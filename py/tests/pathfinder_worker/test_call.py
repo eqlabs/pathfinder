@@ -11,8 +11,13 @@ import pathfinder_worker.call as call
 
 from starkware.cairo.lang.vm.crypto import pedersen_hash
 from starkware.starknet.public.abi import get_selector_from_name
-from starkware.starknet.services.api.gateway.transaction import InvokeFunction, Declare
-from starkware.starknet.services.api.contract_class import ContractClass
+from starkware.starknet.services.api.gateway.transaction import (
+    InvokeFunction,
+    DeprecatedDeclare,
+)
+from starkware.starknet.services.api.contract_class.contract_class import (
+    DeprecatedCompiledClass,
+)
 from starkware.starkware_utils.error_handling import WebFriendlyException
 
 from pathfinder_worker.call import (
@@ -73,7 +78,7 @@ def test_command_parsing_estimate_fee():
         pending_timestamp=0,
         transaction=InvokeFunction(
             version=0x100000000000000000000000000000000,
-            contract_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
+            sender_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
             calldata=[132],
             entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
             nonce=None,
@@ -160,6 +165,12 @@ def inmemory_with_tables():
             ref_count   INTEGER
         );
 
+        CREATE TABLE IF NOT EXISTS tree_class (
+            hash        BLOB PRIMARY KEY,
+            data        BLOB,
+            ref_count   INTEGER
+        );
+
         CREATE TABLE contract_states (
             state_hash BLOB PRIMARY KEY,
             hash       BLOB NOT NULL,
@@ -194,7 +205,8 @@ def inmemory_with_tables():
             timestamp            INTEGER NOT NULL,
             gas_price            BLOB    NOT NULL,
             sequencer_address    BLOB    NOT NULL,
-            version_id           INTEGER REFERENCES starknet_versions(id)
+            version_id           INTEGER REFERENCES starknet_versions(id),
+            class_commitment     BLOB
         );
         """
     )
@@ -367,12 +379,13 @@ def populate_test_contract_with_132_on_3(con):
 
     # interestingly python sqlite does not accept X'0' here:
     cur.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(state_root),
             b"\x00" * 16,
             b"\x00" * 32,
+            None,
         ],
     )
 
@@ -581,7 +594,7 @@ def test_fee_estimate_on_positive_directly():
         pending_timestamp=0,
         transaction=InvokeFunction(
             version=0x100000000000000000000000000000000,
-            contract_address=contract_address,
+            sender_address=contract_address,
             calldata=[132],
             entry_point_selector=get_selector_from_name("get_value"),
             nonce=None,
@@ -593,9 +606,9 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 0,
-        "gas_price": 0,
-        "overall_fee": 0,
+        "gas_consumed": 1382,
+        "gas_price": 1,
+        "overall_fee": 1382,
     }
 
 
@@ -611,7 +624,9 @@ def test_fee_estimate_for_declare_transaction_directly():
         contract_definition = file.read()
         contract_definition = zstandard.decompress(contract_definition)
         contract_definition = contract_definition.decode("utf-8")
-        contract_definition = ContractClass.Schema().loads(contract_definition)
+        contract_definition = DeprecatedCompiledClass.Schema().loads(
+            contract_definition
+        )
 
     con.execute("BEGIN")
 
@@ -623,22 +638,24 @@ def test_fee_estimate_for_declare_transaction_directly():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transaction=Declare(
-            version=0x100000000000000000000000000000000,
+        transaction=DeprecatedDeclare(
+            # FIXME: query version should work
+            # version=0x100000000000000000000000000000000,
+            version=0,
             max_fee=0,
             signature=[],
             nonce=0,
             contract_class=contract_definition,
-            sender_address=contract_address,
+            sender_address=1,
         ),
     )
 
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 1341,
+        "gas_consumed": 1350,
         "gas_price": 1,
-        "overall_fee": 1341,
+        "overall_fee": 1350,
     }
 
 
@@ -705,9 +722,9 @@ def test_fee_estimate_on_positive():
     assert second == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (0x055A).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x0566).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (0x3584).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0x35FC).to_bytes(32, "big").hex(),
         },
     }
 
@@ -724,7 +741,7 @@ def test_starknet_version_is_resolved():
     version_id = cursor.lastrowid
 
     con.execute("UPDATE starknet_blocks SET version_id = ?", [version_id])
-    (info, _root) = resolve_block(con, "latest", 0)
+    (info, _root, _class_commitment) = resolve_block(con, "latest", 0)
 
     assert info.starknet_version == "0.9.1"
 
@@ -1100,8 +1117,9 @@ def test_nonce_with_dummy():
 
     # this will be used as a basis for the other commands with the `dict(base, **updates)` signature
     base_transaction = InvokeFunction(
-        version=0x100000000000000000000000000000001,
-        contract_address=0x123,
+        # FIXME: query version should work
+        version=0x1,
+        sender_address=0x123,
         # this should be: target address, target selector, input len, input..
         calldata=[test_contract_address, get_selector_from_name("get_value"), 1, 132],
         entry_point_selector=None,
@@ -1129,7 +1147,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+            {"gas_consumed": 1416, "gas_price": 1, "overall_fee": 1416},
         ),
         (
             dataclasses.replace(
@@ -1154,7 +1172,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transaction=dataclasses.replace(base_transaction, nonce=1),
             ),
-            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+            {"gas_consumed": 1416, "gas_price": 1, "overall_fee": 1416},
         ),
         (
             dataclasses.replace(
@@ -1191,7 +1209,7 @@ def test_nonce_with_dummy():
                 transaction=dataclasses.replace(base_transaction, nonce=2),
                 pending_nonces={0x123: 2},
             ),
-            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+            {"gas_consumed": 1416, "gas_price": 1, "overall_fee": 1416},
         ),
         (
             dataclasses.replace(

@@ -51,6 +51,7 @@ try:
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.definitions import fields, constants
+    from starkware.starknet.definitions.constants import GasCost
     from starkware.starknet.definitions.error_codes import StarknetErrorCode
     from starkware.starknet.definitions.general_config import (
         DEFAULT_MAX_STEPS,
@@ -61,8 +62,9 @@ try:
         StarknetGeneralConfig,
         build_general_config,
     )
-
-    from starkware.starknet.services.api.contract_class import EntryPointType
+    from starkware.starknet.services.api.contract_class.contract_class import (
+        EntryPointType,
+    )
     from starkware.starknet.services.api.gateway.transaction import AccountTransaction
     from starkware.starknet.services.utils.sequencer_api_utils import (
         InternalAccountTransactionForSimulate,
@@ -82,7 +84,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 29
-EXPECTED_CAIRO_VERSION = "0.10.3"
+EXPECTED_CAIRO_VERSION = "0.11.0a0"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -804,7 +806,12 @@ async def do_call(
     caller_address = 0
 
     eep = ExecuteEntryPoint.create(
-        contract_address, calldata, selector, caller_address, EntryPointType.EXTERNAL
+        contract_address,
+        calldata,
+        selector,
+        caller_address,
+        initial_gas=GasCost.INITIAL.value,
+        entry_point_type=EntryPointType.EXTERNAL,
     )
 
     # for testing runs it in the current asyncio event loop, just as we want it
@@ -829,8 +836,8 @@ async def do_estimate_fee(
     deploy and perhaps declare transactions as well.
     """
 
-    more = InternalAccountTransactionForSimulate.from_external(
-        transaction, general_config
+    more = InternalAccountTransactionForSimulate.create_for_simulate(
+        transaction, general_config, False
     )
 
     tx_info = await more.apply_state_updates(async_state, general_config)
@@ -854,7 +861,7 @@ def apply_pending(
     for deployed_contract in deployed:
         state.cache._class_hash_initial_values[
             deployed_contract.address
-        ] = deployed_contract.contract_hash.to_bytes(length=32, byteorder="big")
+        ] = deployed_contract.contract_hash
 
     for addr, updates in updates.items():
         for update in updates:
@@ -879,14 +886,16 @@ def create_general_config(chain_id: StarknetChainId) -> StarknetGeneralConfig:
     return build_general_config(
         {
             "cairo_resource_fee_weights": {"n_steps": constants.N_STEPS_FEE_WEIGHT},
+            "compiled_class_hash_commitment_tree_height": constants.COMPILED_CLASS_HASH_COMMITMENT_TREE_HEIGHT,
             "contract_storage_commitment_tree_height": constants.CONTRACT_STATES_COMMITMENT_TREE_HEIGHT,
+            "enforce_l1_handler_fee": False,
             "event_commitment_tree_height": constants.EVENT_COMMITMENT_TREE_HEIGHT,
             "global_state_commitment_tree_height": constants.CONTRACT_ADDRESS_BITS,
             "invoke_tx_max_n_steps": DEFAULT_MAX_STEPS,
             "min_gas_price": DEFAULT_GAS_PRICE,
             "sequencer_address": hex(DEFAULT_SEQUENCER_ADDRESS),
             "starknet_os_config": {
-                "chain_id": chain_id.name,
+                "chain_id": chain_id.value,
                 "fee_token_address": ETHER_L2_TOKEN_ADDRESS,
             },
             "tx_version": constants.TRANSACTION_VERSION,
