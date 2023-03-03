@@ -208,6 +208,13 @@ def inmemory_with_tables():
             version_id           INTEGER REFERENCES starknet_versions(id),
             class_commitment     BLOB
         );
+
+        CREATE TABLE casm_definitions (
+            hash                BLOB PRIMARY KEY NOT NULL,
+            compiled_class_hash BLOB    NOT NULL,
+            definition          BLOB NOT NULL,
+            FOREIGN KEY(hash) REFERENCES class_definitions(hash) ON DELETE CASCADE
+        );
         """
     )
 
@@ -1254,7 +1261,7 @@ def test_failing_mainnet_tx2():
         pending_timestamp=0,
         transaction=InvokeFunction(
             version=0,
-            contract_address=45915111574649954983606422480229741823594314537836586888051448850027079668,
+            sender_address=45915111574649954983606422480229741823594314537836586888051448850027079668,
             calldata=[
                 1,
                 2087021424722619777119509474943472645767659996348769578120564519014510906823,

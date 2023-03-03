@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import ClassVar, Dict, List, Optional, Type
 
+from .contract_class_utils import parse_casm
+
 try:
     import stark_hash_rust
     import starkware.crypto.signature.fast_pedersen_hash
@@ -297,7 +299,7 @@ def check_cairolang_version():
         return False
 
 
-def do_loop(connection, input_gen, output_file):
+def do_loop(connection: sqlite3.Connection, input_gen, output_file):
     logger = Logger()
 
     if DEV_MODE:
@@ -391,7 +393,10 @@ def report_failed(logger, command, e):
         logger.debug(str(e))
 
 
-def loop_inner(connection, command: Command, contract_class_cache=None):
+def loop_inner(
+    connection: sqlite3.Connection, command: Command, contract_class_cache=None
+):
+
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
@@ -534,7 +539,9 @@ def check_schema(connection):
     return version == EXPECTED_SCHEMA_REVISION
 
 
-def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
+def resolve_block(
+    connection: sqlite3.Connection, at_block, forced_gas_price: int
+) -> BlockInfo:
     """
     forced_gas_price is the gas price we must use for this blockinfo, if None,
     the one from starknet_blocks will be used. this allows the caller to select
@@ -640,7 +647,7 @@ class SqliteAdapter(Storage):
     however using a single transaction.
     """
 
-    def __init__(self, connection):
+    def __init__(self, connection: sqlite3.Connection):
         assert connection.in_transaction, "first query should had started a transaction"
         self.connection = connection
         self.elapsed = {
@@ -648,12 +655,14 @@ class SqliteAdapter(Storage):
             "patricia_node": 0,
             "contract_state": 0,
             "contract_definition": 0,
+            "compiled_class": 0,
         }
         self.counts = {
             "total": 0,
             "patricia_node": 0,
             "contract_state": 0,
             "contract_definition": 0,
+            "compiled_class": 0,
         }
         self.cache = {"patricia_node": {"hits": 0, "misses": 0}}
         # json cannot contain bytes, python doesn't have strip string
@@ -661,6 +670,7 @@ class SqliteAdapter(Storage):
             b"patricia_node": "patricia_node",
             b"contract_state": "contract_state",
             b"contract_definition_fact": "contract_definition",
+            b"compiled_class_fact": "compiled_class",
             # this is just a string op
             b"starknet_storage_leaf": None,
         }
@@ -708,8 +718,14 @@ class SqliteAdapter(Storage):
         if prefix == b"contract_definition_fact":
             return self.fetch_contract_definition(suffix)
 
+        if prefix == b"compiled_class_fact":
+            return self.fetch_compiled_class(suffix)
+
         if prefix == b"starknet_storage_leaf":
             return self.fetch_storage_leaf(suffix)
+
+        if prefix == b"contract_class_leaf":
+            return self.fetch_contract_class_leaf(suffix)
 
         assert False, f"unknown prefix: {prefix}"
 
@@ -764,9 +780,25 @@ class SqliteAdapter(Storage):
         )
 
     def fetch_contract_definition(self, suffix):
-        # assert False, "we must rebuild the full json out of our columns"
+        """
+        Fetches a Cairo 0.x class (DeprecatedCompiledClassFact).
+
+        It's important that we return None for Sierra classes here since that's
+        what triggers falling back to fetching the CASM via fetch_compiled_class()
+        """
         cursor = self.connection.execute(
-            "select definition from class_definitions where hash = ?", [suffix]
+            """
+            select
+                class_definitions.definition
+            from
+                class_definitions
+            left outer join casm_definitions on
+                casm_definitions.hash = class_definitions.hash
+            where
+                class_definitions.hash = ?
+                and
+                casm_definitions.compiled_class_hash is null""",
+            [suffix],
         )
         [only] = next(cursor, [None])
 
@@ -786,6 +818,49 @@ class SqliteAdapter(Storage):
         # expect the returned value to have method called decode, but it's not
         # like we could fake streaming decompression
         return bytes(itertools.chain(b'{"contract_definition":', only, b"}"))
+
+    def fetch_compiled_class(self, suffix):
+        """
+        Fetches the CASM class for a Cairo 1.0 contract based on the compiled_class_hash.
+        """
+        cursor = self.connection.cursor()
+        res = cursor.execute(
+            "select definition from casm_definitions where compiled_class_hash = ?",
+            [suffix],
+        )
+        compiled_class = res.fetchone()
+
+        if compiled_class is None:
+            return None
+
+        compiled_class = zstandard.decompress(compiled_class[0])
+        compiled_class = json.loads(compiled_class)
+
+        compiled_class = parse_casm(compiled_class)
+
+        compiled_class_json = compiled_class.dumps().encode("utf-8")
+
+        return bytes(itertools.chain(b'{"compiled_class":', compiled_class_json, b"}"))
+
+    def fetch_contract_class_leaf(self, suffix):
+        cursor = self.connection.cursor()
+        res = cursor.execute(
+            "select compiled_class_hash from class_commitment_leaves where hash = ?",
+            [suffix],
+        )
+        compiled_class_hash = res.fetchone()
+
+        # We should return zero if the commitment leaf is not found
+        if compiled_class_hash is None:
+            compiled_class_hash = [b"\x00" * 32]
+
+        return bytes(
+            itertools.chain(
+                b'{"compiled_class_hash": "0x',
+                compiled_class_hash[0].hex().encode("utf-8"),
+                b'"}',
+            )
+        )
 
     def fetch_storage_leaf(self, suffix):
         # these are "stored" under their keys where key == value; this
