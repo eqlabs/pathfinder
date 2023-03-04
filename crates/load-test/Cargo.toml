@@ -12,4 +12,4 @@ rand = "0.8.5"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
 stark_hash = { path = "../stark_hash" }
-tokio = "1.24.0"
+tokio = "1.24.2"
