@@ -545,51 +545,7 @@ mod tests {
         .await
         .unwrap();
 
-        // Use a roll-back transaction to calculate pending state root.
-        // This must not be committed as we don't want to inject the diff
-        // into storage, but do require database IO to determine the root.
-        //
-        // Load from latest block in storage's root.
-        let state_diff2 = state_diff.clone();
-        let pending_storage_commitment = tokio::task::spawn_blocking(move || {
-            let mut db = storage.connection().unwrap();
-            let tmp_tx = db.transaction().unwrap();
-
-            let latest_storage_commitment =
-                StarknetBlocksTable::get_storage_commitment(&tmp_tx, StarknetBlocksBlockId::Latest)
-                    .unwrap()
-                    .unwrap();
-
-            let mut storage_commitment_tree =
-                StorageCommitmentTree::load(&tmp_tx, latest_storage_commitment).unwrap();
-            for deployed in state_diff2.deployed_contracts {
-                ContractsTable::upsert(&tmp_tx, deployed.address, deployed.class_hash).unwrap();
-            }
-            for (contract_address, storage_diffs) in state_diff2.storage_diffs {
-                use pathfinder_merkle_tree::contract_state::update_contract_state;
-                let state_hash = update_contract_state(
-                    contract_address,
-                    &storage_diffs,
-                    None,
-                    &storage_commitment_tree,
-                    &tmp_tx,
-                )
-                .unwrap();
-                storage_commitment_tree
-                    .set(contract_address, state_hash)
-                    .unwrap();
-            }
-            let pending_storage_commitment = storage_commitment_tree.apply().unwrap();
-            tmp_tx.rollback().unwrap();
-            pending_storage_commitment
-        })
-        .await
-        .unwrap();
-
-        let state_update = starknet_gateway_types::reply::StateUpdate {
-            // This must be `None` for a pending state update.
-            block_hash: None,
-            new_root: StateCommitment::calculate(pending_storage_commitment, ClassCommitment::ZERO),
+        let state_update = starknet_gateway_types::reply::PendingStateUpdate {
             old_root: latest.root,
             state_diff,
         };

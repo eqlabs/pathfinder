@@ -11,7 +11,7 @@ use starknet_gateway_types::{
     error::SequencerError,
     reply::{
         state_update::{DeployedContract, StateDiff},
-        Block, PendingBlock, StateUpdate, Status,
+        Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate, StateUpdate, Status,
     },
 };
 use std::time::Duration;
@@ -54,7 +54,7 @@ pub enum Event {
     /// for each contract using the [oneshot::channel].
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
     /// A new L2 pending update was polled.
-    Pending(Arc<PendingBlock>, Arc<StateUpdate>),
+    Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
 }
 
 pub async fn sync(
@@ -150,13 +150,20 @@ pub async fn sync(
             .state_update(block_hash.into())
             .await
             .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?;
-        let state_update_block_hash = state_update.block_hash.unwrap();
+
+        let state_update = match state_update {
+            MaybePendingStateUpdate::StateUpdate(su) => su,
+            MaybePendingStateUpdate::Pending(_) => {
+                anyhow::bail!("Sequencer returned `pending` state update")
+            }
+        };
+
         // An extra sanity check for the state update API.
         anyhow::ensure!(
-            block_hash == state_update_block_hash,
+            block_hash == state_update.block_hash,
             "State update block hash mismatch, actual {:x}, expected {:x}",
             block_hash.0,
-            state_update_block_hash.0
+            state_update.block_hash.0
         );
         let t_update = t_update.elapsed();
 
@@ -727,7 +734,7 @@ mod tests {
             };
 
             static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK0_HASH),
+                block_hash: *BLOCK0_HASH,
                 new_root: *GLOBAL_ROOT0,
                 old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
@@ -749,7 +756,7 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK0_HASH_V2),
+                block_hash: *BLOCK0_HASH_V2,
                 new_root: *GLOBAL_ROOT0_V2,
                 old_root: StateCommitment(Felt::ZERO),
                 state_diff: reply::state_update::StateDiff {
@@ -765,7 +772,7 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK1_HASH),
+                block_hash: *BLOCK1_HASH,
                 new_root: *GLOBAL_ROOT1,
                 old_root: *GLOBAL_ROOT0,
                 state_diff: reply::state_update::StateDiff {
@@ -796,7 +803,7 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK1_HASH_V2),
+                block_hash: *BLOCK1_HASH_V2,
                 new_root: *GLOBAL_ROOT1_V2,
                 old_root: *GLOBAL_ROOT0_V2,
                 state_diff: reply::state_update::StateDiff {
@@ -809,7 +816,7 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK2_HASH),
+                block_hash: *BLOCK2_HASH,
                 new_root: *GLOBAL_ROOT2,
                 old_root: *GLOBAL_ROOT1,
                 state_diff: reply::state_update::StateDiff {
@@ -822,7 +829,7 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK2_HASH_V2),
+                block_hash: *BLOCK2_HASH_V2,
                 new_root: *GLOBAL_ROOT2_V2,
                 old_root: *GLOBAL_ROOT1_V2,
                 state_diff: reply::state_update::StateDiff {
@@ -835,7 +842,7 @@ mod tests {
                 },
             };
             static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
-                block_hash: Some(*BLOCK3_HASH),
+                block_hash: *BLOCK3_HASH,
                 new_root: *GLOBAL_ROOT3,
                 old_root: *GLOBAL_ROOT2,
                 state_diff: reply::state_update::StateDiff {
@@ -878,7 +885,7 @@ mod tests {
                 .with(eq(block))
                 .times(1)
                 .in_sequence(seq)
-                .return_once(|_| returned_result);
+                .return_once(|_| returned_result.map(reply::MaybePendingStateUpdate::StateUpdate));
         }
 
         /// Convenience wrapper

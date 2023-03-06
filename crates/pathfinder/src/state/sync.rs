@@ -345,34 +345,8 @@ where
                         .await
                         .context("Downloading missing classes for pending block")?;
 
-                    // Collect all potentially new classes.
-                    let new_root = tokio::task::block_in_place(|| {
-                        // Update state tree to determine new state root, but rollback the changes as we do
-                        // not want to persist them.
-                        let tx = db_conn
-                            .transaction_with_behavior(TransactionBehavior::Immediate)
-                            .context("Create database transaction")?;
-                        let (new_storage_commitment, new_class_commitment) = update_starknet_state(&tx, &state_update).context("Updating Starknet state")?;
-                        let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
-                        tx.rollback()?;
-                        anyhow::Result::<StateCommitment>::Ok(new_root)
-                    }).context("Calculate pending state root")?;
-
-                    match new_root == state_update.new_root {
-                        true => {
-                            pending_data.set(block, state_update).await;
-                            tracing::debug!("Updated pending data");
-                        }
-                        false => {
-                            pending_data.clear().await;
-                            tracing::error!(
-                                head=%state_update.old_root,
-                                pending=%state_update.new_root,
-                                calculated=%new_root,
-                                "Pending state root mismatch"
-                            );
-                        }
-                    }
+                    pending_data.set(block, state_update).await;
+                    tracing::debug!("Updated pending data");
                 }
                 None => {
                     pending_data.clear().await;
@@ -1023,7 +997,10 @@ mod tests {
             unimplemented!()
         }
 
-        async fn state_update(&self, _: BlockId) -> Result<reply::StateUpdate, SequencerError> {
+        async fn state_update(
+            &self,
+            _: BlockId,
+        ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
             unimplemented!()
         }
 
@@ -1188,7 +1165,7 @@ mod tests {
         };
         // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-            block_hash: Some(StarknetBlockHash(*A)),
+            block_hash: StarknetBlockHash(*A),
             new_root: *STATE_COMMITMENT0,
             old_root: *STATE_COMMITMENT0,
             state_diff: reply::state_update::StateDiff{
@@ -1202,62 +1179,33 @@ mod tests {
         };
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_update() {
-        let chain = Chain::Testnet;
-        let sync_state = Arc::new(SyncState::default());
-        let core_address = pathfinder_ethereum::contract::TESTNET_ADDRESSES.core;
+    mod l1_update {
+        use super::*;
 
-        lazy_static::lazy_static! {
-            static ref UPDATES: Arc<tokio::sync::RwLock<Vec<Vec<pathfinder_ethereum::log::StateUpdateLog>>>> =
-            Arc::new(tokio::sync::RwLock::new(vec![
-                vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
-                vec![STATE_UPDATE_LOG0.clone()],
-                vec![STATE_UPDATE_LOG0.clone()],
-            ]));
-        }
+        async fn with_state(
+            state: Vec<(StarknetBlock, StorageCommitment, ClassCommitment)>,
+            update: Vec<pathfinder_ethereum::log::StateUpdateLog>,
+        ) -> Option<StarknetBlockNumber> {
+            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| {
+                let u = update.clone();
+                async move {
+                    tx.send(l1::Event::Update(u)).await.unwrap();
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    Ok(())
+                }
+            };
 
-        // A simple L1 sync task
-        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
-            let mut update = UPDATES.write().await;
-            if let Some(some_update) = update.pop() {
-                tx.send(l1::Event::Update(some_update)).await.unwrap();
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok(())
-        };
+            let chain = Chain::Testnet;
+            let sync_state = Arc::new(SyncState::default());
+            let core_address = pathfinder_ethereum::contract::TESTNET_ADDRESSES.core;
 
-        let results = [
-            // Case 0: no L2 head
-            None,
-            // Case 1: some L2 head
-            Some(vec![(
-                STORAGE_BLOCK0.clone(),
-                *STORAGE_COMMITMENT0,
-                *CLASS_COMMITMENT0,
-            )]),
-            // Case 2: some L2 head, update contains more than one item
-            Some(vec![
-                (
-                    STORAGE_BLOCK0.clone(),
-                    *STORAGE_COMMITMENT0,
-                    *CLASS_COMMITMENT0,
-                ),
-                (
-                    STORAGE_BLOCK1.clone(),
-                    *STORAGE_COMMITMENT1,
-                    *CLASS_COMMITMENT1,
-                ),
-            ]),
-        ]
-        .into_iter()
-        .map(|blocks| async {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            blocks.into_iter().flatten().for_each(
-                |(block, storage_commitment, class_commitment)| {
+            state
+                .into_iter()
+                .for_each(|(block, storage_commitment, class_commitment)| {
                     StarknetBlocksTable::insert(
                         &tx,
                         &block,
@@ -1266,8 +1214,7 @@ mod tests {
                         class_commitment,
                     )
                     .unwrap()
-                },
-            );
+                });
 
             tx.commit().unwrap();
 
@@ -1290,25 +1237,57 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
             let tx = connection.transaction().unwrap();
-            RefsTable::get_l1_l2_head(&tx)
-        })
-        .collect::<futures::stream::FuturesOrdered<_>>()
-        .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
+            RefsTable::get_l1_l2_head(&tx).unwrap()
+        }
 
-        assert_eq!(
-            results,
-            vec![
-                // Case 0: no L1-L2 head expected
-                None,
-                // Case 1: some L1-L2 head expected
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn no_l2_head() {
+            assert_eq!(
+                with_state(vec![], vec![STATE_UPDATE_LOG0.clone()]).await,
+                None
+            );
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn l2_head_one_update() {
+            assert_eq!(
+                with_state(
+                    vec![(
+                        STORAGE_BLOCK0.clone(),
+                        *STORAGE_COMMITMENT0,
+                        *CLASS_COMMITMENT0,
+                    )],
+                    vec![STATE_UPDATE_LOG0.clone()]
+                )
+                .await,
                 Some(StarknetBlockNumber::GENESIS),
-                // Case 2: some L1-L2 head expected
+            );
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+        async fn l2_head_two_updates() {
+            assert_eq!(
+                with_state(
+                    vec![
+                        (
+                            STORAGE_BLOCK0.clone(),
+                            *STORAGE_COMMITMENT0,
+                            *CLASS_COMMITMENT0,
+                        ),
+                        (
+                            STORAGE_BLOCK1.clone(),
+                            *STORAGE_COMMITMENT1,
+                            *CLASS_COMMITMENT1,
+                        ),
+                    ],
+                    vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()]
+                )
+                .await,
                 Some(StarknetBlockNumber::new_or_panic(1)),
-            ]
-        );
+            );
+        }
     }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l1_reorg() {
         let results = [

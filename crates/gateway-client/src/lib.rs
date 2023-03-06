@@ -46,7 +46,10 @@ pub trait ClientApi {
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError>;
 
-    async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError>;
+    async fn state_update(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingStateUpdate, SequencerError>;
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
 
@@ -290,7 +293,10 @@ impl ClientApi for Client {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn state_update(&self, block: BlockId) -> Result<reply::StateUpdate, SequencerError> {
+    async fn state_update(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
         self.feeder_gateway_request()
             .get_state_update()
             .with_block(block)
@@ -1142,16 +1148,14 @@ mod tests {
 
     mod state_update_matches_by_hash_on {
         use super::{
-            reply::{
-                state_update::{DeployedContract, StorageDiff},
-                StateUpdate,
-            },
+            reply::state_update::{DeployedContract, StorageDiff},
             *,
         };
         use pathfinder_common::{
             felt, test_utils::metrics::RecorderGuard, ContractAddress, StateCommitment,
         };
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::reply::MaybePendingStateUpdate;
         use std::collections::{BTreeSet, HashMap};
 
         #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1162,25 +1166,34 @@ mod tests {
 
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct OrderedStateUpdate {
+            pub block_hash: StarknetBlockHash,
             pub new_root: StateCommitment,
             pub old_root: StateCommitment,
             pub state_diff: OrderedStateDiff,
         }
 
-        impl From<StateUpdate> for OrderedStateUpdate {
-            fn from(s: StateUpdate) -> Self {
-                Self {
-                    new_root: s.new_root,
-                    old_root: s.old_root,
-                    state_diff: OrderedStateDiff {
-                        storage_diffs: s
-                            .state_diff
-                            .storage_diffs
-                            .into_iter()
-                            .map(|(addr, diffs)| (addr, diffs.into_iter().collect()))
-                            .collect(),
-                        deployed_contracts: s.state_diff.deployed_contracts.into_iter().collect(),
+        impl From<MaybePendingStateUpdate> for OrderedStateUpdate {
+            fn from(s: MaybePendingStateUpdate) -> Self {
+                match s {
+                    MaybePendingStateUpdate::StateUpdate(s) => Self {
+                        block_hash: s.block_hash,
+                        new_root: s.new_root,
+                        old_root: s.old_root,
+                        state_diff: OrderedStateDiff {
+                            storage_diffs: s
+                                .state_diff
+                                .storage_diffs
+                                .into_iter()
+                                .map(|(addr, diffs)| (addr, diffs.into_iter().collect()))
+                                .collect(),
+                            deployed_contracts: s
+                                .state_diff
+                                .deployed_contracts
+                                .into_iter()
+                                .collect(),
+                        },
                     },
+                    MaybePendingStateUpdate::Pending(_) => unreachable!(),
                 }
             }
         }

@@ -247,9 +247,7 @@ mod tests {
         let block = Arc::new(block);
 
         // We only care about the nonce data, but the rest is required for setting up pending data.
-        let state_update = starknet_gateway_types::reply::StateUpdate {
-            block_hash: None,
-            new_root: StateCommitment(felt_bytes!(b"dont care")),
+        let state_update = starknet_gateway_types::reply::PendingStateUpdate {
             old_root: StateCommitment(felt_bytes!(b"dont care")),
             state_diff: starknet_gateway_types::reply::state_update::StateDiff {
                 storage_diffs: std::collections::HashMap::new(),

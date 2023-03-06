@@ -83,9 +83,16 @@ async fn main() {
 
         for (block_num, sequencer_state_update) in downloaded_rx.iter() {
             use pathfinder_storage::types::StateUpdate;
+            use starknet_gateway_types::reply::MaybePendingStateUpdate;
 
-            // Unwrap is safe because all non-pending state updates contain a block hash
-            let block_hash = sequencer_state_update.block_hash.unwrap();
+            let sequencer_state_update = match sequencer_state_update {
+                MaybePendingStateUpdate::Pending(_) => {
+                    panic!("Got unexpected pending block for block number {block_num}");
+                }
+                MaybePendingStateUpdate::StateUpdate(su) => su,
+            };
+
+            let block_hash = sequencer_state_update.block_hash;
             let rpc_state_update: StateUpdate = sequencer_state_update.into();
             let rpc_state_update = serde_json::to_vec(&rpc_state_update).unwrap();
             let rpc_state_update = compressor.compress(&rpc_state_update).unwrap();

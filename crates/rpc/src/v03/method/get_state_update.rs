@@ -87,18 +87,20 @@ mod types {
         #[serde(default)]
         #[serde_as(as = "Option<RpcFelt>")]
         pub block_hash: Option<StarknetBlockHash>,
-        #[serde_as(as = "RpcFelt")]
-        pub new_root: StateCommitment,
+        /// None for `pending`
+        #[serde(default)]
+        #[serde_as(as = "Option<RpcFelt>")]
+        pub new_root: Option<StateCommitment>,
         #[serde_as(as = "RpcFelt")]
         pub old_root: StateCommitment,
         pub state_diff: StateDiff,
     }
 
-    impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
-        fn from(x: starknet_gateway_types::reply::StateUpdate) -> Self {
+    impl From<starknet_gateway_types::reply::PendingStateUpdate> for StateUpdate {
+        fn from(x: starknet_gateway_types::reply::PendingStateUpdate) -> Self {
             Self {
-                block_hash: x.block_hash,
-                new_root: x.new_root,
+                block_hash: None,
+                new_root: None,
                 old_root: x.old_root,
                 state_diff: x.state_diff.into(),
             }
@@ -109,7 +111,7 @@ mod types {
         fn from(x: pathfinder_storage::types::StateUpdate) -> Self {
             Self {
                 block_hash: x.block_hash,
-                new_root: x.new_root,
+                new_root: Some(x.new_root),
                 old_root: x.old_root,
                 state_diff: x.state_diff.into(),
             }
@@ -344,7 +346,7 @@ mod types {
         fn receipt() {
             let state_update = StateUpdate {
                 block_hash: Some(StarknetBlockHash(felt!("0xdeadbeef"))),
-                new_root: StateCommitment(felt!("0x1")),
+                new_root: Some(StateCommitment(felt!("0x1"))),
                 old_root: StateCommitment(felt!("0x2")),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
@@ -562,9 +564,7 @@ mod tests {
 
         let expected = StateUpdate {
             block_hash: None,
-            new_root: StateCommitment(felt!(
-                "0x06df64b357468b371e8a81e438914cd3a5fe4a6b693129149c382aa3d03f9674"
-            )),
+            new_root: None,
             old_root: StateCommitment(felt!(
                 "0x04F53E3D1AD8AE22475BF02414088FA4D1DC1A837BBA4E34461FEA4DBCBB76D8"
             )),
