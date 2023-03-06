@@ -126,9 +126,10 @@ mod types {
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
         #[serde_as(as = "Vec<RpcFelt>")]
-        pub deprecated_declared_contract_hashes: Vec<ClassHash>,
-        pub declared_contract_hashes: Vec<DeclaredSierraClass>,
+        pub deprecated_declared_classes: Vec<ClassHash>,
+        pub declared_classes: Vec<DeclaredSierraClass>,
         pub deployed_contracts: Vec<DeployedContract>,
+        pub replaced_classes: Vec<ReplacedClass>,
         pub nonces: Vec<Nonce>,
     }
 
@@ -144,14 +145,19 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                deprecated_declared_contract_hashes: state_diff.old_declared_contracts,
-                declared_contract_hashes: state_diff
+                deprecated_declared_classes: state_diff.old_declared_contracts,
+                declared_classes: state_diff
                     .declared_classes
                     .into_iter()
                     .map(Into::into)
                     .collect(),
                 deployed_contracts: state_diff
                     .deployed_contracts
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                replaced_classes: state_diff
+                    .replaced_classes
                     .into_iter()
                     .map(Into::into)
                     .collect(),
@@ -202,12 +208,12 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                deprecated_declared_contract_hashes: diff
+                deprecated_declared_classes: diff
                     .declared_contracts
                     .into_iter()
                     .map(|d| d.class_hash)
                     .collect(),
-                declared_contract_hashes: diff
+                declared_classes: diff
                     .declared_sierra_classes
                     .into_iter()
                     .map(Into::into)
@@ -217,6 +223,7 @@ mod types {
                     .into_iter()
                     .map(Into::into)
                     .collect(),
+                replaced_classes: diff.replaced_classes.into_iter().map(Into::into).collect(),
                 nonces: diff.nonces.into_iter().map(Into::into).collect(),
             }
         }
@@ -316,6 +323,36 @@ mod types {
         }
     }
 
+    /// L2 state diff replaced class item.
+    #[serde_with::serde_as]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct ReplacedClass {
+        #[serde_as(as = "RpcFelt251")]
+        pub contract_address: ContractAddress,
+        #[serde_as(as = "RpcFelt")]
+        pub class_hash: ClassHash,
+    }
+
+    impl From<starknet_gateway_types::reply::state_update::ReplacedClass> for ReplacedClass {
+        fn from(r: starknet_gateway_types::reply::state_update::ReplacedClass) -> Self {
+            Self {
+                contract_address: r.address,
+                class_hash: r.class_hash,
+            }
+        }
+    }
+
+    impl From<pathfinder_storage::types::state_update::ReplacedClass> for ReplacedClass {
+        fn from(r: pathfinder_storage::types::state_update::ReplacedClass) -> Self {
+            Self {
+                contract_address: r.address,
+                class_hash: r.class_hash,
+            }
+        }
+    }
+
     /// L2 state diff nonce item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -356,17 +393,21 @@ mod types {
                             value: StorageValue(felt!("0x55")),
                         }],
                     }],
-                    deprecated_declared_contract_hashes: vec![
+                    deprecated_declared_classes: vec![
                         ClassHash(felt!("0xcdef")),
                         ClassHash(felt!("0xcdee")),
                     ],
-                    declared_contract_hashes: vec![DeclaredSierraClass {
+                    declared_classes: vec![DeclaredSierraClass {
                         class_hash: SierraHash(felt!("0xabcd")),
                         compiled_class_hash: CasmHash(felt!("0xdcba")),
                     }],
                     deployed_contracts: vec![DeployedContract {
                         address: ContractAddress::new_or_panic(felt!("0xadd")),
                         class_hash: ClassHash(felt!("0xcdef")),
+                    }],
+                    replaced_classes: vec![ReplacedClass {
+                        contract_address: ContractAddress::new_or_panic(felt!("0xcad")),
+                        class_hash: ClassHash(felt!("0xdac")),
                     }],
                     nonces: vec![Nonce {
                         contract_address: ContractAddress::new_or_panic(felt!("0xca")),
@@ -588,8 +629,8 @@ mod tests {
                         },
                     ],
                 }],
-                deprecated_declared_contract_hashes: vec![],
-                declared_contract_hashes: vec![],
+                deprecated_declared_classes: vec![],
+                declared_classes: vec![],
                 deployed_contracts: vec![
                     DeployedContract {
                         address: ContractAddress::new_or_panic(felt_bytes!(
@@ -604,6 +645,7 @@ mod tests {
                         class_hash: ClassHash(felt_bytes!(b"pending contract 1 hash")),
                     },
                 ],
+                replaced_classes: vec![],
                 nonces: vec![],
             },
         };
