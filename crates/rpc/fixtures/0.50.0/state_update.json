@@ -15,11 +15,11 @@
                     ]
                 }
             ],
-            "deprecated_declared_contract_hashes": [
+            "deprecated_declared_classes": [
                 "0xcdef",
                 "0xcdee"
             ],
-            "declared_contract_hashes": [
+            "declared_classes": [
                 {
                     "class_hash": "0xabcd",
                     "compiled_class_hash": "0xdcba"
@@ -29,6 +29,12 @@
                 {
                     "address": "0xadd",
                     "class_hash": "0xcdef"
+                }
+            ],
+            "replaced_classes": [
+                {
+                    "contract_address": "0xcad",
+                    "class_hash": "0xdac"
                 }
             ],
             "nonces": [
@@ -54,11 +60,11 @@
                     ]
                 }
             ],
-            "deprecated_declared_contract_hashes": [
+            "deprecated_declared_classes": [
                 "0xcdef",
                 "0xcdee"
             ],
-            "declared_contract_hashes": [
+            "declared_classes": [
                 {
                     "class_hash": "0xabcd",
                     "compiled_class_hash": "0xdcba"
@@ -68,6 +74,12 @@
                 {
                     "address": "0xadd",
                     "class_hash": "0xcdef"
+                }
+            ],
+            "replaced_classes": [
+                {
+                    "contract_address": "0xcad",
+                    "class_hash": "0xdac"
                 }
             ],
             "nonces": [
