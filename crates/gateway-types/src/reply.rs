@@ -645,7 +645,9 @@ pub mod transaction {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum MaybePendingStateUpdate {
+    /// Always has a `block_hash` and a `new_root`
     StateUpdate(StateUpdate),
+    /// Does not contain `block_hash` and `new_root`
     Pending(PendingStateUpdate),
 }
 
