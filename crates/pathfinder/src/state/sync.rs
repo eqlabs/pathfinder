@@ -19,19 +19,16 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{
-    ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
-    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-    StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+    ContractCodeTable, ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
+    StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable,
+    StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::{
     pending::PendingData,
-    reply::{
-        state_update::{DeployedContract, ReplacedClass},
-        Block, MaybePendingBlock, StateUpdate,
-    },
+    reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
 };
 use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
@@ -695,10 +692,6 @@ fn update_starknet_state(
             .context("Deploying contract")?;
     }
 
-    for replaced_class in &state_update.state_diff.replaced_classes {
-        replace_class(transaction, replaced_class).context("Replacing class hash for contract")?;
-    }
-
     // Copied so we can mutate the map. This lets us remove used nonces from the list.
     let mut nonces = state_update.state_diff.nonces.clone();
 
@@ -817,21 +810,7 @@ fn deploy_contract(
         contract_root,
         contract_nonce,
     )
-    .context("Insert constract state hash into contracts state table")?;
-    ContractsTable::upsert(transaction, contract.address, class_hash)
-        .context("Inserting class hash into contracts table")
-}
-
-fn replace_class(
-    transaction: &Transaction<'_>,
-    replaced_class: &ReplacedClass,
-) -> anyhow::Result<()> {
-    ContractsTable::upsert(
-        transaction,
-        replaced_class.address,
-        replaced_class.class_hash,
-    )
-    .context("Updating class hash in contracts table")
+    .context("Insert constract state hash into contracts state table")
 }
 
 /// Downloads and inserts class definitions for any classes in the

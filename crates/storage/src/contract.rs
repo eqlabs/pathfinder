@@ -1,7 +1,7 @@
 use crate::types::CompressedContract;
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
-use pathfinder_common::{ClassHash, ContractAddress, ContractClass, StarknetBlockHash};
+use pathfinder_common::{ClassHash, ContractClass, StarknetBlockHash};
 use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
@@ -126,80 +126,11 @@ impl ContractCodeTable {
     }
 }
 
-/// Stores the mapping from StarkNet contract [address](ContractAddress) to [hash](ClassHash).
-pub struct ContractsTable {}
-
-impl ContractsTable {
-    /// Insert a contract into the table, overwrites the data if it already exists.
-    ///
-    /// Note that [hash](ClassHash) must reference a class stored in [ContractCodeTable].
-    pub fn upsert(
-        transaction: &Transaction<'_>,
-        address: ContractAddress,
-        hash: ClassHash,
-    ) -> anyhow::Result<()> {
-        // A contract may be deployed multiple times due to L2 reorgs, so we ignore all after the first.
-        transaction.execute(
-            r"INSERT OR REPLACE INTO contracts (address, hash) VALUES (:address, :hash)",
-            named_params! {
-                ":address": address,
-                ":hash": hash,
-            },
-        )?;
-        Ok(())
-    }
-
-    /// Gets the specified contract's class hash.
-    pub fn get_hash(
-        transaction: &Transaction<'_>,
-        address: ContractAddress,
-    ) -> anyhow::Result<Option<ClassHash>> {
-        transaction
-            .query_row(
-                "SELECT hash FROM contracts WHERE address = ?",
-                [address],
-                |row| row.get("hash"),
-            )
-            .optional()
-            .map_err(|e| e.into())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::Storage;
     use pathfinder_common::felt;
-
-    #[test]
-    fn fails_if_class_hash_missing() {
-        let storage = Storage::in_memory().unwrap();
-        let mut conn = storage.connection().unwrap();
-        let transaction = conn.transaction().unwrap();
-
-        let address = ContractAddress::new_or_panic(felt!("0xabc"));
-        let hash = ClassHash(felt!("0x123"));
-
-        ContractsTable::upsert(&transaction, address, hash).unwrap_err();
-    }
-
-    #[test]
-    fn get_hash() {
-        let storage = Storage::in_memory().unwrap();
-        let mut conn = storage.connection().unwrap();
-        let transaction = conn.transaction().unwrap();
-
-        let address = ContractAddress::new_or_panic(felt!("0xabc"));
-        let hash = ClassHash(felt!("0x123"));
-        let definition = vec![9, 13, 25];
-
-        ContractCodeTable::insert(&transaction, hash, &definition[..]).unwrap();
-        ContractsTable::upsert(&transaction, address, hash).unwrap();
-
-        let result = ContractsTable::get_hash(&transaction, address).unwrap();
-
-        assert_eq!(result, Some(hash));
-    }
 
     #[test]
     fn get_class() {

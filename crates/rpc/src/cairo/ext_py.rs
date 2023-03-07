@@ -353,8 +353,8 @@ mod tests {
         TransactionVersion,
     };
     use pathfinder_storage::{
-        ContractCodeTable, ContractsStateTable, ContractsTable, JournalMode, StarknetBlock,
-        StarknetBlocksTable, Storage,
+        ContractCodeTable, ContractsStateTable, JournalMode, StarknetBlock, StarknetBlocksTable,
+        Storage,
     };
     use stark_hash::Felt;
     use std::path::PathBuf;
@@ -777,7 +777,6 @@ mod tests {
 
         let (test_contract_state_hash, test_contract_class_hash) = deploy_contract(
             tx,
-            test_contract_address,
             &test_contract_definition,
             &[(
                 StorageAddress::new_or_panic(felt!("0x84")),
@@ -844,12 +843,8 @@ mod tests {
 
         let account_contract_address = ContractAddress::new_or_panic(felt!("0x123"));
 
-        let (account_contract_state_hash, account_contract_class_hash) = deploy_contract(
-            tx,
-            account_contract_address,
-            &account_contract_definition,
-            &[],
-        );
+        let (account_contract_state_hash, account_contract_class_hash) =
+            deploy_contract(tx, &account_contract_definition, &[]);
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
@@ -904,7 +899,6 @@ mod tests {
 
     fn deploy_contract(
         tx: &rusqlite::Transaction<'_>,
-        contract_address: ContractAddress,
         contract_definition: &[u8],
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {
@@ -914,9 +908,6 @@ mod tests {
 
         // create class
         ContractCodeTable::insert(tx, class_hash, contract_definition).unwrap();
-
-        // create contract
-        ContractsTable::upsert(tx, contract_address, class_hash).unwrap();
 
         // set up contract state tree
         let mut contract_state = pathfinder_merkle_tree::state_tree::ContractsStateTree::load(
