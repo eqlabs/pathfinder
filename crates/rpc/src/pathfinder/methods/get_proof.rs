@@ -5,7 +5,7 @@ use serde_with::skip_serializing_none;
 use crate::context::RpcContext;
 use pathfinder_common::{
     BlockId, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
-    ContractStateHash, StateCommitment, StorageAddress,
+    StateCommitment, StorageAddress,
 };
 use pathfinder_merkle_tree::merkle_tree::ProofNode;
 use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
@@ -219,8 +219,8 @@ pub async fn get_proof(
             }
         };
 
-        let (contract_state_root, nonce) =
-            ContractsStateTable::get_root_and_nonce(&tx, contract_state_hash)
+        let (contract_state_root, class_hash, nonce) =
+            ContractsStateTable::get_root_class_hash_and_nonce(&tx, contract_state_hash)
                 .context("Get contract state root and nonce")?
                 // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
                 .ok_or_else(|| -> GetProofError {
@@ -233,14 +233,6 @@ pub async fn get_proof(
 
         let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
             .context("Load contract state tree")?;
-
-        let class_hash = read_class_hash(&tx, contract_state_hash)
-            .context("Reading class hash from state table")?
-            // Class hash should not be None at this stage since we have a valid block and non-zero contract state_hash.
-            .ok_or_else(|| -> GetProofError {
-                tracing::error!(%contract_state_hash, "Class hash is missing in `contract_states` table");
-                anyhow::anyhow!("State table missing row for state_hash={}", contract_state_hash).into()
-            })?;
 
         let storage_proofs = input
             .keys
@@ -266,23 +258,6 @@ pub async fn get_proof(
     });
 
     jh.await.context("Database read panic or shutting down")?
-}
-
-/// Returns the [ClassHash] for the given [ContractStateHash] from the database.
-// Copied from `get_class_hash_at.rs`
-fn read_class_hash(
-    tx: &rusqlite::Transaction<'_>,
-    state_hash: ContractStateHash,
-) -> anyhow::Result<Option<ClassHash>> {
-    use rusqlite::OptionalExtension;
-
-    tx.query_row(
-        "SELECT hash FROM contract_states WHERE state_hash=?",
-        [state_hash],
-        |row| row.get(0),
-    )
-    .optional()
-    .map_err(|e| e.into())
 }
 
 #[cfg(test)]

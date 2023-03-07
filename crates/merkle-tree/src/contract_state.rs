@@ -3,7 +3,7 @@ use anyhow::Context;
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
 };
-use pathfinder_storage::{ContractsStateTable, ContractsTable};
+use pathfinder_storage::ContractsStateTable;
 use rusqlite::Transaction;
 use stark_hash::{stark_hash, Felt};
 use starknet_gateway_types::reply::state_update::StorageDiff;
@@ -26,13 +26,18 @@ pub fn update_contract_state(
         .context("Get contract state hash from global state tree")?
         .unwrap_or(ContractStateHash(Felt::ZERO));
 
-    // Fetch contract's previous root and nonce. Both default to ZERO if they do not exist.
+    // Fetch contract's previous root, class hash and nonce.
     //
+    // If the contract state does not exist yet (new contract):
     // Contract root defaults to ZERO because that is the default merkle tree value.
     // Contract nonce defaults to ZERO because that is its historical value before being added in 0.10.
-    let (old_root, old_nonce) = ContractsStateTable::get_root_and_nonce(db, state_hash)
-        .context("Read contract root and nonce from contracts state table")?
-        .unwrap_or((ContractRoot::ZERO, ContractNonce::ZERO));
+    let (old_root, old_class_hash, old_nonce) =
+        ContractsStateTable::get_root_class_hash_and_nonce(db, state_hash)
+            .context("Read contract root and nonce from contracts state table")?
+            .map_or_else(
+                || (ContractRoot::ZERO, None, ContractNonce::ZERO),
+                |(root, class_hash, nonce)| (root, Some(class_hash), nonce),
+            );
 
     let new_nonce = new_nonce.unwrap_or(old_nonce);
 
@@ -53,12 +58,9 @@ pub fn update_contract_state(
     };
 
     // Calculate contract state hash, update global state tree and persist pre-image.
-    let class_hash = match new_class_hash {
-        Some(class_hash) => class_hash,
-        None => ContractsTable::get_hash(db, contract_address)
-            .context("Read class hash from contracts table")?
-            .context("Class hash is missing from contracts table")?,
-    };
+    let class_hash = new_class_hash
+        .or(old_class_hash)
+        .context("Class hash is unknown for new contract")?;
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
 
     ContractsStateTable::upsert(db, contract_state_hash, class_hash, new_root, new_nonce)

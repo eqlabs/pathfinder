@@ -198,7 +198,7 @@ mod tests {
             contract0_addr,
             &contract0_update,
             Some(ContractNonce(felt!("0x1"))),
-            None,
+            Some(class0_hash),
             &storage_commitment_tree,
             &db_txn,
         )
@@ -214,7 +214,7 @@ mod tests {
             contract1_addr,
             &contract1_update0,
             None,
-            None,
+            Some(class1_hash),
             &storage_commitment_tree,
             &db_txn,
         )

@@ -1393,21 +1393,22 @@ impl ContractsStateTable {
 
     /// Gets the root and nonce associated with the given state hash, or [None]
     /// if it does not exist.
-    pub fn get_root_and_nonce(
+    pub fn get_root_class_hash_and_nonce(
         transaction: &Transaction<'_>,
         state_hash: ContractStateHash,
-    ) -> anyhow::Result<Option<(ContractRoot, ContractNonce)>> {
+    ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
         transaction
             .query_row(
-                "SELECT root, nonce FROM contract_states WHERE state_hash = :state_hash",
+                "SELECT root, hash, nonce FROM contract_states WHERE state_hash = :state_hash",
                 named_params! {
                     ":state_hash": state_hash
                 },
                 |row| {
                     let root = row.get("root")?;
+                    let hash = row.get("hash")?;
                     let nonce = row.get("nonce")?;
 
-                    Ok((root, nonce))
+                    Ok((root, hash, nonce))
                 },
             )
             .optional()
@@ -1525,8 +1526,10 @@ mod tests {
             let result = ContractsStateTable::get_nonce(&transaction, state_hash).unwrap();
             assert_eq!(result, Some(nonce));
 
-            let result = ContractsStateTable::get_root_and_nonce(&transaction, state_hash).unwrap();
-            assert_eq!(result, Some((root, nonce)));
+            let result =
+                ContractsStateTable::get_root_class_hash_and_nonce(&transaction, state_hash)
+                    .unwrap();
+            assert_eq!(result, Some((root, hash, nonce)));
         }
     }
 
