@@ -3,47 +3,73 @@ use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
-impl CairoContractClass {
-    pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<CairoContractClass> {
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum ContractClass {
+    Cairo(CairoContractClass),
+    Sierra(SierraContractClass),
+}
+
+impl ContractClass {
+    pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<ContractClass> {
         let mut json = serde_json::from_slice::<serde_json::Value>(data).context("Parsing json")?;
         let json_obj = json
             .as_object_mut()
             .context("Class definition is not a json object")?;
+        if json_obj.contains_key("sierra_program") {
+            Ok(ContractClass::Sierra(
+                serde_json::from_value(json).context("Parsing sierra class")?,
+            ))
+        } else {
+            let entry = json_obj
+                .get_mut("entry_points_by_type")
+                .context("entry_points_by_type property is missing")?
+                .take();
+            let entry = serde_json::from_value::<ContractEntryPoints>(entry)
+                .context("Parsing entry points")?;
 
-        let entry = json_obj
-            .get_mut("entry_points_by_type")
-            .context("entry_points_by_type property is missing")?
-            .take();
-        let entry =
-            serde_json::from_value::<ContractEntryPoints>(entry).context("Parsing entry points")?;
+            // ABI is optional.
+            let abi = json_obj.get_mut("abi").and_then(|json| {
+                let json = json.take();
+                // ABIs are set by users and not verified by starknet, therefore ABIs
+                // can fail to parse (and just be nonsense). Discard these ABIs.
+                serde_json::from_value::<Vec<ContractAbiEntry>>(json).ok()
+            });
 
-        // ABI is optional.
-        let abi = json_obj.get_mut("abi").and_then(|json| {
-            let json = json.take();
-            // ABIs are set by users and not verified by starknet, therefore ABIs
-            // can fail to parse (and just be nonsense). Discard these ABIs.
-            serde_json::from_value::<Vec<ContractAbiEntry>>(json).ok()
-        });
+            let program = json_obj
+                .get_mut("program")
+                .context("program property is missing")?;
 
-        let program = json_obj
-            .get_mut("program")
-            .context("program property is missing")?;
+            // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
+            let mut gzip_encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+            serde_json::to_writer(&mut gzip_encoder, &program).context("Compressing program")?;
+            let compressed_program = gzip_encoder
+                .finish()
+                .context("Finalizing program compression")?;
+            let encoded_program = base64::encode(compressed_program);
+            let program = encoded_program;
 
-        // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
-        let mut gzip_encoder =
-            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
-        serde_json::to_writer(&mut gzip_encoder, &program).context("Compressing program")?;
-        let compressed_program = gzip_encoder
-            .finish()
-            .context("Finalizing program compression")?;
-        let encoded_program = base64::encode(compressed_program);
-        let program = encoded_program;
+            Ok(ContractClass::Cairo(CairoContractClass {
+                program,
+                entry_points_by_type: entry,
+                abi,
+            }))
+        }
+    }
 
-        Ok(CairoContractClass {
-            program,
-            entry_points_by_type: entry,
-            abi,
-        })
+    pub fn as_cairo(self) -> Option<CairoContractClass> {
+        match self {
+            ContractClass::Cairo(cairo) => Some(cairo),
+            ContractClass::Sierra(_) => None,
+        }
+    }
+
+    pub fn as_sierra(self) -> Option<SierraContractClass> {
+        match self {
+            ContractClass::Cairo(_) => None,
+            ContractClass::Sierra(sierra) => Some(sierra),
+        }
     }
 }
 
@@ -95,6 +121,7 @@ impl TryFrom<CairoContractClass>
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CairoContractClass {
     pub program: String,
     pub entry_points_by_type: ContractEntryPoints,
@@ -242,9 +269,10 @@ pub struct TypedParameter {
 pub struct SierraContractClass {
     #[serde_as(as = "Vec<crate::felt::RpcFelt>")]
     pub sierra_program: Vec<Felt>,
-    pub sierra_version: String,
+    pub contract_class_version: String,
     pub entry_points_by_type: SierraEntryPoints,
-    pub abi: String,
+    #[serde(default)]
+    pub abi: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

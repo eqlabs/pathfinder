@@ -32,7 +32,7 @@
                 "0x4",
                 "0x5"
             ],
-            "sierra_version": "0.1.0",
+            "contract_class_version": "0.1.0",
             "entry_points_by_type": {
                 "CONSTRUCTOR": [
                     {

@@ -84,7 +84,7 @@ mod tests {
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
     };
-    use crate::v02::types::CairoContractClass;
+    use crate::v02::types::{CairoContractClass, ContractClass};
     use pathfinder_common::{felt, ContractAddress, Fee, TransactionNonce, TransactionVersion};
     use stark_hash::Felt;
 
@@ -94,7 +94,7 @@ mod tests {
         };
 
         pub static ref CONTRACT_CLASS: CairoContractClass = {
-            CairoContractClass::from_definition_bytes(&CONTRACT_DEFINITION_JSON).unwrap()
+            ContractClass::from_definition_bytes(&CONTRACT_DEFINITION_JSON).unwrap().as_cairo().unwrap()
         };
 
         pub static ref CONTRACT_CLASS_JSON: String = {

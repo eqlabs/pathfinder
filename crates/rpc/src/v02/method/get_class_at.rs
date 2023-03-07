@@ -1,4 +1,4 @@
-use crate::v02::types::CairoContractClass;
+use crate::v02::types::{CairoContractClass, ContractClass};
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
@@ -37,8 +37,14 @@ pub async fn get_class_at(
                         let tx = db.transaction().context("Creating database transaction")?;
 
                         let definition = get_definition(&tx, class)?;
-                        let class = CairoContractClass::from_definition_bytes(&definition)
+                        let class = ContractClass::from_definition_bytes(&definition)
                             .context("Parsing class definition")?;
+                        let class = match class {
+                            ContractClass::Cairo(class) => class,
+                            ContractClass::Sierra(_) => {
+                                todo!("fix the tests and change the return type to ContractClass")
+                            }
+                        };
 
                         Ok(class)
                     });
@@ -62,8 +68,15 @@ pub async fn get_class_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
         let definition = get_definition_at(&tx, block, input.contract_address)?;
-        let class = CairoContractClass::from_definition_bytes(&definition)
+        let class = ContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
+        let class = match class {
+            ContractClass::Cairo(class) => class,
+            ContractClass::Sierra(_) => {
+                todo!("fix the tests and change the return type to ContractClass")
+            }
+        };
+
         Ok(class)
     });
 
