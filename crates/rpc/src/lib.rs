@@ -150,6 +150,7 @@ mod tests {
 
         let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
         let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
+        let class2_hash = ClassHash(felt_bytes!(b"sierra class hash"));
 
         let contract0_update = vec![];
 
@@ -175,9 +176,16 @@ mod tests {
         };
         let mut contract1_code = contract0_code.clone();
         contract1_code.hash = class1_hash;
+        let sierra_class_definition =
+            starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_0_11_SIERRA.to_vec();
+        let contract2_code = CompressedContract {
+            definition: sierra_class_definition,
+            hash: class2_hash,
+        };
 
         ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
         ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
+        ContractCodeTable::insert_compressed(&db_txn, &contract2_code).unwrap();
 
         ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();

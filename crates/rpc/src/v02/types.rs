@@ -324,6 +324,8 @@ pub mod request {
                             nonce: TransactionNonce(felt!("0x81")),
                             compiled_class_hash: Some(CasmHash(felt!("0x91"))),
                             contract_class: SierraContractClass {
+                                sierra_program: vec![felt!("0x4"), felt!("0x5")],
+                                sierra_version: "0.1.0".to_owned(),
                                 entry_points_by_type: SierraEntryPoints {
                                     constructor: vec![SierraEntryPoint {
                                         function_idx: 1,
@@ -338,7 +340,7 @@ pub mod request {
                                         selector: felt!("0x3"),
                                     }],
                                 },
-                                sierra_program: vec![felt!("0x4"), felt!("0x5")],
+                                abi: r#"[{"type":"function","name":"foo"}]"#.to_owned(),
                             },
                             sender_address: ContractAddress::new_or_panic(felt!("0xa1")),
                         },
