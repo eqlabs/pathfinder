@@ -329,25 +329,11 @@ where
                         .declared_classes
                         .iter()
                         .map(|x| ClassHash(x.class_hash.0));
-                    let declared_classes_in_transactions = block
-                        .transactions
-                        .iter()
-                        .filter_map(|tx| {
-                            use starknet_gateway_types::reply::transaction::Transaction::*;
-                            use starknet_gateway_types::reply::transaction::DeclareTransaction;
-                            match tx {
-                                Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
-                                Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
-                                Declare(DeclareTransaction::V2(tx)) => Some(tx.class_hash),
-                                Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
-                            }
-                        });
                     let replaced_classes = state_update.state_diff.replaced_classes.iter().map(|x| x.class_hash);
 
                     let classes = deployed_classes
                         .chain(declared_cairo_classes)
                         .chain(declared_sierra_classes)
-                        .chain(declared_classes_in_transactions)
                         .chain(replaced_classes);
                     download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, classes)
                         .await

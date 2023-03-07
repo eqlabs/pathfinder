@@ -168,7 +168,7 @@ pub async fn sync(
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        download_new_classes(&block, &state_update.state_diff, &sequencer, &tx_event)
+        download_new_classes(&state_update.state_diff, &sequencer, &tx_event)
             .await
             .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
@@ -206,7 +206,6 @@ pub async fn sync(
 /// that were _failing_ but the sequencer has still added the class to its list of
 /// known classes...
 async fn download_new_classes(
-    block: &Block,
     state_diff: &StateDiff,
     sequencer: &impl ClientApi,
     tx_event: &mpsc::Sender<Event>,
@@ -217,22 +216,11 @@ async fn download_new_classes(
         .declared_classes
         .iter()
         .map(|x| ClassHash(x.class_hash.0));
-    let classes_declared_in_transactions = block.transactions.iter().filter_map(|tx| {
-        use starknet_gateway_types::reply::transaction::DeclareTransaction;
-        use starknet_gateway_types::reply::transaction::Transaction::*;
-        match tx {
-            Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
-            Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
-            Declare(DeclareTransaction::V2(tx)) => Some(tx.class_hash),
-            Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
-        }
-    });
     let replaced_classes = state_diff.replaced_classes.iter().map(|x| x.class_hash);
 
     let new_classes = deployed_classes
         .chain(declared_cairo_classes)
         .chain(declared_sierra_classes)
-        .chain(classes_declared_in_transactions)
         .chain(replaced_classes)
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
