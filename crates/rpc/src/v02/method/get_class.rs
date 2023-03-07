@@ -223,103 +223,268 @@ mod tests {
         }
     }
 
-    #[test]
-    fn read_pending() {
+    #[tokio::test]
+    async fn pending() {
         let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
 
-        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
-        super::read_pending(&tx, valid).unwrap();
+        // Cairo v0.x class
+        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Pending,
+                class_hash: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
+        // Cairo v1.x class (Sierra)
+        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Pending,
+                class_hash: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
 
         let invalid = ClassHash(felt_bytes!(b"invalid"));
-        let error = super::read_pending(&tx, invalid).unwrap_err();
+        let error = super::get_class(
+            context,
+            GetClassInput {
+                block_id: BlockId::Pending,
+                class_hash: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
+
         assert_matches!(error, GetClassError::ClassHashNotFound);
     }
 
-    #[test]
-    fn read_latest() {
+    #[tokio::test]
+    async fn latest() {
         let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
 
-        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
-        super::read_latest(&tx, valid).unwrap();
+        // Cairo v0.x class
+        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Latest,
+                class_hash: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Cairo v1.x class (Sierra)
+        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Latest,
+                class_hash: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
 
         let invalid = ClassHash(felt_bytes!(b"invalid"));
-        let error = super::read_latest(&tx, invalid).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Latest,
+                class_hash: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
         let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
-        let error = super::read_latest(&tx, invalid).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Latest,
+                class_hash: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
     }
 
-    #[test]
-    fn read_at_number() {
+    #[tokio::test]
+    async fn at_number() {
         use pathfinder_common::StarknetBlockNumber;
 
         let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
 
+        // Cairo v0.x class
         // This class is declared in block 1.
-        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
-        super::read_at_number(&tx, valid, StarknetBlockNumber::new_or_panic(1)).unwrap();
+        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(1)),
+                class_hash: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
 
-        let error = super::read_at_number(&tx, valid, StarknetBlockNumber::GENESIS).unwrap_err();
+        // Cairo v1.x class (Sierra)
+        // This class is declared in block 2.
+        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                class_hash: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
+
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Number(StarknetBlockNumber::GENESIS),
+                class_hash: valid_v0,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         let invalid = ClassHash(felt_bytes!(b"invalid"));
-        let error =
-            super::read_at_number(&tx, invalid, StarknetBlockNumber::new_or_panic(2)).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                class_hash: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
         let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
-        let error =
-            super::read_at_number(&tx, invalid, StarknetBlockNumber::new_or_panic(2)).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                class_hash: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // Class exists, but block number does not.
         let valid = ClassHash(felt_bytes!(b"class 0 hash"));
-        let error = super::read_at_number(&tx, valid, StarknetBlockNumber::MAX).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Number(StarknetBlockNumber::MAX),
+                class_hash: valid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::BlockNotFound);
     }
 
-    #[test]
-    fn read_at_hash() {
+    #[tokio::test]
+    async fn read_at_hash() {
         use pathfinder_common::StarknetBlockHash;
 
         let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
 
+        // Cairo v0.x class
         // This class is declared in block 1.
-        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
+        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
         let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
-        super::read_at_hash(&tx, valid, block1_hash).unwrap();
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Hash(block1_hash),
+                class_hash: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Cairo v1.x class
+        // This class is declared in block 2.
+        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        let block2_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Hash(block2_hash),
+                class_hash: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
 
         let block0_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
-        let error = super::read_at_hash(&tx, valid, block0_hash).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Hash(block0_hash),
+                class_hash: valid_v0,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         let invalid = ClassHash(felt_bytes!(b"invalid"));
         let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
-        let error = super::read_at_hash(&tx, invalid, latest_hash).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Hash(latest_hash),
+                class_hash: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
         let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
         let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
-        let error = super::read_at_hash(&tx, invalid, latest_hash).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Hash(latest_hash),
+                class_hash: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // Class exists, but block hash does not.
         let valid = ClassHash(felt_bytes!(b"class 0 hash"));
         let invalid_block = StarknetBlockHash(felt_bytes!(b"invalid"));
-        let error = super::read_at_hash(&tx, valid, invalid_block).unwrap_err();
+        let error = super::get_class(
+            context.clone(),
+            GetClassInput {
+                block_id: BlockId::Hash(invalid_block),
+                class_hash: valid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassError::BlockNotFound);
     }
 }
