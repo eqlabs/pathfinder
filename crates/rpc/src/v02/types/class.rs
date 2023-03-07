@@ -3,8 +3,8 @@ use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
-impl ContractClass {
-    pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<ContractClass> {
+impl CairoContractClass {
+    pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<CairoContractClass> {
         let mut json = serde_json::from_slice::<serde_json::Value>(data).context("Parsing json")?;
         let json_obj = json
             .as_object_mut()
@@ -39,7 +39,7 @@ impl ContractClass {
         let encoded_program = base64::encode(compressed_program);
         let program = encoded_program;
 
-        Ok(ContractClass {
+        Ok(CairoContractClass {
             program,
             entry_points_by_type: entry,
             abi,
@@ -47,12 +47,12 @@ impl ContractClass {
     }
 }
 
-impl TryFrom<ContractClass>
+impl TryFrom<CairoContractClass>
     for starknet_gateway_types::request::add_transaction::ContractDefinition
 {
     type Error = serde_json::Error;
 
-    fn try_from(c: ContractClass) -> Result<Self, Self::Error> {
+    fn try_from(c: CairoContractClass) -> Result<Self, Self::Error> {
         use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
         use std::collections::HashMap;
 
@@ -95,7 +95,7 @@ impl TryFrom<ContractClass>
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ContractClass {
+pub struct CairoContractClass {
     pub program: String,
     pub entry_points_by_type: ContractEntryPoints,
     pub abi: Option<Vec<ContractAbiEntry>>,

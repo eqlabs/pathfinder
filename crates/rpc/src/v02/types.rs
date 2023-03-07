@@ -89,7 +89,7 @@ pub mod request {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
 
-        pub contract_class: super::ContractClass,
+        pub contract_class: super::CairoContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -288,7 +288,7 @@ pub mod request {
         mod serde {
             use super::super::*;
             use crate::v02::types::{
-                ContractClass, ContractEntryPoints, SierraContractClass, SierraEntryPoint,
+                CairoContractClass, ContractEntryPoints, SierraContractClass, SierraEntryPoint,
                 SierraEntryPoints,
             };
             use pathfinder_common::felt;
@@ -296,7 +296,7 @@ pub mod request {
 
             #[test]
             fn broadcasted_transaction() {
-                let contract_class = ContractClass {
+                let contract_class = CairoContractClass {
                     program: "program".to_owned(),
                     entry_points_by_type: ContractEntryPoints {
                         constructor: vec![],

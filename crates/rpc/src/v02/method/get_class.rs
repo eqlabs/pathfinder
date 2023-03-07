@@ -1,4 +1,4 @@
-use crate::v02::types::ContractClass;
+use crate::v02::types::CairoContractClass;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
@@ -16,7 +16,7 @@ pub struct GetClassInput {
 pub async fn get_class(
     context: RpcContext,
     input: GetClassInput,
-) -> Result<ContractClass, GetClassError> {
+) -> Result<CairoContractClass, GetClassError> {
     let block = match input.block_id {
         BlockId::Pending => {
             if is_pending_class(&context.pending_data, input.class_hash).await {
@@ -29,7 +29,7 @@ pub async fn get_class(
     };
 
     let span = tracing::Span::current();
-    let jh = tokio::task::spawn_blocking(move || -> Result<ContractClass, GetClassError> {
+    let jh = tokio::task::spawn_blocking(move || -> Result<CairoContractClass, GetClassError> {
         let _g = span.enter();
         let mut db = context
             .storage
@@ -46,7 +46,7 @@ pub async fn get_class(
 
         let definition =
             zstd::decode_all(&*definition).context("Decompressing class definition")?;
-        let class = ContractClass::from_definition_bytes(&definition)
+        let class = CairoContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
 
         Ok(class)
