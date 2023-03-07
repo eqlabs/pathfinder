@@ -924,7 +924,7 @@ mod tests {
         async fn success() {
             version_check!(
                 Testnet < 0 - 11 - 0,
-                "Update sierra class hash for testnet, current value is from integration"
+                "Update class 2 hash (sierra) for testnet, current value is from integration"
             );
 
             const VALID_HASH: SierraHash = SierraHash(felt!(

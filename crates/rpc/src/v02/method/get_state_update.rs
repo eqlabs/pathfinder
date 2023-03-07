@@ -519,7 +519,7 @@ mod tests {
             block_hash: None,
             new_root: None,
             old_root: StateCommitment(felt!(
-                "0x04F53E3D1AD8AE22475BF02414088FA4D1DC1A837BBA4E34461FEA4DBCBB76D8"
+                "0x057B695C82AF81429FDC8966088B0196105DFB5AA22B54CBC86FC95DC3B3ECE1"
             )),
             state_diff: StateDiff {
                 storage_diffs: vec![StorageDiff {

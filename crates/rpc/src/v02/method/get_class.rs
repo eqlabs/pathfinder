@@ -239,7 +239,7 @@ mod tests {
         .await
         .unwrap();
         // Cairo v1.x class (Sierra)
-        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -281,7 +281,7 @@ mod tests {
         .unwrap();
 
         // Cairo v1.x class (Sierra)
-        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -339,7 +339,7 @@ mod tests {
 
         // Cairo v1.x class (Sierra)
         // This class is declared in block 2.
-        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -422,7 +422,7 @@ mod tests {
 
         // Cairo v1.x class
         // This class is declared in block 2.
-        let valid_v1 = ClassHash(felt_bytes!(b"sierra class hash"));
+        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
         let block2_hash = StarknetBlockHash(felt_bytes!(b"latest"));
         super::get_class(
             context.clone(),
