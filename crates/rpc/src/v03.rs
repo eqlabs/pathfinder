@@ -25,6 +25,8 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             "starknet_getBlockTransactionCount",
             v02_method::get_block_transaction_count,
         )?
+        .register_method("starknet_getClass", v02_method::get_class)?
+        .register_method("starknet_getClassAt", v02_method::get_class_at)?
         .register_method("starknet_getClassHashAt", v02_method::get_class_hash_at)?
         .register_method("starknet_getNonce", v02_method::get_nonce)?
         .register_method("starknet_getStorageAt", v02_method::get_storage_at)?

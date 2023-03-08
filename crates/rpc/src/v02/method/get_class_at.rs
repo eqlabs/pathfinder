@@ -64,6 +64,7 @@ pub async fn get_class_at(
         let definition = get_definition_at(&tx, block, input.contract_address)?;
         let class = ContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
+
         Ok(class)
     });
 
@@ -189,83 +190,226 @@ mod tests {
         }
     }
 
-    #[test]
-    fn get_definition() {
+    #[tokio::test]
+    async fn pending() {
         let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
 
-        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
-        super::get_definition(&tx, valid).unwrap();
-    }
+        // Cairo class v0.x
+        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Pending,
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
 
-    #[test]
-    fn latest() {
-        let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
-
-        let valid = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
-        super::get_definition_at(&tx, StarknetBlocksBlockId::Latest, valid).unwrap();
+        // Cairo class v1.x
+        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Pending,
+                contract_address: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
 
         let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
-        let error =
-            super::get_definition_at(&tx, StarknetBlocksBlockId::Latest, invalid).unwrap_err();
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Pending,
+                contract_address: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
     }
 
-    #[test]
-    fn number() {
+    #[tokio::test]
+    async fn latest() {
+        let context = RpcContext::for_tests();
+
+        // Cairo class v0.x
+        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Latest,
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Cairo class v1.x
+        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Latest,
+                contract_address: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
+
+        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Latest,
+                contract_address: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_matches!(error, GetClassAtError::ContractNotFound);
+    }
+
+    #[tokio::test]
+    async fn number() {
         use pathfinder_common::StarknetBlockNumber;
 
         let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
 
+        // Cairo v0.x class
         // This contract is declared in block 1.
-        let valid = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
-        super::get_definition_at(&tx, StarknetBlockNumber::new_or_panic(1).into(), valid).unwrap();
-        let error =
-            super::get_definition_at(&tx, StarknetBlockNumber::GENESIS.into(), valid).unwrap_err();
+        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(1)),
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Cairo v1.x class (sierra)
+        // This contract is declared in block 2.
+        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                contract_address: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
+
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Number(StarknetBlockNumber::GENESIS),
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
-        let error =
-            super::get_definition_at(&tx, StarknetBlockNumber::new_or_panic(2).into(), invalid)
-                .unwrap_err();
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                contract_address: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         // Class exists, but block number does not.
-        let error =
-            super::get_definition_at(&tx, StarknetBlockNumber::MAX.into(), valid).unwrap_err();
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Number(StarknetBlockNumber::MAX),
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassAtError::BlockNotFound);
     }
 
-    #[test]
-    fn hash() {
+    #[tokio::test]
+    async fn hash() {
         use pathfinder_common::StarknetBlockHash;
 
         let context = RpcContext::for_tests();
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
 
+        // Cairo v0.x class
         // This class is declared in block 1.
-        let valid = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
+        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
         let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
-        super::get_definition_at(&tx, block1_hash.into(), valid).unwrap();
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Hash(block1_hash),
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Cairo v1.x class (sierra)
+        // This class is declared in block 2.
+        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        let block2_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Hash(block2_hash),
+                contract_address: valid_v1,
+            },
+        )
+        .await
+        .unwrap();
 
         let block0_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
-        let error = super::get_definition_at(&tx, block0_hash.into(), valid).unwrap_err();
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Hash(block0_hash),
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
         let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
-        let error = super::get_definition_at(&tx, latest_hash.into(), invalid).unwrap_err();
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Hash(latest_hash),
+                contract_address: invalid,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         // Class exists, but block hash does not.
         let invalid_block = StarknetBlockHash(felt_bytes!(b"invalid"));
-        let error = super::get_definition_at(&tx, invalid_block.into(), valid).unwrap_err();
+        let error = super::get_class_at(
+            context.clone(),
+            GetClassAtInput {
+                block_id: BlockId::Hash(invalid_block),
+                contract_address: valid_v0,
+            },
+        )
+        .await
+        .unwrap_err();
         assert_matches!(error, GetClassAtError::BlockNotFound);
     }
 }

@@ -89,7 +89,7 @@ pub mod request {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
 
-        pub contract_class: super::ContractClass,
+        pub contract_class: super::CairoContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -288,7 +288,7 @@ pub mod request {
         mod serde {
             use super::super::*;
             use crate::v02::types::{
-                ContractClass, ContractEntryPoints, SierraContractClass, SierraEntryPoint,
+                CairoContractClass, ContractEntryPoints, SierraContractClass, SierraEntryPoint,
                 SierraEntryPoints,
             };
             use pathfinder_common::felt;
@@ -296,7 +296,7 @@ pub mod request {
 
             #[test]
             fn broadcasted_transaction() {
-                let contract_class = ContractClass {
+                let contract_class = CairoContractClass {
                     program: "program".to_owned(),
                     entry_points_by_type: ContractEntryPoints {
                         constructor: vec![],
@@ -324,6 +324,8 @@ pub mod request {
                             nonce: TransactionNonce(felt!("0x81")),
                             compiled_class_hash: Some(CasmHash(felt!("0x91"))),
                             contract_class: SierraContractClass {
+                                sierra_program: vec![felt!("0x4"), felt!("0x5")],
+                                contract_class_version: "0.1.0".to_owned(),
                                 entry_points_by_type: SierraEntryPoints {
                                     constructor: vec![SierraEntryPoint {
                                         function_idx: 1,
@@ -338,7 +340,7 @@ pub mod request {
                                         selector: felt!("0x3"),
                                     }],
                                 },
-                                sierra_program: vec![felt!("0x4"), felt!("0x5")],
+                                abi: Some(r#"[{"type":"function","name":"foo"}]"#.to_owned()),
                             },
                             sender_address: ContractAddress::new_or_panic(felt!("0xa1")),
                         },

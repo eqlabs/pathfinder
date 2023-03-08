@@ -28,6 +28,11 @@
         "nonce": "0x81",
         "compiled_class_hash": "0x91",
         "contract_class": {
+            "sierra_program": [
+                "0x4",
+                "0x5"
+            ],
+            "contract_class_version": "0.1.0",
             "entry_points_by_type": {
                 "CONSTRUCTOR": [
                     {
@@ -48,10 +53,7 @@
                     }
                 ]
             },
-            "sierra_program": [
-                "0x4",
-                "0x5"
-            ]
+            "abi": "[{\"type\":\"function\",\"name\":\"foo\"}]"
         },
         "sender_address": "0xa1"
     },

@@ -227,7 +227,7 @@ mod tests {
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
             BroadcastedInvokeTransactionV0,
         };
-        use crate::v02::types::ContractClass;
+        use crate::v02::types::{CairoContractClass, ContractClass};
         use pathfinder_common::felt_bytes;
 
         // Mainnet block number 5
@@ -356,10 +356,10 @@ mod tests {
         }
 
         lazy_static::lazy_static! {
-            pub static ref CONTRACT_CLASS: ContractClass = {
+            pub static ref CONTRACT_CLASS: CairoContractClass = {
                 let compressed_json = starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
                 let json = zstd::decode_all(compressed_json).unwrap();
-                ContractClass::from_definition_bytes(&json).unwrap()
+                ContractClass::from_definition_bytes(&json).unwrap().as_cairo().unwrap()
             };
         }
 

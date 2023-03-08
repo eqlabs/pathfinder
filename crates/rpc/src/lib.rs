@@ -142,14 +142,16 @@ mod tests {
         let db_txn = connection.transaction().unwrap();
 
         let class_commitment0 = ClassCommitment(felt_bytes!(b"class commitment 0"));
-        let class_commitment1 = ClassCommitment(felt_bytes!(b"class commitment 0"));
-        let class_commitment2 = ClassCommitment(felt_bytes!(b"class commitment 0"));
+        let class_commitment1 = ClassCommitment(felt_bytes!(b"class commitment 1"));
+        let class_commitment2 = ClassCommitment(felt_bytes!(b"class commitment 2"));
 
         let contract0_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
         let contract1_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
+        let contract2_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
 
         let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
         let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
+        let class2_hash = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
 
         let contract0_update = vec![];
 
@@ -175,12 +177,20 @@ mod tests {
         };
         let mut contract1_code = contract0_code.clone();
         contract1_code.hash = class1_hash;
+        let sierra_class_definition =
+            starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_0_11_SIERRA.to_vec();
+        let contract2_code = CompressedContract {
+            definition: sierra_class_definition,
+            hash: class2_hash,
+        };
 
         ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
         ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
+        ContractCodeTable::insert_compressed(&db_txn, &contract2_code).unwrap();
 
         ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
         ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
+        ContractsTable::upsert(&db_txn, contract2_addr, class2_hash).unwrap();
 
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
@@ -235,6 +245,17 @@ mod tests {
         .unwrap();
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
+            .unwrap();
+        let contract_state_hash = update_contract_state(
+            contract2_addr,
+            &[],
+            Some(ContractNonce(felt!("0xfeed"))),
+            &storage_commitment_tree,
+            &db_txn,
+        )
+        .unwrap();
+        storage_commitment_tree
+            .set(contract2_addr, contract_state_hash)
             .unwrap();
         let storage_commitment2 = storage_commitment_tree.apply().unwrap();
 
@@ -301,6 +322,7 @@ mod tests {
         CanonicalBlocksTable::insert(&db_txn, block2.number, block2.hash).unwrap();
 
         ContractCodeTable::update_declared_on_if_null(&db_txn, class0_hash, block1.hash).unwrap();
+        ContractCodeTable::update_declared_on_if_null(&db_txn, class2_hash, block2.hash).unwrap();
 
         let txn0_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too

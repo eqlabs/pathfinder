@@ -84,7 +84,7 @@ mod tests {
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
     };
-    use crate::v02::types::ContractClass;
+    use crate::v02::types::{CairoContractClass, ContractClass};
     use pathfinder_common::{felt, ContractAddress, Fee, TransactionNonce, TransactionVersion};
     use stark_hash::Felt;
 
@@ -93,8 +93,8 @@ mod tests {
             zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION).unwrap()
         };
 
-        pub static ref CONTRACT_CLASS: ContractClass = {
-            ContractClass::from_definition_bytes(&CONTRACT_DEFINITION_JSON).unwrap()
+        pub static ref CONTRACT_CLASS: CairoContractClass = {
+            ContractClass::from_definition_bytes(&CONTRACT_DEFINITION_JSON).unwrap().as_cairo().unwrap()
         };
 
         pub static ref CONTRACT_CLASS_JSON: String = {
@@ -184,7 +184,7 @@ mod tests {
     async fn invalid_contract_definition() {
         let context = RpcContext::for_tests();
 
-        let invalid_contract_class = ContractClass {
+        let invalid_contract_class = CairoContractClass {
             program: "".to_owned(),
             ..CONTRACT_CLASS.clone()
         };
