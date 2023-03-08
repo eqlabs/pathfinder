@@ -42,6 +42,10 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             "starknet_getTransactionReceipt",
             v02_method::get_transaction_receipt,
         )?
+        .register_method_with_no_input(
+            "starknet_pendingTransactions",
+            v02_method::pending_transactions,
+        )?
         .register_method_with_no_input("starknet_syncing", v02_method::syncing)?
         // Specific implementations for v0.3
         .register_method("starknet_getEvents", method::get_events)?
