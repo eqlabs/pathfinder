@@ -25,11 +25,6 @@ mod metrics;
 pub trait ClientApi {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError>;
 
-    async fn full_contract(
-        &self,
-        contract_addr: ContractAddress,
-    ) -> Result<bytes::Bytes, SequencerError>;
-
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
     async fn compiled_class(&self, class_hash: SierraHash) -> Result<bytes::Bytes, SequencerError>;
@@ -230,20 +225,6 @@ impl ClientApi for Client {
             // Let's not introduce an equivalent of `with_class_hash` for `SierraHash`
             // which is conceptually the same thing here
             .with_class_hash(ClassHash(hash.0))
-            .with_retry(Self::RETRY)
-            .get_as_bytes()
-            .await
-    }
-
-    /// Gets full contract definition.
-    #[tracing::instrument(skip(self))]
-    async fn full_contract(
-        &self,
-        contract_addr: ContractAddress,
-    ) -> Result<bytes::Bytes, SequencerError> {
-        self.feeder_gateway_request()
-            .get_full_contract()
-            .with_contract_address(contract_addr)
             .with_retry(Self::RETRY)
             .get_as_bytes()
             .await
@@ -824,43 +805,6 @@ mod tests {
                 }
                 MaybePendingBlock::Block(_) => panic!("should not had been a ready block"),
             }
-        }
-    }
-
-    mod full_contract {
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[test_log::test(tokio::test)]
-        async fn invalid_contract_address() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_full_contract?contractAddress={}",
-                    INVALID_CONTRACT_ADDR.get().to_hex_str()
-                ),
-                response_from(StarknetErrorCode::UninitializedContract),
-            )]);
-            let error = client
-                .full_contract(INVALID_CONTRACT_ADDR)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UninitializedContract)
-            );
-        }
-
-        #[tokio::test]
-        async fn success() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_full_contract?contractAddress={}",
-                    VALID_CONTRACT_ADDR.get().to_hex_str()
-                ),
-                (r#"{"hello":"world"}"#, 200),
-            )]);
-            let bytes = client.full_contract(VALID_CONTRACT_ADDR).await.unwrap();
-            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
         }
     }
 

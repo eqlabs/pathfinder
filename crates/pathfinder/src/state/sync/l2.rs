@@ -10,8 +10,8 @@ use starknet_gateway_types::{
     class_hash::compute_class_hash,
     error::SequencerError,
     reply::{
-        state_update::{DeployedContract, StateDiff},
-        Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate, StateUpdate, Status,
+        state_update::StateDiff, Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate,
+        StateUpdate, Status,
     },
 };
 use std::time::Duration;
@@ -22,7 +22,6 @@ use tokio::sync::{mpsc, oneshot};
 pub struct Timings {
     pub block_download: Duration,
     pub state_diff_download: Duration,
-    pub contract_deployment: Duration,
     pub class_declaration: Duration,
 }
 
@@ -169,24 +168,16 @@ pub async fn sync(
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        declare_classes(&block, &sequencer, &tx_event)
+        download_new_classes(&state_update.state_diff, &sequencer, &tx_event)
             .await
             .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
-
-        // Download and emit any newly deployed (but undeclared) classes.
-        let t_deploy = std::time::Instant::now();
-        deploy_contracts(&tx_event, &sequencer, &state_update.state_diff)
-            .await
-            .with_context(|| format!("Deploying new contracts for block {next:?}"))?;
-        let t_deploy = t_deploy.elapsed();
 
         head = Some((next, block_hash, state_update.new_root));
 
         let timings = Timings {
             block_download: t_block,
             state_diff_download: t_update,
-            contract_deployment: t_deploy,
             class_declaration: t_declare,
         };
 
@@ -201,36 +192,42 @@ pub async fn sync(
     }
 }
 
-/// Download and emit newly declared contract classes.
+/// Download and emit new contract classes.
 ///
-/// We cannot remove the older way using `deploy_contracts` as this
-/// is required to handle older blocks which don't have declare transactions.
-async fn declare_classes(
-    block: &Block,
+/// New classes can come from:
+/// - DECLARE transactions
+/// - `old_declared_contracts` from the state diff (Cairo 0.x classes)
+/// - `declared_classes` from the state diff (Cairo 1.0 classes)
+/// - `deployed_contracts` from the state diff (DEPLOY transactions)
+/// - `replaced_classes` from the state diff
+///
+/// Note that due to an issue with the sequencer previously undeclared classes
+/// can show up in `replaced_classes`. This is caused by DECLARE v0 transactions
+/// that were _failing_ but the sequencer has still added the class to its list of
+/// known classes...
+async fn download_new_classes(
+    state_diff: &StateDiff,
     sequencer: &impl ClientApi,
     tx_event: &mpsc::Sender<Event>,
 ) -> Result<(), anyhow::Error> {
-    let declared_classes = block
-        .transactions
+    let deployed_classes = state_diff.deployed_contracts.iter().map(|x| x.class_hash);
+    let declared_cairo_classes = state_diff.old_declared_contracts.iter().cloned();
+    let declared_sierra_classes = state_diff
+        .declared_classes
         .iter()
-        .filter_map(|tx| {
-            use starknet_gateway_types::reply::transaction::DeclareTransaction;
-            use starknet_gateway_types::reply::transaction::Transaction::*;
-            match tx {
-                Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
-                Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
-                Declare(DeclareTransaction::V2(_)) => {
-                    todo!("v0.11.0: This maybe needs to be handled differently")
-                }
-                Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
-            }
-        })
+        .map(|x| ClassHash(x.class_hash.0));
+    let replaced_classes = state_diff.replaced_classes.iter().map(|x| x.class_hash);
+
+    let new_classes = deployed_classes
+        .chain(declared_cairo_classes)
+        .chain(declared_sierra_classes)
+        .chain(replaced_classes)
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
 
-    if declared_classes.is_empty() {
+    if new_classes.is_empty() {
         return Ok(());
     }
 
@@ -238,18 +235,18 @@ async fn declare_classes(
     // due to a reorg or an earlier deploy of this class (which is possible!).
     let (tx, rx) = oneshot::channel();
     tx_event
-        .send(Event::QueryContractExistance(declared_classes.clone(), tx))
+        .send(Event::QueryContractExistance(new_classes.clone(), tx))
         .await
         .context("Querying for class existing")?;
     let already_downloaded = rx.await.context("Oneshot channel closed")?;
     anyhow::ensure!(
-        already_downloaded.len() == declared_classes.len(),
+        already_downloaded.len() == new_classes.len(),
         "Query for existance of classes in storage returned {} values instead of the expected {}",
         already_downloaded.len(),
-        declared_classes.len()
+        new_classes.len()
     );
 
-    let require_downloading = declared_classes
+    let require_downloading = new_classes
         .into_iter()
         .zip(already_downloaded.into_iter())
         .filter_map(|(class, exists)| match exists {
@@ -435,71 +432,6 @@ async fn reorg(
     Ok(new_head)
 }
 
-async fn deploy_contracts(
-    tx_event: &mpsc::Sender<Event>,
-    sequencer: &impl ClientApi,
-    state_diff: &StateDiff,
-) -> anyhow::Result<()> {
-    let unique_contracts = state_diff
-        .deployed_contracts
-        .iter()
-        .map(|contract| contract.class_hash)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-
-    if unique_contracts.is_empty() {
-        return Ok(());
-    }
-
-    // Query database to see which of these contracts still needs downloading.
-    let (tx, rx) = oneshot::channel();
-    tx_event
-        .send(Event::QueryContractExistance(unique_contracts.clone(), tx))
-        .await
-        .context("Event channel closed")?;
-    let already_downloaded = rx.await.context("Oneshot channel closed")?;
-    anyhow::ensure!(
-        already_downloaded.len() == unique_contracts.len(),
-        "Query for existance of contracts in storage returned {} values instead of the expected {}",
-        already_downloaded.len(),
-        unique_contracts.len()
-    );
-
-    let require_downloading = unique_contracts
-        .into_iter()
-        .zip(already_downloaded.into_iter())
-        .filter_map(|(contract, exists)| match exists {
-            false => Some(contract),
-            true => None,
-        })
-        .collect::<Vec<_>>();
-
-    // Download each contract and push it to storage.
-    for contract_hash in require_downloading {
-        // Find the relevant contract address.
-        let contract = state_diff
-            .deployed_contracts
-            .iter()
-            .find(|contract| contract.class_hash == contract_hash)
-            .unwrap();
-
-        let contract = download_and_compress_contract(contract, sequencer)
-            .await
-            .with_context(|| format!("Download and compress contract {:?}", contract.address))?;
-
-        tx_event
-            .send(Event::NewContract(contract))
-            .await
-            .context("Event channel closed")?;
-    }
-
-    Ok(())
-}
-
-/// A copy of [download_and_compress_contract] that uses the new `class_by_hash` API.
-///
-/// These should eventually be deduplicated, but right now we are just aiming at functional.
 async fn download_and_compress_class(
     class_hash: ClassHash,
     sequencer: &impl ClientApi,
@@ -532,49 +464,6 @@ async fn download_and_compress_class(
 
         let definition = compressor
             .compress(&definition)
-            .context("Compress definition")?;
-
-        Ok(definition)
-    });
-    let definition = compress.await.context("Compress contract")??;
-
-    Ok(CompressedContract {
-        definition,
-        hash: hash.hash(),
-    })
-}
-
-async fn download_and_compress_contract(
-    contract: &DeployedContract,
-    sequencer: &impl ClientApi,
-) -> anyhow::Result<CompressedContract> {
-    let contract_definition = sequencer
-        .full_contract(contract.address)
-        .await
-        .context("Download contract from sequencer")?;
-
-    // Parse the contract definition for ABI, code and calculate the class hash. This can
-    // be expensive, so perform in a blocking task.
-    let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let hash = compute_class_hash(&contract_definition)?;
-        Ok((contract_definition, hash))
-    });
-    let (contract_definition, hash) = extract
-        .await
-        .context("Parse contract definition and compute hash")??;
-
-    // Sanity check.
-    anyhow::ensure!(
-        contract.class_hash == hash.hash(),
-        "Class hash mismatch for contract {:?}",
-        contract.address
-    );
-
-    let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-        let definition = compressor
-            .compress(&contract_definition)
             .context("Compress definition")?;
 
         Ok(definition)
@@ -889,14 +778,14 @@ mod tests {
         }
 
         /// Convenience wrapper
-        fn expect_full_contract(
+        fn expect_class_by_hash(
             mock: &mut MockClientApi,
             seq: &mut mockall::Sequence,
-            contract_address: ContractAddress,
+            class_hash: ClassHash,
             returned_result: Result<bytes::Bytes, SequencerError>,
         ) {
-            mock.expect_full_contract()
-                .withf(move |x| x == &contract_address)
+            mock.expect_class_by_hash()
+                .withf(move |x| x == &class_hash)
                 .times(1)
                 .in_sequence(seq)
                 .return_once(|_| returned_result);
@@ -934,10 +823,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Downlad block #1 with respective state update and contracts
@@ -953,10 +842,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Stay at head, no more blocks available
@@ -1027,10 +916,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
 
@@ -1134,10 +1023,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
 
@@ -1172,10 +1061,10 @@ mod tests {
                     (*BLOCK0_HASH_V2).into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR_V2,
+                    *CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
 
@@ -1277,10 +1166,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1296,10 +1185,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1361,10 +1250,10 @@ mod tests {
                     (*BLOCK0_HASH_V2).into(),
                     Ok(STATE_UPDATE0_V2.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR_V2,
+                    *CONTRACT0_HASH_V2,
                     Ok(CONTRACT0_DEF_V2.clone()),
                 );
                 // Fetch the new block #1 from the fork with respective state update and contracts
@@ -1540,10 +1429,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1559,10 +1448,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1781,10 +1670,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -1800,10 +1689,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 with respective state update and contracts
@@ -1981,10 +1870,10 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT0_ADDR,
+                    *CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
                 // Fetch block #1 with respective state update and contracts
@@ -2000,10 +1889,10 @@ mod tests {
                     (*BLOCK1_HASH).into(),
                     Ok(STATE_UPDATE1.clone()),
                 );
-                expect_full_contract(
+                expect_class_by_hash(
                     &mut mock,
                     &mut seq,
-                    *CONTRACT1_ADDR,
+                    *CONTRACT1_HASH,
                     Ok(CONTRACT1_DEF.clone()),
                 );
                 // Fetch block #2 whose parent hash does not match block #1 hash

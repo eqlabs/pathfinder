@@ -38,7 +38,6 @@ pub mod stage {
     /// Select the Sequencer API method to call:
     /// - [add_transaction](super::Request::add_transaction)
     /// - [get_block](super::Request::get_block)
-    /// - [get_full_contract](super::Request::get_full_contract)
     /// - [get_class_by_hash](super::Request::get_class_by_hash)
     /// - [get_compiled_class_by_class_hash](super::Request::get_compiled_class_by_class_hash)
     /// - [get_storage_at](super::Request::get_storage_at)
@@ -138,7 +137,6 @@ impl<'a> Request<'a, stage::Method> {
     request_macros::methods!(
         add_transaction,
         get_block,
-        get_full_contract,
         get_class_by_hash,
         get_storage_at,
         get_transaction,

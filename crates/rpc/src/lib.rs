@@ -106,9 +106,8 @@ mod tests {
     };
     use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, ContractsTable,
-        StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable,
-        Storage,
+        types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, StarknetBlock,
+        StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::{
@@ -188,16 +187,13 @@ mod tests {
         ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
         ContractCodeTable::insert_compressed(&db_txn, &contract2_code).unwrap();
 
-        ContractsTable::upsert(&db_txn, contract0_addr, class0_hash).unwrap();
-        ContractsTable::upsert(&db_txn, contract1_addr, class1_hash).unwrap();
-        ContractsTable::upsert(&db_txn, contract2_addr, class2_hash).unwrap();
-
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
             Some(ContractNonce(felt!("0x1"))),
+            Some(class0_hash),
             &storage_commitment_tree,
             &db_txn,
         )
@@ -213,6 +209,7 @@ mod tests {
             contract1_addr,
             &contract1_update0,
             None,
+            Some(class1_hash),
             &storage_commitment_tree,
             &db_txn,
         )
@@ -223,6 +220,7 @@ mod tests {
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update1,
+            None,
             None,
             &storage_commitment_tree,
             &db_txn,
@@ -239,6 +237,7 @@ mod tests {
             contract1_addr,
             &contract1_update2,
             Some(ContractNonce(felt!("0x10"))),
+            None,
             &storage_commitment_tree,
             &db_txn,
         )
@@ -250,6 +249,7 @@ mod tests {
             contract2_addr,
             &[],
             Some(ContractNonce(felt!("0xfeed"))),
+            Some(class2_hash),
             &storage_commitment_tree,
             &db_txn,
         )

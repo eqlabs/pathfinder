@@ -19,9 +19,9 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{
-    ContractCodeTable, ContractsStateTable, ContractsTable, L1StateTable, L1TableBlockId,
-    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-    StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+    ContractCodeTable, ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
+    StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable,
+    StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
@@ -30,8 +30,8 @@ use starknet_gateway_types::{
     pending::PendingData,
     reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
 };
-use std::future::Future;
 use std::sync::Arc;
+use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
@@ -255,7 +255,7 @@ where
                                 block_time_avg.as_secs_f32(),
                                 existed.0,
                                 existed.0 - existed.1,
-                                timings.contract_deployment.as_secs_f32(),
+                                timings.class_declaration.as_secs_f32(),
                                 storage_updates,
                                 update_t.as_secs_f32(),
                                 timings.block_download.as_secs_f32(),
@@ -324,23 +324,17 @@ where
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
                     let deployed_classes = state_update.state_diff.deployed_contracts.iter().map(|x| x.class_hash);
-                    let declared_classes = state_update.state_diff.old_declared_contracts.iter().cloned();
-                    let declared_classes_block = block
-                        .transactions
+                    let declared_cairo_classes = state_update.state_diff.old_declared_contracts.iter().cloned();
+                    let declared_sierra_classes = state_update.state_diff
+                        .declared_classes
                         .iter()
-                        .filter_map(|tx| {
-                            use starknet_gateway_types::reply::transaction::Transaction::*;
-                            use starknet_gateway_types::reply::transaction::DeclareTransaction;
-                            match tx {
-                                Declare(DeclareTransaction::V0(tx)) => Some(tx.class_hash),
-                                Declare(DeclareTransaction::V1(tx)) => Some(tx.class_hash),
-                                Declare(DeclareTransaction::V2(_)) => todo!("v0.11.0: This maybe needs to be handled differently"),
-                                Deploy(_) | DeployAccount(_) | Invoke(_) | L1Handler(_) => None,
-                            }
-                        });
+                        .map(|x| ClassHash(x.class_hash.0));
+                    let replaced_classes = state_update.state_diff.replaced_classes.iter().map(|x| x.class_hash);
+
                     let classes = deployed_classes
-                        .chain(declared_classes)
-                        .chain(declared_classes_block);
+                        .chain(declared_cairo_classes)
+                        .chain(declared_sierra_classes)
+                        .chain(replaced_classes);
                     download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, classes)
                         .await
                         .context("Downloading missing classes for pending block")?;
@@ -574,21 +568,31 @@ async fn l2_update(
         CanonicalBlocksTable::insert(&transaction, block.block_number, block.block_hash)
             .context("Inserting canonical block into database")?;
 
-        for class in rpc_state_update.state_diff.declared_contracts {
+        let declared_sierra_class_hashes = rpc_state_update
+            .state_diff
+            .declared_sierra_classes
+            .iter()
+            .map(|c| ClassHash(c.class_hash.0));
+        let declared_cairo_class_hashes = rpc_state_update
+            .state_diff
+            .declared_contracts
+            .iter()
+            .map(|c| c.class_hash);
+        let deployed_class_hashes = rpc_state_update
+            .state_diff
+            .deployed_contracts
+            .iter()
+            .map(|d| d.class_hash);
+        let declared_class_hashes = declared_sierra_class_hashes
+            .chain(declared_cairo_class_hashes)
+            .chain(deployed_class_hashes);
+        for class_hash in declared_class_hashes {
             ContractCodeTable::update_declared_on_if_null(
                 &transaction,
-                class.class_hash,
+                class_hash,
                 block.block_hash,
             )
-            .with_context(|| format!("Setting declared_on for class={:?}", class.class_hash))?;
-        }
-        for class in rpc_state_update.state_diff.deployed_contracts {
-            ContractCodeTable::update_declared_on_if_null(
-                &transaction,
-                class.class_hash,
-                block.block_hash,
-            )
-            .with_context(|| format!("Setting declared_on for class={:?}", class.class_hash))?;
+            .with_context(|| format!("Setting declared_on for class={:?}", class_hash))?;
         }
 
         // Insert the transactions.
@@ -687,15 +691,25 @@ fn update_starknet_state(
     // Copied so we can mutate the map. This lets us remove used nonces from the list.
     let mut nonces = state_update.state_diff.nonces.clone();
 
+    let mut replaced_classes = state_update
+        .state_diff
+        .replaced_classes
+        .iter()
+        .map(|r| (r.address, r.class_hash))
+        .collect::<HashMap<_, _>>();
+
     // Apply contract storage updates.
     for (contract_address, updates) in &state_update.state_diff.storage_diffs {
         // Remove the nonce so we don't update it again in the next stage.
         let nonce = nonces.remove(contract_address);
+        // Remove from replaced classes so we don't update it again in the next stage.
+        let replaced_class_hash = replaced_classes.remove(contract_address);
 
         let contract_state_hash = update_contract_state(
             *contract_address,
             updates,
             nonce,
+            replaced_class_hash,
             &storage_commitment_tree,
             transaction,
         )
@@ -709,10 +723,32 @@ fn update_starknet_state(
 
     // Apply all remaining nonces (without storage updates).
     for (contract_address, nonce) in nonces {
+        // Remove from replaced classes so we don't update it again in the next stage.
+        let replaced_class_hash = replaced_classes.remove(&contract_address);
+
         let contract_state_hash = update_contract_state(
             contract_address,
             &[],
             Some(nonce),
+            replaced_class_hash,
+            &storage_commitment_tree,
+            transaction,
+        )
+        .context("Update contract nonce")?;
+
+        // Update the global state tree.
+        storage_commitment_tree
+            .set(contract_address, contract_state_hash)
+            .context("Updating storage commitment tree")?;
+    }
+
+    // Apply all remaining replaced classes.
+    for (contract_address, new_class_hash) in replaced_classes {
+        let contract_state_hash = update_contract_state(
+            contract_address,
+            &[],
+            None,
+            Some(new_class_hash),
             &storage_commitment_tree,
             transaction,
         )
@@ -770,9 +806,7 @@ fn deploy_contract(
         contract_root,
         contract_nonce,
     )
-    .context("Insert constract state hash into contracts state table")?;
-    ContractsTable::upsert(transaction, contract.address, class_hash)
-        .context("Inserting class hash into contracts table")
+    .context("Insert constract state hash into contracts state table")
 }
 
 /// Downloads and inserts class definitions for any classes in the
@@ -967,10 +1001,6 @@ mod tests {
                 BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
                 _ => unimplemented!(),
             }
-        }
-
-        async fn full_contract(&self, _: ContractAddress) -> Result<bytes::Bytes, SequencerError> {
-            unimplemented!()
         }
 
         async fn class_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
@@ -1473,7 +1503,6 @@ mod tests {
         let timings = l2::Timings {
             block_download: Duration::default(),
             state_diff_download: Duration::default(),
-            contract_deployment: Duration::default(),
             class_declaration: Duration::default(),
         };
 
