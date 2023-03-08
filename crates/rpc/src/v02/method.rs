@@ -39,5 +39,5 @@ pub(crate) use get_storage_at::get_storage_at;
 pub(crate) use get_transaction_by_block_id_and_index::get_transaction_by_block_id_and_index;
 pub(crate) use get_transaction_by_hash::get_transaction_by_hash;
 pub(crate) use get_transaction_receipt::get_transaction_receipt;
-pub(super) use pending_transactions::pending_transactions;
+pub(crate) use pending_transactions::pending_transactions;
 pub(crate) use syncing::syncing;
