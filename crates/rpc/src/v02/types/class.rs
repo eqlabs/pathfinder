@@ -120,6 +120,7 @@ impl TryFrom<CairoContractClass>
     }
 }
 
+/// A Cairo 0.x class.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CairoContractClass {
@@ -263,6 +264,9 @@ pub struct TypedParameter {
     r#type: String,
 }
 
+/// A Cairo 1.x (i.e. Sierra) class.
+/// Also matches the gateway representation, which means it
+/// can be used to deserialize directly from storage.
 #[serde_with::serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
