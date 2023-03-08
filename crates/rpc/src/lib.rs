@@ -114,7 +114,7 @@ mod tests {
     use starknet_gateway_types::{
         pending::PendingData,
         reply::{
-            state_update::StorageDiff,
+            state_update::{ReplacedClass, StorageDiff},
             transaction::{
                 execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
                 DeployTransaction, EntryPointType, Event, ExecutionResources, InvokeTransaction,
@@ -490,11 +490,11 @@ mod tests {
         let deployed_contracts = vec![
             seq_reply::state_update::DeployedContract {
                 address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 0 address")),
-                class_hash: ClassHash(felt_bytes!(b"pending contract 0 hash")),
+                class_hash: ClassHash(felt_bytes!(b"pending class 0 hash")),
             },
             seq_reply::state_update::DeployedContract {
                 address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 1 address")),
-                class_hash: ClassHash(felt_bytes!(b"pending contract 1 hash")),
+                class_hash: ClassHash(felt_bytes!(b"pending class 1 hash")),
             },
         ];
         let storage_diffs = [(
@@ -512,6 +512,10 @@ mod tests {
         )]
         .into_iter()
         .collect();
+        let replaced_classes = vec![ReplacedClass {
+            address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 2 (replaced)")),
+            class_hash: ClassHash(felt_bytes!(b"pending class 2 hash (replaced)")),
+        }];
 
         let state_diff = starknet_gateway_types::reply::state_update::StateDiff {
             storage_diffs,
@@ -519,7 +523,7 @@ mod tests {
             old_declared_contracts: Vec::new(),
             declared_classes: Vec::new(),
             nonces: std::collections::HashMap::new(),
-            replaced_classes: Vec::new(),
+            replaced_classes,
         };
 
         // The class definitions must be inserted into the database.
