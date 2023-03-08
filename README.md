@@ -201,6 +201,7 @@ Pathfinder supports `v0.2.1` of the Starknet JSON-RPC [specification](https://gi
 
 - To be able to represent DECLARE V2 transactions introduced in Starknet 0.11.0 we use `DECLARE_TXN` type from `v0.3.0` of the JSON-RPC specification.
 - DECLARE transactions prior to introduction of DECLARE V1 are represented the same way as `DECLARE_TXN_V1` type from `v0.3.0` of the JSON-RPC specification, except for their `version` field being set to `0`.
+- To be able to also represent Cairo 1.x classes (i.e. Sierra classes) introduced in Starknet 0.11.0 we use `CONTRACT_CLASS` type from `v0.3.0` of the JSON-RPC specification along `CONTRACT_CLASS` type from `v0.2.1` for Cairo 0.x classes.
 
 Use the [playground link](https://playground.open-rpc.org/?uiSchema[appBar][ui:splitView]=false&[appBar][ui:input]=false&uiSchema[appBar][ui:darkMode]=true&uiSchema[appBar][ui:examplesDropdown]=false&schemaUrl=https://raw.githubusercontent.com/starkware-libs/starknet-specs/v0.2.1/api/starknet_api_openrpc.json&uiSchema) to check the list of methods and the parameters.
 
