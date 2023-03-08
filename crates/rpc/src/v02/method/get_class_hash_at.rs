@@ -85,6 +85,11 @@ async fn get_pending_class_hash(
             .deployed_contracts
             .iter()
             .find_map(|contract| (contract.address == address).then_some(contract.class_hash))
+            .or(state_update
+                .state_diff
+                .replaced_classes
+                .iter()
+                .find_map(|contract| (contract.address == address).then_some(contract.class_hash)))
     })
 }
 
@@ -250,11 +255,22 @@ mod tests {
         assert_eq!(result.0, expected);
 
         // This is an actual pending deployed contract.
-        let expected = ClassHash(felt_bytes!(b"pending contract 0 hash"));
+        let expected = ClassHash(felt_bytes!(b"pending class 0 hash"));
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
             contract_address: ContractAddress::new_or_panic(felt_bytes!(
                 b"pending contract 0 address"
+            )),
+        };
+        let result = get_class_hash_at(context.clone(), input).await.unwrap();
+        assert_eq!(result.0, expected);
+
+        // Replaced class in pending should also work.
+        let expected = ClassHash(felt_bytes!(b"pending class 2 hash (replaced)"));
+        let input = GetClassHashAtInput {
+            block_id: BlockId::Pending,
+            contract_address: ContractAddress::new_or_panic(felt_bytes!(
+                b"pending contract 2 (replaced)"
             )),
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();

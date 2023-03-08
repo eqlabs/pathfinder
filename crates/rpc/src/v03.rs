@@ -9,6 +9,7 @@ use crate::v02::method as v02_method;
 /// Registers all methods for the v0.3 RPC API
 pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
     let methods = crate::module::Module::new(context)
+        // Reused from v0.2
         .register_method_with_no_input(
             "starknet_blockHashAndNumber",
             v02_method::block_hash_and_number,
@@ -24,10 +25,9 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             "starknet_getBlockTransactionCount",
             v02_method::get_block_transaction_count,
         )?
-        .register_method("starknet_getEvents", method::get_events)?
+        .register_method("starknet_getClassHashAt", v02_method::get_class_hash_at)?
         .register_method("starknet_getNonce", v02_method::get_nonce)?
         .register_method("starknet_getStorageAt", v02_method::get_storage_at)?
-        .register_method("starknet_getStateUpdate", method::get_state_update)?
         .register_method(
             "starknet_getTransactionByBlockIdAndIndex",
             v02_method::get_transaction_by_block_id_and_index,
@@ -41,6 +41,9 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             v02_method::get_transaction_receipt,
         )?
         .register_method_with_no_input("starknet_syncing", v02_method::syncing)?
+        // Specific implementations for v0.3
+        .register_method("starknet_getEvents", method::get_events)?
+        .register_method("starknet_getStateUpdate", method::get_state_update)?
         .build();
 
     Ok(methods)

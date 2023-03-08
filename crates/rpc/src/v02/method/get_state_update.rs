@@ -547,13 +547,13 @@ mod tests {
                         address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 0 address"
                         )),
-                        class_hash: ClassHash(felt_bytes!(b"pending contract 0 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending class 0 hash")),
                     },
                     DeployedContract {
                         address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 1 address"
                         )),
-                        class_hash: ClassHash(felt_bytes!(b"pending contract 1 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending class 1 hash")),
                     },
                 ],
                 nonces: vec![],

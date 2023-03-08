@@ -437,7 +437,9 @@ mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::types::{DeployedContract, StateDiff, StateUpdate, StorageDiff, StorageEntry};
+    use super::types::{
+        DeployedContract, ReplacedClass, StateDiff, StateUpdate, StorageDiff, StorageEntry,
+    };
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
@@ -636,16 +638,21 @@ mod tests {
                         address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 0 address"
                         )),
-                        class_hash: ClassHash(felt_bytes!(b"pending contract 0 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending class 0 hash")),
                     },
                     DeployedContract {
                         address: ContractAddress::new_or_panic(felt_bytes!(
                             b"pending contract 1 address"
                         )),
-                        class_hash: ClassHash(felt_bytes!(b"pending contract 1 hash")),
+                        class_hash: ClassHash(felt_bytes!(b"pending class 1 hash")),
                     },
                 ],
-                replaced_classes: vec![],
+                replaced_classes: vec![ReplacedClass {
+                    contract_address: ContractAddress::new_or_panic(felt_bytes!(
+                        b"pending contract 2 (replaced)"
+                    )),
+                    class_hash: ClassHash(felt_bytes!(b"pending class 2 hash (replaced)")),
+                }],
                 nonces: vec![],
             },
         };
