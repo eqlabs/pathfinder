@@ -11,6 +11,10 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
     let methods = crate::module::Module::new(context)
         // Reused from v0.2
         .register_method(
+            "starknet_addDeployAccountTransaction",
+            v02_method::add_deploy_account_transaction,
+        )?
+        .register_method(
             "starknet_addInvokeTransaction",
             v02_method::add_invoke_transaction,
         )?
