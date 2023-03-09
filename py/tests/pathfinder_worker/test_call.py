@@ -1,3 +1,4 @@
+from abc import abstractmethod
 import dataclasses
 import io
 import json
@@ -8,7 +9,7 @@ import zstandard
 
 import pathfinder_worker.call as call
 
-
+from starkware.cairo.lang.vm.crypto import pedersen_hash
 from starkware.starknet.public.abi import get_selector_from_name
 from starkware.starknet.services.api.gateway.transaction import InvokeFunction, Declare
 from starkware.starknet.services.api.contract_class import ContractClass
@@ -223,6 +224,87 @@ def inmemory_with_tables():
     return con
 
 
+def calculate_contract_state_hash(
+    class_hash: int, contract_root: int, nonce: int
+) -> int:
+    contract_state_hash_version = 0
+
+    h = pedersen_hash(class_hash, contract_root)
+    h = pedersen_hash(h, nonce)
+    h = pedersen_hash(h, contract_state_hash_version)
+
+    return h
+
+
+@dataclasses.dataclass
+class Node:
+    @abstractmethod
+    def hash(self) -> int:
+        pass
+
+    @abstractmethod
+    def serialize(self) -> bytes:
+        pass
+
+
+@dataclasses.dataclass
+class BinaryNode(Node):
+    left: Node
+    right: Node
+
+    def hash(self) -> int:
+        return pedersen_hash(self.left.hash(), self.right.hash())
+
+    def serialize(self) -> bytes:
+        return felt_to_bytes(self.left.hash()) + felt_to_bytes(self.right.hash())
+
+
+@dataclasses.dataclass
+class EdgeNode(Node):
+    path: int
+    path_length: int
+    child: Node
+
+    def hash(self) -> int:
+        return pedersen_hash(self.child.hash(), self.path) + self.path_length
+
+    def serialize(self) -> bytes:
+        return (
+            felt_to_bytes(self.child.hash())
+            + felt_to_bytes(self.path)
+            + self.path_length.to_bytes(length=1, byteorder="big")
+        )
+
+
+@dataclasses.dataclass
+class LeafNode(Node):
+    value: int
+
+    def hash(self) -> int:
+        return self.value
+
+    def serialize(self) -> bytes:
+        raise NotImplementedError
+
+
+def felt_to_bytes(v: int) -> bytes:
+    return v.to_bytes(length=32, byteorder="big")
+
+
+def test_edge_node_serialize():
+    expected = bytes.fromhex(
+        "00000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000084fb"
+    )
+    e = EdgeNode(path=132, path_length=251, child=LeafNode(value=3))
+    assert e.serialize() == expected
+
+
+def test_edge_node_hash():
+    expected = 0x04FB440E8CA9B74FC12A22EBFFE0BC0658206337897226117B985434C239C028
+    e = EdgeNode(path=132, path_length=251, child=LeafNode(value=3))
+    assert e.hash() == expected
+
+
 def populate_test_contract_with_132_on_3(con):
     """
     Populates a situation created with cairo-lang contract_test.py where
@@ -231,9 +313,9 @@ def populate_test_contract_with_132_on_3(con):
     """
 
     # this cannot be changed without recomputing the global state root
-    contract_address = (
-        2483955865838519930787573649413589905962103032695051953168137837593959392116
-    )
+    contract_address = 0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
+    class_hash = 0x050B2148C0D782914E0B12A1A32ABE5E398930B7E914F82C65CB7AFCE0A0AB9B
+
     cur = con.execute("BEGIN")
 
     path = test_relative_path(
@@ -243,19 +325,19 @@ def populate_test_contract_with_132_on_3(con):
     with open(path, "rb") as file:
         # this fixture is compiled from 0.7 or 0.6 test.cairo, stored for compute contract hash tests.
         contract_definition = file.read()
-        assert type(contract_definition) == bytes
         assert len(contract_definition) == 5208
 
         cur.execute(
             "insert into class_definitions (hash, definition) values (?, ?)",
             [
-                bytes.fromhex(
-                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-                ),
+                felt_to_bytes(class_hash),
                 contract_definition,
             ],
         )
 
+    # contract storage
+    root_node = EdgeNode(path=132, path_length=251, child=LeafNode(value=3))
+    contract_root = root_node.hash()
     cur.execute(
         "insert into contracts (address, hash) values (?, ?)",
         [
@@ -269,39 +351,34 @@ def populate_test_contract_with_132_on_3(con):
     cur.execute(
         "insert into tree_contracts (hash, data, ref_count) values (?, ?, 1)",
         [
-            bytes.fromhex(
-                "04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028"
-            ),
-            bytes.fromhex(
-                "00000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000084fb"
-            ),
+            felt_to_bytes(contract_root),
+            root_node.serialize(),
         ],
     )
+
+    contract_state_hash = calculate_contract_state_hash(class_hash, contract_root, 0)
 
     cur.execute(
         "insert into contract_states (state_hash, hash, root) values (?, ?, ?)",
         [
-            bytes.fromhex(
-                "002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5"
-            ),
-            bytes.fromhex(
-                "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-            ),
-            bytes.fromhex(
-                "04fb440e8ca9b74fc12a22ebffe0bc0658206337897226117b985434c239c028"
-            ),
+            felt_to_bytes(contract_state_hash),
+            felt_to_bytes(class_hash),
+            felt_to_bytes(contract_root),
         ],
     )
 
+    # global state tree
+    root_node = EdgeNode(
+        path=contract_address,
+        path_length=251,
+        child=LeafNode(value=contract_state_hash),
+    )
+    state_root = root_node.hash()
     cur.execute(
         "insert into tree_global (hash, data, ref_count) values (?, ?, 1)",
         [
-            bytes.fromhex(
-                "0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd"
-            ),
-            bytes.fromhex(
-                "002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fb"
-            ),
+            felt_to_bytes(state_root),
+            root_node.serialize(),
         ],
     )
 
@@ -310,16 +387,15 @@ def populate_test_contract_with_132_on_3(con):
         """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
-            bytes.fromhex(
-                "0704dfcbc470377c68e6f5ffb83970ebd0d7c48d5b8d2f4ed61a24e795e034bd"
-            ),
-            b"".rjust(16, b"\x00"),
-            b"".rjust(32, b"\x00"),
+            felt_to_bytes(state_root),
+            b"\x00" * 16,
+            b"\x00" * 32,
         ],
     )
 
     con.commit()
-    return contract_address
+
+    return contract_address, contract_state_hash
 
 
 def default_132_on_3_scenario(con, input_jsons):
@@ -344,7 +420,8 @@ def default_132_on_3_scenario(con, input_jsons):
 
 def test_success():
     con = inmemory_with_tables()
-    contract_address = hex(populate_test_contract_with_132_on_3(con))
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
+    contract_address = hex(contract_address)
     entry_point = hex(get_selector_from_name("get_value"))
 
     common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
@@ -370,7 +447,7 @@ def test_positive_directly():
     """
 
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
     command = Call(
         at_block="1",
@@ -393,7 +470,7 @@ def test_positive_directly():
 
 def test_called_contract_not_found():
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("get_value"))
 
     common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
@@ -410,7 +487,7 @@ def test_called_contract_not_found():
 
 def test_nested_called_contract_not_found():
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value"))
 
     common_command_data = '"gas_price": 0, "chain": "TESTNET", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
@@ -429,7 +506,7 @@ def test_nested_called_contract_not_found():
 
 def test_invalid_entry_point():
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
     entry_point = hex(get_selector_from_name("call_increase_value2"))
 
     common_command_data = '"gas_price": 0, "chain": "TESTNET", "pending_updates": {}, "pending_deployed": [], "pending_nonces": {}, "pending_timestamp": 0'
@@ -449,7 +526,8 @@ def test_invalid_entry_point():
 
 def test_invalid_schema_version():
     con = inmemory_with_tables()
-    contract_address = hex(populate_test_contract_with_132_on_3(con))
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
+    contract_address = hex(contract_address)
     entry_point = hex(get_selector_from_name("get_value"))
 
     common_command_data = f'"entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
@@ -469,7 +547,8 @@ def test_invalid_schema_version():
 
 def test_no_such_block():
     con = inmemory_with_tables()
-    contract_address = hex(populate_test_contract_with_132_on_3(con))
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
+    contract_address = hex(contract_address)
     entry_point = hex(get_selector_from_name("get_value"))
 
     common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
@@ -505,7 +584,7 @@ def test_check_cairolang_version():
 
 def test_fee_estimate_on_positive_directly():
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
     con.execute("BEGIN")
 
@@ -539,7 +618,7 @@ def test_fee_estimate_on_positive_directly():
 
 def test_fee_estimate_for_declare_transaction_directly():
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
@@ -582,7 +661,8 @@ def test_fee_estimate_for_declare_transaction_directly():
 
 def test_fee_estimate_on_positive():
     con = inmemory_with_tables()
-    contract_address = hex(populate_test_contract_with_132_on_3(con))
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
+    contract_address = hex(contract_address)
     entry_point = hex(get_selector_from_name("get_value"))
 
     command = """{{
@@ -652,7 +732,7 @@ def test_fee_estimate_on_positive():
 def test_starknet_version_is_resolved():
     # using the existing setup, but just updating the one block to have a bogus version
     con = inmemory_with_tables()
-    _ = populate_test_contract_with_132_on_3(con)
+    populate_test_contract_with_132_on_3(con)
 
     con.execute("BEGIN")
     cursor = con.execute(
@@ -668,7 +748,7 @@ def test_starknet_version_is_resolved():
 
 def test_call_on_pending_updated():
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
     con.execute("BEGIN")
 
     command = Call(
@@ -693,7 +773,7 @@ def test_call_on_pending_updated():
 
 def test_call_on_pending_deployed():
     con = inmemory_with_tables()
-    _ = populate_test_contract_with_132_on_3(con)
+    populate_test_contract_with_132_on_3(con)
     con.execute("BEGIN")
 
     contract_address = 0x18B2088ACCBD652384E5AC545FD249095CB17BDC709868D1D748094D52B9F7D
@@ -723,7 +803,7 @@ def test_call_on_pending_deployed():
 
 def test_call_on_pending_deployed_through_existing():
     con = inmemory_with_tables()
-    orig_contract_address = populate_test_contract_with_132_on_3(con)
+    (orig_contract_address, _) = populate_test_contract_with_132_on_3(con)
     con.execute("BEGIN")
 
     contract_address = 0x18B2088ACCBD652384E5AC545FD249095CB17BDC709868D1D748094D52B9F7D
@@ -775,7 +855,7 @@ def test_call_on_reorgged_pending_block():
     """
 
     con = inmemory_with_tables()
-    contract_address = populate_test_contract_with_132_on_3(con)
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
     existing_block = f'0x{(b"some blockhash somewhere").hex()}'
     reorgged_block = f'0x{(b"this block got reorgged").hex()}'
@@ -892,7 +972,10 @@ def test_nonce_with_dummy():
     from starkware.starknet.public.abi import get_selector_from_name
 
     con = inmemory_with_tables()
-    test_contract = populate_test_contract_with_132_on_3(con)
+    (
+        test_contract_address,
+        test_contract_state_hash,
+    ) = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
@@ -900,8 +983,7 @@ def test_nonce_with_dummy():
 
     cur = con.execute("BEGIN")
 
-    class_hash = "00af5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8"
-    zero = "0000000000000000000000000000000000000000000000000000000000000000"
+    class_hash = 0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
 
     with open(path, "rb") as file:
         # this fixture is compiled from 0.10 cairo-lang repository; we hope
@@ -911,31 +993,35 @@ def test_nonce_with_dummy():
         cur.execute(
             "insert into class_definitions (hash, definition) values (?, ?)",
             [
-                bytes.fromhex(class_hash),
+                felt_to_bytes(class_hash),
                 contract_definition,
             ],
         )
+
+    # contract states (storage is empty for account contract)
+    account_contract_state_hash_with_nonce_0 = calculate_contract_state_hash(
+        class_hash, 0, 0
+    )
+    account_contract_state_hash_with_nonce_1 = calculate_contract_state_hash(
+        class_hash, 0, 1
+    )
 
     cur.executemany(
         "insert into contract_states (state_hash, hash, root, nonce) values (?, ?, ?, ?)",
         [
             # first block referred to by 0x123
             (
-                bytes.fromhex(
-                    "02c915dd92251d9c5ace97251a8a3929f4af71e0177f0202d9be44fa3b7b0ee6"
-                ),
-                bytes.fromhex(class_hash),
-                bytes.fromhex(zero),
-                bytes.fromhex(zero),
+                felt_to_bytes(account_contract_state_hash_with_nonce_0),
+                felt_to_bytes(class_hash),
+                felt_to_bytes(0),
+                felt_to_bytes(0),
             ),
             # second block referred to by 0x123
             (
-                bytes.fromhex(
-                    "03ad994dcd3372ea369e19ef5782ec08c4f31c261edf280c362f5fb6aa93931d"
-                ),
-                bytes.fromhex(class_hash),
-                bytes.fromhex(zero),
-                (1).to_bytes(32, "big"),
+                felt_to_bytes(account_contract_state_hash_with_nonce_1),
+                felt_to_bytes(class_hash),
+                felt_to_bytes(0),
+                felt_to_bytes(1),
             ),
         ],
     )
@@ -952,11 +1038,28 @@ def test_nonce_with_dummy():
     # # added for dummy tests
     # 0x123 0x00af5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8 0x0 0x1
 
-    first_global_root = (
-        "0764f5270a4e73449b2fb9e275c86049b4fcbf56ab53208542bfbbb0b91b08be"
+    # global tree
+    account_contract_node_with_nonce_0 = EdgeNode(
+        path=0x123,
+        path_length=250,
+        child=LeafNode(value=account_contract_state_hash_with_nonce_0),
     )
-    second_global_root = (
-        "021d10453b2e84f9a127815d697d9dc2cc01e4a42d6a70d19987a8425f557789"
+    account_contract_node_with_nonce_1 = EdgeNode(
+        path=0x123,
+        path_length=250,
+        child=LeafNode(value=account_contract_state_hash_with_nonce_1),
+    )
+    test_contract_node = EdgeNode(
+        path=test_contract_address & (2**250 - 1),
+        path_length=250,
+        child=LeafNode(value=test_contract_state_hash),
+    )
+
+    first_root = BinaryNode(
+        left=account_contract_node_with_nonce_0, right=test_contract_node
+    )
+    second_root = BinaryNode(
+        left=account_contract_node_with_nonce_1, right=test_contract_node
     )
 
     # cannot use on conflict ignore with python3.8 from ubuntu 20.04
@@ -964,43 +1067,22 @@ def test_nonce_with_dummy():
         "insert into tree_global (hash, data) values (?, ?)",
         [
             (
-                bytes.fromhex(
-                    "00ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"
-                ),
-                bytes.fromhex(
-                    "002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5017dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fa"
-                ),
+                felt_to_bytes(account_contract_node_with_nonce_0.hash()),
+                account_contract_node_with_nonce_0.serialize(),
             ),
             (
-                bytes.fromhex(
-                    "05d40df048370fce33a1d880280e9604e2a3904fe868106c7e978b626356194b"
-                ),
-                bytes.fromhex(
-                    "02c915dd92251d9c5ace97251a8a3929f4af71e0177f0202d9be44fa3b7b0ee60000000000000000000000000000000000000000000000000000000000000123fa"
-                ),
+                felt_to_bytes(account_contract_node_with_nonce_1.hash()),
+                account_contract_node_with_nonce_1.serialize(),
             ),
             (
-                bytes.fromhex(
-                    "06f5cc211c53a5588ab1b50a9c5b869ce62ae4697c63ffb9d53bee7d58952514"
-                ),
-                bytes.fromhex(
-                    "03ad994dcd3372ea369e19ef5782ec08c4f31c261edf280c362f5fb6aa93931d0000000000000000000000000000000000000000000000000000000000000123fa"
-                ),
-            ),
-            # this is shared between trees
-            # (bytes.fromhex("00ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"), bytes.fromhex("002e9723e54711aec56e3fb6ad1bb8272f64ec92e0a43a20feed943b1d4f73c5017dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374fa")),
-            (
-                bytes.fromhex(first_global_root),
-                bytes.fromhex(
-                    "05d40df048370fce33a1d880280e9604e2a3904fe868106c7e978b626356194b00ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"
-                ),
+                felt_to_bytes(test_contract_node.hash()),
+                test_contract_node.serialize(),
             ),
             (
-                bytes.fromhex(second_global_root),
-                bytes.fromhex(
-                    "06f5cc211c53a5588ab1b50a9c5b869ce62ae4697c63ffb9d53bee7d5895251400ce37c493172aa63687beb33a0f7649cf841220160af700ab85b045a20a0c96"
-                ),
+                felt_to_bytes(first_root.hash()),
+                first_root.serialize(),
             ),
+            (felt_to_bytes(second_root.hash()), second_root.serialize()),
         ],
     )
 
@@ -1010,7 +1092,7 @@ def test_nonce_with_dummy():
             (
                 b"another block".rjust(32, b"\x00"),
                 2,
-                bytes.fromhex(first_global_root),
+                felt_to_bytes(first_root.hash()),
                 2,
                 b"\x00" * 32,
                 b"\x00" * 32,
@@ -1019,7 +1101,7 @@ def test_nonce_with_dummy():
             (
                 b"third block".rjust(32, b"\x00"),
                 3,
-                bytes.fromhex(second_global_root),
+                felt_to_bytes(second_root.hash()),
                 3,
                 b"\x00" * 32,
                 b"\x00" * 32,
@@ -1038,7 +1120,7 @@ def test_nonce_with_dummy():
         version=0x100000000000000000000000000000001,
         contract_address=0x123,
         # this should be: target address, target selector, input len, input..
-        calldata=[test_contract, get_selector_from_name("get_value"), 1, 132],
+        calldata=[test_contract_address, get_selector_from_name("get_value"), 1, 132],
         entry_point_selector=None,
         nonce=0,
         max_fee=0,
