@@ -10,6 +10,10 @@ use crate::v02::method as v02_method;
 pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
     let methods = crate::module::Module::new(context)
         // Reused from v0.2
+        .register_method(
+            "starknet_addInvokeTransaction",
+            v02_method::add_invoke_transaction,
+        )?
         .register_method_with_no_input(
             "starknet_blockHashAndNumber",
             v02_method::block_hash_and_number,

@@ -22,7 +22,7 @@ mod syncing;
 
 pub(super) use add_declare_transaction::add_declare_transaction;
 pub(super) use add_deploy_account_transaction::add_deploy_account_transaction;
-pub(super) use add_invoke_transaction::add_invoke_transaction;
+pub(crate) use add_invoke_transaction::add_invoke_transaction;
 pub(crate) use block_hash_and_number::{block_hash_and_number, block_number};
 pub(super) use call::call;
 pub(crate) use chain_id::chain_id;
