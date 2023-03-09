@@ -4,7 +4,7 @@ use anyhow::Context;
 use cairo_lang_starknet::allowed_libfuncs::{validate_compatible_sierra_version, ListSelector};
 use cairo_lang_starknet::{casm_contract_class::CasmContractClass, contract_class::ContractClass};
 
-const COMPILER_VERSION: &str = env!("SIERRA_CASM_COMPILER_VERSION");
+pub const COMPILER_VERSION: &str = env!("SIERRA_CASM_COMPILER_VERSION");
 
 /// Compile a Sierra class definition into CASM.
 ///

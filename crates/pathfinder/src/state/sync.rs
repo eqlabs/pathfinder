@@ -298,7 +298,7 @@ where
                 Some(l2::Event::NewSierraContract(sierra_class, casm_class, compiled_class_hash)) => {
                     tokio::task::block_in_place(|| {
                         ContractCodeTable::insert_compressed(&db_conn, &sierra_class)?;
-                        CasmClassTable::upsert_compressed(&db_conn, &casm_class, &compiled_class_hash)
+                        CasmClassTable::upsert_compressed(&db_conn, &casm_class, &compiled_class_hash, crate::sierra::COMPILER_VERSION)
                     })
                     .with_context(|| {
                         format!("Insert Sierra contract definition with hash: {:?}", sierra_class.hash)
@@ -901,7 +901,12 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
                     let transaction =
                         connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
                     ContractCodeTable::insert_compressed(&transaction, &sierra)?;
-                    CasmClassTable::upsert_compressed(&transaction, &casm, &compiled_class_hash)?;
+                    CasmClassTable::upsert_compressed(
+                        &transaction,
+                        &casm,
+                        &compiled_class_hash,
+                        crate::sierra::COMPILER_VERSION,
+                    )?;
                     transaction.commit()?;
                     anyhow::Result::<()>::Ok(())
                 })

@@ -124,6 +124,52 @@ impl ContractCodeTable {
     }
 }
 
+/// Stores Sierra to CASM compiler version values
+///
+/// When compiling a Sierra class to CASM we should store the version of the compiler
+/// used so that we can later selectively re-compile CASM based on the compiler version.
+/// Because the version we have is not a properly structured semantic version we're
+/// storing the `id` from the Cargo package metadata here. That is a not-so-short string,
+/// that's why we're interning values.
+struct CasmCompilerVersions;
+
+impl CasmCompilerVersions {
+    /// Interns, or makes sure there's a unique row for each version.
+    ///
+    /// These are not deleted automatically nor is a need expected because new versions
+    /// are introduced _only_ when we're upgrading the CASM compiler in pathdfinder.
+    pub fn intern(connection: &Connection, version: &str) -> anyhow::Result<i64> {
+        let id: Option<i64> = connection
+            .query_row(
+                "SELECT id FROM casm_compiler_versions WHERE version = ?",
+                [version],
+                |r| Ok(r.get_unwrap(0)),
+            )
+            .optional()
+            .context("Querying for an existing casm_compiler_versions")?;
+
+        let id = if let Some(id) = id {
+            id
+        } else {
+            // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
+            // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
+            // read back with last_insert_rowid
+            let rows = connection
+                .execute(
+                    "INSERT INTO casm_compiler_versions(version) VALUES (?)",
+                    [version],
+                )
+                .context("Inserting unique casm_compiler_version")?;
+
+            anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
+
+            connection.last_insert_rowid()
+        };
+
+        Ok(id)
+    }
+}
+
 /// Stores compiled CASM for Sierra classes
 ///
 /// Sierra classes need to be compiled to Cairo assembly so that we can execute them.
@@ -137,13 +183,21 @@ impl CasmClassTable {
         connection: &Connection,
         class: &CompressedCasmClass,
         compiled_class_hash: &CasmHash,
+        casm_compiler_version: &str,
     ) -> anyhow::Result<()> {
+        let version_id = CasmCompilerVersions::intern(connection, casm_compiler_version)
+            .context("Fetching CASM compiler version id")?;
+
         connection.execute(
-            r"INSERT OR REPLACE INTO casm_definitions (hash, definition, compiled_class_hash) VALUES (:hash, :definition, :compiled_class_hash)",
+            r"INSERT OR REPLACE INTO casm_definitions
+                (hash, definition, compiled_class_hash, compiler_version_id)
+            VALUES
+                (:hash, :definition, :compiled_class_hash, :compiler_version_id)",
             named_params! {
                 ":hash": class.hash,
                 ":definition": &class.definition[..],
                 ":compiled_class_hash": compiled_class_hash,
+                ":compiler_version_id": version_id,
             },
         )?;
         Ok(())

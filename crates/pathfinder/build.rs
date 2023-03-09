@@ -12,7 +12,7 @@ struct CargoMetadata {
 #[derive(serde::Deserialize)]
 struct Package {
     pub name: String,
-    pub version: String,
+    pub id: String,
 }
 
 fn set_casm_compiler_version() {
@@ -46,8 +46,10 @@ fn set_casm_compiler_version() {
         .find(|p| p.name == "cairo-lang-starknet")
         .expect("cairo-lang-starknet should be a dependency");
 
+    // We use the `id` here because `version` might not be unique (for example when using the compiler
+    // package from a Git repository).
     println!(
         "cargo:rustc-env=SIERRA_CASM_COMPILER_VERSION={}",
-        sierra_compiler_package.version
+        sierra_compiler_package.id
     );
 }
