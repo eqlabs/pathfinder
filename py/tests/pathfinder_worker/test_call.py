@@ -167,11 +167,6 @@ def inmemory_with_tables():
             nonce      BLOB NOT NULL DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000'
         );
 
-        CREATE TABLE contracts (
-            address    BLOB PRIMARY KEY,
-            hash       BLOB NOT NULL
-        );
-
         CREATE TABLE class_definitions (
             hash       BLOB PRIMARY KEY,
             bytecode   BLOB,
@@ -338,16 +333,6 @@ def populate_test_contract_with_132_on_3(con):
     # contract storage
     root_node = EdgeNode(path=132, path_length=251, child=LeafNode(value=3))
     contract_root = root_node.hash()
-    cur.execute(
-        "insert into contracts (address, hash) values (?, ?)",
-        [
-            (contract_address).to_bytes(32, "big"),
-            bytes.fromhex(
-                "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-            ),
-        ],
-    )
-
     cur.execute(
         "insert into tree_contracts (hash, data, ref_count) values (?, ?, 1)",
         [
