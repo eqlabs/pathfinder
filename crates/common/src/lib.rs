@@ -6,7 +6,6 @@ use ethers::types::{H128, H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
-pub mod cairo;
 pub mod consts;
 mod macros;
 #[cfg(feature = "test-utils")]

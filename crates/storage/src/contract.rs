@@ -1,15 +1,13 @@
-use crate::types::CompressedContract;
+use crate::types::{CompressedCasmClass, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
-use pathfinder_common::{ClassHash, ContractClass, StarknetBlockHash};
+use pathfinder_common::{CasmHash, ClassHash, ContractClass, StarknetBlockHash};
 use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's
 ///
 /// - [hash](ClassHash)
-/// - byte code
-/// - ABI
 /// - definition
 pub struct ContractCodeTable {}
 
@@ -42,7 +40,7 @@ impl ContractCodeTable {
         assert_eq!(&contract.definition[..4], magic);
 
         connection.execute(
-            r"INSERT INTO contract_code (hash, definition)
+            r"INSERT INTO class_definitions (hash, definition)
                              VALUES (:hash, :definition)",
             named_params! {
                 ":hash": &contract.hash.0.to_be_bytes()[..],
@@ -58,7 +56,7 @@ impl ContractCodeTable {
         block: StarknetBlockHash,
     ) -> anyhow::Result<bool> {
         let rows_changed = transaction.execute(
-            "UPDATE contract_code SET declared_on=? WHERE hash=? AND declared_on IS NULL",
+            "UPDATE class_definitions SET declared_on=? WHERE hash=? AND declared_on IS NULL",
             rusqlite::params![block, class],
         )?;
 
@@ -76,7 +74,7 @@ impl ContractCodeTable {
         let row = transaction
             .query_row(
                 "SELECT definition
-                FROM contract_code
+                FROM class_definitions
                 WHERE hash = :hash",
                 named_params! {
                     ":hash": &hash.0.to_be_bytes()
@@ -117,7 +115,97 @@ impl ContractCodeTable {
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
     pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = connection.prepare("select 1 from contract_code where hash = ?")?;
+        let mut stmt = connection.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+
+        Ok(classes
+            .iter()
+            .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+}
+
+/// Stores Sierra to CASM compiler version values
+///
+/// When compiling a Sierra class to CASM we should store the version of the compiler
+/// used so that we can later selectively re-compile CASM based on the compiler version.
+/// Because the version we have is not a properly structured semantic version we're
+/// storing the `id` from the Cargo package metadata here. That is a not-so-short string,
+/// that's why we're interning values.
+struct CasmCompilerVersions;
+
+impl CasmCompilerVersions {
+    /// Interns, or makes sure there's a unique row for each version.
+    ///
+    /// These are not deleted automatically nor is a need expected because new versions
+    /// are introduced _only_ when we're upgrading the CASM compiler in pathdfinder.
+    pub fn intern(connection: &Connection, version: &str) -> anyhow::Result<i64> {
+        let id: Option<i64> = connection
+            .query_row(
+                "SELECT id FROM casm_compiler_versions WHERE version = ?",
+                [version],
+                |r| Ok(r.get_unwrap(0)),
+            )
+            .optional()
+            .context("Querying for an existing casm_compiler_versions")?;
+
+        let id = if let Some(id) = id {
+            id
+        } else {
+            // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
+            // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
+            // read back with last_insert_rowid
+            let rows = connection
+                .execute(
+                    "INSERT INTO casm_compiler_versions(version) VALUES (?)",
+                    [version],
+                )
+                .context("Inserting unique casm_compiler_version")?;
+
+            anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
+
+            connection.last_insert_rowid()
+        };
+
+        Ok(id)
+    }
+}
+
+/// Stores compiled CASM for Sierra classes
+///
+/// Sierra classes need to be compiled to Cairo assembly so that we can execute them.
+pub struct CasmClassTable {}
+
+impl CasmClassTable {
+    /// Insert a CASM class into the table.
+    ///
+    /// Note that the class hash must reference a class stored in [ContractCodeTable].
+    pub fn upsert_compressed(
+        connection: &Connection,
+        class: &CompressedCasmClass,
+        compiled_class_hash: &CasmHash,
+        casm_compiler_version: &str,
+    ) -> anyhow::Result<()> {
+        let version_id = CasmCompilerVersions::intern(connection, casm_compiler_version)
+            .context("Fetching CASM compiler version id")?;
+
+        connection.execute(
+            r"INSERT OR REPLACE INTO casm_definitions
+                (hash, definition, compiled_class_hash, compiler_version_id)
+            VALUES
+                (:hash, :definition, :compiled_class_hash, :compiler_version_id)",
+            named_params! {
+                ":hash": class.hash,
+                ":definition": &class.definition[..],
+                ":compiled_class_hash": compiled_class_hash,
+                ":compiler_version_id": version_id,
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Returns true for each [ClassHash] if the class definition already exists in the table.
+    pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+        let mut stmt = connection.prepare("SELECT 1 FROM casm_definitions WHERE hash = ?")?;
 
         Ok(classes
             .iter()

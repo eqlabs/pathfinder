@@ -63,7 +63,7 @@ fn read_pending(
     class: ClassHash,
 ) -> Result<Vec<u8>, GetClassError> {
     tx.query_row(
-        "SELECT definition FROM contract_code WHERE hash=?",
+        "SELECT definition FROM class_definitions WHERE hash=?",
         rusqlite::params! { class },
         |row| {
             let def = row.get_ref_unwrap(0).as_blob()?.to_owned();
@@ -79,7 +79,7 @@ fn read_pending(
 fn read_latest(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> Result<Vec<u8>, GetClassError> {
     // This works because declared_on is only set if the class was declared in a canonical block.
     tx.query_row(
-        "SELECT definition FROM contract_code WHERE hash=? AND declared_on IS NOT NULL",
+        "SELECT definition FROM class_definitions WHERE hash=? AND declared_on IS NOT NULL",
         rusqlite::params! { class },
         |row| {
             let def = row.get_ref_unwrap(0).as_blob()?.to_owned();
@@ -112,7 +112,7 @@ fn read_at_hash(
         .ok_or(GetClassError::BlockNotFound)?;
 
     tx.query_row(
-        r"SELECT definition FROM contract_code code JOIN canonical_blocks blocks ON (code.declared_on = blocks.hash) 
+        r"SELECT definition FROM class_definitions code JOIN canonical_blocks blocks ON (code.declared_on = blocks.hash)
         WHERE code.hash=? AND blocks.number <= ?",
         rusqlite::params! { class, number },
         |row| {
@@ -145,7 +145,7 @@ fn read_at_number(
     }
 
     tx.query_row(
-        r"SELECT definition FROM contract_code code JOIN canonical_blocks blocks ON (code.declared_on = blocks.hash) 
+        r"SELECT definition FROM class_definitions code JOIN canonical_blocks blocks ON (code.declared_on = blocks.hash)
         WHERE code.hash=? AND blocks.number <= ?",
         rusqlite::params! { class, block },
         |row| {

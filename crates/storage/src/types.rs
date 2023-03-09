@@ -19,6 +19,23 @@ impl std::fmt::Debug for CompressedContract {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct CompressedCasmClass {
+    pub definition: Vec<u8>,
+    pub hash: ClassHash,
+}
+
+impl std::fmt::Debug for CompressedCasmClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "CasmClass {{ size: {}, hash: {} }}",
+            self.definition.len(),
+            self.hash.0
+        )
+    }
+}
+
 /// L2 state update as returned by the [RPC API v0.1.0](https://github.com/starkware-libs/starknet-specs/blob/30e5bafcda60c31b5fb4021b4f5ddcfc18d2ff7d/api/starknet_api_openrpc.json#L846)
 /// and currently the format in which we store the state updates.
 #[skip_serializing_none]
