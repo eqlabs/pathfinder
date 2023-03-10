@@ -10,8 +10,8 @@ use crate::{
 use crate::{PedersenHash, PoseidonHash};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
-    felt_bytes, CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash,
-    SierraHash, StorageAddress, StorageCommitment, StorageValue,
+    CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash, SierraHash,
+    StorageAddress, StorageCommitment, StorageValue,
 };
 use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
@@ -118,8 +118,6 @@ pub struct ClassCommitmentTree<'tx, 'queries> {
 }
 
 impl<'tx> ClassCommitmentTree<'tx, '_> {
-    const CONTRACT_CLASS_HASH_VERSION: stark_hash::Felt = felt_bytes!(b"CONTRACT_CLASS_LEAF_V0");
-
     pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
         // TODO: migration to support this.
         let tree = MerkleTree::load("tree_class", transaction, root.0)?;
@@ -133,9 +131,8 @@ impl<'tx> ClassCommitmentTree<'tx, '_> {
     /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
     /// for details.
     pub fn set(&mut self, class: SierraHash, value: CasmHash) -> anyhow::Result<()> {
-        let leaf_value =
-            stark_poseidon::poseidon_hash(Self::CONTRACT_CLASS_HASH_VERSION.into(), value.0.into());
-        self.tree.set(class.view_bits(), leaf_value.into())
+        let leaf_value = pathfinder_common::calculate_class_commitment_leaf_hash(value);
+        self.tree.set(class.view_bits(), leaf_value.0)
     }
 
     /// Applies and persists any changes. Returns the new global root.
