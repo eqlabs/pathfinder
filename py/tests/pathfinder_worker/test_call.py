@@ -333,19 +333,7 @@ def populate_test_contract_with_132_on_3(con):
     path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
     )
-
-    with open(path, "rb") as file:
-        # this fixture is compiled from 0.7 or 0.6 test.cairo, stored for compute contract hash tests.
-        contract_definition = file.read()
-        assert len(contract_definition) == 5208
-
-        cur.execute(
-            "insert into class_definitions (hash, definition) values (?, ?)",
-            [
-                felt_to_bytes(class_hash),
-                contract_definition,
-            ],
-        )
+    declare_class(cur, class_hash, path)
 
     # contract storage
     root_node = EdgeNode(path=132, path_length=251, child=LeafNode(value=3))
@@ -989,19 +977,7 @@ def test_nonce_with_dummy():
     cur = con.execute("BEGIN")
 
     class_hash = 0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
-
-    with open(path, "rb") as file:
-        # this fixture is compiled from 0.10 cairo-lang repository; we hope
-        # that it gets the v1 invoke nonce check
-        contract_definition = file.read()
-
-        cur.execute(
-            "insert into class_definitions (hash, definition) values (?, ?)",
-            [
-                felt_to_bytes(class_hash),
-                contract_definition,
-            ],
-        )
+    declare_class(cur, class_hash, path)
 
     # contract states (storage is empty for account contract)
     account_contract_state_hash_with_nonce_0 = calculate_contract_state_hash(
@@ -1235,6 +1211,19 @@ def test_nonce_with_dummy():
             assert expected == output, f"{nth + 1}th example"
         except StarkException as exc:
             assert expected == str(exc.code), f"{nth + 1}th example"
+
+
+def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: str):
+    with open(class_definition_path, "rb") as f:
+        contract_definition = f.read()
+
+        cur.execute(
+            "insert into class_definitions (hash, definition) values (?, ?)",
+            [
+                felt_to_bytes(class_hash),
+                contract_definition,
+            ],
+        )
 
 
 # Rest of the test cases require a mainnet or testnet database in some path.
