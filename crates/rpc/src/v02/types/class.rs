@@ -11,6 +11,12 @@ pub enum ContractClass {
 }
 
 impl ContractClass {
+    /// This function behaves in a different way for the variants of [ContractClass] because of
+    /// the way the RPC spec treats the `BROADCASTED_DECLARE_TXN` in `add_declare_transaction`:
+    /// - [CairoContractClass] has its `program` compressed and base64 encoded, as required by
+    /// `BROADCASTED_DECLARE_TXN_V1`,
+    /// - [SierraContractClass] does not compress its `sierra_program` and represents it as a list of
+    /// felts, as required by `BROADCASTED_DECLARE_TXN_V2`.
     pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<ContractClass> {
         let mut json = serde_json::from_slice::<serde_json::Value>(data).context("Parsing json")?;
         let json_obj = json
