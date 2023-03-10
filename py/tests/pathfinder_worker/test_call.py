@@ -3,6 +3,7 @@ import dataclasses
 import io
 import json
 import sqlite3
+from typing import Tuple
 
 import pytest
 import zstandard
@@ -10,6 +11,7 @@ import zstandard
 import pathfinder_worker.call as call
 
 from starkware.cairo.lang.vm.crypto import pedersen_hash
+from starkware.cairo.common.poseidon_hash import poseidon_hash
 from starkware.starknet.public.abi import get_selector_from_name
 from starkware.starknet.services.api.gateway.transaction import (
     InvokeFunction,
@@ -209,11 +211,25 @@ def inmemory_with_tables():
             class_commitment     BLOB
         );
 
+        -- Stores CASM compiler versions.
+        CREATE TABLE casm_compiler_versions (
+            id      INTEGER     PRIMARY KEY NOT NULL,
+            version TEXT        NOT NULL UNIQUE
+        );
+
+        -- Stores compiled CASM for Sierra classes.
         CREATE TABLE casm_definitions (
-            hash                BLOB PRIMARY KEY NOT NULL,
-            compiled_class_hash BLOB    NOT NULL,
-            definition          BLOB NOT NULL,
+            hash                        BLOB    PRIMARY KEY NOT NULL,
+            compiled_class_hash         BLOB    NOT NULL,
+            definition                  BLOB    NOT NULL,
+            compiler_version_id         INTEGER NOT NULL REFERENCES casm_compiler_versions(id),
             FOREIGN KEY(hash) REFERENCES class_definitions(hash) ON DELETE CASCADE
+        );
+
+        -- Stores class commitment leaf hash to compiled class hash mappings.
+        CREATE TABLE class_commitment_leaves (
+            hash                BLOB    PRIMARY KEY NOT NULL,
+            compiled_class_hash BLOB    NOT NULL
         );
         """
     )
@@ -246,6 +262,14 @@ def calculate_contract_state_hash(
     h = pedersen_hash(h, contract_state_hash_version)
 
     return h
+
+
+def calculate_class_commitment_leaf(compiled_class_hash: int) -> int:
+    contract_class_hash_version = int.from_bytes(
+        b"CONTRACT_CLASS_LEAF_V0", byteorder="big"
+    )
+
+    return poseidon_hash(contract_class_hash_version, compiled_class_hash)
 
 
 @dataclasses.dataclass
@@ -1213,6 +1237,185 @@ def test_nonce_with_dummy():
             assert expected == str(exc.code), f"{nth + 1}th example"
 
 
+def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, int]:
+    # declare classes
+    sierra_class_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-0.11.json.zst"
+    )
+    sierra_class_hash = (
+        0x4E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C
+    )
+    declare_class(cur, sierra_class_hash, sierra_class_path)
+
+    dummy_account_contract_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+    )
+    dummy_account_contract_class_hash = (
+        0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
+    )
+    declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
+
+    # CASM class
+    compiled_class_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-0.11-compiled-class.json.zst"
+    )
+    compiled_class_hash = (
+        0x00711C0C3E56863E29D3158804AAC47F424241EDA64DB33E2CC2999D60EE5105
+    )
+    add_casm_definition(
+        cur,
+        sierra_class_hash,
+        compiled_class_hash,
+        "cairo-lang-starknet 1.0.0-alpha.3",
+        compiled_class_path,
+    )
+
+    # Class commitment tree
+    class_commitment_root = EdgeNode(
+        sierra_class_hash,
+        251,
+        LeafNode(value=calculate_class_commitment_leaf(compiled_class_hash)),
+    )
+    cur.executemany(
+        "insert into tree_class (hash, data) values (?, ?)",
+        [
+            (
+                felt_to_bytes(class_commitment_root.hash()),
+                class_commitment_root.serialize(),
+            ),
+        ],
+    )
+
+    sierra_class_state_hash = calculate_contract_state_hash(sierra_class_hash, 0, 0)
+    dummy_account_contract_state_hash = calculate_contract_state_hash(
+        dummy_account_contract_class_hash, 0, 0
+    )
+
+    # Contract states
+    cur.executemany(
+        "insert into contract_states (state_hash, hash, root, nonce) values (?, ?, ?, ?)",
+        [
+            (
+                felt_to_bytes(sierra_class_state_hash),
+                felt_to_bytes(sierra_class_hash),
+                felt_to_bytes(0),
+                felt_to_bytes(0),
+            ),
+            (
+                felt_to_bytes(dummy_account_contract_state_hash),
+                felt_to_bytes(dummy_account_contract_class_hash),
+                felt_to_bytes(0),
+                felt_to_bytes(0),
+            ),
+        ],
+    )
+
+    # Global tree
+    dummy_account_contract_address = 0x123
+    sierra_contract_address = (
+        0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
+    )
+
+    dummy_account_contract_node = EdgeNode(
+        path=dummy_account_contract_address,
+        path_length=250,
+        child=LeafNode(value=dummy_account_contract_state_hash),
+    )
+    sierra_contract_node = EdgeNode(
+        path=sierra_contract_address & (2**250 - 1),
+        path_length=250,
+        child=LeafNode(value=sierra_class_state_hash),
+    )
+    storage_root_node = BinaryNode(
+        left=dummy_account_contract_node, right=sierra_contract_node
+    )
+
+    cur.executemany(
+        "insert into tree_global (hash, data) values (?, ?)",
+        [
+            (
+                felt_to_bytes(dummy_account_contract_node.hash()),
+                dummy_account_contract_node.serialize(),
+            ),
+            (
+                felt_to_bytes(sierra_contract_node.hash()),
+                sierra_contract_node.serialize(),
+            ),
+            (felt_to_bytes(storage_root_node.hash()), storage_root_node.serialize()),
+        ],
+    )
+
+    # Block
+    cur.execute(
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        [
+            b"some blockhash somewhere".rjust(32, b"\x00"),
+            felt_to_bytes(storage_root_node.hash()),
+            b"\x00" * 16,
+            b"\x00" * 32,
+            felt_to_bytes(class_commitment_root.hash()),
+        ],
+    )
+
+    return (dummy_account_contract_address, sierra_contract_address)
+
+
+def test_call_sierra_contract_directly():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    con.execute("BEGIN")
+
+    # Test calling the Sierra contract directly
+    command = Call(
+        at_block="1",
+        chain=call.Chain.TESTNET,
+        contract_address=sierra_contract_address,
+        entry_point_selector=get_selector_from_name("test"),
+        calldata=[1, 2, 3],
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+    )
+
+    (_verb, output, _timings) = loop_inner(con, command)
+    assert output == [1, 1]
+
+
+def test_call_sierra_contract_through_account():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    con.execute("BEGIN")
+
+    # Test calling the Sierra contract through the Cairo 0.x account contract
+    command = Call(
+        at_block="1",
+        chain=call.Chain.TESTNET,
+        contract_address=dummy_account_contract_address,
+        entry_point_selector=get_selector_from_name("__execute__"),
+        calldata=[sierra_contract_address, get_selector_from_name("test"), 3, 1, 2, 3],
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+    )
+
+    (_verb, output, _timings) = loop_inner(con, command)
+    assert output == [1, 1]
+
+
 def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: str):
     with open(class_definition_path, "rb") as f:
         contract_definition = f.read()
@@ -1223,6 +1426,48 @@ def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: s
                 felt_to_bytes(class_hash),
                 contract_definition,
             ],
+        )
+
+
+def add_casm_definition(
+    cur: sqlite3.Cursor,
+    class_hash: int,
+    compiled_class_hash: int,
+    compiler_version: str,
+    compiled_class_definition_path: str,
+):
+    with open(compiled_class_definition_path, "rb") as f:
+        contract_definition = f.read()
+
+        res = cur.execute(
+            "select id from casm_compiler_versions where version = ?",
+            [compiler_version],
+        )
+        row = res.fetchone()
+        if row is None:
+            cur.execute(
+                "insert into casm_compiler_versions (version) values (?)",
+                [compiler_version],
+            )
+            version_id = cur.lastrowid
+        else:
+            version_id = res.fetchone()[0]
+
+        cur.execute(
+            "insert into casm_definitions (hash, compiled_class_hash, definition, compiler_version_id) values (?, ?, ?, ?)",
+            [
+                felt_to_bytes(class_hash),
+                felt_to_bytes(compiled_class_hash),
+                contract_definition,
+                version_id,
+            ],
+        )
+
+        leaf_hash = calculate_class_commitment_leaf(compiled_class_hash)
+
+        cur.execute(
+            "insert into class_commitment_leaves (hash, compiled_class_hash) VALUES (?, ?) on conflict do nothing",
+            [felt_to_bytes(leaf_hash), felt_to_bytes(compiled_class_hash)],
         )
 
 
