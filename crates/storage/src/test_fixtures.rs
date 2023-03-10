@@ -36,7 +36,6 @@ pub mod init {
     /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
         (0..n)
-            .into_iter()
             .map(|n| {
                 StarknetBlocksTable::insert(
                     tx,

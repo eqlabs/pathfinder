@@ -25,9 +25,7 @@ fn set_casm_compiler_version() {
 
     let cargo_args = [
         "metadata",
-        "--offline",
         "--locked",
-        "--frozen",
         "--format-version=1",
         "--manifest-path",
         manifest_path.to_str().unwrap(),
@@ -38,7 +36,15 @@ fn set_casm_compiler_version() {
         .output()
         .unwrap();
 
-    let metadata = serde_json::from_slice::<CargoMetadata>(&cargo_output.stdout).unwrap();
+    let metadata =
+        serde_json::from_slice::<CargoMetadata>(&cargo_output.stdout).unwrap_or_else(|_| {
+            panic!(
+                "{}",
+                std::str::from_utf8(&cargo_output.stderr)
+                    .unwrap()
+                    .to_string()
+            )
+        });
 
     let sierra_compiler_package = metadata
         .packages
