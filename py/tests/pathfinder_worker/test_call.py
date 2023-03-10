@@ -18,7 +18,7 @@ from starkware.starknet.services.api.gateway.transaction import (
 from starkware.starknet.services.api.contract_class.contract_class import (
     DeprecatedCompiledClass,
 )
-from starkware.starkware_utils.error_handling import WebFriendlyException
+from starkware.starkware_utils.error_handling import StarkException
 
 from pathfinder_worker.call import (
     EXPECTED_SCHEMA_REVISION,
@@ -946,7 +946,7 @@ def test_call_on_reorgged_pending_block():
         try:
             (verb, output, _timings) = loop_inner(con, command)
             assert expected == output, f"{nth + 1}th example"
-        except WebFriendlyException as e:
+        except StarkException as e:
             assert expected == str(e.code), f"{nth + 1}th example"
 
 
@@ -1228,7 +1228,7 @@ def test_nonce_with_dummy():
             print(command)
             (verb, output, _timings) = loop_inner(con, command)
             assert expected == output, f"{nth + 1}th example"
-        except WebFriendlyException as exc:
+        except StarkException as exc:
             assert expected == str(exc.code), f"{nth + 1}th example"
 
 
