@@ -153,7 +153,7 @@ pub mod contract {
 }
 
 pub mod add_transaction {
-    use super::contract::{EntryPointType, SelectorAndOffset};
+    use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
     use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
     use pathfinder_common::{
         ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
@@ -170,17 +170,33 @@ pub mod add_transaction {
         "contract_address deprecated in favor of sender_address for Invoke and Deploy and Declare"
     );
 
-    /// Definition of a contract.
-    ///
-    /// This is somewhat different compared to the contract definition we're using
+    /// Both variants are somewhat different compared to the contract definition we're using
     /// for class hash calculation. The actual program contents are not relevant
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    #[serde(untagged)]
+    pub enum ContractDefinition {
+        Cairo(CairoContractDefinition),
+        Sierra(SierraContractDefinition),
+    }
+
+    /// Definition of a Cairo 0.x contract.
     #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
     pub struct CairoContractDefinition {
         // gzip + base64 encoded JSON of the compiled contract JSON
         pub program: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
         pub abi: Option<serde_json::Value>,
+    }
+
+    /// Definition of a Cairo 1.x contract.
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    pub struct SierraContractDefinition {
+        // gzip + base64 encoded JSON of the compiled contract JSON
+        pub sierra_program: String,
+        pub contract_class_version: String,
+        pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>>,
+        pub abi: Option<String>,
     }
 
     /// Contract deployment transaction details.
@@ -252,7 +268,7 @@ pub mod add_transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
 
-        pub contract_class: CairoContractDefinition,
+        pub contract_class: ContractDefinition,
         pub sender_address: ContractAddress,
         pub nonce: TransactionNonce,
     }

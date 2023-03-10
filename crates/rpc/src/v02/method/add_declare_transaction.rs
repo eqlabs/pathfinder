@@ -4,7 +4,9 @@ use crate::v02::RpcContext;
 use pathfinder_common::{ClassHash, StarknetTransactionHash};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::request::add_transaction::CairoContractDefinition;
+use starknet_gateway_types::request::add_transaction::{
+    CairoContractDefinition, ContractDefinition, SierraContractDefinition,
+};
 
 crate::error::generate_rpc_error_subset!(AddDeclareTransactionError: InvalidContractClass);
 
@@ -63,7 +65,7 @@ pub async fn add_declare_transaction(
                     tx.max_fee,
                     tx.signature,
                     tx.nonce,
-                    contract_definition,
+                    ContractDefinition::Cairo(contract_definition),
                     tx.sender_address,
                     input.token,
                 )
@@ -74,8 +76,31 @@ pub async fn add_declare_transaction(
                 class_hash: response.class_hash,
             })
         }
-        // Verify compiled class hash (as an additional check)
-        Transaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => todo!("fixme 0.11.0"),
+        // TODO: Verify compiled class hash (as an additional check)
+        Transaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
+            let contract_definition: SierraContractDefinition = tx
+                .contract_class
+                .try_into()
+                .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
+
+            let response = context
+                .sequencer
+                .add_declare_transaction(
+                    tx.version,
+                    tx.max_fee,
+                    tx.signature,
+                    tx.nonce,
+                    ContractDefinition::Sierra(contract_definition),
+                    tx.sender_address,
+                    input.token,
+                )
+                .await?;
+
+            Ok(AddDeclareTransactionOutput {
+                transaction_hash: response.transaction_hash,
+                class_hash: response.class_hash,
+            })
+        }
     }
 }
 

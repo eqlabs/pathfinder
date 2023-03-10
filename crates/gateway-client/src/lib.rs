@@ -10,7 +10,8 @@ use starknet_gateway_types::{
     reply,
     request::{
         add_transaction::{
-            AddTransaction, CairoContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
+            AddTransaction, CairoContractDefinition, ContractDefinition, Declare, Deploy,
+            DeployAccount, InvokeFunction,
         },
         BlockHashOrTag,
     },
@@ -67,11 +68,12 @@ pub trait ClientApi {
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
-        contract_definition: CairoContractDefinition,
+        contract_definition: ContractDefinition,
         sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
 
+    // FIXME: REMOVE ME
     async fn add_deploy_transaction(
         &self,
         version: TransactionVersion,
@@ -337,7 +339,7 @@ impl ClientApi for Client {
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
-        contract_definition: CairoContractDefinition,
+        contract_definition: ContractDefinition,
         sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
@@ -1412,7 +1414,7 @@ mod tests {
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
                     TransactionNonce(Felt::ZERO),
-                    contract_class,
+                    ContractDefinition::Cairo(contract_class),
                     // actual address dumped from a `starknet declare` call
                     ContractAddress::new_or_panic(felt!("0x1")),
                     None,

@@ -1063,7 +1063,10 @@ mod tests {
         error::SequencerError,
         pending::PendingData,
         reply,
-        request::{add_transaction::CairoContractDefinition, BlockHashOrTag},
+        request::{
+            add_transaction::{CairoContractDefinition, ContractDefinition},
+            BlockHashOrTag,
+        },
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
@@ -1179,7 +1182,7 @@ mod tests {
             _: Fee,
             _: Vec<TransactionSignatureElem>,
             _: TransactionNonce,
-            _: CairoContractDefinition,
+            _: ContractDefinition,
             _: ContractAddress,
             _: Option<String>,
         ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
