@@ -25,9 +25,7 @@ fn set_casm_compiler_version() {
 
     let cargo_args = [
         "metadata",
-        "--offline",
         "--locked",
-        "--frozen",
         "--format-version=1",
         "--manifest-path",
         manifest_path.to_str().unwrap(),
