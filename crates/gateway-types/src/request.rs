@@ -156,7 +156,8 @@ pub mod add_transaction {
     use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
     use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
     use pathfinder_common::{
-        ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
+        CasmHash, ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce,
+        TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
@@ -271,6 +272,13 @@ pub mod add_transaction {
         pub contract_class: ContractDefinition,
         pub sender_address: ContractAddress,
         pub nonce: TransactionNonce,
+
+        // Required for declare v2 transactions
+        //
+        // `pathfinder_rpc::cairo::ext_py::ser::ChildCommand` uses `#[serde(flatten)]`
+        // which is incompatible with `#[skip_serializing_none]`
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub compiled_class_hash: Option<CasmHash>,
     }
 
     /// Add transaction API operation.

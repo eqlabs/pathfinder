@@ -1,8 +1,8 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-    EntryPoint, Fee, SierraHash, StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
-    StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    BlockId, CallParam, CasmHash, Chain, ClassHash, ConstructorParam, ContractAddress,
+    ContractAddressSalt, EntryPoint, Fee, SierraHash, StarknetBlockNumber, StarknetTransactionHash,
+    StorageAddress, StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
@@ -70,6 +70,7 @@ pub trait ClientApi {
         nonce: TransactionNonce,
         contract_definition: ContractDefinition,
         sender_address: ContractAddress,
+        compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
 
@@ -341,6 +342,7 @@ impl ClientApi for Client {
         nonce: TransactionNonce,
         contract_definition: ContractDefinition,
         sender_address: ContractAddress,
+        compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         let req = AddTransaction::Declare(Declare {
@@ -350,6 +352,7 @@ impl ClientApi for Client {
             signature,
             nonce,
             version,
+            compiled_class_hash,
         });
 
         // Note that we don't do retries here.
@@ -1417,6 +1420,7 @@ mod tests {
                     ContractDefinition::Cairo(contract_class),
                     // actual address dumped from a `starknet declare` call
                     ContractAddress::new_or_panic(felt!("0x1")),
+                    None,
                     None,
                 )
                 .await

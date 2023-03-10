@@ -67,6 +67,7 @@ pub async fn add_declare_transaction(
                     tx.nonce,
                     ContractDefinition::Cairo(contract_definition),
                     tx.sender_address,
+                    None,
                     input.token,
                 )
                 .await?;
@@ -92,6 +93,7 @@ pub async fn add_declare_transaction(
                     tx.nonce,
                     ContractDefinition::Sierra(contract_definition),
                     tx.sender_address,
+                    tx.compiled_class_hash,
                     input.token,
                 )
                 .await?;
@@ -109,9 +111,12 @@ mod tests {
     use super::*;
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
+        BroadcastedDeclareTransactionV2,
     };
-    use crate::v02::types::{CairoContractClass, ContractClass};
-    use pathfinder_common::{felt, ContractAddress, Fee, TransactionNonce, TransactionVersion};
+    use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
+    use pathfinder_common::{
+        felt, CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
+    };
     use stark_hash::Felt;
 
     lazy_static::lazy_static! {
@@ -125,6 +130,14 @@ mod tests {
 
         pub static ref CONTRACT_CLASS_JSON: String = {
             serde_json::to_string(&*CONTRACT_CLASS).unwrap()
+        };
+
+        pub static ref SIERRA_CLASS_DEFINITION_JSON: Vec<u8> = {
+            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_0_11_SIERRA).unwrap()
+        };
+
+        pub static ref SIERRA_CLASS: SierraContractClass = {
+            ContractClass::from_definition_bytes(&SIERRA_CLASS_DEFINITION_JSON).unwrap().as_sierra().unwrap()
         };
     }
 
@@ -265,6 +278,45 @@ mod tests {
                 )),
                 class_hash: ClassHash(felt!(
                     "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+                )),
+            }
+        );
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn successful_declare_v2() {
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Integration);
+
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V2(
+            BroadcastedDeclareTransactionV2 {
+                version: TransactionVersion::TWO,
+                // FIXME No idea what the real max is
+                max_fee: Fee(ethers::types::H128::from_low_u64_be(u64::MAX)),
+                signature: vec![],
+                nonce: TransactionNonce(Default::default()),
+                contract_class: SIERRA_CLASS.clone(),
+                sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
+                // Taken from here :p
+                // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=283364
+                compiled_class_hash: Some(CasmHash::new_or_panic(felt!(
+                    "0x711c0c3e56863e29d3158804aac47f424241eda64db33e2cc2999d60ee5105"
+                ))),
+            },
+        ));
+
+        let input = AddDeclareTransactionInput {
+            declare_transaction,
+            token: None,
+        };
+        let result = add_declare_transaction(context, input).await.unwrap();
+        assert_eq!(
+            result,
+            AddDeclareTransactionOutput {
+                transaction_hash: StarknetTransactionHash(felt!(
+                    "0x076F6CF360512D1D33CF8AC32B9800480F5DA03DC680496874195B2B5B2A465E"
+                )),
+                class_hash: ClassHash(felt!(
+                    "0x04E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C"
                 )),
             }
         );

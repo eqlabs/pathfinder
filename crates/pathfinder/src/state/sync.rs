@@ -1184,6 +1184,7 @@ mod tests {
             _: TransactionNonce,
             _: ContractDefinition,
             _: ContractAddress,
+            _: Option<CasmHash>,
             _: Option<String>,
         ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
             unimplemented!()

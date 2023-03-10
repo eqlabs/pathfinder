@@ -121,6 +121,7 @@ impl Handle {
                     ),
                     sender_address: tx.sender_address,
                     nonce: tx.nonce,
+                    compiled_class_hash: None,
                 })
             }
             BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => {
