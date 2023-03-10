@@ -12,7 +12,7 @@ import traceback
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import ClassVar, Dict, List, Optional, Type
+from typing import ClassVar, Dict, List, Optional, Tuple, Type
 
 from .contract_class_utils import parse_casm
 
@@ -421,7 +421,7 @@ def loop_inner(
 
     # the later parts will have access to gas_price through this block_info
     try:
-        (block_info, global_root, class_commitment) = resolve_block(
+        (block_info, storage_commitment, class_commitment) = resolve_block(
             connection, at_block, command.gas_price
         )
     except NoSuchBlock:
@@ -430,7 +430,7 @@ def loop_inner(
             pending_deployed = []
             pending_nonces = {}
 
-            (block_info, global_root, class_commitment) = resolve_block(
+            (block_info, storage_commitment, class_commitment) = resolve_block(
                 connection, "latest", command.gas_price
             )
         else:
@@ -449,7 +449,7 @@ def loop_inner(
     adapter = SqliteAdapter(connection)
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    global_state_root = PatriciaTree(global_root, 251)
+    global_state_root = PatriciaTree(storage_commitment, 251)
     contract_class_root = (
         PatriciaTree(class_commitment, 251) if class_commitment is not None else None
     )
@@ -541,7 +541,7 @@ def check_schema(connection):
 
 def resolve_block(
     connection: sqlite3.Connection, at_block, forced_gas_price: int
-) -> BlockInfo:
+) -> Tuple[BlockInfo, int, int]:
     """
     forced_gas_price is the gas price we must use for this blockinfo, if None,
     the one from starknet_blocks will be used. this allows the caller to select
@@ -576,7 +576,7 @@ def resolve_block(
             (
                 block_number,
                 block_time,
-                global_root,
+                storage_commitment,
                 gas_price,
                 sequencer_address,
                 class_commitment,
@@ -599,7 +599,7 @@ def resolve_block(
         BlockInfo(
             block_number, block_time, gas_price, sequencer_address, starknet_version
         ),
-        global_root,
+        storage_commitment,
         class_commitment,
     )
 
