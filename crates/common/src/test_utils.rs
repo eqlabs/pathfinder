@@ -166,7 +166,7 @@ pub mod metrics {
         }
 
         fn is_key_used(&self, key: &Key) -> bool {
-            key.labels().into_iter().any(|label| {
+            key.labels().any(|label| {
                 label.key() == "method"
                     && self.0.methods.iter().any(|&method| method == label.value())
             })
