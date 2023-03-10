@@ -176,7 +176,7 @@ pub mod add_transaction {
     /// for class hash calculation. The actual program contents are not relevant
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
     #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-    pub struct ContractDefinition {
+    pub struct CairoContractDefinition {
         // gzip + base64 encoded JSON of the compiled contract JSON
         pub program: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
@@ -192,7 +192,7 @@ pub mod add_transaction {
         pub version: TransactionVersion,
 
         pub contract_address_salt: ContractAddressSalt,
-        pub contract_definition: ContractDefinition,
+        pub contract_definition: CairoContractDefinition,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
     }
@@ -252,7 +252,7 @@ pub mod add_transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
 
-        pub contract_class: ContractDefinition,
+        pub contract_class: CairoContractDefinition,
         pub sender_address: ContractAddress,
         pub nonce: TransactionNonce,
     }

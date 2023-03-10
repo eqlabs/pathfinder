@@ -74,7 +74,7 @@ impl ContractClass {
 }
 
 impl TryFrom<CairoContractClass>
-    for starknet_gateway_types::request::add_transaction::ContractDefinition
+    for starknet_gateway_types::request::add_transaction::CairoContractDefinition
 {
     type Error = serde_json::Error;
 

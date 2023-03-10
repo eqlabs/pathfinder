@@ -10,7 +10,7 @@ use starknet_gateway_types::{
     reply,
     request::{
         add_transaction::{
-            AddTransaction, ContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
+            AddTransaction, CairoContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
         },
         BlockHashOrTag,
     },
@@ -67,7 +67,7 @@ pub trait ClientApi {
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
-        contract_definition: ContractDefinition,
+        contract_definition: CairoContractDefinition,
         sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
@@ -77,7 +77,7 @@ pub trait ClientApi {
         version: TransactionVersion,
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
-        contract_definition: ContractDefinition,
+        contract_definition: CairoContractDefinition,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError>;
 
@@ -337,7 +337,7 @@ impl ClientApi for Client {
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: TransactionNonce,
-        contract_definition: ContractDefinition,
+        contract_definition: CairoContractDefinition,
         sender_address: ContractAddress,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
@@ -370,7 +370,7 @@ impl ClientApi for Client {
         version: TransactionVersion,
         contract_address_salt: ContractAddressSalt,
         constructor_calldata: Vec<ConstructorParam>,
-        contract_definition: ContractDefinition,
+        contract_definition: CairoContractDefinition,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
         let req = AddTransaction::Deploy(Deploy {
@@ -1493,7 +1493,7 @@ mod tests {
         }
 
         /// Return a contract definition that was dumped from a `starknet deploy`.
-        fn get_contract_class_from_fixture() -> ContractDefinition {
+        fn get_contract_class_from_fixture() -> CairoContractDefinition {
             let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
             let json: serde_json::Value = serde_json::from_str(json).unwrap();
             let program = json["contract_definition"]["program"].as_str().unwrap();
@@ -1519,7 +1519,7 @@ mod tests {
                     ),
                     (EntryPointType::L1Handler, vec![]),
                 ]);
-            ContractDefinition {
+            CairoContractDefinition {
                 program: program.to_owned(),
                 entry_points_by_type,
                 abi: Some(json["contract_definition"]["abi"].clone()),
@@ -1570,7 +1570,7 @@ mod tests {
                         TransactionVersion::ZERO,
                         ContractAddressSalt(Felt::ZERO),
                         vec![],
-                        ContractDefinition {
+                        CairoContractDefinition {
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
                             abi: None,
@@ -1593,7 +1593,7 @@ mod tests {
                         TransactionVersion::ZERO,
                         ContractAddressSalt(Felt::ZERO),
                         vec![],
-                        ContractDefinition {
+                        CairoContractDefinition {
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
                             abi: None,

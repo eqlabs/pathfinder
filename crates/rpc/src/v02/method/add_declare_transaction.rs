@@ -4,7 +4,7 @@ use crate::v02::RpcContext;
 use pathfinder_common::{ClassHash, StarknetTransactionHash};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::request::add_transaction::ContractDefinition;
+use starknet_gateway_types::request::add_transaction::CairoContractDefinition;
 
 crate::error::generate_rpc_error_subset!(AddDeclareTransactionError: InvalidContractClass);
 
@@ -51,7 +51,7 @@ pub async fn add_declare_transaction(
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
     match input.declare_transaction {
         Transaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
-            let contract_definition: ContractDefinition = tx
+            let contract_definition: CairoContractDefinition = tx
                 .contract_class
                 .try_into()
                 .map_err(|e| anyhow::anyhow!("Failed to convert contract definition: {}", e))?;
@@ -74,6 +74,7 @@ pub async fn add_declare_transaction(
                 class_hash: response.class_hash,
             })
         }
+        // Verify compiled class hash (as an additional check)
         Transaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => todo!("fixme 0.11.0"),
     }
 }
