@@ -969,8 +969,6 @@ def test_static_returned_not_found_contract_state():
 
 
 def test_nonce_with_dummy():
-    from starkware.starknet.public.abi import get_selector_from_name
-
     con = inmemory_with_tables()
     (
         test_contract_address,
