@@ -93,7 +93,7 @@ pub async fn add_declare_transaction(
                     tx.nonce,
                     ContractDefinition::Sierra(contract_definition),
                     tx.sender_address,
-                    tx.compiled_class_hash,
+                    Some(tx.compiled_class_hash),
                     input.token,
                 )
                 .await?;
@@ -234,7 +234,7 @@ mod tests {
                         nonce: TransactionNonce(Felt::ZERO),
                         contract_class: SIERRA_CLASS.clone(),
                         sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
-                        compiled_class_hash: Some(CasmHash(Felt::from_u64(1))),
+                        compiled_class_hash: CasmHash(Felt::from_u64(1)),
                     },
                 ))
             }
@@ -349,9 +349,9 @@ mod tests {
                 sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
                 // Taken from
                 // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=283364
-                compiled_class_hash: Some(CasmHash::new_or_panic(felt!(
+                compiled_class_hash: CasmHash::new_or_panic(felt!(
                     "0x711c0c3e56863e29d3158804aac47f424241eda64db33e2cc2999d60ee5105"
-                ))),
+                )),
             },
         ));
 
@@ -412,9 +412,9 @@ mod tests {
                 sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
                 // Taken from
                 // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=283364
-                compiled_class_hash: Some(CasmHash::new_or_panic(felt!(
+                compiled_class_hash: CasmHash::new_or_panic(felt!(
                     "0x711c0c3e56863e29d3158804aac47f424241eda64db33e2cc2999d60ee5105"
-                ))),
+                )),
             },
         ));
 
