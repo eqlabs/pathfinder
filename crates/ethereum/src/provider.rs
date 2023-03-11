@@ -128,6 +128,7 @@ impl EthereumTransport for HttpProvider {
         const INVALID_PARAMS: i64 = -32602;
         const LIMIT_EXCEEDED: i64 = -32005;
         const INVALID_INPUT: i64 = -32000;
+        const RESOURCE_NOT_FOUND: i64 = -32001;
 
         retry(
             || {
@@ -156,6 +157,10 @@ impl EthereumTransport for HttpProvider {
                             LogsError::QueryLimit
                         }
                         (INVALID_PARAMS, msg) if msg.starts_with("query returned more than") => {
+                            LogsError::QueryLimit
+                        }
+                        // This error is emitted by the Nethermind node if `toBlock > latest`.
+                        (RESOURCE_NOT_FOUND, msg) if msg.ends_with("could not be found") => {
                             LogsError::QueryLimit
                         }
                         (INVALID_INPUT, "Query timeout exceeded. Consider reducing your block range.") => LogsError::QueryLimit,
