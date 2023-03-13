@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_call` and `starknet_estimateFee` JSON-RPC methods return more detailed error messages
 
+### Fixed
+
+- Using a Nethermind Ethereum endpoint occasionally causes errors such as `<block-number> could not be found` to be logged. 
+
 ### Removed
 
 - file configuration (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
