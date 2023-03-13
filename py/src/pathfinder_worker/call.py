@@ -414,7 +414,7 @@ def loop_inner(connection, command: Command, contract_class_cache=None):
 
     # the later parts will have access to gas_price through this block_info
     try:
-        (block_info, global_root) = resolve_block(
+        (block_info, global_root, class_commitment) = resolve_block(
             connection, at_block, command.gas_price
         )
     except NoSuchBlock:
@@ -423,7 +423,7 @@ def loop_inner(connection, command: Command, contract_class_cache=None):
             pending_deployed = []
             pending_nonces = {}
 
-            (block_info, global_root) = resolve_block(
+            (block_info, global_root, class_commitment) = resolve_block(
                 connection, "latest", command.gas_price
             )
         else:
@@ -540,11 +540,11 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
         # it has been decided that the latest is whatever pathfinder knows to be latest synced block
         # regardless of it being the highest known (not yet synced)
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
+            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
         )
     elif isinstance(at_block, int):
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
+            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
             [at_block],
         )
     else:
@@ -554,7 +554,7 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
             at_block = b"\x00" * (32 - len(at_block)) + at_block
 
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
+            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
             [at_block],
         )
 
@@ -566,6 +566,7 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
                 global_root,
                 gas_price,
                 sequencer_address,
+                class_commitment,
                 starknet_version,
             )
         ] = cursor
@@ -586,6 +587,7 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
             block_number, block_time, gas_price, sequencer_address, starknet_version
         ),
         global_root,
+        class_commitment,
     )
 
 
