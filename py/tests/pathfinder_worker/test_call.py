@@ -169,8 +169,6 @@ def inmemory_with_tables():
 
         CREATE TABLE class_definitions (
             hash       BLOB PRIMARY KEY,
-            bytecode   BLOB,
-            abi        BLOB,
             definition BLOB
         );
 
