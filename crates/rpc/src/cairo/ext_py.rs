@@ -114,11 +114,14 @@ impl Handle {
                     version: tx.version,
                     max_fee: tx.max_fee,
                     signature: tx.signature,
-                    contract_class: tx.contract_class.try_into().map_err(|_| {
-                        CallFailure::Internal("contract class serialization failure")
-                    })?,
+                    contract_class: add_transaction::ContractDefinition::Cairo(
+                        tx.contract_class.try_into().map_err(|_| {
+                            CallFailure::Internal("contract class serialization failure")
+                        })?,
+                    ),
                     sender_address: tx.sender_address,
                     nonce: tx.nonce,
+                    compiled_class_hash: None,
                 })
             }
             BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => {

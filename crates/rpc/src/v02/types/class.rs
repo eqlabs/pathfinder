@@ -11,6 +11,12 @@ pub enum ContractClass {
 }
 
 impl ContractClass {
+    /// This function behaves in a different way for the variants of [ContractClass] because of
+    /// the way the RPC spec treats the `BROADCASTED_DECLARE_TXN` in `add_declare_transaction`:
+    /// - [CairoContractClass] has its `program` compressed and base64 encoded, as required by
+    /// `BROADCASTED_DECLARE_TXN_V1`,
+    /// - [SierraContractClass] does not compress its `sierra_program` and represents it as a list of
+    /// felts, as required by `BROADCASTED_DECLARE_TXN_V2`.
     pub fn from_definition_bytes(data: &[u8]) -> anyhow::Result<ContractClass> {
         let mut json = serde_json::from_slice::<serde_json::Value>(data).context("Parsing json")?;
         let json_obj = json
@@ -74,7 +80,7 @@ impl ContractClass {
 }
 
 impl TryFrom<CairoContractClass>
-    for starknet_gateway_types::request::add_transaction::ContractDefinition
+    for starknet_gateway_types::request::add_transaction::CairoContractDefinition
 {
     type Error = serde_json::Error;
 
@@ -116,6 +122,61 @@ impl TryFrom<CairoContractClass>
             program: c.program,
             entry_points_by_type: entry_points,
             abi,
+        })
+    }
+}
+
+impl TryFrom<SierraContractClass>
+    for starknet_gateway_types::request::add_transaction::SierraContractDefinition
+{
+    type Error = anyhow::Error;
+
+    fn try_from(c: SierraContractClass) -> Result<Self, Self::Error> {
+        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndFunctionIndex};
+        use std::collections::HashMap;
+
+        let mut entry_points: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>> =
+            Default::default();
+        entry_points.insert(
+            EntryPointType::Constructor,
+            c.entry_points_by_type
+                .constructor
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        );
+        entry_points.insert(
+            EntryPointType::External,
+            c.entry_points_by_type
+                .external
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        );
+        entry_points.insert(
+            EntryPointType::L1Handler,
+            c.entry_points_by_type
+                .l1_handler
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        );
+
+        // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
+        let mut gzip_encoder =
+            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        serde_json::to_writer(&mut gzip_encoder, &c.sierra_program)
+            .context("Compressing program")?;
+        let compressed_program = gzip_encoder
+            .finish()
+            .context("Finalizing program compression")?;
+        let encoded_program = base64::encode(compressed_program);
+
+        Ok(Self {
+            sierra_program: encoded_program,
+            contract_class_version: c.contract_class_version,
+            entry_points_by_type: entry_points,
+            abi: c.abi,
         })
     }
 }
@@ -295,4 +356,15 @@ pub struct SierraEntryPoint {
     pub function_idx: u64,
     #[serde_as(as = "crate::felt::RpcFelt")]
     pub selector: Felt,
+}
+
+impl From<SierraEntryPoint>
+    for starknet_gateway_types::request::contract::SelectorAndFunctionIndex
+{
+    fn from(entry_point: SierraEntryPoint) -> Self {
+        Self {
+            function_idx: entry_point.function_idx,
+            selector: pathfinder_common::EntryPoint(entry_point.selector),
+        }
+    }
 }

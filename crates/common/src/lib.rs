@@ -301,16 +301,23 @@ impl TransactionVersion {
         u128::from_be_bytes(lower.try_into().expect("slice should be the right length"))
     }
 
+    pub const fn with_query_version(mut self) -> Self {
+        self.0 .0[15] |= 0b0000_0001;
+        self
+    }
+
     pub const ZERO: Self = Self(H256::zero());
-    pub const ONE: Self = Self(H256(hex_literal::hex!(
-        "0000000000000000000000000000000000000000000000000000000000000001"
-    )));
-    pub const ZERO_WITH_QUERY_VERSION: Self = Self(H256(hex_literal::hex!(
-        "0000000000000000000000000000000100000000000000000000000000000000"
-    )));
-    pub const ONE_WITH_QUERY_VERSION: Self = Self(H256(hex_literal::hex!(
-        "0000000000000000000000000000000100000000000000000000000000000001"
-    )));
+    pub const ONE: Self = Self(H256([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1,
+    ]));
+    pub const TWO: Self = Self(H256([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 2,
+    ]));
+    pub const ZERO_WITH_QUERY_VERSION: Self = Self::ZERO.with_query_version();
+    pub const ONE_WITH_QUERY_VERSION: Self = Self::ONE.with_query_version();
+    pub const TWO_WITH_QUERY_VERSION: Self = Self::TWO.with_query_version();
 }
 
 /// An Ethereum address.

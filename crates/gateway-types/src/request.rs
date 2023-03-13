@@ -153,14 +153,14 @@ pub mod contract {
 }
 
 pub mod add_transaction {
-    use super::contract::{EntryPointType, SelectorAndOffset};
+    use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
     use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
     use pathfinder_common::{
-        ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce, TransactionVersion,
+        CasmHash, ClassHash, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        CallParamAsDecimalStr, FeeAsHexStr, TransactionSignatureElemAsDecimalStr,
+        TransactionVersionAsHexStr,
     };
     use serde_with::serde_as;
     use std::collections::HashMap;
@@ -170,31 +170,33 @@ pub mod add_transaction {
         "contract_address deprecated in favor of sender_address for Invoke and Deploy and Declare"
     );
 
-    /// Definition of a contract.
-    ///
-    /// This is somewhat different compared to the contract definition we're using
+    /// Both variants are somewhat different compared to the contract definition we're using
     /// for class hash calculation. The actual program contents are not relevant
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
     #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-    pub struct ContractDefinition {
+    #[serde(untagged)]
+    pub enum ContractDefinition {
+        Cairo(CairoContractDefinition),
+        Sierra(SierraContractDefinition),
+    }
+
+    /// Definition of a Cairo 0.x contract.
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    pub struct CairoContractDefinition {
         // gzip + base64 encoded JSON of the compiled contract JSON
         pub program: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
         pub abi: Option<serde_json::Value>,
     }
 
-    /// Contract deployment transaction details.
-    #[serde_as]
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
-    pub struct Deploy {
-        // Transacion properties
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
-
-        pub contract_address_salt: ContractAddressSalt,
-        pub contract_definition: ContractDefinition,
-        #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
-        pub constructor_calldata: Vec<ConstructorParam>,
+    /// Definition of a Cairo 1.x contract.
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    pub struct SierraContractDefinition {
+        // gzip + base64 encoded JSON of the compiled contract JSON
+        pub sierra_program: String,
+        pub contract_class_version: String,
+        pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>>,
+        pub abi: Option<String>,
     }
 
     /// Account deployment transaction details.
@@ -255,6 +257,13 @@ pub mod add_transaction {
         pub contract_class: ContractDefinition,
         pub sender_address: ContractAddress,
         pub nonce: TransactionNonce,
+
+        // Required for declare v2 transactions
+        //
+        // `pathfinder_rpc::cairo::ext_py::ser::ChildCommand` uses `#[serde(flatten)]`
+        // which is incompatible with `#[skip_serializing_none]`
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub compiled_class_hash: Option<CasmHash>,
     }
 
     /// Add transaction API operation.
@@ -266,8 +275,6 @@ pub mod add_transaction {
     pub enum AddTransaction {
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeFunction),
-        #[serde(rename = "DEPLOY")]
-        Deploy(Deploy),
         #[serde(rename = "DECLARE")]
         Declare(Declare),
         #[serde(rename = "DEPLOY_ACCOUNT")]
@@ -277,19 +284,7 @@ pub mod add_transaction {
     #[cfg(test)]
     mod test {
         use super::*;
-        use starknet_gateway_test_fixtures::add_transaction::{
-            DEPLOY_OPENZEPPELIN_ACCOUNT, DEPLOY_TRANSACTION, INVOKE_CONTRACT_WITH_SIGNATURE,
-        };
-
-        #[test]
-        fn test_deploy() {
-            serde_json::from_str::<AddTransaction>(DEPLOY_TRANSACTION).unwrap();
-        }
-
-        #[test]
-        fn test_deploy_openzeppelin_account() {
-            serde_json::from_str::<AddTransaction>(DEPLOY_OPENZEPPELIN_ACCOUNT).unwrap();
-        }
+        use starknet_gateway_test_fixtures::add_transaction::INVOKE_CONTRACT_WITH_SIGNATURE;
 
         #[test]
         fn test_invoke_with_signature() {

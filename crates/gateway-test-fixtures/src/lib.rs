@@ -64,9 +64,6 @@ pub mod v0_10_1 {
 }
 
 pub mod add_transaction {
-    pub const DEPLOY_OPENZEPPELIN_ACCOUNT: &str =
-        str_fixture!("add-transaction/deploy-openzeppelin-account.json");
-    pub const DEPLOY_TRANSACTION: &str = str_fixture!("add-transaction/deploy-transaction.json");
     pub const INVOKE_CONTRACT_WITH_SIGNATURE: &str =
         str_fixture!("add-transaction/invoke-contract-with-signature.json");
 }

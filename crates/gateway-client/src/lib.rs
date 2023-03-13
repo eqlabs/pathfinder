@@ -1,6 +1,6 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, Chain, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
+    BlockId, CallParam, CasmHash, Chain, ClassHash, ContractAddress, ContractAddressSalt,
     EntryPoint, Fee, SierraHash, StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
     StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
@@ -10,7 +10,7 @@ use starknet_gateway_types::{
     reply,
     request::{
         add_transaction::{
-            AddTransaction, ContractDefinition, Declare, Deploy, DeployAccount, InvokeFunction,
+            AddTransaction, ContractDefinition, Declare, DeployAccount, InvokeFunction,
         },
         BlockHashOrTag,
     },
@@ -69,17 +69,9 @@ pub trait ClientApi {
         nonce: TransactionNonce,
         contract_definition: ContractDefinition,
         sender_address: ContractAddress,
+        compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
-
-    async fn add_deploy_transaction(
-        &self,
-        version: TransactionVersion,
-        contract_address_salt: ContractAddressSalt,
-        constructor_calldata: Vec<ConstructorParam>,
-        contract_definition: ContractDefinition,
-        token: Option<String>,
-    ) -> Result<reply::add_transaction::DeployResponse, SequencerError>;
 
     #[allow(clippy::too_many_arguments)]
     async fn add_deploy_account(
@@ -339,6 +331,7 @@ impl ClientApi for Client {
         nonce: TransactionNonce,
         contract_definition: ContractDefinition,
         sender_address: ContractAddress,
+        compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
     ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
         let req = AddTransaction::Declare(Declare {
@@ -348,43 +341,13 @@ impl ClientApi for Client {
             signature,
             nonce,
             version,
+            compiled_class_hash,
         });
 
         // Note that we don't do retries here.
         // This method is used to proxy an add transaction operation from the JSON-RPC
         // API to the sequencer. Retries should be implemented in the JSON-RPC
         // client instead.
-        self.gateway_request()
-            .add_transaction()
-            // mainnet requires a token (but testnet does not so its optional).
-            .with_optional_token(token.as_deref())
-            .with_retry(builder::Retry::Disabled)
-            .post_with_json(&req)
-            .await
-    }
-
-    /// Deploys a contract.
-    #[tracing::instrument(skip(self, contract_definition))]
-    async fn add_deploy_transaction(
-        &self,
-        version: TransactionVersion,
-        contract_address_salt: ContractAddressSalt,
-        constructor_calldata: Vec<ConstructorParam>,
-        contract_definition: ContractDefinition,
-        token: Option<String>,
-    ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
-        let req = AddTransaction::Deploy(Deploy {
-            version,
-            contract_address_salt,
-            contract_definition,
-            constructor_calldata,
-        });
-
-        // Note that we don't do retries here.
-        // This method is used to proxy an add transaction operation from the JSON-RPC
-        // API to the sequencer. Retries should be implemented in the JSON-RPC
-        // client instead.
-
         self.gateway_request()
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
@@ -1276,7 +1239,10 @@ mod tests {
     mod add_transaction {
         use super::*;
         use pathfinder_common::{felt, ByteCodeOffset, ContractAddress};
-        use starknet_gateway_types::request::contract::{EntryPointType, SelectorAndOffset};
+        use starknet_gateway_types::request::{
+            add_transaction::CairoContractDefinition,
+            contract::{EntryPointType, SelectorAndOffset},
+        };
         use std::collections::HashMap;
 
         #[tokio::test]
@@ -1375,23 +1341,6 @@ mod tests {
                 .unwrap();
         }
 
-        #[test]
-        fn test_program_is_valid_compressed_json() {
-            use flate2::write::GzDecoder;
-            use std::io::Write;
-
-            let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
-            let json: serde_json::Value = serde_json::from_str(json).unwrap();
-            let program = json["contract_definition"]["program"].as_str().unwrap();
-            let gzipped_program = base64::decode(program).unwrap();
-
-            let mut decoder = GzDecoder::new(Vec::new());
-            decoder.write_all(&gzipped_program).unwrap();
-            let json = decoder.finish().unwrap();
-
-            let _contract: serde_json::Value = serde_json::from_slice(&json).unwrap();
-        }
-
         #[tokio::test]
         async fn declare_class() {
             let contract_class = get_contract_class_from_fixture();
@@ -1412,37 +1361,10 @@ mod tests {
                     Fee(0u128.to_be_bytes().into()),
                     vec![],
                     TransactionNonce(Felt::ZERO),
-                    contract_class,
+                    ContractDefinition::Cairo(contract_class),
                     // actual address dumped from a `starknet declare` call
                     ContractAddress::new_or_panic(felt!("0x1")),
                     None,
-                )
-                .await
-                .unwrap();
-        }
-
-        #[tokio::test]
-        async fn deploy_contract() {
-            let contract_definition = get_contract_class_from_fixture();
-
-            let (_jh, client) = setup([(
-                "/gateway/add_transaction",
-                (
-                    r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x057ED4B4C76A1CA0BA044A654DD3EE2D0D3E550343D739350A22AACDD524110D",
-                    "address":"0x03926AEA98213EC34FE9783D803237D221C54C52344422E1F4942A5B340FA6AD"}"#,
-                    200,
-                ),
-            )]);
-            client
-                .add_deploy_transaction(
-                    TransactionVersion::ZERO,
-                    ContractAddressSalt(felt!(
-                        "05864b5e296c05028ac2bbc4a4c1378f56a3489d13e581f21d566bb94580f76d"
-                    )),
-                    // Regression: use a dummy constructor param here to make sure that
-                    // it is serialized properly
-                    vec![ConstructorParam(felt!("0x1"))],
-                    contract_definition,
                     None,
                 )
                 .await
@@ -1493,10 +1415,21 @@ mod tests {
         }
 
         /// Return a contract definition that was dumped from a `starknet deploy`.
-        fn get_contract_class_from_fixture() -> ContractDefinition {
-            let json = starknet_gateway_test_fixtures::add_transaction::DEPLOY_TRANSACTION;
-            let json: serde_json::Value = serde_json::from_str(json).unwrap();
-            let program = json["contract_definition"]["program"].as_str().unwrap();
+        fn get_contract_class_from_fixture() -> CairoContractDefinition {
+            let json = zstd::decode_all(
+                starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION,
+            )
+            .unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&json).unwrap();
+            let program = &json["program"];
+
+            // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.
+            let mut gzip_encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+            serde_json::to_writer(&mut gzip_encoder, program).unwrap();
+            let compressed_program = gzip_encoder.finish().unwrap();
+            let program = base64::encode(compressed_program);
+
             let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
                 HashMap::from([
                     (EntryPointType::Constructor, vec![]),
@@ -1519,8 +1452,8 @@ mod tests {
                     ),
                     (EntryPointType::L1Handler, vec![]),
                 ]);
-            ContractDefinition {
-                program: program.to_owned(),
+            CairoContractDefinition {
+                program,
                 entry_points_by_type,
                 abi: Some(json["contract_definition"]["abi"].clone()),
             }
@@ -1541,7 +1474,7 @@ mod tests {
                         Some(token) if token == EXPECTED_TOKEN => Response::builder().status(StatusCode::OK).body(serde_json::to_vec(&serde_json::json!({
                             "code": "TRANSACTION_ACCEPTED",
                             "transaction_hash": "0x57ed4b4c76a1ca0ba044a654dd3ee2d0d3e550343d739350a22aacdd524110d",
-                            "address":"0x3926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
+                            "class_hash":"0x3926aea98213ec34fe9783d803237d221c54c52344422e1f4942a5b340fa6ad"
                         })).unwrap()),
                         _ => Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR).body(serde_json::to_vec(&serde_json::json!({
                             "code": "StarknetErrorCode.NON_PERMITTED_CONTRACT",
@@ -1566,15 +1499,18 @@ mod tests {
                 let client = Client::with_base_url(url).unwrap();
 
                 client
-                    .add_deploy_transaction(
+                    .add_declare_transaction(
                         TransactionVersion::ZERO,
-                        ContractAddressSalt(Felt::ZERO),
+                        Fee(0u128.to_be_bytes().into()),
                         vec![],
-                        ContractDefinition {
+                        TransactionNonce::ZERO,
+                        ContractDefinition::Cairo(CairoContractDefinition {
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
                             abi: None,
-                        },
+                        }),
+                        ContractAddress::new_or_panic(Felt::ZERO),
+                        None,
                         Some(EXPECTED_TOKEN.to_owned()),
                     )
                     .await
@@ -1589,15 +1525,18 @@ mod tests {
                 let client = Client::with_base_url(url).unwrap();
 
                 let err = client
-                    .add_deploy_transaction(
+                    .add_declare_transaction(
                         TransactionVersion::ZERO,
-                        ContractAddressSalt(Felt::ZERO),
+                        Fee(0u128.to_be_bytes().into()),
                         vec![],
-                        ContractDefinition {
+                        TransactionNonce::ZERO,
+                        ContractDefinition::Cairo(CairoContractDefinition {
                             program: "".to_owned(),
                             entry_points_by_type: HashMap::new(),
                             abi: None,
-                        },
+                        }),
+                        ContractAddress::new_or_panic(Felt::ZERO),
+                        None,
                         None,
                     )
                     .await

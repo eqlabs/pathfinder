@@ -108,8 +108,7 @@ pub mod request {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
 
-        #[serde(default)]
-        pub compiled_class_hash: Option<CasmHash>,
+        pub compiled_class_hash: CasmHash,
         pub contract_class: super::SierraContractClass,
         pub sender_address: ContractAddress,
     }
@@ -322,7 +321,7 @@ pub mod request {
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x2)),
                             signature: vec![TransactionSignatureElem(felt!("0x71"))],
                             nonce: TransactionNonce(felt!("0x81")),
-                            compiled_class_hash: Some(CasmHash(felt!("0x91"))),
+                            compiled_class_hash: CasmHash(felt!("0x91")),
                             contract_class: SierraContractClass {
                                 sierra_program: vec![felt!("0x4"), felt!("0x5")],
                                 contract_class_version: "0.1.0".to_owned(),
@@ -368,9 +367,7 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
-                            version: TransactionVersion(ethers::types::H256(hex_literal::hex!(
-                                "0000000000000000000000000000000100000000000000000000000000000001"
-                            ))),
+                            version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
