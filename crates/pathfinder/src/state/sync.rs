@@ -1043,10 +1043,10 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CallParam, CasmHash, Chain, ClassCommitment, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber,
-        EthereumChain, EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee,
-        GasPrice, SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
+        BlockId, CallParam, CasmHash, Chain, ClassCommitment, ClassHash, ContractAddress,
+        ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
+        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
+        SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, StorageAddress,
         StorageCommitment, StorageValue, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
@@ -1063,10 +1063,7 @@ mod tests {
         error::SequencerError,
         pending::PendingData,
         reply,
-        request::{
-            add_transaction::{CairoContractDefinition, ContractDefinition},
-            BlockHashOrTag,
-        },
+        request::{add_transaction::ContractDefinition, BlockHashOrTag},
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
@@ -1187,17 +1184,6 @@ mod tests {
             _: Option<CasmHash>,
             _: Option<String>,
         ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn add_deploy_transaction(
-            &self,
-            _: TransactionVersion,
-            _: ContractAddressSalt,
-            _: Vec<ConstructorParam>,
-            _: CairoContractDefinition,
-            _: Option<String>,
-        ) -> Result<reply::add_transaction::DeployResponse, SequencerError> {
             unimplemented!()
         }
 

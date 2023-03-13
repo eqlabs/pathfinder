@@ -6849,6 +6849,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "warp",
+ "zstd",
 ]
 
 [[package]]

@@ -156,12 +156,11 @@ pub mod add_transaction {
     use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
     use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
     use pathfinder_common::{
-        CasmHash, ClassHash, ConstructorParam, ContractAddressSalt, TransactionNonce,
-        TransactionVersion,
+        CasmHash, ClassHash, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        CallParamAsDecimalStr, FeeAsHexStr, TransactionSignatureElemAsDecimalStr,
+        TransactionVersionAsHexStr,
     };
     use serde_with::serde_as;
     use std::collections::HashMap;
@@ -198,20 +197,6 @@ pub mod add_transaction {
         pub contract_class_version: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>>,
         pub abi: Option<String>,
-    }
-
-    /// Contract deployment transaction details.
-    #[serde_as]
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
-    pub struct Deploy {
-        // Transacion properties
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        pub version: TransactionVersion,
-
-        pub contract_address_salt: ContractAddressSalt,
-        pub contract_definition: CairoContractDefinition,
-        #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
-        pub constructor_calldata: Vec<ConstructorParam>,
     }
 
     /// Account deployment transaction details.
@@ -290,8 +275,6 @@ pub mod add_transaction {
     pub enum AddTransaction {
         #[serde(rename = "INVOKE_FUNCTION")]
         Invoke(InvokeFunction),
-        #[serde(rename = "DEPLOY")]
-        Deploy(Deploy),
         #[serde(rename = "DECLARE")]
         Declare(Declare),
         #[serde(rename = "DEPLOY_ACCOUNT")]
@@ -301,19 +284,7 @@ pub mod add_transaction {
     #[cfg(test)]
     mod test {
         use super::*;
-        use starknet_gateway_test_fixtures::add_transaction::{
-            DEPLOY_OPENZEPPELIN_ACCOUNT, DEPLOY_TRANSACTION, INVOKE_CONTRACT_WITH_SIGNATURE,
-        };
-
-        #[test]
-        fn test_deploy() {
-            serde_json::from_str::<AddTransaction>(DEPLOY_TRANSACTION).unwrap();
-        }
-
-        #[test]
-        fn test_deploy_openzeppelin_account() {
-            serde_json::from_str::<AddTransaction>(DEPLOY_OPENZEPPELIN_ACCOUNT).unwrap();
-        }
+        use starknet_gateway_test_fixtures::add_transaction::INVOKE_CONTRACT_WITH_SIGNATURE;
 
         #[test]
         fn test_invoke_with_signature() {
