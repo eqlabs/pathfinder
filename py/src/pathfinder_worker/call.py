@@ -444,8 +444,12 @@ def loop_inner(connection, command: Command, contract_class_cache=None):
     adapter = SqliteAdapter(connection)
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
+    global_state_root = PatriciaTree(global_root, 251)
+    contract_class_root = (
+        PatriciaTree(class_commitment, 251) if class_commitment is not None else None
+    )
     state_reader = PatriciaStateReader(
-        PatriciaTree(global_root, 251), ffc, contract_class_storage=adapter
+        global_state_root, contract_class_root, ffc, contract_class_storage=adapter
     )
     async_state = CachedState(
         block_info=block_info,
