@@ -20,9 +20,9 @@ use pathfinder_rpc::{
 };
 use pathfinder_storage::{
     types::{CompressedCasmClass, CompressedContract},
-    CasmClassTable, ContractCodeTable, ContractsStateTable, L1StateTable, L1TableBlockId,
-    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-    StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+    CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable,
+    L1StateTable, L1TableBlockId, RefsTable, StarknetBlock, StarknetBlocksBlockId,
+    StarknetBlocksTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
@@ -772,8 +772,19 @@ fn update_starknet_state(
         .context("Loading class commitment tree")?;
 
     for sierra_class in &state_update.state_diff.declared_classes {
+        let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(
+            sierra_class.compiled_class_hash,
+        );
+
+        ClassCommitmentLeavesTable::upsert(
+            transaction,
+            &leaf_hash,
+            &sierra_class.compiled_class_hash,
+        )
+        .context("Adding class commitment leaf")?;
+
         class_commitment_tree
-            .set(sierra_class.class_hash, sierra_class.compiled_class_hash)
+            .set(sierra_class.class_hash, leaf_hash)
             .context("Update class commitment tree")?;
     }
 

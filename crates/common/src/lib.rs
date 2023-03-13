@@ -61,6 +61,13 @@ impl ClassCommitment {
 macros::starkhash251::newtype!(ClassCommitment);
 macros::starkhash251::deserialization!(ClassCommitment);
 
+/// A Cairo 1.0 class' leaf hash. This is the value stored
+/// in the class commitment tree.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct ClassCommitmentLeafHash(pub Felt);
+
+macros::starkhash::to_from_sql!(ClassCommitmentLeafHash);
+
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -549,6 +556,22 @@ pub fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
     // truncation is needed not to overflow the field element.
     plain[0] &= 0x03;
     Felt::from_be_bytes(plain).expect("cannot overflow: smaller than modulus")
+}
+
+/// Calculate class commitment tree leaf hash value.
+///
+/// See: <https://docs.starknet.io/documentation/starknet_versions/upcoming_versions/#state_commitment>
+pub fn calculate_class_commitment_leaf_hash(
+    compiled_class_hash: CasmHash,
+) -> ClassCommitmentLeafHash {
+    const CONTRACT_CLASS_HASH_VERSION: stark_hash::Felt = felt_bytes!(b"CONTRACT_CLASS_LEAF_V0");
+    ClassCommitmentLeafHash(
+        stark_poseidon::poseidon_hash(
+            CONTRACT_CLASS_HASH_VERSION.into(),
+            compiled_class_hash.0.into(),
+        )
+        .into(),
+    )
 }
 
 #[cfg(test)]
