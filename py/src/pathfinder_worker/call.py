@@ -721,7 +721,7 @@ class SqliteAdapter(Storage):
 
         # tree_global is much smaller table than tree_contracts
         cursor = self.connection.execute(
-            "select data from tree_global where hash = ?1 union select data from tree_contracts where hash = ?1",
+            "select data from tree_class where hash = ?1 union select data from tree_global where hash = ?1 union select data from tree_contracts where hash = ?1",
             [suffix],
         )
 
