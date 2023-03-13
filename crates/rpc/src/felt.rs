@@ -5,7 +5,7 @@
 //! struct fields `serde_as(as = "RpcFelt")`to use the RPC compliant serialization.
 //! It also allows specifying container types such as [Option], [Vec] etc: `serde_as(as = "Vec<RpcFelt>")`.
 //!
-//! ```
+//! ```ignore
 //! #[serde_with::serde_as]
 //! #[derive(serde::Serialize)]
 //! struct Example {
@@ -232,9 +232,14 @@ mod deserialization {
                 where
                     E: serde::de::Error,
                 {
-                    stark_hash::Felt::from_hex_str(v)
-                        .map_err(|e| serde::de::Error::custom(e))
-                        .map(RpcFelt)
+                    // Felt::from_hex_str currently does not enforce `0x` prefix, add it here to prevent
+                    // breaking other serde related code.
+                    match v.as_bytes() {
+                        &[b'0', b'x', ..] => stark_hash::Felt::from_hex_str(v)
+                            .map_err(|e| serde::de::Error::custom(e))
+                            .map(RpcFelt),
+                        _missing_prefix => Err(serde::de::Error::custom("Missing '0x' prefix")),
+                    }
                 }
             }
 

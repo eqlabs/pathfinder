@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- RPC accepts hex inputs for Felt without '0x' prefix. This led to confusion especially when passing in a decimal string which would get silently interpretted as hex.
 - Using a Nethermind Ethereum endpoint occasionally causes errors such as `<block-number> could not be found` to be logged. 
 
 ### Removed
