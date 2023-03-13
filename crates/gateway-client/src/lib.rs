@@ -1453,7 +1453,7 @@ mod tests {
                     (EntryPointType::L1Handler, vec![]),
                 ]);
             CairoContractDefinition {
-                program: program.to_owned(),
+                program,
                 entry_points_by_type,
                 abi: Some(json["contract_definition"]["abi"].clone()),
             }
