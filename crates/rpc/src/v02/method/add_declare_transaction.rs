@@ -77,7 +77,6 @@ pub async fn add_declare_transaction(
                 class_hash: response.class_hash,
             })
         }
-        // TODO: Verify compiled class hash (as an additional check)
         Transaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
             let contract_definition: SierraContractDefinition = tx
                 .contract_class
