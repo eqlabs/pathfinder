@@ -367,9 +367,7 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
-                            version: TransactionVersion(ethers::types::H256(hex_literal::hex!(
-                                "0000000000000000000000000000000100000000000000000000000000000001"
-                            ))),
+                            version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                             max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
