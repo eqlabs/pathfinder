@@ -27,6 +27,7 @@ pub fn register_methods(context: RpcContext) -> anyhow::Result<Methods> {
             v02_method::block_hash_and_number,
         )?
         .register_method_with_no_input("starknet_blockNumber", v02_method::block_number)?
+        .register_method("starknet_call", v02_method::call)?
         .register_method_with_no_input("starknet_chainId", v02_method::chain_id)?
         .register_method(
             "starknet_getBlockWithTxHashes",
