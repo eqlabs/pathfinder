@@ -1,7 +1,9 @@
 use crate::types::{CompressedCasmClass, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
-use pathfinder_common::{CasmHash, ClassHash, ContractClass, StarknetBlockHash};
+use pathfinder_common::{
+    CasmHash, ClassCommitmentLeafHash, ClassHash, ContractClass, StarknetBlockHash,
+};
 use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
@@ -211,6 +213,37 @@ impl CasmClassTable {
             .iter()
             .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
             .collect::<Result<Vec<_>, _>>()?)
+    }
+}
+
+/// Stores class commitment table leaf hash to data mapping.
+///
+/// We have to be able to map the leaf hash value in the class commitment tree
+/// to the compiled class hash.
+pub struct ClassCommitmentLeavesTable;
+
+impl ClassCommitmentLeavesTable {
+    /// Upsert a class commitment leaf.
+    pub fn upsert(
+        transaction: &Transaction<'_>,
+        hash: &ClassCommitmentLeafHash,
+        compiled_class_hash: &CasmHash,
+    ) -> anyhow::Result<()> {
+        let mut stmt = transaction.prepare_cached(
+            r"INSERT INTO class_commitment_leaves
+                (hash, compiled_class_hash)
+            VALUES
+                (:hash, :compiled_class_hash)
+            ON CONFLICT DO NOTHING
+            ",
+        )?;
+
+        stmt.execute(named_params! {
+            ":hash": hash,
+            ":compiled_class_hash": compiled_class_hash,
+        })?;
+
+        Ok(())
     }
 }
 

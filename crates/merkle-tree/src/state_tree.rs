@@ -10,8 +10,8 @@ use crate::{
 use crate::{PedersenHash, PoseidonHash};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
-    CasmHash, ClassCommitment, ContractAddress, ContractRoot, ContractStateHash, SierraHash,
-    StorageAddress, StorageCommitment, StorageValue,
+    ClassCommitment, ClassCommitmentLeafHash, ContractAddress, ContractRoot, ContractStateHash,
+    SierraHash, StorageAddress, StorageCommitment, StorageValue,
 };
 use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
@@ -112,14 +112,13 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
 
 /// Merkle tree which contains Starknet's class commitment.
 ///
-/// This tree maps a class's [SierraHash] to its [CasmHash]
+/// This tree maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
 pub struct ClassCommitmentTree<'tx, 'queries> {
     tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PoseidonHash>,
 }
 
 impl<'tx> ClassCommitmentTree<'tx, '_> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
-        // TODO: migration to support this.
         let tree = MerkleTree::load("tree_class", transaction, root.0)?;
 
         Ok(Self { tree })
@@ -130,9 +129,8 @@ impl<'tx> ClassCommitmentTree<'tx, '_> {
     /// Note that the leaf value is _not_ the Cairo hash, but a hashed value based on that.
     /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
     /// for details.
-    pub fn set(&mut self, class: SierraHash, value: CasmHash) -> anyhow::Result<()> {
-        let leaf_value = pathfinder_common::calculate_class_commitment_leaf_hash(value);
-        self.tree.set(class.view_bits(), leaf_value.0)
+    pub fn set(&mut self, class: SierraHash, value: ClassCommitmentLeafHash) -> anyhow::Result<()> {
+        self.tree.set(class.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new global root.
