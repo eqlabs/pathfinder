@@ -1,5 +1,10 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
+mod hex;
+mod newtype;
+
+pub use hex::HexFelt;
+
 use ethers::types::{H128, H160, H256};
 use num_bigint::BigUint;
 use pathfinder_common::{
