@@ -15,10 +15,12 @@ from starkware.cairo.common.poseidon_hash import poseidon_hash
 from starkware.starknet.public.abi import get_selector_from_name
 from starkware.starknet.services.api.gateway.transaction import (
     InvokeFunction,
+    Declare,
     DeprecatedDeclare,
 )
 from starkware.starknet.services.api.contract_class.contract_class import (
     DeprecatedCompiledClass,
+    ContractClass,
 )
 from starkware.starkware_utils.error_handling import StarkException
 
@@ -1414,6 +1416,100 @@ def test_call_sierra_contract_through_account():
 
     (_verb, output, _timings) = loop_inner(con, command)
     assert output == [1, 1]
+
+
+def test_sierra_invoke_function_through_account():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    con.execute("BEGIN")
+
+    command = EstimateFee(
+        at_block="latest",
+        chain=call.Chain.TESTNET,
+        gas_price=0,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+        transaction=InvokeFunction(
+            version=2**128 + 1,
+            sender_address=dummy_account_contract_address,
+            calldata=[
+                sierra_contract_address,
+                get_selector_from_name("test"),
+                3,
+                1,
+                2,
+                3,
+            ],
+            nonce=0,
+            max_fee=0,
+            signature=[],
+        ),
+    )
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    assert output == {
+        "gas_consumed": 3869,
+        "gas_price": 1,
+        "overall_fee": 3869,
+    }
+
+
+def test_sierra_declare_through_account():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    sierra_class_definition_path = test_relative_path(
+        "./sierra_class_definition.json.zst"
+    )
+
+    with open(sierra_class_definition_path, "rb") as file:
+        class_definition = file.read()
+        class_definition = zstandard.decompress(class_definition).decode("utf-8")
+        class_definition = ContractClass.loads(class_definition)
+
+    con.execute("BEGIN")
+
+    command = EstimateFee(
+        at_block="latest",
+        chain=call.Chain.TESTNET,
+        gas_price=0,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+        transaction=Declare(
+            version=0x100000000000000000000000000000002,
+            sender_address=dummy_account_contract_address,
+            contract_class=class_definition,
+            compiled_class_hash=0x05BBE92A11E8C31CAD885C72877F12E6EDFB5250AF54430DFA8ED7504C548417,
+            nonce=0,
+            max_fee=0,
+            signature=[],
+        ),
+    )
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    # FIXME: correct gas consumed
+    assert output == {
+        "gas_consumed": 0,
+        "gas_price": 0,
+        "overall_fee": 0,
+    }
 
 
 def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: str):
