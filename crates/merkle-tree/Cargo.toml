@@ -19,5 +19,4 @@ stark_poseidon = { path = "../stark_poseidon" }
 starknet-gateway-types = { path = "../gateway-types" }
 
 [dev-dependencies]
-hex-literal = "0.3"
 pretty_assertions = "1.3.0"
