@@ -124,9 +124,20 @@ impl Handle {
                     compiled_class_hash: None,
                 })
             }
-            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => {
-                // FIXME(0.11.0): requires a cairo-lang VM which supports starknet v0.11.0 and works.
-                return Err(CallFailure::Internal("Declare V2 is not supported yet"));
+            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
+                add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    contract_class: add_transaction::ContractDefinition::Sierra(
+                        tx.contract_class.try_into().map_err(|_| {
+                            CallFailure::Internal("contract class serialization failure")
+                        })?,
+                    ),
+                    sender_address: tx.sender_address,
+                    nonce: tx.nonce,
+                    compiled_class_hash: Some(tx.compiled_class_hash),
+                })
             }
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
                 add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
