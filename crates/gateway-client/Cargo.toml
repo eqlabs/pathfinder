@@ -28,7 +28,6 @@ tracing = "0.1.37"
 assert_matches = "1.5.0"
 base64 = "0.13.1"
 flate2 = "1.0.25"
-hex-literal = "0.3"
 http = "0.2.8"
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common", features = ["test-utils"] }

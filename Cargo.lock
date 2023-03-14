@@ -3100,12 +3100,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "hex-literal"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ebdb29d2ea9ed0083cd8cece49bbd968021bd99b0849edb4a9a7ee0fdf6a4e0"
-
-[[package]]
 name = "hex_fmt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4919,7 +4913,6 @@ dependencies = [
  "fake",
  "futures",
  "hex",
- "hex-literal",
  "libp2p",
  "p2p_proto",
  "pathfinder-common",
@@ -5120,7 +5113,6 @@ dependencies = [
  "ethers",
  "flate2",
  "futures",
- "hex-literal",
  "http",
  "lazy_static",
  "metrics",
@@ -5163,7 +5155,6 @@ version = "0.1.0"
 dependencies = [
  "bitvec 0.20.4",
  "ethers",
- "hex-literal",
  "metrics",
  "rusqlite",
  "serde",
@@ -5186,7 +5177,6 @@ dependencies = [
  "ethers",
  "futures",
  "hex",
- "hex-literal",
  "lazy_static",
  "pathfinder-common",
  "pathfinder-retry",
@@ -5204,7 +5194,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bitvec 0.20.4",
- "hex-literal",
  "pathfinder-common",
  "pathfinder-storage",
  "pretty_assertions",
@@ -5236,7 +5225,6 @@ dependencies = [
  "flate2",
  "futures",
  "hex",
- "hex-literal",
  "jsonrpsee",
  "lazy_static",
  "metrics",
@@ -5291,7 +5279,6 @@ dependencies = [
  "ethers",
  "flate2",
  "hex",
- "hex-literal",
  "lazy_static",
  "pathfinder-common",
  "pathfinder-ethereum",
@@ -6829,7 +6816,6 @@ dependencies = [
  "bytes",
  "flate2",
  "futures",
- "hex-literal",
  "http",
  "lazy_static",
  "metrics",
@@ -6856,7 +6842,6 @@ dependencies = [
 name = "starknet-gateway-test-fixtures"
 version = "0.1.0"
 dependencies = [
- "hex-literal",
  "pathfinder-common",
  "stark_hash",
  "starknet-gateway-types",
@@ -6868,7 +6853,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ethers",
- "hex-literal",
  "pathfinder-common",
  "pathfinder-serde",
  "reqwest",

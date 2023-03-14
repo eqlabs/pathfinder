@@ -12,7 +12,6 @@ base64 = "0.13.1"
 ethers = "1.0.2"
 flate2 = "1.0.25"
 futures = { version = "0.3", default-features = false, features = ["std"] }
-hex-literal = "0.3"
 jsonrpsee = { git = "https://github.com/eqlabs/jsonrpsee", branch = "start_with_paths", default-features = false, features = [
     "server",
 ] }

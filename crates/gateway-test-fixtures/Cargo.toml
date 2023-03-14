@@ -7,7 +7,6 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hex-literal = "0.3"
 pathfinder-common = { path = "../common" }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-types = { path = "../gateway-types" }

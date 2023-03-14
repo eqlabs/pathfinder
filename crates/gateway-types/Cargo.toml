@@ -23,7 +23,6 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 # Due to pathfinder_common::starkhash!() usage
-hex-literal = "0.3"
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 zstd = "0.12"

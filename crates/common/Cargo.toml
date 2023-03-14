@@ -11,7 +11,6 @@ test-utils = ["dep:metrics"]
 [dependencies]
 bitvec = "0.20.4"
 ethers = "1.0.2"
-hex-literal = "0.3"
 metrics = { version = "0.20.1", optional = true }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 serde = { version = "1.0.149", features = ["derive"] }
