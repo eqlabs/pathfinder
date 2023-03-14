@@ -125,7 +125,8 @@ impl Handle {
                 })
             }
             BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => {
-                todo!("fixme 0.11.0")
+                // FIXME(0.11.0): requires a cairo-lang VM which supports starknet v0.11.0 and works.
+                return Err(CallFailure::Internal("Declare V2 is not supported yet"));
             }
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
                 add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
