@@ -97,13 +97,17 @@ mod types {
     }
 
     /// L2 state diff declared contract item.
+    #[serde_with::serde_as]
     #[derive(Deserialize, Debug)]
     pub struct DeclaredContract {
+        #[serde_as(as = "pathfinder_serde::HexFelt")]
         pub class_hash: ClassHash,
     }
 
+    #[serde_with::serde_as]
     #[derive(Deserialize)]
     pub struct DeployedContract {
+        #[serde_as(as = "pathfinder_serde::HexFelt")]
         pub class_hash: ClassHash,
     }
 }

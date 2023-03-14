@@ -73,6 +73,7 @@ mod types {
         CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StarknetBlockHash,
         StateCommitment, StorageAddress, StorageValue,
     };
+    use pathfinder_serde::HexFelt;
     use serde::Serialize;
     use serde_with::skip_serializing_none;
     use std::collections::HashMap;
@@ -125,7 +126,7 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
-        #[serde_as(as = "Vec<RpcFelt>")]
+        #[serde_as(as = "Vec<HexFelt>")]
         pub deprecated_declared_classes: Vec<ClassHash>,
         pub declared_classes: Vec<DeclaredSierraClass>,
         pub deployed_contracts: Vec<DeployedContract>,
@@ -301,7 +302,7 @@ mod types {
     pub struct DeployedContract {
         #[serde_as(as = "RpcFelt251")]
         pub address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -331,7 +332,7 @@ mod types {
     pub struct ReplacedClass {
         #[serde_as(as = "RpcFelt251")]
         pub contract_address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 

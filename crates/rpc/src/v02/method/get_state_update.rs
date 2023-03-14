@@ -69,6 +69,8 @@ pub async fn get_state_update(
 
 mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
+    use pathfinder_serde::HexFelt;
+
     use pathfinder_common::{
         ClassHash, ContractAddress, ContractNonce, StarknetBlockHash, StateCommitment,
         StorageAddress, StorageValue,
@@ -125,7 +127,7 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
-        #[serde_as(as = "Vec<RpcFelt>")]
+        #[serde_as(as = "Vec<HexFelt>")]
         pub declared_contract_hashes: Vec<ClassHash>,
         pub deployed_contracts: Vec<DeployedContract>,
         pub nonces: Vec<Nonce>,
@@ -251,7 +253,7 @@ mod types {
     pub struct DeployedContract {
         #[serde_as(as = "RpcFelt251")]
         pub address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 

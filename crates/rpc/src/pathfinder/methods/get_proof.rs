@@ -107,9 +107,11 @@ impl Serialize for Proof {
 }
 
 /// Holds the data and proofs for a specific contract.
+#[serde_with::serde_as]
 #[derive(Debug, Serialize)]
 pub struct ContractData {
     /// Required to verify the contract state hash to contract root calculation.
+    #[serde_as(as = "pathfinder_serde::HexFelt")]
     class_hash: ClassHash,
     /// Required to verify the contract state hash to contract root calculation.
     nonce: ContractNonce,

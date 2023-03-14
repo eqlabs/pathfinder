@@ -1,7 +1,9 @@
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedDeclareTransaction;
 use crate::v02::RpcContext;
+
 use pathfinder_common::{ClassHash, StarknetTransactionHash};
+use pathfinder_serde::HexFelt;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::{
@@ -43,7 +45,7 @@ pub struct AddDeclareTransactionInput {
 pub struct AddDeclareTransactionOutput {
     #[serde_as(as = "RpcFelt")]
     transaction_hash: StarknetTransactionHash,
-    #[serde_as(as = "RpcFelt")]
+    #[serde_as(as = "HexFelt")]
     class_hash: ClassHash,
 }
 

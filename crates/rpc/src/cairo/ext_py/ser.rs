@@ -4,6 +4,7 @@ use pathfinder_common::{
     BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, StarknetBlockHash,
     StarknetBlockNumber,
 };
+use pathfinder_serde::HexFelt;
 use starknet_gateway_types::{
     reply::{
         state_update::{DeployedContract, StorageDiff},
@@ -181,7 +182,7 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
         // there is no need from python side to use this huge construction,
         // could be just addr => hash
         map.serialize_entry("address", &self.0.address)?;
-        map.serialize_entry("contract_hash", &self.0.class_hash)?;
+        map.serialize_entry("contract_hash", &HexFelt(self.0.class_hash.0))?;
         map.end()
     }
 }

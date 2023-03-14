@@ -190,7 +190,7 @@ pub mod transaction {
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr, HexFelt,
         L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
         TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
@@ -408,6 +408,7 @@ pub mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV0V1 {
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
@@ -424,6 +425,7 @@ pub mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV2 {
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
@@ -447,6 +449,7 @@ pub mod transaction {
     pub struct DeployTransaction {
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
@@ -473,6 +476,7 @@ pub mod transaction {
         pub contract_address_salt: ContractAddressSalt,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub constructor_calldata: Vec<CallParam>,
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -698,6 +702,7 @@ pub mod state_update {
         CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
         StorageValue,
     };
+    use pathfinder_serde::HexFelt;
     use serde::Deserialize;
     use serde_with::serde_as;
     use std::collections::HashMap;
@@ -715,6 +720,7 @@ pub mod state_update {
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
         #[serde(alias = "declared_contracts")]
+        #[serde_as(as = "Vec<HexFelt>")]
         pub old_declared_contracts: Vec<ClassHash>,
         /// Not present in StarkNet versions < v0.11.0.
         #[serde(default)]
@@ -735,6 +741,7 @@ pub mod state_update {
     }
 
     /// L2 contract data within state diff.
+    #[serde_as]
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct DeployedContract {
@@ -742,6 +749,7 @@ pub mod state_update {
         /// `class_hash` is the field name from cairo 0.9.0 onwards
         /// `contract_hash` is the name from cairo before 0.9.0
         #[serde(alias = "contract_hash")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -754,10 +762,12 @@ pub mod state_update {
     }
 
     /// Describes a newly replaced class. Maps contract address to a new class.
+    #[serde_as]
     #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct ReplacedClass {
         pub address: ContractAddress,
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -808,6 +818,7 @@ pub struct EthContractAddresses {
 
 pub mod add_transaction {
     use pathfinder_common::{ClassHash, ContractAddress, StarknetTransactionHash};
+    use pathfinder_serde::HexFelt;
 
     /// API response for an INVOKE_FUNCTION transaction
     #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
@@ -818,11 +829,13 @@ pub mod add_transaction {
     }
 
     /// API response for a DECLARE transaction
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareResponse {
         pub code: String, // TRANSACTION_RECEIVED
         pub transaction_hash: StarknetTransactionHash,
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 

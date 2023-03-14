@@ -33,7 +33,7 @@ pub struct ContractAddressSalt(pub Felt);
 
 /// The hash of a StarkNet contract. This is a hash over a class'
 /// deployment properties e.g. code and ABI.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ClassHash(pub Felt);
 
 /// The hash of a StarkNet Sierra class.

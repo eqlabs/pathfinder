@@ -159,7 +159,7 @@ pub mod add_transaction {
         CasmHash, ClassHash, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{
-        CallParamAsDecimalStr, FeeAsHexStr, TransactionSignatureElemAsDecimalStr,
+        CallParamAsDecimalStr, FeeAsHexStr, HexFelt, TransactionSignatureElemAsDecimalStr,
         TransactionVersionAsHexStr,
     };
     use serde_with::serde_as;
@@ -213,6 +213,7 @@ pub mod add_transaction {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
 
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
         pub contract_address_salt: ContractAddressSalt,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]

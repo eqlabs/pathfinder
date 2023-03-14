@@ -1,8 +1,8 @@
-use crate::felt::RpcFelt;
 use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress, ContractStateHash};
 use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
+use pathfinder_serde::HexFelt;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use starknet_gateway_types::pending::PendingData;
 
@@ -16,7 +16,7 @@ pub struct GetClassHashAtInput {
 
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug)]
-pub struct GetClassHashOutput(#[serde_as(as = "RpcFelt")] ClassHash);
+pub struct GetClassHashOutput(#[serde_as(as = "HexFelt")] ClassHash);
 
 pub async fn get_class_hash_at(
     context: RpcContext,

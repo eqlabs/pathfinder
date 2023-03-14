@@ -172,10 +172,12 @@ pub enum TransactionType {
     Declare,
 }
 
+#[serde_with::serde_as]
 #[derive(serde::Deserialize)]
 struct SlimTransaction {
     r#type: TransactionType,
     #[serde(default)]
+    #[serde_as(as = "Option<pathfinder_serde::HexFelt>")]
     class_hash: Option<ClassHash>,
 }
 

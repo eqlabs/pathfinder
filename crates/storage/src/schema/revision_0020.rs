@@ -409,6 +409,7 @@ mod types {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransaction {
+        #[serde_as(as = "pathfinder_serde::HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
@@ -433,6 +434,7 @@ mod types {
     pub struct DeployTransaction {
         pub contract_address: ContractAddress,
         pub contract_address_salt: ContractAddressSalt,
+        #[serde_as(as = "pathfinder_serde::HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,

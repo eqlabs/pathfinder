@@ -74,6 +74,7 @@ pub mod state_update {
         CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
         StorageValue,
     };
+    use pathfinder_serde::HexFelt;
     use serde::{Deserialize, Serialize};
 
     /// L2 state diff.
@@ -145,17 +146,21 @@ pub mod state_update {
     }
 
     /// L2 state diff Declared V1 class item.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclaredCairoClass {
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 
     /// L2 state diff deployed contract item.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeployedContract {
         pub address: ContractAddress,
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -187,10 +192,12 @@ pub mod state_update {
     }
 
     /// L2 state diff replaced class item. Maps contract address to a new class.
+    #[serde_with::serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ReplacedClass {
         pub address: ContractAddress,
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 

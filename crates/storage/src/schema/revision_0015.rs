@@ -49,6 +49,7 @@ mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct DeclareTransaction {
+        #[serde_as(as = "pathfinder_serde::HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
@@ -70,6 +71,7 @@ mod transaction {
         pub contract_address_salt: ContractAddressSalt,
         // This is optional because there are old transactions in the DB which don't have it.
         // We fix up missing class hash before serializing the data.
+        #[serde_as(as = "Option<pathfinder_serde::HexFelt>")]
         pub class_hash: Option<ClassHash>,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,

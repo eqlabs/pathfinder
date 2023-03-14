@@ -363,6 +363,7 @@ struct SimpleDeployAccount {
     contract_address_salt: pathfinder_common::ContractAddressSalt,
     #[serde_as(as = "Vec<pathfinder_serde::CallParamAsDecimalStr>")]
     pub constructor_calldata: Vec<pathfinder_common::CallParam>,
+    #[serde_as(as = "pathfinder_serde::HexFelt")]
     pub class_hash: pathfinder_common::ClassHash,
 }
 

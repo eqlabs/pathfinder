@@ -129,6 +129,7 @@ pub mod request {
         // Fields from DEPLOY_ACCOUNT_TXN_PROPERTIES
         pub contract_address_salt: ContractAddressSalt,
         pub constructor_calldata: Vec<CallParam>,
+        #[serde_as(as = "pathfinder_serde::HexFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -398,7 +399,7 @@ pub mod reply {
         EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
     };
-    use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
+    use pathfinder_serde::{FeeAsHexStr, HexFelt, TransactionVersionAsHexStr};
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
@@ -518,7 +519,7 @@ pub mod reply {
 
         // DECLARE_TXN_V0
         // DECLARE_TXN_V1
-        #[serde_as(as = "RpcFelt")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "RpcFelt251")]
         pub sender_address: ContractAddress,
@@ -532,7 +533,7 @@ pub mod reply {
         pub common: CommonDeclareInvokeTransactionProperties,
 
         // DECLARE_TXN_V2
-        #[serde_as(as = "RpcFelt")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
         #[serde_as(as = "RpcFelt251")]
         pub sender_address: ContractAddress,
@@ -552,7 +553,7 @@ pub mod reply {
         pub contract_address_salt: ContractAddressSalt,
         #[serde_as(as = "Vec<RpcFelt>")]
         pub constructor_calldata: Vec<CallParam>,
-        #[serde_as(as = "RpcFelt")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
     }
 
@@ -661,7 +662,7 @@ pub mod reply {
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
-        #[serde_as(as = "RpcFelt")]
+        #[serde_as(as = "HexFelt")]
         pub class_hash: ClassHash,
 
         // DEPLOY_TXN_PROPERTIES
