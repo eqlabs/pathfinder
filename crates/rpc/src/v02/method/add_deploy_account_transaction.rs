@@ -64,15 +64,15 @@ mod tests {
         "max_fee": "0xbf391377813",
         "version": "0x1",
         "constructor_calldata": [
-            "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+            "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
         ],
         "signature": [
-            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
-            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+            "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
+            "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
         ],
         "nonce": "0x0",
-        "class_hash": "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d",
-        "contract_address_salt": "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8",
+        "class_hash": "0x01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d",
+        "contract_address_salt": "0x06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8",
         "type": "DEPLOY_ACCOUNT"
     }"#;
 
@@ -106,22 +106,22 @@ mod tests {
                     .into()),
                     signature: vec![
                         TransactionSignatureElem(felt!(
-                            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                            "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                         )),
                         TransactionSignatureElem(felt!(
-                            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                            "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                         )),
                     ],
                     nonce: TransactionNonce::ZERO,
 
                     contract_address_salt: ContractAddressSalt(felt!(
-                        "06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
+                        "0x06d44a6aecb4339e23a9619355f101cf3cb9baec289fcd9fd51486655c1bb8a8"
                     )),
                     constructor_calldata: vec![CallParam(felt!(
-                        "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
+                        "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                     ))],
                     class_hash: ClassHash(felt!(
-                        "01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
+                        "0x01fac3074c9d5282f0acc5c69a4781a1c711efea5e73c550c5d9fb253cf7fd3d"
                     )),
                 },
             ),
@@ -137,10 +137,10 @@ mod tests {
 
         let expected = AddDeployAccountTransactionOutput {
             transaction_hash: StarknetTransactionHash(felt!(
-                "0273FB3C38B20037839D6BAD8811CD0AFD82F2BC3C95C061EB8F30CE5CEDC377"
+                "0x0273FB3C38B20037839D6BAD8811CD0AFD82F2BC3C95C061EB8F30CE5CEDC377"
             )),
             contract_address: ContractAddress::new_or_panic(felt!(
-                "042AE26AB2B8236242BB384C23E74C69AF7204BB2FC711A99DA63E0DD6ADF33F"
+                "0x042AE26AB2B8236242BB384C23E74C69AF7204BB2FC711A99DA63E0DD6ADF33F"
             )),
         };
 
