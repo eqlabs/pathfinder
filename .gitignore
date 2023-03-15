@@ -19,3 +19,5 @@ pathfinder-var.env
 
 # pyenv
 .python-version
+
+**/global tree diff/*.json

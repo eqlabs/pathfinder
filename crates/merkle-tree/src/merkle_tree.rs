@@ -575,7 +575,7 @@ impl<T: NodeStorage, H: Hash> MerkleTree<T, H> {
     /// Retrieves the requested node from storage.
     ///
     /// Result will be either a [Binary](Node::Binary), [Edge](Node::Edge) or [Leaf](Node::Leaf) node.
-    fn resolve(&self, hash: Felt, height: usize) -> anyhow::Result<Node> {
+    pub fn resolve(&self, hash: Felt, height: usize) -> anyhow::Result<Node> {
         if height == self.max_height as usize {
             #[cfg(debug_assertions)]
             match self.storage.get(hash)? {
