@@ -446,6 +446,9 @@ def loop_inner(
 
     general_config = create_general_config(command.chain.value)
 
+    if class_commitment == 0:
+        class_commitment = None
+
     adapter = SqliteAdapter(connection)
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
