@@ -535,9 +535,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x55a),
+                gas_consumed: H256::from_low_u64_be(0x566),
                 gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0x55a),
+                overall_fee: H256::from_low_u64_be(0x566),
             }
         );
 
@@ -556,9 +556,9 @@ mod tests {
         assert_eq!(
             current_fee,
             crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x55a),
+                gas_consumed: H256::from_low_u64_be(0x566),
                 gas_price: H256::from_low_u64_be(10),
-                overall_fee: H256::from_low_u64_be(0x3584),
+                overall_fee: H256::from_low_u64_be(0x35fc),
             }
         );
 
@@ -624,9 +624,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0xa2c),
+                gas_consumed: H256::from_low_u64_be(0x7d3),
                 gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0xa2c),
+                overall_fee: H256::from_low_u64_be(0x7d3),
             }
         );
 
