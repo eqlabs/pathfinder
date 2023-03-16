@@ -85,7 +85,7 @@ except ModuleNotFoundError:
 
 
 # used from tests, and the query which asserts that the schema is of expected version.
-EXPECTED_SCHEMA_REVISION = 29
+EXPECTED_SCHEMA_REVISION = 30
 EXPECTED_CAIRO_VERSION = "0.11.0a0"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
