@@ -107,7 +107,7 @@ jobs:
       - uses: actions/setup-python@v4
         id: setup_python
         with:
-          python-version: '3.8'
+          python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: 'py/requirements*.txt'
       # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
@@ -187,7 +187,7 @@ jobs:
       - uses: actions/setup-python@v4
         id: setup_python
         with:
-          python-version: '3.8'
+          python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: 'py/requirements*.txt'
       # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
@@ -231,7 +231,7 @@ jobs:
           workspaces: "crates/stark_hash_python"
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.8'
+          python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: 'py/requirements*.txt'
       - uses: messense/maturin-action@v1
