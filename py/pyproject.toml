@@ -12,7 +12,7 @@ dependencies = [
     "zstandard == 0.20.0",
     "cachetools == 5.3.0",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
 [project.optional-dependencies]
 dev = [
