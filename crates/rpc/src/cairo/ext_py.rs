@@ -811,7 +811,7 @@ mod tests {
             .set(test_contract_address, test_contract_state_hash)
             .unwrap();
         let storage_commitment = storage_commitment_tree.apply().unwrap();
-        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment"));
+        let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
         StarknetBlocksTable::insert(
@@ -873,7 +873,7 @@ mod tests {
             .set(account_contract_address, account_contract_state_hash)
             .unwrap();
         let storage_commitment = storage_commitment_tree.apply().unwrap();
-        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment"));
+        let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
         StarknetBlocksTable::insert(
