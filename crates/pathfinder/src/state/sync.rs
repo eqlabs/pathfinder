@@ -337,7 +337,7 @@ where
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
-                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update)
+                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain)
                         .await
                         .context("Downloading missing classes for pending block")?;
 
@@ -828,6 +828,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
     sequencer: SequencerClient,
     connection: &mut Connection,
     state_update: &PendingStateUpdate,
+    chain: Chain,
 ) -> anyhow::Result<()> {
     let deployed_classes = state_update
         .state_diff
@@ -880,7 +881,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
 
     // For each missing, download, verify and insert definition.
     for class_hash in missing {
-        let class = download_class(&sequencer, class_hash).await?;
+        let class = download_class(&sequencer, class_hash, chain).await?;
 
         match class {
             DownloadedClass::Cairo(class) => {
@@ -939,6 +940,7 @@ enum DownloadedClass {
 async fn download_class<SequencerClient: ClientApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
+    chain: Chain,
 ) -> Result<DownloadedClass, anyhow::Error> {
     use starknet_gateway_types::class_hash::compute_class_hash;
 
@@ -984,8 +986,19 @@ async fn download_class<SequencerClient: ClientApi>(
             ))
         }
         starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
+            // FIXME(integration reset): work-around for integration containing Sierra classes
+            // that are incompatible with production compiler. This will get "fixed" in the future
+            // by resetting integration to remove these classes at which point we can revert this.
+            //
+            // The work-around ignores compilation errors on integration, and instead replaces the
+            // casm definition with empty bytes.
             let casm_definition =
-                crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class")?;
+                crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class");
+            let casm_definition = match (casm_definition, chain) {
+                (Ok(casm_definition), _) => casm_definition,
+                (Err(_), Chain::Integration) => Vec::new(),
+                (Err(e), _) => return Err(e),
+            };
 
             let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let mut compressor =
