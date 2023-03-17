@@ -217,7 +217,7 @@ Note that:
 
 ### pathfinder extension API
 
-You can find the API specification [here](pathfinder_rpc_api.json).
+You can find the API specification [here](doc/rpc/pathfinder_rpc_api.json).
 
 
 ## Monitoring API
