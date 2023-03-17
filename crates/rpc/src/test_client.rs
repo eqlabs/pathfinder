@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use jsonrpsee::core::Error;
 use jsonrpsee::types::error::CallError;
-use jsonrpsee::types::{ErrorResponse, Id, ParamsSer, RequestSer, Response};
+use jsonrpsee::types::{ErrorResponse, Id, RequestSer, Response};
 use serde::de::DeserializeOwned;
 
 /// Test Http Client Builder.
@@ -77,17 +77,20 @@ pub struct TestClient {
 }
 
 impl TestClient {
-    #[cfg(test)]
-    pub fn v01(address: SocketAddr) -> Self {
-        TestClientBuilder::default()
-            .request_timeout(Duration::from_secs(120))
-            .address(address)
-            .endpoint("rpc/v0.1".into())
-            .build()
-            .expect("Create v0.1 RPC client")
-    }
-
     /// Perform a request towards the server.
+    ///
+    /// ```
+    /// use serde_json::json;
+    /// let latest = client
+    ///     .request::<Block>("starknet_getBlock", json!(["latest"]))
+    ///     .await;
+    /// let genesis = client
+    ///     .request::<Block>(
+    ///         "starknet_getBlock",
+    ///         json!({"block_id": {"block_number": 0}}),
+    ///     )
+    ///     .await;
+    /// ```
     ///
     /// The difference from [`jsonrpsee::http_client::HttpClient::request`] is that
     /// this method reports the core reason for response `R` serde error,
@@ -95,16 +98,36 @@ impl TestClient {
     pub async fn request<'a, R>(
         &self,
         method: &'a str,
-        params: Option<ParamsSer<'a>>,
+        params: serde_json::Value,
     ) -> Result<R, Error>
     where
         R: DeserializeOwned,
     {
+        use serde_json::Value;
+
+        let params = match params {
+            Value::Array(_) | Value::Object(_) => {
+                Some(serde_json::value::to_raw_value(&params).expect("JSON array or object"))
+            }
+            other => {
+                let variant_name = match other {
+                    Value::Null => "serde_json::Value::Null",
+                    Value::Bool(_) => "serde_json::Value::Bool",
+                    Value::Number(_) => "serde_json::Value::Number",
+                    Value::String(_) => "serde_json::Value::String",
+                    Value::Array(_) | Value::Object(_) => unreachable!(),
+                };
+                return Err(Error::Custom(format!(
+                    "Invalid params type {variant_name}, accepted types: serde_json::Value::{{String,Array}}"
+                )));
+            }
+        };
+
         let id = Id::Number(
             self.current_id
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         );
-        let request = RequestSer::new(&id, method, params);
+        let request = RequestSer::owned(id.clone(), method, params);
         let request = serde_json::to_vec(&request).map_err(Error::ParseError)?;
 
         const CONTENT_TYPE_JSON: &str = "application/json";

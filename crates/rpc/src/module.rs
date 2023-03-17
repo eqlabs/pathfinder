@@ -109,8 +109,8 @@ mod tests {
     use super::RpcContext;
     use crate::error::RpcError;
     use crate::test_client::TestClientBuilder;
-    use jsonrpsee::http_server::HttpServerBuilder;
-    use jsonrpsee::rpc_params;
+    use jsonrpsee::server::ServerBuilder;
+    use serde_json::json;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
     #[tokio::test]
@@ -126,7 +126,7 @@ mod tests {
             .unwrap()
             .build();
 
-        let server = HttpServerBuilder::default()
+        let server = ServerBuilder::default()
             .build(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)))
             .await
             .unwrap();
@@ -140,14 +140,15 @@ mod tests {
             .build()
             .unwrap();
 
-        let message = client.request::<String>("say_hello", None).await.unwrap();
+        let message = client
+            .request::<String>("say_hello", json!([]))
+            .await
+            .unwrap();
         assert_eq!(message.as_str(), "hello");
     }
 
     #[tokio::test]
     async fn with_input() {
-        use jsonrpsee::rpc_params;
-
         let ctx = RpcContext::for_tests();
 
         // Required because jsonrpsee api is a pita to use.
@@ -165,7 +166,7 @@ mod tests {
             .unwrap()
             .build();
 
-        let server = HttpServerBuilder::default()
+        let server = ServerBuilder::default()
             .build(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)))
             .await
             .unwrap();
@@ -182,7 +183,7 @@ mod tests {
         let input = "testing testing 123".to_string();
 
         let message = client
-            .request::<String>("echo", rpc_params!(input.clone()))
+            .request::<String>("echo", json!([input]))
             .await
             .unwrap();
         assert_eq!(message, input);
