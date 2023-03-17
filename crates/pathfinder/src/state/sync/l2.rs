@@ -522,7 +522,10 @@ async fn download_and_compress_class(
                 crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class");
             let casm_definition = match (casm_definition, chain) {
                 (Ok(casm_definition), _) => casm_definition,
-                (Err(_), Chain::Integration) => Vec::new(),
+                (Err(_), Chain::Integration) => {
+                    tracing::info!(class_hash=%hash, "Ignored CASM compilation failure integration network");
+                    Vec::new()
+                }
                 (Err(e), _) => return Err(e),
             };
 
