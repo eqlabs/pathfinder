@@ -24,7 +24,7 @@ pub mod middleware {
         fn on_call(
             &self,
             method_name: &str,
-            _params: jsonrpsee::types::Params,
+            _params: jsonrpsee::types::Params<'_>,
             _kind: jsonrpsee::server::logger::MethodKind,
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
@@ -85,7 +85,7 @@ pub mod middleware {
         fn on_call(
             &self,
             method_name: &str,
-            params: jsonrpsee::types::Params,
+            params: jsonrpsee::types::Params<'_>,
             kind: jsonrpsee::server::logger::MethodKind,
             transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
