@@ -15,7 +15,7 @@ pub mod v03;
 use crate::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
 use crate::v02::types::syncing::Syncing;
 use context::RpcContext;
-use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle};
+use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 
@@ -42,9 +42,9 @@ impl RpcServer {
     }
 
     /// Starts the HTTP-RPC server.
-    pub async fn run(self) -> Result<(HttpServerHandle, SocketAddr), anyhow::Error> {
-        let server = HttpServerBuilder::default()
-            .set_middleware(self.middleware)
+    pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
+        let server = ServerBuilder::default()
+            .set_logger(self.middleware)
             .build(self.addr)
             .await
             .map_err(|e| match e {
@@ -69,16 +69,21 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         let local_addr = server.local_addr()?;
 
         let module_v02 = v02::register_methods(self.context.clone())?;
-        let pathfinder_module = pathfinder::register_methods(self.context.clone())?;
-        let module_v03 = v03::register_methods(self.context)?;
+        // FIXME add path handling
+        let _pathfinder_module = pathfinder::register_methods(self.context.clone())?;
+        let _module_v03 = v03::register_methods(self.context)?;
 
         Ok(server
-            .start_with_paths([
-                (vec!["/", "/rpc/v0.2"], module_v02),
-                (vec!["/rpc/v0.3"], module_v03),
-                (vec!["/rpc/pathfinder/v0.1"], pathfinder_module),
-            ])
+            .start(module_v02)
             .map(|handle| (handle, local_addr))?)
+
+        // Ok(server
+        //     .start_with_paths([
+        //         (vec!["/", "/rpc/v0.2"], module_v02),
+        //         (vec!["/rpc/v0.3"], module_v03),
+        //         (vec!["/rpc/pathfinder/v0.1"], pathfinder_module),
+        //     ])
+        //     .map(|handle| (handle, local_addr))?)
     }
 }
 

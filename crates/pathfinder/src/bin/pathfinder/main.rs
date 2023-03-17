@@ -320,7 +320,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
                 Err(err) => tracing::error!("Cairo process ended unexpected; failed to join task handle: {:?}", err),
             }
         }
-        _result = rpc_handle => {
+        _result = rpc_handle.stopped() => {
             // This handle returns () so its not very useful.
             tracing::error!("RPC server process ended unexpected");
         }
