@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::v02::RpcContext;
 use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
 use pathfinder_serde::StarknetBlockNumberAsHexStr;
 use serde::Serialize;
@@ -69,7 +69,7 @@ pub struct SyncingStatus {
 #[cfg(test)]
 mod tests {
     use super::SyncingOuput;
-    use crate::v02::RpcContext;
+    use crate::context::RpcContext;
     mod serde {
         use super::super::{SyncingOuput, SyncingStatus};
 

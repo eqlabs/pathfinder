@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::v02::RpcContext;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
 crate::error::generate_rpc_error_subset!(

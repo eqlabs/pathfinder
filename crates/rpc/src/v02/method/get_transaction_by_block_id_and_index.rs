@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
-use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, StarknetTransactionIndex};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};

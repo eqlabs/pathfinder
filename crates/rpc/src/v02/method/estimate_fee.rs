@@ -1,9 +1,7 @@
+use crate::context::RpcContext;
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
-    v02::{
-        types::{reply::FeeEstimate, request::BroadcastedTransaction},
-        RpcContext,
-    },
+    v02::types::{reply::FeeEstimate, request::BroadcastedTransaction},
 };
 use pathfinder_common::{BlockId, StarknetBlockTimestamp};
 use starknet_gateway_types::pending::PendingData;

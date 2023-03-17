@@ -1,6 +1,6 @@
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedInvokeTransaction;
-use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
 use starknet_gateway_client::ClientApi;

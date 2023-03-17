@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
-use crate::v02::RpcContext;
 
 crate::error::generate_rpc_error_subset!(GetNonceError:);
 
