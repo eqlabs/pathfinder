@@ -627,9 +627,9 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 1382,
+        "gas_consumed": 1258,
         "gas_price": 1,
-        "overall_fee": 1382,
+        "overall_fee": 1258,
     }
 
 
@@ -674,9 +674,9 @@ def test_fee_estimate_for_declare_transaction_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 1350,
+        "gas_consumed": 1251,
         "gas_price": 1,
-        "overall_fee": 1350,
+        "overall_fee": 1251,
     }
 
 
@@ -743,9 +743,9 @@ def test_fee_estimate_on_positive():
     assert second == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (0x0566).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x04EA).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (0x35FC).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0x3124).to_bytes(32, "big").hex(),
         },
     }
 
@@ -1154,7 +1154,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            {"gas_consumed": 1416, "gas_price": 1, "overall_fee": 1416},
+            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
         ),
         (
             dataclasses.replace(
@@ -1179,7 +1179,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transaction=dataclasses.replace(base_transaction, nonce=1),
             ),
-            {"gas_consumed": 1416, "gas_price": 1, "overall_fee": 1416},
+            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
         ),
         (
             dataclasses.replace(
@@ -1216,7 +1216,7 @@ def test_nonce_with_dummy():
                 transaction=dataclasses.replace(base_transaction, nonce=2),
                 pending_nonces={0x123: 2},
             ),
-            {"gas_consumed": 1416, "gas_price": 1, "overall_fee": 1416},
+            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
         ),
         (
             dataclasses.replace(
@@ -1457,9 +1457,9 @@ def test_sierra_invoke_function_through_account():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 3869,
+        "gas_consumed": 3715,
         "gas_price": 1,
-        "overall_fee": 3869,
+        "overall_fee": 3715,
     }
 
 
