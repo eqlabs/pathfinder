@@ -203,10 +203,40 @@ pub struct ContractEntryPoints {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ContractEntryPoint {
-    #[serde_as(as = "U64AsHexStr")]
+    #[serde_as(as = "OffsetSerde")]
     pub offset: u64,
     #[serde_as(as = "crate::felt::RpcFelt")]
     pub selector: Felt,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum OffsetSerde {
+    HexStr(U64AsHexStr),
+    Decimal(u64),
+}
+
+impl serde_with::SerializeAs<u64> for OffsetSerde {
+    fn serialize_as<S>(source: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        source.serialize(serializer)
+    }
+}
+
+impl<'de> serde_with::DeserializeAs<'de, u64> for OffsetSerde {
+    fn deserialize_as<D>(deserializer: D) -> Result<u64, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let offset = OffsetSerde::deserialize(deserializer)?;
+        let offset = match offset {
+            OffsetSerde::HexStr(wrapped) => wrapped.0,
+            OffsetSerde::Decimal(decimal) => decimal,
+        };
+        Ok(offset)
+    }
 }
 
 impl From<ContractEntryPoint> for starknet_gateway_types::request::contract::SelectorAndOffset {
@@ -365,6 +395,50 @@ impl From<SierraEntryPoint>
         Self {
             function_idx: entry_point.function_idx,
             selector: pathfinder_common::EntryPoint(entry_point.selector),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    mod contract_entry_point {
+        use pathfinder_common::felt;
+
+        use crate::v02::types::ContractEntryPoint;
+
+        #[test]
+        fn with_hex_offset() {
+            let json = r#"{
+                "selector": "0x12345",
+                "offset": "0xabcdef"
+            }"#;
+
+            let result = serde_json::from_str::<ContractEntryPoint>(json).unwrap();
+
+            let expected = ContractEntryPoint {
+                selector: felt!("0x12345"),
+                offset: 11259375,
+            };
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn with_decimal_offset() {
+            let json = r#"{
+                "selector": "0x12345",
+                "offset": 199128127
+            }"#;
+
+            let result = serde_json::from_str::<ContractEntryPoint>(json).unwrap();
+
+            let expected = ContractEntryPoint {
+                selector: felt!("0x12345"),
+                offset: 199128127,
+            };
+
+            assert_eq!(result, expected);
         }
     }
 }
