@@ -117,6 +117,7 @@ mod tests {
         felt, CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
     };
     use stark_hash::Felt;
+    use starknet_gateway_types::error::StarknetErrorCode;
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
@@ -358,8 +359,14 @@ mod tests {
             token: None,
         };
         let error = add_declare_transaction(context, input).await.unwrap_err();
-        // FIXME This should be a specific Starknet gateway variant, once the gateway is fixed
-        assert_matches::assert_matches!(error, AddDeclareTransactionError::Internal(_));
+        // FIXME at least make sure a proper starknet error variant is returned from the gateway
+        // until a more meaningful rpc error code is introduced in the spec and we can use it
+        assert_matches::assert_matches!(error, AddDeclareTransactionError::Internal(error) => {
+            let error = error.downcast::<SequencerError>().unwrap();
+            assert_matches::assert_matches!(error, SequencerError::StarknetError(error) => {
+                assert_eq!(error.code, StarknetErrorCode::CompilationFailed);
+            })
+        });
     }
 
     #[test_log::test(tokio::test)]
