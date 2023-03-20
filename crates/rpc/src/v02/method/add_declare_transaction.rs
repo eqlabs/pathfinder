@@ -309,7 +309,6 @@ mod tests {
             ..CONTRACT_CLASS.clone()
         };
 
-        // Fixme v0.11.0 only allow v2?
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
             BroadcastedDeclareTransactionV0V1 {
                 version: TransactionVersion::ONE,

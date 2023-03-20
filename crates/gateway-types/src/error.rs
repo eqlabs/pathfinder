@@ -78,4 +78,6 @@ pub enum StarknetErrorCode {
     DeprecatedTransaction,
     #[serde(rename = "StarknetErrorCode.INVALID_COMPILED_CLASS_HASH")]
     InvalidCompiledClassHash,
+    #[serde(rename = "StarknetErrorCode.COMPILATION_FAILED")]
+    CompilationFailed,
 }
