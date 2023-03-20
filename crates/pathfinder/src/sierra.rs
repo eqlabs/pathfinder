@@ -22,7 +22,7 @@ pub fn compile_to_casm(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
     validate_compatible_sierra_version(&sierra_class, ListSelector::DefaultList)?;
 
     let casm_class =
-        CasmContractClass::from_contract_class(sierra_class).context("Compiling to CASM")?;
+        CasmContractClass::from_contract_class(sierra_class, true).context("Compiling to CASM")?;
     let casm_definition = serde_json::to_vec(&casm_class)?;
 
     Ok(casm_definition)
@@ -62,11 +62,11 @@ struct FeederGatewayContractClass<'a> {
 mod tests {
     use super::{compile_to_casm, FeederGatewayContractClass};
 
-    use starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_0_11_SIERRA;
+    use starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA5_SIERRA;
 
     #[test]
     fn test_feeder_gateway_contract_conversion() {
-        let contract_definition = zstd::decode_all(CAIRO_0_11_SIERRA).unwrap();
+        let contract_definition = zstd::decode_all(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
 
         let class =
             serde_json::from_slice::<FeederGatewayContractClass<'_>>(&contract_definition).unwrap();
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn test_compile() {
-        let contract_definition = zstd::decode_all(CAIRO_0_11_SIERRA).unwrap();
+        let contract_definition = zstd::decode_all(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
         compile_to_casm(&contract_definition).unwrap();
     }
 }
