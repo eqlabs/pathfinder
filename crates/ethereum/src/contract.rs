@@ -179,7 +179,7 @@ mod tests {
                 // update the address and more importantly, the ABI once it reaches testnet.
 
                 // The current address of Starknet's core contract implementation.
-                const CORE_IMPL_ADDR: &str = "0xb42f1FDB956e693A44Ec3E9781dA9b3C8756aF3F";
+                const CORE_IMPL_ADDR: &str = "0xc95b2435c3e0c9a4674c1060ea2d2494487babae";
                 let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
                 let provider = HttpProvider::test_provider(Chain::Integration);
                 let provider = std::sync::Arc::new(&*provider);
