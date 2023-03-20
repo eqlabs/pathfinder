@@ -1483,7 +1483,7 @@ def test_sierra_declare_through_account():
     command = EstimateFee(
         at_block="latest",
         chain=call.Chain.TESTNET,
-        gas_price=0,
+        gas_price=1,
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
@@ -1501,11 +1501,10 @@ def test_sierra_declare_through_account():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    # FIXME: correct gas consumed
     assert output == {
-        "gas_consumed": 0,
-        "gas_price": 0,
-        "overall_fee": 0,
+        "gas_consumed": 1251,
+        "gas_price": 1,
+        "overall_fee": 1251,
     }
 
 
