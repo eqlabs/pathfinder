@@ -46,11 +46,25 @@ pub async fn poll_pending(
             MaybePendingBlock::Pending(pending) => pending,
         };
 
-        // Download the pending state diff.
-        let state_update = sequencer
-            .state_update(BlockId::Pending)
-            .await
-            .context("Download pending state update")?;
+        // Add a timeout to the pending state update query.
+        //
+        // This is work-around for the gateway constantly 503/502 on this query because
+        // it cannot calculate the state root on the fly quickly enough.
+        //
+        // Without this timeout, we can potentially sit here infinitely retrying this query internally.
+        let state_update = match tokio::time::timeout(
+            std::time::Duration::from_secs(3 * 60),
+            sequencer.state_update(BlockId::Pending),
+        )
+        .await
+        {
+            Ok(gateway_result) => gateway_result,
+            Err(_timeout) => {
+                tracing::debug!("Pending state update query timed out, exiting pending mode.");
+                return Ok(());
+            }
+        }
+        .context("Downloading pending state update")?;
 
         match state_update {
             MaybePendingStateUpdate::StateUpdate(_) => {
