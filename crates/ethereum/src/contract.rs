@@ -131,7 +131,7 @@ mod tests {
                 // log changes as read these. In particular, any of the `XXX_EVENT` consts.
 
                 // The current address of Starknet's core contract implementation.
-                const CORE_IMPL_ADDR: &str = "0x70c8a579ad08339cca19d77d8646f4b6f0fd098a";
+                const CORE_IMPL_ADDR: &str = "0xc95b2435c3e0c9a4674c1060ea2d2494487babae";
                 let expect_addr = H160::from_str(CORE_IMPL_ADDR).unwrap();
                 let provider = HttpProvider::test_provider(Chain::Testnet);
                 let provider = std::sync::Arc::new(&*provider);
