@@ -114,6 +114,9 @@ pub mod zstd_compressed_contracts {
     // modified: "abi" has been converted to a string and debug info is removed
     pub const CAIRO_1_0_0_ALPHA5_SIERRA: &[u8] =
         bytes_fixture!("contracts/sierra-1.0.0.alpha5-starknet-format.json.zst");
+    // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x4d7d2ddf396736d7cdba26e178e30e3388d488984a94e03bc4af4841e222920
+    pub const CAIRO_1_0_0_ALPHA6_SIERRA: &[u8] =
+        bytes_fixture!("contracts/sierra-1.0.0.alpha6.json.zst");
 }
 
 pub mod testnet {

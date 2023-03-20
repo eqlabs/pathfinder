@@ -132,7 +132,7 @@ mod tests {
         };
 
         pub static ref SIERRA_CLASS_DEFINITION_JSON: Vec<u8> = {
-            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_0_11_SIERRA).unwrap()
+            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA).unwrap()
         };
 
         pub static ref SIERRA_CLASS_JSON: String = {
@@ -309,7 +309,6 @@ mod tests {
             ..CONTRACT_CLASS.clone()
         };
 
-        // Fixme v0.11.0 only allow v2?
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
             BroadcastedDeclareTransactionV0V1 {
                 version: TransactionVersion::ONE,
@@ -410,9 +409,9 @@ mod tests {
                 contract_class: SIERRA_CLASS.clone(),
                 sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
                 // Taken from
-                // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=283364
+                // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=284544
                 compiled_class_hash: CasmHash::new_or_panic(felt!(
-                    "0x711c0c3e56863e29d3158804aac47f424241eda64db33e2cc2999d60ee5105"
+                    "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
                 )),
             },
         ));
@@ -426,10 +425,10 @@ mod tests {
             result,
             AddDeclareTransactionOutput {
                 transaction_hash: StarknetTransactionHash(felt!(
-                    "0x076F6CF360512D1D33CF8AC32B9800480F5DA03DC680496874195B2B5B2A465E"
+                    "0x069B1F490F1E28458E7A22DBA1DE950F060036FAAE533592E2D5546A6347C892"
                 )),
                 class_hash: ClassHash(felt!(
-                    "0x04E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C"
+                    "0x04D7D2DDF396736D7CDBA26E178E30E3388D488984A94E03BC4AF4841E222920"
                 )),
             }
         );
