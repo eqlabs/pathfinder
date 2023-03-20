@@ -660,9 +660,7 @@ def test_fee_estimate_for_declare_transaction_directly():
         pending_nonces={},
         pending_timestamp=0,
         transaction=DeprecatedDeclare(
-            # FIXME: query version should work
-            # version=0x100000000000000000000000000000000,
-            version=0,
+            version=0x100000000000000000000000000000000,
             max_fee=0,
             signature=[],
             nonce=0,
@@ -1124,8 +1122,7 @@ def test_nonce_with_dummy():
 
     # this will be used as a basis for the other commands with the `dict(base, **updates)` signature
     base_transaction = InvokeFunction(
-        # FIXME: query version should work
-        version=0x1,
+        version=2**128 + 1,
         sender_address=0x123,
         # this should be: target address, target selector, input len, input..
         calldata=[test_contract_address, get_selector_from_name("get_value"), 1, 132],
