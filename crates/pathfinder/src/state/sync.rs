@@ -19,7 +19,6 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{
-    types::{CompressedCasmClass, CompressedContract},
     CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable,
     L1StateTable, L1TableBlockId, RefsTable, StarknetBlock, StarknetBlocksBlockId,
     StarknetBlocksTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
@@ -29,9 +28,7 @@ use stark_hash::Felt;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::{
     pending::PendingData,
-    reply::{
-        state_update::DeployedContract, Block, MaybePendingBlock, PendingStateUpdate, StateUpdate,
-    },
+    reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
 };
 use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
@@ -337,10 +334,6 @@ where
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
-                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain)
-                        .await
-                        .context("Downloading missing classes for pending block")?;
-
                     pending_data.set(block, state_update).await;
                     tracing::debug!("Updated pending data");
                 }
@@ -820,218 +813,6 @@ fn deploy_contract(
         contract_nonce,
     )
     .context("Insert constract state hash into contracts state table")
-}
-
-/// Downloads and inserts class definitions for any classes in the
-/// list which are not already present in the database.
-async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
-    sequencer: SequencerClient,
-    connection: &mut Connection,
-    state_update: &PendingStateUpdate,
-    chain: Chain,
-) -> anyhow::Result<()> {
-    let deployed_classes = state_update
-        .state_diff
-        .deployed_contracts
-        .iter()
-        .map(|x| x.class_hash);
-    let declared_cairo_classes = state_update
-        .state_diff
-        .old_declared_contracts
-        .iter()
-        .cloned();
-    let declared_sierra_classes = state_update
-        .state_diff
-        .declared_classes
-        .iter()
-        .map(|x| ClassHash(x.class_hash.0));
-    let replaced_classes = state_update
-        .state_diff
-        .replaced_classes
-        .iter()
-        .map(|x| x.class_hash);
-
-    let classes = deployed_classes
-        .chain(declared_cairo_classes)
-        .chain(declared_sierra_classes)
-        .chain(replaced_classes);
-
-    // Make list unique.
-    let classes = classes
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter() // TODO: remove this allocation by using Iter in exists.
-        .collect::<Vec<_>>();
-
-    // Check database to see which are missing.
-    let exists = tokio::task::block_in_place(|| {
-        let transaction = connection.transaction()?;
-        ContractCodeTable::exists(&transaction, &classes)
-    })
-    .with_context(|| format!("Query storage for existance of classes {classes:?}"))?;
-    anyhow::ensure!(
-        exists.len() == classes.len(),
-        "Length mismatch when querying for class existance. Expected {} but got {}.",
-        classes.len(),
-        exists.len()
-    );
-    let missing = classes
-        .into_iter()
-        .zip(exists.into_iter())
-        .filter_map(|(class, exist)| (!exist).then_some(class));
-
-    // For each missing, download, verify and insert definition.
-    for class_hash in missing {
-        let class = download_class(&sequencer, class_hash, chain).await?;
-
-        match class {
-            DownloadedClass::Cairo(class) => {
-                tokio::task::block_in_place(|| {
-                    let transaction =
-                        connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ContractCodeTable::insert_compressed(&transaction, &class)?;
-                    transaction.commit()?;
-                    anyhow::Result::<()>::Ok(())
-                })
-                .with_context(|| format!("Insert class definition with hash: {:?}", class.hash))?;
-            }
-            DownloadedClass::Sierra(sierra, casm) => {
-                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
-                // since that's what has been added to the class commitment tree.
-                let compiled_class_hash = state_update
-                    .state_diff
-                    .declared_classes
-                    .iter()
-                    .find_map(|declared_class| {
-                        if declared_class.class_hash.0 == class_hash.0 {
-                            Some(declared_class.compiled_class_hash)
-                        } else {
-                            None
-                        }
-                    })
-                    .context("Sierra class hash not in declared classes")?;
-                tokio::task::block_in_place(|| {
-                    let transaction =
-                        connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ContractCodeTable::insert_compressed(&transaction, &sierra)?;
-                    CasmClassTable::upsert_compressed(
-                        &transaction,
-                        &casm,
-                        &compiled_class_hash,
-                        crate::sierra::COMPILER_VERSION,
-                    )?;
-                    transaction.commit()?;
-                    anyhow::Result::<()>::Ok(())
-                })
-                .with_context(|| format!("Insert class definition with hash: {:?}", sierra.hash))?;
-            }
-        }
-
-        tracing::trace!("Inserted new class {}", class_hash.0.to_hex_str());
-    }
-
-    Ok(())
-}
-
-enum DownloadedClass {
-    Cairo(CompressedContract),
-    Sierra(CompressedContract, CompressedCasmClass),
-}
-
-async fn download_class<SequencerClient: ClientApi>(
-    sequencer: &SequencerClient,
-    class_hash: ClassHash,
-    chain: Chain,
-) -> Result<DownloadedClass, anyhow::Error> {
-    use starknet_gateway_types::class_hash::compute_class_hash;
-
-    let definition = sequencer
-        .class_by_hash(class_hash)
-        .await
-        .with_context(|| format!("Downloading class {}", class_hash.0))?;
-
-    let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let hash = compute_class_hash(&definition)?;
-        Ok((definition, hash))
-    });
-    let (definition, hash) = extract
-        .await
-        .context("Parse class definition and compute hash")??;
-
-    anyhow::ensure!(
-        class_hash == hash.hash(),
-        "Class hash mismatch, {} instead of {}",
-        hash.hash(),
-        class_hash.0
-    );
-
-    match hash {
-        starknet_gateway_types::class_hash::ComputedClassHash::Cairo(hash) => {
-            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let mut compressor =
-                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-                let definition = compressor
-                    .compress(&definition)
-                    .context("Compress definition")?;
-
-                Ok(definition)
-            });
-            let compressed_definition = compress.await.context("Compress class")??;
-
-            Ok(DownloadedClass::Cairo(
-                pathfinder_storage::types::CompressedContract {
-                    definition: compressed_definition,
-                    hash,
-                },
-            ))
-        }
-        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
-            // FIXME(integration reset): work-around for integration containing Sierra classes
-            // that are incompatible with production compiler. This will get "fixed" in the future
-            // by resetting integration to remove these classes at which point we can revert this.
-            //
-            // The work-around ignores compilation errors on integration, and instead replaces the
-            // casm definition with empty bytes.
-            let casm_definition =
-                crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class");
-            let casm_definition = match (casm_definition, chain) {
-                (Ok(casm_definition), _) => casm_definition,
-                (Err(_), Chain::Integration) => {
-                    tracing::info!(class_hash=%hash, "Ignored CASM compilation failure integration network");
-                    Vec::new()
-                }
-                (Err(e), _) => return Err(e),
-            };
-
-            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let mut compressor =
-                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-                let definition = compressor
-                    .compress(&definition)
-                    .context("Compress definition")?;
-
-                let casm_definition = compressor
-                    .compress(&casm_definition)
-                    .context("Compress CASM definition")?;
-
-                Ok((definition, casm_definition))
-            });
-            let (compressed_definition, compressed_casm_definition) =
-                compress.await.context("Compress class")??;
-
-            Ok(DownloadedClass::Sierra(
-                pathfinder_storage::types::CompressedContract {
-                    definition: compressed_definition,
-                    hash,
-                },
-                pathfinder_storage::types::CompressedCasmClass {
-                    definition: compressed_casm_definition,
-                    hash,
-                },
-            ))
-        }
-    }
 }
 
 /// Interval at which poll for new data when at the head of chain.
