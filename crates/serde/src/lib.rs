@@ -288,12 +288,46 @@ serde_with::serde_conv!(
     |s: &str| bytes_from_hex_str::<32>(s).map(H256::from)
 );
 
-serde_with::serde_conv!(
-    pub U64AsHexStr,
-    u64,
-    |u: &u64| bytes_to_hex_str(&u.to_be_bytes()),
-    |s: String| bytes_from_hex_str::<8>(&s).map(u64::from_be_bytes)
-);
+pub struct U64AsHexStr(pub u64);
+
+impl serde::Serialize for U64AsHexStr {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&bytes_to_hex_str(&self.0.to_be_bytes()))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for U64AsHexStr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = U64AsHexStr;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("A u64 encoded as a hex string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let value = bytes_from_hex_str::<8>(v)
+                    .map(u64::from_be_bytes)
+                    .map_err(E::custom)?;
+
+                Ok(U64AsHexStr(value))
+            }
+        }
+
+        deserializer.deserialize_str(Visitor)
+    }
+}
 
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_biguint(b: BigUint) -> Result<Felt, OverflowError> {
