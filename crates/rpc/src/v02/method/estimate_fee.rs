@@ -374,9 +374,7 @@ mod tests {
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
                     contract_class: CONTRACT_CLASS.clone(),
-                    sender_address: ContractAddress::new_or_panic(felt!(
-                        "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
-                    )),
+                    sender_address: ContractAddress::new_or_panic(felt!("01")),
                 }),
             );
 

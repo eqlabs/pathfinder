@@ -107,7 +107,7 @@ jobs:
       - uses: actions/setup-python@v4
         id: setup_python
         with:
-          python-version: '3.8'
+          python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: 'py/requirements*.txt'
       # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
@@ -115,9 +115,10 @@ jobs:
         id: python_cache
         with:
           path: ${{ env.pythonLocation }}/**/site-packages
-          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
-      - run: pip install -e py/.
-
+          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}-${{ hashFiles('py/pyproject.toml') }}
+      - run: |
+          pip install -r py/requirements-dev.txt
+          pip install -e py/.
       # We want to strip the debug info as some of these test binaries are 100MB+ and pathfinder_lib is 1GB+
       - name: Execute tests
         run: timeout 25m cargo test --all-targets --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
@@ -187,7 +188,7 @@ jobs:
       - uses: actions/setup-python@v4
         id: setup_python
         with:
-          python-version: '3.8'
+          python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: 'py/requirements*.txt'
       # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
@@ -195,9 +196,11 @@ jobs:
         id: python_cache
         with:
           path: ${{ env.pythonLocation }}/**/site-packages
-          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}
+          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}-${{ hashFiles('py/pyproject.toml') }}
       - name: Install Python dependencies
-        run: pip install -e py/.[dev]
+        run: |
+          pip install -r py/requirements-dev.txt
+          pip install -e py/.[dev]
       - uses: actions/download-artifact@v3
         with:
           name: pathfinder-starkhash-wheels
@@ -231,7 +234,7 @@ jobs:
           workspaces: "crates/stark_hash_python"
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.8'
+          python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: 'py/requirements*.txt'
       - uses: messense/maturin-action@v1

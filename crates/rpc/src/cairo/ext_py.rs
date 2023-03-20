@@ -124,9 +124,20 @@ impl Handle {
                     compiled_class_hash: None,
                 })
             }
-            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(_tx)) => {
-                // FIXME(0.11.0): requires a cairo-lang VM which supports starknet v0.11.0 and works.
-                return Err(CallFailure::Internal("Declare V2 is not supported yet"));
+            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
+                add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    contract_class: add_transaction::ContractDefinition::Sierra(
+                        tx.contract_class.try_into().map_err(|_| {
+                            CallFailure::Internal("contract class serialization failure")
+                        })?,
+                    ),
+                    sender_address: tx.sender_address,
+                    nonce: tx.nonce,
+                    compiled_class_hash: Some(tx.compiled_class_hash),
+                })
             }
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
                 add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
@@ -524,9 +535,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x55a),
+                gas_consumed: H256::from_low_u64_be(0x4ea),
                 gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0x55a),
+                overall_fee: H256::from_low_u64_be(0x4ea),
             }
         );
 
@@ -545,9 +556,9 @@ mod tests {
         assert_eq!(
             current_fee,
             crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x55a),
+                gas_consumed: H256::from_low_u64_be(0x4ea),
                 gas_price: H256::from_low_u64_be(10),
-                overall_fee: H256::from_low_u64_be(0x3584),
+                overall_fee: H256::from_low_u64_be(0x3124),
             }
         );
 
@@ -613,9 +624,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0xa2c),
+                gas_consumed: H256::from_low_u64_be(0xc18),
                 gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0xa2c),
+                overall_fee: H256::from_low_u64_be(0xc18),
             }
         );
 
@@ -800,7 +811,7 @@ mod tests {
             .set(test_contract_address, test_contract_state_hash)
             .unwrap();
         let storage_commitment = storage_commitment_tree.apply().unwrap();
-        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment"));
+        let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
         StarknetBlocksTable::insert(
@@ -862,7 +873,7 @@ mod tests {
             .set(account_contract_address, account_contract_state_hash)
             .unwrap();
         let storage_commitment = storage_commitment_tree.apply().unwrap();
-        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment"));
+        let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
         StarknetBlocksTable::insert(

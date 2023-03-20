@@ -12,7 +12,7 @@ import traceback
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import ClassVar, Dict, List, Optional, Type
+from typing import ClassVar, Dict, List, Optional, Tuple, Type
 
 try:
     import stark_hash_rust
@@ -51,6 +51,7 @@ try:
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.definitions import fields, constants
+    from starkware.starknet.definitions.constants import GasCost
     from starkware.starknet.definitions.error_codes import StarknetErrorCode
     from starkware.starknet.definitions.general_config import (
         DEFAULT_MAX_STEPS,
@@ -61,8 +62,10 @@ try:
         StarknetGeneralConfig,
         build_general_config,
     )
-
-    from starkware.starknet.services.api.contract_class import EntryPointType
+    from starkware.starknet.services.api.contract_class.contract_class import (
+        CompiledClass,
+        EntryPointType,
+    )
     from starkware.starknet.services.api.gateway.transaction import AccountTransaction
     from starkware.starknet.services.utils.sequencer_api_utils import (
         InternalAccountTransactionForSimulate,
@@ -81,8 +84,8 @@ except ModuleNotFoundError:
 
 
 # used from tests, and the query which asserts that the schema is of expected version.
-EXPECTED_SCHEMA_REVISION = 29
-EXPECTED_CAIRO_VERSION = "0.10.3"
+EXPECTED_SCHEMA_REVISION = 30
+EXPECTED_CAIRO_VERSION = "0.11.0a2"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -295,7 +298,7 @@ def check_cairolang_version():
         return False
 
 
-def do_loop(connection, input_gen, output_file):
+def do_loop(connection: sqlite3.Connection, input_gen, output_file):
     logger = Logger()
 
     if DEV_MODE:
@@ -389,7 +392,10 @@ def report_failed(logger, command, e):
         logger.debug(str(e))
 
 
-def loop_inner(connection, command: Command, contract_class_cache=None):
+def loop_inner(
+    connection: sqlite3.Connection, command: Command, contract_class_cache=None
+):
+
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
@@ -414,7 +420,7 @@ def loop_inner(connection, command: Command, contract_class_cache=None):
 
     # the later parts will have access to gas_price through this block_info
     try:
-        (block_info, global_root) = resolve_block(
+        (block_info, storage_commitment, class_commitment) = resolve_block(
             connection, at_block, command.gas_price
         )
     except NoSuchBlock:
@@ -423,7 +429,7 @@ def loop_inner(connection, command: Command, contract_class_cache=None):
             pending_deployed = []
             pending_nonces = {}
 
-            (block_info, global_root) = resolve_block(
+            (block_info, storage_commitment, class_commitment) = resolve_block(
                 connection, "latest", command.gas_price
             )
         else:
@@ -439,11 +445,18 @@ def loop_inner(connection, command: Command, contract_class_cache=None):
 
     general_config = create_general_config(command.chain.value)
 
+    if class_commitment == 0:
+        class_commitment = None
+
     adapter = SqliteAdapter(connection)
     # hook up the sqlite adapter
     ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
+    global_state_root = PatriciaTree(storage_commitment, 251)
+    contract_class_root = (
+        PatriciaTree(class_commitment, 251) if class_commitment is not None else None
+    )
     state_reader = PatriciaStateReader(
-        PatriciaTree(global_root, 251), ffc, contract_class_storage=adapter
+        global_state_root, contract_class_root, ffc, contract_class_storage=adapter
     )
     async_state = CachedState(
         block_info=block_info,
@@ -528,7 +541,9 @@ def check_schema(connection):
     return version == EXPECTED_SCHEMA_REVISION
 
 
-def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
+def resolve_block(
+    connection: sqlite3.Connection, at_block, forced_gas_price: int
+) -> Tuple[BlockInfo, int, int]:
     """
     forced_gas_price is the gas price we must use for this blockinfo, if None,
     the one from starknet_blocks will be used. this allows the caller to select
@@ -540,11 +555,11 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
         # it has been decided that the latest is whatever pathfinder knows to be latest synced block
         # regardless of it being the highest known (not yet synced)
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
+            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
         )
     elif isinstance(at_block, int):
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
+            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
             [at_block],
         )
     else:
@@ -554,7 +569,7 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
             at_block = b"\x00" * (32 - len(at_block)) + at_block
 
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
+            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
             [at_block],
         )
 
@@ -563,9 +578,10 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
             (
                 block_number,
                 block_time,
-                global_root,
+                storage_commitment,
                 gas_price,
                 sequencer_address,
+                class_commitment,
                 starknet_version,
             )
         ] = cursor
@@ -585,7 +601,8 @@ def resolve_block(connection, at_block, forced_gas_price: int) -> BlockInfo:
         BlockInfo(
             block_number, block_time, gas_price, sequencer_address, starknet_version
         ),
-        global_root,
+        storage_commitment,
+        class_commitment,
     )
 
 
@@ -632,7 +649,7 @@ class SqliteAdapter(Storage):
     however using a single transaction.
     """
 
-    def __init__(self, connection):
+    def __init__(self, connection: sqlite3.Connection):
         assert connection.in_transaction, "first query should had started a transaction"
         self.connection = connection
         self.elapsed = {
@@ -640,12 +657,14 @@ class SqliteAdapter(Storage):
             "patricia_node": 0,
             "contract_state": 0,
             "contract_definition": 0,
+            "compiled_class": 0,
         }
         self.counts = {
             "total": 0,
             "patricia_node": 0,
             "contract_state": 0,
             "contract_definition": 0,
+            "compiled_class": 0,
         }
         self.cache = {"patricia_node": {"hits": 0, "misses": 0}}
         # json cannot contain bytes, python doesn't have strip string
@@ -653,6 +672,7 @@ class SqliteAdapter(Storage):
             b"patricia_node": "patricia_node",
             b"contract_state": "contract_state",
             b"contract_definition_fact": "contract_definition",
+            b"compiled_class_fact": "compiled_class",
             # this is just a string op
             b"starknet_storage_leaf": None,
         }
@@ -700,8 +720,14 @@ class SqliteAdapter(Storage):
         if prefix == b"contract_definition_fact":
             return self.fetch_contract_definition(suffix)
 
+        if prefix == b"compiled_class_fact":
+            return self.fetch_compiled_class(suffix)
+
         if prefix == b"starknet_storage_leaf":
             return self.fetch_storage_leaf(suffix)
+
+        if prefix == b"contract_class_leaf":
+            return self.fetch_contract_class_leaf(suffix)
 
         assert False, f"unknown prefix: {prefix}"
 
@@ -713,7 +739,7 @@ class SqliteAdapter(Storage):
 
         # tree_global is much smaller table than tree_contracts
         cursor = self.connection.execute(
-            "select data from tree_global where hash = ?1 union select data from tree_contracts where hash = ?1",
+            "select data from tree_class where hash = ?1 union select data from tree_global where hash = ?1 union select data from tree_contracts where hash = ?1",
             [suffix],
         )
 
@@ -756,9 +782,25 @@ class SqliteAdapter(Storage):
         )
 
     def fetch_contract_definition(self, suffix):
-        # assert False, "we must rebuild the full json out of our columns"
+        """
+        Fetches a Cairo 0.x class (DeprecatedCompiledClassFact).
+
+        It's important that we return None for Sierra classes here since that's
+        what triggers falling back to fetching the CASM via fetch_compiled_class()
+        """
         cursor = self.connection.execute(
-            "select definition from class_definitions where hash = ?", [suffix]
+            """
+            select
+                class_definitions.definition
+            from
+                class_definitions
+            left outer join casm_definitions on
+                casm_definitions.hash = class_definitions.hash
+            where
+                class_definitions.hash = ?
+                and
+                casm_definitions.compiled_class_hash is null""",
+            [suffix],
         )
         [only] = next(cursor, [None])
 
@@ -778,6 +820,49 @@ class SqliteAdapter(Storage):
         # expect the returned value to have method called decode, but it's not
         # like we could fake streaming decompression
         return bytes(itertools.chain(b'{"contract_definition":', only, b"}"))
+
+    def fetch_compiled_class(self, suffix):
+        """
+        Fetches the CASM class for a Cairo 1.0 contract based on the compiled_class_hash.
+        """
+        cursor = self.connection.cursor()
+        res = cursor.execute(
+            "select definition from casm_definitions where compiled_class_hash = ?",
+            [suffix],
+        )
+        compiled_class = res.fetchone()
+
+        if compiled_class is None:
+            return None
+
+        compiled_class = zstandard.decompress(compiled_class[0])
+        compiled_class = json.loads(compiled_class)
+
+        compiled_class = CompiledClass.load(compiled_class)
+
+        compiled_class_json = compiled_class.dumps().encode("utf-8")
+
+        return bytes(itertools.chain(b'{"compiled_class":', compiled_class_json, b"}"))
+
+    def fetch_contract_class_leaf(self, suffix):
+        cursor = self.connection.cursor()
+        res = cursor.execute(
+            "select compiled_class_hash from class_commitment_leaves where hash = ?",
+            [suffix],
+        )
+        compiled_class_hash = res.fetchone()
+
+        # We should return zero if the commitment leaf is not found
+        if compiled_class_hash is None:
+            compiled_class_hash = [b"\x00" * 32]
+
+        return bytes(
+            itertools.chain(
+                b'{"compiled_class_hash": "0x',
+                compiled_class_hash[0].hex().encode("utf-8"),
+                b'"}',
+            )
+        )
 
     def fetch_storage_leaf(self, suffix):
         # these are "stored" under their keys where key == value; this
@@ -802,7 +887,12 @@ async def do_call(
     caller_address = 0
 
     eep = ExecuteEntryPoint.create(
-        contract_address, calldata, selector, caller_address, EntryPointType.EXTERNAL
+        contract_address,
+        calldata,
+        selector,
+        caller_address,
+        initial_gas=GasCost.INITIAL.value,
+        entry_point_type=EntryPointType.EXTERNAL,
     )
 
     # for testing runs it in the current asyncio event loop, just as we want it
@@ -827,8 +917,8 @@ async def do_estimate_fee(
     deploy and perhaps declare transactions as well.
     """
 
-    more = InternalAccountTransactionForSimulate.from_external(
-        transaction, general_config
+    more = InternalAccountTransactionForSimulate.create_for_simulate(
+        transaction, general_config, False
     )
 
     tx_info = await more.apply_state_updates(async_state, general_config)
@@ -852,7 +942,7 @@ def apply_pending(
     for deployed_contract in deployed:
         state.cache._class_hash_initial_values[
             deployed_contract.address
-        ] = deployed_contract.contract_hash.to_bytes(length=32, byteorder="big")
+        ] = deployed_contract.contract_hash
 
     for addr, updates in updates.items():
         for update in updates:
@@ -877,14 +967,16 @@ def create_general_config(chain_id: StarknetChainId) -> StarknetGeneralConfig:
     return build_general_config(
         {
             "cairo_resource_fee_weights": {"n_steps": constants.N_STEPS_FEE_WEIGHT},
+            "compiled_class_hash_commitment_tree_height": constants.COMPILED_CLASS_HASH_COMMITMENT_TREE_HEIGHT,
             "contract_storage_commitment_tree_height": constants.CONTRACT_STATES_COMMITMENT_TREE_HEIGHT,
+            "enforce_l1_handler_fee": False,
             "event_commitment_tree_height": constants.EVENT_COMMITMENT_TREE_HEIGHT,
             "global_state_commitment_tree_height": constants.CONTRACT_ADDRESS_BITS,
             "invoke_tx_max_n_steps": DEFAULT_MAX_STEPS,
             "min_gas_price": DEFAULT_GAS_PRICE,
             "sequencer_address": hex(DEFAULT_SEQUENCER_ADDRESS),
             "starknet_os_config": {
-                "chain_id": chain_id.name,
+                "chain_id": chain_id.value,
                 "fee_token_address": ETHER_L2_TOKEN_ADDRESS,
             },
             "tx_version": constants.TRANSACTION_VERSION,

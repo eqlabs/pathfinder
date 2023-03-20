@@ -3,6 +3,7 @@ import dataclasses
 import io
 import json
 import sqlite3
+from typing import Tuple
 
 import pytest
 import zstandard
@@ -10,10 +11,18 @@ import zstandard
 import pathfinder_worker.call as call
 
 from starkware.cairo.lang.vm.crypto import pedersen_hash
+from starkware.cairo.common.poseidon_hash import poseidon_hash
 from starkware.starknet.public.abi import get_selector_from_name
-from starkware.starknet.services.api.gateway.transaction import InvokeFunction, Declare
-from starkware.starknet.services.api.contract_class import ContractClass
-from starkware.starkware_utils.error_handling import WebFriendlyException
+from starkware.starknet.services.api.gateway.transaction import (
+    InvokeFunction,
+    Declare,
+    DeprecatedDeclare,
+)
+from starkware.starknet.services.api.contract_class.contract_class import (
+    DeprecatedCompiledClass,
+    ContractClass,
+)
+from starkware.starkware_utils.error_handling import StarkException
 
 from pathfinder_worker.call import (
     EXPECTED_SCHEMA_REVISION,
@@ -73,7 +82,7 @@ def test_command_parsing_estimate_fee():
         pending_timestamp=0,
         transaction=InvokeFunction(
             version=0x100000000000000000000000000000000,
-            contract_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
+            sender_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
             calldata=[132],
             entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
             nonce=None,
@@ -160,6 +169,12 @@ def inmemory_with_tables():
             ref_count   INTEGER
         );
 
+        CREATE TABLE IF NOT EXISTS tree_class (
+            hash        BLOB PRIMARY KEY,
+            data        BLOB,
+            ref_count   INTEGER
+        );
+
         CREATE TABLE contract_states (
             state_hash BLOB PRIMARY KEY,
             hash       BLOB NOT NULL,
@@ -167,15 +182,8 @@ def inmemory_with_tables():
             nonce      BLOB NOT NULL DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000'
         );
 
-        CREATE TABLE contracts (
-            address    BLOB PRIMARY KEY,
-            hash       BLOB NOT NULL
-        );
-
         CREATE TABLE class_definitions (
             hash       BLOB PRIMARY KEY,
-            bytecode   BLOB,
-            abi        BLOB,
             definition BLOB
         );
 
@@ -201,7 +209,29 @@ def inmemory_with_tables():
             timestamp            INTEGER NOT NULL,
             gas_price            BLOB    NOT NULL,
             sequencer_address    BLOB    NOT NULL,
-            version_id           INTEGER REFERENCES starknet_versions(id)
+            version_id           INTEGER REFERENCES starknet_versions(id),
+            class_commitment     BLOB
+        );
+
+        -- Stores CASM compiler versions.
+        CREATE TABLE casm_compiler_versions (
+            id      INTEGER     PRIMARY KEY NOT NULL,
+            version TEXT        NOT NULL UNIQUE
+        );
+
+        -- Stores compiled CASM for Sierra classes.
+        CREATE TABLE casm_definitions (
+            hash                        BLOB    PRIMARY KEY NOT NULL,
+            compiled_class_hash         BLOB    NOT NULL,
+            definition                  BLOB    NOT NULL,
+            compiler_version_id         INTEGER NOT NULL REFERENCES casm_compiler_versions(id),
+            FOREIGN KEY(hash) REFERENCES class_definitions(hash) ON DELETE CASCADE
+        );
+
+        -- Stores class commitment leaf hash to compiled class hash mappings.
+        CREATE TABLE class_commitment_leaves (
+            hash                BLOB    PRIMARY KEY NOT NULL,
+            compiled_class_hash BLOB    NOT NULL
         );
         """
     )
@@ -234,6 +264,14 @@ def calculate_contract_state_hash(
     h = pedersen_hash(h, contract_state_hash_version)
 
     return h
+
+
+def calculate_class_commitment_leaf(compiled_class_hash: int) -> int:
+    contract_class_hash_version = int.from_bytes(
+        b"CONTRACT_CLASS_LEAF_V0", byteorder="big"
+    )
+
+    return poseidon_hash(contract_class_hash_version, compiled_class_hash)
 
 
 @dataclasses.dataclass
@@ -321,33 +359,11 @@ def populate_test_contract_with_132_on_3(con):
     path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
     )
-
-    with open(path, "rb") as file:
-        # this fixture is compiled from 0.7 or 0.6 test.cairo, stored for compute contract hash tests.
-        contract_definition = file.read()
-        assert len(contract_definition) == 5208
-
-        cur.execute(
-            "insert into class_definitions (hash, definition) values (?, ?)",
-            [
-                felt_to_bytes(class_hash),
-                contract_definition,
-            ],
-        )
+    declare_class(cur, class_hash, path)
 
     # contract storage
     root_node = EdgeNode(path=132, path_length=251, child=LeafNode(value=3))
     contract_root = root_node.hash()
-    cur.execute(
-        "insert into contracts (address, hash) values (?, ?)",
-        [
-            (contract_address).to_bytes(32, "big"),
-            bytes.fromhex(
-                "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-            ),
-        ],
-    )
-
     cur.execute(
         "insert into tree_contracts (hash, data, ref_count) values (?, ?, 1)",
         [
@@ -384,12 +400,13 @@ def populate_test_contract_with_132_on_3(con):
 
     # interestingly python sqlite does not accept X'0' here:
     cur.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(state_root),
             b"\x00" * 16,
             b"\x00" * 32,
+            None,
         ],
     )
 
@@ -591,14 +608,14 @@ def test_fee_estimate_on_positive_directly():
     command = EstimateFee(
         at_block="latest",
         chain=call.Chain.TESTNET,
-        gas_price=0,
+        gas_price=1,
         pending_updates={},
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
         transaction=InvokeFunction(
             version=0x100000000000000000000000000000000,
-            contract_address=contract_address,
+            sender_address=contract_address,
             calldata=[132],
             entry_point_selector=get_selector_from_name("get_value"),
             nonce=None,
@@ -610,9 +627,9 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 0,
-        "gas_price": 0,
-        "overall_fee": 0,
+        "gas_consumed": 1258,
+        "gas_price": 1,
+        "overall_fee": 1258,
     }
 
 
@@ -628,7 +645,9 @@ def test_fee_estimate_for_declare_transaction_directly():
         contract_definition = file.read()
         contract_definition = zstandard.decompress(contract_definition)
         contract_definition = contract_definition.decode("utf-8")
-        contract_definition = ContractClass.Schema().loads(contract_definition)
+        contract_definition = DeprecatedCompiledClass.Schema().loads(
+            contract_definition
+        )
 
     con.execute("BEGIN")
 
@@ -640,22 +659,24 @@ def test_fee_estimate_for_declare_transaction_directly():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transaction=Declare(
-            version=0x100000000000000000000000000000000,
+        transaction=DeprecatedDeclare(
+            # FIXME: query version should work
+            # version=0x100000000000000000000000000000000,
+            version=0,
             max_fee=0,
             signature=[],
             nonce=0,
             contract_class=contract_definition,
-            sender_address=contract_address,
+            sender_address=1,
         ),
     )
 
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == {
-        "gas_consumed": 1341,
+        "gas_consumed": 1251,
         "gas_price": 1,
-        "overall_fee": 1341,
+        "overall_fee": 1251,
     }
 
 
@@ -722,9 +743,9 @@ def test_fee_estimate_on_positive():
     assert second == {
         "status": "ok",
         "output": {
-            "gas_consumed": "0x" + (0x055A).to_bytes(32, "big").hex(),
+            "gas_consumed": "0x" + (0x04EA).to_bytes(32, "big").hex(),
             "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (0x3584).to_bytes(32, "big").hex(),
+            "overall_fee": "0x" + (0x3124).to_bytes(32, "big").hex(),
         },
     }
 
@@ -741,7 +762,7 @@ def test_starknet_version_is_resolved():
     version_id = cursor.lastrowid
 
     con.execute("UPDATE starknet_blocks SET version_id = ?", [version_id])
-    (info, _root) = resolve_block(con, "latest", 0)
+    (info, _root, _class_commitment) = resolve_block(con, "latest", 0)
 
     assert info.starknet_version == "0.9.1"
 
@@ -946,7 +967,7 @@ def test_call_on_reorgged_pending_block():
         try:
             (verb, output, _timings) = loop_inner(con, command)
             assert expected == output, f"{nth + 1}th example"
-        except WebFriendlyException as e:
+        except StarkException as e:
             assert expected == str(e.code), f"{nth + 1}th example"
 
 
@@ -969,8 +990,6 @@ def test_static_returned_not_found_contract_state():
 
 
 def test_nonce_with_dummy():
-    from starkware.starknet.public.abi import get_selector_from_name
-
     con = inmemory_with_tables()
     (
         test_contract_address,
@@ -984,19 +1003,7 @@ def test_nonce_with_dummy():
     cur = con.execute("BEGIN")
 
     class_hash = 0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
-
-    with open(path, "rb") as file:
-        # this fixture is compiled from 0.10 cairo-lang repository; we hope
-        # that it gets the v1 invoke nonce check
-        contract_definition = file.read()
-
-        cur.execute(
-            "insert into class_definitions (hash, definition) values (?, ?)",
-            [
-                felt_to_bytes(class_hash),
-                contract_definition,
-            ],
-        )
+    declare_class(cur, class_hash, path)
 
     # contract states (storage is empty for account contract)
     account_contract_state_hash_with_nonce_0 = calculate_contract_state_hash(
@@ -1094,7 +1101,7 @@ def test_nonce_with_dummy():
                 2,
                 felt_to_bytes(first_root.hash()),
                 2,
-                b"\x00" * 32,
+                felt_to_bytes(1),
                 b"\x00" * 32,
                 None,
             ),
@@ -1103,7 +1110,7 @@ def test_nonce_with_dummy():
                 3,
                 felt_to_bytes(second_root.hash()),
                 3,
-                b"\x00" * 32,
+                felt_to_bytes(1),
                 b"\x00" * 32,
                 None,
             ),
@@ -1117,8 +1124,9 @@ def test_nonce_with_dummy():
 
     # this will be used as a basis for the other commands with the `dict(base, **updates)` signature
     base_transaction = InvokeFunction(
-        version=0x100000000000000000000000000000001,
-        contract_address=0x123,
+        # FIXME: query version should work
+        version=0x1,
+        sender_address=0x123,
         # this should be: target address, target selector, input len, input..
         calldata=[test_contract_address, get_selector_from_name("get_value"), 1, 132],
         entry_point_selector=None,
@@ -1146,7 +1154,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
         ),
         (
             dataclasses.replace(
@@ -1171,7 +1179,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transaction=dataclasses.replace(base_transaction, nonce=1),
             ),
-            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
         ),
         (
             dataclasses.replace(
@@ -1208,7 +1216,7 @@ def test_nonce_with_dummy():
                 transaction=dataclasses.replace(base_transaction, nonce=2),
                 pending_nonces={0x123: 2},
             ),
-            {"gas_consumed": 1400, "gas_price": 1, "overall_fee": 1400},
+            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
         ),
         (
             dataclasses.replace(
@@ -1227,8 +1235,336 @@ def test_nonce_with_dummy():
             print(command)
             (verb, output, _timings) = loop_inner(con, command)
             assert expected == output, f"{nth + 1}th example"
-        except WebFriendlyException as exc:
+        except StarkException as exc:
             assert expected == str(exc.code), f"{nth + 1}th example"
+
+
+def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, int]:
+    # declare classes
+    sierra_class_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format.json.zst"
+    )
+    sierra_class_hash = (
+        0x4E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C
+    )
+    declare_class(cur, sierra_class_hash, sierra_class_path)
+
+    dummy_account_contract_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+    )
+    dummy_account_contract_class_hash = (
+        0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
+    )
+    declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
+
+    # CASM class
+    compiled_class_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format-compiled-casm.json.zst"
+    )
+    compiled_class_hash = (
+        0x00711C0C3E56863E29D3158804AAC47F424241EDA64DB33E2CC2999D60EE5105
+    )
+    add_casm_definition(
+        cur,
+        sierra_class_hash,
+        compiled_class_hash,
+        "cairo-lang-starknet 1.0.0-alpha.5",
+        compiled_class_path,
+    )
+
+    # Class commitment tree
+    class_commitment_root = EdgeNode(
+        sierra_class_hash,
+        251,
+        LeafNode(value=calculate_class_commitment_leaf(compiled_class_hash)),
+    )
+    cur.executemany(
+        "insert into tree_class (hash, data) values (?, ?)",
+        [
+            (
+                felt_to_bytes(class_commitment_root.hash()),
+                class_commitment_root.serialize(),
+            ),
+        ],
+    )
+
+    sierra_class_state_hash = calculate_contract_state_hash(sierra_class_hash, 0, 0)
+    dummy_account_contract_state_hash = calculate_contract_state_hash(
+        dummy_account_contract_class_hash, 0, 0
+    )
+
+    # Contract states
+    cur.executemany(
+        "insert into contract_states (state_hash, hash, root, nonce) values (?, ?, ?, ?)",
+        [
+            (
+                felt_to_bytes(sierra_class_state_hash),
+                felt_to_bytes(sierra_class_hash),
+                felt_to_bytes(0),
+                felt_to_bytes(0),
+            ),
+            (
+                felt_to_bytes(dummy_account_contract_state_hash),
+                felt_to_bytes(dummy_account_contract_class_hash),
+                felt_to_bytes(0),
+                felt_to_bytes(0),
+            ),
+        ],
+    )
+
+    # Global tree
+    dummy_account_contract_address = 0x123
+    sierra_contract_address = (
+        0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
+    )
+
+    dummy_account_contract_node = EdgeNode(
+        path=dummy_account_contract_address,
+        path_length=250,
+        child=LeafNode(value=dummy_account_contract_state_hash),
+    )
+    sierra_contract_node = EdgeNode(
+        path=sierra_contract_address & (2**250 - 1),
+        path_length=250,
+        child=LeafNode(value=sierra_class_state_hash),
+    )
+    storage_root_node = BinaryNode(
+        left=dummy_account_contract_node, right=sierra_contract_node
+    )
+
+    cur.executemany(
+        "insert into tree_global (hash, data) values (?, ?)",
+        [
+            (
+                felt_to_bytes(dummy_account_contract_node.hash()),
+                dummy_account_contract_node.serialize(),
+            ),
+            (
+                felt_to_bytes(sierra_contract_node.hash()),
+                sierra_contract_node.serialize(),
+            ),
+            (felt_to_bytes(storage_root_node.hash()), storage_root_node.serialize()),
+        ],
+    )
+
+    # Block
+    cur.execute(
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        [
+            b"some blockhash somewhere".rjust(32, b"\x00"),
+            felt_to_bytes(storage_root_node.hash()),
+            b"\x00" * 16,
+            b"\x00" * 32,
+            felt_to_bytes(class_commitment_root.hash()),
+        ],
+    )
+
+    return (dummy_account_contract_address, sierra_contract_address)
+
+
+def test_call_sierra_contract_directly():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    con.execute("BEGIN")
+
+    # Test calling the Sierra contract directly
+    command = Call(
+        at_block="1",
+        chain=call.Chain.TESTNET,
+        contract_address=sierra_contract_address,
+        entry_point_selector=get_selector_from_name("test"),
+        calldata=[1, 2, 3],
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+    )
+
+    (_verb, output, _timings) = loop_inner(con, command)
+    assert output == [1, 2]
+
+
+def test_call_sierra_contract_through_account():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    con.execute("BEGIN")
+
+    # Test calling the Sierra contract through the Cairo 0.x account contract
+    command = Call(
+        at_block="1",
+        chain=call.Chain.TESTNET,
+        contract_address=dummy_account_contract_address,
+        entry_point_selector=get_selector_from_name("__execute__"),
+        calldata=[sierra_contract_address, get_selector_from_name("test"), 3, 1, 2, 3],
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+    )
+
+    (_verb, output, _timings) = loop_inner(con, command)
+    assert output == [1, 2]
+
+
+def test_sierra_invoke_function_through_account():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    con.execute("BEGIN")
+
+    command = EstimateFee(
+        at_block="latest",
+        chain=call.Chain.TESTNET,
+        gas_price=1,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+        transaction=InvokeFunction(
+            version=2**128 + 1,
+            sender_address=dummy_account_contract_address,
+            calldata=[
+                sierra_contract_address,
+                get_selector_from_name("test"),
+                3,
+                1,
+                2,
+                3,
+            ],
+            nonce=0,
+            max_fee=0,
+            signature=[],
+        ),
+    )
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    assert output == {
+        "gas_consumed": 3715,
+        "gas_price": 1,
+        "overall_fee": 3715,
+    }
+
+
+def test_sierra_declare_through_account():
+    con = inmemory_with_tables()
+    cur = con.execute("BEGIN")
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+    con.commit()
+
+    sierra_class_definition_path = test_relative_path(
+        "./sierra_class_definition.json.zst"
+    )
+
+    with open(sierra_class_definition_path, "rb") as file:
+        class_definition = file.read()
+        class_definition = zstandard.decompress(class_definition).decode("utf-8")
+        class_definition = ContractClass.loads(class_definition)
+
+    con.execute("BEGIN")
+
+    command = EstimateFee(
+        at_block="latest",
+        chain=call.Chain.TESTNET,
+        gas_price=0,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+        transaction=Declare(
+            version=0x100000000000000000000000000000002,
+            sender_address=dummy_account_contract_address,
+            contract_class=class_definition,
+            compiled_class_hash=0x05BBE92A11E8C31CAD885C72877F12E6EDFB5250AF54430DFA8ED7504C548417,
+            nonce=0,
+            max_fee=0,
+            signature=[],
+        ),
+    )
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    # FIXME: correct gas consumed
+    assert output == {
+        "gas_consumed": 0,
+        "gas_price": 0,
+        "overall_fee": 0,
+    }
+
+
+def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: str):
+    with open(class_definition_path, "rb") as f:
+        contract_definition = f.read()
+
+        cur.execute(
+            "insert into class_definitions (hash, definition) values (?, ?)",
+            [
+                felt_to_bytes(class_hash),
+                contract_definition,
+            ],
+        )
+
+
+def add_casm_definition(
+    cur: sqlite3.Cursor,
+    class_hash: int,
+    compiled_class_hash: int,
+    compiler_version: str,
+    compiled_class_definition_path: str,
+):
+    with open(compiled_class_definition_path, "rb") as f:
+        contract_definition = f.read()
+
+        res = cur.execute(
+            "select id from casm_compiler_versions where version = ?",
+            [compiler_version],
+        )
+        row = res.fetchone()
+        if row is None:
+            cur.execute(
+                "insert into casm_compiler_versions (version) values (?)",
+                [compiler_version],
+            )
+            version_id = cur.lastrowid
+        else:
+            version_id = res.fetchone()[0]
+
+        cur.execute(
+            "insert into casm_definitions (hash, compiled_class_hash, definition, compiler_version_id) values (?, ?, ?, ?)",
+            [
+                felt_to_bytes(class_hash),
+                felt_to_bytes(compiled_class_hash),
+                contract_definition,
+                version_id,
+            ],
+        )
+
+        leaf_hash = calculate_class_commitment_leaf(compiled_class_hash)
+
+        cur.execute(
+            "insert into class_commitment_leaves (hash, compiled_class_hash) VALUES (?, ?) on conflict do nothing",
+            [felt_to_bytes(leaf_hash), felt_to_bytes(compiled_class_hash)],
+        )
 
 
 # Rest of the test cases require a mainnet or testnet database in some path.
@@ -1255,7 +1591,7 @@ def test_failing_mainnet_tx2():
         pending_timestamp=0,
         transaction=InvokeFunction(
             version=0,
-            contract_address=45915111574649954983606422480229741823594314537836586888051448850027079668,
+            sender_address=45915111574649954983606422480229741823594314537836586888051448850027079668,
             calldata=[
                 1,
                 2087021424722619777119509474943472645767659996348769578120564519014510906823,
