@@ -112,6 +112,8 @@ impl From<BlockNumberOrTag> for pathfinder_common::BlockId {
 
 pub mod contract {
     use pathfinder_common::{ByteCodeOffset, EntryPoint};
+    use serde_with::serde_as;
+    use stark_hash::Felt;
     use std::fmt;
 
     #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Hash, Eq)]
@@ -136,11 +138,47 @@ pub mod contract {
         }
     }
 
-    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+    #[serde_as]
+    #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     #[serde(deny_unknown_fields)]
     pub struct SelectorAndOffset {
         pub selector: EntryPoint,
+        #[serde_as(as = "OffsetSerde")]
         pub offset: ByteCodeOffset,
+    }
+
+    #[derive(serde::Deserialize, serde::Serialize)]
+    #[serde(untagged)]
+    pub enum OffsetSerde {
+        HexStr(Felt),
+        Decimal(u64),
+    }
+
+    impl serde_with::SerializeAs<ByteCodeOffset> for OffsetSerde {
+        fn serialize_as<S>(source: &ByteCodeOffset, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            use serde::Serialize;
+
+            Felt::serialize(&source.0, serializer)
+        }
+    }
+
+    impl<'de> serde_with::DeserializeAs<'de, ByteCodeOffset> for OffsetSerde {
+        fn deserialize_as<D>(deserializer: D) -> Result<ByteCodeOffset, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            use serde::Deserialize;
+
+            let offset = OffsetSerde::deserialize(deserializer)?;
+            let offset = match offset {
+                OffsetSerde::HexStr(felt) => felt,
+                OffsetSerde::Decimal(decimal) => Felt::from_u64(decimal),
+            };
+            Ok(ByteCodeOffset(offset))
+        }
     }
 
     /// Descriptor of an entry point in a Sierra class.
@@ -289,6 +327,47 @@ pub mod add_transaction {
         #[test]
         fn test_invoke_with_signature() {
             serde_json::from_str::<AddTransaction>(INVOKE_CONTRACT_WITH_SIGNATURE).unwrap();
+        }
+
+        mod byte_code_offset {
+            use pathfinder_common::{felt, ByteCodeOffset, EntryPoint};
+            use stark_hash::Felt;
+
+            use crate::request::contract::SelectorAndOffset;
+
+            #[test]
+            fn with_hex_offset() {
+                let json = r#"{
+                    "selector": "0x12345",
+                    "offset": "0xabcdef"
+                }"#;
+
+                let result = serde_json::from_str::<SelectorAndOffset>(json).unwrap();
+
+                let expected = SelectorAndOffset {
+                    selector: EntryPoint(felt!("0x12345")),
+                    offset: ByteCodeOffset(felt!("0xabcdef")),
+                };
+
+                assert_eq!(result, expected);
+            }
+
+            #[test]
+            fn with_decimal_offset() {
+                let json = r#"{
+                    "selector": "0x12345",
+                    "offset": 199128127
+                }"#;
+
+                let result = serde_json::from_str::<SelectorAndOffset>(json).unwrap();
+
+                let expected = SelectorAndOffset {
+                    selector: EntryPoint(felt!("0x12345")),
+                    offset: ByteCodeOffset(Felt::from_u64(199128127)),
+                };
+
+                assert_eq!(result, expected);
+            }
         }
     }
 }
