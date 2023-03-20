@@ -645,6 +645,20 @@ mod json {
                 )))
             )
         }
+
+        #[tokio::test]
+        async fn cairo_0_11_with_decimal_entry_point_offset() {
+            let contract_definition =
+                zstd::decode_all(CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET).unwrap();
+            let hash = compute_class_hash(&contract_definition).unwrap();
+
+            assert_eq!(
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
+                )))
+            )
+        }
     }
 
     #[cfg(test)]

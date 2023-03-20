@@ -117,6 +117,9 @@ pub mod zstd_compressed_contracts {
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x4d7d2ddf396736d7cdba26e178e30e3388d488984a94e03bc4af4841e222920
     pub const CAIRO_1_0_0_ALPHA6_SIERRA: &[u8] =
         bytes_fixture!("contracts/sierra-1.0.0.alpha6.json.zst");
+    // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311
+    pub const CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET: &[u8] =
+        bytes_fixture!("contracts/cairo-0.11.0-decimal-entry-point-offset.json.zst");
 }
 
 pub mod testnet {
