@@ -14,8 +14,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import ClassVar, Dict, List, Optional, Tuple, Type
 
-from .contract_class_utils import parse_casm
-
 try:
     import stark_hash_rust
     import starkware.crypto.signature.fast_pedersen_hash
@@ -65,6 +63,7 @@ try:
         build_general_config,
     )
     from starkware.starknet.services.api.contract_class.contract_class import (
+        CompiledClass,
         EntryPointType,
     )
     from starkware.starknet.services.api.gateway.transaction import AccountTransaction
@@ -839,7 +838,7 @@ class SqliteAdapter(Storage):
         compiled_class = zstandard.decompress(compiled_class[0])
         compiled_class = json.loads(compiled_class)
 
-        compiled_class = parse_casm(compiled_class)
+        compiled_class = CompiledClass.load(compiled_class)
 
         compiled_class_json = compiled_class.dumps().encode("utf-8")
 

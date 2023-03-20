@@ -1242,7 +1242,7 @@ def test_nonce_with_dummy():
 def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, int]:
     # declare classes
     sierra_class_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-0.11.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format.json.zst"
     )
     sierra_class_hash = (
         0x4E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C
@@ -1259,7 +1259,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
 
     # CASM class
     compiled_class_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-0.11-compiled-class.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format-compiled-casm.json.zst"
     )
     compiled_class_hash = (
         0x00711C0C3E56863E29D3158804AAC47F424241EDA64DB33E2CC2999D60EE5105
@@ -1268,7 +1268,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
         cur,
         sierra_class_hash,
         compiled_class_hash,
-        "cairo-lang-starknet 1.0.0-alpha.3",
+        "cairo-lang-starknet 1.0.0-alpha.5",
         compiled_class_path,
     )
 
@@ -1387,7 +1387,7 @@ def test_call_sierra_contract_directly():
     )
 
     (_verb, output, _timings) = loop_inner(con, command)
-    assert output == [1, 1]
+    assert output == [1, 2]
 
 
 def test_call_sierra_contract_through_account():
@@ -1415,7 +1415,7 @@ def test_call_sierra_contract_through_account():
     )
 
     (_verb, output, _timings) = loop_inner(con, command)
-    assert output == [1, 1]
+    assert output == [1, 2]
 
 
 def test_sierra_invoke_function_through_account():
