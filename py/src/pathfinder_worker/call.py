@@ -39,14 +39,6 @@ try:
     from marshmallow import Schema
     from marshmallow import fields as mfields
     from services.everest.definitions import fields as everest_fields
-    from starkware.cairo.lang.builtins.all_builtins import (
-        BITWISE_BUILTIN,
-        EC_OP_BUILTIN,
-        ECDSA_BUILTIN,
-        OUTPUT_BUILTIN,
-        PEDERSEN_BUILTIN,
-        RANGE_CHECK_BUILTIN,
-    )
     from starkware.cairo.lang.vm.crypto import pedersen_hash_func
     from starkware.starknet.business_logic.execution.execute_entry_point import (
         ExecuteEntryPoint,
@@ -58,14 +50,18 @@ try:
         ExecutionResourcesManager,
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
-    from starkware.starknet.definitions import fields
+    from starkware.starknet.definitions import fields, constants
     from starkware.starknet.definitions.error_codes import StarknetErrorCode
     from starkware.starknet.definitions.general_config import (
-        N_STEPS_RESOURCE,
+        DEFAULT_MAX_STEPS,
+        DEFAULT_GAS_PRICE,
+        DEFAULT_SEQUENCER_ADDRESS,
+        DEFAULT_VALIDATE_MAX_STEPS,
         StarknetChainId,
         StarknetGeneralConfig,
-        StarknetOsConfig,
+        build_general_config,
     )
+
     from starkware.starknet.services.api.contract_class import EntryPointType
     from starkware.starknet.services.api.gateway.transaction import AccountTransaction
     from starkware.starknet.services.utils.sequencer_api_utils import (
@@ -394,7 +390,6 @@ def report_failed(logger, command, e):
 
 
 def loop_inner(connection, command: Command, contract_class_cache=None):
-
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
 
@@ -873,33 +868,31 @@ def create_general_config(chain_id: StarknetChainId) -> StarknetGeneralConfig:
     """
     Separate fn because it's tricky to get a new instance with actual configuration
     """
-
-    weights = resource_fee_weights_0_10_2
-
-    # because of units ... scale these down
-    weights = dict(map(lambda t: (t[0], t[1] * 0.05), weights.items()))
-
-    general_config = StarknetGeneralConfig(
-        starknet_os_config=StarknetOsConfig(chain_id),
-        cairo_resource_fee_weights=weights,
+    # starknet's ETHER L2 token address.
+    # Taken from: https://github.com/starknet-io/starknet-addresses/blob/df19b17d2c83f11c30e65e2373e8a0c65446f17c/bridged_tokens/goerli.json#L43
+    ETHER_L2_TOKEN_ADDRESS = (
+        "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
     )
 
-    assert general_config.cairo_resource_fee_weights[f"{N_STEPS_RESOURCE}"] == 0.05
+    return build_general_config(
+        {
+            "cairo_resource_fee_weights": {"n_steps": constants.N_STEPS_FEE_WEIGHT},
+            "contract_storage_commitment_tree_height": constants.CONTRACT_STATES_COMMITMENT_TREE_HEIGHT,
+            "event_commitment_tree_height": constants.EVENT_COMMITMENT_TREE_HEIGHT,
+            "global_state_commitment_tree_height": constants.CONTRACT_ADDRESS_BITS,
+            "invoke_tx_max_n_steps": DEFAULT_MAX_STEPS,
+            "min_gas_price": DEFAULT_GAS_PRICE,
+            "sequencer_address": hex(DEFAULT_SEQUENCER_ADDRESS),
+            "starknet_os_config": {
+                "chain_id": chain_id.name,
+                "fee_token_address": ETHER_L2_TOKEN_ADDRESS,
+            },
+            "tx_version": constants.TRANSACTION_VERSION,
+            "tx_commitment_tree_height": constants.TRANSACTION_COMMITMENT_TREE_HEIGHT,
+            "validate_max_n_steps": DEFAULT_VALIDATE_MAX_STEPS,
+        }
+    )
 
-    return general_config
-
-
-# given on 2022-11-10
-resource_fee_weights_0_10_2 = {
-    N_STEPS_RESOURCE: 1.0,
-    # these need to be suffixed because ... they are checked to have these suffixes, except for N_STEPS_RESOURCE
-    f"{PEDERSEN_BUILTIN}_builtin": 32.0,
-    f"{RANGE_CHECK_BUILTIN}_builtin": 16.0,
-    f"{ECDSA_BUILTIN}_builtin": 2048.0,
-    f"{BITWISE_BUILTIN}_builtin": 64.0,
-    f"{OUTPUT_BUILTIN}_builtin": 0.0,
-    f"{EC_OP_BUILTIN}_builtin": 1024.0,
-}
 
 if __name__ == "__main__":
     main()
