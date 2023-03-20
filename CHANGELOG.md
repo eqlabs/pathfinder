@@ -7,21 +7,26 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2023-03-20
 
 ### Added
 
 - support for state commitment and class commitment in pathfinder_getProof
+- support for starknet v0.11
+- partial support for RPC specification v0.3
+  - exposed on `/rpc/v0.3/` route
+  - missing support for `starknet_estimateFee` and `starknet_simulate`
 
 ### Changed
 
 - `starknet_call` and `starknet_estimateFee` JSON-RPC methods return more detailed error messages
+- `python` version requirement has changed to `3.9` or `3.10` (was `3.8` or `3.9`)
 
 ### Fixed
 
 - RPC accepts hex inputs for Felt without '0x' prefix. This led to confusion especially when passing in a decimal string which would get silently interpretted as hex.
-- Using a Nethermind Ethereum endpoint occasionally causes errors such as `<block-number> could not be found` to be logged.
-- Sync can miss new block events by getting stuck waiting for pending data.
+- using a Nethermind Ethereum endpoint occasionally causes errors such as `<block-number> could not be found` to be logged.
+- sync can miss new block events by getting stuck waiting for pending data.
 
 ### Removed
 
@@ -29,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--integration` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
 - `--sequencer-url` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
 - `--testnet2` configuration option (deprecated in [v0.4.1](https://github.com/eqlabs/pathfinder/releases/tag/v0.4.1))
+- `starknet_addDeployTransaction` as this is no longer an allowed transaction
 - RPC api version `0.1`, which used to be served on path `/rpc/v0.1`
 
 ## [0.4.5] - 2022-12-21
