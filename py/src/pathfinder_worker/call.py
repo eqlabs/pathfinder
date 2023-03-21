@@ -484,7 +484,7 @@ def loop_inner(
                 async_state,
                 general_config,
                 block_info,
-                command.transaction,
+                [command.transaction],
             )
         )
         ret = (command.verb, fees, timings)
@@ -507,6 +507,8 @@ def render(verb, vals):
         return list(map(prefixed_hex, vals))
     else:
         assert verb == Verb.ESTIMATE_FEE
+        # FIXME: temporarily use only the first element of the fee list
+        vals = vals[0]
         return {
             "gas_consumed": prefixed_hex(vals["gas_consumed"]),
             "gas_price": prefixed_hex(vals["gas_price"]),
@@ -905,10 +907,10 @@ async def do_call(
 
 
 async def do_estimate_fee(
-    async_state: CachedState,
+    state: CachedState,
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
-    transaction: AccountTransaction,
+    transactions: List[AccountTransaction],
 ):
     """
     This is distinct from the call because estimating a fee requires flushing the state to count
@@ -917,20 +919,28 @@ async def do_estimate_fee(
     deploy and perhaps declare transactions as well.
     """
 
-    more = InternalAccountTransactionForSimulate.create_for_simulate(
-        transaction, general_config, False
-    )
+    fees = []
 
-    tx_info = await more.apply_state_updates(async_state, general_config)
+    for transaction in transactions:
+        transaction = InternalAccountTransactionForSimulate.create_for_simulate(
+            transaction, general_config, False
+        )
 
-    # with 0.10 upgrade we changed to division with gas_consumed as well, since
-    # there is opposition to providing the non-multiplied scalar value from
-    # cairo-lang.
-    return {
-        "gas_consumed": tx_info.actual_fee // max(1, block_info.gas_price),
-        "gas_price": block_info.gas_price,
-        "overall_fee": tx_info.actual_fee,
-    }
+        with state.copy_and_apply() as state_copy:
+            tx_info = await transaction.apply_state_updates(state_copy, general_config)
+
+        # with 0.10 upgrade we changed to division with gas_consumed as well, since
+        # there is opposition to providing the non-multiplied scalar value from
+        # cairo-lang.
+        fees.append(
+            {
+                "gas_consumed": tx_info.actual_fee // max(1, block_info.gas_price),
+                "gas_price": block_info.gas_price,
+                "overall_fee": tx_info.actual_fee,
+            }
+        )
+
+    return fees
 
 
 def apply_pending(

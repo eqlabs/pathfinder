@@ -626,11 +626,13 @@ def test_fee_estimate_on_positive_directly():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == {
-        "gas_consumed": 1258,
-        "gas_price": 1,
-        "overall_fee": 1258,
-    }
+    assert output == [
+        {
+            "gas_consumed": 1258,
+            "gas_price": 1,
+            "overall_fee": 1258,
+        }
+    ]
 
 
 def test_fee_estimate_for_declare_transaction_directly():
@@ -671,11 +673,13 @@ def test_fee_estimate_for_declare_transaction_directly():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == {
-        "gas_consumed": 1251,
-        "gas_price": 1,
-        "overall_fee": 1251,
-    }
+    assert output == [
+        {
+            "gas_consumed": 1251,
+            "gas_price": 1,
+            "overall_fee": 1251,
+        }
+    ]
 
 
 def test_fee_estimate_on_positive():
@@ -1151,7 +1155,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
+            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
         ),
         (
             dataclasses.replace(
@@ -1176,7 +1180,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transaction=dataclasses.replace(base_transaction, nonce=1),
             ),
-            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
+            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
         ),
         (
             dataclasses.replace(
@@ -1213,7 +1217,7 @@ def test_nonce_with_dummy():
                 transaction=dataclasses.replace(base_transaction, nonce=2),
                 pending_nonces={0x123: 2},
             ),
-            {"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266},
+            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
         ),
         (
             dataclasses.replace(
@@ -1453,11 +1457,13 @@ def test_sierra_invoke_function_through_account():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == {
-        "gas_consumed": 3715,
-        "gas_price": 1,
-        "overall_fee": 3715,
-    }
+    assert output == [
+        {
+            "gas_consumed": 3715,
+            "gas_price": 1,
+            "overall_fee": 3715,
+        }
+    ]
 
 
 def test_sierra_declare_through_account():
@@ -1501,11 +1507,13 @@ def test_sierra_declare_through_account():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == {
-        "gas_consumed": 1251,
-        "gas_price": 1,
-        "overall_fee": 1251,
-    }
+    assert output == [
+        {
+            "gas_consumed": 1251,
+            "gas_price": 1,
+            "overall_fee": 1251,
+        }
+    ]
 
 
 def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: str):
