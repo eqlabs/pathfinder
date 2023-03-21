@@ -27,6 +27,11 @@ pub trait ClientApi {
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
+    async fn pending_class_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError>;
+
     async fn compiled_class(&self, class_hash: SierraHash) -> Result<bytes::Bytes, SequencerError>;
 
     async fn storage(
@@ -228,6 +233,21 @@ impl ClientApi for Client {
         self.feeder_gateway_request()
             .get_class_by_hash()
             .with_class_hash(class_hash)
+            .with_retry(Self::RETRY)
+            .get_as_bytes()
+            .await
+    }
+
+    /// Gets class for a particular class hash.
+    #[tracing::instrument(skip(self))]
+    async fn pending_class_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        self.feeder_gateway_request()
+            .get_class_by_hash()
+            .with_class_hash(class_hash)
+            .with_block(BlockId::Pending)
             .with_retry(Self::RETRY)
             .get_as_bytes()
             .await

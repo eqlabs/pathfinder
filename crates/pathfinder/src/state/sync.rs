@@ -945,7 +945,7 @@ async fn download_class<SequencerClient: ClientApi>(
     use starknet_gateway_types::class_hash::compute_class_hash;
 
     let definition = sequencer
-        .class_by_hash(class_hash)
+        .pending_class_by_hash(class_hash)
         .await
         .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
@@ -1140,6 +1140,13 @@ mod tests {
         }
 
         async fn class_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+            unimplemented!()
+        }
+
+        async fn pending_class_by_hash(
+            &self,
+            _: ClassHash,
+        ) -> Result<bytes::Bytes, SequencerError> {
             unimplemented!()
         }
 
