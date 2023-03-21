@@ -950,17 +950,20 @@ def apply_pending(
     nonces: Dict[int, int],
 ):
     for deployed_contract in deployed:
+        # pylint: disable=protected-access
         state.cache._class_hash_initial_values[
             deployed_contract.address
         ] = deployed_contract.contract_hash
 
     for addr, updates in updates.items():
         for update in updates:
+            # pylint: disable=protected-access
             state.cache._storage_initial_values[(addr, update.key)] = update.value
 
     for addr, nonce in nonces.items():
         # bypass the CachedState.increment_nonce which would give extra queries
         # per each, and only single step at a time
+        # pylint: disable=protected-access
         state.cache._nonce_initial_values[addr] = nonce
 
 
