@@ -8,11 +8,13 @@
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.50-rust-1.66-bullseye AS cargo-chef
+FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.52-rust-1.68-bullseye AS cargo-chef
 WORKDIR /usr/src/pathfinder
 
-# refresh indices, do it with cli git for much better ram usage
-RUN CARGO_NET_GIT_FETCH_WITH_CLI=true cargo search --limit 0
+# Use Cargo's sparse protocol: downloading the full crate registry index takes
+# a _lot_ of time so we just use the new sparse protocol which became available
+# in Rust 1.68.
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-planner
 COPY . .
