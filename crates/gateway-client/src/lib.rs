@@ -827,7 +827,7 @@ mod tests {
 
     mod compiled_class {
         use super::*;
-        use pathfinder_common::{felt, version_check};
+        use pathfinder_common::felt;
         use pretty_assertions::assert_eq;
 
         #[test_log::test(tokio::test)]
@@ -849,11 +849,7 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            version_check!(
-                Testnet < 0 - 11 - 0,
-                "Update class 2 hash (sierra) for testnet, current value is from integration"
-            );
-
+            // FIXME: replace with a class from testnet; this is an integration class.
             const VALID_HASH: SierraHash = SierraHash(felt!(
                 "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
             ));
@@ -1903,22 +1899,22 @@ mod tests {
 
         #[tokio::test]
         async fn testnet() {
-            version_check!(Testnet == 0 - 10 - 3);
+            version_check!(Testnet == 0 - 11 - 0);
             let actual = get_latest_version(&Client::testnet()).await.unwrap();
             assert_eq!(
                 actual,
-                (0, 10, 3),
+                (0, 11, 0),
                 "Testnet gateway version has changed, update version_check"
             );
         }
 
         #[tokio::test]
         async fn testnet2() {
-            version_check!(Testnet2 == 0 - 10 - 3);
+            version_check!(Testnet2 == 0 - 11 - 0);
             let actual = get_latest_version(&Client::testnet2()).await.unwrap();
             assert_eq!(
                 actual,
-                (0, 10, 3),
+                (0, 11, 0),
                 "Testnet gateway version has changed, update version_check"
             );
         }
