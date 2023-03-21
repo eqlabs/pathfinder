@@ -43,11 +43,11 @@ try:
     from starkware.starknet.business_logic.execution.execute_entry_point import (
         ExecuteEntryPoint,
     )
+    from starkware.starknet.business_logic.execution.objects import (
+        ExecutionResourcesManager,
+    )
     from starkware.starknet.business_logic.fact_state.patricia_state import (
         PatriciaStateReader,
-    )
-    from starkware.starknet.business_logic.fact_state.state import (
-        ExecutionResourcesManager,
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.definitions import fields, constants
@@ -85,7 +85,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 30
-EXPECTED_CAIRO_VERSION = "0.11.0a2"
+EXPECTED_CAIRO_VERSION = "0.11.0"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -184,7 +184,7 @@ class Call(Command):
     pending_timestamp: int = field(metadata=fields.timestamp_metadata)
 
     contract_address: int = field(metadata=fields.contract_address_metadata)
-    calldata: List[int] = field(metadata=fields.call_data_as_hex_metadata)
+    calldata: List[int] = field(metadata=fields.calldata_as_hex_metadata)
     entry_point_selector: Optional[int] = field(
         default=None, metadata=fields.optional_entry_point_selector_metadata
     )
