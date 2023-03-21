@@ -326,8 +326,8 @@ macro_rules! version_check {
         #[allow(dead_code)]
         const NETWORK: (u64, u64, u64) = match pathfinder_common::Chain::$network {
             pathfinder_common::Chain::Mainnet => (0, 10, 3),
-            pathfinder_common::Chain::Testnet => (0, 10, 3),
-            pathfinder_common::Chain::Testnet2 => (0, 10, 3),
+            pathfinder_common::Chain::Testnet => (0, 11, 0),
+            pathfinder_common::Chain::Testnet2 => (0, 11, 0),
             pathfinder_common::Chain::Integration => (0, 11, 0),
             pathfinder_common::Chain::Custom => panic!("Custom networks are not supported"),
         };
