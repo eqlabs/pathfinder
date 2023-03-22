@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
+use anyhow::Context;
 use jsonrpsee::core::Error;
 use jsonrpsee::types::error::CallError;
 use jsonrpsee::types::{ErrorResponse, Id, RequestSer, Response};
@@ -43,13 +44,13 @@ impl TestClientBuilder {
             .map_err(|e| Error::Transport(e.into()))?;
 
         let target = match self.endpoint {
-            Some(endpoint) => format!("http://{}/{endpoint}", self.address),
-            None => format!("http://{}/", self.address),
+            Some(endpoint) => format!("http://{}{endpoint}", self.address),
+            None => format!("http://{}", self.address),
         };
 
         Ok(TestClient {
             transport,
-            target: reqwest::Url::parse(&target).unwrap(),
+            target: reqwest::Url::parse(&target).context("Parsing test client URL")?,
             current_id: AtomicU64::new(0),
         })
     }
