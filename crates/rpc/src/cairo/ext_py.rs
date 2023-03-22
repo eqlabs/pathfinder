@@ -191,6 +191,11 @@ impl Handle {
             Err(_closed) => Err(CallFailure::Shutdown),
         }
     }
+
+    pub async fn simulate_transaction(&self) -> Result<(), CallFailure> {
+        // TODO(SM)
+        Ok(())
+    }
 }
 
 /// Reasons for a call to fail.
