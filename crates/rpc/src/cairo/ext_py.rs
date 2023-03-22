@@ -166,7 +166,7 @@ impl Handle {
         self.command_tx
             .send((
                 Command::EstimateFee {
-                    transaction,
+                    transactions: vec![transaction],
                     at_block,
                     gas_price,
                     chain: self.chain,
@@ -261,7 +261,7 @@ enum Command {
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
-        transaction: add_transaction::AddTransaction,
+        transactions: Vec<add_transaction::AddTransaction>,
         at_block: BlockHashNumberOrLatest,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
