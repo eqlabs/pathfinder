@@ -17,6 +17,7 @@ from starkware.starknet.services.api.gateway.transaction import (
     InvokeFunction,
     Declare,
     DeprecatedDeclare,
+    DeployAccount,
 )
 from starkware.starknet.services.api.contract_class.contract_class import (
     DeprecatedCompiledClass,
@@ -1523,6 +1524,81 @@ def test_sierra_declare_through_account():
             "gas_price": 1,
             "overall_fee": 1251,
         }
+    ]
+
+
+def test_deploy_account():
+    con = inmemory_with_tables()
+
+    cur = con.execute("BEGIN")
+
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+
+    con.commit()
+
+    dummy_account_contract_class_hash = (
+        0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
+    )
+    deployed_dummy_account_address = (
+        0x338E12DB8A3ED26AF4A49FD91317A59F86EADED02FC1BC91F956987D9F31C2E
+    )
+
+    con.execute("BEGIN")
+
+    command = EstimateFee(
+        at_block="latest",
+        chain=call.Chain.TESTNET,
+        gas_price=1,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+        transactions=[
+            DeployAccount(
+                class_hash=dummy_account_contract_class_hash,
+                contract_address_salt=0,
+                constructor_calldata=[],
+                version=0x100000000000000000000000000000001,
+                nonce=0,
+                max_fee=0,
+                signature=[],
+            ),
+            InvokeFunction(
+                version=2**128 + 1,
+                sender_address=deployed_dummy_account_address,
+                calldata=[
+                    sierra_contract_address,
+                    get_selector_from_name("test"),
+                    3,
+                    1,
+                    2,
+                    3,
+                ],
+                nonce=1,
+                max_fee=0,
+                signature=[],
+            ),
+        ],
+    )
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    assert output == [
+        # DEPLOY_ACCOUNT
+        {
+            "gas_consumed": 3096,
+            "gas_price": 1,
+            "overall_fee": 3096,
+        },
+        # INVOKE_FUNCTION through deployed account
+        {
+            "gas_consumed": 3715,
+            "gas_price": 1,
+            "overall_fee": 3715,
+        },
     ]
 
 
