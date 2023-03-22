@@ -52,7 +52,7 @@ def test_command_parsing_estimate_fee():
         ],
         "pending_nonces":{"0x123":"0x1"},
         "pending_timestamp": 0,
-        "transaction":{
+        "transactions":[{
             "type":"INVOKE_FUNCTION",
             "version":"0x100000000000000000000000000000000",
             "max_fee":"0x0",
@@ -60,7 +60,7 @@ def test_command_parsing_estimate_fee():
             "nonce":null,
             "contract_address":"0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
             "entry_point_selector":"0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0",
-            "calldata":["132"]}
+            "calldata":["132"]}]
     }"""
     command = Command.Schema().loads(input)
     assert command == EstimateFee(
@@ -80,15 +80,17 @@ def test_command_parsing_estimate_fee():
         ],
         pending_nonces={0x123: 1},
         pending_timestamp=0,
-        transaction=InvokeFunction(
-            version=0x100000000000000000000000000000000,
-            sender_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
-            calldata=[132],
-            entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
-            nonce=None,
-            max_fee=0,
-            signature=[],
-        ),
+        transactions=[
+            InvokeFunction(
+                version=0x100000000000000000000000000000000,
+                sender_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
+                calldata=[132],
+                entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
+                nonce=None,
+                max_fee=0,
+                signature=[],
+            )
+        ],
     )
     assert command.has_pending_data()
 
@@ -613,15 +615,17 @@ def test_fee_estimate_on_positive_directly():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transaction=InvokeFunction(
-            version=0x100000000000000000000000000000000,
-            sender_address=contract_address,
-            calldata=[132],
-            entry_point_selector=get_selector_from_name("get_value"),
-            nonce=None,
-            max_fee=0,
-            signature=[],
-        ),
+        transactions=[
+            InvokeFunction(
+                version=0x100000000000000000000000000000000,
+                sender_address=contract_address,
+                calldata=[132],
+                entry_point_selector=get_selector_from_name("get_value"),
+                nonce=None,
+                max_fee=0,
+                signature=[],
+            )
+        ],
     )
 
     (verb, output, _timings) = loop_inner(con, command)
@@ -661,14 +665,16 @@ def test_fee_estimate_for_declare_transaction_directly():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transaction=DeprecatedDeclare(
-            version=0x100000000000000000000000000000000,
-            max_fee=0,
-            signature=[],
-            nonce=0,
-            contract_class=contract_definition,
-            sender_address=1,
-        ),
+        transactions=[
+            DeprecatedDeclare(
+                version=0x100000000000000000000000000000000,
+                max_fee=0,
+                signature=[],
+                nonce=0,
+                contract_class=contract_definition,
+                sender_address=1,
+            )
+        ],
     )
 
     (verb, output, _timings) = loop_inner(con, command)
@@ -697,7 +703,7 @@ def test_fee_estimate_on_positive():
         "pending_deployed":[],
         "pending_nonces":{{}},
         "pending_timestamp":0,
-        "transaction":{{
+        "transactions":[{{
             "type":"INVOKE_FUNCTION",
             "version":"0x100000000000000000000000000000000",
             "max_fee":"0x0",
@@ -706,7 +712,7 @@ def test_fee_estimate_on_positive():
             "contract_address":"{contract_address}",
             "entry_point_selector":"{entry_point}",
             "calldata":["132"]
-        }}
+        }}]
     }}"""
 
     (first, second) = default_132_on_3_scenario(
@@ -1143,7 +1149,7 @@ def test_nonce_with_dummy():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transaction=base_transaction,
+        transactions=[base_transaction],
     )
 
     commands = [
@@ -1161,7 +1167,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"another block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=1),
+                transactions=[dataclasses.replace(base_transaction, nonce=1)],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1169,7 +1175,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"another block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=2),
+                transactions=[dataclasses.replace(base_transaction, nonce=2)],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1178,7 +1184,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=1),
+                transactions=[dataclasses.replace(base_transaction, nonce=1)],
             ),
             [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
         ),
@@ -1186,7 +1192,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=2),
+                transactions=[dataclasses.replace(base_transaction, nonce=2)],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1195,7 +1201,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=3),
+                transactions=[dataclasses.replace(base_transaction, nonce=3)],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1204,7 +1210,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=1),
+                transactions=[dataclasses.replace(base_transaction, nonce=1)],
                 pending_nonces={0x123: 2},
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
@@ -1214,7 +1220,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=2),
+                transactions=[dataclasses.replace(base_transaction, nonce=2)],
                 pending_nonces={0x123: 2},
             ),
             [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
@@ -1223,7 +1229,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transaction=dataclasses.replace(base_transaction, nonce=3),
+                transactions=[dataclasses.replace(base_transaction, nonce=3)],
                 pending_nonces={0x123: 2},
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
@@ -1438,21 +1444,23 @@ def test_sierra_invoke_function_through_account():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transaction=InvokeFunction(
-            version=2**128 + 1,
-            sender_address=dummy_account_contract_address,
-            calldata=[
-                sierra_contract_address,
-                get_selector_from_name("test"),
-                3,
-                1,
-                2,
-                3,
-            ],
-            nonce=0,
-            max_fee=0,
-            signature=[],
-        ),
+        transactions=[
+            InvokeFunction(
+                version=2**128 + 1,
+                sender_address=dummy_account_contract_address,
+                calldata=[
+                    sierra_contract_address,
+                    get_selector_from_name("test"),
+                    3,
+                    1,
+                    2,
+                    3,
+                ],
+                nonce=0,
+                max_fee=0,
+                signature=[],
+            )
+        ],
     )
 
     (verb, output, _timings) = loop_inner(con, command)
@@ -1494,15 +1502,17 @@ def test_sierra_declare_through_account():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transaction=Declare(
-            version=0x100000000000000000000000000000002,
-            sender_address=dummy_account_contract_address,
-            contract_class=class_definition,
-            compiled_class_hash=0x05BBE92A11E8C31CAD885C72877F12E6EDFB5250AF54430DFA8ED7504C548417,
-            nonce=0,
-            max_fee=0,
-            signature=[],
-        ),
+        transactions=[
+            Declare(
+                version=0x100000000000000000000000000000002,
+                sender_address=dummy_account_contract_address,
+                contract_class=class_definition,
+                compiled_class_hash=0x05BBE92A11E8C31CAD885C72877F12E6EDFB5250AF54430DFA8ED7504C548417,
+                nonce=0,
+                max_fee=0,
+                signature=[],
+            )
+        ],
     )
 
     (verb, output, _timings) = loop_inner(con, command)

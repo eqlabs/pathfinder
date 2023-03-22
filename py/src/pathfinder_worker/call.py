@@ -216,7 +216,7 @@ class EstimateFee(Command):
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
-    transaction: AccountTransaction
+    transactions: List[AccountTransaction]
 
     def has_pending_data(self):
         return (
@@ -484,7 +484,7 @@ def loop_inner(
                 async_state,
                 general_config,
                 block_info,
-                [command.transaction],
+                command.transactions,
             )
         )
         ret = (command.verb, fees, timings)
