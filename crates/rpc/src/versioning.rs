@@ -255,3 +255,117 @@ mod response {
             .expect("response is properly formed")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn api_versions_are_routed_correctly_for_all_methods() {
+        use super::super::test_client::TestClientBuilder;
+        use super::super::{RpcContext, RpcMetricsLogger, RpcServer};
+        use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
+        use serde_json::json;
+
+        let recorder = FakeRecorder::default();
+        let handle = recorder.handle();
+        // Other concurrent tests could be setting their own recorders
+        let _guard = RecorderGuard::lock(recorder);
+
+        let context = RpcContext::for_tests();
+        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
+            .with_logger(RpcMetricsLogger)
+            .run()
+            .await
+            .unwrap();
+
+        // Common methods for starknet RPC spec v0.2 and v0.3
+        let common = [
+            "starknet_addDeclareTransaction",
+            "starknet_addDeployAccountTransaction",
+            "starknet_addInvokeTransaction",
+            "starknet_blockHashAndNumber",
+            "starknet_blockNumber",
+            "starknet_call",
+            "starknet_chainId",
+            "starknet_getBlockWithTxHashes",
+            "starknet_getBlockWithTxs",
+            "starknet_getBlockTransactionCount",
+            "starknet_getClass",
+            "starknet_getClassAt",
+            "starknet_getClassHashAt",
+            "starknet_getEvents",
+            "starknet_getNonce",
+            "starknet_getStateUpdate",
+            "starknet_getStorageAt",
+            "starknet_getTransactionByBlockIdAndIndex",
+            "starknet_getTransactionByHash",
+            "starknet_getTransactionReceipt",
+            "starknet_pendingTransactions",
+            "starknet_syncing",
+        ]
+        .into_iter();
+        // Methods available only in starknet RPC spec v0.2
+        let v02_only = ["starknet_estimateFee"].into_iter();
+        // Methods available in pathfinder RPC spec v0.1
+        let pathfinder_only = ["pathfinder_getProof", "pathfinder_version"].into_iter();
+
+        let v02 = common.clone().chain(v02_only.clone());
+        let v02_methods = v02.clone().collect::<Vec<_>>();
+        let v02_counters = v02.map(|x| "v0.2_".to_owned() + x).collect::<Vec<_>>();
+
+        let v03_methods = common.clone().collect::<Vec<_>>();
+        let v03_counters = common.map(|x| "v0.3_".to_owned() + x).collect::<Vec<_>>();
+
+        let pathfinder_methods = pathfinder_only.clone().collect::<Vec<_>>();
+        let pathfinder_counters = pathfinder_only
+            .map(|x| "v0.1_".to_owned() + x)
+            .collect::<Vec<_>>();
+
+        for (paths, methods, counters) in vec![
+            (
+                vec!["", "/", "/rpc/v0.2", "/rpc/v0.2/"],
+                v02_methods,
+                v02_counters,
+            ),
+            (vec!["/rpc/v0.3", "/rpc/v0.3/"], v03_methods, v03_counters),
+            // rpc/pathfinder/v0.1 methods are also available in the default RPC api version, which is starknet v0.2
+            (
+                vec![
+                    "",
+                    "/",
+                    "/rpc/v0.2",
+                    "/rpc/v0.2/",
+                    "/rpc/pathfinder/v0.1",
+                    "/rpc/pathfinder/v0.1/",
+                ],
+                pathfinder_methods,
+                pathfinder_counters,
+            ),
+        ]
+        .into_iter()
+        {
+            for (i, path) in paths.into_iter().map(ToOwned::to_owned).enumerate() {
+                let client = TestClientBuilder::default()
+                    .address(address)
+                    .endpoint(path.clone())
+                    .build()
+                    .unwrap();
+
+                for (method, counter) in methods.iter().zip(counters.iter()) {
+                    let res = client.request::<serde_json::Value>(method, json!([])).await;
+
+                    match res {
+                        Err(jsonrpsee::core::Error::Call(
+                            jsonrpsee::types::error::CallError::Custom(e),
+                        )) if e.code() == jsonrpsee::types::error::METHOD_NOT_FOUND_CODE => {
+                            panic!("Unregistered method called, path: {path}, method: {method}")
+                        }
+                        Ok(_) | Err(_) => {}
+                    }
+
+                    let x = handle.get_counter_value("rpc_method_calls_total", counter.clone());
+                    assert_eq!(x, i as u64 + 1, "path: {path}, method: {method}");
+                }
+            }
+        }
+    }
+}
