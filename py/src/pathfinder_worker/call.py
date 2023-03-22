@@ -344,7 +344,7 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
             connection.execute("BEGIN")
 
             [verb, output, inner_timings] = loop_inner(
-                connection, command, contract_class_cache
+                logger, connection, command, contract_class_cache
             )
 
             # this is more backwards compatible dictionary union
@@ -409,7 +409,7 @@ def report_failed(logger, command, e):
 
 
 def loop_inner(
-    connection: sqlite3.Connection, command: Command, contract_class_cache=None
+    logger: Logger, connection: sqlite3.Connection, command: Command, contract_class_cache=None
 ):
 
     if not check_schema(connection):
@@ -493,8 +493,7 @@ def loop_inner(
             )
         )
         ret = (command.verb, result.retdata, timings)
-    else:
-        assert isinstance(command, EstimateFee)
+    elif isinstance(command, EstimateFee):
         fees = asyncio.run(
             do_estimate_fee(
                 async_state,
@@ -504,6 +503,9 @@ def loop_inner(
             )
         )
         ret = (command.verb, fees, timings)
+    ## TODO(SM): add SimulateTransaction command
+    else:
+        logger.error(f"Unrecognised commant: {command}")
 
     timings["sql"] = {
         "timings": adapter.elapsed,
