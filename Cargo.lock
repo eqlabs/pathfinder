@@ -3166,9 +3166,9 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.8"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75f43d41e26995c17e71ee126451dd3941010b0514a81a9d11f3b341debc2399"
+checksum = "bd6effc99afb63425aff9b05836f029929e345a6148a14b7ecd5ab67af944482"
 dependencies = [
  "bytes",
  "fnv",
@@ -3212,9 +3212,9 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hyper"
-version = "0.14.23"
+version = "0.14.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "034711faac9d2166cb1baf1a2fb0b60b1f277f8492fd72176c17f3515e1abd3c"
+checksum = "cc5e554ff619822309ffd57d8734d77cd5ce6238bc956f037ea06c58238c9899"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -5226,6 +5226,8 @@ dependencies = [
  "flate2",
  "futures",
  "hex",
+ "http",
+ "hyper",
  "jsonrpsee",
  "lazy_static",
  "metrics",
@@ -5248,6 +5250,7 @@ dependencies = [
  "test-log",
  "thiserror",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "zstd",
