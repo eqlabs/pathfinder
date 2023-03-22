@@ -77,7 +77,7 @@ struct Work {
 struct ReadyResult {
     actual_fee: ethers::types::H256,
     result: Result<
-        pathfinder_rpc::v02::types::reply::FeeEstimate,
+        Vec<pathfinder_rpc::v02::types::reply::FeeEstimate>,
         pathfinder_rpc::cairo::ext_py::CallFailure,
     >,
     span: tracing::Span,
@@ -243,7 +243,7 @@ async fn estimate(
                 match next_work {
                     Some(Work {transaction, at_block, gas_price, actual_fee, span}) => {
                         let outer = span.clone();
-                        let fut = handle.estimate_fee(transaction, at_block.into(), gas_price, None, None);
+                        let fut = handle.estimate_fee(vec![transaction], at_block.into(), gas_price, None, None);
                         waiting.push(async move {
                             ReadyResult {
                                 actual_fee,
@@ -287,29 +287,31 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
     {
         let _g = span.enter();
         match result {
-            Ok(fees) if fees.overall_fee == actual_fee => {
-                eq += 1;
-                tracing::info!(eq, ne, fail, "ok");
-            }
-            Ok(fees) => {
-                ne += 1;
-
-                let fee = ethers::types::U256::from_big_endian(fees.overall_fee.as_bytes());
-                let actual_fee = ethers::types::U256::from_big_endian(actual_fee.as_bytes());
-                let gas_price = ethers::types::U256::from_big_endian(fees.gas_price.as_bytes());
-
-                // this hasn't yet happened that any of the numbers would be
-                // even more than u64...
-                let diff = if fee > actual_fee {
-                    fee - actual_fee
+            Ok(mut fees) => {
+                let fees = fees.swap_remove(0);
+                if fees.overall_fee == actual_fee {
+                    eq += 1;
+                    tracing::info!(eq, ne, fail, "ok");
                 } else {
-                    actual_fee - fee
-                };
-                let gas = diff
-                    .checked_div(gas_price)
-                    .expect("gas_price != 0 is not actually checked anywhere");
+                    ne += 1;
 
-                tracing::info!(eq, ne, fail, "bad fee {diff} or {gas} gas");
+                    let fee = ethers::types::U256::from_big_endian(fees.overall_fee.as_bytes());
+                    let actual_fee = ethers::types::U256::from_big_endian(actual_fee.as_bytes());
+                    let gas_price = ethers::types::U256::from_big_endian(fees.gas_price.as_bytes());
+
+                    // this hasn't yet happened that any of the numbers would be
+                    // even more than u64...
+                    let diff = if fee > actual_fee {
+                        fee - actual_fee
+                    } else {
+                        actual_fee - fee
+                    };
+                    let gas = diff
+                        .checked_div(gas_price)
+                        .expect("gas_price != 0 is not actually checked anywhere");
+
+                    tracing::info!(eq, ne, fail, "bad fee {diff} or {gas} gas");
+                }
             }
             Err(e) => {
                 fail += 1;

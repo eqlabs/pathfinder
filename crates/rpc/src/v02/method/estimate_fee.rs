@@ -68,15 +68,23 @@ pub async fn estimate_fee(
     let (when, pending_timestamp, pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
-    let result = handle
+    let mut result = handle
         .estimate_fee(
-            input.request,
+            vec![input.request],
             when,
             gas_price,
             pending_update,
             pending_timestamp,
         )
         .await?;
+
+    if result.len() != 1 {
+        return Err(
+            anyhow::anyhow!("Internal error: expected exactly one fee estimation result").into(),
+        );
+    }
+
+    let result = result.pop().unwrap();
 
     Ok(result)
 }

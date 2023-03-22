@@ -507,13 +507,15 @@ def render(verb, vals):
         return list(map(prefixed_hex, vals))
     else:
         assert verb == Verb.ESTIMATE_FEE
-        # FIXME: temporarily use only the first element of the fee list
-        vals = vals[0]
-        return {
-            "gas_consumed": prefixed_hex(vals["gas_consumed"]),
-            "gas_price": prefixed_hex(vals["gas_price"]),
-            "overall_fee": prefixed_hex(vals["overall_fee"]),
-        }
+
+        return [
+            {
+                "gas_consumed": prefixed_hex(val["gas_consumed"]),
+                "gas_price": prefixed_hex(val["gas_price"]),
+                "overall_fee": prefixed_hex(val["overall_fee"]),
+            }
+            for val in vals
+        ]
 
 
 def int_hash_or_latest(s: str):

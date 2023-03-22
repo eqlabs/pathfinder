@@ -742,20 +742,24 @@ def test_fee_estimate_on_positive():
 
     assert first == {
         "status": "ok",
-        "output": {
-            "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
-            "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
-        },
+        "output": [
+            {
+                "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+                "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
+                "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
+            }
+        ],
     }
 
     assert second == {
         "status": "ok",
-        "output": {
-            "gas_consumed": "0x" + (0x04EA).to_bytes(32, "big").hex(),
-            "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-            "overall_fee": "0x" + (0x3124).to_bytes(32, "big").hex(),
-        },
+        "output": [
+            {
+                "gas_consumed": "0x" + (0x04EA).to_bytes(32, "big").hex(),
+                "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
+                "overall_fee": "0x" + (0x3124).to_bytes(32, "big").hex(),
+            },
+        ],
     }
 
 
