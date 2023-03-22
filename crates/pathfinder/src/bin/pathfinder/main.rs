@@ -11,11 +11,13 @@ use pathfinder_lib::{
     state,
 };
 use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
-use pathfinder_storage::{JournalMode, Storage};
+use pathfinder_storage::Storage;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::pending::PendingData;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
+
+use crate::config::NetworkConfig;
 
 mod config;
 mod update;
@@ -28,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
 
     setup_tracing();
 
-    let config = config::Configuration::parse_cmd_line().context("Parsing configuration")?;
+    let config = config::Config::parse();
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -38,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
 
     permission_check(&config.data_directory)?;
 
-    let pathfinder_ready = match config.monitoring_addr {
+    let pathfinder_ready = match config.monitor_address {
         Some(monitoring_addr) => {
             let ready = Arc::new(AtomicBool::new(false));
             let prometheus_handle = PrometheusBuilder::new()
@@ -62,69 +64,53 @@ async fn main() -> anyhow::Result<()> {
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
     )?;
 
-    // Note that network testnet2 integration are mutually exclusive, which is already
-    // checked in the config builder.
-    let network = match config.network {
-        Some(network) => match network.as_str() {
-            "mainnet" => Chain::Mainnet,
-            "testnet" => Chain::Testnet,
-            "testnet2" => Chain::Testnet2,
-            "integration" => Chain::Integration,
-            "custom" => Chain::Custom,
-            other => {
-                anyhow::bail!("{other} is not a valid network selection. Please specify one of: mainnet, testnet, testnet2, integration or custom.")
-            }
-        },
-        // Defaults if not specified
-        None => match ethereum_chain {
-            EthereumChain::Mainnet => Chain::Mainnet,
-            EthereumChain::Goerli => Chain::Testnet,
-            EthereumChain::Other(id) => anyhow::bail!(
-                r"Ethereum url must be from mainnet or goerli chains. The given url has chain ID {id}.
-    
-If you are trying to setup a custom StarkNet please use '--network custom',
-            "
-            ),
-        },
-    };
+    let network = match (config.network, ethereum_chain) {
+        (Some(cfg), _) => cfg,
+        (None, EthereumChain::Mainnet) => NetworkConfig::Mainnet,
+        (None, EthereumChain::Goerli) => NetworkConfig::Testnet,
+        (None, EthereumChain::Other(id)) => anyhow::bail!(
+            r"Ethereum url must be from mainnet or goerli chains. Your provided url has chain ID {id}.
 
-    // Split custom config as they're required by separate parts.
-    let (custom_gateway_urls, custom_chain_id) = match config.custom_gateway {
-        Some((gateway, feeder, chain_id)) => (Some((gateway, feeder)), Some(chain_id)),
-        None => (None, None),
-    };
-
-    let gateway_client = match (network, custom_gateway_urls) {
-        (Chain::Custom, None) => {
-            anyhow::bail!(
-                "'--network custom' requires setting '--gateway-url' and '--feeder-gateway-url'."
-            );
-        }
-        (Chain::Custom, Some((gateway, feeder))) => {
-            starknet_gateway_client::Client::with_urls(gateway, feeder)
-                .context("Creating gateway client")?
-        }
-        (_, Some(_)) => anyhow::bail!(
-            "'--gateway-url' and '--feeder-gateway-url' are only valid with '--network custom'"
+If you are trying to setup a custom StarkNet please use '--network custom'"
         ),
-        (Chain::Mainnet, None) => starknet_gateway_client::Client::mainnet(),
-        (Chain::Testnet, None) => starknet_gateway_client::Client::testnet(),
-        (Chain::Testnet2, None) => starknet_gateway_client::Client::testnet2(),
-        (Chain::Integration, None) => starknet_gateway_client::Client::integration(),
     };
 
-    // Get database path before we mutate network.
-    let database_path = config.data_directory.join(match network {
-        Chain::Mainnet => "mainnet.sqlite",
-        Chain::Testnet => "goerli.sqlite",
-        Chain::Testnet2 => "testnet2.sqlite",
-        Chain::Integration => "integration.sqlite",
-        Chain::Custom => "custom.sqlite",
-    });
+    let (network, gateway_client, database_path, chain_id) = match network {
+        NetworkConfig::Mainnet => (
+            Chain::Mainnet,
+            starknet_gateway_client::Client::mainnet(),
+            "mainnet.sqlite",
+            ChainId::MAINNET,
+        ),
+        NetworkConfig::Testnet => (
+            Chain::Testnet,
+            starknet_gateway_client::Client::mainnet(),
+            "goerli.sqlite",
+            ChainId::MAINNET,
+        ),
+        NetworkConfig::Testnet2 => (
+            Chain::Testnet2,
+            starknet_gateway_client::Client::mainnet(),
+            "testnet2.sqlite",
+            ChainId::MAINNET,
+        ),
+        NetworkConfig::Integration => (
+            Chain::Integration,
+            starknet_gateway_client::Client::mainnet(),
+            "integration.sqlite",
+            ChainId::MAINNET,
+        ),
+        NetworkConfig::Custom {
+            gateway,
+            feeder_gateway,
+            chain_id,
+        } => {
+            let gateway_client =
+                starknet_gateway_client::Client::with_urls(gateway, feeder_gateway)
+                    .context("Creating gateway client")?;
+            let chain_id =
+                stark_hash::Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?;
 
-    // Check for known proxy network
-    let network = match network {
-        Chain::Custom => {
             use pathfinder_common::consts::{
                 INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
                 TESTNET_GENESIS_HASH,
@@ -138,35 +124,54 @@ If you are trying to setup a custom StarkNet please use '--network custom',
                 .context("Genesis block should not be pending")?
                 .block_hash;
 
-            match genesis {
+            let network = match genesis {
                 MAINNET_GENESIS_HASH => {
-                    tracing::info!("Proxy for mainnet detected");
+                    tracing::info!("Proxy gateway for mainnet detected");
+                    anyhow::ensure!(
+                        ethereum_chain == EthereumChain::Mainnet,
+                        "Proxy gateway for mainnet detected but the Ethereum URL is not on mainnet. Ethereum URL provided is on {:?}",
+                        ethereum_chain
+                    );
+
                     Chain::Mainnet
                 }
                 TESTNET_GENESIS_HASH => {
-                    tracing::info!("Proxy for testnet detected");
+                    tracing::info!("Proxy gateway for testnet detected");
+                    anyhow::ensure!(
+                        ethereum_chain == EthereumChain::Goerli,
+                        "Proxy gateway for testnet detected but the Ethereum URL is not on goerli. Ethereum URL provided is on {:?}",
+                        ethereum_chain
+                    );
                     Chain::Testnet
                 }
                 TESTNET2_GENESIS_HASH => {
-                    tracing::info!("Proxy for testnet2 detected");
+                    tracing::info!("Proxy gateway for testnet2 detected");
+                    anyhow::ensure!(
+                        ethereum_chain == EthereumChain::Goerli,
+                        "Proxy gateway for testnet2 detected but the Ethereum URL is not on goerli. Ethereum URL provided is on {:?}",
+                        ethereum_chain
+                    );
                     Chain::Testnet2
                 }
                 INTEGRATION_GENESIS_HASH => {
-                    tracing::info!("Proxy for integration detected");
+                    tracing::info!("Proxy gateway for integration detected");
+                    anyhow::ensure!(
+                        ethereum_chain == EthereumChain::Goerli,
+                        "Proxy gateway for integration detected but the Ethereum URL is not on goerli. Ethereum URL provided is on {:?}",
+                        ethereum_chain
+                    );
                     Chain::Integration
                 }
                 _other => Chain::Custom,
-            }
+            };
+
+            (network, gateway_client, "custom.sqlite", ChainId(chain_id))
         }
-        other => other,
     };
+    let database_path = config.data_directory.join(database_path);
 
     // Setup and verify database
-    let journal_mode = match config.sqlite_wal {
-        false => JournalMode::Rollback,
-        true => JournalMode::WAL,
-    };
-    let storage = Storage::migrate(database_path.clone(), journal_mode).unwrap();
+    let storage = Storage::migrate(database_path.clone(), config.sqlite_wal).unwrap();
     info!(location=?database_path, "Database migrated.");
     if let Some(database_genesis) = database_genesis_hash(&storage).await? {
         use pathfinder_common::consts::{
@@ -261,21 +266,6 @@ If you are trying to setup a custom StarkNet please use '--network custom',
 
     let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(eth_transport));
 
-    let chain_id = match network {
-        Chain::Mainnet => ChainId::MAINNET,
-        Chain::Testnet => ChainId::TESTNET,
-        Chain::Testnet2 => ChainId::TESTNET2,
-        Chain::Integration => ChainId::INTEGRATION,
-        Chain::Custom => {
-            let chain_id =
-                custom_chain_id.expect("Custom chain ID must be set for --network custom");
-            let chain_id =
-                stark_hash::Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?;
-
-            ChainId(chain_id)
-        }
-    };
-
     let context = pathfinder_rpc::context::RpcContext::new(
         storage.clone(),
         sync_state.clone(),
@@ -289,7 +279,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
         false => context,
     };
 
-    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.http_rpc_addr, context)
+    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.rpc_address, context)
         .with_logger(RpcMetricsLogger)
         .run()
         .await

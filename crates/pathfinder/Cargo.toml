@@ -20,7 +20,7 @@ anyhow = "1.0.66"
 async-trait = "0.1.59"
 bitvec = "0.20.4"
 cairo-lang-starknet = { git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
-clap = { version = "3.2.23", features = ["env"] }
+clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
 enum-iterator = "1.2.0"
 ethers = "1.0.2"
