@@ -179,6 +179,16 @@ class Command:
     at_block: str
     chain: Chain
 
+    pending_updates: Dict[int, List[StorageDiff]] = field(
+        metadata=pending_updates_metadata
+    )
+    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
+    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
+    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
+
+    # zero means to use the gas price from the current block.
+    gas_price: int = field(metadata=fields.gas_price_metadata)
+
     @property
     @classmethod
     @abstractmethod
@@ -200,20 +210,11 @@ class Command:
 class Call(Command):
     verb: ClassVar[Verb] = Verb.CALL
 
-    pending_updates: Dict[int, List[StorageDiff]] = field(
-        metadata=pending_updates_metadata
-    )
-    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
-    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
-    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
-
     contract_address: int = field(metadata=fields.contract_address_metadata)
     calldata: List[int] = field(metadata=fields.calldata_as_hex_metadata)
     entry_point_selector: Optional[int] = field(
         default=None, metadata=fields.optional_entry_point_selector_metadata
     )
-
-    gas_price: int = 0
 
     def has_pending_data(self):
         return (
@@ -257,7 +258,7 @@ class EstimateFee(Command):
 class SimulateTx(Command):
     verb: ClassVar[Verb] = Verb.SIMULATE_TX
     transactions: List[AccountTransaction]
-    skip_validate: bool
+    skip_validate: Optional[bool]
 
 
 class CommandSchema(marshmallow_oneofschema.OneOfSchema):
@@ -359,9 +360,7 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
 
             connection.execute("BEGIN")
 
-            [verb, output, inner_timings] = loop_inner(
-                logger, connection, command, contract_class_cache
-            )
+            [verb, output, inner_timings] = loop_inner(connection, command, contract_class_cache)
 
             # this is more backwards compatible dictionary union
             timings = {**timings, **inner_timings}
