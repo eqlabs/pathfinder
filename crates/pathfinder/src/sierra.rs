@@ -19,7 +19,13 @@ pub fn compile_to_casm(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
         .try_into()
         .context("Converting to Sierra class")?;
 
-    validate_compatible_sierra_version(&sierra_class, ListSelector::DefaultList)?;
+    validate_compatible_sierra_version(
+        &sierra_class,
+        ListSelector::ListName(
+            cairo_lang_starknet::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST.to_string(),
+        ),
+    )
+    .context("Validating Sierra class")?;
 
     let casm_class =
         CasmContractClass::from_contract_class(sierra_class, true).context("Compiling to CASM")?;

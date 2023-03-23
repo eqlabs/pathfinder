@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - pathfinder can spam nethermind L1 nodes
+- pathfinder stops syncing testnet2 at block 95220 due to a Sierra class compilation issue
 
 ## [0.5.0] - 2023-03-20
 
