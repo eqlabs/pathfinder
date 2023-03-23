@@ -91,7 +91,7 @@ pub async fn estimate_fee(
 
 /// Transforms the request to call or estimate fee at some point in time to the type expected
 /// by [`crate::cairo::ext_py`] with the optional, latest pending data.
-pub(super) async fn base_block_and_pending_for_call(
+pub(crate) async fn base_block_and_pending_for_call(
     at_block: BlockId,
     pending_data: &Option<PendingData>,
 ) -> Result<
