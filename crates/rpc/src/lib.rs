@@ -12,7 +12,7 @@ pub mod test_client;
 pub mod v02;
 pub mod v03;
 
-use crate::metrics::middleware::{MaybeRpcMetricsMiddleware, RpcMetricsMiddleware};
+use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use context::RpcContext;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
@@ -22,7 +22,7 @@ use tokio::sync::RwLock;
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,
-    middleware: MaybeRpcMetricsMiddleware,
+    logger: MaybeRpcMetricsLogger,
 }
 
 impl RpcServer {
@@ -30,13 +30,13 @@ impl RpcServer {
         Self {
             addr,
             context,
-            middleware: MaybeRpcMetricsMiddleware::NoOp,
+            logger: MaybeRpcMetricsLogger::NoOp,
         }
     }
 
-    pub fn with_middleware(self, middleware: RpcMetricsMiddleware) -> Self {
+    pub fn with_logger(self, middleware: RpcMetricsLogger) -> Self {
         Self {
-            middleware: MaybeRpcMetricsMiddleware::Middleware(middleware),
+            logger: MaybeRpcMetricsLogger::Logger(middleware),
             ..self
         }
     }
@@ -44,7 +44,7 @@ impl RpcServer {
     /// Starts the HTTP-RPC server.
     pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
         let server = ServerBuilder::default()
-            .set_logger(self.middleware)
+            .set_logger(self.logger)
             .build(self.addr)
             .await
             .map_err(|e| match e {
@@ -76,14 +76,6 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         Ok(server
             .start(module_v02)
             .map(|handle| (handle, local_addr))?)
-
-        // Ok(server
-        //     .start_with_paths([
-        //         (vec!["/", "/rpc/v0.2"], module_v02),
-        //         (vec!["/rpc/v0.3"], module_v03),
-        //         (vec!["/rpc/pathfinder/v0.1"], pathfinder_module),
-        //     ])
-        //     .map(|handle| (handle, local_addr))?)
     }
 }
 

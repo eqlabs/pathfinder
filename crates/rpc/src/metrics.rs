@@ -1,10 +1,10 @@
-pub mod middleware {
+pub mod logger {
     use jsonrpsee::server::logger::Logger;
 
     #[derive(Debug, Clone)]
-    pub struct RpcMetricsMiddleware;
+    pub struct RpcMetricsLogger;
 
-    impl Logger for RpcMetricsMiddleware {
+    impl Logger for RpcMetricsLogger {
         type Instant = ();
 
         fn on_connect(
@@ -60,12 +60,12 @@ pub mod middleware {
     }
 
     #[derive(Debug, Clone)]
-    pub enum MaybeRpcMetricsMiddleware {
-        Middleware(RpcMetricsMiddleware),
+    pub enum MaybeRpcMetricsLogger {
+        Logger(RpcMetricsLogger),
         NoOp,
     }
 
-    impl jsonrpsee::server::logger::Logger for MaybeRpcMetricsMiddleware {
+    impl jsonrpsee::server::logger::Logger for MaybeRpcMetricsLogger {
         type Instant = ();
 
         fn on_connect(
@@ -90,10 +90,8 @@ pub mod middleware {
             transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
             match self {
-                MaybeRpcMetricsMiddleware::Middleware(x) => {
-                    x.on_call(method_name, params, kind, transport)
-                }
-                MaybeRpcMetricsMiddleware::NoOp => {}
+                MaybeRpcMetricsLogger::Logger(x) => x.on_call(method_name, params, kind, transport),
+                MaybeRpcMetricsLogger::NoOp => {}
             }
         }
 
@@ -105,10 +103,10 @@ pub mod middleware {
             transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
             match self {
-                MaybeRpcMetricsMiddleware::Middleware(x) => {
+                MaybeRpcMetricsLogger::Logger(x) => {
                     x.on_result(method_name, success, started_at, transport)
                 }
-                MaybeRpcMetricsMiddleware::NoOp => {}
+                MaybeRpcMetricsLogger::NoOp => {}
             }
         }
 
