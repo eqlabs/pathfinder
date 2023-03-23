@@ -92,6 +92,13 @@ try:
     from starkware.starkware_utils.error_handling import StarkException
     from starkware.storage.storage import FactFetchingContext, Storage
 
+    from starkware.starknet.testing.objects import FunctionInvocation
+    from starkware.starknet.services.api.feeder_gateway.response_objects import (
+        FeeEstimationInfo,
+        TransactionTrace,
+        TransactionSimulationInfo,
+    )
+
 except ModuleNotFoundError:
     print(
         "missing cairo-lang module: please reinstall dependencies to upgrade.",
@@ -113,6 +120,7 @@ DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
 class Verb(Enum):
     CALL = 0
     ESTIMATE_FEE = 1
+    SIMULATE_TX = 2
 
 
 class Chain(Enum):
@@ -245,11 +253,19 @@ class EstimateFee(Command):
         return self.pending_timestamp
 
 
+@marshmallow_dataclass.dataclass(frozen=True)
+class SimulateTx(Command):
+    verb: ClassVar[Verb] = Verb.SIMULATE_TX
+    transactions: List[AccountTransaction]
+    skip_validate: bool
+
+
 class CommandSchema(marshmallow_oneofschema.OneOfSchema):
     type_field = "verb"
     type_schemas: Dict[str, Type[Schema]] = {
         Verb.CALL.name: Call.Schema,
         Verb.ESTIMATE_FEE.name: EstimateFee.Schema,
+        Verb.SIMULATE_TX.name: SimulateTx.Schema,
     }
 
     at_block = mfields.Str()
@@ -408,9 +424,8 @@ def report_failed(logger, command, e):
         logger.debug(str(e))
 
 
-def loop_inner(
-    logger: Logger, connection: sqlite3.Connection, command: Command, contract_class_cache=None
-):
+def loop_inner(connection: sqlite3.Connection, command: Command, contract_class_cache=None):
+    logger = Logger()
 
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
@@ -503,7 +518,17 @@ def loop_inner(
             )
         )
         ret = (command.verb, fees, timings)
-    ## TODO(SM): add SimulateTransaction command
+    elif isinstance(command, SimulateTx):
+        simulated_transactions = asyncio.run(
+            do_simulate_tx(
+                async_state,
+                general_config,
+                block_info,
+                command.transactions,
+                command.skip_validate,
+            )
+        )
+        ret = (command.verb, simulated_transactions, timings)
     else:
         logger.error(f"Unrecognised commant: {command}")
 
@@ -978,6 +1003,50 @@ async def do_estimate_fee(
         )
 
     return fees
+
+async def do_simulate_tx(
+    async_state: CachedState,
+    general_config: StarknetGeneralConfig,
+    block_info: BlockInfo,
+    transactions: List[AccountTransaction],
+    skip_validate: bool,
+):
+    simulated_transactions = []
+
+    for external_tx in transactions:
+        tx = InternalAccountTransactionForSimulate.create_for_simulate(
+            external_tx, general_config, skip_validate
+        )
+        tx_info = await tx.apply_state_updates(async_state, general_config)
+
+        trace = TransactionTrace(
+            validate_invocation=FunctionInvocation.from_optional_internal(
+                tx_info.validate_info
+            ),
+            function_invocation=FunctionInvocation.from_optional_internal(
+                tx_info.call_info
+            ),
+            fee_transfer_invocation=FunctionInvocation.from_optional_internal(
+                tx_info.fee_transfer_info
+            ),
+            signature=external_tx.signature
+        )
+        
+        fee_estimation = FeeEstimationInfo.load({
+                "gas_price": block_info.gas_price,
+                "gas_usage": tx_info.actual_fee // max(1, block_info.gas_price),
+                "overall_fee": tx_info.actual_fee,
+                "unit": "wei",
+            })
+
+        simulated_tx = TransactionSimulationInfo.load({
+            "trace": trace,
+            "fee_estimation": fee_estimation,
+        })
+
+        simulated_transactions.append(simulated_tx)
+
+    return simulated_transactions
 
 
 def apply_pending(

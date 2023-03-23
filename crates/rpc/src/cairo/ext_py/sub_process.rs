@@ -370,6 +370,26 @@ async fn process(
             gas_price: gas_price.as_price(),
             transactions,
         },
+        Command::SimulateTransaction {
+            transactions,
+            at_block,
+            gas_price,
+            chain,
+            diffs: maybe_diffs,
+            block_timestamp,
+            ..
+        } => ChildCommand::SimulateTransaction {
+            common: CommonProperties {
+                at_block,
+                chain: *chain,
+                pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_timestamp: block_timestamp.map(|t| t.get()).unwrap_or_default(),
+            },
+            gas_price: gas_price.as_price(),
+            transactions,
+        },
     };
 
     let mut cursor = std::io::Cursor::new(command_buffer);
@@ -443,12 +463,15 @@ async fn process(
         (Command::EstimateFee { response, .. }, Ok(OutputValue::Fee(x))) => {
             let _ = response.send(Ok(x));
         }
+        (Command::SimulateTransaction { response, .. }, Ok(OutputValue::Traces(x))) => {
+            let _ = response.send(Ok(x));
+        }
         (command @ Command::Call { .. }, Err(fail))
-        | (command @ Command::EstimateFee { .. }, Err(fail)) => {
+        | (command @ Command::EstimateFee { .. }, Err(fail))
+        | (command @ Command::SimulateTransaction { .. }, Err(fail)) => {
             let _ = command.fail(fail);
         }
-        (command @ Command::Call { .. }, output @ Ok(OutputValue::Fee(_)))
-        | (command @ Command::EstimateFee { .. }, output @ Ok(OutputValue::Call(_))) => {
+        (command, output @ Ok(_)) => {
             error!(?command, ?output, "python script mixed response to command");
             let _ = command.fail(CallFailure::Internal("mixed response"));
         }

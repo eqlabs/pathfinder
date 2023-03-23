@@ -4,7 +4,7 @@ mod add_invoke_transaction;
 mod block_hash_and_number;
 mod call;
 mod chain_id;
-mod estimate_fee;
+pub(crate) mod estimate_fee;
 mod get_block;
 mod get_block_transaction_count;
 mod get_class;

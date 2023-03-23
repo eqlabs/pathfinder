@@ -1,4 +1,9 @@
-use crate::{context::RpcContext, error::RpcError};
+use crate::{
+    cairo::ext_py::{CallFailure, GasPriceSource},
+    context::RpcContext,
+    error::RpcError,
+    v02::{types::{reply::TransactionSimulation, request::BroadcastedTransaction}, method::estimate_fee::base_block_and_pending_for_call},
+};
 use anyhow::anyhow;
 use pathfinder_common::BlockId;
 use serde::{Deserialize, Serialize};
@@ -8,26 +13,67 @@ pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
 ) -> Result<SimulateTransactionResult, SimulateTrasactionError> {
-    dbg!(input);
+    dbg!(&input); // TODO(SM): remove debug output
 
     let handle = context
         .call_handle
         .as_ref()
         .ok_or_else(|| SimulateTrasactionError::IllegalState)?;
 
-    // TODO(SM)
+    let gas_price = if matches!(input.block_id, BlockId::Pending | BlockId::Latest) {
+        let gas_price = match context.eth_gas_price.as_ref() {
+            Some(cached) => cached.get().await,
+            None => None,
+        };
 
-    let _ = handle.simulate_transaction()
+        let gas_price =
+            gas_price.ok_or_else(|| anyhow::anyhow!("Current eth_gasPrice is unavailable"))?;
+
+        GasPriceSource::Current(gas_price)
+    } else {
+        GasPriceSource::PastBlock
+    };
+
+    let (at_block, pending_timestamp, pending_update) =
+        base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
+    
+    let skip_execute = input
+        .simulation_flags
+        .0
+        .iter()
+        .any(|flag| flag == &dto::SimulationFlag::SkipExecute);
+    let skip_validate = input
+        .simulation_flags
+        .0
+        .iter()
+        .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
+    let txs = handle
+        .simulate_transaction(
+            at_block,
+            gas_price,
+            pending_update,
+            pending_timestamp,
+            &input.transactions,
+            skip_execute,
+            skip_validate,
+        )
         .await
-        .map_err(|_| SimulateTrasactionError::CallFailed)?;
+        .map_err(|e| SimulateTrasactionError::CallFailed(e))?;
 
-    Ok(SimulateTransactionResult(vec![]))
+    dbg!(&txs); // TODO(SM): remove debug output
+
+    let txs = txs.into_iter().map(map_trace).collect();
+    Ok(SimulateTransactionResult(txs))
+}
+
+fn map_trace(_trace: TransactionSimulation) -> dto::SimulatedTransaction {
+    todo!() // TODO!(SM)
 }
 
 #[derive(Deserialize, Debug)]
 pub struct SimulateTrasactionInput {
     block_id: BlockId,
-    transaction: dto::Transaction,
+    transactions: Vec<BroadcastedTransaction>,
     simulation_flags: dto::SimulationFlags,
 }
 
@@ -36,17 +82,25 @@ pub struct SimulateTransactionResult(pub Vec<dto::SimulatedTransaction>);
 
 #[derive(Debug)]
 pub enum SimulateTrasactionError {
+    Custom(anyhow::Error),
     IllegalState,
-    CallFailed,
+    CallFailed(CallFailure),
 }
 
 impl From<SimulateTrasactionError> for RpcError {
     fn from(value: SimulateTrasactionError) -> Self {
         match value {
-            SimulateTrasactionError::IllegalState | SimulateTrasactionError::CallFailed => {
+            SimulateTrasactionError::IllegalState | SimulateTrasactionError::CallFailed(_) => {
                 RpcError::Internal(anyhow!("Internal error"))
             }
+            SimulateTrasactionError::Custom(e) => RpcError::Internal(e)
         }
+    }
+}
+
+impl From<anyhow::Error> for SimulateTrasactionError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Custom(err)
     }
 }
 
@@ -56,7 +110,7 @@ pub mod dto {
     #[derive(Debug, Deserialize, Serialize)]
     pub struct SimulationFlags(pub Vec<SimulationFlag>);
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub enum SimulationFlag {
         #[serde(rename = "SKIP_EXECUTE")]
         SkipExecute,
@@ -65,291 +119,7 @@ pub mod dto {
     }
 
     #[derive(Debug, Deserialize, Serialize)]
-    pub struct Transaction(pub Vec<BroadcastedTxn>);
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
-    pub enum BroadcastedTxn {
-        BroadcastedDeclareTxn(BroadcastedDeclareTxn),
-        BroadcastedDeployAccountTxn(BroadcastedDeployAccountTxn),
-        BroadcastedInvokeTxn(BroadcastedInvokeTxn),
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct BroadcastedTxnCommonProperties {
-        pub max_fee: Felt,
-        pub nonce: Felt,
-        pub signature: Signature,
-        pub version: NumAsHex,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
     pub struct Signature(pub Vec<Felt>);
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
-    pub enum BroadcastedDeclareTxn {
-        BroadcastedDeclareTxnV1(BroadcastedDeclareTxnV1),
-        BroadcastedDeclareTxnV2(BroadcastedDeclareTxnV2),
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct BroadcastedDeclareTxnV1 {
-        #[serde(flatten)]
-        pub broadcasted_txn_common_properties: BroadcastedTxnCommonProperties,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub contract_class: Option<DeprecatedContractClass>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub sender_address: Option<Address>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct BroadcastedDeclareTxnV2 {
-        #[serde(flatten)]
-        pub broadcasted_txn_common_properties: BroadcastedTxnCommonProperties,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub compiled_class_hash: Option<Felt>,
-        pub contract_class: ContractClass,
-        pub sender_address: Address,
-        #[serde(rename = "type")]
-        pub r#type: BroadcastedDeclareTxnV2Type,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct ContractClass {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub abi: Option<String>,
-        pub contract_class_version: String,
-        pub entry_points_by_type: ContractClassEntryPoint,
-        pub sierra_program: Vec<Felt>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct SierraEntryPoint {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub function_idx: Option<i64>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub selector: Option<Felt>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct ContractClassEntryPoint {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "CONSTRUCTOR")]
-        pub constructor: Option<Vec<SierraEntryPoint>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "EXTERNAL")]
-        pub external: Option<Vec<SierraEntryPoint>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "L1_HANDLER")]
-        pub l1_handler: Option<Vec<SierraEntryPoint>>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct DeprecatedContractClass {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub abi: Option<ContractAbi>,
-        pub entry_points_by_type: DeprecatedContractClassEntryPoint,
-        pub program: String,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct DeprecatedContractClassEntryPoint {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "CONSTRUCTOR")]
-        pub constructor: Option<Vec<DeprecatedCairoEntryPoint>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "EXTERNAL")]
-        pub external: Option<Vec<DeprecatedCairoEntryPoint>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "L1_HANDLER")]
-        pub l1_handler: Option<Vec<DeprecatedCairoEntryPoint>>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct DeprecatedCairoEntryPoint {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub offset: Option<NumAsHex>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub selector: Option<Felt>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct ContractAbi(pub Vec<ContractAbiEntry>);
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
-    pub enum ContractAbiEntry {
-        EventAbiEntry(EventAbiEntry),
-        FunctionAbiEntry(FunctionAbiEntry),
-        StructAbiEntry(StructAbiEntry),
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct FunctionAbiEntry {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub inputs: Option<Vec<TypedParameter>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub outputs: Option<Vec<TypedParameter>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "type")]
-        pub r#type: Option<FunctionAbiType>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub enum FunctionAbiType {
-        #[serde(rename = "constructor")]
-        Constructor,
-        #[serde(rename = "function")]
-        Function,
-        #[serde(rename = "l1_handler")]
-        L1Handler,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct StructAbiEntry {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub members: Option<Vec<StructMember>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub size: Option<i64>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "type")]
-        pub r#type: Option<StructAbiType>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub enum StructAbiType {
-        #[serde(rename = "struct")]
-        Struct,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct StructMember {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub offset: Option<i64>,
-        #[serde(flatten)]
-        pub typed_parameter: TypedParameter,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct EventAbiEntry {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<Vec<TypedParameter>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub keys: Option<Vec<TypedParameter>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "type")]
-        pub r#type: Option<EventAbiType>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub enum EventAbiType {
-        #[serde(rename = "event")]
-        Event,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct TypedParameter {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[serde(rename = "type")]
-        pub r#type: Option<String>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub enum BroadcastedDeclareTxnV2Type {
-        #[serde(rename = "DECLARE")]
-        Declare,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct BroadcastedDeployAccountTxn {
-        #[serde(flatten)]
-        pub broadcasted_txn_common_properties: BroadcastedTxnCommonProperties,
-        #[serde(flatten)]
-        pub deploy_account_txn_properties: DeployAccountTxnProperties,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct DeployAccountTxnProperties {
-        pub class_hash: Felt,
-        pub constructor_calldata: Vec<Felt>,
-        pub contract_address_salt: Felt,
-        #[serde(rename = "type")]
-        pub r#type: DeployAccountTxnPropertiesType,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub enum DeployAccountTxnPropertiesType {
-        #[serde(rename = "DEPLOY_ACCOUNT")]
-        DeployAccount,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct BroadcastedInvokeTxn {
-        #[serde(flatten)]
-        pub broadcasted_invoke_txn_kind: BroadcastedInvokeTxnKind,
-        #[serde(flatten)]
-        pub broadcasted_txn_common_properties: BroadcastedTxnCommonProperties,
-        #[serde(rename = "type")]
-        pub r#type: BroadcastedInvokeTxnType,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
-    pub enum BroadcastedInvokeTxnKind {
-        FunctionCall(FunctionCall),
-        InvokeTxnV1(InvokeTxnV1),
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct InvokeTxnV1 {
-        pub calldata: Vec<Felt>,
-        pub sender_address: Address,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub enum BroadcastedInvokeTxnType {
-        #[serde(rename = "INVOKE")]
-        Invoke,
-    }
 
     #[derive(Debug, Deserialize, Serialize)]
     pub struct Address(pub Felt);
@@ -504,6 +274,36 @@ pub mod dto {
     }
 
     #[derive(Debug, Deserialize, Serialize)]
-    // #[serde(try_from = "String")] // TODO: consider adding validation by regex
+    // TODO(SM): consider adding validation by regex (per spec)
+    // #[serde(try_from = "String")]
     pub struct NumAsHex(String);
 }
+
+// TODO!(SM): tests
+
+/*
+
+{
+    block_id: "latest",
+    transactions: [
+        {
+        "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+        "max_fee": "0x0",
+        "signature": [
+            "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+            "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+        ],
+        "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+        "nonce": "0x0",
+        "version": "0x100000000000000000000000000000001",
+        "constructor_calldata": [
+            "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+        ],
+        "type": "DEPLOY_ACCOUNT"
+        }
+    ],
+    simulation_flags: []
+}
+
+
+ */

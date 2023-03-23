@@ -15,11 +15,12 @@
 //! global_state, and after that, calls can be made to it's `block_hash` for which we probably need
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
-use crate::v02::types::reply::FeeEstimate;
+use crate::v02::types::reply::{FeeEstimate, TransactionSimulation};
 use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
 use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
+use starknet_gateway_types::request::add_transaction::AddTransaction;
 use starknet_gateway_types::{reply::PendingStateUpdate, request::add_transaction};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -99,76 +100,8 @@ impl Handle {
 
         let transactions = transactions
             .into_iter()
-            .map(|transaction| {
-                Ok(match transaction {
-                    BroadcastedTransaction::DeployAccount(tx) => {
-                        add_transaction::AddTransaction::DeployAccount(
-                            add_transaction::DeployAccount {
-                                version: tx.version,
-                                max_fee: tx.max_fee,
-                                signature: tx.signature,
-                                nonce: tx.nonce,
-                                class_hash: tx.class_hash,
-                                contract_address_salt: tx.contract_address_salt,
-                                constructor_calldata: tx.constructor_calldata,
-                            },
-                        )
-                    }
-                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
-                        add_transaction::AddTransaction::Declare(add_transaction::Declare {
-                            version: tx.version,
-                            max_fee: tx.max_fee,
-                            signature: tx.signature,
-                            contract_class: add_transaction::ContractDefinition::Cairo(
-                                tx.contract_class.try_into().map_err(|_| {
-                                    CallFailure::Internal("contract class serialization failure")
-                                })?,
-                            ),
-                            sender_address: tx.sender_address,
-                            nonce: tx.nonce,
-                            compiled_class_hash: None,
-                        })
-                    }
-                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
-                        add_transaction::AddTransaction::Declare(add_transaction::Declare {
-                            version: tx.version,
-                            max_fee: tx.max_fee,
-                            signature: tx.signature,
-                            contract_class: add_transaction::ContractDefinition::Sierra(
-                                tx.contract_class.try_into().map_err(|_| {
-                                    CallFailure::Internal("contract class serialization failure")
-                                })?,
-                            ),
-                            sender_address: tx.sender_address,
-                            nonce: tx.nonce,
-                            compiled_class_hash: Some(tx.compiled_class_hash),
-                        })
-                    }
-                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
-                        add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
-                            version: tx.version,
-                            max_fee: tx.max_fee,
-                            signature: tx.signature,
-                            nonce: None,
-                            sender_address: tx.contract_address,
-                            entry_point_selector: Some(tx.entry_point_selector),
-                            calldata: tx.calldata,
-                        })
-                    }
-                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
-                        add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
-                            version: tx.version,
-                            max_fee: tx.max_fee,
-                            signature: tx.signature,
-                            nonce: Some(tx.nonce),
-                            sender_address: tx.sender_address,
-                            entry_point_selector: None,
-                            calldata: tx.calldata,
-                        })
-                    }
-                })
-            })
-            .collect::<Result<Vec<_>, CallFailure>>()?;
+            .map(map_tx)
+            .collect::<Result<Vec<_>, _>>()?;
 
         self.command_tx
             .send((
@@ -192,10 +125,120 @@ impl Handle {
         }
     }
 
-    pub async fn simulate_transaction(&self) -> Result<(), CallFailure> {
-        // TODO(SM)
-        Ok(())
+    pub async fn simulate_transaction(
+        &self,
+        at_block: BlockHashNumberOrLatest,
+        gas_price: GasPriceSource,
+        diffs: Option<Arc<PendingStateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
+        transactions: &[BroadcastedTransaction],
+        _skip_execute: bool,
+        _skip_validate: bool,
+    ) -> Result<Vec<TransactionSimulation>, CallFailure> {
+        use tracing::field::Empty;
+        let (response, rx) = oneshot::channel();
+
+        let continued_span = tracing::info_span!("ext_py_sim_tx", pid = Empty);
+
+        let transactions = {
+            let mut ret = Vec::with_capacity(transactions.len());
+            for tx in transactions {
+                ret.push(map_tx(tx.clone())?);
+            }
+            ret
+        };
+
+        self.command_tx
+            .send((
+                Command::SimulateTransaction {
+                    transactions,
+                    at_block,
+                    gas_price,
+                    chain: self.chain,
+                    diffs,
+                    block_timestamp,
+                    response,
+                },
+                continued_span,
+            ))
+            .await
+            .map_err(|_| CallFailure::Shutdown)?;
+
+        match rx.await {
+            Ok(x) => x,
+            Err(_closed) => Err(CallFailure::Shutdown),
+        }
     }
+}
+
+fn map_tx(tx: BroadcastedTransaction) -> Result<AddTransaction, CallFailure> {
+    Ok(match tx {
+        BroadcastedTransaction::DeployAccount(tx) => {
+            add_transaction::AddTransaction::DeployAccount(
+                add_transaction::DeployAccount {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    nonce: tx.nonce,
+                    class_hash: tx.class_hash,
+                    contract_address_salt: tx.contract_address_salt,
+                    constructor_calldata: tx.constructor_calldata,
+                },
+            )
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
+            add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                version: tx.version,
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                contract_class: add_transaction::ContractDefinition::Cairo(
+                    tx.contract_class.try_into().map_err(|_| {
+                        CallFailure::Internal("contract class serialization failure")
+                    })?,
+                ),
+                sender_address: tx.sender_address,
+                nonce: tx.nonce,
+                compiled_class_hash: None,
+            })
+        }
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
+            add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                version: tx.version,
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                contract_class: add_transaction::ContractDefinition::Sierra(
+                    tx.contract_class.try_into().map_err(|_| {
+                        CallFailure::Internal("contract class serialization failure")
+                    })?,
+                ),
+                sender_address: tx.sender_address,
+                nonce: tx.nonce,
+                compiled_class_hash: Some(tx.compiled_class_hash),
+            })
+        }
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
+            add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
+                version: tx.version,
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                nonce: None,
+                contract_address: tx.contract_address,
+                entry_point_selector: Some(tx.entry_point_selector),
+                calldata: tx.calldata,
+            })
+        }
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
+            add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
+                version: tx.version,
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                nonce: Some(tx.nonce),
+                contract_address: tx.sender_address,
+                entry_point_selector: None,
+                calldata: tx.calldata,
+            })
+        }
+    })
 }
 
 /// Reasons for a call to fail.
@@ -282,6 +325,16 @@ enum Command {
         block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<Vec<FeeEstimate>, CallFailure>>,
     },
+    SimulateTransaction {
+        transactions: Vec<add_transaction::AddTransaction>,
+        at_block: BlockHashNumberOrLatest,
+        /// Price input for the fee estimation, also communicated back in response
+        gas_price: GasPriceSource,
+        chain: UsedChain,
+        diffs: Option<Arc<PendingStateUpdate>>,
+        block_timestamp: Option<StarknetBlockTimestamp>,
+        response: oneshot::Sender<Result<Vec<TransactionSimulation>, CallFailure>>,
+    },
 }
 
 impl Command {
@@ -290,6 +343,7 @@ impl Command {
         match self {
             Call { response, .. } => response.is_closed(),
             EstimateFee { response, .. } => response.is_closed(),
+            SimulateTransaction { response, .. } => response.is_closed(),
         }
     }
 
@@ -298,6 +352,9 @@ impl Command {
         match self {
             Call { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
             EstimateFee { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
+            SimulateTransaction { response, .. } => {
+                response.send(Err(err)).map_err(|e| e.unwrap_err())
+            }
         }
     }
 
@@ -306,6 +363,7 @@ impl Command {
         match self {
             Call { response, .. } => response.closed().await,
             EstimateFee { response, .. } => response.closed().await,
+            SimulateTransaction { response, .. } => response.closed().await,
         }
     }
 }

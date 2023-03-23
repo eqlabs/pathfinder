@@ -1,7 +1,7 @@
 //! The json deserializable types
 
 use super::{CallFailure, SubprocessError};
-use crate::v02::types::reply::FeeEstimate;
+use crate::v02::types::reply::{FeeEstimate, TransactionSimulation};
 use pathfinder_common::CallResultValue;
 
 /// The python loop currently responds with these four possibilities. An enum would be more
@@ -29,6 +29,7 @@ pub(crate) struct ChildResponse<'a> {
 pub(crate) enum OutputValue {
     Call(Vec<CallResultValue>),
     Fee(Vec<FeeEstimate>),
+    Traces(Vec<TransactionSimulation>),
 }
 
 impl<'a> ChildResponse<'a> {
