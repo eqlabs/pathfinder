@@ -308,25 +308,17 @@ mod tests {
         // Methods available in pathfinder RPC spec v0.1
         let pathfinder_only = ["pathfinder_getProof", "pathfinder_version"].into_iter();
 
-        let v02 = common.clone().chain(v02_only.clone());
-        let v02_methods = v02.clone().collect::<Vec<_>>();
-        let v02_counters = v02.map(|x| "v0.2_".to_owned() + x).collect::<Vec<_>>();
-
+        let v02_methods = common.clone().chain(v02_only.clone()).collect::<Vec<_>>();
         let v03_methods = common.clone().collect::<Vec<_>>();
-        let v03_counters = common.map(|x| "v0.3_".to_owned() + x).collect::<Vec<_>>();
-
         let pathfinder_methods = pathfinder_only.clone().collect::<Vec<_>>();
-        let pathfinder_counters = pathfinder_only
-            .map(|x| "v0.1_".to_owned() + x)
-            .collect::<Vec<_>>();
 
-        for (paths, methods, counters) in vec![
+        for (paths, version, methods) in vec![
             (
                 vec!["", "/", "/rpc/v0.2", "/rpc/v0.2/"],
+                "v0.2",
                 v02_methods,
-                v02_counters,
             ),
-            (vec!["/rpc/v0.3", "/rpc/v0.3/"], v03_methods, v03_counters),
+            (vec!["/rpc/v0.3", "/rpc/v0.3/"], "v0.3", v03_methods),
             // rpc/pathfinder/v0.1 methods are also available in the default RPC api version, which is starknet v0.2
             (
                 vec![
@@ -337,8 +329,8 @@ mod tests {
                     "/rpc/pathfinder/v0.1",
                     "/rpc/pathfinder/v0.1/",
                 ],
+                "v0.1",
                 pathfinder_methods,
-                pathfinder_counters,
             ),
         ]
         .into_iter()
@@ -350,7 +342,7 @@ mod tests {
                     .build()
                     .unwrap();
 
-                for (method, counter) in methods.iter().zip(counters.iter()) {
+                for method in methods.iter() {
                     let res = client.request::<serde_json::Value>(method, json!([])).await;
 
                     match res {
@@ -362,8 +354,15 @@ mod tests {
                         Ok(_) | Err(_) => {}
                     }
 
-                    let x = handle.get_counter_value("rpc_method_calls_total", counter.clone());
-                    assert_eq!(x, i as u64 + 1, "path: {path}, method: {method}");
+                    let expected_counter = i as u64 + 1;
+                    let actual_counter = handle.get_counter_value_by_label(
+                        "rpc_method_calls_total",
+                        [("method", method), ("version", version)],
+                    );
+                    assert_eq!(
+                        actual_counter, expected_counter,
+                        "path: {path}, method: {method}"
+                    );
                 }
             }
         }

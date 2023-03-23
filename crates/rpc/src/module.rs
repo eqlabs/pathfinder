@@ -9,6 +9,19 @@ use crate::error::RpcError;
 /// hosted at a single endpoint.
 pub struct Module(jsonrpsee::RpcModule<RpcContext>);
 
+/// Splits the internal RPC method name, which is in the form of
+/// `apiVersion_proper_methodName` into two separate strings:
+/// - `apiVersion`, which is the RPC API semver string
+/// - `proper_methodName`, which is the proper name of the RPC method,
+/// including the namespace (`starknet` or `pathfinder`), as described
+/// in the spec for that particular API version
+pub(crate) fn split_version_prefix(method: &str) -> (String, String) {
+    let (version, method) = method
+        .split_once('_')
+        .expect("API version prefix is separated by underscore from the method name");
+    (version.to_owned(), method.to_owned())
+}
+
 impl Module {
     pub fn new(context: RpcContext) -> Self {
         Self(jsonrpsee::RpcModule::new(context))
@@ -40,7 +53,9 @@ impl Module {
         use jsonrpsee::types::Params;
         use tracing::Instrument;
 
-        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+        let (version, metric_method_name) = split_version_prefix(method_name);
+        metrics::register_counter!("rpc_method_calls_total", "method" => metric_method_name.clone(), "version" => version.clone());
+        metrics::register_counter!("rpc_method_calls_failed_total", "method" => metric_method_name, "version" => version);
 
         let method_callback = move |params: Params<'static>, context: Arc<RpcContext>| {
             // why info here? it's the same used in warp tracing filter for example.
@@ -82,7 +97,9 @@ impl Module {
         use anyhow::Context;
         use tracing::Instrument;
 
-        metrics::register_counter!("rpc_method_calls_total", "method" => method_name);
+        let (version, metric_method_name) = split_version_prefix(method_name);
+        metrics::register_counter!("rpc_method_calls_total", "method" => metric_method_name.clone(), "version" => version.clone());
+        metrics::register_counter!("rpc_method_calls_failed_total", "method" => metric_method_name, "version" => version);
 
         let method_callback = move |_params, context: Arc<RpcContext>| {
             // why info here? it's the same used in warp tracing filter for example.
@@ -140,6 +157,8 @@ mod tests {
             .build()
             .unwrap();
 
+        // RPC method registration requires a version prefix separated by an underscore
+        // but we don't strip it here as the versioning middleware is not used in the test
         let message = client
             .request::<String>("say_hello", json!([]))
             .await
@@ -162,7 +181,7 @@ mod tests {
         }
 
         let methods = super::Module::new(ctx)
-            .register_method("echo", echo)
+            .register_method("an_echo", echo)
             .unwrap()
             .build();
 
@@ -182,8 +201,10 @@ mod tests {
 
         let input = "testing testing 123".to_string();
 
+        // RPC method registration requires a version prefix separated by an underscore
+        // but we don't strip it here as the versioning middleware is not used in the test
         let message = client
-            .request::<String>("echo", json!([input]))
+            .request::<String>("an_echo", json!([input]))
             .await
             .unwrap();
         assert_eq!(message, input);

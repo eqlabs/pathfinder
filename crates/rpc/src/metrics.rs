@@ -1,4 +1,5 @@
 pub mod logger {
+    use crate::module::split_version_prefix;
     use jsonrpsee::server::logger::Logger;
 
     #[derive(Debug, Clone)]
@@ -28,7 +29,8 @@ pub mod logger {
             _kind: jsonrpsee::server::logger::MethodKind,
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
-            metrics::increment_counter!("rpc_method_calls_total", "method" => method_name.to_owned());
+            let (version, method_name) = split_version_prefix(method_name);
+            metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version);
         }
 
         fn on_result(
@@ -39,7 +41,8 @@ pub mod logger {
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
             if !success {
-                metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name.to_owned());
+                let (version, method_name) = split_version_prefix(method_name);
+                metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => version);
             }
         }
 
