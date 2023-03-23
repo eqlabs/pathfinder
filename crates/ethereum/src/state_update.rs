@@ -186,9 +186,20 @@ impl StateRootFetcher {
 
                 if to_block < chain_head {
                     match stride_cap {
+                        // If stride_cap = 1, and chain_head - to_block > 1, then we get stuck in an infinite loop
+                        // of getting no logs, but not being able to increase the stride length beyond 1.
+                        //
+                        // This occurs mostly for nethermind nodes, which don't let you exceed latest in the query range,
+                        // causing stride_cap to potentially reach 1.
+                        Some(1) => {
+                            self.stride = chain_head - to_block;
+                            // Arbitrary small (but not 1) value
+                            stride_cap = Some(10);
+                        }
                         Some(max) => self.stride = (self.stride.saturating_add(max + 1)) / 2,
                         None => self.stride = self.stride.saturating_mul(2),
                     }
+
                     continue;
                 }
             }
