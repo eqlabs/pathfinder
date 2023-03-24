@@ -49,7 +49,11 @@ impl RpcServer {
         let server = ServerBuilder::default()
             .max_request_body_size(TEN_MB)
             .set_logger(self.logger)
-            .set_middleware(tower::ServiceBuilder::new().layer(versioning::RpcVersioningLayer::new(TEN_MB)))
+            .set_middleware(tower::ServiceBuilder::new()
+                .map_result(versioning::try_map_errors_to_responses)
+                .filter_async(|result| async move {
+                    versioning::prefix_rpc_method_names_with_version(result, TEN_MB).await
+                }))
             .build(self.addr)
             .await
             .map_err(|e| match e {
