@@ -248,7 +248,7 @@ You __must__ use the label key `method` to retrieve a counter for a particular R
 rpc_method_calls_total{method="starknet_getStateUpdate"}
 rpc_method_calls_failed_total{method="starknet_chainId"}
 ```
-You may also use the label key `version` to specify a counter for a particular version of the RPC API, for example:
+You may also use the label key `version` to specify a particular version of the RPC API, for example:
 ```
 rpc_method_calls_total{method="starknet_getEvents", version="v0.3"}
 ```
