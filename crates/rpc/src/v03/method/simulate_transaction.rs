@@ -58,8 +58,7 @@ pub async fn simulate_transaction(
             pending_update,
             pending_timestamp,
             &input.transactions,
-            skip_execute,
-            skip_validate,
+            (skip_execute, skip_validate),
         )
         .await
         .map_err(SimulateTrasactionError::CallFailed)?;

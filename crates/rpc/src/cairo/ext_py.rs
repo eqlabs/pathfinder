@@ -131,8 +131,7 @@ impl Handle {
         diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
         transactions: &[BroadcastedTransaction],
-        _skip_execute: bool,
-        _skip_validate: bool,
+        (_skip_execute, _skip_validate): (bool, bool)
     ) -> Result<Vec<TransactionSimulation>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
