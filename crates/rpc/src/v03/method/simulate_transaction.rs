@@ -121,7 +121,7 @@ fn map_trace(
         (Some(val), Some(fun), Some(fee))
             if fun.entry_point_type == Some(dto::EntryPointType::Constructor) =>
         {
-            Ok(dto::TransactionTrace::DeployAccountTxnTrace(
+            Ok(dto::TransactionTrace::DeployAccount(
                 dto::DeployAccountTxnTrace {
                     fee_transfer_invocation: Some(map_function_invocation(fee)),
                     validate_invocation: Some(map_function_invocation(val)),
@@ -132,19 +132,19 @@ fn map_trace(
         (Some(val), Some(fun), Some(fee))
             if fun.entry_point_type == Some(dto::EntryPointType::External) =>
         {
-            Ok(dto::TransactionTrace::InvokeTxnTrace(dto::InvokeTxnTrace {
+            Ok(dto::TransactionTrace::Invoke(dto::InvokeTxnTrace {
                 fee_transfer_invocation: Some(map_function_invocation(fee)),
                 validate_invocation: Some(map_function_invocation(val)),
                 execute_invocation: Some(map_function_invocation(fun)),
             }))
         }
-        (Some(val), _, Some(fee)) => Ok(dto::TransactionTrace::DeclareTxnTrace(
+        (Some(val), _, Some(fee)) => Ok(dto::TransactionTrace::Declare(
             dto::DeclareTxnTrace {
                 fee_transfer_invocation: Some(map_function_invocation(fee)),
                 validate_invocation: Some(map_function_invocation(val)),
             },
         )),
-        (_, Some(fun), _) => Ok(dto::TransactionTrace::L1HandlerTxnTrace(
+        (_, Some(fun), _) => Ok(dto::TransactionTrace::L1Handler(
             dto::L1HandlerTxnTrace {
                 function_invocation: Some(map_function_invocation(fun)),
             },
@@ -286,10 +286,10 @@ pub mod dto {
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(untagged)]
     pub enum TransactionTrace {
-        DeclareTxnTrace(DeclareTxnTrace),
-        DeployAccountTxnTrace(DeployAccountTxnTrace),
-        InvokeTxnTrace(InvokeTxnTrace),
-        L1HandlerTxnTrace(L1HandlerTxnTrace),
+        Declare(DeclareTxnTrace),
+        DeployAccount(DeployAccountTxnTrace),
+        Invoke(InvokeTxnTrace),
+        L1Handler(L1HandlerTxnTrace),
     }
 
     #[derive(Debug, Deserialize, Serialize)]
