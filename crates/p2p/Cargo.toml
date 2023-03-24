@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 anyhow = "1.0.56"
 async-trait = "0.1.58"
 base64 = "0.13.0"
-clap = { version = "3.2.17", features = ["env", "derive"] }
+clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 delay_map = "0.1.2"
 futures = "0.3.21"
 libp2p = { version = "0.50.0", default-features = false, features = ["identify", "gossipsub", "kad", "noise", "ping", "dns", "tcp", "tokio", "yamux", "request-response", "autonat", "relay", "dcutr", "macros"] }

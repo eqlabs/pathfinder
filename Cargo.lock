@@ -1259,14 +1259,9 @@ version = "3.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71655c45cb9845d3270c9d6df84ebe72b4dad3c2ba3f7023ad47c144e4e473a5"
 dependencies = [
- "atty",
  "bitflags",
- "clap_derive 3.2.18",
  "clap_lex 0.2.4",
  "indexmap",
- "once_cell",
- "strsim",
- "termcolor",
  "textwrap",
 ]
 
@@ -1277,26 +1272,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c911b090850d79fc64fe9ea01e28e465f65e821e08813ced95bced72f7a8a9b"
 dependencies = [
  "bitflags",
- "clap_derive 4.1.12",
+ "clap_derive",
  "clap_lex 0.3.1",
  "is-terminal",
  "once_cell",
  "strsim",
  "termcolor",
  "terminal_size",
-]
-
-[[package]]
-name = "clap_derive"
-version = "3.2.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea0c8bce528c4be4da13ea6fead8965e95b6073585a2f05204bd8f4119f82a65"
-dependencies = [
- "heck 0.4.0",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.107",
 ]
 
 [[package]]
@@ -4908,7 +4890,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "base64 0.13.1",
- "clap 3.2.23",
+ "clap 4.1.13",
  "delay_map",
  "env_logger 0.10.0",
  "fake",
@@ -4937,7 +4919,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
- "clap 3.2.23",
+ "clap 4.1.13",
  "futures",
  "libp2p",
  "serde",
