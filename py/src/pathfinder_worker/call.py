@@ -534,7 +534,7 @@ def render(verb, vals):
     if verb == Verb.CALL:
         return list(map(as_hex, vals))
     elif verb == Verb.ESTIMATE_FEE:
-        return render_fee_estimate(vals)
+        return list(map(render_fee_estimate, vals))
     elif verb == Verb.SIMULATE_TX:
         return list(map(render_simulate_tx, vals))
 
