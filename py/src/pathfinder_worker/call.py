@@ -54,7 +54,6 @@ try:
     )
     from starkware.starknet.business_logic.execution.objects import (
         ExecutionResourcesManager,
-        CallType,
     )
     from starkware.starknet.business_logic.fact_state.patricia_state import (
         PatriciaStateReader,
@@ -574,8 +573,8 @@ def render_event(event):
 def render_message(msg):
     return {
         "order": msg.order,
-        "to_address": as_hex(to_address),
-        "payload": list(map(as_hex, event.payload)),
+        "to_address": as_hex(msg.to_address),
+        "payload": list(map(as_hex, msg.event.payload)),
     }
 
 
