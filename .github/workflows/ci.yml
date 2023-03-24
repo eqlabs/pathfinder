@@ -206,7 +206,7 @@ jobs:
           name: pathfinder-starkhash-wheels
       - name: Install Pedersen hash Python wrapper
         run: |
-          pip install --no-index ./stark_hash_rust-*.whl
+          pip install --no-index --force-reinstall ./stark_hash_rust-*.whl
 
       - name: Test (python)
         run: |
