@@ -99,6 +99,7 @@ impl Handle {
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
         let transactions: Result<Vec<_>, _> = transactions.into_iter().map(map_tx).collect();
+        let transactions = transactions?;
 
         self.command_tx
             .send((
