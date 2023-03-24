@@ -53,7 +53,7 @@ try:
         ExecuteEntryPoint,
     )
     from starkware.starknet.business_logic.execution.objects import (
-        ExecutionResourcesManager,
+        ExecutionResourcesManager, CallType
     )
     from starkware.starknet.business_logic.fact_state.patricia_state import (
         PatriciaStateReader,
@@ -92,9 +92,9 @@ try:
     from starkware.starkware_utils.error_handling import StarkException
     from starkware.storage.storage import FactFetchingContext, Storage
 
-    from starkware.starknet.testing.objects import FunctionInvocation
     from starkware.starknet.services.api.feeder_gateway.response_objects import (
         FeeEstimationInfo,
+        FunctionInvocation,
         TransactionTrace,
         TransactionSimulationInfo,
     )
@@ -258,7 +258,7 @@ class EstimateFee(Command):
 class SimulateTx(Command):
     verb: ClassVar[Verb] = Verb.SIMULATE_TX
     transactions: List[AccountTransaction]
-    skip_validate: Optional[bool]
+    skip_validate: bool
 
 
 class CommandSchema(marshmallow_oneofschema.OneOfSchema):
@@ -329,7 +329,6 @@ def check_cairolang_version():
         return version == EXPECTED_CAIRO_VERSION
     except pkg_resources.DistributionNotFound:
         return False
-
 
 def do_loop(connection: sqlite3.Connection, input_gen, output_file):
     logger = Logger()
@@ -542,23 +541,65 @@ def loop_inner(connection: sqlite3.Connection, command: Command, contract_class_
 
 
 def render(verb, vals):
-    def prefixed_hex(x):
-        return f"0x{x.to_bytes(32, 'big').hex()}"
-
     if verb == Verb.CALL:
-        return list(map(prefixed_hex, vals))
-    else:
-        assert verb == Verb.ESTIMATE_FEE
+        return list(map(as_hex, vals))
+    elif verb == Verb.ESTIMATE_FEE:
+        return render_fee_estimate(vals)
+    elif verb == Verb.SIMULATE_TX:
+        return list(map(render_simulate_tx, vals))
 
-        return [
-            {
-                "gas_consumed": prefixed_hex(val["gas_consumed"]),
-                "gas_price": prefixed_hex(val["gas_price"]),
-                "overall_fee": prefixed_hex(val["overall_fee"]),
-            }
-            for val in vals
-        ]
+def as_hex(x):
+    return f"0x{x.to_bytes(32, 'big').hex()}"
 
+def render_fee_estimate(fee):
+    return {
+        "gas_consumed": as_hex(fee.gas_usage),
+        "gas_price": as_hex(fee.gas_price),
+        "overall_fee": as_hex(fee.overall_fee),
+    }
+
+def render_event(event):
+    return {
+        "order": event.order,
+        "keys": list(map(as_hex, event.keys)),
+        "data": list(map(as_hex, event.data)),
+    }
+
+def render_message(msg):
+    return {
+        "order": msg.order,
+        "to_address": as_hex(to_address),
+        "payload": list(map(as_hex, event.payload)),
+    }
+
+def render_func_invocation(tx: FunctionInvocation):
+    return {
+        "sender_address": as_hex(tx.caller_address),
+        "contract_address": as_hex(tx.contract_address),
+        "calldata": list(map(as_hex, tx.calldata)),
+        "call_type": tx.call_type.name,
+        "class_hash": as_hex(tx.class_hash),
+        "selector": as_hex(tx.selector),
+        "entry_point_type": tx.entry_point_type.name,
+        "result": list(map(as_hex, tx.result)),
+        "internal_calls": list(map(render_func_invocation, tx.internal_calls)),
+        "events": list(map(render_event, tx.events)),
+        "messages": list(map(render_message, tx.messages)),
+    }
+
+def render_trace(trace: TransactionTrace):
+    return {
+        "validate_invocation": render_func_invocation(trace.validate_invocation) if trace.validate_invocation is not None else None,
+        "function_invocation": render_func_invocation(trace.function_invocation) if trace.function_invocation is not None else None,
+        "fee_transfer_invocation": render_func_invocation(trace.fee_transfer_invocation) if trace.fee_transfer_invocation is not None else None,
+        "signature": list(map(as_hex, trace.signature)),
+    }
+
+def render_simulate_tx(trace: TransactionSimulationInfo):
+    return {
+        "trace": render_trace(trace.trace),
+        "fee_estimation": render_fee_estimate(trace.fee_estimation),
+    }
 
 def int_hash_or_latest(s: str):
     if s == "latest":
@@ -993,13 +1034,11 @@ async def do_estimate_fee(
         # with 0.10 upgrade we changed to division with gas_consumed as well, since
         # there is opposition to providing the non-multiplied scalar value from
         # cairo-lang.
-        fees.append(
-            {
-                "gas_consumed": tx_info.actual_fee // max(1, block_info.gas_price),
-                "gas_price": block_info.gas_price,
-                "overall_fee": tx_info.actual_fee,
-            }
-        )
+        fees.append(FeeEstimationInfo(
+            gas_price=block_info.gas_price,
+            gas_usage=tx_info.actual_fee // max(1, block_info.gas_price),
+            overall_fee=tx_info.actual_fee,
+        ))
 
     return fees
 
@@ -1031,17 +1070,13 @@ async def do_simulate_tx(
             signature=external_tx.signature
         )
         
-        fee_estimation = FeeEstimationInfo.load({
-                "gas_price": block_info.gas_price,
-                "gas_usage": tx_info.actual_fee // max(1, block_info.gas_price),
-                "overall_fee": tx_info.actual_fee,
-                "unit": "wei",
-            })
+        fee_estimation = FeeEstimationInfo(
+            gas_price=block_info.gas_price,
+            gas_usage=tx_info.actual_fee // max(1, block_info.gas_price),
+            overall_fee=tx_info.actual_fee,
+        )
 
-        simulated_tx = TransactionSimulationInfo.load({
-            "trace": trace,
-            "fee_estimation": fee_estimation,
-        })
+        simulated_tx = TransactionSimulationInfo(trace, fee_estimation)
 
         simulated_transactions.append(simulated_tx)
 
