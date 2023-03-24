@@ -10,7 +10,7 @@ use pathfinder_lib::{
     monitoring::{self},
     state,
 };
-use pathfinder_rpc::{cairo, metrics::middleware::RpcMetricsMiddleware, SyncState};
+use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::{JournalMode, Storage};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::pending::PendingData;
@@ -290,7 +290,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
     };
 
     let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.http_rpc_addr, context)
-        .with_middleware(RpcMetricsMiddleware)
+        .with_logger(RpcMetricsLogger)
         .run()
         .await
         .context("Starting the RPC server")?;
@@ -320,7 +320,7 @@ If you are trying to setup a custom StarkNet please use '--network custom',
                 Err(err) => tracing::error!("Cairo process ended unexpected; failed to join task handle: {:?}", err),
             }
         }
-        _result = rpc_handle => {
+        _result = rpc_handle.stopped() => {
             // This handle returns () so its not very useful.
             tracing::error!("RPC server process ended unexpected");
         }
