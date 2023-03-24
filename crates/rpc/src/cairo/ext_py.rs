@@ -130,7 +130,7 @@ impl Handle {
         diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
         transactions: &[BroadcastedTransaction],
-        (_skip_execute, _skip_validate): (bool, bool)
+        (_skip_execute, _skip_validate): (bool, bool),
     ) -> Result<Vec<TransactionSimulation>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -541,7 +541,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn estimate_fee_for_example() { // TODO!(SM): FIXME
+    async fn estimate_fee_for_example() {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -633,7 +633,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn estimate_fee_for_deploy_account() { // TODO!(SM): FIXME
+    async fn estimate_fee_for_deploy_account() {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 

@@ -343,7 +343,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn successful_invoke_v0() { // TODO!(SM): FIXME
+        async fn successful_invoke_v0() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
@@ -370,7 +370,7 @@ mod tests {
         }
 
         #[test_log::test(tokio::test)]
-        async fn successful_declare_v0() { // TODO!(SM): FIXME
+        async fn successful_declare_v0() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let declare_transaction = BroadcastedTransaction::Declare(
