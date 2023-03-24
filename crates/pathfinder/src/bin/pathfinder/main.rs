@@ -55,15 +55,12 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Creating Ethereum context")?;
 
-    let network = match (config.network, ethereum.chain) {
-        (Some(cfg), _) => cfg,
-        (None, EthereumChain::Mainnet) => NetworkConfig::Mainnet,
-        (None, EthereumChain::Goerli) => NetworkConfig::Testnet,
-        (None, EthereumChain::Other(id)) => anyhow::bail!(
-            r"Ethereum url must be from mainnet or goerli chains. Your provided url has chain ID {id}.
-
-If you are trying to setup a custom StarkNet please use '--network custom'"
-        ),
+    // Use the default starknet network if none was configured.
+    let network = match config.network {
+        Some(network) => network,
+        None => ethereum
+            .default_network()
+            .context("Using default Starknet network based on Ethereum configuration")?,
     };
 
     let (network, gateway_client, database_path, chain_id) = match network {
@@ -444,5 +441,22 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         )?;
 
         Ok(Self { transport, chain })
+    }
+
+    /// Maps the Ethereum network to its default Starknet network:
+    ///     Mainnet => Mainnet
+    ///     Goerli  => Testnet
+    fn default_network(&self) -> anyhow::Result<NetworkConfig> {
+        match self.chain {
+            EthereumChain::Mainnet => Ok(NetworkConfig::Mainnet),
+            EthereumChain::Goerli => Ok(NetworkConfig::Testnet),
+            EthereumChain::Other(id) => {
+                anyhow::bail!(
+                    r"Implicit Starknet networks are only available for Ethereum mainnet and Goerli, but the provided Ethereum network has chain ID = {id}.
+
+If you are trying to connect to a custom StarkNet on another Ethereum network, please use '--network custom'"
+                )
+            }
+        }
     }
 }
