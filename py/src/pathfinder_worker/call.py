@@ -231,16 +231,6 @@ class Call(Command):
 class EstimateFee(Command):
     verb: ClassVar[Verb] = Verb.ESTIMATE_FEE
 
-    pending_updates: Dict[int, List[StorageDiff]] = field(
-        metadata=pending_updates_metadata
-    )
-    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
-    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
-    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
-
-    # zero means to use the gas price from the current block.
-    gas_price: int = field(metadata=fields.gas_price_metadata)
-
     transactions: List[AccountTransaction]
 
     def has_pending_data(self):
