@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
-use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
 use rusqlite::OptionalExtension;

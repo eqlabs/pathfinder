@@ -1,4 +1,4 @@
-use crate::v02::RpcContext;
+use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use pathfinder_storage::{

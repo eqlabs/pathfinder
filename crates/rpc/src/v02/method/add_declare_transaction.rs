@@ -1,6 +1,6 @@
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedDeclareTransaction;
-use crate::v02::RpcContext;
 use pathfinder_common::{ClassHash, StarknetTransactionHash};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::SequencerError;

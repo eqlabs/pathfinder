@@ -11,6 +11,7 @@ mod pathfinder;
 pub mod test_client;
 pub mod v02;
 pub mod v03;
+mod versioning;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
@@ -43,8 +44,12 @@ impl RpcServer {
 
     /// Starts the HTTP-RPC server.
     pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
+        const TEN_MB: u32 = 10 * 1024 * 1024;
+
         let server = ServerBuilder::default()
+            .max_request_body_size(TEN_MB)
             .set_logger(self.logger)
+            .set_middleware(tower::ServiceBuilder::new().layer(versioning::RpcVersioningLayer::new(TEN_MB)))
             .build(self.addr)
             .await
             .map_err(|e| match e {
@@ -68,14 +73,13 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
             })?;
         let local_addr = server.local_addr()?;
 
-        let module_v02 = v02::register_methods(self.context.clone())?;
-        // FIXME add path handling
-        let _pathfinder_module = pathfinder::register_methods(self.context.clone())?;
-        let _module_v03 = v03::register_methods(self.context)?;
+        let module = crate::module::Module::new(self.context);
+        let module = v02::register_methods(module)?;
+        let module = v03::register_methods(module)?;
+        let module = pathfinder::register_methods(module)?;
+        let methods = module.build();
 
-        Ok(server
-            .start(module_v02)
-            .map(|handle| (handle, local_addr))?)
+        Ok(server.start(methods).map(|handle| (handle, local_addr))?)
     }
 }
 

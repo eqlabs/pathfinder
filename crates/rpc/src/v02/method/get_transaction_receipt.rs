@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
-use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
 use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable};

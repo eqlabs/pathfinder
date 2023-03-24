@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
-use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, StarknetBlockHash, StarknetBlockNumber, StateCommitment};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};

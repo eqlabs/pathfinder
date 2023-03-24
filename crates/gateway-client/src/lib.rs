@@ -1703,7 +1703,7 @@ mod tests {
         {
             use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
 
-            let recorder = FakeRecorder::new(&["get_block", "get_state_update"]);
+            let recorder = FakeRecorder::new_for(&["get_block", "get_state_update"]);
             let handle = recorder.handle();
             let _guard = RecorderGuard::lock(recorder);
 

@@ -1,5 +1,6 @@
+use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
-use crate::v02::{types::request::BroadcastedDeployAccountTransaction, RpcContext};
+use crate::v02::types::request::BroadcastedDeployAccountTransaction;
 use anyhow::Context;
 use pathfinder_common::{ContractAddress, StarknetTransactionHash};
 use starknet_gateway_client::ClientApi;

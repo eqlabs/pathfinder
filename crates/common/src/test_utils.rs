@@ -5,6 +5,7 @@ pub mod metrics {
     use metrics::{
         Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
     };
+    use std::borrow::Cow;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -86,16 +87,16 @@ pub mod metrics {
         }
     }
 
-    #[derive(Debug)]
     /// Mocks a [recorder](`metrics::Recorder`) only for specified [labels](`metrics::Label`)
     /// treating the rest of registered metrics as _no-op_
+    #[derive(Debug, Default)]
     pub struct FakeRecorder(FakeRecorderHandle);
 
-    #[derive(Debug, Clone)]
     /// Handle to the [`FakeRecorder`], which allows to get the current value of counters.
+    #[derive(Clone, Debug, Default)]
     pub struct FakeRecorderHandle {
         counters: Arc<RwLock<HashMap<Key, Arc<FakeCounterFn>>>>,
-        methods: &'static [&'static str],
+        methods: Option<&'static [&'static str]>,
     }
 
     #[derive(Debug, Default)]
@@ -153,10 +154,10 @@ pub mod metrics {
         /// Creates a [`FakeRecorder`] which only holds counter values for `methods`.
         ///
         /// All other methods use the [no-op counters](`https://docs.rs/metrics/latest/metrics/struct.Counter.html#method.noop`)
-        pub fn new(methods: &'static [&'static str]) -> Self {
+        pub fn new_for(methods: &'static [&'static str]) -> Self {
             Self(FakeRecorderHandle {
                 counters: Arc::default(),
-                methods,
+                methods: Some(methods),
             })
         }
 
@@ -166,10 +167,12 @@ pub mod metrics {
         }
 
         fn is_key_used(&self, key: &Key) -> bool {
-            key.labels().any(|label| {
-                label.key() == "method"
-                    && self.0.methods.iter().any(|&method| method == label.value())
-            })
+            match self.0.methods {
+                Some(methods) => key.labels().any(|label| {
+                    label.key() == "method" && methods.iter().any(|&method| method == label.value())
+                }),
+                None => true,
+            }
         }
     }
 
@@ -183,13 +186,13 @@ pub mod metrics {
         pub fn get_counter_value(
             &self,
             counter_name: &'static str,
-            method_name: &'static str,
+            method_name: impl Into<Cow<'static, str>>,
         ) -> u64 {
             let read_guard = self.counters.read().unwrap();
             read_guard
                 .get(&Key::from_parts(
                     counter_name,
-                    vec![Label::new("method", method_name)],
+                    vec![Label::new("method", method_name.into())],
                 ))
                 .unwrap()
                 .0

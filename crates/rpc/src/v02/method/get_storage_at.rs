@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::v02::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
 use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};

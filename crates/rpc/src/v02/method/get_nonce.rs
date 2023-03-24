@@ -1,5 +1,5 @@
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::v02::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
 use starknet_gateway_types::pending::PendingData;
@@ -84,7 +84,7 @@ async fn get_pending_nonce(
 #[cfg(test)]
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
-    use crate::v02::RpcContext;
+    use crate::context::RpcContext;
     use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
         BlockId, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,

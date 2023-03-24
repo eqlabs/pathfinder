@@ -1,7 +1,7 @@
 use pathfinder_common::ChainId;
 
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::v02::RpcContext;
 
 crate::error::generate_rpc_error_subset!(ChainIdError);
 

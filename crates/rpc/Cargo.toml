@@ -12,6 +12,8 @@ base64 = "0.13.1"
 ethers = "1.0.2"
 flate2 = "1.0.25"
 futures = { version = "0.3", default-features = false, features = ["std"] }
+http = "0.2.9"
+hyper = "0.14.25"
 jsonrpsee = { version = "0.16.2", default-features = false, features = ["jsonrpsee-types", "server"] }
 metrics = "0.20.1"
 pathfinder-common = { path = "../common" }
@@ -28,6 +30,7 @@ starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = "1.0.37"
 tokio = { workspace = true, features = ["process"] }
+tower = "0.4.13"
 tracing = "0.1.37"
 zstd = "0.12"
 
