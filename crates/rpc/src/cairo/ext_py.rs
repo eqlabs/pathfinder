@@ -541,7 +541,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn estimate_fee_for_example() {
+    async fn estimate_fee_for_example() { // TODO!(SM): FIXME
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -633,7 +633,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
-    async fn estimate_fee_for_deploy_account() {
+    async fn estimate_fee_for_deploy_account() { // TODO!(SM): FIXME
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
