@@ -14,6 +14,7 @@ use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::pending::PendingData;
+use std::net::SocketAddr;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
 
@@ -40,18 +41,15 @@ async fn main() -> anyhow::Result<()> {
 
     permission_check(&config.data_directory)?;
 
-    let pathfinder_ready = match config.monitor_address {
-        Some(monitoring_addr) => {
-            let ready = Arc::new(AtomicBool::new(false));
-            let prometheus_handle = PrometheusBuilder::new()
-                .install_recorder()
-                .context("Creating Prometheus recorder")?;
-            let _jh =
-                monitoring::spawn_server(monitoring_addr, ready.clone(), prometheus_handle).await;
-            Some(ready)
-        }
-        None => None,
-    };
+    // A readiness flag which is used to indicate that pathfinder is ready via monitoring.
+    let readiness = Arc::new(AtomicBool::new(false));
+
+    // Spawn monitoring if configured.
+    if let Some(address) = config.monitor_address {
+        spawn_monitoring(address, readiness.clone())
+            .await
+            .context("Starting monitoring task")?;
+    }
 
     let eth_transport = HttpProvider::from_config(
         config.ethereum.url.clone(),
@@ -292,9 +290,7 @@ If you are trying to setup a custom StarkNet please use '--network custom'"
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
     // We are now ready.
-    if let Some(ready) = pathfinder_ready {
-        ready.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
+    readiness.store(true, std::sync::atomic::Ordering::Relaxed);
 
     // Monitor our spawned process tasks.
     tokio::select! {
@@ -422,4 +418,17 @@ async fn start_p2p(
     let join_handle = tokio::task::spawn(async move { futures::future::pending().await });
 
     Ok(join_handle)
+}
+
+/// Spawns the monitoring task at the given address.
+async fn spawn_monitoring(
+    address: SocketAddr,
+    readiness: Arc<AtomicBool>,
+) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    let prometheus_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .context("Creating Prometheus recorder")?;
+
+    let handle = monitoring::spawn_server(address, readiness, prometheus_handle).await;
+    Ok(handle)
 }
