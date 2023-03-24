@@ -19,7 +19,9 @@ from starkware.starknet.services.api.gateway.transaction import (
     DeprecatedDeclare,
     DeployAccount,
 )
-from starkware.starknet.services.api.feeder_gateway.response_objects import FeeEstimationInfo
+from starkware.starknet.services.api.feeder_gateway.response_objects import (
+    FeeEstimationInfo,
+)
 from starkware.starknet.services.api.contract_class.contract_class import (
     DeprecatedCompiledClass,
     ContractClass,
