@@ -2,6 +2,7 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use pathfinder_common::EthereumAddress;
 use pathfinder_common::{
     consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, Chain, ChainId, EthereumChain, StarknetBlockNumber,
 };
@@ -115,22 +116,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let core_address = match pathfinder_context.network {
-        Chain::Mainnet => pathfinder_ethereum::contract::MAINNET_ADDRESSES.core,
-        Chain::Testnet => pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-        Chain::Integration => pathfinder_ethereum::contract::INTEGRATION_ADDRESSES.core,
-        Chain::Testnet2 => pathfinder_ethereum::contract::TESTNET2_ADDRESSES.core,
-        Chain::Custom => {
-            let addresses = pathfinder_context
-                .gateway
-                .eth_contract_addresses()
-                .await
-                .context("Fetching StarkNet contract addresses for custom network")?;
-
-            addresses.starknet.0
-        }
-    };
-
     // TODO: verify Ethereum core contract matches if we are on a custom network.
 
     let sync_state = Arc::new(SyncState::default());
@@ -157,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
         storage.clone(),
         ethereum.transport.clone(),
         pathfinder_context.network,
-        core_address,
+        pathfinder_context.l1_core_address.0,
         pathfinder_context.gateway.clone(),
         sync_state.clone(),
         state::l1::sync,
@@ -381,19 +366,29 @@ struct PathfinderContext {
     network_id: ChainId,
     gateway: starknet_gateway_client::Client,
     database: PathBuf,
+    l1_core_address: EthereumAddress,
 }
 
-/// Used to hide private fn's for [PathfindContext].
+/// Used to hide private fn's for [PathfinderContext].
 mod pathfinder_context {
     use std::path::PathBuf;
 
     use crate::config::NetworkConfig;
     use anyhow::Context;
-    use pathfinder_common::{Chain, ChainId, StarknetBlockNumber};
+    use pathfinder_common::{Chain, ChainId, EthereumAddress};
     use reqwest::Url;
     use starknet_gateway_client::Client as GatewayClient;
 
+    use pathfinder_ethereum::contract::{
+        INTEGRATION_ADDRESSES, MAINNET_ADDRESSES, TESTNET2_ADDRESSES, TESTNET_ADDRESSES,
+    };
+
     impl super::PathfinderContext {
+        const MAINNET_CORE: EthereumAddress = EthereumAddress(MAINNET_ADDRESSES.core);
+        const TESTNET_CORE: EthereumAddress = EthereumAddress(TESTNET_ADDRESSES.core);
+        const TESTNET2_CORE: EthereumAddress = EthereumAddress(TESTNET2_ADDRESSES.core);
+        const INTEGRATION_CORE: EthereumAddress = EthereumAddress(INTEGRATION_ADDRESSES.core);
+
         pub async fn configure_and_proxy_check(
             cfg: NetworkConfig,
             data_directory: PathBuf,
@@ -404,24 +399,28 @@ mod pathfinder_context {
                     network_id: ChainId::MAINNET,
                     gateway: GatewayClient::mainnet(),
                     database: data_directory.join("mainnet.sqlite"),
+                    l1_core_address: Self::MAINNET_CORE,
                 },
                 NetworkConfig::Testnet => Self {
                     network: Chain::Testnet,
                     network_id: ChainId::TESTNET,
                     gateway: GatewayClient::testnet(),
                     database: data_directory.join("goerli.sqlite"),
+                    l1_core_address: Self::TESTNET_CORE,
                 },
                 NetworkConfig::Testnet2 => Self {
                     network: Chain::Testnet2,
                     network_id: ChainId::TESTNET2,
                     gateway: GatewayClient::testnet2(),
                     database: data_directory.join("testnet2.sqlite"),
+                    l1_core_address: Self::TESTNET2_CORE,
                 },
                 NetworkConfig::Integration => Self {
                     network: Chain::Integration,
                     network_id: ChainId::INTEGRATION,
                     gateway: GatewayClient::integration(),
                     database: data_directory.join("integration.sqlite"),
+                    l1_core_address: Self::INTEGRATION_CORE,
                 },
                 NetworkConfig::Custom {
                     gateway,
@@ -435,8 +434,9 @@ mod pathfinder_context {
             Ok(context)
         }
 
-        /// Creates a [PathfindContext] for a custom network. Provides additional verification
-        /// by checking for a proxy gateway by comparing against the genesis block of known networks.
+        /// Creates a [PathfinderContext] for a custom network. Provides additional verification
+        /// by checking for a proxy gateway by comparing against L1 starknet address against of
+        /// the known networks.
         async fn configure_custom(
             gateway: Url,
             feeder: Url,
@@ -452,23 +452,18 @@ mod pathfinder_context {
             let network_id =
                 ChainId(Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?);
 
-            let genesis = gateway
-                .block(StarknetBlockNumber::GENESIS.into())
+            let l1_core_address = gateway
+                .eth_contract_addresses()
                 .await
-                .context("Downloading genesis block from gateway for proxy check")?
-                .as_block()
-                .context("Genesis block should not be pending")?
-                .block_hash;
+                .context("Downloading starknet L1 address from gateway for proxy check")?
+                .starknet;
 
-            use pathfinder_common::consts::{
-                INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
-                TESTNET_GENESIS_HASH,
-            };
-            let network = match genesis {
-                MAINNET_GENESIS_HASH => Chain::Mainnet,
-                TESTNET_GENESIS_HASH => Chain::Testnet,
-                TESTNET2_GENESIS_HASH => Chain::Testnet2,
-                INTEGRATION_GENESIS_HASH => Chain::Integration,
+            // Check for proxies by comparing the core address against those of the known networks.
+            let network = match l1_core_address {
+                x if x == Self::MAINNET_CORE => Chain::Mainnet,
+                x if x == Self::TESTNET_CORE => Chain::Testnet,
+                x if x == Self::TESTNET2_CORE => Chain::Testnet2,
+                x if x == Self::INTEGRATION_CORE => Chain::Integration,
                 _ => Chain::Custom,
             };
 
@@ -481,6 +476,7 @@ mod pathfinder_context {
                 network_id,
                 gateway,
                 database: data_directory.join("custom.sqlite"),
+                l1_core_address,
             };
 
             Ok(context)
