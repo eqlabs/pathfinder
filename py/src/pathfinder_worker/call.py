@@ -546,7 +546,6 @@ def render_fee_estimate(fee):
         "gas_usage": as_hex(fee.gas_usage),
         "gas_price": as_hex(fee.gas_price),
         "overall_fee": as_hex(fee.overall_fee),
-        "unit": "wei",
     }
 
 def render_event(event):
