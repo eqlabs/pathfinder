@@ -185,11 +185,12 @@ mod tests {
         use serde_json::json;
 
         let context = RpcContext::for_tests();
-        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-            .with_logger(RpcMetricsLogger)
-            .run()
-            .await
-            .unwrap();
+        let (_server_handle, _event_txs, address) =
+            RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
+                .with_logger(RpcMetricsLogger)
+                .run()
+                .await
+                .unwrap();
 
         // Common methods for starknet RPC spec v0.2 and v0.3
         let common = [
@@ -311,10 +312,11 @@ mod tests {
         use crate::{RpcContext, RpcServer};
 
         let context = RpcContext::for_tests();
-        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-            .run()
-            .await
-            .unwrap();
+        let (_server_handle, _event_txs, address) =
+            RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
+                .run()
+                .await
+                .unwrap();
 
         let url = format!("http://{address}/invalid/path");
 

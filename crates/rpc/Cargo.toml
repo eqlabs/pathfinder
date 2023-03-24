@@ -30,6 +30,7 @@ starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = "1.0.37"
 tokio = { workspace = true, features = ["process"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 tower = { version = "0.4.13", default-features = false, features = ["filter", "util"] }
 tracing = "0.1.37"
 zstd = "0.12"

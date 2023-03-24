@@ -3,3 +3,4 @@ pub mod error;
 pub mod pending;
 pub mod reply;
 pub mod request;
+pub mod websocket;

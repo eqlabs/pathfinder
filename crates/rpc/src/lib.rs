@@ -12,11 +12,13 @@ pub mod test_client;
 pub mod v02;
 pub mod v03;
 mod versioning;
+pub mod websocket;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use context::RpcContext;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
+use starknet_gateway_types::websocket::WebsocketSenders;
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 
@@ -43,9 +45,10 @@ impl RpcServer {
     }
 
     /// Starts the HTTP-RPC server.
-    pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
+    pub async fn run(self) -> Result<(ServerHandle, WebsocketSenders, SocketAddr), anyhow::Error> {
         const TEN_MB: u32 = 10 * 1024 * 1024;
 
+        let websocket_txs = WebsocketSenders::new();
         let server = ServerBuilder::default()
             .max_request_body_size(TEN_MB)
             .set_logger(self.logger)
@@ -67,7 +70,7 @@ impl RpcServer {
 
 Hint: This usually means you are already running another instance of pathfinder.
 Hint: If this happens when upgrading, make sure to shut down the first one first.
-Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr));
+Hint: If you are looking to run two instances of pathfinder, you must configure them with different rpc addresses.", self.addr));
                         }
                     }
 
@@ -81,9 +84,12 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         let module = v02::register_methods(module)?;
         let module = v03::register_methods(module)?;
         let module = pathfinder::register_methods(module)?;
+        let module = websocket::register_subscriptions(module, websocket_txs.clone())?;
         let methods = module.build();
 
-        Ok(server.start(methods).map(|handle| (handle, local_addr))?)
+        Ok(server
+            .start(methods)
+            .map(|handle| (handle, websocket_txs, local_addr))?)
     }
 }
 

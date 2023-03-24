@@ -103,44 +103,51 @@ async fn main() -> anyhow::Result<()> {
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
+    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum.transport.clone()));
+
+    let context = pathfinder_rpc::context::RpcContext::new(
+        storage.clone(),
+        sync_state.clone(),
+        pathfinder_context.network_id,
+        pathfinder_context.gateway.clone(),
+    )
+    .with_call_handling(call_handle)
+    .with_eth_gas_price(shared);
+    let context = match config.poll_pending {
+        true => context.with_pending_data(pending_state.clone()),
+        false => context,
+    };
+
+    let (rpc_handle, event_txs, local_addr) =
+        pathfinder_rpc::RpcServer::new(config.rpc_address, context)
+            .with_logger(RpcMetricsLogger)
+            .run()
+            .await
+            .context("Starting the RPC server")?;
+
+    info!("📡 RPC server started on: {}", local_addr);
+
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
-        ethereum.transport.clone(),
+        ethereum.transport,
         pathfinder_context.network,
         pathfinder_context.l1_core_address.0,
-        pathfinder_context.gateway.clone(),
+        pathfinder_context.gateway,
         sync_state.clone(),
         state::l1::sync,
         state::l2::sync,
         pending_state.clone(),
         pending_interval,
         state::l2::BlockValidationMode::Strict,
+        event_txs,
     ));
 
-    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum.transport));
-
-    let context = pathfinder_rpc::context::RpcContext::new(
+    let p2p_handle = start_p2p(
+        pathfinder_context.network_id,
         storage.clone(),
         sync_state.clone(),
-        pathfinder_context.network_id,
-        pathfinder_context.gateway,
     )
-    .with_call_handling(call_handle)
-    .with_eth_gas_price(shared);
-    let context = match config.poll_pending {
-        true => context.with_pending_data(pending_state),
-        false => context,
-    };
-
-    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.rpc_address, context)
-        .with_logger(RpcMetricsLogger)
-        .run()
-        .await
-        .context("Starting the RPC server")?;
-
-    info!("📡 HTTP-RPC server started on: {}", local_addr);
-
-    let p2p_handle = start_p2p(pathfinder_context.network_id, storage, sync_state).await?;
+    .await?;
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
