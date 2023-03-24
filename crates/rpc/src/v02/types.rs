@@ -392,7 +392,12 @@ pub mod request {
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
-    use crate::{felt::{RpcFelt, RpcFelt251}, v03::method::simulate_transaction::dto::{Address, MsgToL1, Event, EntryPointType, CallType, NumAsHex}};
+    use crate::{
+        felt::{RpcFelt, RpcFelt251},
+        v03::method::simulate_transaction::dto::{
+            Address, CallType, EntryPointType, Event, MsgToL1, NumAsHex,
+        },
+    };
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
         EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
