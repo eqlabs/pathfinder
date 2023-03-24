@@ -5,8 +5,7 @@ use jsonrpsee::core::server::rpc_module::Methods;
 use crate::context::RpcContext;
 use crate::error::RpcError;
 
-/// A builder for registering a set of JSON-RPC methods which can be
-/// hosted at a single endpoint.
+/// A builder for registering a set of JSON-RPC methods.
 pub struct Module(jsonrpsee::RpcModule<RpcContext>);
 
 /// Splits the internal RPC method name, which is in the form of
