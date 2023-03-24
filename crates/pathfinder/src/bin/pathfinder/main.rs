@@ -75,48 +75,13 @@ async fn main() -> anyhow::Result<()> {
     // Setup and verify database
     let storage = Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
     info!(location=?pathfinder_context.database, "Database migrated.");
-    if let Some(database_genesis) = database_genesis_hash(&storage).await? {
-        use pathfinder_common::consts::{
-            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
-            TESTNET_GENESIS_HASH,
-        };
-
-        let db_network = match database_genesis {
-            MAINNET_GENESIS_HASH => Chain::Mainnet,
-            TESTNET_GENESIS_HASH => Chain::Testnet,
-            TESTNET2_GENESIS_HASH => Chain::Testnet2,
-            INTEGRATION_GENESIS_HASH => Chain::Integration,
-            _other => Chain::Custom,
-        };
-
-        match (pathfinder_context.network, db_network) {
-            (Chain::Custom, _) => {
-                // Verify against gateway.
-                let gateway_block = pathfinder_context
-                    .gateway
-                    .block(StarknetBlockNumber::GENESIS.into())
-                    .await
-                    .context("Downloading genesis block from gateway for database verification")?
-                    .as_block()
-                    .context("Genesis block should not be pending")?;
-
-                anyhow::ensure!(
-                    database_genesis == gateway_block.block_hash,
-                    "Database genesis block does not match gateway. {} != {}",
-                    database_genesis,
-                    gateway_block.block_hash
-                );
-            }
-            (network, db_network) => anyhow::ensure!(
-                network == db_network,
-                "Database ({}) does not match the expected network ({})",
-                db_network,
-                network
-            ),
-        }
-    }
-
-    // TODO: verify Ethereum core contract matches if we are on a custom network.
+    verify_database(
+        &storage,
+        pathfinder_context.network,
+        &pathfinder_context.gateway,
+    )
+    .await
+    .context("Verifying database")?;
 
     let sync_state = Arc::new(SyncState::default());
     let pending_state = PendingData::default();
@@ -215,22 +180,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-async fn database_genesis_hash(
-    storage: &Storage,
-) -> anyhow::Result<Option<pathfinder_common::StarknetBlockHash>> {
-    use pathfinder_storage::StarknetBlocksTable;
-
-    let storage = storage.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = storage.connection().context("Create database connection")?;
-        let tx = conn.transaction().context("Create database transaction")?;
-
-        StarknetBlocksTable::get_hash(&tx, StarknetBlockNumber::GENESIS.into())
-    })
-    .await
-    .context("Fetching genesis hash from database")?
 }
 
 #[cfg(feature = "tokio-console")]
@@ -371,9 +320,11 @@ struct PathfinderContext {
 
 /// Used to hide private fn's for [PathfinderContext].
 mod pathfinder_context {
+    use super::PathfinderContext;
+    use crate::config::NetworkConfig;
+
     use std::path::PathBuf;
 
-    use crate::config::NetworkConfig;
     use anyhow::Context;
     use pathfinder_common::{Chain, ChainId, EthereumAddress};
     use reqwest::Url;
@@ -383,7 +334,7 @@ mod pathfinder_context {
         INTEGRATION_ADDRESSES, MAINNET_ADDRESSES, TESTNET2_ADDRESSES, TESTNET_ADDRESSES,
     };
 
-    impl super::PathfinderContext {
+    impl PathfinderContext {
         const MAINNET_CORE: EthereumAddress = EthereumAddress(MAINNET_ADDRESSES.core);
         const TESTNET_CORE: EthereumAddress = EthereumAddress(TESTNET_ADDRESSES.core);
         const TESTNET2_CORE: EthereumAddress = EthereumAddress(TESTNET2_ADDRESSES.core);
@@ -496,6 +447,67 @@ fn verify_networks(starknet: Chain, ethereum: EthereumChain) -> anyhow::Result<(
         };
 
         anyhow::ensure!(ethereum == expected, "Incorrect Ethereum network detected. Found {ethereum:?} but expected {expected:?} for {} Starknet", starknet);
+    }
+
+    Ok(())
+}
+
+async fn verify_database(
+    storage: &Storage,
+    network: Chain,
+    gateway_client: &starknet_gateway_client::Client,
+) -> anyhow::Result<()> {
+    use pathfinder_storage::StarknetBlocksTable;
+
+    let storage = storage.clone();
+    let db_genesis = tokio::task::spawn_blocking(move || {
+        let mut conn = storage.connection().context("Create database connection")?;
+        let tx = conn.transaction().context("Create database transaction")?;
+
+        StarknetBlocksTable::get_hash(&tx, StarknetBlockNumber::GENESIS.into())
+    })
+    .await
+    .context("Fetching genesis hash from database")?
+    .context("Waiting for genesis block to be fetched from database")?;
+
+    if let Some(database_genesis) = db_genesis {
+        use pathfinder_common::consts::{
+            INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH,
+            TESTNET_GENESIS_HASH,
+        };
+
+        let db_network = match database_genesis {
+            MAINNET_GENESIS_HASH => Chain::Mainnet,
+            TESTNET_GENESIS_HASH => Chain::Testnet,
+            TESTNET2_GENESIS_HASH => Chain::Testnet2,
+            INTEGRATION_GENESIS_HASH => Chain::Integration,
+            _other => Chain::Custom,
+        };
+
+        match (network, db_network) {
+            (Chain::Custom, _) => {
+                // Verify against gateway.
+                let gateway_block = gateway_client
+                    .block(StarknetBlockNumber::GENESIS.into())
+                    .await
+                    .context("Downloading genesis block from gateway for database verification")?
+                    .as_block()
+                    .context("Genesis block should not be pending")?;
+
+                anyhow::ensure!(
+                    database_genesis == gateway_block.block_hash,
+                    "Database genesis block does not match gateway. {} != {}",
+                    database_genesis,
+                    gateway_block.block_hash
+                );
+            }
+            (network, db_network) => anyhow::ensure!(
+                network == db_network,
+                "Database ({}) does not match the expected network ({})",
+                db_network,
+                network
+            ),
+        }
     }
 
     Ok(())
