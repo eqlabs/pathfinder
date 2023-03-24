@@ -51,18 +51,11 @@ async fn main() -> anyhow::Result<()> {
             .context("Starting monitoring task")?;
     }
 
-    let eth_transport = HttpProvider::from_config(
-        config.ethereum.url.clone(),
-        config.ethereum.password.clone(),
-    )
-    .context("Creating Ethereum transport")?;
-    let ethereum_chain = eth_transport.chain().await.context(
-        r"Determine Ethereum chain.
-                        
-Hint: Make sure the provided ethereum.url and ethereum.password are good.",
-    )?;
+    let ethereum = EthereumContext::setup(config.ethereum.url, config.ethereum.password)
+        .await
+        .context("Creating Ethereum context")?;
 
-    let network = match (config.network, ethereum_chain) {
+    let network = match (config.network, ethereum.chain) {
         (Some(cfg), _) => cfg,
         (None, EthereumChain::Mainnet) => NetworkConfig::Mainnet,
         (None, EthereumChain::Goerli) => NetworkConfig::Testnet,
@@ -126,9 +119,9 @@ If you are trying to setup a custom StarkNet please use '--network custom'"
                 MAINNET_GENESIS_HASH => {
                     tracing::info!("Proxy gateway for mainnet detected");
                     anyhow::ensure!(
-                        ethereum_chain == EthereumChain::Mainnet,
+                        ethereum.chain == EthereumChain::Mainnet,
                         "Proxy gateway for mainnet detected but the Ethereum URL is not on mainnet. Ethereum URL provided is on {:?}",
-                        ethereum_chain
+                        ethereum.chain
                     );
 
                     Chain::Mainnet
@@ -136,27 +129,27 @@ If you are trying to setup a custom StarkNet please use '--network custom'"
                 TESTNET_GENESIS_HASH => {
                     tracing::info!("Proxy gateway for testnet detected");
                     anyhow::ensure!(
-                        ethereum_chain == EthereumChain::Goerli,
+                        ethereum.chain == EthereumChain::Goerli,
                         "Proxy gateway for testnet detected but the Ethereum URL is not on goerli. Ethereum URL provided is on {:?}",
-                        ethereum_chain
+                        ethereum.chain
                     );
                     Chain::Testnet
                 }
                 TESTNET2_GENESIS_HASH => {
                     tracing::info!("Proxy gateway for testnet2 detected");
                     anyhow::ensure!(
-                        ethereum_chain == EthereumChain::Goerli,
+                        ethereum.chain == EthereumChain::Goerli,
                         "Proxy gateway for testnet2 detected but the Ethereum URL is not on goerli. Ethereum URL provided is on {:?}",
-                        ethereum_chain
+                        ethereum.chain
                     );
                     Chain::Testnet2
                 }
                 INTEGRATION_GENESIS_HASH => {
                     tracing::info!("Proxy gateway for integration detected");
                     anyhow::ensure!(
-                        ethereum_chain == EthereumChain::Goerli,
+                        ethereum.chain == EthereumChain::Goerli,
                         "Proxy gateway for integration detected but the Ethereum URL is not on goerli. Ethereum URL provided is on {:?}",
-                        ethereum_chain
+                        ethereum.chain
                     );
                     Chain::Integration
                 }
@@ -250,7 +243,7 @@ If you are trying to setup a custom StarkNet please use '--network custom'"
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
-        eth_transport.clone(),
+        ethereum.transport.clone(),
         network,
         core_address,
         gateway_client.clone(),
@@ -262,7 +255,7 @@ If you are trying to setup a custom StarkNet please use '--network custom'"
         state::l2::BlockValidationMode::Strict,
     ));
 
-    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(eth_transport));
+    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum.transport));
 
     let context = pathfinder_rpc::context::RpcContext::new(
         storage.clone(),
@@ -431,4 +424,25 @@ async fn spawn_monitoring(
 
     let handle = monitoring::spawn_server(address, readiness, prometheus_handle).await;
     Ok(handle)
+}
+
+/// Convenience bundle for an Ethereum transport and chain.
+struct EthereumContext {
+    transport: HttpProvider,
+    chain: EthereumChain,
+}
+
+impl EthereumContext {
+    /// Configure an [EthereumContext]'s transport and read the chain ID using it.
+    async fn setup(url: reqwest::Url, password: Option<String>) -> anyhow::Result<Self> {
+        let transport = HttpProvider::from_config(url, password).context("Creating transport")?;
+
+        let chain = transport.chain().await.context(
+            r"Determining Ethereum chain.
+                            
+Hint: Make sure the provided ethereum.url and ethereum.password are good.",
+        )?;
+
+        Ok(Self { transport, chain })
+    }
 }
