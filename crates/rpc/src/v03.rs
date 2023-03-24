@@ -68,7 +68,10 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         // Specific implementations for v0.3
         .register_method("v0.3_starknet_getEvents", method::get_events)?
         .register_method("v0.3_starknet_getStateUpdate", method::get_state_update)?
-        .register_method("v0.3_starknet_simulateTransaction", method::simulate_transaction)?;
+        .register_method(
+            "v0.3_starknet_simulateTransaction",
+            method::simulate_transaction,
+        )?;
 
     Ok(module)
 }

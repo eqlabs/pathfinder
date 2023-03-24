@@ -98,9 +98,7 @@ impl Handle {
 
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
-        let transactions: Result<Vec<_>, _> = transactions.into_iter()
-            .map(map_tx)
-            .collect();
+        let transactions: Result<Vec<_>, _> = transactions.into_iter().map(map_tx).collect();
 
         self.command_tx
             .send((
@@ -173,17 +171,15 @@ impl Handle {
 fn map_tx(tx: BroadcastedTransaction) -> Result<AddTransaction, CallFailure> {
     Ok(match tx {
         BroadcastedTransaction::DeployAccount(tx) => {
-            add_transaction::AddTransaction::DeployAccount(
-                add_transaction::DeployAccount {
-                    version: tx.version,
-                    max_fee: tx.max_fee,
-                    signature: tx.signature,
-                    nonce: tx.nonce,
-                    class_hash: tx.class_hash,
-                    contract_address_salt: tx.contract_address_salt,
-                    constructor_calldata: tx.constructor_calldata,
-                },
-            )
+            add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
+                version: tx.version,
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                nonce: tx.nonce,
+                class_hash: tx.class_hash,
+                contract_address_salt: tx.contract_address_salt,
+                constructor_calldata: tx.constructor_calldata,
+            })
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
             add_transaction::AddTransaction::Declare(add_transaction::Declare {
