@@ -19,6 +19,7 @@ from starkware.starknet.services.api.gateway.transaction import (
     DeprecatedDeclare,
     DeployAccount,
 )
+from starkware.starknet.services.api.feeder_gateway.response_objects import FeeEstimationInfo
 from starkware.starknet.services.api.contract_class.contract_class import (
     DeprecatedCompiledClass,
     ContractClass,
@@ -632,11 +633,11 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 1258,
-            "gas_price": 1,
-            "overall_fee": 1258,
-        }
+        FeeEstimationInfo(
+            gas_usage=1258,
+            gas_price=1,
+            overall_fee=1258,
+        )
     ]
 
 
@@ -681,11 +682,11 @@ def test_fee_estimate_for_declare_transaction_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        }
+        FeeEstimationInfo(
+            gas_usage=1251,
+            gas_price=1,
+            overall_fee=1251,
+        )
     ]
 
 
@@ -744,7 +745,7 @@ def test_fee_estimate_on_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
+                "gas_usage": "0x" + (0).to_bytes(32, "big").hex(),
                 "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
                 "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
             }
@@ -755,7 +756,7 @@ def test_fee_estimate_on_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x" + (0x04EA).to_bytes(32, "big").hex(),
+                "gas_usage": "0x" + (0x04EA).to_bytes(32, "big").hex(),
                 "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
                 "overall_fee": "0x" + (0x3124).to_bytes(32, "big").hex(),
             },
@@ -1166,7 +1167,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
+            [FeeEstimationInfo(gas_usage=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1191,7 +1192,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transactions=[dataclasses.replace(base_transaction, nonce=1)],
             ),
-            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
+            [FeeEstimationInfo(gas_usage=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1228,7 +1229,7 @@ def test_nonce_with_dummy():
                 transactions=[dataclasses.replace(base_transaction, nonce=2)],
                 pending_nonces={0x123: 2},
             ),
-            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
+            [FeeEstimationInfo(gas_usage=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1471,11 +1472,11 @@ def test_sierra_invoke_function_through_account():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 3715,
-            "gas_price": 1,
-            "overall_fee": 3715,
-        }
+        FeeEstimationInfo(
+            gas_usage=3715,
+            gas_price=1,
+            overall_fee=3715,
+        )
     ]
 
 
@@ -1523,11 +1524,11 @@ def test_sierra_declare_through_account():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        }
+        FeeEstimationInfo(
+            gas_usage=1251,
+            gas_price=1,
+            overall_fee=1251,
+        )
     ]
 
 
@@ -1592,17 +1593,17 @@ def test_deploy_account():
 
     assert output == [
         # DEPLOY_ACCOUNT
-        {
-            "gas_consumed": 3096,
-            "gas_price": 1,
-            "overall_fee": 3096,
-        },
+        FeeEstimationInfo(
+            gas_usage=3096,
+            gas_price=1,
+            overall_fee=3096,
+        ),
         # INVOKE_FUNCTION through deployed account
-        {
-            "gas_consumed": 3715,
-            "gas_price": 1,
-            "overall_fee": 3715,
-        },
+        FeeEstimationInfo(
+            gas_usage=3715,
+            gas_price=1,
+            overall_fee=3715,
+        ),
     ]
 
 

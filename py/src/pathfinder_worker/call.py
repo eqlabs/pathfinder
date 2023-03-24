@@ -186,9 +186,6 @@ class Command:
     pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
     pending_timestamp: int = field(metadata=fields.timestamp_metadata)
 
-    # zero means to use the gas price from the current block.
-    gas_price: int = field(metadata=fields.gas_price_metadata)
-
     @property
     @classmethod
     @abstractmethod
@@ -216,6 +213,8 @@ class Call(Command):
         default=None, metadata=fields.optional_entry_point_selector_metadata
     )
 
+    gas_price: int = 0
+
     def has_pending_data(self):
         return (
             len(self.pending_updates) > 0
@@ -230,6 +229,9 @@ class Call(Command):
 @marshmallow_dataclass.dataclass(frozen=True)
 class EstimateFee(Command):
     verb: ClassVar[Verb] = Verb.ESTIMATE_FEE
+
+    # zero means to use the gas price from the current block.
+    gas_price: int = field(metadata=fields.gas_price_metadata)
 
     transactions: List[AccountTransaction]
 
@@ -247,6 +249,10 @@ class EstimateFee(Command):
 @marshmallow_dataclass.dataclass(frozen=True)
 class SimulateTx(Command):
     verb: ClassVar[Verb] = Verb.SIMULATE_TX
+
+    # zero means to use the gas price from the current block.
+    gas_price: int = field(metadata=fields.gas_price_metadata)
+
     transactions: List[AccountTransaction]
     skip_validate: Optional[bool] = None
 
