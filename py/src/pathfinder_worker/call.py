@@ -258,7 +258,7 @@ class EstimateFee(Command):
 class SimulateTx(Command):
     verb: ClassVar[Verb] = Verb.SIMULATE_TX
     transactions: List[AccountTransaction]
-    skip_validate: bool
+    skip_validate: Optional[bool] = None
 
 
 class CommandSchema(marshmallow_oneofschema.OneOfSchema):
@@ -523,12 +523,12 @@ def loop_inner(connection: sqlite3.Connection, command: Command, contract_class_
                 general_config,
                 block_info,
                 command.transactions,
-                command.skip_validate,
+                command.skip_validate if command.skip_validate is not None else False,
             )
         )
         ret = (command.verb, simulated_transactions, timings)
     else:
-        logger.error(f"Unrecognised commant: {command}")
+        logger.error(f"Unrecognised command: {command}")
 
     timings["sql"] = {
         "timings": adapter.elapsed,
@@ -553,9 +553,10 @@ def as_hex(x):
 
 def render_fee_estimate(fee):
     return {
-        "gas_consumed": as_hex(fee.gas_usage),
+        "gas_usage": as_hex(fee.gas_usage),
         "gas_price": as_hex(fee.gas_price),
         "overall_fee": as_hex(fee.overall_fee),
+        "unit": "wei",
     }
 
 def render_event(event):
@@ -574,11 +575,11 @@ def render_message(msg):
 
 def render_func_invocation(tx: FunctionInvocation):
     return {
-        "sender_address": as_hex(tx.caller_address),
+        "caller_address": as_hex(tx.caller_address),
         "contract_address": as_hex(tx.contract_address),
         "calldata": list(map(as_hex, tx.calldata)),
         "call_type": tx.call_type.name,
-        "class_hash": as_hex(tx.class_hash),
+        "code_address": as_hex(tx.class_hash),
         "selector": as_hex(tx.selector),
         "entry_point_type": tx.entry_point_type.name,
         "result": list(map(as_hex, tx.result)),
