@@ -67,8 +67,8 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method_with_no_input("v0.3_starknet_syncing", v02_method::syncing)?
         // Specific implementations for v0.3
         .register_method("v0.3_starknet_getEvents", method::get_events)?
-        .register_method("v0.3_starknet_getStateUpdate", method::get_state_update)?;
-        .register_method("v0.3_starknet_simulateTransaction", method::simulate_transaction)?
+        .register_method("v0.3_starknet_getStateUpdate", method::get_state_update)?
+        .register_method("v0.3_starknet_simulateTransaction", method::simulate_transaction)?;
 
     Ok(module)
 }

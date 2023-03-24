@@ -98,8 +98,7 @@ impl Handle {
 
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
-        let transactions = transactions
-            .into_iter()
+        let transactions = transactions.into_iter()
             .map(map_tx)
             .collect::<Result<Vec<_>, _>>()?;
 
