@@ -35,7 +35,7 @@ pub(crate) enum ChildCommand<'a> {
         gas_price: &'a ethers::types::H256,
         transactions: &'a [AddTransaction],
     },
-    SimulateTransaction {
+    SimulateTx {
         #[serde(flatten)]
         common: CommonProperties<'a>,
 

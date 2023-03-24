@@ -19,8 +19,6 @@ pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
 ) -> Result<SimulateTransactionResult, SimulateTrasactionError> {
-    dbg!(&input); // TODO(SM): remove debug output
-
     let handle = context
         .call_handle
         .as_ref()
@@ -66,7 +64,6 @@ pub async fn simulate_transaction(
         .await
         .map_err(SimulateTrasactionError::CallFailed)?;
 
-    dbg!(&txs); // TODO(SM): remove debug output
 
     let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTrasactionError> =
         txs.into_iter().map(map_tx).collect();
@@ -118,29 +115,29 @@ fn map_trace(
         trace.fee_transfer_invocation.take(),
     );
     match invocations {
-        (Some(val), Some(fun), Some(fee))
+        (Some(val), Some(fun), fee)
             if fun.entry_point_type == Some(dto::EntryPointType::Constructor) =>
         {
             Ok(dto::TransactionTrace::DeployAccount(
                 dto::DeployAccountTxnTrace {
-                    fee_transfer_invocation: Some(map_function_invocation(fee)),
+                    fee_transfer_invocation: fee.map(map_function_invocation),
                     validate_invocation: Some(map_function_invocation(val)),
                     constructor_invocation: Some(map_function_invocation(fun)),
                 },
             ))
         }
-        (Some(val), Some(fun), Some(fee))
+        (Some(val), Some(fun), fee)
             if fun.entry_point_type == Some(dto::EntryPointType::External) =>
         {
             Ok(dto::TransactionTrace::Invoke(dto::InvokeTxnTrace {
-                fee_transfer_invocation: Some(map_function_invocation(fee)),
+                fee_transfer_invocation: fee.map(map_function_invocation),
                 validate_invocation: Some(map_function_invocation(val)),
                 execute_invocation: Some(map_function_invocation(fun)),
             }))
         }
-        (Some(val), _, Some(fee)) => Ok(dto::TransactionTrace::Declare(
+        (Some(val), _, fee) => Ok(dto::TransactionTrace::Declare(
             dto::DeclareTxnTrace {
-                fee_transfer_invocation: Some(map_function_invocation(fee)),
+                fee_transfer_invocation: fee.map(map_function_invocation),
                 validate_invocation: Some(map_function_invocation(val)),
             },
         )),
@@ -359,8 +356,6 @@ pub mod dto {
     }
 
     #[derive(Debug, Deserialize, Serialize)]
-    // TODO(SM): consider adding validation by regex (per spec)
-    // #[serde(try_from = "String")]
     pub struct NumAsHex(pub String);
 }
 
@@ -368,156 +363,356 @@ pub mod dto {
 
 /*
 
-{
-    "block_id": "latest",
-    "transactions": [
-        {
-        "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
-        "max_fee": "0x0",
-        "signature": [
-            "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-            "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
-        ],
-        "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-        "nonce": "0x0",
-        "version": "0x100000000000000000000000000000001",
-        "constructor_calldata": [
-            "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-        ],
-        "type": "DEPLOY_ACCOUNT"
-        }
-    ],
-    "simulation_flags": []
-}
+curl -H 'Content-type: application/json' -d'@sim.json' http://127.0.0.1:9545/rpc/v0.3 | jq . > res.json
 
-Manual test against call.py:
-
-# cd py
-# source .venv/bin/activate
-# cd src/pathfinder_worker
-# sqlite3 empty.db
-> pragma user_version = 30;
-> ^D
-# python3 call.py empty.db
-
-{"verb":"ESTIMATE_FEE","at_block":"latest","chain":"TESTNET","pending_updates":{},"pending_deployed":[],"pending_nonces":{},"pending_timestamp":42,"gas_price":"0x1","transaction":{"contract_address_salt":"0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971","max_fee":"0x0","signature":["0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88","0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"],"class_hash":"0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513","nonce":"0x0","version":"0x100000000000000000000000000000001","constructor_calldata":["0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"],"type":"DEPLOY_ACCOUNT"}}
 >>>
 {
-  "verb": "ESTIMATE_FEE",
-  "at_block": "latest",
-  "chain": "TESTNET",
-  "pending_updates": {},
-  "pending_deployed": [],
-  "pending_nonces": {},
-  "pending_timestamp": 42,
-  "gas_price": "0x1",
-  "transaction": {
-    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
-    "max_fee": "0x0",
-    "signature": [
-      "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-      "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
-    ],
-    "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-    "nonce": "0x0",
-    "version": "0x100000000000000000000000000000001",
-    "constructor_calldata": [
-      "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-    ],
-    "type": "DEPLOY_ACCOUNT"
-  }
-}
-<<<
-{
-  "status": "ok",
-  "output": {
-    "gas_consumed": "0x00000000000000000000000000000000000000000000000000000000000010e3",
-    "gas_price": "0x0000000000000000000000000000000000000000000000000000000000000001",
-    "overall_fee": "0x00000000000000000000000000000000000000000000000000000000000010e3"
-  }
+    "jsonrpc": "2.0",
+    "method": "starknet_simulateTransaction",
+    "params": {
+        "block_id": "latest",
+        "transactions": [
+            {
+                "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+                "max_fee": "0x0",
+                "signature": [
+                    "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+                    "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+                ],
+                "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+                "nonce": "0x0",
+                "version": "0x100000000000000000000000000000001",
+                "constructor_calldata": [
+                    "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+                ],
+                "type": "DEPLOY_ACCOUNT"
+            }
+        ],
+        "simulation_flags": []
+    },
+    "id": "42?"
 }
 
-{"verb":"SIMULATE_TX","at_block":"latest","chain":"TESTNET","pending_updates":{},"pending_deployed":[],"pending_nonces":{},"pending_timestamp":42,"gas_price":"0x1","transactions":[{"contract_address_salt":"0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971","max_fee":"0x0","signature":["0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88","0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"],"class_hash":"0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513","nonce":"0x0","version":"0x100000000000000000000000000000001","constructor_calldata":["0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"],"type":"DEPLOY_ACCOUNT"}],"skip_validate":false}
->>>
-{
-  "verb": "SIMULATE_TX",
-  "at_block": "latest",
-  "chain": "TESTNET",
-  "pending_updates": {},
-  "pending_deployed": [],
-  "pending_nonces": {},
-  "pending_timestamp": 42,
-  "gas_price": "0x1",
-  "transactions": [
-    {
-      "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
-      "max_fee": "0x0",
-      "signature": [
-        "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-        "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
-      ],
-      "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-      "nonce": "0x0",
-      "version": "0x100000000000000000000000000000001",
-      "constructor_calldata": [
-        "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-      ],
-      "type": "DEPLOY_ACCOUNT"
-    }
-  ],
-  "skip_validate": false
-}
 <<<
 {
-  "status": "ok",
-  "output": [
+  "jsonrpc": "2.0",
+  "result": [
     {
-      "trace": {
-        "validate_invocation": {
-          "sender_address": "0x0000000000000000000000000000000000000000000000000000000000000000",
-          "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
-          "calldata": [
-            "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-            "0x046c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
-            "0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-          ],
-          "call_type": "CALL",
-          "class_hash": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-          "selector": "0x036fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895",
-          "entry_point_type": "EXTERNAL",
-          "result": [],
-          "internal_calls": [],
-          "events": [],
-          "messages": []
-        },
-        "function_invocation": {
-          "sender_address": "0x0000000000000000000000000000000000000000000000000000000000000000",
-          "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
-          "calldata": [
-            "0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-          ],
-          "call_type": "CALL",
-          "class_hash": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-          "selector": "0x028ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194",
-          "entry_point_type": "CONSTRUCTOR",
-          "result": [],
-          "internal_calls": [],
-          "events": [],
-          "messages": []
-        },
-        "fee_transfer_invocation": null,
-        "signature": [
-          "0x0296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-          "0x04e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
-        ]
-      },
       "fee_estimation": {
         "gas_consumed": "0x00000000000000000000000000000000000000000000000000000000000010e3",
-        "gas_price": "0x0000000000000000000000000000000000000000000000000000000000000001",
-        "overall_fee": "0x00000000000000000000000000000000000000000000000000000000000010e3"
+        "gas_price": "0x0000000000000000000000000000000000000000000000000000001a8fddc9e5",
+        "overall_fee": "0x0000000000000000000000000000000000000000000000000001c08b6e48560f"
+      },
+      "transaction_trace": {
+        "constructor_invocation": {
+          "call_type": "CALL",
+          "caller_address": "0x0",
+          "calls": [],
+          "code_address": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+          "entry_point_type": "CONSTRUCTOR",
+          "events": [],
+          "calldata": [
+            "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+          ],
+          "contract_address": "0x332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
+          "entry_point_selector": "0x28ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194",
+          "messages": [],
+          "result": []
+        },
+        "validate_invocation": {
+          "call_type": "CALL",
+          "caller_address": "0x0",
+          "calls": [],
+          "code_address": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+          "entry_point_type": "EXTERNAL",
+          "events": [],
+          "calldata": [
+            "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+            "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+            "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+          ],
+          "contract_address": "0x332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
+          "entry_point_selector": "0x36fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895",
+          "messages": [],
+          "result": []
+        }
       }
     }
-  ]
+  ],
+  "id": "42?"
 }
+
+---
+
+[crates/rpc/src/v03/method/simulate_transaction.rs:22] &input = SimulateTrasactionInput {
+    block_id: Latest,
+    transactions: [
+        DeployAccount(
+            BroadcastedDeployAccountTransaction {
+                version: TransactionVersion(
+                    0x0000000000000000000000000000000100000000000000000000000000000001,
+                ),
+                max_fee: Fee(
+                    0x00000000000000000000000000000000,
+                ),
+                signature: [
+                    TransactionSignatureElem(0x0296AB4B0B7CB0C6929C4FB1E04B782511DFFB049F72A90EFE5D53F0515EAB88),
+                    TransactionSignatureElem(0x04E80D8BB98A9BAF47F6F0459C2329A5401538576E76436ACAF5F56C573C7D77),
+                ],
+                nonce: TransactionNonce(0x0000000000000000000000000000000000000000000000000000000000000000),
+                contract_address_salt: ContractAddressSalt(0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971),
+                constructor_calldata: [
+                    CallParam(0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D),
+                ],
+                class_hash: ClassHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+            },
+        ),
+    ],
+    simulation_flags: SimulationFlags(
+        [],
+    ),
+}
+[crates/rpc/src/cairo/ext_py/sub_process.rs:397] &sent_over = SimulateTx {
+    common: CommonProperties {
+        at_block: Latest,
+        chain: Testnet,
+        pending_updates: ContractUpdatesWrapper(
+            None,
+        ),
+        pending_deployed: DeployedContractsWrapper(
+            None,
+        ),
+        pending_nonces: NoncesWrapper(
+            None,
+        ),
+        pending_timestamp: 0,
+    },
+    gas_price: 0x0000000000000000000000000000000000000000000000000000001a8fddc9e5,
+    transactions: [
+        DeployAccount(
+            DeployAccount {
+                version: TransactionVersion(
+                    0x0000000000000000000000000000000100000000000000000000000000000001,
+                ),
+                max_fee: Fee(
+                    0x00000000000000000000000000000000,
+                ),
+                signature: [
+                    TransactionSignatureElem(0x0296AB4B0B7CB0C6929C4FB1E04B782511DFFB049F72A90EFE5D53F0515EAB88),
+                    TransactionSignatureElem(0x04E80D8BB98A9BAF47F6F0459C2329A5401538576E76436ACAF5F56C573C7D77),
+                ],
+                nonce: TransactionNonce(0x0000000000000000000000000000000000000000000000000000000000000000),
+                class_hash: ClassHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+                contract_address_salt: ContractAddressSalt(0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971),
+                constructor_calldata: [
+                    CallParam(0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D),
+                ],
+            },
+        ),
+    ],
+}
+[crates/rpc/src/v03/method/simulate_transaction.rs:69] &txs = [
+    TransactionSimulation {
+        trace: TransactionTrace {
+            validate_invocation: Some(
+                FunctionInvocation {
+                    calldata: [
+                        StarkHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+                        StarkHash(0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971),
+                        StarkHash(0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D),
+                    ],
+                    contract_address: Address(
+                        StarkHash(0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415),
+                    ),
+                    selector: StarkHash(0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895),
+                    call_type: Some(
+                        Call,
+                    ),
+                    caller_address: Some(
+                        StarkHash(0x0000000000000000000000000000000000000000000000000000000000000000),
+                    ),
+                    internal_calls: Some(
+                        [],
+                    ),
+                    code_address: Some(
+                        StarkHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+                    ),
+                    entry_point_type: Some(
+                        External,
+                    ),
+                    events: Some(
+                        [],
+                    ),
+                    messages: Some(
+                        [],
+                    ),
+                    result: Some(
+                        [],
+                    ),
+                },
+            ),
+            function_invocation: Some(
+                FunctionInvocation {
+                    calldata: [
+                        StarkHash(0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D),
+                    ],
+                    contract_address: Address(
+                        StarkHash(0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415),
+                    ),
+                    selector: StarkHash(0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194),
+                    call_type: Some(
+                        Call,
+                    ),
+                    caller_address: Some(
+                        StarkHash(0x0000000000000000000000000000000000000000000000000000000000000000),
+                    ),
+                    internal_calls: Some(
+                        [],
+                    ),
+                    code_address: Some(
+                        StarkHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+                    ),
+                    entry_point_type: Some(
+                        Constructor,
+                    ),
+                    events: Some(
+                        [],
+                    ),
+                    messages: Some(
+                        [],
+                    ),
+                    result: Some(
+                        [],
+                    ),
+                },
+            ),
+            fee_transfer_invocation: None,
+            signature: [
+                StarkHash(0x0296AB4B0B7CB0C6929C4FB1E04B782511DFFB049F72A90EFE5D53F0515EAB88),
+                StarkHash(0x04E80D8BB98A9BAF47F6F0459C2329A5401538576E76436ACAF5F56C573C7D77),
+            ],
+        },
+        fee_estimation: FeeEstimation {
+            overall_fee: NumAsHex(
+                "0x0000000000000000000000000000000000000000000000000001c08b6e48560f",
+            ),
+            gas_price: NumAsHex(
+                "0x0000000000000000000000000000000000000000000000000000001a8fddc9e5",
+            ),
+            gas_usage: NumAsHex(
+                "0x00000000000000000000000000000000000000000000000000000000000010e3",
+            ),
+            unit: "wei",
+        },
+    },
+]
+[crates/rpc/src/v03/method/simulate_transaction.rs:74] &txs = Ok(
+    [
+        SimulatedTransaction {
+            fee_estimation: Some(
+                FeeEstimate {
+                    gas_consumed: Some(
+                        NumAsHex(
+                            "0x00000000000000000000000000000000000000000000000000000000000010e3",
+                        ),
+                    ),
+                    gas_price: Some(
+                        NumAsHex(
+                            "0x0000000000000000000000000000000000000000000000000000001a8fddc9e5",
+                        ),
+                    ),
+                    overall_fee: Some(
+                        NumAsHex(
+                            "0x0000000000000000000000000000000000000000000000000001c08b6e48560f",
+                        ),
+                    ),
+                },
+            ),
+            transaction_trace: Some(
+                DeployAccount(
+                    DeployAccountTxnTrace {
+                        constructor_invocation: Some(
+                            FunctionInvocation {
+                                call_type: Some(
+                                    Call,
+                                ),
+                                caller_address: Some(
+                                    StarkHash(0x0000000000000000000000000000000000000000000000000000000000000000),
+                                ),
+                                calls: Some(
+                                    [],
+                                ),
+                                code_address: Some(
+                                    StarkHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+                                ),
+                                entry_point_type: Some(
+                                    Constructor,
+                                ),
+                                events: Some(
+                                    [],
+                                ),
+                                function_call: FunctionCall {
+                                    calldata: [
+                                        StarkHash(0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D),
+                                    ],
+                                    contract_address: Address(
+                                        StarkHash(0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415),
+                                    ),
+                                    entry_point_selector: StarkHash(0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194),
+                                },
+                                messages: Some(
+                                    [],
+                                ),
+                                result: Some(
+                                    [],
+                                ),
+                            },
+                        ),
+                        fee_transfer_invocation: None,
+                        validate_invocation: Some(
+                            FunctionInvocation {
+                                call_type: Some(
+                                    Call,
+                                ),
+                                caller_address: Some(
+                                    StarkHash(0x0000000000000000000000000000000000000000000000000000000000000000),
+                                ),
+                                calls: Some(
+                                    [],
+                                ),
+                                code_address: Some(
+                                    StarkHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+                                ),
+                                entry_point_type: Some(
+                                    External,
+                                ),
+                                events: Some(
+                                    [],
+                                ),
+                                function_call: FunctionCall {
+                                    calldata: [
+                                        StarkHash(0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513),
+                                        StarkHash(0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971),
+                                        StarkHash(0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D),
+                                    ],
+                                    contract_address: Address(
+                                        StarkHash(0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415),
+                                    ),
+                                    entry_point_selector: StarkHash(0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895),
+                                },
+                                messages: Some(
+                                    [],
+                                ),
+                                result: Some(
+                                    [],
+                                ),
+                            },
+                        ),
+                    },
+                ),
+            ),
+        },
+    ],
+)
 
  */

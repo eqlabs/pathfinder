@@ -378,7 +378,7 @@ async fn process(
             diffs: maybe_diffs,
             block_timestamp,
             ..
-        } => ChildCommand::SimulateTransaction {
+        } => ChildCommand::SimulateTx {
             common: CommonProperties {
                 at_block,
                 chain: *chain,
