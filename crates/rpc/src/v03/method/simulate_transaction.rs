@@ -64,7 +64,6 @@ pub async fn simulate_transaction(
         .await
         .map_err(SimulateTrasactionError::CallFailed)?;
 
-
     let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTrasactionError> =
         txs.into_iter().map(map_tx).collect();
     Ok(SimulateTransactionResult(txs?))
@@ -135,17 +134,13 @@ fn map_trace(
                 execute_invocation: Some(map_function_invocation(fun)),
             }))
         }
-        (Some(val), _, fee) => Ok(dto::TransactionTrace::Declare(
-            dto::DeclareTxnTrace {
-                fee_transfer_invocation: fee.map(map_function_invocation),
-                validate_invocation: Some(map_function_invocation(val)),
-            },
-        )),
-        (_, Some(fun), _) => Ok(dto::TransactionTrace::L1Handler(
-            dto::L1HandlerTxnTrace {
-                function_invocation: Some(map_function_invocation(fun)),
-            },
-        )),
+        (Some(val), _, fee) => Ok(dto::TransactionTrace::Declare(dto::DeclareTxnTrace {
+            fee_transfer_invocation: fee.map(map_function_invocation),
+            validate_invocation: Some(map_function_invocation(val)),
+        })),
+        (_, Some(fun), _) => Ok(dto::TransactionTrace::L1Handler(dto::L1HandlerTxnTrace {
+            function_invocation: Some(map_function_invocation(fun)),
+        })),
         _ => Err(SimulateTrasactionError::Custom(anyhow!(
             "Unmatched transaction trace!"
         ))),
