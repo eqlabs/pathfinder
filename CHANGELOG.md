@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- support `starknet_estimateFee` in the JSON-RPC v0.3 API
+  - supports estimating multiple transactions
+  - this includes declaring and immediately using a class (not currently possible via the gateway)
+
 ## [0.5.1] - 2023-23-23
 
 ### Fixed
