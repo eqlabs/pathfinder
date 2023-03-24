@@ -86,87 +86,94 @@ impl Handle {
     /// Returns the fee as a three components.
     pub async fn estimate_fee(
         &self,
-        transaction: BroadcastedTransaction,
+        transactions: Vec<BroadcastedTransaction>,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
-    ) -> Result<FeeEstimate, CallFailure> {
+    ) -> Result<Vec<FeeEstimate>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
 
         let continued_span = tracing::info_span!("ext_py_est_fee", pid = Empty);
 
-        let transaction = match transaction {
-            BroadcastedTransaction::DeployAccount(tx) => {
-                add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
-                    version: tx.version,
-                    max_fee: tx.max_fee,
-                    signature: tx.signature,
-                    nonce: tx.nonce,
-                    class_hash: tx.class_hash,
-                    contract_address_salt: tx.contract_address_salt,
-                    constructor_calldata: tx.constructor_calldata,
+        let transactions = transactions
+            .into_iter()
+            .map(|transaction| {
+                Ok(match transaction {
+                    BroadcastedTransaction::DeployAccount(tx) => {
+                        add_transaction::AddTransaction::DeployAccount(
+                            add_transaction::DeployAccount {
+                                version: tx.version,
+                                max_fee: tx.max_fee,
+                                signature: tx.signature,
+                                nonce: tx.nonce,
+                                class_hash: tx.class_hash,
+                                contract_address_salt: tx.contract_address_salt,
+                                constructor_calldata: tx.constructor_calldata,
+                            },
+                        )
+                    }
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
+                        add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                            version: tx.version,
+                            max_fee: tx.max_fee,
+                            signature: tx.signature,
+                            contract_class: add_transaction::ContractDefinition::Cairo(
+                                tx.contract_class.try_into().map_err(|_| {
+                                    CallFailure::Internal("contract class serialization failure")
+                                })?,
+                            ),
+                            sender_address: tx.sender_address,
+                            nonce: tx.nonce,
+                            compiled_class_hash: None,
+                        })
+                    }
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
+                        add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                            version: tx.version,
+                            max_fee: tx.max_fee,
+                            signature: tx.signature,
+                            contract_class: add_transaction::ContractDefinition::Sierra(
+                                tx.contract_class.try_into().map_err(|_| {
+                                    CallFailure::Internal("contract class serialization failure")
+                                })?,
+                            ),
+                            sender_address: tx.sender_address,
+                            nonce: tx.nonce,
+                            compiled_class_hash: Some(tx.compiled_class_hash),
+                        })
+                    }
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
+                        add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
+                            version: tx.version,
+                            max_fee: tx.max_fee,
+                            signature: tx.signature,
+                            nonce: None,
+                            contract_address: tx.contract_address,
+                            entry_point_selector: Some(tx.entry_point_selector),
+                            calldata: tx.calldata,
+                        })
+                    }
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
+                        add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
+                            version: tx.version,
+                            max_fee: tx.max_fee,
+                            signature: tx.signature,
+                            nonce: Some(tx.nonce),
+                            contract_address: tx.sender_address,
+                            entry_point_selector: None,
+                            calldata: tx.calldata,
+                        })
+                    }
                 })
-            }
-            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
-                add_transaction::AddTransaction::Declare(add_transaction::Declare {
-                    version: tx.version,
-                    max_fee: tx.max_fee,
-                    signature: tx.signature,
-                    contract_class: add_transaction::ContractDefinition::Cairo(
-                        tx.contract_class.try_into().map_err(|_| {
-                            CallFailure::Internal("contract class serialization failure")
-                        })?,
-                    ),
-                    sender_address: tx.sender_address,
-                    nonce: tx.nonce,
-                    compiled_class_hash: None,
-                })
-            }
-            BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
-                add_transaction::AddTransaction::Declare(add_transaction::Declare {
-                    version: tx.version,
-                    max_fee: tx.max_fee,
-                    signature: tx.signature,
-                    contract_class: add_transaction::ContractDefinition::Sierra(
-                        tx.contract_class.try_into().map_err(|_| {
-                            CallFailure::Internal("contract class serialization failure")
-                        })?,
-                    ),
-                    sender_address: tx.sender_address,
-                    nonce: tx.nonce,
-                    compiled_class_hash: Some(tx.compiled_class_hash),
-                })
-            }
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
-                add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
-                    version: tx.version,
-                    max_fee: tx.max_fee,
-                    signature: tx.signature,
-                    nonce: None,
-                    contract_address: tx.contract_address,
-                    entry_point_selector: Some(tx.entry_point_selector),
-                    calldata: tx.calldata,
-                })
-            }
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
-                add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
-                    version: tx.version,
-                    max_fee: tx.max_fee,
-                    signature: tx.signature,
-                    nonce: Some(tx.nonce),
-                    contract_address: tx.sender_address,
-                    entry_point_selector: None,
-                    calldata: tx.calldata,
-                })
-            }
-        };
+            })
+            .collect::<Result<Vec<_>, CallFailure>>()?;
 
         self.command_tx
             .send((
                 Command::EstimateFee {
-                    transaction,
+                    transactions,
                     at_block,
                     gas_price,
                     chain: self.chain,
@@ -261,14 +268,14 @@ enum Command {
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
-        transaction: add_transaction::AddTransaction,
+        transactions: Vec<add_transaction::AddTransaction>,
         at_block: BlockHashNumberOrLatest,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,
         diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
-        response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
+        response: oneshot::Sender<Result<Vec<FeeEstimate>, CallFailure>>,
     },
 }
 
@@ -505,8 +512,8 @@ mod tests {
         .await
         .unwrap();
 
-        let transaction = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-            BroadcastedInvokeTransactionV0 {
+        let transactions = vec![BroadcastedTransaction::Invoke(
+            BroadcastedInvokeTransaction::V0(BroadcastedInvokeTransactionV0 {
                 version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                 max_fee: super::Call::DEFAULT_MAX_FEE,
                 signature: Default::default(),
@@ -516,12 +523,12 @@ mod tests {
                 )),
                 entry_point_selector: EntryPoint::hashed(&b"get_value"[..]),
                 calldata: vec![CallParam(felt!("0x84"))],
-            },
-        ));
+            }),
+        )];
 
         let at_block_fee = handle
             .estimate_fee(
-                transaction.clone(),
+                transactions.clone(),
                 StarknetBlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
                 None,
@@ -534,16 +541,16 @@ mod tests {
 
         assert_eq!(
             at_block_fee,
-            crate::v02::types::reply::FeeEstimate {
+            vec![crate::v02::types::reply::FeeEstimate {
                 gas_consumed: H256::from_low_u64_be(0x4ea),
                 gas_price: H256::from_low_u64_be(1),
                 overall_fee: H256::from_low_u64_be(0x4ea),
-            }
+            }]
         );
 
         let current_fee = handle
             .estimate_fee(
-                transaction,
+                transactions.clone(),
                 StarknetBlockHash(Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap())
                     .into(),
                 super::GasPriceSource::Current(H256::from_low_u64_be(10)),
@@ -555,11 +562,11 @@ mod tests {
 
         assert_eq!(
             current_fee,
-            crate::v02::types::reply::FeeEstimate {
+            vec![crate::v02::types::reply::FeeEstimate {
                 gas_consumed: H256::from_low_u64_be(0x4ea),
                 gas_price: H256::from_low_u64_be(10),
                 overall_fee: H256::from_low_u64_be(0x3124),
-            }
+            }]
         );
 
         shutdown_tx.send(()).unwrap();
@@ -597,8 +604,8 @@ mod tests {
         .await
         .unwrap();
 
-        let transaction =
-            BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction {
+        let transactions = vec![BroadcastedTransaction::DeployAccount(
+            BroadcastedDeployAccountTransaction {
                 version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                 max_fee: super::Call::DEFAULT_MAX_FEE,
                 signature: Default::default(),
@@ -606,11 +613,12 @@ mod tests {
                 contract_address_salt: ContractAddressSalt(Felt::ZERO),
                 class_hash: account_contract_class_hash,
                 constructor_calldata: vec![],
-            });
+            },
+        )];
 
         let at_block_fee = handle
             .estimate_fee(
-                transaction.clone(),
+                transactions.clone(),
                 StarknetBlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
                 None,
@@ -623,11 +631,11 @@ mod tests {
 
         assert_eq!(
             at_block_fee,
-            crate::v02::types::reply::FeeEstimate {
+            vec![crate::v02::types::reply::FeeEstimate {
                 gas_consumed: H256::from_low_u64_be(0xc18),
                 gas_price: H256::from_low_u64_be(1),
                 overall_fee: H256::from_low_u64_be(0xc18),
-            }
+            }]
         );
 
         shutdown_tx.send(()).unwrap();

@@ -216,7 +216,7 @@ class EstimateFee(Command):
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
-    transaction: AccountTransaction
+    transactions: List[AccountTransaction]
 
     def has_pending_data(self):
         return (
@@ -484,7 +484,7 @@ def loop_inner(
                 async_state,
                 general_config,
                 block_info,
-                command.transaction,
+                command.transactions,
             )
         )
         ret = (command.verb, fees, timings)
@@ -507,11 +507,15 @@ def render(verb, vals):
         return list(map(prefixed_hex, vals))
     else:
         assert verb == Verb.ESTIMATE_FEE
-        return {
-            "gas_consumed": prefixed_hex(vals["gas_consumed"]),
-            "gas_price": prefixed_hex(vals["gas_price"]),
-            "overall_fee": prefixed_hex(vals["overall_fee"]),
-        }
+
+        return [
+            {
+                "gas_consumed": prefixed_hex(val["gas_consumed"]),
+                "gas_price": prefixed_hex(val["gas_price"]),
+                "overall_fee": prefixed_hex(val["overall_fee"]),
+            }
+            for val in vals
+        ]
 
 
 def int_hash_or_latest(s: str):
@@ -905,10 +909,10 @@ async def do_call(
 
 
 async def do_estimate_fee(
-    async_state: CachedState,
+    state: CachedState,
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
-    transaction: AccountTransaction,
+    transactions: List[AccountTransaction],
 ):
     """
     This is distinct from the call because estimating a fee requires flushing the state to count
@@ -917,20 +921,28 @@ async def do_estimate_fee(
     deploy and perhaps declare transactions as well.
     """
 
-    more = InternalAccountTransactionForSimulate.create_for_simulate(
-        transaction, general_config, False
-    )
+    fees = []
 
-    tx_info = await more.apply_state_updates(async_state, general_config)
+    for transaction in transactions:
+        transaction = InternalAccountTransactionForSimulate.create_for_simulate(
+            transaction, general_config, False
+        )
 
-    # with 0.10 upgrade we changed to division with gas_consumed as well, since
-    # there is opposition to providing the non-multiplied scalar value from
-    # cairo-lang.
-    return {
-        "gas_consumed": tx_info.actual_fee // max(1, block_info.gas_price),
-        "gas_price": block_info.gas_price,
-        "overall_fee": tx_info.actual_fee,
-    }
+        with state.copy_and_apply() as state_copy:
+            tx_info = await transaction.apply_state_updates(state_copy, general_config)
+
+        # with 0.10 upgrade we changed to division with gas_consumed as well, since
+        # there is opposition to providing the non-multiplied scalar value from
+        # cairo-lang.
+        fees.append(
+            {
+                "gas_consumed": tx_info.actual_fee // max(1, block_info.gas_price),
+                "gas_price": block_info.gas_price,
+                "overall_fee": tx_info.actual_fee,
+            }
+        )
+
+    return fees
 
 
 def apply_pending(
@@ -940,17 +952,20 @@ def apply_pending(
     nonces: Dict[int, int],
 ):
     for deployed_contract in deployed:
+        # pylint: disable=protected-access
         state.cache._class_hash_initial_values[
             deployed_contract.address
         ] = deployed_contract.contract_hash
 
     for addr, updates in updates.items():
         for update in updates:
+            # pylint: disable=protected-access
             state.cache._storage_initial_values[(addr, update.key)] = update.value
 
     for addr, nonce in nonces.items():
         # bypass the CachedState.increment_nonce which would give extra queries
         # per each, and only single step at a time
+        # pylint: disable=protected-access
         state.cache._nonce_initial_values[addr] = nonce
 
 

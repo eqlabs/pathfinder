@@ -351,7 +351,7 @@ async fn process(
             entry_point_selector: call.entry_point_selector.as_ref(),
         },
         Command::EstimateFee {
-            transaction,
+            transactions,
             at_block,
             gas_price,
             chain,
@@ -368,7 +368,7 @@ async fn process(
                 pending_timestamp: block_timestamp.map(|t| t.get()).unwrap_or_default(),
             },
             gas_price: gas_price.as_price(),
-            transaction,
+            transactions,
         },
     };
 

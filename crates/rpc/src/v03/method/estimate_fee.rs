@@ -1,6 +1,6 @@
-use crate::context::RpcContext;
 use crate::{
     cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
+    context::RpcContext,
     v02::types::{reply::FeeEstimate, request::BroadcastedTransaction},
 };
 use pathfinder_common::{BlockId, StarknetBlockTimestamp};
@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateFeeInput {
-    request: BroadcastedTransaction,
+    request: Vec<BroadcastedTransaction>,
     block_id: BlockId,
 }
 
@@ -38,7 +38,7 @@ impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {
 pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
-) -> Result<FeeEstimate, EstimateFeeError> {
+) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
     let handle = context
         .call_handle
         .as_ref()
@@ -68,9 +68,9 @@ pub async fn estimate_fee(
     let (when, pending_timestamp, pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
-    let mut result = handle
+    let result = handle
         .estimate_fee(
-            vec![input.request],
+            input.request,
             when,
             gas_price,
             pending_update,
@@ -78,20 +78,12 @@ pub async fn estimate_fee(
         )
         .await?;
 
-    if result.len() != 1 {
-        return Err(
-            anyhow::anyhow!("Internal error: expected exactly one fee estimation result").into(),
-        );
-    }
-
-    let result = result.pop().unwrap();
-
     Ok(result)
 }
 
 /// Transforms the request to call or estimate fee at some point in time to the type expected
 /// by [`crate::cairo::ext_py`] with the optional, latest pending data.
-pub(super) async fn base_block_and_pending_for_call(
+async fn base_block_and_pending_for_call(
     at_block: BlockId,
     pending_data: &Option<PendingData>,
 ) -> Result<
@@ -140,11 +132,9 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
-        felt, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        felt, CallParam, ContractAddress, EntryPoint, Fee, StarknetBlockHash, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
-    use pathfinder_storage::JournalMode;
-    use std::path::PathBuf;
 
     mod parsing {
         use super::*;
@@ -168,27 +158,29 @@ mod tests {
             use jsonrpsee::types::Params;
 
             let positional = r#"[
-                {
-                    "type": "INVOKE",
-                    "version": "0x100000000000000000000000000000000",
-                    "max_fee": "0x6",
-                    "signature": [
-                        "0x7"
-                    ],
-                    "nonce": "0x8",
-                    "contract_address": "0xaaa",
-                    "entry_point_selector": "0xe",
-                    "calldata": [
-                        "0xff"
-                    ]
-                },
+                [
+                    {
+                        "type": "INVOKE",
+                        "version": "0x100000000000000000000000000000000",
+                        "max_fee": "0x6",
+                        "signature": [
+                            "0x7"
+                        ],
+                        "nonce": "0x8",
+                        "contract_address": "0xaaa",
+                        "entry_point_selector": "0xe",
+                        "calldata": [
+                            "0xff"
+                        ]
+                    }
+                ],
                 { "block_hash": "0xabcde" }
             ]"#;
             let positional = Params::new(Some(positional));
 
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
-                request: test_invoke_txn(),
+                request: vec![test_invoke_txn()],
                 block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
@@ -199,27 +191,29 @@ mod tests {
             use jsonrpsee::types::Params;
 
             let named_args = r#"{
-                "request": {
-                    "type": "INVOKE",
-                    "version": "0x100000000000000000000000000000000",
-                    "max_fee": "0x6",
-                    "signature": [
-                        "0x7"
-                    ],
-                    "nonce": "0x8",
-                    "contract_address": "0xaaa",
-                    "entry_point_selector": "0xe",
-                    "calldata": [
-                        "0xff"
-                    ]
-                },
+                "request": [
+                    {
+                        "type": "INVOKE",
+                        "version": "0x100000000000000000000000000000000",
+                        "max_fee": "0x6",
+                        "signature": [
+                            "0x7"
+                        ],
+                        "nonce": "0x8",
+                        "contract_address": "0xaaa",
+                        "entry_point_selector": "0xe",
+                        "calldata": [
+                            "0xff"
+                        ]
+                    }
+                ],
                 "block_id": { "block_hash": "0xabcde" }
             }"#;
             let named_args = Params::new(Some(named_args));
 
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
-                request: test_invoke_txn(),
+                request: vec![test_invoke_txn()],
                 block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
@@ -228,13 +222,16 @@ mod tests {
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     mod ext_py {
+        use std::path::PathBuf;
+
         use super::*;
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
             BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::{CairoContractClass, ContractClass};
-        use pathfinder_common::felt_bytes;
+        use pathfinder_common::{felt_bytes, Chain};
+        use pathfinder_storage::JournalMode;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
@@ -299,7 +296,7 @@ mod tests {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
-                request: valid_broadcasted_transaction(),
+                request: vec![valid_broadcasted_transaction()],
                 block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = estimate_fee(context, input).await;
@@ -312,12 +309,12 @@ mod tests {
 
             let mainnet_invoke = valid_mainnet_invoke_v0();
             let input = EstimateFeeInput {
-                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                    BroadcastedInvokeTransactionV0 {
+                request: vec![BroadcastedTransaction::Invoke(
+                    BroadcastedInvokeTransaction::V0(BroadcastedInvokeTransactionV0 {
                         contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
                         ..mainnet_invoke
-                    },
-                )),
+                    }),
+                )],
                 block_id: BLOCK_5,
             };
             let error = estimate_fee(context, input).await;
@@ -330,12 +327,12 @@ mod tests {
 
             let mainnet_invoke = valid_mainnet_invoke_v0();
             let input = EstimateFeeInput {
-                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                    BroadcastedInvokeTransactionV0 {
+                request: vec![BroadcastedTransaction::Invoke(
+                    BroadcastedInvokeTransaction::V0(BroadcastedInvokeTransactionV0 {
                         entry_point_selector: EntryPoint(Default::default()),
                         ..mainnet_invoke
-                    },
-                )),
+                    }),
+                )],
                 block_id: BLOCK_5,
             };
             let error = estimate_fee(context, input).await;
@@ -347,17 +344,27 @@ mod tests {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
-                request: valid_broadcasted_transaction(),
+                request: vec![
+                    valid_broadcasted_transaction(),
+                    valid_broadcasted_transaction(),
+                ],
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(
                 result,
-                FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }
+                vec![
+                    FeeEstimate {
+                        gas_consumed: Default::default(),
+                        gas_price: Default::default(),
+                        overall_fee: Default::default()
+                    },
+                    FeeEstimate {
+                        gas_consumed: Default::default(),
+                        gas_price: Default::default(),
+                        overall_fee: Default::default()
+                    }
+                ]
             );
         }
 
@@ -385,54 +392,18 @@ mod tests {
             );
 
             let input = EstimateFeeInput {
-                request: declare_transaction,
+                request: vec![declare_transaction],
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(
                 result,
-                FeeEstimate {
+                vec![FeeEstimate {
                     gas_consumed: Default::default(),
                     gas_price: Default::default(),
                     overall_fee: Default::default()
-                }
+                }]
             );
-        }
-
-        #[ignore = "fixme for v0.11.0"]
-        #[test_log::test(tokio::test)]
-        async fn successful_declare_v2() {
-            /*
-            let (context, _join_handle) = test_context_with_call_handling().await;
-
-            let declare_transaction = BroadcastedTransaction::Declare(
-                BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                    max_fee: Fee(Default::default()),
-                    signature: vec![],
-                    nonce: TransactionNonce(Default::default()),
-                    contract_class: todo!("fixme v0.11.0"),
-                    sender_address: ContractAddress::new_or_panic(felt!(
-                        "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
-                    )),
-                    compiled_class_hash: todo!("fixme v0.11.0"),
-                }),
-            );
-
-            let input = EstimateFeeInput {
-                request: declare_transaction,
-                block_id: BLOCK_5,
-            };
-            let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(
-                result,
-                FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }
-            );
-            */
         }
     }
 }

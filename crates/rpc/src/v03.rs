@@ -27,6 +27,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method_with_no_input("v0.3_starknet_blockNumber", v02_method::block_number)?
         .register_method("v0.3_starknet_call", v02_method::call)?
         .register_method_with_no_input("v0.3_starknet_chainId", v02_method::chain_id)?
+        .register_method("v0.3_starknet_estimateFee", method::estimate_fee)?
         .register_method(
             "v0.3_starknet_getBlockWithTxHashes",
             v02_method::get_block_with_tx_hashes,
