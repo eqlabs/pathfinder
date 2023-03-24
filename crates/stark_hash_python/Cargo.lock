@@ -324,6 +324,17 @@ version = "0.1.0"
 dependencies = [
  "num-bigint 0.4.3",
  "pyo3",
+ "stark_curve",
+ "stark_hash",
+ "stark_poseidon",
+]
+
+[[package]]
+name = "stark_poseidon"
+version = "0.1.0"
+dependencies = [
+ "num-bigint 0.4.3",
+ "stark_curve",
  "stark_hash",
 ]
 
