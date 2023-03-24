@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 anyhow = "1.0.56"
 base64 = "0.13.0"
-clap = { version = "3.2.17", features = ["env", "derive"] }
+clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 futures = "0.3.21"
 libp2p = { version = "0.50.0", default-features = false, features = ["identify", "kad", "noise", "ping", "dns", "tcp", "tokio", "yamux", "relay", "autonat", "macros"] }
 serde = "1.0.144"
