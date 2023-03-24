@@ -2,7 +2,13 @@ use crate::{
     cairo::ext_py::{CallFailure, GasPriceSource},
     context::RpcContext,
     error::RpcError,
-    v02::{types::{reply::TransactionSimulation, request::BroadcastedTransaction}, method::estimate_fee::base_block_and_pending_for_call},
+    v02::{
+        method::estimate_fee::base_block_and_pending_for_call,
+        types::{
+            reply::{FeeEstimation, FunctionInvocation, TransactionSimulation, TransactionTrace},
+            request::BroadcastedTransaction,
+        },
+    },
 };
 use anyhow::anyhow;
 use pathfinder_common::BlockId;
@@ -36,7 +42,7 @@ pub async fn simulate_transaction(
 
     let (at_block, pending_timestamp, pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
-    
+
     let skip_execute = input
         .simulation_flags
         .0
@@ -58,16 +64,95 @@ pub async fn simulate_transaction(
             skip_validate,
         )
         .await
-        .map_err(|e| SimulateTrasactionError::CallFailed(e))?;
+        .map_err(SimulateTrasactionError::CallFailed)?;
 
     dbg!(&txs); // TODO(SM): remove debug output
 
-    let txs = txs.into_iter().map(map_trace).collect();
-    Ok(SimulateTransactionResult(txs))
+    let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTrasactionError> =
+        txs.into_iter().map(map_tx).collect();
+    Ok(SimulateTransactionResult(txs?))
 }
 
-fn map_trace(_trace: TransactionSimulation) -> dto::SimulatedTransaction {
-    todo!() // TODO!(SM)
+fn map_tx(tx: TransactionSimulation) -> Result<dto::SimulatedTransaction, SimulateTrasactionError> {
+    Ok(dto::SimulatedTransaction {
+        fee_estimation: Some(map_fee(tx.fee_estimation)),
+        transaction_trace: Some(map_trace(tx.trace)?),
+    })
+}
+
+fn map_fee(fee: FeeEstimation) -> dto::FeeEstimate {
+    dto::FeeEstimate {
+        gas_consumed: Some(fee.gas_usage),
+        gas_price: Some(fee.gas_price),
+        overall_fee: Some(fee.overall_fee),
+    }
+}
+
+fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocation {
+    dto::FunctionInvocation {
+        call_type: fi.call_type,
+        caller_address: fi.caller_address,
+        calls: fi
+            .internal_calls
+            .take()
+            .map(|calls| calls.into_iter().map(map_function_invocation).collect()),
+        code_address: fi.code_address,
+        entry_point_type: fi.entry_point_type,
+        events: fi.events,
+        messages: fi.messages,
+        function_call: dto::FunctionCall {
+            calldata: fi.calldata,
+            contract_address: fi.contract_address,
+            entry_point_selector: fi.selector,
+        },
+        result: fi.result,
+    }
+}
+
+fn map_trace(
+    mut trace: TransactionTrace,
+) -> Result<dto::TransactionTrace, SimulateTrasactionError> {
+    let invocations = (
+        trace.validate_invocation.take(),
+        trace.function_invocation.take(),
+        trace.fee_transfer_invocation.take(),
+    );
+    match invocations {
+        (Some(val), Some(fun), Some(fee))
+            if fun.entry_point_type == Some(dto::EntryPointType::Constructor) =>
+        {
+            Ok(dto::TransactionTrace::DeployAccountTxnTrace(
+                dto::DeployAccountTxnTrace {
+                    fee_transfer_invocation: Some(map_function_invocation(fee)),
+                    validate_invocation: Some(map_function_invocation(val)),
+                    constructor_invocation: Some(map_function_invocation(fun)),
+                },
+            ))
+        }
+        (Some(val), Some(fun), Some(fee))
+            if fun.entry_point_type == Some(dto::EntryPointType::External) =>
+        {
+            Ok(dto::TransactionTrace::InvokeTxnTrace(dto::InvokeTxnTrace {
+                fee_transfer_invocation: Some(map_function_invocation(fee)),
+                validate_invocation: Some(map_function_invocation(val)),
+                execute_invocation: Some(map_function_invocation(fun)),
+            }))
+        }
+        (Some(val), _, Some(fee)) => Ok(dto::TransactionTrace::DeclareTxnTrace(
+            dto::DeclareTxnTrace {
+                fee_transfer_invocation: Some(map_function_invocation(fee)),
+                validate_invocation: Some(map_function_invocation(val)),
+            },
+        )),
+        (_, Some(fun), _) => Ok(dto::TransactionTrace::L1HandlerTxnTrace(
+            dto::L1HandlerTxnTrace {
+                function_invocation: Some(map_function_invocation(fun)),
+            },
+        )),
+        _ => Err(SimulateTrasactionError::Custom(anyhow!(
+            "Unmatched transaction trace!"
+        ))),
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -93,7 +178,7 @@ impl From<SimulateTrasactionError> for RpcError {
             SimulateTrasactionError::IllegalState | SimulateTrasactionError::CallFailed(_) => {
                 RpcError::Internal(anyhow!("Internal error"))
             }
-            SimulateTrasactionError::Custom(e) => RpcError::Internal(e)
+            SimulateTrasactionError::Custom(e) => RpcError::Internal(e),
         }
     }
 }
@@ -139,7 +224,7 @@ pub mod dto {
         LibraryCall,
     }
 
-    #[derive(Debug, Deserialize, Serialize)]
+    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub enum EntryPointType {
         #[serde(rename = "CONSTRUCTOR")]
         Constructor,
@@ -276,7 +361,7 @@ pub mod dto {
     #[derive(Debug, Deserialize, Serialize)]
     // TODO(SM): consider adding validation by regex (per spec)
     // #[serde(try_from = "String")]
-    pub struct NumAsHex(String);
+    pub struct NumAsHex(pub String);
 }
 
 // TODO!(SM): tests
@@ -311,10 +396,128 @@ Manual test against call.py:
 # source .venv/bin/activate
 # cd src/pathfinder_worker
 # sqlite3 empty.db
-> pragma user_version = 30; 
+> pragma user_version = 30;
 > ^D
 # python3 call.py empty.db
 
-{"verb":"SIMULATE_TX","at_block":"latest","chain":"TESTNET","pending_updates":{},"pending_deployed":[],"pending_nonces":{},"pending_timestamp":42,"gas_price":"0x1","transactions":[{"contract_address_salt":"0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971","max_fee":"0x0","signature":["0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88","0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"],"class_hash":"0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513","nonce":"0x0","version":"0x100000000000000000000000000000001","constructor_calldata":["0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"],"type":"DEPLOY_ACCOUNT"}]}
+{"verb":"ESTIMATE_FEE","at_block":"latest","chain":"TESTNET","pending_updates":{},"pending_deployed":[],"pending_nonces":{},"pending_timestamp":42,"gas_price":"0x1","transaction":{"contract_address_salt":"0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971","max_fee":"0x0","signature":["0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88","0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"],"class_hash":"0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513","nonce":"0x0","version":"0x100000000000000000000000000000001","constructor_calldata":["0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"],"type":"DEPLOY_ACCOUNT"}}
+>>>
+{
+  "verb": "ESTIMATE_FEE",
+  "at_block": "latest",
+  "chain": "TESTNET",
+  "pending_updates": {},
+  "pending_deployed": [],
+  "pending_nonces": {},
+  "pending_timestamp": 42,
+  "gas_price": "0x1",
+  "transaction": {
+    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+    "max_fee": "0x0",
+    "signature": [
+      "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+      "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+    ],
+    "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+    "nonce": "0x0",
+    "version": "0x100000000000000000000000000000001",
+    "constructor_calldata": [
+      "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+    ],
+    "type": "DEPLOY_ACCOUNT"
+  }
+}
+<<<
+{
+  "status": "ok",
+  "output": {
+    "gas_consumed": "0x00000000000000000000000000000000000000000000000000000000000010e3",
+    "gas_price": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "overall_fee": "0x00000000000000000000000000000000000000000000000000000000000010e3"
+  }
+}
+
+{"verb":"SIMULATE_TX","at_block":"latest","chain":"TESTNET","pending_updates":{},"pending_deployed":[],"pending_nonces":{},"pending_timestamp":42,"gas_price":"0x1","transactions":[{"contract_address_salt":"0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971","max_fee":"0x0","signature":["0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88","0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"],"class_hash":"0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513","nonce":"0x0","version":"0x100000000000000000000000000000001","constructor_calldata":["0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"],"type":"DEPLOY_ACCOUNT"}],"skip_validate":false}
+>>>
+{
+  "verb": "SIMULATE_TX",
+  "at_block": "latest",
+  "chain": "TESTNET",
+  "pending_updates": {},
+  "pending_deployed": [],
+  "pending_nonces": {},
+  "pending_timestamp": 42,
+  "gas_price": "0x1",
+  "transactions": [
+    {
+      "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+      "max_fee": "0x0",
+      "signature": [
+        "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+        "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+      ],
+      "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+      "nonce": "0x0",
+      "version": "0x100000000000000000000000000000001",
+      "constructor_calldata": [
+        "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+      ],
+      "type": "DEPLOY_ACCOUNT"
+    }
+  ],
+  "skip_validate": false
+}
+<<<
+{
+  "status": "ok",
+  "output": [
+    {
+      "trace": {
+        "validate_invocation": {
+          "sender_address": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
+          "calldata": [
+            "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+            "0x046c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+            "0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+          ],
+          "call_type": "CALL",
+          "class_hash": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+          "selector": "0x036fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895",
+          "entry_point_type": "EXTERNAL",
+          "result": [],
+          "internal_calls": [],
+          "events": [],
+          "messages": []
+        },
+        "function_invocation": {
+          "sender_address": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
+          "calldata": [
+            "0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+          ],
+          "call_type": "CALL",
+          "class_hash": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+          "selector": "0x028ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194",
+          "entry_point_type": "CONSTRUCTOR",
+          "result": [],
+          "internal_calls": [],
+          "events": [],
+          "messages": []
+        },
+        "fee_transfer_invocation": null,
+        "signature": [
+          "0x0296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+          "0x04e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+        ]
+      },
+      "fee_estimation": {
+        "gas_consumed": "0x00000000000000000000000000000000000000000000000000000000000010e3",
+        "gas_price": "0x0000000000000000000000000000000000000000000000000000000000000001",
+        "overall_fee": "0x00000000000000000000000000000000000000000000000000000000000010e3"
+      }
+    }
+  ]
+}
 
  */
