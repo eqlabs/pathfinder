@@ -53,7 +53,8 @@ try:
         ExecuteEntryPoint,
     )
     from starkware.starknet.business_logic.execution.objects import (
-        ExecutionResourcesManager, CallType
+        ExecutionResourcesManager,
+        CallType,
     )
     from starkware.starknet.business_logic.fact_state.patricia_state import (
         PatriciaStateReader,
@@ -326,6 +327,7 @@ def check_cairolang_version():
     except pkg_resources.DistributionNotFound:
         return False
 
+
 def do_loop(connection: sqlite3.Connection, input_gen, output_file):
     logger = Logger()
 
@@ -355,7 +357,9 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
 
             connection.execute("BEGIN")
 
-            [verb, output, inner_timings] = loop_inner(connection, command, contract_class_cache)
+            [verb, output, inner_timings] = loop_inner(
+                connection, command, contract_class_cache
+            )
 
             # this is more backwards compatible dictionary union
             timings = {**timings, **inner_timings}
@@ -418,7 +422,9 @@ def report_failed(logger, command, e):
         logger.debug(str(e))
 
 
-def loop_inner(connection: sqlite3.Connection, command: Command, contract_class_cache=None):
+def loop_inner(
+    connection: sqlite3.Connection, command: Command, contract_class_cache=None
+):
     logger = Logger()
 
     if not check_schema(connection):
@@ -544,8 +550,10 @@ def render(verb, vals):
     elif verb == Verb.SIMULATE_TX:
         return list(map(render_simulate_tx, vals))
 
+
 def as_hex(x):
     return f"0x{x.to_bytes(32, 'big').hex()}"
+
 
 def render_fee_estimate(fee):
     return {
@@ -554,6 +562,7 @@ def render_fee_estimate(fee):
         "overall_fee": as_hex(fee.overall_fee),
     }
 
+
 def render_event(event):
     return {
         "order": event.order,
@@ -561,12 +570,14 @@ def render_event(event):
         "data": list(map(as_hex, event.data)),
     }
 
+
 def render_message(msg):
     return {
         "order": msg.order,
         "to_address": as_hex(to_address),
         "payload": list(map(as_hex, event.payload)),
     }
+
 
 def render_func_invocation(tx: FunctionInvocation):
     return {
@@ -583,19 +594,28 @@ def render_func_invocation(tx: FunctionInvocation):
         "messages": list(map(render_message, tx.messages)),
     }
 
+
 def render_trace(trace: TransactionTrace):
     return {
-        "validate_invocation": render_func_invocation(trace.validate_invocation) if trace.validate_invocation is not None else None,
-        "function_invocation": render_func_invocation(trace.function_invocation) if trace.function_invocation is not None else None,
-        "fee_transfer_invocation": render_func_invocation(trace.fee_transfer_invocation) if trace.fee_transfer_invocation is not None else None,
+        "validate_invocation": render_func_invocation(trace.validate_invocation)
+        if trace.validate_invocation is not None
+        else None,
+        "function_invocation": render_func_invocation(trace.function_invocation)
+        if trace.function_invocation is not None
+        else None,
+        "fee_transfer_invocation": render_func_invocation(trace.fee_transfer_invocation)
+        if trace.fee_transfer_invocation is not None
+        else None,
         "signature": list(map(as_hex, trace.signature)),
     }
+
 
 def render_simulate_tx(trace: TransactionSimulationInfo):
     return {
         "trace": render_trace(trace.trace),
         "fee_estimation": render_fee_estimate(trace.fee_estimation),
     }
+
 
 def int_hash_or_latest(s: str):
     if s == "latest":
@@ -1030,13 +1050,16 @@ async def do_estimate_fee(
         # with 0.10 upgrade we changed to division with gas_consumed as well, since
         # there is opposition to providing the non-multiplied scalar value from
         # cairo-lang.
-        fees.append(FeeEstimationInfo(
-            gas_price=block_info.gas_price,
-            gas_usage=tx_info.actual_fee // max(1, block_info.gas_price),
-            overall_fee=tx_info.actual_fee,
-        ))
+        fees.append(
+            FeeEstimationInfo(
+                gas_price=block_info.gas_price,
+                gas_usage=tx_info.actual_fee // max(1, block_info.gas_price),
+                overall_fee=tx_info.actual_fee,
+            )
+        )
 
     return fees
+
 
 async def do_simulate_tx(
     async_state: CachedState,
@@ -1063,9 +1086,9 @@ async def do_simulate_tx(
             fee_transfer_invocation=FunctionInvocation.from_optional_internal(
                 tx_info.fee_transfer_info
             ),
-            signature=external_tx.signature
+            signature=external_tx.signature,
         )
-        
+
         fee_estimation = FeeEstimationInfo(
             gas_price=block_info.gas_price,
             gas_usage=tx_info.actual_fee // max(1, block_info.gas_price),
