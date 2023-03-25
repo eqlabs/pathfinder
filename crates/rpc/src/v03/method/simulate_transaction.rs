@@ -77,7 +77,7 @@ fn map_tx(tx: TransactionSimulation) -> Result<dto::SimulatedTransaction, Simula
 
 fn map_fee(fee: FeeEstimation) -> dto::FeeEstimate {
     dto::FeeEstimate {
-        gas_consumed: Some(fee.gas_usage),
+        gas_consumed: Some(fee.gas_consumed),
         gas_price: Some(fee.gas_price),
         overall_fee: Some(fee.overall_fee),
     }

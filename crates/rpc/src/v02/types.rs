@@ -891,10 +891,9 @@ pub mod reply {
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimation {
-        pub overall_fee: NumAsHex,
+        pub gas_consumed: NumAsHex,
         pub gas_price: NumAsHex,
-        pub gas_usage: NumAsHex,
-        pub unit: String,
+        pub overall_fee: NumAsHex,
     }
 
     #[derive(Debug, Deserialize, Serialize)]
