@@ -1606,6 +1606,184 @@ def test_deploy_account():
     ]
 
 
+def test_deploy_newly_declared_account():
+    con = inmemory_with_tables()
+
+    cur = con.execute("BEGIN")
+
+    # Block
+    cur.execute(
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        [
+            b"some blockhash somewhere".rjust(32, b"\x00"),
+            felt_to_bytes(0),
+            b"\x00" * 16,
+            b"\x00" * 32,
+            felt_to_bytes(0),
+        ],
+    )
+
+    con.commit()
+
+    dummy_account_contract_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+    )
+    dummy_account_contract_class_hash = (
+        0x0791563DA22895F1E398B689866718346106C0CC71207A4ADA68E6687CE1BADF
+    )
+
+    with open(dummy_account_contract_path, "rb") as file:
+        dummy_account_contract_definition = file.read()
+        dummy_account_contract_definition = zstandard.decompress(
+            dummy_account_contract_definition
+        )
+        dummy_account_contract_definition = dummy_account_contract_definition.decode(
+            "utf-8"
+        )
+        dummy_account_contract_definition = DeprecatedCompiledClass.Schema().loads(
+            dummy_account_contract_definition
+        )
+
+    con.execute("BEGIN")
+
+    command = EstimateFee(
+        at_block="latest",
+        chain=call.Chain.TESTNET,
+        gas_price=1,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+        transactions=[
+            # DECLARE an account contract class
+            DeprecatedDeclare(
+                version=0x100000000000000000000000000000000,
+                max_fee=0,
+                signature=[],
+                nonce=0,
+                contract_class=dummy_account_contract_definition,
+                sender_address=1,
+            ),
+            # DEPLOY_ACCOUNT the class declared in the previous transaction
+            DeployAccount(
+                class_hash=dummy_account_contract_class_hash,
+                contract_address_salt=0,
+                constructor_calldata=[],
+                version=0x100000000000000000000000000000001,
+                nonce=0,
+                max_fee=0,
+                signature=[],
+            ),
+        ],
+    )
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    assert output == [
+        # DECLARE an account contract class
+        {
+            "gas_consumed": 1251,
+            "gas_price": 1,
+            "overall_fee": 1251,
+        },
+        # DEPLOY_ACCOUNT the class declared in the previous transaction
+        {
+            "gas_consumed": 3096,
+            "gas_price": 1,
+            "overall_fee": 3096,
+        },
+    ]
+
+
+def test_deploy_newly_declared_sierra_account():
+    con = inmemory_with_tables()
+
+    cur = con.execute("BEGIN")
+
+    (
+        dummy_account_contract_address,
+        sierra_contract_address,
+    ) = setup_dummy_account_and_sierra_contract(cur)
+
+    con.commit()
+
+    sierra_class_definition_path = test_relative_path("./sierra_account.json.zst")
+
+    with zstandard.open(sierra_class_definition_path, "rb") as file:
+        # class_definition = file.read()
+        # class_definition = zstandard.decompress(class_definition).decode("utf-8")
+        class_definition = ContractClass.loads(file.read())
+
+    # from starkware.starknet.core.os.contract_class.class_hash import compute_class_hash
+    # class_hash = compute_class_hash(class_definition)
+    class_hash = 0x4A31654529891920D9A6F69696A23A2916B9780F830D90E452E2FA90FC9E715
+
+    # from starkware.starknet.core.os.contract_class.compiled_class_hash import (
+    #     compute_compiled_class_hash,
+    # )
+    # from starkware.starknet.services.api.contract_class.contract_class_utils import (
+    #    compile_contract_class,
+    # )
+    # compiled_class = compile_contract_class(
+    #     class_definition, allowed_libfuncs_list_name="experimental_v0.1.0"
+    # )
+    # compiled_class_hash = compute_compiled_class_hash(compiled_class)
+    compiled_class_hash = (
+        0x5B7768D97325383C91E372E47E4E7C394F1483D97445DDDC72F56E59202D1BC
+    )
+
+    con.execute("BEGIN")
+
+    command = EstimateFee(
+        at_block="latest",
+        chain=call.Chain.TESTNET,
+        gas_price=1,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+        transactions=[
+            # DECLARE an account contract class
+            Declare(
+                version=0x100000000000000000000000000000002,
+                max_fee=0,
+                signature=[],
+                nonce=0,
+                contract_class=class_definition,
+                compiled_class_hash=compiled_class_hash,
+                sender_address=dummy_account_contract_address,
+            ),
+            # DEPLOY_ACCOUNT the class declared in the previous transaction
+            DeployAccount(
+                class_hash=class_hash,
+                contract_address_salt=0,
+                constructor_calldata=[0],
+                version=0x100000000000000000000000000000001,
+                nonce=0,
+                max_fee=0,
+                signature=[],
+            ),
+        ],
+    )
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    assert output == [
+        # DECLARE an account contract class
+        {
+            "gas_consumed": 1251,
+            "gas_price": 1,
+            "overall_fee": 1251,
+        },
+        # DEPLOY_ACCOUNT the class declared in the previous transaction
+        {
+            "gas_consumed": 3098,
+            "gas_price": 1,
+            "overall_fee": 3098,
+        },
+    ]
+
+
 def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: str):
     with open(class_definition_path, "rb") as f:
         contract_definition = f.read()

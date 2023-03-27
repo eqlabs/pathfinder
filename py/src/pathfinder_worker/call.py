@@ -66,7 +66,14 @@ try:
         CompiledClass,
         EntryPointType,
     )
-    from starkware.starknet.services.api.gateway.transaction import AccountTransaction
+    from starkware.starknet.services.api.contract_class.contract_class_utils import (
+        compile_contract_class,
+    )
+    from starkware.starknet.services.api.gateway.transaction import (
+        AccountTransaction,
+        Declare,
+        DeprecatedDeclare,
+    )
     from starkware.starknet.services.utils.sequencer_api_utils import (
         InternalAccountTransactionForSimulate,
     )
@@ -924,12 +931,29 @@ async def do_estimate_fee(
     fees = []
 
     for transaction in transactions:
-        transaction = InternalAccountTransactionForSimulate.create_for_simulate(
-            transaction, general_config, False
+        internal_transaction = (
+            InternalAccountTransactionForSimulate.create_for_simulate(
+                transaction, general_config, False
+            )
         )
 
         with state.copy_and_apply() as state_copy:
-            tx_info = await transaction.apply_state_updates(state_copy, general_config)
+            tx_info = await internal_transaction.apply_state_updates(
+                state_copy, general_config
+            )
+
+        # apply class declarations manually to state, since apply_state_updates() does
+        # not do this
+        if isinstance(transaction, Declare):
+            compiled_class = compile_contract_class(
+                transaction.contract_class,
+                allowed_libfuncs_list_name="experimental_v0.1.0",
+            )
+            state.contract_classes[transaction.compiled_class_hash] = compiled_class
+        elif isinstance(transaction, DeprecatedDeclare):
+            state.contract_classes[
+                internal_transaction.class_hash
+            ] = transaction.contract_class
 
         # with 0.10 upgrade we changed to division with gas_consumed as well, since
         # there is opposition to providing the non-multiplied scalar value from
