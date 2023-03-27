@@ -137,10 +137,8 @@ impl Handle {
 
         let continued_span = tracing::info_span!("ext_py_sim_tx", pid = Empty);
 
-        let transactions: Result<Vec<AddTransaction>, _> = transactions
-            .iter()
-            .map(|tx| map_tx(tx.clone()))
-            .collect();
+        let transactions: Result<Vec<AddTransaction>, _> =
+            transactions.iter().map(|tx| map_tx(tx.clone())).collect();
         let transactions = transactions?;
 
         self.command_tx
