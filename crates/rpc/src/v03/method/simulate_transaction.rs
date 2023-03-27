@@ -357,6 +357,8 @@ pub mod dto {
 
 /*
 
+curl -H 'Content-type: application/json' -d'{"jsonrpc":"2.0","method":"starknet_simulateTransaction","params":{"block_id":"latest","transactions":[{"contract_address_salt":"0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971","max_fee":"0x0","signature":["0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88","0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"],"class_hash":"0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513","nonce":"0x0","version":"0x100000000000000000000000000000001","constructor_calldata":["0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"],"type":"DEPLOY_ACCOUNT"}],"simulation_flags":[]},"id":"42?"}' http://127.0.0.1:9545/rpc/v0.3 | jq .
+
 curl -H 'Content-type: application/json' -d'@sim.json' http://127.0.0.1:9545/rpc/v0.3 | jq . > res.json
 
 >>>
@@ -435,6 +437,12 @@ curl -H 'Content-type: application/json' -d'@sim.json' http://127.0.0.1:9545/rpc
   ],
   "id": "42?"
 }
+
+---
+
+{"verb":"SIMULATE_TX","at_block":"latest","chain":"TESTNET","pending_updates":{},"pending_deployed":[],"pending_nonces":{},"pending_timestamp":42,"gas_price":"0x1","transactions":[{"contract_address_salt":"0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971","max_fee":"0x0","signature":["0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88","0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"],"class_hash":"0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513","nonce":"0x0","version":"0x100000000000000000000000000000001","constructor_calldata":["0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"],"type":"DEPLOY_ACCOUNT"}],"skip_validate":false}
+
+{"status": "ok", "output": [{"trace": {"validate_invocation": {"caller_address": "0x0", "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415", "calldata": ["0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513", "0x046c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971", "0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"], "call_type": "CALL", "code_address": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513", "selector": "0x036fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895", "entry_point_type": "EXTERNAL", "result": [], "internal_calls": [], "events": [], "messages": []}, "function_invocation": {"caller_address": "0x0", "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415", "calldata": ["0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"], "call_type": "CALL", "code_address": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513", "selector": "0x028ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194", "entry_point_type": "CONSTRUCTOR", "result": [], "internal_calls": [], "events": [], "messages": []}, "fee_transfer_invocation": null, "signature": ["0x0296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88", "0x04e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"]}, "fee_estimation": {"gas_consumed": "0x010e3", "gas_price": "0x01", "overall_fee": "0x010e3"}}]}
 
 ---
 
