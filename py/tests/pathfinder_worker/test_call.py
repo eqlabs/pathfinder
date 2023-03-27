@@ -2094,12 +2094,11 @@ def test_simulate_transaction_succeeds():
         ],
     )
     con.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             b"\x00" * 32,
             b"\x00" * 16,
-            b"\x00" * 32,
             b"\x00" * 32,
         ],
     )

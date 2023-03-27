@@ -138,13 +138,11 @@ impl Handle {
 
         let continued_span = tracing::info_span!("ext_py_sim_tx", pid = Empty);
 
-        let transactions = {
-            let mut ret = Vec::with_capacity(transactions.len());
-            for tx in transactions {
-                ret.push(map_tx(tx.clone())?);
-            }
-            ret
-        };
+        let transactions: Result<Vec<AddTransaction>, _> = transactions
+            .into_iter()
+            .map(|tx| map_tx(tx.clone()))
+            .collect();
+        let transactions = transactions?;
 
         self.command_tx
             .send((
