@@ -459,7 +459,7 @@ def test_success():
     )
 
     [number, block_hash, latest] = output
-    expected = {"status": "ok", "output": ["0x" + (3).to_bytes(32, "big").hex()]}
+    expected = {"status": "ok", "output": ["0x03"]}
 
     assert number == expected == block_hash == latest
 
@@ -747,9 +747,9 @@ def test_fee_estimate_on_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
-                "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
-                "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
+                "gas_consumed": "0x0",
+                "gas_price": "0x0",
+                "overall_fee": "0x0",
             }
         ],
     }
@@ -758,9 +758,9 @@ def test_fee_estimate_on_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x" + (0x04EA).to_bytes(32, "big").hex(),
-                "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-                "overall_fee": "0x" + (0x3124).to_bytes(32, "big").hex(),
+                "gas_consumed": "0x04ea",
+                "gas_price": "0x0a",
+                "overall_fee": "0x03124",
             },
         ],
     }

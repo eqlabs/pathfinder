@@ -551,7 +551,8 @@ def render(verb, vals):
 
 
 def as_hex(x):
-    return f"0x{x.to_bytes(32, 'big').hex()}"
+    hex = x.to_bytes(32, "big").hex()
+    return f"0x0{hex.lstrip('0')}"
 
 
 def render_fee_estimate(fee):
