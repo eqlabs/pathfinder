@@ -221,7 +221,8 @@ impl serde_with::SerializeAs<u64> for OffsetSerde {
     where
         S: serde::Serializer,
     {
-        source.serialize(serializer)
+        let as_hex = U64AsHexStr(*source);
+        as_hex.serialize(serializer)
     }
 }
 
