@@ -11,4 +11,6 @@ crate-type = ["cdylib"]
 [dependencies]
 num-bigint = "0.4.3"
 pyo3 = { version = "0.17.1", features = ["extension-module", "num-bigint"] }
+stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
+stark_poseidon = { path = "../stark_poseidon" }
