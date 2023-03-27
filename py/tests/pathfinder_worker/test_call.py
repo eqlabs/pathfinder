@@ -35,7 +35,6 @@ from pathfinder_worker.call import (
     Call,
     Command,
     EstimateFee,
-    SimulateTx,
     check_cairolang_version,
     do_loop,
     loop_inner,
