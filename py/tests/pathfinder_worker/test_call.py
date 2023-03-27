@@ -1686,17 +1686,9 @@ def test_deploy_newly_declared_account():
 
     assert output == [
         # DECLARE an account contract class
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        },
+        FeeEstimationInfo(overall_fee=1251, gas_price=1, gas_usage=1251),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        {
-            "gas_consumed": 3096,
-            "gas_price": 1,
-            "overall_fee": 3096,
-        },
+        FeeEstimationInfo(overall_fee=3096, gas_price=1, gas_usage=3096),
     ]
 
 
@@ -1775,17 +1767,9 @@ def test_deploy_newly_declared_sierra_account():
 
     assert output == [
         # DECLARE an account contract class
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        },
+        FeeEstimationInfo(overall_fee=1251, gas_price=1, gas_usage=1251),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        {
-            "gas_consumed": 3098,
-            "gas_price": 1,
-            "overall_fee": 3098,
-        },
+        FeeEstimationInfo(overall_fee=3098, gas_price=1, gas_usage=3098),
     ]
 
 
