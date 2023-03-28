@@ -15,7 +15,7 @@
 //! global_state, and after that, calls can be made to it's `block_hash` for which we probably need
 //! to add an alternative way to use a hash directly rather as a root than assume it's a block hash.
 
-use crate::v02::types::reply::{FeeEstimate, TransactionSimulation};
+use crate::v02::types::reply::FeeEstimate;
 use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
@@ -39,6 +39,10 @@ mod sub_process;
 mod service;
 
 pub use service::start;
+
+use self::types::TransactionSimulation;
+
+pub mod types;
 
 /// Handle to the python executors work queue. Cloneable and shareable.
 #[derive(Clone)]

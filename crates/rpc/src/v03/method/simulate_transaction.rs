@@ -1,15 +1,16 @@
 use crate::{
-    cairo::ext_py::{CallFailure, GasPriceSource},
+    cairo::ext_py::{
+        types::{FunctionInvocation, TransactionSimulation, TransactionTrace},
+        CallFailure, GasPriceSource,
+    },
     context::RpcContext,
     error::RpcError,
     v02::{
         method::estimate_fee::base_block_and_pending_for_call,
-        types::{
-            reply::{FeeEstimation, FunctionInvocation, TransactionSimulation, TransactionTrace},
-            request::BroadcastedTransaction,
-        },
+        types::request::BroadcastedTransaction,
     },
 };
+
 use anyhow::anyhow;
 use pathfinder_common::BlockId;
 use serde::{Deserialize, Serialize};
@@ -68,19 +69,13 @@ pub async fn simulate_transaction(
     Ok(SimulateTransactionResult(txs?))
 }
 
-fn map_tx(tx: TransactionSimulation) -> Result<dto::SimulatedTransaction, SimulateTransactionError> {
+fn map_tx(
+    tx: TransactionSimulation,
+) -> Result<dto::SimulatedTransaction, SimulateTransactionError> {
     Ok(dto::SimulatedTransaction {
-        fee_estimation: Some(map_fee(tx.fee_estimation)),
+        fee_estimation: Some(tx.fee_estimation),
         transaction_trace: Some(map_trace(tx.trace)?),
     })
-}
-
-fn map_fee(fee: FeeEstimation) -> dto::FeeEstimate {
-    dto::FeeEstimate {
-        gas_consumed: Some(fee.gas_consumed),
-        gas_price: Some(fee.gas_price),
-        overall_fee: Some(fee.overall_fee),
-    }
 }
 
 fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocation {
@@ -181,6 +176,8 @@ impl From<anyhow::Error> for SimulateTransactionError {
 }
 
 pub mod dto {
+    use crate::v02::types::reply::FeeEstimate;
+
     use super::*;
 
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -335,22 +332,6 @@ pub mod dto {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub transaction_trace: Option<TransactionTrace>,
     }
-
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct FeeEstimate {
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub gas_consumed: Option<NumAsHex>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub gas_price: Option<NumAsHex>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub overall_fee: Option<NumAsHex>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct NumAsHex(pub String);
 }
 
 #[cfg(test)]
@@ -359,6 +340,8 @@ mod tests {
 
     use pathfinder_common::{felt, Chain};
     use pathfinder_storage::{JournalMode, Storage};
+
+    use crate::v02::types::reply::FeeEstimate;
 
     use super::*;
 
@@ -430,15 +413,16 @@ mod tests {
 
         let expected: Vec<dto::SimulatedTransaction> = {
             use dto::*;
+            use ethers::types::H256;
 
             vec![
             SimulatedTransaction {
                 fee_estimation: Some(
                     FeeEstimate {
-                        gas_consumed: Some(NumAsHex("0x010e3".to_string())),
-                        gas_price: Some(NumAsHex("0x01".to_string())),
-                        overall_fee: Some(NumAsHex("0x010e3".to_string())),
-                    },
+                        gas_consumed: H256::from_low_u64_be(0x010e3),
+                        gas_price: H256::from_low_u64_be(0x01),
+                        overall_fee: H256::from_low_u64_be(0x010e3),
+                    }
                 ),
                 transaction_trace: Some(
                     TransactionTrace::DeployAccount(

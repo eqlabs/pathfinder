@@ -392,12 +392,7 @@ pub mod request {
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
     // At the moment both reply types are the same for get_code, hence the re-export
-    use crate::{
-        felt::{RpcFelt, RpcFelt251},
-        v03::method::simulate_transaction::dto::{
-            Address, CallType, EntryPointType, Event, MsgToL1, NumAsHex,
-        },
-    };
+    use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
         EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
@@ -406,7 +401,6 @@ pub mod reply {
     use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
-    use stark_hash::Felt;
     use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
     use std::convert::From;
 
@@ -870,62 +864,6 @@ pub mod reply {
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
         pub overall_fee: ethers::types::H256,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct TransactionSimulation {
-        pub trace: TransactionTrace,
-        pub fee_estimation: FeeEstimation,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct TransactionTrace {
-        pub validate_invocation: Option<FunctionInvocation>,
-        pub function_invocation: Option<FunctionInvocation>,
-        pub fee_transfer_invocation: Option<FunctionInvocation>,
-        pub signature: Vec<Felt>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct FeeEstimation {
-        pub gas_consumed: NumAsHex,
-        pub gas_price: NumAsHex,
-        pub overall_fee: NumAsHex,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    pub struct FunctionInvocation {
-        pub calldata: Vec<Felt>,
-        pub contract_address: Address,
-        pub selector: Felt,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_type: Option<CallType>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub caller_address: Option<Felt>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub internal_calls: Option<Vec<FunctionInvocation>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub code_address: Option<Felt>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub entry_point_type: Option<EntryPointType>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub events: Option<Vec<Event>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub messages: Option<Vec<MsgToL1>>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<Felt>>,
     }
 
     #[cfg(test)]

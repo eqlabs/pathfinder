@@ -1,7 +1,7 @@
 //! The json deserializable types
 
-use super::{CallFailure, SubprocessError};
-use crate::v02::types::reply::{FeeEstimate, TransactionSimulation};
+use super::{types::TransactionSimulation, CallFailure, SubprocessError};
+use crate::v02::types::reply::FeeEstimate;
 use pathfinder_common::CallResultValue;
 
 /// The python loop currently responds with these four possibilities. An enum would be more
