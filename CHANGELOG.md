@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.2] - 2023-03-28
+
 ### Added
 
 - support `starknet_estimateFee` in the JSON-RPC v0.3 API
@@ -23,7 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RPC does not expose `pathfinder_getProof` on v0.3 route
 - RPC exposes `pathfinder_version` on v0.2 route
 
-## [0.5.1] - 2023-23-23
+#### Fixed
+
+- RPC returns int for entrypoint offsets instead of hex
+
+## [0.5.1] - 2023-03-23
 
 ### Fixed
 
