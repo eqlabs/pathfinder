@@ -21,4 +21,5 @@ pathfinder-var.env
 .python-version
 
 # VS Code
-.vscode/settings.json
+.vscode/
+
