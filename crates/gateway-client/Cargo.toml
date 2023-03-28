@@ -10,7 +10,7 @@ rust-version = "1.62"
 test-utils = ["dep:mockall"]
 
 [dependencies]
-anyhow = "1.0.66"
+anyhow = { workspace = true }
 async-trait = "0.1.59"
 bytes = "1.3.0"
 futures = { version = "0.3", default-features = false, features = ["std"] }

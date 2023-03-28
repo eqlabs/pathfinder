@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.66"
+anyhow = { workspace = true }
 base64 = "0.13.1"
 ethers = "1.0.2"
 flate2 = "1.0.25"
