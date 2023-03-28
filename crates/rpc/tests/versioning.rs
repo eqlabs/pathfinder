@@ -6,8 +6,8 @@
 #[tokio::test]
 async fn api_versions_are_routed_correctly_for_all_methods() {
     use pathfinder_common::test_utils::metrics::{FakeRecorder, ScopedRecorderGuard};
+    use pathfinder_rpc::middleware::versioning::test_utils::{method_names, paths};
     use pathfinder_rpc::test_client::TestClientBuilder;
-    use pathfinder_rpc::versioning::test_utils::{method_names, paths};
     use pathfinder_rpc::{context::RpcContext, metrics::logger::RpcMetricsLogger, RpcServer};
     use serde_json::json;
 

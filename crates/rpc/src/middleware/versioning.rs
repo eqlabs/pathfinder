@@ -175,6 +175,7 @@ mod response {
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     pub mod method_names {
         pub const COMMON_FOR_V02_V03: [&str; 23] = [

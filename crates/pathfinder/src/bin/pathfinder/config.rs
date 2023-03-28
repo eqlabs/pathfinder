@@ -1,4 +1,5 @@
 use clap::{CommandFactory, Parser};
+use pathfinder_common::AllowedOrigins;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
 use std::collections::HashSet;
@@ -178,67 +179,60 @@ impl From<Network> for clap::builder::OsStr {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum RpcCorsDomains {
-    Any,
-    List(Vec<String>),
-    None,
-}
-
-impl RpcCorsDomains {
-    fn parse(inputs: Vec<String>) -> Result<Self, RpcCorsDomainsParseError> {
-        if inputs.is_empty() {
-            return Ok(RpcCorsDomains::None);
-        }
-
-        if inputs.len() == 1 && inputs[0] == "*" {
-            return Ok(RpcCorsDomains::Any);
-        }
-
-        if inputs.iter().any(|s| s == "*") {
-            return Err(RpcCorsDomainsParseError::WildcardAmongOtherValues);
-        }
-
-        let valid_origins = inputs
-            .into_iter()
-            .map(|input| match url::Url::parse(&input) {
-                // Valid URL but has to be limited to origin form, i.e. no path, query, trailing slash for default path etc.
-                Ok(url) => {
-                    let origin = url.origin();
-
-                    if !origin.is_tuple() {
-                        return Err(RpcCorsDomainsParseError::InvalidDomain(input));
-                    }
-
-                    let origin_str = origin.ascii_serialization();
-
-                    if origin_str == input {
-                        Ok(input)
-                    } else {
-                        // Valid URL but not a valid origin
-                        return Err(RpcCorsDomainsParseError::InvalidDomain(input));
-                    }
-                }
-                // Not an URL hence invalid origin
-                Err(_e) => {
-                    eprintln!("Url_parse_error: {_e}");
-                    Err(RpcCorsDomainsParseError::InvalidDomain(input))
-                }
-            })
-            .collect::<Result<HashSet<_>, RpcCorsDomainsParseError>>()?;
-
-        Ok(Self::List(valid_origins.into_iter().collect()))
+fn parse_cors(inputs: Vec<String>) -> Result<Option<AllowedOrigins>, RpcCorsDomainsParseError> {
+    if inputs.is_empty() {
+        return Ok(None);
     }
 
-    pub fn parse_or_exit(input: Vec<String>) -> Self {
-        use clap::error::ErrorKind;
+    if inputs.len() == 1 && inputs[0] == "*" {
+        return Ok(Some(AllowedOrigins::Any));
+    }
 
-        match Self::parse(input) {
-            Ok(parsed) => parsed,
-            Err(error) => Cli::command()
-                .error(ErrorKind::ValueValidation, error)
-                .exit(),
-        }
+    if inputs.iter().any(|s| s == "*") {
+        return Err(RpcCorsDomainsParseError::WildcardAmongOtherValues);
+    }
+
+    let valid_origins = inputs
+        .into_iter()
+        .map(|input| match url::Url::parse(&input) {
+            // Valid URL but has to be limited to origin form, i.e. no path, query, trailing slash for default path etc.
+            Ok(url) => {
+                let origin = url.origin();
+
+                if !origin.is_tuple() {
+                    return Err(RpcCorsDomainsParseError::InvalidDomain(input));
+                }
+
+                let origin_str = origin.ascii_serialization();
+
+                if origin_str == input {
+                    Ok(input)
+                } else {
+                    // Valid URL but not a valid origin
+                    Err(RpcCorsDomainsParseError::InvalidDomain(input))
+                }
+            }
+            // Not an URL hence invalid origin
+            Err(_e) => {
+                eprintln!("Url_parse_error: {_e}");
+                Err(RpcCorsDomainsParseError::InvalidDomain(input))
+            }
+        })
+        .collect::<Result<HashSet<_>, RpcCorsDomainsParseError>>()?;
+
+    Ok(Some(AllowedOrigins::List(
+        valid_origins.into_iter().collect(),
+    )))
+}
+
+pub fn parse_cors_or_exit(input: Vec<String>) -> Option<AllowedOrigins> {
+    use clap::error::ErrorKind;
+
+    match parse_cors(input) {
+        Ok(parsed) => parsed,
+        Err(error) => Cli::command()
+            .error(ErrorKind::ValueValidation, error)
+            .exit(),
     }
 }
 
@@ -260,7 +254,7 @@ pub struct Config {
     pub data_directory: PathBuf,
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
-    pub rpc_cors_domains: RpcCorsDomains,
+    pub rpc_cors_domains: Option<AllowedOrigins>,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
@@ -342,7 +336,7 @@ impl Config {
                 url: cli.ethereum_url,
             },
             rpc_address: cli.rpc_address,
-            rpc_cors_domains: RpcCorsDomains::parse_or_exit(cli.rpc_cors_domains),
+            rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
             monitor_address: cli.monitor_address,
             network,
             poll_pending: cli.poll_pending,
@@ -358,7 +352,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::{RpcCorsDomains, RpcCorsDomainsParseError};
+    use super::{AllowedOrigins, RpcCorsDomainsParseError};
+    use crate::config::parse_cors;
 
     #[test]
     fn parse_cors_domains() {
@@ -407,28 +402,28 @@ mod tests {
         .into_iter()
         .for_each(|(input, expected_error)| {
             assert_eq!(
-                RpcCorsDomains::parse(input.clone()).unwrap_err(),
+                parse_cors(input.clone()).unwrap_err(),
                 expected_error,
                 "input: {input:?}"
             );
         });
 
         [
-            (vec![], RpcCorsDomains::None),
-            (vec![wildcard], RpcCorsDomains::Any),
+            (vec![], None),
+            (vec![wildcard], Some(AllowedOrigins::Any)),
             (
                 vec![valid.clone()],
-                RpcCorsDomains::List(vec![valid.clone()]),
+                Some(AllowedOrigins::List(vec![valid.clone()])),
             ),
             (
                 vec![valid.clone(), valid.clone()],
-                RpcCorsDomains::List(vec![valid.clone()]),
+                Some(AllowedOrigins::List(vec![valid])),
             ),
         ]
         .into_iter()
         .for_each(|(input, expected_ok)| {
             assert_eq!(
-                RpcCorsDomains::parse(input.clone()).unwrap(),
+                parse_cors(input.clone()).unwrap(),
                 expected_ok,
                 "input: {input:?}"
             )

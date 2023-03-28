@@ -542,6 +542,12 @@ macros::starkhash::common_newtype!(
 macros::fmt::thin_display!(StarknetBlockNumber);
 macros::fmt::thin_display!(StarknetBlockTimestamp);
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum AllowedOrigins {
+    Any,
+    List(Vec<String>),
+}
+
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
 pub fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
