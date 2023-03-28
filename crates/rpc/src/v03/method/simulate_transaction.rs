@@ -18,11 +18,11 @@ use stark_hash::Felt;
 pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
-) -> Result<SimulateTransactionResult, SimulateTrasactionError> {
+) -> Result<SimulateTransactionResult, SimulateTransactionError> {
     let handle = context
         .call_handle
         .as_ref()
-        .ok_or_else(|| SimulateTrasactionError::IllegalState)?;
+        .ok_or_else(|| SimulateTransactionError::IllegalState)?;
 
     let gas_price = if matches!(input.block_id, BlockId::Pending | BlockId::Latest) {
         let gas_price = match context.eth_gas_price.as_ref() {
@@ -61,14 +61,14 @@ pub async fn simulate_transaction(
             (skip_execute, skip_validate),
         )
         .await
-        .map_err(SimulateTrasactionError::CallFailed)?;
+        .map_err(SimulateTransactionError::CallFailed)?;
 
-    let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTrasactionError> =
+    let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTransactionError> =
         txs.into_iter().map(map_tx).collect();
     Ok(SimulateTransactionResult(txs?))
 }
 
-fn map_tx(tx: TransactionSimulation) -> Result<dto::SimulatedTransaction, SimulateTrasactionError> {
+fn map_tx(tx: TransactionSimulation) -> Result<dto::SimulatedTransaction, SimulateTransactionError> {
     Ok(dto::SimulatedTransaction {
         fee_estimation: Some(map_fee(tx.fee_estimation)),
         transaction_trace: Some(map_trace(tx.trace)?),
@@ -106,7 +106,7 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
 
 fn map_trace(
     mut trace: TransactionTrace,
-) -> Result<dto::TransactionTrace, SimulateTrasactionError> {
+) -> Result<dto::TransactionTrace, SimulateTransactionError> {
     let invocations = (
         trace.validate_invocation.take(),
         trace.function_invocation.take(),
@@ -140,7 +140,7 @@ fn map_trace(
         (_, Some(fun), _) => Ok(dto::TransactionTrace::L1Handler(dto::L1HandlerTxnTrace {
             function_invocation: Some(map_function_invocation(fun)),
         })),
-        _ => Err(SimulateTrasactionError::Custom(anyhow!(
+        _ => Err(SimulateTransactionError::Custom(anyhow!(
             "Unmatched transaction trace!"
         ))),
     }
@@ -157,24 +157,24 @@ pub struct SimulateTrasactionInput {
 pub struct SimulateTransactionResult(pub Vec<dto::SimulatedTransaction>);
 
 #[derive(Debug)]
-pub enum SimulateTrasactionError {
+pub enum SimulateTransactionError {
     Custom(anyhow::Error),
     IllegalState,
     CallFailed(CallFailure),
 }
 
-impl From<SimulateTrasactionError> for RpcError {
-    fn from(value: SimulateTrasactionError) -> Self {
+impl From<SimulateTransactionError> for RpcError {
+    fn from(value: SimulateTransactionError) -> Self {
         match value {
-            SimulateTrasactionError::IllegalState | SimulateTrasactionError::CallFailed(_) => {
+            SimulateTransactionError::IllegalState | SimulateTransactionError::CallFailed(_) => {
                 RpcError::Internal(anyhow!("Internal error"))
             }
-            SimulateTrasactionError::Custom(e) => RpcError::Internal(e),
+            SimulateTransactionError::Custom(e) => RpcError::Internal(e),
         }
     }
 }
 
-impl From<anyhow::Error> for SimulateTrasactionError {
+impl From<anyhow::Error> for SimulateTransactionError {
     fn from(err: anyhow::Error) -> Self {
         Self::Custom(err)
     }
