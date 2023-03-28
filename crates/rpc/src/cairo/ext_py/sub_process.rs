@@ -466,9 +466,7 @@ async fn process(
         (Command::SimulateTransaction { response, .. }, Ok(OutputValue::Traces(x))) => {
             let _ = response.send(Ok(x));
         }
-        (command @ Command::Call { .. }, Err(fail))
-        | (command @ Command::EstimateFee { .. }, Err(fail))
-        | (command @ Command::SimulateTransaction { .. }, Err(fail)) => {
+        (command, Err(fail)) => {
             let _ = command.fail(fail);
         }
         (command, output @ Ok(_)) => {
