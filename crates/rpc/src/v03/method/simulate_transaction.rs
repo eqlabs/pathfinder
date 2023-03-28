@@ -491,6 +491,11 @@ mod tests {
         };
 
         let result = simulate_transaction(rpc, input).await.expect("result");
+
+        if db_path.exists() {
+            std::fs::remove_file(&db_path).expect("clean up");
+        }
+
         assert_eq!(result.0, expected);
     }
 
