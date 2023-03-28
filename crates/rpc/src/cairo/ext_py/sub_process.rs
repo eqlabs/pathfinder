@@ -443,8 +443,7 @@ async fn process(
         (Command::EstimateFee { response, .. }, Ok(OutputValue::Fee(x))) => {
             let _ = response.send(Ok(x));
         }
-        (command @ Command::Call { .. }, Err(fail))
-        | (command @ Command::EstimateFee { .. }, Err(fail)) => {
+        (command, Err(fail)) => {
             let _ = command.fail(fail);
         }
         (command @ Command::Call { .. }, output @ Ok(OutputValue::Fee(_)))

@@ -59,25 +59,199 @@ impl From<FunctionCall> for crate::v02::types::request::Call {
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
-    let handle = context
-        .call_handle
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
+    // let handle = context
+    //     .call_handle
+    //     .as_ref()
+    //     .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
 
-    let (when, pending_timestamp, pending_update) =
-        super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
-            .await?;
+    // let (when, pending_timestamp, pending_update) =
+    //     super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
+    //         .await?;
 
-    let result = handle
-        .call(
-            input.request.into(),
-            when,
-            pending_update,
-            pending_timestamp,
-        )
-        .await?;
+    // let result = handle
+    //     .call(
+    //         input.request.into(),
+    //         when,
+    //         pending_update,
+    //         pending_timestamp,
+    //     )
+    //     .await?;
 
-    Ok(CallOutput(result))
+    // Ok(CallOutput(result))
+
+    unimplemented!()
+}
+
+mod state {
+    use pathfinder_common::{ClassHash, StorageAddress, StorageCommitment};
+    use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
+    use pathfinder_storage::{ContractCodeTable, ContractsStateTable};
+    use stark_hash::Felt;
+    use starknet_rs::business_logic::state::state_api::StateReader;
+    use starknet_rs::core::errors::state_errors::StateError;
+    use starknet_rs::services::api::contract_class_errors::ContractClassError;
+    use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
+
+    struct SqliteReader {
+        pub storage: pathfinder_storage::Storage,
+        pub storage_commitment: StorageCommitment,
+    }
+
+    impl StateReader for SqliteReader {
+        fn get_contract_class(
+            &mut self,
+            class_hash: &starknet_rs::utils::ClassHash,
+        ) -> Result<starknet_rs::services::api::contract_class::ContractClass, StateError> {
+            let class_hash =
+                ClassHash(Felt::from_be_slice(class_hash).expect("Overflow in class hash"));
+
+            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
+            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
+
+            let definition = ContractCodeTable::get_class_raw(&tx, class_hash)
+                .map_err(map_anyhow_to_state_err)?;
+
+            match definition {
+                Some(definition) => {
+                    let raw_contract_class: starknet_api::state::ContractClass =
+                        serde_json::from_slice(&definition).map_err(|_| {
+                            StateError::ContractClass(ContractClassError::NoneEntryPointType)
+                        })?;
+                    let contract_class = raw_contract_class.into();
+                    Ok(contract_class)
+                }
+                None => Err(StateError::MissingClassHash()),
+            }
+        }
+
+        fn get_class_hash_at(
+            &mut self,
+            contract_address: &starknet_rs::utils::Address,
+        ) -> Result<
+            starknet_rs::utils::ClassHash,
+            starknet_rs::core::errors::state_errors::StateError,
+        > {
+            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
+            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
+
+            let tree = StorageCommitmentTree::load(&tx, self.storage_commitment)
+                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
+            let pathfinder_contract_address = pathfinder_common::ContractAddress::new_or_panic(
+                Felt::from_be_slice(&contract_address.0.to_bytes_be())
+                    .expect("Overflow in contract address"),
+            );
+            let state_hash = tree
+                .get(pathfinder_contract_address)
+                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
+
+            use rusqlite::OptionalExtension;
+
+            let class_hash: Option<ClassHash> = tx
+                .query_row(
+                    "SELECT hash FROM contract_states WHERE state_hash=?",
+                    [state_hash],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|_| StateError::Storage(StorageError::ErrorFetchingData))?;
+
+            let class_hash =
+                class_hash.ok_or_else(|| StateError::NoneClassHash(contract_address.clone()))?;
+
+            Ok(class_hash.0.to_be_bytes())
+        }
+
+        fn get_nonce_at(
+            &mut self,
+            contract_address: &starknet_rs::utils::Address,
+        ) -> Result<cairo_felt::Felt252, starknet_rs::core::errors::state_errors::StateError>
+        {
+            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
+            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
+
+            let tree = StorageCommitmentTree::load(&tx, self.storage_commitment)
+                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
+
+            let pathfinder_contract_address = pathfinder_common::ContractAddress::new_or_panic(
+                Felt::from_be_slice(&contract_address.0.to_bytes_be())
+                    .expect("Overflow in contract address"),
+            );
+            let state_hash = tree
+                .get(pathfinder_contract_address)
+                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?
+                .ok_or_else(|| StateError::ContractAddressUnavailable(contract_address.clone()))?;
+
+            let nonce = ContractsStateTable::get_nonce(&tx, state_hash)
+                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?
+                .ok_or_else(|| StateError::ContractAddressUnavailable(contract_address.clone()))?;
+
+            Ok(cairo_felt::Felt252::from_bytes_be(nonce.0.as_be_bytes()))
+        }
+
+        fn get_storage_at(
+            &mut self,
+            storage_entry: &starknet_rs::business_logic::state::state_cache::StorageEntry,
+        ) -> Result<cairo_felt::Felt252, starknet_rs::core::errors::state_errors::StateError>
+        {
+            let (contract_address, storage_key) = storage_entry;
+            let storage_key =
+                StorageAddress::new(Felt::from_be_slice(storage_key).map_err(|_| {
+                    StateError::ContractAddressOutOfRangeAddress(contract_address.clone())
+                })?)
+                .ok_or_else(|| {
+                    StateError::ContractAddressOutOfRangeAddress(contract_address.clone())
+                })?;
+
+            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
+            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
+
+            let tree = StorageCommitmentTree::load(&tx, self.storage_commitment)
+                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
+
+            let pathfinder_contract_address = pathfinder_common::ContractAddress::new_or_panic(
+                Felt::from_be_slice(&contract_address.0.to_bytes_be())
+                    .expect("Overflow in contract address"),
+            );
+            let state_hash = tree
+                .get(pathfinder_contract_address)
+                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?
+                .ok_or_else(|| StateError::ContractAddressUnavailable(contract_address.clone()))?;
+
+            let contract_state_root = ContractsStateTable::get_root(&tx, state_hash)
+                .map_err(|_| StateError::NoneContractState(contract_address.clone()))?
+                .ok_or_else(|| StateError::NoneContractState(contract_address.clone()))?;
+
+            let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
+                .map_err(|_| StateError::NoneStorage(storage_entry.clone()))?;
+
+            let storage_val = contract_state_tree
+                .get(storage_key)
+                .map_err(|_| StateError::Storage(StorageError::ErrorFetchingData))?
+                .ok_or_else(|| StateError::NoneStorage(storage_entry.clone()))?;
+
+            Ok(cairo_felt::Felt252::from_bytes_be(
+                storage_val.0.as_be_bytes(),
+            ))
+        }
+
+        fn count_actual_storage_changes(&mut self) -> (usize, usize) {
+            // read-only storage
+            (0, 0)
+        }
+    }
+
+    // FIXME: we clearly need something more expressive than this
+    fn map_sqlite_to_state_err(
+        e: rusqlite::Error,
+    ) -> starknet_rs::core::errors::state_errors::StateError {
+        StateError::Storage(StorageError::ErrorFetchingData)
+    }
+
+    fn map_anyhow_to_state_err(
+        e: anyhow::Error,
+    ) -> starknet_rs::core::errors::state_errors::StateError {
+        StateError::Storage(StorageError::ErrorFetchingData)
+    }
 }
 
 #[cfg(test)]
@@ -163,7 +337,7 @@ mod tests {
             }
         }
 
-        async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+        async fn test_context_with_call_handling() -> RpcContext {
             use pathfinder_common::ChainId;
 
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -172,24 +346,15 @@ mod tests {
                 pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
                     .unwrap();
             let sync_state = Arc::new(crate::SyncState::default());
-            let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
-                storage.path().into(),
-                std::num::NonZeroUsize::try_from(2).unwrap(),
-                futures::future::pending(),
-                Chain::Mainnet,
-            )
-            .await
-            .unwrap();
 
             let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
 
-            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
-            (context.with_call_handling(call_handle), cairo_handle)
+            RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer)
         }
 
         #[tokio::test]
         async fn no_such_block() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: valid_mainnet_call(),
@@ -201,7 +366,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: FunctionCall {
@@ -216,7 +381,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_message_selector() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: FunctionCall {
@@ -231,7 +396,7 @@ mod tests {
 
         #[tokio::test]
         async fn successful_call() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: valid_mainnet_call(),

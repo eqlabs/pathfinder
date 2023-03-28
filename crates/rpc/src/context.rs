@@ -1,4 +1,3 @@
-use crate::cairo::ext_py;
 use crate::gas_price;
 use crate::SyncState;
 use pathfinder_common::ChainId;
@@ -14,7 +13,6 @@ pub struct RpcContext {
     pub pending_data: Option<PendingData>,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
-    pub call_handle: Option<ext_py::Handle>,
     pub eth_gas_price: Option<gas_price::Cached>,
     pub sequencer: SequencerClient,
 }
@@ -31,7 +29,6 @@ impl RpcContext {
             sync_status,
             chain_id,
             pending_data: None,
-            call_handle: None,
             eth_gas_price: None,
             sequencer,
         }
@@ -80,13 +77,6 @@ impl RpcContext {
         let context = Self::for_tests();
         let pending_data = super::tests::create_pending_data(context.storage.clone()).await;
         context.with_pending_data(pending_data)
-    }
-
-    pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
-        Self {
-            call_handle: Some(call_handle),
-            ..self
-        }
     }
 
     pub fn with_eth_gas_price(self, gas_price: gas_price::Cached) -> Self {

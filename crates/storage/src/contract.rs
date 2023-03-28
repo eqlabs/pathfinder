@@ -115,6 +115,37 @@ impl ContractCodeTable {
         }))
     }
 
+    pub fn get_class_raw(
+        transaction: &Transaction<'_>,
+        hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        let row = transaction
+            .query_row(
+                "SELECT definition
+                FROM class_definitions
+                WHERE hash = :hash",
+                named_params! {
+                    ":hash": &hash.0.to_be_bytes()
+                },
+                |row| {
+                    let definition: Vec<u8> = row.get("definition")?;
+
+                    Ok(definition)
+                },
+            )
+            .optional()?;
+
+        let definition = match row {
+            None => return Ok(None),
+            Some(definition) => definition,
+        };
+
+        let definition = zstd::decode_all(&*definition)
+            .context("Corruption: invalid compressed column (definition)")?;
+
+        Ok(Some(definition))
+    }
+
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
     pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         let mut stmt = connection.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;

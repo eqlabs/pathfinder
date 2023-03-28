@@ -1,5 +1,5 @@
 use crate::{
-    cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource},
+    cairo::ext_py::BlockHashNumberOrLatest,
     context::RpcContext,
     v02::types::{reply::FeeEstimate, request::BroadcastedTransaction},
 };
@@ -39,46 +39,7 @@ pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
-    let handle = context
-        .call_handle
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
-
-    // discussed during estimateFee work: when user is requesting using block_hash use the
-    // gasPrice from the starknet_blocks::gas_price column, otherwise (tags) get the latest
-    // eth_gasPrice.
-    //
-    // the fact that [`base_block_and_pending_for_call`] transforms pending cases to use
-    // actual parent blocks by hash is an internal transformation we do for correctness,
-    // unrelated to this consideration.
-    let gas_price = if matches!(input.block_id, BlockId::Pending | BlockId::Latest) {
-        let gas_price = match context.eth_gas_price.as_ref() {
-            Some(cached) => cached.get().await,
-            None => None,
-        };
-
-        let gas_price =
-            gas_price.ok_or_else(|| anyhow::anyhow!("Current eth_gasPrice is unavailable"))?;
-
-        GasPriceSource::Current(gas_price)
-    } else {
-        GasPriceSource::PastBlock
-    };
-
-    let (when, pending_timestamp, pending_update) =
-        base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
-
-    let result = handle
-        .estimate_fee(
-            input.request,
-            when,
-            gas_price,
-            pending_update,
-            pending_timestamp,
-        )
-        .await?;
-
-    Ok(result)
+    unimplemented!()
 }
 
 /// Transforms the request to call or estimate fee at some point in time to the type expected
@@ -268,7 +229,7 @@ mod tests {
             ))
         }
 
-        async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+        async fn test_context_with_call_handling() -> RpcContext {
             use pathfinder_common::ChainId;
 
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -288,12 +249,12 @@ mod tests {
 
             let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
-            (context.with_call_handling(call_handle), cairo_handle)
+            context
         }
 
         #[tokio::test]
         async fn no_such_block() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
                 request: vec![valid_broadcasted_transaction()],
@@ -305,7 +266,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let mainnet_invoke = valid_mainnet_invoke_v0();
             let input = EstimateFeeInput {
@@ -323,7 +284,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_message_selector() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let mainnet_invoke = valid_mainnet_invoke_v0();
             let input = EstimateFeeInput {
@@ -341,7 +302,7 @@ mod tests {
 
         #[tokio::test]
         async fn successful_invoke_v0() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
                 request: vec![
@@ -378,7 +339,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v0() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let declare_transaction = BroadcastedTransaction::Declare(
                 BroadcastedDeclareTransaction::V0V1(BroadcastedDeclareTransactionV0V1 {

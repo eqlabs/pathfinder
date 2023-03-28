@@ -9,6 +9,7 @@ rust-version = "1.62"
 [dependencies]
 anyhow = { workspace = true }
 base64 = "0.13.1"
+cairo-felt = { git = "https://github.com/lambdaclass/cairo-rs", package = "cairo-felt", rev = "77fe09ebbf72710935b455b1c5ff56b0bad7a4b8" }
 ethers = "1.0.2"
 flate2 = "1.0.25"
 futures = { version = "0.3", default-features = false, features = ["std"] }
@@ -28,6 +29,8 @@ serde_with = "2.1.0"
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
+starknet-rs = { path = "/home/hidden/Source/github.com/lambdaclass/starknet-in-rust" }
+starknet_api = { git = "https://github.com/lambdaclass/starknet-api", branch = "main" }
 thiserror = "1.0.37"
 tokio = { workspace = true, features = ["process"] }
 tower = { version = "0.4.13", default-features = false, features = ["filter", "util"] }

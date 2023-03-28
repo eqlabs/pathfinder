@@ -125,7 +125,6 @@ async fn main() -> anyhow::Result<()> {
         pathfinder_context.network_id,
         pathfinder_context.gateway,
     )
-    .with_call_handling(call_handle)
     .with_eth_gas_price(shared);
     let context = match config.poll_pending {
         true => context.with_pending_data(pending_state),
