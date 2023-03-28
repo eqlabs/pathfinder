@@ -351,16 +351,50 @@ mod tests {
 
     use super::*;
 
+    mod tempdir {
+        use std::path::PathBuf;
+
+        pub(crate) fn new(path: PathBuf) -> TempDir {
+            if !path.exists() {
+                let _ = std::fs::create_dir_all(&path);
+            }
+            TempDir::new(path)
+        }
+
+        pub(crate) struct TempDir {
+            path: PathBuf,
+        }
+
+        impl TempDir {
+            pub(crate) fn new(path: PathBuf) -> Self {
+                Self { path }
+            }
+
+            pub(crate) fn file(&self, name: &str) -> PathBuf {
+                let mut buf = self.path.to_path_buf();
+                buf.push(name);
+                buf
+            }
+        }
+
+        impl Drop for TempDir {
+            fn drop(&mut self) {
+                if self.path.exists() && self.path.is_dir() {
+                    let _ = std::fs::remove_dir_all(&self.path);
+                }
+            }
+        }
+    }
+
     #[tokio::test]
     async fn test_simulate_transaction() {
         let mut db_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        db_path.push("fixtures/simulate-transaction-test.sqlite");
+        db_path.push("fixtures/simulate-transaction-test-tempdir");
 
-        if db_path.exists() {
-            std::fs::remove_file(&db_path).expect("remove db");
-        }
+        let temp_dir = tempdir::new(db_path);
+        let db_path = temp_dir.file("db.sqlite");
 
-        let storage = Storage::migrate(db_path.clone(), JournalMode::WAL).expect("storage");
+        let storage = Storage::migrate(db_path, JournalMode::WAL).expect("storage");
 
         {
             let mut db = storage.connection().expect("db connection");
@@ -481,11 +515,6 @@ mod tests {
         };
 
         let result = simulate_transaction(rpc, input).await.expect("result");
-
-        if db_path.exists() {
-            std::fs::remove_file(&db_path).expect("clean up");
-        }
-
         assert_eq!(result.0, expected);
     }
 
