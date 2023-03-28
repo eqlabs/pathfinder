@@ -1,6 +1,7 @@
 use clap::{CommandFactory, Parser};
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -53,6 +54,20 @@ Examples:
         env = "PATHFINDER_HTTP_RPC_ADDRESS"
     )]
     rpc_address: SocketAddr,
+
+    #[arg(
+        long = "http-rpc.cors-domains",
+        long_help = r"Comma separated list of domains from which Cross-Origin requests will be accepted by the HTTP-RPC server.
+        
+Examples:
+    single: http://one.io
+    a list: http://first.com,http://second.com:1234
+    any:    *",
+        value_name = "DOMAIN-LIST",
+        value_delimiter = ',',
+        env = "PATHFINDER_HTTP_RPC_CORS_DOMAINS"
+    )]
+    rpc_cors_domains: Vec<String>,
 
     #[arg(
         long = "monitor-address",
@@ -163,10 +178,89 @@ impl From<Network> for clap::builder::OsStr {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum RpcCorsDomains {
+    Any,
+    List(Vec<String>),
+    None,
+}
+
+impl RpcCorsDomains {
+    fn parse(inputs: Vec<String>) -> Result<Self, RpcCorsDomainsParseError> {
+        if inputs.is_empty() {
+            return Ok(RpcCorsDomains::None);
+        }
+
+        if inputs.len() == 1 && inputs[0] == "*" {
+            return Ok(RpcCorsDomains::Any);
+        }
+
+        if inputs.iter().any(|s| s == "*") {
+            return Err(RpcCorsDomainsParseError::WildcardAmongOtherValues);
+        }
+
+        let valid_origins = inputs
+            .into_iter()
+            .map(|input| match url::Url::parse(&input) {
+                // Valid URL but has to be limited to origin form, i.e. no path, query, trailing slash for default path etc.
+                Ok(url) => {
+                    let origin = url.origin();
+
+                    if !origin.is_tuple() {
+                        return Err(RpcCorsDomainsParseError::InvalidDomain(input));
+                    }
+
+                    let origin_str = origin.ascii_serialization();
+
+                    if origin_str == input {
+                        Ok(input)
+                    } else {
+                        // Valid URL but not a valid origin
+                        return Err(RpcCorsDomainsParseError::InvalidDomain(input));
+                    }
+                }
+                // Not an URL hence invalid origin
+                Err(_e) => {
+                    eprintln!("Url_parse_error: {_e}");
+                    Err(RpcCorsDomainsParseError::InvalidDomain(input))
+                }
+            })
+            .collect::<Result<HashSet<_>, RpcCorsDomainsParseError>>()?;
+
+        Ok(Self::List(valid_origins.into_iter().collect()))
+    }
+
+    pub fn parse_or_exit(input: Vec<String>) -> Self {
+        use clap::error::ErrorKind;
+
+        match Self::parse(input) {
+            Ok(parsed) => parsed,
+            Err(error) => Cli::command()
+                .error(ErrorKind::ValueValidation, error)
+                .exit(),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error, PartialEq)]
+#[error("Invalid domain for CORS: {0}")]
+struct InvalidCorsDomainError(String);
+
+#[derive(Debug, thiserror::Error, PartialEq)]
+enum RpcCorsDomainsParseError {
+    #[error("Invalid allowed domain for CORS: {0}.")]
+    InvalidDomain(String),
+    #[error(
+        "Specify either wildcard '*' or a comma separated list of allowed domains for CORS, not both."
+    )]
+    WildcardAmongOtherValues,
+}
+
 pub struct Config {
     pub data_directory: PathBuf,
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
+    pub rpc_cors_domains: RpcCorsDomains,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
@@ -248,6 +342,7 @@ impl Config {
                 url: cli.ethereum_url,
             },
             rpc_address: cli.rpc_address,
+            rpc_cors_domains: RpcCorsDomains::parse_or_exit(cli.rpc_cors_domains),
             monitor_address: cli.monitor_address,
             network,
             poll_pending: cli.poll_pending,
@@ -258,5 +353,85 @@ impl Config {
             },
             max_rpc_connections: cli.max_rpc_connections,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RpcCorsDomains, RpcCorsDomainsParseError};
+
+    #[test]
+    fn parse_cors_domains() {
+        let empty = String::new();
+        let wildcard = "*".to_owned();
+        let valid = "http://valid.com:1234".to_owned();
+        let not_url = "not_url".to_string();
+        let with_path = "http://a.com/path".to_string();
+        let with_query = "http://a.com/?query=x".to_string();
+        let with_trailing_slash = format!("{}/", valid);
+
+        [
+            (
+                vec![empty.clone()],
+                RpcCorsDomainsParseError::InvalidDomain(empty.clone()),
+            ),
+            (
+                vec![empty.clone(), wildcard.clone()],
+                RpcCorsDomainsParseError::WildcardAmongOtherValues,
+            ),
+            (
+                vec![valid.clone(), wildcard.clone()],
+                RpcCorsDomainsParseError::WildcardAmongOtherValues,
+            ),
+            (
+                vec![wildcard.clone(), wildcard.clone()],
+                RpcCorsDomainsParseError::WildcardAmongOtherValues,
+            ),
+            (
+                vec![valid.clone(), with_trailing_slash.clone()],
+                RpcCorsDomainsParseError::InvalidDomain(with_trailing_slash),
+            ),
+            (
+                vec![valid.clone(), not_url.clone()],
+                RpcCorsDomainsParseError::InvalidDomain(not_url),
+            ),
+            (
+                vec![valid.clone(), with_path.clone()],
+                RpcCorsDomainsParseError::InvalidDomain(with_path.clone()),
+            ),
+            (
+                vec![valid.clone(), with_query.clone()],
+                RpcCorsDomainsParseError::InvalidDomain(with_query),
+            ),
+        ]
+        .into_iter()
+        .for_each(|(input, expected_error)| {
+            assert_eq!(
+                RpcCorsDomains::parse(input.clone()).unwrap_err(),
+                expected_error,
+                "input: {input:?}"
+            );
+        });
+
+        [
+            (vec![], RpcCorsDomains::None),
+            (vec![wildcard], RpcCorsDomains::Any),
+            (
+                vec![valid.clone()],
+                RpcCorsDomains::List(vec![valid.clone()]),
+            ),
+            (
+                vec![valid.clone(), valid.clone()],
+                RpcCorsDomains::List(vec![valid.clone()]),
+            ),
+        ]
+        .into_iter()
+        .for_each(|(input, expected_ok)| {
+            assert_eq!(
+                RpcCorsDomains::parse(input.clone()).unwrap(),
+                expected_ok,
+                "input: {input:?}"
+            )
+        });
     }
 }
