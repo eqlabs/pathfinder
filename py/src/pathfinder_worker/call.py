@@ -1007,6 +1007,37 @@ async def do_call(
     return call_info
 
 
+async def get_tx_info(
+    state: CachedState,
+    general_config: StarknetGeneralConfig,
+    block_info: BlockInfo,
+    transaction: AccountTransaction,
+):
+    internal_transaction = InternalAccountTransactionForSimulate.create_for_simulate(
+        transaction, general_config, False
+    )
+
+    with state.copy_and_apply() as state_copy:
+        tx_info = await internal_transaction.apply_state_updates(
+            state_copy, general_config
+        )
+
+    # apply class declarations manually to state,
+    # since apply_state_updates() does not do this
+    if isinstance(transaction, Declare):
+        compiled_class = compile_contract_class(
+            transaction.contract_class,
+            allowed_libfuncs_list_name="experimental_v0.1.0",
+        )
+        state.contract_classes[transaction.compiled_class_hash] = compiled_class
+    elif isinstance(transaction, DeprecatedDeclare):
+        state.contract_classes[
+            internal_transaction.class_hash
+        ] = transaction.contract_class
+
+    return tx_info
+
+
 async def do_estimate_fee(
     state: CachedState,
     general_config: StarknetGeneralConfig,
@@ -1023,29 +1054,7 @@ async def do_estimate_fee(
     fees = []
 
     for transaction in transactions:
-        internal_transaction = (
-            InternalAccountTransactionForSimulate.create_for_simulate(
-                transaction, general_config, False
-            )
-        )
-
-        with state.copy_and_apply() as state_copy:
-            tx_info = await internal_transaction.apply_state_updates(
-                state_copy, general_config
-            )
-
-        # apply class declarations manually to state, since apply_state_updates() does
-        # not do this
-        if isinstance(transaction, Declare):
-            compiled_class = compile_contract_class(
-                transaction.contract_class,
-                allowed_libfuncs_list_name="experimental_v0.1.0",
-            )
-            state.contract_classes[transaction.compiled_class_hash] = compiled_class
-        elif isinstance(transaction, DeprecatedDeclare):
-            state.contract_classes[
-                internal_transaction.class_hash
-            ] = transaction.contract_class
+        tx_info = await get_tx_info(state, general_config, block_info, transaction)
 
         # with 0.10 upgrade we changed to division with gas_consumed as well, since
         # there is opposition to providing the non-multiplied scalar value from
@@ -1062,7 +1071,7 @@ async def do_estimate_fee(
 
 
 async def do_simulate_tx(
-    async_state: CachedState,
+    state: CachedState,
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
     transactions: List[AccountTransaction],
@@ -1070,11 +1079,8 @@ async def do_simulate_tx(
 ):
     simulated_transactions = []
 
-    for external_tx in transactions:
-        tx = InternalAccountTransactionForSimulate.create_for_simulate(
-            external_tx, general_config, skip_validate
-        )
-        tx_info = await tx.apply_state_updates(async_state, general_config)
+    for transaction in transactions:
+        tx_info = await get_tx_info(state, general_config, block_info, transaction)
 
         trace = TransactionTrace(
             validate_invocation=FunctionInvocation.from_optional_internal(
@@ -1086,7 +1092,7 @@ async def do_simulate_tx(
             fee_transfer_invocation=FunctionInvocation.from_optional_internal(
                 tx_info.fee_transfer_info
             ),
-            signature=external_tx.signature,
+            signature=transaction.signature,
         )
 
         fee_estimation = FeeEstimationInfo(
@@ -1095,9 +1101,7 @@ async def do_simulate_tx(
             overall_fee=tx_info.actual_fee,
         )
 
-        simulated_tx = TransactionSimulationInfo(trace, fee_estimation)
-
-        simulated_transactions.append(simulated_tx)
+        simulated_transactions.append(TransactionSimulationInfo(trace, fee_estimation))
 
     return simulated_transactions
 
