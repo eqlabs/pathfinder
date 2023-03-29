@@ -87,8 +87,13 @@ pub mod integration {
 }
 
 pub mod zstd_compressed_contracts {
+    use pathfinder_common::{felt, ClassHash};
+
     pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json.zst");
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json.zst");
+    pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash = ClassHash(felt!(
+        "0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf"
+    ));
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc
     pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json.zst");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3
@@ -179,7 +184,9 @@ pub mod testnet {
 
     pub mod balance_contract {
         // This is a hash and a definition of a real 'balance' contract deployed to the testnet.
-        pub const CLASS_HASH: &str = "02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513";
-        pub const CLASS_DEFINITION: &str = include_str!("../fixtures/simulate-tx/contracts/balance_contract_definition.txt");
+        pub const CLASS_HASH: &str =
+            "02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513";
+        pub const CLASS_DEFINITION: &str =
+            include_str!("../fixtures/simulate-tx/contracts/balance_contract_definition.txt");
     }
 }

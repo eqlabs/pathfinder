@@ -352,8 +352,11 @@ pub mod dto {
 mod tests {
     use std::path::PathBuf;
 
-    use pathfinder_common::{felt, Chain};
+    use pathfinder_common::{felt, Chain, TransactionVersion};
     use pathfinder_storage::{JournalMode, Storage};
+    use starknet_gateway_test_fixtures::zstd_compressed_contracts::{
+        DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
+    };
 
     use crate::v02::types::reply::FeeEstimate;
 
@@ -395,11 +398,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_simulate_transaction() {
-        use starknet_gateway_test_fixtures::testnet::balance_contract::{CLASS_DEFINITION, CLASS_HASH};
+    async fn test_simulate_transaction_deploy_balance_contract() {
+        use starknet_gateway_test_fixtures::testnet::balance_contract::{
+            CLASS_DEFINITION, CLASS_HASH,
+        };
 
         let mut db_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        db_path.push("fixtures/simulate-transaction-test-tempdir");
+        db_path.push("fixtures/test_simulate_transaction_deploy_balance_contract");
 
         let temp_dir = tempdir::new(db_path);
         let db_path = temp_dir.file("db.sqlite");
@@ -526,5 +531,135 @@ mod tests {
 
         let result = simulate_transaction(rpc, input).await.expect("result");
         assert_eq!(result.0, expected);
+    }
+
+    #[tokio::test]
+    async fn test_simulate_transaction_deploy_dummy_account() {
+        let mut db_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        db_path.push("fixtures/test_simulate_transaction_deploy_dummy_account");
+
+        let temp_dir = tempdir::new(db_path);
+        let db_path = temp_dir.file("db.sqlite");
+
+        let storage = Storage::migrate(db_path, JournalMode::WAL).expect("storage");
+        {
+            let mut db = storage.connection().expect("db connection");
+            let tx = db.transaction().expect("tx");
+            tx.execute(
+                "insert into class_definitions (hash, definition) values (?, ?)",
+                rusqlite::params![&DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT],
+            )
+            .expect("insert class");
+            tx.execute("insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, x'01', ?)", [
+                vec![0u8; 32],
+                vec![0u8; 32],
+                vec![0u8; 32],
+            ]).expect("insert block");
+            tx.commit().expect("commit");
+        }
+        let (call_handle, _join_handle) = crate::cairo::ext_py::start(
+            storage.path().into(),
+            std::num::NonZeroUsize::try_from(1).unwrap(),
+            futures::future::pending(),
+            Chain::Testnet,
+        )
+        .await
+        .unwrap();
+        let rpc = RpcContext::for_tests()
+            .with_storage(storage)
+            .with_call_handling(call_handle);
+
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transactions": [
+                {
+                    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+                    "max_fee": "0x0",
+                    "signature": [
+                        "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+                        "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+                    ],
+                    "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+                    "signature": [],
+                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH.to_string(),
+                    "nonce": "0x0",
+                    "version": "0x100000000000000000000000000000001",
+                    "constructor_calldata": [
+                        "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
+                    ],
+                    "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    "constructor_calldata": [],
+                    "type": "DEPLOY_ACCOUNT"
+                }
+            ],
+            "simulation_flags": []
+        });
+        let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
+
+        let expected: Vec<dto::SimulatedTransaction> = {
+            use dto::*;
+            use ethers::types::H256;
+            vec![
+            SimulatedTransaction {
+                fee_estimation: Some(
+                    FeeEstimate {
+                        gas_consumed: H256::from_low_u64_be(0x0c18),
+                        gas_price: H256::from_low_u64_be(0x01),
+                        overall_fee: H256::from_low_u64_be(0x0c18),
+                    }
+                ),
+                transaction_trace: Some(
+                    TransactionTrace::DeployAccount(
+                        DeployAccountTxnTrace {
+                            constructor_invocation: Some(
+                                FunctionInvocation {
+                                    call_type: Some(CallType::Call),
+                                    caller_address: Some(felt!("0x0")),
+                                    calls: Some(vec![]),
+                                    code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                    entry_point_type: Some(EntryPointType::Constructor),
+                                    events: Some(vec![]),
+                                    function_call: FunctionCall {
+                                        calldata: vec![],
+                                        contract_address: Address(felt!(
+                                            "0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"
+                                        )),
+                                        entry_point_selector: felt!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194"),
+                                    },
+                                    messages: Some(vec![]),
+                                    result: Some(vec![]),
+                                },
+                            ),
+                            validate_invocation: Some(
+                                FunctionInvocation {
+                                    call_type: Some(CallType::Call),
+                                    caller_address: Some(felt!("0x0")),
+                                    calls: Some(vec![]),
+                                    code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                    entry_point_type: Some(EntryPointType::External),
+                                    events: Some(vec![]),
+                                    function_call: FunctionCall {
+                                        calldata: vec![
+                                            DUMMY_ACCOUNT_CLASS_HASH.0,
+                                            felt!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971"),
+                                        ],
+                                        contract_address: Address(felt!(
+                                            "0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"
+                                        )),
+                                        entry_point_selector: felt!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895"),
+                                    },
+                                    messages: Some(vec![]),
+                                    result: Some(vec![]),
+                                },
+                            ),
+                            fee_transfer_invocation: None,
+                        },
+                    ),
+                ),
+            }]
+        };
+
+        let result = simulate_transaction(rpc, input).await.expect("result");
+        pretty_assertions::assert_eq!(result.0, expected);
     }
 }
