@@ -31,6 +31,7 @@ exclude = [
 resolver = "2"
 
 [workspace.dependencies]
+anyhow = { version = "1.0.66" }
 clap = { version = "4.1.13" }
 fake = { version = "2.5.0", features = ["derive"] }
 rand = "0.8.5"

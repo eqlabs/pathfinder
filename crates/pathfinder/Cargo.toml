@@ -16,7 +16,7 @@ rpc-full-serde = []
 p2p = ["dep:p2p", "dep:p2p_proto"]
 
 [dependencies]
-anyhow = "1.0.66"
+anyhow = { workspace = true }
 async-trait = "0.1.59"
 bitvec = "0.20.4"
 cairo-lang-starknet = { git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }

@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.66"
+anyhow = { workspace = true }
 ethers = "1.0.2"
 num-bigint = { version = "0.4.3", features = ["serde"] }
 pathfinder-common = { path = "../common" }

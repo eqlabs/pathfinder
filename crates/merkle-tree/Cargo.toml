@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.66"
+anyhow = { workspace = true }
 bitvec = "0.20.4"
 pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }

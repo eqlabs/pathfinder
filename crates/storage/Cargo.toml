@@ -10,7 +10,7 @@ rust-version = "1.62"
 test-utils = []
 
 [dependencies]
-anyhow = "1.0.66"
+anyhow = { workspace = true }
 base64 = "0.13.1"
 bitvec = "0.20.4"
 data-encoding = "2.3.3"

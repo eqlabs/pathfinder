@@ -9,7 +9,7 @@ build = "build.rs"
 test-utils = ["dep:rand", "dep:fake"]
 
 [dependencies]
-anyhow = "1.0.62"
+anyhow = { workspace = true }
 fake = { version = "2.5.0", features = ["derive"], optional = true }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 primitive-types = "0.12.1"
