@@ -67,11 +67,13 @@ pub async fn prefix_rpc_method_names_with_version(
     };
 
     let body = if is_single {
-        let mut request: jsonrpsee::types::Request<'_> = serde_json::from_slice(&body).unwrap();
+        let mut request: jsonrpsee::types::Request<'_> = serde_json::from_slice(&body)
+            .map_err(|_| VersioningError::Malformed)?;
         prefix_method(&mut request, prefixes);
         serde_json::to_vec(&request)
     } else {
-        let mut batch: Vec<jsonrpsee::types::Request<'_>> = serde_json::from_slice(&body).unwrap();
+        let mut batch: Vec<jsonrpsee::types::Request<'_>> = serde_json::from_slice(&body)
+            .map_err(|_| VersioningError::Malformed)?;
         batch
             .iter_mut()
             .for_each(|request| prefix_method(request, prefixes));
