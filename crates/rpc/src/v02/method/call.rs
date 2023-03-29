@@ -1,11 +1,21 @@
+use std::collections::HashMap;
+
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
-use pathfinder_common::{
-    BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint, StarknetBlockNumber,
-};
-use pathfinder_storage::{
-    StarknetBlocksBlockId, StarknetBlocksNumberOrLatest, StarknetBlocksTable,
+use cairo_felt::Felt252;
+use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use stark_hash::Felt;
+use starknet_rs::{
+    business_logic::{
+        execution::{
+            execution_entry_point::ExecutionEntryPoint, objects::TransactionExecutionContext,
+        },
+        fact_state::state::ExecutionResourcesManager,
+        state::cached_state::CachedState,
+    },
+    definitions::general_config::StarknetGeneralConfig,
 };
 
 crate::error::generate_rpc_error_subset!(
@@ -16,16 +26,13 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<crate::cairo::ext_py::CallFailure> for CallError {
-    fn from(c: crate::cairo::ext_py::CallFailure) -> Self {
-        use crate::cairo::ext_py::CallFailure::*;
-        match c {
-            NoSuchBlock => Self::BlockNotFound,
-            NoSuchContract => Self::ContractNotFound,
-            InvalidEntryPoint => Self::InvalidMessageSelector,
-            ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
-            // Intentionally hide the message under Internal
-            Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),
+impl From<starknet_rs::business_logic::transaction::error::TransactionError> for CallError {
+    fn from(value: starknet_rs::business_logic::transaction::error::TransactionError) -> Self {
+        use starknet_rs::business_logic::transaction::error::TransactionError;
+        match value {
+            TransactionError::EntryPointNotFound => Self::InvalidMessageSelector,
+            TransactionError::FailToReadClassHash => Self::ContractNotFound,
+            e => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
         }
     }
 }
@@ -43,33 +50,11 @@ pub struct FunctionCall {
     pub calldata: Vec<CallParam>,
 }
 
-impl From<FunctionCall> for crate::v02::types::request::Call {
-    fn from(call: FunctionCall) -> Self {
-        Self {
-            contract_address: call.contract_address,
-            calldata: call.calldata,
-            entry_point_selector: Some(call.entry_point_selector),
-            // TODO: these fields are estimateFee-only and effectively ignored
-            // by the underlying implementation. We can remove these once
-            // JSON-RPC v0.1.0 is removed.
-            signature: vec![],
-            max_fee: Self::DEFAULT_MAX_FEE,
-            version: Self::DEFAULT_VERSION,
-            nonce: Self::DEFAULT_NONCE,
-        }
-    }
-}
-
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug)]
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
-    // let handle = context
-    //     .call_handle
-    //     .as_ref()
-    //     .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
-
     let (when, pending_timestamp, pending_update) =
         super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
             .await?;
@@ -95,6 +80,59 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
         storage_commitment,
     };
 
+    let contract_class_cache = HashMap::new();
+    let mut state = CachedState::new(state_reader, Some(contract_class_cache));
+
+    let contract_address = starknet_rs::utils::Address(Felt252::from_bytes_be(
+        input.request.contract_address.get().as_be_bytes(),
+    ));
+    let calldata = input
+        .request
+        .calldata
+        .iter()
+        .map(|p| Felt252::from_bytes_be(p.0.as_be_bytes()))
+        .collect();
+    let entry_point_selector =
+        Felt252::from_bytes_be(input.request.entry_point_selector.0.as_be_bytes());
+    let caller_address = starknet_rs::utils::Address(0.into());
+    let exec_entry_point = ExecutionEntryPoint::new(
+        contract_address,
+        calldata,
+        entry_point_selector,
+        caller_address.clone(),
+        starknet_rs::services::api::contract_class::EntryPointType::External,
+        None,
+        None,
+    );
+
+    let general_config = StarknetGeneralConfig::default();
+    let execution_context = TransactionExecutionContext::new(
+        caller_address,
+        0.into(),
+        Vec::new(),
+        0,
+        1.into(),
+        general_config.invoke_tx_max_n_steps(),
+        starknet_rs::definitions::constants::TRANSACTION_VERSION,
+    );
+    let mut resources_manager = ExecutionResourcesManager::default();
+
+    let call_info = exec_entry_point.execute(
+        &mut state,
+        &general_config,
+        &mut resources_manager,
+        &execution_context,
+    )?;
+
+    let result = call_info
+        .retdata
+        .iter()
+        .map(|f| Felt::from_be_slice(&f.to_bytes_be()).map(CallResultValue))
+        .collect::<Result<Vec<CallResultValue>, _>>()
+        .context("Converting results to felts")?;
+
+    Ok(CallOutput(result))
+
     // let result = handle
     //     .call(
     //         input.request.into(),
@@ -103,13 +141,10 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
     //         pending_timestamp,
     //     )
     //     .await?;
-
-    // Ok(CallOutput(result))
-
-    unimplemented!()
 }
 
 mod state {
+    use cairo_felt::Felt252;
     use pathfinder_common::{ClassHash, StorageAddress, StorageCommitment};
     use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
     use pathfinder_storage::{ContractCodeTable, ContractsStateTable};
@@ -119,6 +154,7 @@ mod state {
     use starknet_rs::services::api::contract_class_errors::ContractClassError;
     use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
 
+    #[derive(Clone)]
     pub struct SqliteReader {
         pub storage: pathfinder_storage::Storage,
         pub storage_commitment: StorageCommitment,
@@ -212,7 +248,7 @@ mod state {
                 .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?
                 .ok_or_else(|| StateError::ContractAddressUnavailable(contract_address.clone()))?;
 
-            Ok(cairo_felt::Felt252::from_bytes_be(nonce.0.as_be_bytes()))
+            Ok(Felt252::from_bytes_be(nonce.0.as_be_bytes()))
         }
 
         fn get_storage_at(
@@ -256,9 +292,7 @@ mod state {
                 .map_err(|_| StateError::Storage(StorageError::ErrorFetchingData))?
                 .ok_or_else(|| StateError::NoneStorage(storage_entry.clone()))?;
 
-            Ok(cairo_felt::Felt252::from_bytes_be(
-                storage_val.0.as_be_bytes(),
-            ))
+            Ok(Felt252::from_bytes_be(storage_val.0.as_be_bytes()))
         }
 
         fn count_actual_storage_changes(&mut self) -> (usize, usize) {
