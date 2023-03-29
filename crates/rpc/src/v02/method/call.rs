@@ -1,6 +1,12 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
+use anyhow::Context;
+use pathfinder_common::{
+    BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint, StarknetBlockNumber,
+};
+use pathfinder_storage::{
+    StarknetBlocksBlockId, StarknetBlocksNumberOrLatest, StarknetBlocksTable,
+};
 
 crate::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
@@ -64,9 +70,30 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
     //     .as_ref()
     //     .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
 
-    // let (when, pending_timestamp, pending_update) =
-    //     super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
-    //         .await?;
+    let (when, pending_timestamp, pending_update) =
+        super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
+            .await?;
+
+    let block_id = match when {
+        crate::cairo::ext_py::BlockHashNumberOrLatest::Hash(h) => StarknetBlocksBlockId::Hash(h),
+        crate::cairo::ext_py::BlockHashNumberOrLatest::Number(n) => {
+            StarknetBlocksBlockId::Number(n)
+        }
+        crate::cairo::ext_py::BlockHashNumberOrLatest::Latest => StarknetBlocksBlockId::Latest,
+    };
+
+    // FIXME: this should be a blocking task
+    let mut db = context.storage.connection()?;
+    let tx = db.transaction().context("Creating database transaction")?;
+
+    let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+        .context("Reading storage root for block")?
+        .ok_or_else(|| CallError::BlockNotFound)?;
+
+    let state_reader = state::SqliteReader {
+        storage: context.storage.clone(),
+        storage_commitment,
+    };
 
     // let result = handle
     //     .call(
@@ -92,7 +119,7 @@ mod state {
     use starknet_rs::services::api::contract_class_errors::ContractClassError;
     use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
 
-    struct SqliteReader {
+    pub struct SqliteReader {
         pub storage: pathfinder_storage::Storage,
         pub storage_commitment: StorageCommitment,
     }
@@ -242,13 +269,13 @@ mod state {
 
     // FIXME: we clearly need something more expressive than this
     fn map_sqlite_to_state_err(
-        e: rusqlite::Error,
+        _e: rusqlite::Error,
     ) -> starknet_rs::core::errors::state_errors::StateError {
         StateError::Storage(StorageError::ErrorFetchingData)
     }
 
     fn map_anyhow_to_state_err(
-        e: anyhow::Error,
+        _e: anyhow::Error,
     ) -> starknet_rs::core::errors::state_errors::StateError {
         StateError::Storage(StorageError::ErrorFetchingData)
     }
