@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use stark_hash::Felt;
 
-use crate::{
-    v02::types::reply::FeeEstimate,
-    v03::method::simulate_transaction::dto::{Address, CallType, EntryPointType, Event, MsgToL1},
+use crate::v03::method::simulate_transaction::dto::{
+    Address, CallType, EntryPointType, Event, MsgToL1,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -23,7 +23,6 @@ pub struct TransactionTrace {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct FunctionInvocation {
     pub calldata: Vec<Felt>,
     pub contract_address: Address,
@@ -39,7 +38,7 @@ pub struct FunctionInvocation {
     pub internal_calls: Option<Vec<FunctionInvocation>>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub code_address: Option<Felt>,
+    pub class_hash: Option<Felt>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry_point_type: Option<EntryPointType>,
@@ -52,4 +51,15 @@ pub struct FunctionInvocation {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Vec<Felt>>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct FeeEstimate {
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
+    pub gas_consumed: ethers::types::H256,
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
+    pub gas_price: ethers::types::H256,
+    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
+    pub overall_fee: ethers::types::H256,
 }

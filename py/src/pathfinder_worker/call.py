@@ -93,10 +93,9 @@ try:
     from starkware.storage.storage import FactFetchingContext, Storage
 
     from starkware.starknet.services.api.feeder_gateway.response_objects import (
-        FeeEstimationInfo,
+        BaseResponseObject,
         FunctionInvocation,
         TransactionTrace,
-        TransactionSimulationInfo,
     )
 
 except ModuleNotFoundError:
@@ -545,9 +544,9 @@ def render(verb, vals):
     if verb == Verb.CALL:
         return list(map(as_hex, vals))
     elif verb == Verb.ESTIMATE_FEE:
-        return list(map(render_fee_estimate, vals))
+        return FeeEstimation.Schema(many=True).dump(vals)
     elif verb == Verb.SIMULATE_TX:
-        return list(map(render_simulate_tx, vals))
+        return TransactionSimulation.Schema(many=True).dump(vals)
 
 
 def as_hex(x):
@@ -555,66 +554,17 @@ def as_hex(x):
     return f"0x0{hex.lstrip('0')}"
 
 
-def render_fee_estimate(fee):
-    return {
-        "gas_consumed": as_hex(fee.gas_usage),
-        "gas_price": as_hex(fee.gas_price),
-        "overall_fee": as_hex(fee.overall_fee),
-    }
+@marshmallow_dataclass.dataclass(frozen=True)
+class FeeEstimation(BaseResponseObject):
+    gas_consumed: int = field(metadata=felt_metadata)
+    gas_price: int = field(metadata=felt_metadata)
+    overall_fee: int = field(metadata=felt_metadata)
 
 
-def render_event(event):
-    return {
-        "order": event.order,
-        "keys": list(map(as_hex, event.keys)),
-        "data": list(map(as_hex, event.data)),
-    }
-
-
-def render_message(msg):
-    return {
-        "order": msg.order,
-        "to_address": as_hex(msg.to_address),
-        "payload": list(map(as_hex, msg.event.payload)),
-    }
-
-
-def render_func_invocation(tx: FunctionInvocation):
-    return {
-        "caller_address": as_hex(tx.caller_address),
-        "contract_address": as_hex(tx.contract_address),
-        "calldata": list(map(as_hex, tx.calldata)),
-        "call_type": tx.call_type.name,
-        "code_address": as_hex(tx.class_hash),
-        "selector": as_hex(tx.selector),
-        "entry_point_type": tx.entry_point_type.name,
-        "result": list(map(as_hex, tx.result)),
-        "internal_calls": list(map(render_func_invocation, tx.internal_calls)),
-        "events": list(map(render_event, tx.events)),
-        "messages": list(map(render_message, tx.messages)),
-    }
-
-
-def render_trace(trace: TransactionTrace):
-    return {
-        "validate_invocation": render_func_invocation(trace.validate_invocation)
-        if trace.validate_invocation is not None
-        else None,
-        "function_invocation": render_func_invocation(trace.function_invocation)
-        if trace.function_invocation is not None
-        else None,
-        "fee_transfer_invocation": render_func_invocation(trace.fee_transfer_invocation)
-        if trace.fee_transfer_invocation is not None
-        else None,
-        "signature": list(map(as_hex, trace.signature)),
-    }
-
-
-def render_simulate_tx(trace: TransactionSimulationInfo):
-    return {
-        "trace": render_trace(trace.trace),
-        "fee_estimation": render_fee_estimate(trace.fee_estimation),
-    }
+@marshmallow_dataclass.dataclass(frozen=True)
+class TransactionSimulation(BaseResponseObject):
+    trace: TransactionTrace
+    fee_estimation: FeeEstimation
 
 
 def int_hash_or_latest(s: str):
@@ -1056,16 +1006,16 @@ async def do_estimate_fee(
     for transaction in transactions:
         tx_info = await get_tx_info(state, general_config, block_info, transaction)
 
+        fee = FeeEstimation(
+            gas_price=block_info.gas_price,
+            gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
+            overall_fee=tx_info.actual_fee,
+        )
+
         # with 0.10 upgrade we changed to division with gas_consumed as well, since
         # there is opposition to providing the non-multiplied scalar value from
         # cairo-lang.
-        fees.append(
-            FeeEstimationInfo(
-                gas_price=block_info.gas_price,
-                gas_usage=tx_info.actual_fee // max(1, block_info.gas_price),
-                overall_fee=tx_info.actual_fee,
-            )
-        )
+        fees.append(fee)
 
     return fees
 
@@ -1095,13 +1045,13 @@ async def do_simulate_tx(
             signature=transaction.signature,
         )
 
-        fee_estimation = FeeEstimationInfo(
+        fee_estimation = FeeEstimation(
             gas_price=block_info.gas_price,
-            gas_usage=tx_info.actual_fee // max(1, block_info.gas_price),
+            gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
             overall_fee=tx_info.actual_fee,
         )
 
-        simulated_transactions.append(TransactionSimulationInfo(trace, fee_estimation))
+        simulated_transactions.append(TransactionSimulation(trace, fee_estimation))
 
     return simulated_transactions
 

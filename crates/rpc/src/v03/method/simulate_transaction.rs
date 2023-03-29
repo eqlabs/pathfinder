@@ -1,13 +1,13 @@
 use crate::{
     cairo::ext_py::{
-        types::{FunctionInvocation, TransactionSimulation, TransactionTrace},
+        types::{FeeEstimate, FunctionInvocation, TransactionSimulation, TransactionTrace},
         CallFailure, GasPriceSource,
     },
     context::RpcContext,
     error::RpcError,
     v02::{
         method::estimate_fee::base_block_and_pending_for_call,
-        types::request::BroadcastedTransaction,
+        types::{reply, request::BroadcastedTransaction},
     },
 };
 
@@ -78,9 +78,17 @@ fn map_tx(
     tx: TransactionSimulation,
 ) -> Result<dto::SimulatedTransaction, SimulateTransactionError> {
     Ok(dto::SimulatedTransaction {
-        fee_estimation: Some(tx.fee_estimation),
+        fee_estimation: Some(map_fee(tx.fee_estimation)),
         transaction_trace: Some(map_trace(tx.trace)?),
     })
+}
+
+fn map_fee(fee: FeeEstimate) -> reply::FeeEstimate {
+    reply::FeeEstimate {
+        gas_consumed: fee.gas_consumed,
+        gas_price: fee.gas_price,
+        overall_fee: fee.overall_fee,
+    }
 }
 
 fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocation {
@@ -91,7 +99,7 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
             .internal_calls
             .take()
             .map(|calls| calls.into_iter().map(map_function_invocation).collect()),
-        code_address: fi.code_address,
+        code_address: fi.class_hash,
         entry_point_type: fi.entry_point_type,
         events: fi.events,
         messages: fi.messages,

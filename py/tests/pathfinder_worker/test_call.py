@@ -19,10 +19,6 @@ from starkware.starknet.services.api.gateway.transaction import (
     DeprecatedDeclare,
     DeployAccount,
 )
-from starkware.starknet.services.api.feeder_gateway.response_objects import (
-    FeeEstimationInfo,
-    TransactionSimulationInfo,
-)
 from starkware.starknet.services.api.contract_class.contract_class import (
     DeprecatedCompiledClass,
     ContractClass,
@@ -35,6 +31,8 @@ from pathfinder_worker.call import (
     Call,
     Command,
     EstimateFee,
+    FeeEstimation,
+    TransactionSimulation,
     check_cairolang_version,
     do_loop,
     loop_inner,
@@ -636,8 +634,8 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        FeeEstimationInfo(
-            gas_usage=1258,
+        FeeEstimation(
+            gas_consumed=1258,
             gas_price=1,
             overall_fee=1258,
         )
@@ -685,8 +683,8 @@ def test_fee_estimate_for_declare_transaction_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        FeeEstimationInfo(
-            gas_usage=1251,
+        FeeEstimation(
+            gas_consumed=1251,
             gas_price=1,
             overall_fee=1251,
         )
@@ -759,9 +757,9 @@ def test_fee_estimate_on_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x04ea",
-                "gas_price": "0x0a",
-                "overall_fee": "0x03124",
+                "gas_consumed": "0x4ea",
+                "gas_price": "0xa",
+                "overall_fee": "0x3124",
             },
         ],
     }
@@ -1170,7 +1168,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            [FeeEstimationInfo(gas_usage=1266, gas_price=1, overall_fee=1266)],
+            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1195,7 +1193,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transactions=[dataclasses.replace(base_transaction, nonce=1)],
             ),
-            [FeeEstimationInfo(gas_usage=1266, gas_price=1, overall_fee=1266)],
+            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1232,7 +1230,7 @@ def test_nonce_with_dummy():
                 transactions=[dataclasses.replace(base_transaction, nonce=2)],
                 pending_nonces={0x123: 2},
             ),
-            [FeeEstimationInfo(gas_usage=1266, gas_price=1, overall_fee=1266)],
+            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1475,8 +1473,8 @@ def test_sierra_invoke_function_through_account():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        FeeEstimationInfo(
-            gas_usage=3715,
+        FeeEstimation(
+            gas_consumed=3715,
             gas_price=1,
             overall_fee=3715,
         )
@@ -1527,8 +1525,8 @@ def test_sierra_declare_through_account():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        FeeEstimationInfo(
-            gas_usage=1251,
+        FeeEstimation(
+            gas_consumed=1251,
             gas_price=1,
             overall_fee=1251,
         )
@@ -1596,14 +1594,14 @@ def test_deploy_account():
 
     assert output == [
         # DEPLOY_ACCOUNT
-        FeeEstimationInfo(
-            gas_usage=3096,
+        FeeEstimation(
+            gas_consumed=3096,
             gas_price=1,
             overall_fee=3096,
         ),
         # INVOKE_FUNCTION through deployed account
-        FeeEstimationInfo(
-            gas_usage=3715,
+        FeeEstimation(
+            gas_consumed=3715,
             gas_price=1,
             overall_fee=3715,
         ),
@@ -1685,9 +1683,9 @@ def test_deploy_newly_declared_account():
 
     assert output == [
         # DECLARE an account contract class
-        FeeEstimationInfo(overall_fee=1251, gas_price=1, gas_usage=1251),
+        FeeEstimation(overall_fee=1251, gas_price=1, gas_consumed=1251),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        FeeEstimationInfo(overall_fee=3096, gas_price=1, gas_usage=3096),
+        FeeEstimation(overall_fee=3096, gas_price=1, gas_consumed=3096),
     ]
 
 
@@ -1766,9 +1764,9 @@ def test_deploy_newly_declared_sierra_account():
 
     assert output == [
         # DECLARE an account contract class
-        FeeEstimationInfo(overall_fee=1251, gas_price=1, gas_usage=1251),
+        FeeEstimation(overall_fee=1251, gas_price=1, gas_consumed=1251),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        FeeEstimationInfo(overall_fee=3098, gas_price=1, gas_usage=3098),
+        FeeEstimation(overall_fee=3098, gas_price=1, gas_consumed=3098),
     ]
 
 
@@ -2180,14 +2178,13 @@ def test_simulate_transaction_succeeds():
             ]
         },
         "fee_estimation": {
-            "gas_usage": 4323,
-            "gas_price": 1,
-            "overall_fee": 4323,
-            "unit": "wei"
+            "gas_consumed": "0x10e3",
+            "gas_price": "0x1",
+            "overall_fee": "0x10e3"
         }
     }
     """
 
-    expected = TransactionSimulationInfo.Schema().loads(json)
+    expected = TransactionSimulation.Schema().loads(json)
 
     assert output == [expected]
