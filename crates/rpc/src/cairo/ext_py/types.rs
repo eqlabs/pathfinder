@@ -22,34 +22,27 @@ pub struct TransactionTrace {
     pub signature: Vec<Felt>,
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FunctionInvocation {
     pub calldata: Vec<Felt>,
     pub contract_address: Address,
     pub selector: Felt,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub call_type: Option<CallType>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub caller_address: Option<Felt>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub internal_calls: Option<Vec<FunctionInvocation>>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub class_hash: Option<Felt>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub entry_point_type: Option<EntryPointType>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<Event>>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub messages: Option<Vec<MsgToL1>>,
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Vec<Felt>>,
 }
 
