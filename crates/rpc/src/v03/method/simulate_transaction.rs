@@ -39,9 +39,8 @@ impl From<CallFailure> for SimulateTransactionError {
             CallFailure::NoSuchBlock => Self::BlockNotFound,
             CallFailure::NoSuchContract => Self::ContractNotFound,
             CallFailure::InvalidEntryPoint => Self::ContractError,
-            CallFailure::ExecutionFailed(e) => Self::Internal(anyhow!("Execution failed: {e:?}")),
-            CallFailure::Internal(e) => Self::Internal(anyhow!("Internal error: {e:?}")),
-            CallFailure::Shutdown => Self::Internal(anyhow!("Internal error")),
+            CallFailure::ExecutionFailed(e) => Self::Internal(anyhow!("Execution failed: {e}")),
+            CallFailure::Internal(_) | CallFailure::Shutdown => Self::Internal(anyhow!("Internal error")),
         }
     }
 }
