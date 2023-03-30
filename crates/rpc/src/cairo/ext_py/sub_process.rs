@@ -373,6 +373,7 @@ async fn process(
         Command::SimulateTransaction {
             transactions,
             at_block,
+            skip_validate,
             gas_price,
             chain,
             diffs: maybe_diffs,
@@ -389,6 +390,7 @@ async fn process(
             },
             gas_price: gas_price.as_price(),
             transactions,
+            skip_validate,
         },
     };
 

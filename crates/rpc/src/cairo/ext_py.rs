@@ -135,7 +135,7 @@ impl Handle {
         diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
         transactions: Vec<BroadcastedTransaction>,
-        (_skip_execute, _skip_validate): (bool, bool),
+        skip_validate: bool,
     ) -> Result<Vec<TransactionSimulation>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -156,6 +156,7 @@ impl Handle {
                     diffs,
                     block_timestamp,
                     response,
+                    skip_validate,
                 },
                 continued_span,
             ))
@@ -324,6 +325,7 @@ enum Command {
     SimulateTransaction {
         transactions: Vec<add_transaction::AddTransaction>,
         at_block: BlockHashNumberOrLatest,
+        skip_validate: bool,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,

@@ -253,7 +253,7 @@ class SimulateTx(Command):
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
     transactions: List[AccountTransaction]
-    skip_validate: Optional[bool] = None
+    skip_validate: bool
 
 
 class CommandSchema(marshmallow_oneofschema.OneOfSchema):
@@ -523,7 +523,7 @@ def loop_inner(
                 general_config,
                 block_info,
                 command.transactions,
-                command.skip_validate if command.skip_validate is not None else False,
+                command.skip_validate,
             )
         )
         ret = (command.verb, simulated_transactions, timings)
@@ -962,9 +962,10 @@ async def simulate_account_tx(
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
     transaction: AccountTransaction,
+    skip_validate: bool,
 ):
     internal_transaction = InternalAccountTransactionForSimulate.create_for_simulate(
-        transaction, general_config, False
+        transaction, general_config, skip_validate
     )
 
     with state.copy_and_apply() as state_copy:
@@ -1004,7 +1005,7 @@ async def do_estimate_fee(
     fees = []
 
     for transaction in transactions:
-        tx_info = await simulate_account_tx(state, general_config, block_info, transaction)
+        tx_info = await simulate_account_tx(state, general_config, block_info, transaction, skip_validate=False)
 
         fee = FeeEstimation(
             gas_price=block_info.gas_price,
@@ -1030,7 +1031,7 @@ async def do_simulate_tx(
     simulated_transactions = []
 
     for transaction in transactions:
-        tx_info = await simulate_account_tx(state, general_config, block_info, transaction)
+        tx_info = await simulate_account_tx(state, general_config, block_info, transaction, skip_validate)
 
         trace = TransactionTrace(
             validate_invocation=FunctionInvocation.from_optional_internal(

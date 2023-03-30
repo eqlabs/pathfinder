@@ -43,6 +43,7 @@ pub(crate) enum ChildCommand<'a> {
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
         gas_price: &'a ethers::types::H256,
         transactions: &'a [AddTransaction],
+        skip_validate: &'a bool,
     },
 }
 

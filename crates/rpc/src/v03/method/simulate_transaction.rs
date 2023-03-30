@@ -53,11 +53,6 @@ pub async fn simulate_transaction(
     let (handle, gas_price, at_block, pending_timestamp, pending_update) =
         prepare_handle_and_block(&context, input.block_id).await?;
 
-    let skip_execute = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipExecute);
     let skip_validate = input
         .simulation_flags
         .0
@@ -70,7 +65,7 @@ pub async fn simulate_transaction(
             pending_update,
             pending_timestamp,
             input.transactions,
-            (skip_execute, skip_validate),
+            skip_validate,
         )
         .await
         .map_err(SimulateTransactionError::from)?;
