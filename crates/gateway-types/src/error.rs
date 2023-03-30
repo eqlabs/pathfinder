@@ -80,4 +80,6 @@ pub enum StarknetErrorCode {
     InvalidCompiledClassHash,
     #[serde(rename = "StarknetErrorCode.COMPILATION_FAILED")]
     CompilationFailed,
+    #[serde(rename = "StarknetErrorCode.UNAUTHORIZED_ENTRY_POINT_FOR_INVOKE")]
+    UnauthorizedEntryPointForInvoke,
 }
