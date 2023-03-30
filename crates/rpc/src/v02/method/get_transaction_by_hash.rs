@@ -15,6 +15,14 @@ pub async fn get_transaction_by_hash(
     context: RpcContext,
     input: GetTransactionByHashInput,
 ) -> Result<Transaction, GetTransactionByHashError> {
+    // We check for a transaction in three places, in descending order of access speed.
+    //
+    //  1. Pending data     (in-memory)
+    //  2. Database         (disk)
+    //  3. Gateway          (network)
+    //
+    // The gateway check allows us to find rejected transactions.
+
     if let Some(pending) = &context.pending_data {
         let pending_tx = pending.block().await.and_then(|block| {
             block
@@ -41,13 +49,35 @@ pub async fn get_transaction_by_hash(
         let db_tx = db.transaction().context("Creating database transaction")?;
 
         // Get the transaction from storage.
-        StarknetTransactionsTable::get_transaction(&db_tx, input.transaction_hash)
+        let tx = StarknetTransactionsTable::get_transaction(&db_tx, input.transaction_hash)
             .context("Reading transaction from database")?
-            .ok_or(GetTransactionByHashError::TxnHashNotFound)
-            .map(|tx| tx.into())
+            .map(Transaction::from);
+
+        anyhow::Ok(tx)
     });
 
-    jh.await.context("Database read panic or shutting down")?
+    if let Some(tx) = jh.await.context("Database read panic or shutting down")?? {
+        return Ok(tx);
+    }
+
+    use starknet_gateway_client::ClientApi;
+    let tx = context
+        .sequencer
+        .transaction(input.transaction_hash)
+        .await
+        .context("Transaction not found locally, querying gateway")?;
+
+    use starknet_gateway_types::reply::Status as GatewayStatus;
+    if matches!(tx.status, GatewayStatus::NotReceived) {
+        return Err(GetTransactionByHashError::TxnHashNotFound);
+    }
+
+    let tx = tx
+        .transaction
+        .map(Transaction::from)
+        .context("Gateway reply is missing transaction body")?;
+
+    Ok(tx)
 }
 
 #[cfg(test)]
