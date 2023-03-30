@@ -187,6 +187,6 @@ pub mod testnet {
         pub const CLASS_HASH: &str =
             "02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513";
         pub const CLASS_DEFINITION: &str =
-            include_str!("../fixtures/simulate-tx/contracts/balance_contract_definition.txt");
+            str_fixture!("simulate-tx/contracts/balance_contract_definition.txt");
     }
 }
