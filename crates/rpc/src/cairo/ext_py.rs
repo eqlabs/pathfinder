@@ -230,22 +230,6 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                 class_hash_hint: Some(class_hash.hash()),
             }
         }
-        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
-            TransactionAndClassHashHint {
-                transaction: add_transaction::AddTransaction::Invoke(
-                    add_transaction::InvokeFunction {
-                        version: tx.version,
-                        max_fee: tx.max_fee,
-                        signature: tx.signature,
-                        nonce: None,
-                        sender_address: tx.contract_address,
-                        entry_point_selector: Some(tx.entry_point_selector),
-                        calldata: tx.calldata,
-                    },
-                ),
-                class_hash_hint: None,
-            }
-        }
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
             TransactionAndClassHashHint {
                 transaction: add_transaction::AddTransaction::Invoke(
@@ -459,7 +443,7 @@ mod tests {
     use super::sub_process::launch_python;
     use crate::v02::types::request::{
         BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
-        BroadcastedInvokeTransactionV0, BroadcastedTransaction,
+        BroadcastedInvokeTransactionV1, BroadcastedTransaction,
     };
     use pathfinder_common::{
         felt, felt_bytes, CallParam, CallResultValue, Chain, ClassCommitment, ClassHash,
@@ -608,15 +592,14 @@ mod tests {
         .unwrap();
 
         let transactions = vec![BroadcastedTransaction::Invoke(
-            BroadcastedInvokeTransaction::V0(BroadcastedInvokeTransactionV0 {
+            BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
                 version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                 max_fee: super::Call::DEFAULT_MAX_FEE,
                 signature: Default::default(),
-                nonce: None,
-                contract_address: ContractAddress::new_or_panic(felt!(
+                nonce: super::Call::DEFAULT_NONCE,
+                sender_address: ContractAddress::new_or_panic(felt!(
                     "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                 )),
-                entry_point_selector: EntryPoint::hashed(&b"get_value"[..]),
                 calldata: vec![CallParam(felt!("0x84"))],
             }),
         )];

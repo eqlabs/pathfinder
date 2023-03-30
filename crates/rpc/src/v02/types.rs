@@ -134,7 +134,6 @@ pub mod request {
         serde(untagged)
     )]
     pub enum BroadcastedInvokeTransaction {
-        V0(BroadcastedInvokeTransactionV0),
         V1(BroadcastedInvokeTransactionV1),
     }
 
@@ -149,49 +148,18 @@ pub mod request {
             #[derive(Deserialize)]
             struct Version {
                 #[serde_as(as = "TransactionVersionAsHexStr")]
-                #[serde(default = "transaction_version_zero")]
                 pub version: TransactionVersion,
             }
 
             let v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
             match version.version.without_query_version() {
-                0 => Ok(Self::V0(
-                    BroadcastedInvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
-                )),
                 1 => Ok(Self::V1(
                     BroadcastedInvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _ => Err(de::Error::custom("version must be 0 or 1")),
+                _ => Err(de::Error::custom("version must be 1")),
             }
         }
-    }
-
-    const fn transaction_version_zero() -> TransactionVersion {
-        TransactionVersion(ethers::types::H256::zero())
-    }
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct BroadcastedInvokeTransactionV0 {
-        #[serde_as(as = "TransactionVersionAsHexStr")]
-        #[serde(default = "transaction_version_zero")]
-        pub version: TransactionVersion,
-
-        // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
-        // here in a flattened struct, but `flatten` doesn't work with
-        // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
-        pub max_fee: Fee,
-        pub signature: Vec<TransactionSignatureElem>,
-        // This is a mistake in RPC specification v0.2. This field should not exist,
-        // but since it is part of the spec we make it optional and then don't pass it
-        // on to the gateway in the write API.
-        pub nonce: Option<TransactionNonce>,
-
-        pub contract_address: ContractAddress,
-        pub entry_point_selector: EntryPoint,
-        pub calldata: Vec<CallParam>,
     }
 
     #[serde_as]
@@ -200,7 +168,6 @@ pub mod request {
     #[serde(deny_unknown_fields)]
     pub struct BroadcastedInvokeTransactionV1 {
         #[serde_as(as = "TransactionVersionAsHexStr")]
-        #[serde(default = "transaction_version_zero")]
         pub version: TransactionVersion,
 
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
@@ -334,17 +301,6 @@ pub mod request {
                                 abi: Some(r#"[{"type":"function","name":"foo"}]"#.to_owned()),
                             },
                             sender_address: ContractAddress::new_or_panic(felt!("0xa1")),
-                        },
-                    )),
-                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                        BroadcastedInvokeTransactionV0 {
-                            version: TransactionVersion(ethers::types::H256::zero()),
-                            max_fee: Fee(felt!("0x6")),
-                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                            nonce: Some(TransactionNonce(felt!("0x8"))),
-                            contract_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                            entry_point_selector: EntryPoint(felt!("0xe")),
-                            calldata: vec![CallParam(felt!("0xff"))],
                         },
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(

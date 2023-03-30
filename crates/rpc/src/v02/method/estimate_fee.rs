@@ -64,8 +64,8 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
-        felt, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        felt, CallParam, Chain, ContractAddress, Fee, StarknetBlockHash, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_storage::JournalMode;
     use std::path::PathBuf;
@@ -74,14 +74,13 @@ mod tests {
         use super::*;
 
         fn test_invoke_txn() -> BroadcastedTransaction {
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                crate::v02::types::request::BroadcastedInvokeTransactionV0 {
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                crate::v02::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(felt!("0x6")),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                    nonce: Some(TransactionNonce(felt!("0x8"))),
-                    contract_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                    entry_point_selector: EntryPoint(felt!("0xe")),
+                    nonce: TransactionNonce(felt!("0x8")),
+                    sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
                     calldata: vec![CallParam(felt!("0xff"))],
                 },
             ))
@@ -157,7 +156,7 @@ mod tests {
         use super::*;
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
-            BroadcastedInvokeTransactionV0,
+            BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{CairoContractClass, ContractClass};
         use pathfinder_common::felt_bytes;
@@ -168,17 +167,14 @@ mod tests {
         )));
 
         // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
-        fn valid_mainnet_invoke_v0() -> BroadcastedInvokeTransactionV0 {
-            BroadcastedInvokeTransactionV0 {
+        fn valid_mainnet_invoke_v1() -> BroadcastedInvokeTransactionV1 {
+            BroadcastedInvokeTransactionV1 {
                 version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
-                nonce: Some(TransactionNonce(Default::default())),
-                contract_address: ContractAddress::new_or_panic(felt!(
+                nonce: TransactionNonce(Default::default()),
+                sender_address: ContractAddress::new_or_panic(felt!(
                     "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
-                )),
-                entry_point_selector: EntryPoint(felt!(
-                    "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
                 )),
                 calldata: vec![
                     CallParam(felt!(
@@ -192,8 +188,8 @@ mod tests {
         }
 
         fn valid_broadcasted_transaction() -> BroadcastedTransaction {
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                valid_mainnet_invoke_v0(),
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                valid_mainnet_invoke_v1(),
             ))
         }
 
@@ -236,11 +232,11 @@ mod tests {
         async fn no_such_contract() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
-            let mainnet_invoke = valid_mainnet_invoke_v0();
+            let mainnet_invoke = valid_mainnet_invoke_v1();
             let input = EstimateFeeInput {
-                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                    BroadcastedInvokeTransactionV0 {
-                        contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                    BroadcastedInvokeTransactionV1 {
+                        sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
                         ..mainnet_invoke
                     },
                 )),
@@ -250,17 +246,16 @@ mod tests {
             assert_matches::assert_matches!(error, Err(EstimateFeeError::ContractNotFound));
         }
 
+        // FIXME remove?
+        // this test does not make sense with v1
         #[tokio::test]
         async fn invalid_message_selector() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
-            let mainnet_invoke = valid_mainnet_invoke_v0();
+            let mainnet_invoke = valid_mainnet_invoke_v1();
             let input = EstimateFeeInput {
-                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                    BroadcastedInvokeTransactionV0 {
-                        entry_point_selector: EntryPoint(Default::default()),
-                        ..mainnet_invoke
-                    },
+                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                    BroadcastedInvokeTransactionV1 { ..mainnet_invoke },
                 )),
                 block_id: BLOCK_5,
             };
@@ -268,8 +263,9 @@ mod tests {
             assert_matches::assert_matches!(error, Err(EstimateFeeError::InvalidMessageSelector));
         }
 
+        // FIXME
         #[tokio::test]
-        async fn successful_invoke_v0() {
+        async fn successful_invoke_v1() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
@@ -288,6 +284,7 @@ mod tests {
             };
         }
 
+        // FIXME make it use v1
         #[test_log::test(tokio::test)]
         async fn successful_declare_v0() {
             let (context, _join_handle) = test_context_with_call_handling().await;
@@ -311,40 +308,10 @@ mod tests {
             assert_eq!(result, FeeEstimate::default(),);
         }
 
-        #[ignore = "fixme for v0.11.0"]
         #[test_log::test(tokio::test)]
+        #[ignore = "fixme for v0.11.0"]
         async fn successful_declare_v2() {
-            /*
-            let (context, _join_handle) = test_context_with_call_handling().await;
-
-            let declare_transaction = BroadcastedTransaction::Declare(
-                BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                    max_fee: Fee(Default::default()),
-                    signature: vec![],
-                    nonce: TransactionNonce(Default::default()),
-                    contract_class: todo!("fixme v0.11.0"),
-                    sender_address: ContractAddress::new_or_panic(felt!(
-                        "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
-                    )),
-                    compiled_class_hash: todo!("fixme v0.11.0"),
-                }),
-            );
-
-            let input = EstimateFeeInput {
-                request: declare_transaction,
-                block_id: BLOCK_5,
-            };
-            let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(
-                result,
-                FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }
-            );
-            */
+            todo!()
         }
     }
 }
