@@ -215,33 +215,26 @@ pub mod dto {
         L1Handler,
     }
 
+    #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct FunctionInvocation {
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub call_type: Option<CallType>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub caller_address: Option<Felt>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub calls: Option<Vec<FunctionInvocation>>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub code_address: Option<Felt>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub entry_point_type: Option<EntryPointType>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub events: Option<Vec<Event>>,
         #[serde(flatten)]
         pub function_call: FunctionCall,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub messages: Option<Vec<MsgToL1>>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub result: Option<Vec<Felt>>,
     }
 
@@ -273,56 +266,50 @@ pub mod dto {
         L1Handler(L1HandlerTxnTrace),
     }
 
+    #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct DeclareTxnTrace {
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub validate_invocation: Option<FunctionInvocation>,
     }
 
+    #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct DeployAccountTxnTrace {
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub constructor_invocation: Option<FunctionInvocation>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub validate_invocation: Option<FunctionInvocation>,
     }
 
+    #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct InvokeTxnTrace {
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub execute_invocation: Option<FunctionInvocation>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub validate_invocation: Option<FunctionInvocation>,
     }
 
+    #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct L1HandlerTxnTrace {
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub function_invocation: Option<FunctionInvocation>,
     }
 
+    #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct SimulatedTransaction {
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub fee_estimation: Option<FeeEstimate>,
         #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
         pub transaction_trace: Option<TransactionTrace>,
     }
 }
