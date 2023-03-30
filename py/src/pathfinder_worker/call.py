@@ -957,7 +957,7 @@ async def do_call(
     return call_info
 
 
-async def get_tx_info(
+async def simulate_account_tx(
     state: CachedState,
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
@@ -1004,7 +1004,7 @@ async def do_estimate_fee(
     fees = []
 
     for transaction in transactions:
-        tx_info = await get_tx_info(state, general_config, block_info, transaction)
+        tx_info = await simulate_account_tx(state, general_config, block_info, transaction)
 
         fee = FeeEstimation(
             gas_price=block_info.gas_price,
@@ -1030,7 +1030,7 @@ async def do_simulate_tx(
     simulated_transactions = []
 
     for transaction in transactions:
-        tx_info = await get_tx_info(state, general_config, block_info, transaction)
+        tx_info = await simulate_account_tx(state, general_config, block_info, transaction)
 
         trace = TransactionTrace(
             validate_invocation=FunctionInvocation.from_optional_internal(
