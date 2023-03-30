@@ -219,7 +219,7 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<AddTransaction, CallFailure> {
                 max_fee: tx.max_fee,
                 signature: tx.signature,
                 nonce: None,
-                contract_address: tx.contract_address,
+                sender_address: tx.contract_address,
                 entry_point_selector: Some(tx.entry_point_selector),
                 calldata: tx.calldata,
             })
@@ -230,7 +230,7 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<AddTransaction, CallFailure> {
                 max_fee: tx.max_fee,
                 signature: tx.signature,
                 nonce: Some(tx.nonce),
-                contract_address: tx.sender_address,
+                sender_address: tx.sender_address,
                 entry_point_selector: None,
                 calldata: tx.calldata,
             })
