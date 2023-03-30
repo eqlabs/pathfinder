@@ -158,7 +158,10 @@ fn map_trace(
 }
 
 pub mod dto {
+    use serde_with::serde_as;
+
     use crate::v02::types::reply::FeeEstimate;
+    use crate::felt::RpcFelt;
 
     use super::*;
 
@@ -173,14 +176,24 @@ pub mod dto {
         SkipValidate,
     }
 
+    #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct Signature(pub Vec<Felt>);
+    pub struct Signature(
+        #[serde_as(as = "Vec<RpcFelt>")]
+        pub Vec<Felt>
+    );
 
+    #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct Address(pub Felt);
+    pub struct Address(
+        #[serde_as(as = "RpcFelt")]
+        pub Felt
+    );
 
+    #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct FunctionCall {
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub calldata: Vec<Felt>,
         pub contract_address: Address,
         pub entry_point_selector: Felt,
@@ -204,16 +217,19 @@ pub mod dto {
         L1Handler,
     }
 
+    #[serde_with::serde_as]
     #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct FunctionInvocation {
         #[serde(default)]
         pub call_type: Option<CallType>,
         #[serde(default)]
+        #[serde_as(as = "Option<RpcFelt>")]
         pub caller_address: Option<Felt>,
         #[serde(default)]
         pub calls: Option<Vec<FunctionInvocation>>,
         #[serde(default)]
+        #[serde_as(as = "Option<RpcFelt>")]
         pub code_address: Option<Felt>,
         #[serde(default)]
         pub entry_point_type: Option<EntryPointType>,
@@ -224,11 +240,14 @@ pub mod dto {
         #[serde(default)]
         pub messages: Option<Vec<MsgToL1>>,
         #[serde(default)]
+        #[serde_as(as = "Option<Vec<RpcFelt>>")]
         pub result: Option<Vec<Felt>>,
     }
 
+    #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct MsgToL1 {
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<Felt>,
         pub to_address: Felt,
     }
@@ -240,9 +259,12 @@ pub mod dto {
         pub from_address: Address,
     }
 
+    #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct EventContent {
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<Felt>,
+        #[serde_as(as = "Vec<RpcFelt>")]
         pub keys: Vec<Felt>,
     }
 
