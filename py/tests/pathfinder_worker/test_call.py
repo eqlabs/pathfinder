@@ -2063,8 +2063,6 @@ def test_simulate_transaction_succeeds():
         check_relative_path("../data/contracts/testnet/balance_contract.json")
     ) as file:
         contract = json.load(file)
-    class_hash = contract["class_hash"]
-    class_def = contract["class_definition"]
 
     con = inmemory_with_tables()
 
@@ -2072,8 +2070,8 @@ def test_simulate_transaction_succeeds():
     con.execute(
         "insert into class_definitions (hash, definition) values (?, ?)",
         [
-            bytes.fromhex(class_hash),
-            bytes.fromhex(class_def),
+            bytes.fromhex(contract["class_hash"]),
+            bytes.fromhex(contract["class_definition"]),
         ],
     )
     con.execute(
