@@ -92,7 +92,7 @@ impl Cached {
             }
         };
 
-        rx.recv().await.ok().and_then(|i| i)
+        rx.recv().await.ok().flatten()
     }
 }
 
