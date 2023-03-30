@@ -851,7 +851,7 @@ pub mod reply {
     }
 
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimate {

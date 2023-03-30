@@ -353,11 +353,7 @@ mod tests {
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(
                 result,
-                FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }
+                FeeEstimate::default(),
             );
         }
 
@@ -391,11 +387,7 @@ mod tests {
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(
                 result,
-                FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }
+                FeeEstimate::default(),
             );
         }
 

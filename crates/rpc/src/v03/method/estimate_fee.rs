@@ -354,16 +354,8 @@ mod tests {
             assert_eq!(
                 result,
                 vec![
-                    FeeEstimate {
-                        gas_consumed: Default::default(),
-                        gas_price: Default::default(),
-                        overall_fee: Default::default()
-                    },
-                    FeeEstimate {
-                        gas_consumed: Default::default(),
-                        gas_price: Default::default(),
-                        overall_fee: Default::default()
-                    }
+                    FeeEstimate::default(),
+                    FeeEstimate::default(),
                 ]
             );
         }
@@ -398,11 +390,7 @@ mod tests {
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(
                 result,
-                vec![FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }]
+                vec![FeeEstimate::default()]
             );
         }
     }
