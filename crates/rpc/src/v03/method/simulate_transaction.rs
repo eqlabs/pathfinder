@@ -105,7 +105,7 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
         events: fi.events,
         messages: fi.messages,
         function_call: FunctionCall {
-            calldata: fi.calldata.into_iter().map(|f| CallParam(f)).collect(),
+            calldata: fi.calldata.into_iter().map(CallParam).collect(),
             contract_address: fi.contract_address,
             entry_point_selector: EntryPoint(fi.selector),
         },
