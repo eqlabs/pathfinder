@@ -60,23 +60,33 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
     let (block_id, _pending_timestamp, _pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
-    // FIXME: this should be a blocking task
-    let mut db = context.storage.connection()?;
-    let tx = db.transaction().context("Creating database transaction")?;
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
 
-    let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-        .context("Reading storage root for block")?
-        .ok_or_else(|| CallError::BlockNotFound)?;
+    let result = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
 
-    let result = crate::cairo::starknet_rs::do_call(
-        context.storage,
-        storage_commitment,
-        input.request.contract_address,
-        input.request.entry_point_selector,
-        input.request.calldata,
-    )?;
+        let mut db = storage.connection()?;
+        let tx = db.transaction().context("Creating database transaction")?;
 
-    Ok(CallOutput(result))
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+            .context("Reading storage root for block")?
+            .ok_or_else(|| CallError::BlockNotFound)?;
+
+        let result = crate::cairo::starknet_rs::do_call(
+            context.storage,
+            storage_commitment,
+            input.request.contract_address,
+            input.request.entry_point_selector,
+            input.request.calldata,
+        )?;
+
+        Ok(result)
+    })
+    .await
+    .context("Executing call")?;
+
+    result.map(CallOutput)
 }
 
 /// Transforms pending requests into latest + optional pending data to apply.
