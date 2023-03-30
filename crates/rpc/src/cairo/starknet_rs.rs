@@ -2,22 +2,35 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use cairo_felt::Felt252;
+use ethers::types::H256;
 use pathfinder_common::{
-    CallParam, CallResultValue, ClassHash, ContractAddress, EntryPoint, StorageAddress,
+    CallParam, CallResultValue, ChainId, ClassHash, ContractAddress, EntryPoint, StorageAddress,
     StorageCommitment,
 };
 use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractCodeTable, ContractsStateTable};
 use stark_hash::Felt;
 use starknet_rs::business_logic::execution::execution_entry_point::ExecutionEntryPoint;
-use starknet_rs::business_logic::execution::objects::TransactionExecutionContext;
+use starknet_rs::business_logic::execution::objects::{
+    TransactionExecutionContext, TransactionExecutionInfo,
+};
 use starknet_rs::business_logic::fact_state::state::ExecutionResourcesManager;
 use starknet_rs::business_logic::state::cached_state::CachedState;
-use starknet_rs::business_logic::state::state_api::StateReader;
+use starknet_rs::business_logic::state::state_api::{State, StateReader};
+use starknet_rs::business_logic::transaction::error::TransactionError;
+use starknet_rs::business_logic::transaction::objects::{
+    internal_declare::InternalDeclare, internal_deploy::InternalDeploy,
+    internal_deploy_account::InternalDeployAccount,
+    internal_invoke_function::InternalInvokeFunction,
+};
 use starknet_rs::core::errors::state_errors::StateError;
 use starknet_rs::definitions::general_config::StarknetGeneralConfig;
 use starknet_rs::services::api::contract_class_errors::ContractClassError;
 use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
+
+use crate::v02::types::request::BroadcastedTransaction;
+
+use super::ext_py::GasPriceSource;
 
 pub(crate) enum CallError {
     ContractNotFound,
@@ -42,7 +55,7 @@ impl From<anyhow::Error> for CallError {
     }
 }
 
-pub(crate) fn do_call(
+pub(crate) fn call(
     storage: pathfinder_storage::Storage,
     storage_commitment: StorageCommitment,
     contract_address: ContractAddress,
@@ -102,6 +115,109 @@ pub(crate) fn do_call(
         .context("Converting results to felts")?;
 
     Ok(result)
+}
+
+pub(crate) struct FeeEstimate {
+    pub gas_consumed: Felt,
+    pub gas_price: ethers::types::H256,
+    pub overall_fee: Felt,
+}
+
+pub(crate) fn estimate_fee(
+    storage: pathfinder_storage::Storage,
+    storage_commitment: StorageCommitment,
+    transactions: Vec<BroadcastedTransaction>,
+    chain_id: ChainId,
+    gas_price: Option<H256>,
+    gas_price_source: GasPriceSource,
+) -> Result<Vec<FeeEstimate>, CallError> {
+    let transactions = transactions
+        .into_iter()
+        .map(|tx| map_transaction(tx, chain_id))
+        .collect::<Result<Vec<_>, TransactionError>>()?;
+
+    // TODO: handle gas price -- as_price() is either 0, which means to use the gas price from the block,
+    // or non-zero, which means a forced gas price to use
+    let g = gas_price.as_ref().or_else(gas_price_source.as_price());
+
+    let state_reader = SqliteReader {
+        storage: storage,
+        storage_commitment,
+    };
+
+    let contract_class_cache = HashMap::new();
+    let mut state = CachedState::new(state_reader, Some(contract_class_cache));
+
+    let general_config = StarknetGeneralConfig::default();
+
+    for transaction in &transactions {
+        let res = transaction.execute(state, &general_config)?;
+        dbg!(res.actual_fee);
+    }
+
+    Ok(vec![])
+}
+
+enum Transaction {
+    Declare(InternalDeclare),
+    Deploy(InternalDeploy),
+    DeployAccount(InternalDeployAccount),
+    Invoke(InternalInvokeFunction),
+}
+
+impl Transaction {
+    pub fn execute<S: State + StateReader>(
+        &self,
+        state: &mut S,
+        general_config: &StarknetGeneralConfig,
+    ) -> Result<TransactionExecutionInfo, TransactionError> {
+        match self {
+            Transaction::Declare(_) => todo!(),
+            Transaction::Deploy(_) => todo!(),
+            Transaction::DeployAccount(_) => todo!(),
+            Transaction::Invoke(tx) => tx.execute(state, general_config),
+        }
+    }
+}
+
+fn map_transaction(
+    transaction: BroadcastedTransaction,
+    chain_id: ChainId,
+) -> Result<Transaction, TransactionError> {
+    use starknet_rs::utils::Address;
+
+    match transaction {
+        BroadcastedTransaction::Declare(_) => todo!(),
+        BroadcastedTransaction::Invoke(tx) => match tx {
+            crate::v02::types::request::BroadcastedInvokeTransaction::V0(tx) => {
+                let calldata = tx
+                    .calldata
+                    .into_iter()
+                    .map(|p| Felt252::from_bytes_be(p.0.as_be_bytes()))
+                    .collect();
+                let signature = tx
+                    .signature
+                    .into_iter()
+                    .map(|s| Felt252::from_bytes_be(s.0.as_be_bytes()))
+                    .collect();
+                let tx = InternalInvokeFunction::new(
+                    Address(Felt252::from_bytes_be(
+                        tx.contract_address.get().as_be_bytes(),
+                    )),
+                    Felt252::from_bytes_be(tx.entry_point_selector.0.as_be_bytes()),
+                    tx.max_fee.0.to_low_u64_be(),
+                    calldata,
+                    signature,
+                    Felt252::from_bytes_be(chain_id.0.as_be_bytes()),
+                    tx.nonce
+                        .map(|nonce| Felt252::from_bytes_be(nonce.0.as_be_bytes())),
+                )?;
+                Ok(Transaction::Invoke(tx))
+            }
+            crate::v02::types::request::BroadcastedInvokeTransaction::V1(_) => todo!(),
+        },
+        BroadcastedTransaction::DeployAccount(_) => todo!(),
+    }
 }
 
 #[derive(Clone)]

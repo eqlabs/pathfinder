@@ -228,7 +228,7 @@ pub enum GasPriceSource {
 impl GasPriceSource {
     const GAS_PRICE_ZERO: ethers::types::H256 = ethers::types::H256::zero();
     /// Convert to `&H256`, for use in serialization.
-    fn as_price(&self) -> &ethers::types::H256 {
+    pub fn as_price(&self) -> &ethers::types::H256 {
         match self {
             GasPriceSource::PastBlock => &Self::GAS_PRICE_ZERO,
             GasPriceSource::Current(price) => price,

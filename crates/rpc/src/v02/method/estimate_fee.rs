@@ -1,11 +1,8 @@
 use crate::context::RpcContext;
-use crate::{
-    cairo::ext_py::BlockHashNumberOrLatest,
-    v02::types::{reply::FeeEstimate, request::BroadcastedTransaction},
-};
-use pathfinder_common::{BlockId, StarknetBlockTimestamp};
-use starknet_gateway_types::pending::PendingData;
-use std::sync::Arc;
+use crate::v02::types::{reply::FeeEstimate, request::BroadcastedTransaction};
+use anyhow::Context;
+use pathfinder_common::BlockId;
+use pathfinder_storage::StarknetBlocksTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateFeeInput {
@@ -39,53 +36,37 @@ pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
 ) -> Result<FeeEstimate, EstimateFeeError> {
-    unimplemented!();
-}
+    let (block_id, _pending_timestamp, _pending_update) =
+        super::call::base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
-/// Transforms the request to call or estimate fee at some point in time to the type expected
-/// by [`crate::cairo::ext_py`] with the optional, latest pending data.
-pub(super) async fn base_block_and_pending_for_call(
-    at_block: BlockId,
-    pending_data: &Option<PendingData>,
-) -> Result<
-    (
-        BlockHashNumberOrLatest,
-        Option<StarknetBlockTimestamp>,
-        Option<Arc<starknet_gateway_types::reply::PendingStateUpdate>>,
-    ),
-    anyhow::Error,
-> {
-    use crate::cairo::ext_py::Pending;
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
 
-    match BlockHashNumberOrLatest::try_from(at_block) {
-        Ok(when) => Ok((when, None, None)),
-        Err(Pending) => {
-            // we must have pending_data configured for pending requests, otherwise we fail
-            // fast.
-            match pending_data {
-                Some(pending) => {
-                    // call on this particular parent block hash; if it's not found at query time over
-                    // at python, it should fall back to latest and **disregard** the pending data.
-                    let pending_on_top_of_a_block = pending
-                        .state_update_on_parent_block()
-                        .await
-                        .map(|(parent_block, timestamp, data)| {
-                            (parent_block.into(), Some(timestamp), Some(data))
-                        });
+    // FIXME: handle pending data
+    let result = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
 
-                    // if there is no pending data available, just execute on whatever latest.
-                    Ok(pending_on_top_of_a_block.unwrap_or((
-                        BlockHashNumberOrLatest::Latest,
-                        None,
-                        None,
-                    )))
-                }
-                None => Err(anyhow::anyhow!(
-                    "Pending data not supported in this configuration"
-                )),
-            }
-        }
-    }
+        let mut db = storage.connection()?;
+        let tx = db.transaction().context("Creating database transaction")?;
+
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+            .context("Reading storage root for block")?
+            .ok_or_else(|| EstimateFeeError::BlockNotFound)?;
+
+        let result = crate::cairo::starknet_rs::estimate_fee(
+            context.storage,
+            storage_commitment,
+            input.request.contract_address,
+            input.request.entry_point_selector,
+            input.request.calldata,
+        )?;
+
+        Ok(result)
+    })
+    .await
+    .context("Executing call")?;
+
+    result.map(CallOutput)
 }
 
 #[cfg(test)]

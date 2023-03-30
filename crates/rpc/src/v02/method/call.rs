@@ -74,7 +74,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
             .context("Reading storage root for block")?
             .ok_or_else(|| CallError::BlockNotFound)?;
 
-        let result = crate::cairo::starknet_rs::do_call(
+        let result = crate::cairo::starknet_rs::call(
             context.storage,
             storage_commitment,
             input.request.contract_address,
@@ -91,7 +91,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
 }
 
 /// Transforms pending requests into latest + optional pending data to apply.
-async fn base_block_and_pending_for_call(
+pub(super) async fn base_block_and_pending_for_call(
     at_block: BlockId,
     pending_data: &Option<PendingData>,
 ) -> Result<
