@@ -305,49 +305,13 @@ pub mod dto {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use pathfinder_common::{felt, Chain};
     use pathfinder_storage::{JournalMode, Storage};
+    use tempfile::tempdir;
 
     use crate::v02::types::reply::FeeEstimate;
 
     use super::*;
-
-    mod tempdir {
-        use std::path::PathBuf;
-
-        pub(crate) fn new(path: PathBuf) -> TempDir {
-            if !path.exists() {
-                let _ = std::fs::create_dir_all(&path);
-            }
-            TempDir::new(path)
-        }
-
-        pub(crate) struct TempDir {
-            path: PathBuf,
-        }
-
-        impl TempDir {
-            pub(crate) fn new(path: PathBuf) -> Self {
-                Self { path }
-            }
-
-            pub(crate) fn file(&self, name: &str) -> PathBuf {
-                let mut buf = self.path.to_path_buf();
-                buf.push(name);
-                buf
-            }
-        }
-
-        impl Drop for TempDir {
-            fn drop(&mut self) {
-                if self.path.exists() && self.path.is_dir() {
-                    let _ = std::fs::remove_dir_all(&self.path);
-                }
-            }
-        }
-    }
 
     #[tokio::test]
     async fn test_simulate_transaction_deploy_balance_contract() {
@@ -355,11 +319,9 @@ mod tests {
             CLASS_DEFINITION, CLASS_HASH,
         };
 
-        let mut db_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        db_path.push("fixtures/test_simulate_transaction_deploy_balance_contract");
-
-        let temp_dir = tempdir::new(db_path);
-        let db_path = temp_dir.file("db.sqlite");
+        let dir = tempdir().expect("tempdir");
+        let mut db_path = dir.path().to_path_buf();
+        db_path.push("db.sqlite");
 
         let storage = Storage::migrate(db_path, JournalMode::WAL).expect("storage");
 
