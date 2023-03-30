@@ -1857,6 +1857,7 @@ mod tests {
         use pathfinder_common::BlockId;
 
         async fn get_latest_version(client: &Client) -> anyhow::Result<(u64, u64, u64)> {
+            let _guard = RecorderGuard::lock_as_noop();
             let version = client
                 .block(BlockId::Latest)
                 .await?
