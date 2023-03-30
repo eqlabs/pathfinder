@@ -2171,7 +2171,6 @@ def test_simulate_transaction_succeeds():
                     "n_memory_holes": 0
                 }
             },
-            "fee_transfer_invocation": null,
             "signature": [
                 "0x0296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
                 "0x04e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
