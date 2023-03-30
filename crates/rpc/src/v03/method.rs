@@ -19,12 +19,12 @@ pub(crate) mod common {
         context::RpcContext,
     };
 
-    pub async fn prepare_handle_and_block<'a>(
-        context: &'a RpcContext,
+    pub async fn prepare_handle_and_block(
+        context: &RpcContext,
         block_id: BlockId,
     ) -> Result<
         (
-            &'a Handle,
+            &Handle,
             GasPriceSource,
             BlockHashNumberOrLatest,
             Option<StarknetBlockTimestamp>,
