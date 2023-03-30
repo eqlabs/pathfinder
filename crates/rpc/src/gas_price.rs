@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Caching of `eth_gasPrice` with single request at a time refreshing.
 ///
@@ -8,6 +9,7 @@ use std::sync::Arc;
 pub struct Cached {
     inner: Arc<std::sync::Mutex<Inner>>,
     eth: Arc<dyn pathfinder_ethereum::provider::EthereumTransport + Send + Sync + 'static>,
+    stale_limit: Duration,
 }
 
 impl Cached {
@@ -17,6 +19,7 @@ impl Cached {
         Cached {
             inner: Default::default(),
             eth,
+            stale_limit: Duration::from_secs(10),
         }
     }
 
@@ -26,10 +29,8 @@ impl Cached {
         let mut rx = {
             let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
-            let stale_limit = std::time::Duration::from_secs(10);
-
             if let Some((fetched_at, gas_price)) = g.latest.as_ref() {
-                if fetched_at.elapsed() < stale_limit {
+                if fetched_at.elapsed() < self.stale_limit {
                     // fresh
                     let accepted = *gas_price;
                     return Some(accepted);
@@ -91,7 +92,7 @@ impl Cached {
             }
         };
 
-        rx.recv().await.ok().and_then(|i| i)
+        rx.recv().await.ok().flatten()
     }
 }
 
