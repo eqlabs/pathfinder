@@ -27,7 +27,7 @@ impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {
             NoSuchBlock => Self::BlockNotFound,
             NoSuchContract => Self::ContractNotFound,
             InvalidEntryPoint => Self::InvalidMessageSelector,
-            ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
+            ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {e}")),
             // Intentionally hide the message under Internal
             Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),
         }
