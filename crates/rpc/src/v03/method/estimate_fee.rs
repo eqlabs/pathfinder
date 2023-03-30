@@ -353,10 +353,7 @@ mod tests {
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(
                 result,
-                vec![
-                    FeeEstimate::default(),
-                    FeeEstimate::default(),
-                ]
+                vec![FeeEstimate::default(), FeeEstimate::default(),]
             );
         }
 
@@ -388,10 +385,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(
-                result,
-                vec![FeeEstimate::default()]
-            );
+            assert_eq!(result, vec![FeeEstimate::default()]);
         }
     }
 }

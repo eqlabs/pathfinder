@@ -351,10 +351,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(
-                result,
-                FeeEstimate::default(),
-            );
+            assert_eq!(result, FeeEstimate::default(),);
         }
 
         lazy_static::lazy_static! {
@@ -385,10 +382,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(
-                result,
-                FeeEstimate::default(),
-            );
+            assert_eq!(result, FeeEstimate::default(),);
         }
 
         #[ignore = "fixme for v0.11.0"]
