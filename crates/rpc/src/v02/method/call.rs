@@ -1,22 +1,13 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
-use cairo_felt::Felt252;
-use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
-use stark_hash::Felt;
-use starknet_rs::{
-    business_logic::{
-        execution::{
-            execution_entry_point::ExecutionEntryPoint, objects::TransactionExecutionContext,
-        },
-        fact_state::state::ExecutionResourcesManager,
-        state::cached_state::CachedState,
-    },
-    definitions::general_config::StarknetGeneralConfig,
+use pathfinder_common::{
+    BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint, StarknetBlockTimestamp,
 };
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
@@ -33,6 +24,17 @@ impl From<starknet_rs::business_logic::transaction::error::TransactionError> for
             TransactionError::EntryPointNotFound => Self::InvalidMessageSelector,
             TransactionError::FailToReadClassHash => Self::ContractNotFound,
             e => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
+        }
+    }
+}
+
+impl From<crate::cairo::starknet_rs::CallError> for CallError {
+    fn from(value: crate::cairo::starknet_rs::CallError) -> Self {
+        use crate::cairo::starknet_rs::CallError::*;
+        match value {
+            ContractNotFound => Self::ContractNotFound,
+            InvalidMessageSelector => Self::InvalidMessageSelector,
+            Internal(e) => Self::Internal(e),
         }
     }
 }
@@ -55,17 +57,8 @@ pub struct FunctionCall {
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
-    let (when, pending_timestamp, pending_update) =
-        super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
-            .await?;
-
-    let block_id = match when {
-        crate::cairo::ext_py::BlockHashNumberOrLatest::Hash(h) => StarknetBlocksBlockId::Hash(h),
-        crate::cairo::ext_py::BlockHashNumberOrLatest::Number(n) => {
-            StarknetBlocksBlockId::Number(n)
-        }
-        crate::cairo::ext_py::BlockHashNumberOrLatest::Latest => StarknetBlocksBlockId::Latest,
-    };
+    let (block_id, _pending_timestamp, _pending_update) =
+        base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
     // FIXME: this should be a blocking task
     let mut db = context.storage.connection()?;
@@ -75,243 +68,59 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
         .context("Reading storage root for block")?
         .ok_or_else(|| CallError::BlockNotFound)?;
 
-    let state_reader = state::SqliteReader {
-        storage: context.storage.clone(),
+    let result = crate::cairo::starknet_rs::do_call(
+        context.storage,
         storage_commitment,
-    };
-
-    let contract_class_cache = HashMap::new();
-    let mut state = CachedState::new(state_reader, Some(contract_class_cache));
-
-    let contract_address = starknet_rs::utils::Address(Felt252::from_bytes_be(
-        input.request.contract_address.get().as_be_bytes(),
-    ));
-    let calldata = input
-        .request
-        .calldata
-        .iter()
-        .map(|p| Felt252::from_bytes_be(p.0.as_be_bytes()))
-        .collect();
-    let entry_point_selector =
-        Felt252::from_bytes_be(input.request.entry_point_selector.0.as_be_bytes());
-    let caller_address = starknet_rs::utils::Address(0.into());
-    let exec_entry_point = ExecutionEntryPoint::new(
-        contract_address,
-        calldata,
-        entry_point_selector,
-        caller_address.clone(),
-        starknet_rs::services::api::contract_class::EntryPointType::External,
-        None,
-        None,
-    );
-
-    let general_config = StarknetGeneralConfig::default();
-    let execution_context = TransactionExecutionContext::new(
-        caller_address,
-        0.into(),
-        Vec::new(),
-        0,
-        1.into(),
-        general_config.invoke_tx_max_n_steps(),
-        starknet_rs::definitions::constants::TRANSACTION_VERSION,
-    );
-    let mut resources_manager = ExecutionResourcesManager::default();
-
-    let call_info = exec_entry_point.execute(
-        &mut state,
-        &general_config,
-        &mut resources_manager,
-        &execution_context,
+        input.request.contract_address,
+        input.request.entry_point_selector,
+        input.request.calldata,
     )?;
 
-    let result = call_info
-        .retdata
-        .iter()
-        .map(|f| Felt::from_be_slice(&f.to_bytes_be()).map(CallResultValue))
-        .collect::<Result<Vec<CallResultValue>, _>>()
-        .context("Converting results to felts")?;
-
     Ok(CallOutput(result))
-
-    // let result = handle
-    //     .call(
-    //         input.request.into(),
-    //         when,
-    //         pending_update,
-    //         pending_timestamp,
-    //     )
-    //     .await?;
 }
 
-mod state {
-    use cairo_felt::Felt252;
-    use pathfinder_common::{ClassHash, StorageAddress, StorageCommitment};
-    use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
-    use pathfinder_storage::{ContractCodeTable, ContractsStateTable};
-    use stark_hash::Felt;
-    use starknet_rs::business_logic::state::state_api::StateReader;
-    use starknet_rs::core::errors::state_errors::StateError;
-    use starknet_rs::services::api::contract_class_errors::ContractClassError;
-    use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
+/// Transforms pending requests into latest + optional pending data to apply.
+async fn base_block_and_pending_for_call(
+    at_block: BlockId,
+    pending_data: &Option<PendingData>,
+) -> Result<
+    (
+        StarknetBlocksBlockId,
+        Option<StarknetBlockTimestamp>,
+        Option<Arc<starknet_gateway_types::reply::PendingStateUpdate>>,
+    ),
+    anyhow::Error,
+> {
+    match at_block {
+        BlockId::Pending => {
+            // we must have pending_data configured for pending requests, otherwise we fail
+            // fast.
+            match pending_data {
+                Some(pending) => {
+                    // call on this particular parent block hash; if it's not found at query time over
+                    // at python, it should fall back to latest and **disregard** the pending data.
+                    let pending_on_top_of_a_block = pending
+                        .state_update_on_parent_block()
+                        .await
+                        .map(|(parent_block, timestamp, data)| {
+                            (parent_block.into(), Some(timestamp), Some(data))
+                        });
 
-    #[derive(Clone)]
-    pub struct SqliteReader {
-        pub storage: pathfinder_storage::Storage,
-        pub storage_commitment: StorageCommitment,
-    }
-
-    impl StateReader for SqliteReader {
-        fn get_contract_class(
-            &mut self,
-            class_hash: &starknet_rs::utils::ClassHash,
-        ) -> Result<starknet_rs::services::api::contract_class::ContractClass, StateError> {
-            let class_hash =
-                ClassHash(Felt::from_be_slice(class_hash).expect("Overflow in class hash"));
-
-            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
-            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
-
-            let definition = ContractCodeTable::get_class_raw(&tx, class_hash)
-                .map_err(map_anyhow_to_state_err)?;
-
-            match definition {
-                Some(definition) => {
-                    let raw_contract_class: starknet_api::state::ContractClass =
-                        serde_json::from_slice(&definition).map_err(|_| {
-                            StateError::ContractClass(ContractClassError::NoneEntryPointType)
-                        })?;
-                    let contract_class = raw_contract_class.into();
-                    Ok(contract_class)
+                    // if there is no pending data available, just execute on whatever latest.
+                    Ok(pending_on_top_of_a_block.unwrap_or((
+                        StarknetBlocksBlockId::Latest,
+                        None,
+                        None,
+                    )))
                 }
-                None => Err(StateError::MissingClassHash()),
+                None => Err(anyhow::anyhow!(
+                    "Pending data not supported in this configuration"
+                )),
             }
         }
-
-        fn get_class_hash_at(
-            &mut self,
-            contract_address: &starknet_rs::utils::Address,
-        ) -> Result<
-            starknet_rs::utils::ClassHash,
-            starknet_rs::core::errors::state_errors::StateError,
-        > {
-            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
-            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
-
-            let tree = StorageCommitmentTree::load(&tx, self.storage_commitment)
-                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
-            let pathfinder_contract_address = pathfinder_common::ContractAddress::new_or_panic(
-                Felt::from_be_slice(&contract_address.0.to_bytes_be())
-                    .expect("Overflow in contract address"),
-            );
-            let state_hash = tree
-                .get(pathfinder_contract_address)
-                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
-
-            use rusqlite::OptionalExtension;
-
-            let class_hash: Option<ClassHash> = tx
-                .query_row(
-                    "SELECT hash FROM contract_states WHERE state_hash=?",
-                    [state_hash],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|_| StateError::Storage(StorageError::ErrorFetchingData))?;
-
-            let class_hash =
-                class_hash.ok_or_else(|| StateError::NoneClassHash(contract_address.clone()))?;
-
-            Ok(class_hash.0.to_be_bytes())
-        }
-
-        fn get_nonce_at(
-            &mut self,
-            contract_address: &starknet_rs::utils::Address,
-        ) -> Result<cairo_felt::Felt252, starknet_rs::core::errors::state_errors::StateError>
-        {
-            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
-            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
-
-            let tree = StorageCommitmentTree::load(&tx, self.storage_commitment)
-                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
-
-            let pathfinder_contract_address = pathfinder_common::ContractAddress::new_or_panic(
-                Felt::from_be_slice(&contract_address.0.to_bytes_be())
-                    .expect("Overflow in contract address"),
-            );
-            let state_hash = tree
-                .get(pathfinder_contract_address)
-                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?
-                .ok_or_else(|| StateError::ContractAddressUnavailable(contract_address.clone()))?;
-
-            let nonce = ContractsStateTable::get_nonce(&tx, state_hash)
-                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?
-                .ok_or_else(|| StateError::ContractAddressUnavailable(contract_address.clone()))?;
-
-            Ok(Felt252::from_bytes_be(nonce.0.as_be_bytes()))
-        }
-
-        fn get_storage_at(
-            &mut self,
-            storage_entry: &starknet_rs::business_logic::state::state_cache::StorageEntry,
-        ) -> Result<cairo_felt::Felt252, starknet_rs::core::errors::state_errors::StateError>
-        {
-            let (contract_address, storage_key) = storage_entry;
-            let storage_key =
-                StorageAddress::new(Felt::from_be_slice(storage_key).map_err(|_| {
-                    StateError::ContractAddressOutOfRangeAddress(contract_address.clone())
-                })?)
-                .ok_or_else(|| {
-                    StateError::ContractAddressOutOfRangeAddress(contract_address.clone())
-                })?;
-
-            let mut db = self.storage.connection().map_err(map_anyhow_to_state_err)?;
-            let tx = db.transaction().map_err(map_sqlite_to_state_err)?;
-
-            let tree = StorageCommitmentTree::load(&tx, self.storage_commitment)
-                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?;
-
-            let pathfinder_contract_address = pathfinder_common::ContractAddress::new_or_panic(
-                Felt::from_be_slice(&contract_address.0.to_bytes_be())
-                    .expect("Overflow in contract address"),
-            );
-            let state_hash = tree
-                .get(pathfinder_contract_address)
-                .map_err(|_| StateError::ContractAddressUnavailable(contract_address.clone()))?
-                .ok_or_else(|| StateError::ContractAddressUnavailable(contract_address.clone()))?;
-
-            let contract_state_root = ContractsStateTable::get_root(&tx, state_hash)
-                .map_err(|_| StateError::NoneContractState(contract_address.clone()))?
-                .ok_or_else(|| StateError::NoneContractState(contract_address.clone()))?;
-
-            let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
-                .map_err(|_| StateError::NoneStorage(storage_entry.clone()))?;
-
-            let storage_val = contract_state_tree
-                .get(storage_key)
-                .map_err(|_| StateError::Storage(StorageError::ErrorFetchingData))?
-                .ok_or_else(|| StateError::NoneStorage(storage_entry.clone()))?;
-
-            Ok(Felt252::from_bytes_be(storage_val.0.as_be_bytes()))
-        }
-
-        fn count_actual_storage_changes(&mut self) -> (usize, usize) {
-            // read-only storage
-            (0, 0)
-        }
-    }
-
-    // FIXME: we clearly need something more expressive than this
-    fn map_sqlite_to_state_err(
-        _e: rusqlite::Error,
-    ) -> starknet_rs::core::errors::state_errors::StateError {
-        StateError::Storage(StorageError::ErrorFetchingData)
-    }
-
-    fn map_anyhow_to_state_err(
-        _e: anyhow::Error,
-    ) -> starknet_rs::core::errors::state_errors::StateError {
-        StateError::Storage(StorageError::ErrorFetchingData)
+        BlockId::Number(n) => Ok((StarknetBlocksBlockId::Number(n), None, None)),
+        BlockId::Hash(h) => Ok((StarknetBlocksBlockId::Hash(h), None, None)),
+        BlockId::Latest => Ok((StarknetBlocksBlockId::Latest, None, None)),
     }
 }
 
