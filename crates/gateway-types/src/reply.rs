@@ -7,7 +7,6 @@ use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
 use serde_with::serde_as;
 
-pathfinder_common::version_check!(Mainnet < 0 - 11 - 0, "Remove state_commitment alias");
 /// Used to deserialize replies to StarkNet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
@@ -23,6 +22,7 @@ pub struct Block {
     /// Excluded in blocks prior to StarkNet 0.8
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
+    // Historical blocks (pre v0.11) still use `state_root`.
     #[serde(alias = "state_root")]
     pub state_commitment: StateCommitment,
     pub status: Status,
@@ -551,10 +551,6 @@ pub mod transaction {
         pub transaction_hash: StarknetTransactionHash,
     }
 
-    pathfinder_common::version_check!(
-        Mainnet < 0 - 11 - 0,
-        "Remove sender_address alias - beware storage impact"
-    );
     /// Represents deserialized L2 invoke transaction v1 data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -702,10 +698,6 @@ pub mod state_update {
     use serde_with::serde_as;
     use std::collections::HashMap;
 
-    pathfinder_common::version_check!(
-        Mainnet < 0 - 11 - 0,
-        "Check whether the alias and defaults can be removed from StateDiff (esp. in historical blocks)"
-    );
     /// L2 state diff.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -714,15 +706,9 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
-        #[serde(alias = "declared_contracts")]
         pub old_declared_contracts: Vec<ClassHash>,
-        /// Not present in StarkNet versions < v0.11.0.
-        #[serde(default)]
         pub declared_classes: Vec<DeclaredSierraClass>,
-        /// Old state diffs have no "nonces"
-        #[serde(default)]
         pub nonces: HashMap<ContractAddress, ContractNonce>,
-        #[serde(default)]
         pub replaced_classes: Vec<ReplacedClass>,
     }
 

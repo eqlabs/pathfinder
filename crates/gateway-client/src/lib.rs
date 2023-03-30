@@ -316,12 +316,12 @@ impl ClientApi for Client {
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: Option<TransactionNonce>,
-        contract_address: ContractAddress,
+        sender_address: ContractAddress,
         entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         let req = AddTransaction::Invoke(InvokeFunction {
-            contract_address,
+            sender_address,
             entry_point_selector,
             calldata,
             max_fee,
@@ -1888,11 +1888,11 @@ mod tests {
 
         #[tokio::test]
         async fn mainnet() {
-            version_check!(Mainnet == 0 - 10 - 3);
+            version_check!(Mainnet == 0 - 11 - 0);
             let actual = get_latest_version(&Client::mainnet()).await.unwrap();
             assert_eq!(
                 actual,
-                (0, 10, 3),
+                (0, 11, 0),
                 "Mainnet gateway version has changed, update version_check"
             );
         }
