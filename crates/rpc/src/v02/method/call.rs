@@ -30,7 +30,7 @@ pub struct CallInput {
     block_id: BlockId,
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,

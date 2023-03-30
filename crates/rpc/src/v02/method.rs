@@ -2,7 +2,7 @@ mod add_declare_transaction;
 mod add_deploy_account_transaction;
 mod add_invoke_transaction;
 mod block_hash_and_number;
-mod call;
+pub(crate) mod call;
 mod chain_id;
 pub(crate) mod estimate_fee;
 mod get_block;

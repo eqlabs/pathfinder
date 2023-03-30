@@ -1,10 +1,9 @@
+use pathfinder_common::ContractAddress;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use stark_hash::Felt;
 
-use crate::v03::method::simulate_transaction::dto::{
-    Address, CallType, EntryPointType, Event, MsgToL1,
-};
+use crate::v03::method::simulate_transaction::dto::{CallType, EntryPointType, Event, MsgToL1};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -26,7 +25,7 @@ pub struct TransactionTrace {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FunctionInvocation {
     pub calldata: Vec<Felt>,
-    pub contract_address: Address,
+    pub contract_address: ContractAddress,
     pub selector: Felt,
     #[serde(default)]
     pub call_type: Option<CallType>,

@@ -4,11 +4,14 @@ use crate::{
         CallFailure,
     },
     context::RpcContext,
-    v02::types::{reply, request::BroadcastedTransaction},
+    v02::{
+        method::call::FunctionCall,
+        types::{reply, request::BroadcastedTransaction},
+    },
 };
 
 use anyhow::anyhow;
-use pathfinder_common::BlockId;
+use pathfinder_common::{BlockId, CallParam, EntryPoint};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
@@ -106,10 +109,10 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
         entry_point_type: fi.entry_point_type,
         events: fi.events,
         messages: fi.messages,
-        function_call: dto::FunctionCall {
-            calldata: fi.calldata,
+        function_call: FunctionCall {
+            calldata: fi.calldata.into_iter().map(|f| CallParam(f)).collect(),
             contract_address: fi.contract_address,
-            entry_point_selector: fi.selector,
+            entry_point_selector: EntryPoint(fi.selector),
         },
         result: fi.result,
     }
@@ -158,10 +161,13 @@ fn map_trace(
 }
 
 pub mod dto {
+    use pathfinder_common::ContractAddress;
     use serde_with::serde_as;
 
-    use crate::v02::types::reply::FeeEstimate;
     use crate::felt::RpcFelt;
+    use crate::felt::RpcFelt251;
+    use crate::v02::method::call::FunctionCall;
+    use crate::v02::types::reply::FeeEstimate;
 
     use super::*;
 
@@ -178,26 +184,7 @@ pub mod dto {
 
     #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct Signature(
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub Vec<Felt>
-    );
-
-    #[serde_with::serde_as]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct Address(
-        #[serde_as(as = "RpcFelt")]
-        pub Felt
-    );
-
-    #[serde_with::serde_as]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct FunctionCall {
-        #[serde_as(as = "Vec<RpcFelt>")]
-        pub calldata: Vec<Felt>,
-        pub contract_address: Address,
-        pub entry_point_selector: Felt,
-    }
+    pub struct Signature(#[serde_as(as = "Vec<RpcFelt>")] pub Vec<Felt>);
 
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub enum CallType {
@@ -249,14 +236,17 @@ pub mod dto {
     pub struct MsgToL1 {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<Felt>,
+        #[serde_as(as = "RpcFelt")]
         pub to_address: Felt,
     }
 
+    #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct Event {
         #[serde(flatten)]
         pub event_content: EventContent,
-        pub from_address: Address,
+        #[serde_as(as = "RpcFelt251")]
+        pub from_address: ContractAddress,
     }
 
     #[serde_with::serde_as]
@@ -327,7 +317,7 @@ pub mod dto {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, Chain};
+    use pathfinder_common::{felt, Chain, ContractAddress};
     use pathfinder_storage::{JournalMode, Storage};
     use tempfile::tempdir;
 
@@ -428,10 +418,10 @@ mod tests {
                                     events: Some(vec![]),
                                     function_call: FunctionCall {
                                         calldata: vec![
-                                            felt!("0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D"),
+                                            CallParam(felt!("0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D")),
                                         ],
-                                        contract_address: Address(felt!("0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415")),
-                                        entry_point_selector: felt!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194"),
+                                        contract_address: ContractAddress::new_or_panic(felt!("0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415")),
+                                        entry_point_selector: EntryPoint(felt!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194")),
                                     },
                                     messages: Some(vec![]),
                                     result: Some(vec![]),
@@ -447,12 +437,12 @@ mod tests {
                                     events: Some(vec![]),
                                     function_call: FunctionCall {
                                         calldata: vec![
-                                            felt!("0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513"),
-                                            felt!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971"),
-                                            felt!("0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D"),
+                                            CallParam(felt!("0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513")),
+                                            CallParam(felt!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971")),
+                                            CallParam(felt!("0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D")),
                                         ],
-                                        contract_address: Address(felt!("0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415")),
-                                        entry_point_selector: felt!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895"),
+                                        contract_address: ContractAddress::new_or_panic(felt!("0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415")),
+                                        entry_point_selector: EntryPoint(felt!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895")),
                                     },
                                     messages: Some(vec![]),
                                     result: Some(vec![]),
