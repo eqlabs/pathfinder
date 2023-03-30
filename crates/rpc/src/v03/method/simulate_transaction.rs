@@ -38,7 +38,7 @@ pub async fn simulate_transaction(
             gas_price,
             pending_update,
             pending_timestamp,
-            &input.transactions,
+            input.transactions,
             (skip_execute, skip_validate),
         )
         .await

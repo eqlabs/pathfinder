@@ -134,7 +134,7 @@ impl Handle {
         gas_price: GasPriceSource,
         diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<StarknetBlockTimestamp>,
-        transactions: &[BroadcastedTransaction],
+        transactions: Vec<BroadcastedTransaction>,
         (_skip_execute, _skip_validate): (bool, bool),
     ) -> Result<Vec<TransactionSimulation>, CallFailure> {
         use tracing::field::Empty;
@@ -142,8 +142,7 @@ impl Handle {
 
         let continued_span = tracing::info_span!("ext_py_sim_tx", pid = Empty);
 
-        let transactions: Result<Vec<AddTransaction>, _> =
-            transactions.iter().map(|tx| map_tx(tx.clone())).collect();
+        let transactions: Result<Vec<AddTransaction>, _> = transactions.into_iter().map(map_tx).collect();
         let transactions = transactions?;
 
         self.command_tx
