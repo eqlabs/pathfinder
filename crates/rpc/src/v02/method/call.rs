@@ -63,6 +63,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
     let storage = context.storage.clone();
     let span = tracing::Span::current();
 
+    // FIXME: handle pending data
     let result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
