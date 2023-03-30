@@ -203,11 +203,6 @@ pub mod add_transaction {
     use serde_with::serde_as;
     use std::collections::HashMap;
 
-    pathfinder_common::version_check!(
-        Mainnet < 0 - 11 - 0,
-        "contract_address deprecated in favor of sender_address for Invoke and Deploy and Declare"
-    );
-
     /// Both variants are somewhat different compared to the contract definition we're using
     /// for class hash calculation. The actual program contents are not relevant
     /// for us, and they are sent as a gzip + base64 encoded string via the API.
@@ -272,7 +267,7 @@ pub mod add_transaction {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: Option<TransactionNonce>,
 
-        pub contract_address: ContractAddress,
+        pub sender_address: ContractAddress,
         pub entry_point_selector: Option<EntryPoint>,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,

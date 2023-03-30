@@ -46,11 +46,11 @@ pub mod v0_9_0 {
     }
 }
 
-pub mod v0_9_1 {
+pub mod v0_11_0 {
     pub mod state_update {
-        pub const GENESIS: &str = str_fixture!("0.9.1/state-update/genesis.json");
-        pub const NUMBER_315700: &str = str_fixture!("0.9.1/state-update/315700.json");
-        pub const PENDING: &str = str_fixture!("0.9.1/state-update/pending.json");
+        pub const GENESIS: &str = str_fixture!("0.11.0/state-update/genesis.json");
+        pub const NUMBER_315700: &str = str_fixture!("0.11.0/state-update/315700.json");
+        pub const PENDING: &str = str_fixture!("0.11.0/state-update/pending.json");
     }
 }
 

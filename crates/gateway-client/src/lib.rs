@@ -316,12 +316,12 @@ impl ClientApi for Client {
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
         nonce: Option<TransactionNonce>,
-        contract_address: ContractAddress,
+        sender_address: ContractAddress,
         entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         let req = AddTransaction::Invoke(InvokeFunction {
-            contract_address,
+            sender_address,
             entry_point_selector,
             calldata,
             max_fee,
@@ -754,7 +754,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             use starknet_gateway_types::reply::MaybePendingBlock;
             let (_jh, client) = setup([
-                // TODO move these fixtures to v0_9_1
+                // TODO move these fixtures to v0_11_0
                 (
                     "/feeder_gateway/get_block?blockNumber=192844",
                     (integration::block::NUMBER_192844, 200),
@@ -1127,11 +1127,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
-                    (v0_9_1::state_update::GENESIS, 200),
+                    (v0_11_0::state_update::GENESIS, 200),
                 ),
                 (
                     format!("/feeder_gateway/get_state_update?blockHash={GENESIS_BLOCK_HASH}"),
-                    (v0_9_1::state_update::GENESIS, 200),
+                    (v0_11_0::state_update::GENESIS, 200),
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1154,11 +1154,11 @@ mod tests {
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=315700",
-                    (v0_9_1::state_update::NUMBER_315700, 200)
+                    (v0_11_0::state_update::NUMBER_315700, 200)
                 ),
                 (
                     "/feeder_gateway/get_state_update?blockHash=0x17e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03",
-                    (v0_9_1::state_update::NUMBER_315700, 200)
+                    (v0_11_0::state_update::NUMBER_315700, 200)
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
@@ -1224,7 +1224,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
-                (v0_9_1::state_update::NUMBER_315700, 200),
+                (v0_11_0::state_update::NUMBER_315700, 200),
             )]);
             client.state_update(BlockId::Latest).await.unwrap();
         }
@@ -1234,7 +1234,7 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
-                (v0_9_1::state_update::PENDING, 200),
+                (v0_11_0::state_update::PENDING, 200),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
         }
@@ -1691,7 +1691,7 @@ mod tests {
                 |client, x| async move {
                     let _ = client.state_update(x).await;
                 },
-                (v0_9_1::state_update::GENESIS.to_owned(), 200),
+                (v0_11_0::state_update::GENESIS.to_owned(), 200),
             )
             .await;
         }
@@ -1705,7 +1705,8 @@ mod tests {
 
             let recorder = FakeRecorder::new_for(&["get_block", "get_state_update"]);
             let handle = recorder.handle();
-            let _guard = RecorderGuard::lock(recorder);
+
+            let guard = RecorderGuard::lock(recorder);
 
             let responses = [
                 // Any valid fixture
@@ -1743,6 +1744,14 @@ mod tests {
                 .collect::<futures::stream::FuturesUnordered<_>>()
                 .collect::<Vec<_>>()
                 .await;
+
+            // Drop the global recorder guard to avoid poisoning its internal lock if
+            // the following asserts fail which would fail other tests using the `RecorderGuard`
+            // at the same time.
+            //
+            // The recorder itself still exists since dropping the guard only unregisters the recorder
+            // and leaks it making the handle still valid past this point.
+            drop(guard);
 
             // IMPORTANT
             //
@@ -1841,13 +1850,14 @@ mod tests {
         // Ensures the versions in the pathfinder_common::version_check! macro are kept in sync with reality.
         //
         // The tests are kept here to prevent crate dependency cycles while keeping the macro widely available.
-        use pathfinder_common::version_check;
+        use pathfinder_common::{test_utils::metrics::RecorderGuard, version_check};
 
         use crate::{Client, ClientApi};
         use anyhow::Context;
         use pathfinder_common::BlockId;
 
         async fn get_latest_version(client: &Client) -> anyhow::Result<(u64, u64, u64)> {
+            let _guard = RecorderGuard::lock_as_noop();
             let version = client
                 .block(BlockId::Latest)
                 .await?
@@ -1888,11 +1898,11 @@ mod tests {
 
         #[tokio::test]
         async fn mainnet() {
-            version_check!(Mainnet == 0 - 10 - 3);
+            version_check!(Mainnet == 0 - 11 - 0);
             let actual = get_latest_version(&Client::mainnet()).await.unwrap();
             assert_eq!(
                 actual,
-                (0, 10, 3),
+                (0, 11, 0),
                 "Mainnet gateway version has changed, update version_check"
             );
         }
