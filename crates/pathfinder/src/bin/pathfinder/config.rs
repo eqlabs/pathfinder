@@ -64,7 +64,7 @@ Examples:
     monitor_address: Option<SocketAddr>,
 
     #[clap(flatten)]
-    network: Option<NetworkCli>,
+    network: NetworkCli,
 
     #[arg(
         long = "poll-pending",
@@ -103,7 +103,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         value_enum,
         env = "PATHFINDER_NETWORK"
     )]
-    network: Network,
+    network: Option<Network>,
 
     #[arg(
         long,
@@ -185,28 +185,29 @@ pub enum NetworkConfig {
 }
 
 impl NetworkConfig {
-    fn from_components(args: NetworkCli) -> Self {
+    fn from_components(args: NetworkCli) -> Option<Self> {
         use Network::*;
-        match (
+        let cfg = match (
             args.network,
             args.gateway,
             args.feeder_gateway,
             args.chain_id,
         ) {
-            (Custom, Some(gateway), Some(feeder_gateway), Some(chain_id)) => {
+            (None, None, None, None) => return None,
+            (Some(Custom), Some(gateway), Some(feeder_gateway), Some(chain_id)) => {
                 NetworkConfig::Custom {
                     gateway,
                     feeder_gateway,
                     chain_id,
                 }
             }
-            (Custom, _, _, _) => {
+            (Some(Custom), _, _, _) => {
                 unreachable!("`--network custom` requirements are handled by clap derive")
             }
             // Handle non-custom variants in an inner match so that the compiler will force
             // us to handle a new network variants explicitly. Otherwise we end up with a
             // catch-all arm that would swallow new variants silently.
-            (non_custom, None, None, None) => match non_custom {
+            (Some(non_custom), None, None, None) => match non_custom {
                 Mainnet => NetworkConfig::Mainnet,
                 Testnet => NetworkConfig::Testnet,
                 Testnet2 => NetworkConfig::Testnet2,
@@ -220,7 +221,9 @@ impl NetworkConfig {
 
                 Cli::command().error(ErrorKind::ArgumentConflict, "--gateway-url, --feeder-gateway-url and --chain-id may only be used with --network custom").exit()
             }
-        }
+        };
+
+        Some(cfg)
     }
 }
 
@@ -228,7 +231,7 @@ impl Config {
     pub fn parse() -> Self {
         let cli = Cli::parse();
 
-        let network = cli.network.map(NetworkConfig::from_components);
+        let network = NetworkConfig::from_components(cli.network);
 
         Config {
             data_directory: cli.data_directory,
