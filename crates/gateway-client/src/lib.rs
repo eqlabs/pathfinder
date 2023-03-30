@@ -1705,7 +1705,8 @@ mod tests {
 
             let recorder = FakeRecorder::new_for(&["get_block", "get_state_update"]);
             let handle = recorder.handle();
-            let _guard = RecorderGuard::lock(recorder);
+
+            let guard = RecorderGuard::lock(recorder);
 
             let responses = [
                 // Any valid fixture
@@ -1743,6 +1744,14 @@ mod tests {
                 .collect::<futures::stream::FuturesUnordered<_>>()
                 .collect::<Vec<_>>()
                 .await;
+
+            // Drop the global recorder guard to avoid poisoning its internal lock if
+            // the following asserts fail which would fail other tests using the `RecorderGuard`
+            // at the same time.
+            //
+            // The recorder itself still exists since dropping the guard only unregisters the recorder
+            // and leaks it making the handle still valid past this point.
+            drop(guard);
 
             // IMPORTANT
             //
@@ -1841,7 +1850,7 @@ mod tests {
         // Ensures the versions in the pathfinder_common::version_check! macro are kept in sync with reality.
         //
         // The tests are kept here to prevent crate dependency cycles while keeping the macro widely available.
-        use pathfinder_common::version_check;
+        use pathfinder_common::{test_utils::metrics::RecorderGuard, version_check};
 
         use crate::{Client, ClientApi};
         use anyhow::Context;

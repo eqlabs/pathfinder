@@ -173,11 +173,6 @@ mod tests {
         use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
         use serde_json::json;
 
-        let recorder = FakeRecorder::default();
-        let handle = recorder.handle();
-        // Other concurrent tests could be setting their own recorders
-        let _guard = RecorderGuard::lock(recorder);
-
         let context = RpcContext::for_tests();
         let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
             .with_logger(RpcMetricsLogger)
@@ -243,7 +238,16 @@ mod tests {
         ]
         .into_iter()
         {
-            for (i, path) in paths.into_iter().map(ToOwned::to_owned).enumerate() {
+            let recorder = FakeRecorder::default();
+            let handle = recorder.handle();
+            // Other concurrent tests could be setting their own recorders
+            let guard = RecorderGuard::lock(recorder);
+
+            let paths_len = paths.len();
+            let paths_iter = paths.into_iter();
+
+            // Perform all the calls but don't assert the results just yet
+            for path in paths_iter.clone().map(ToOwned::to_owned) {
                 let client = TestClientBuilder::default()
                     .address(address)
                     .endpoint(path.clone())
@@ -257,12 +261,27 @@ mod tests {
                         Err(jsonrpsee::core::Error::Call(
                             jsonrpsee::types::error::CallError::Custom(e),
                         )) if e.code() == jsonrpsee::types::error::METHOD_NOT_FOUND_CODE => {
+                            // Don't poison the internal lock
+                            drop(guard);
                             panic!("Unregistered method called, path: {path}, method: {method}")
                         }
                         Ok(_) | Err(_) => {}
                     }
+                }
+            }
 
-                    let expected_counter = i as u64 + 1;
+            // Drop the global recorder guard to avoid poisoning its internal lock if
+            // the following asserts fail which would fail other tests using the `RecorderGuard`
+            // at the same time.
+            //
+            // The recorder itself still exists since dropping the guard only unregisters the recorder
+            // and leaks it making the handle still valid past this point.
+            drop(guard);
+
+            // Now we can safely assert all results
+            for path in paths_iter.clone() {
+                for method in methods.iter() {
+                    let expected_counter = paths_len as u64;
                     let actual_counter = handle.get_counter_value_by_label(
                         "rpc_method_calls_total",
                         [("method", method), ("version", version)],
