@@ -40,7 +40,9 @@ impl From<CallFailure> for SimulateTransactionError {
             CallFailure::NoSuchContract => Self::ContractNotFound,
             CallFailure::InvalidEntryPoint => Self::ContractError,
             CallFailure::ExecutionFailed(e) => Self::Internal(anyhow!("Execution failed: {e}")),
-            CallFailure::Internal(_) | CallFailure::Shutdown => Self::Internal(anyhow!("Internal error")),
+            CallFailure::Internal(_) | CallFailure::Shutdown => {
+                Self::Internal(anyhow!("Internal error"))
+            }
         }
     }
 }
