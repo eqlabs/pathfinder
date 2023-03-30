@@ -307,11 +307,8 @@ pub mod dto {
 mod tests {
     use std::path::PathBuf;
 
-    use pathfinder_common::{felt, Chain, TransactionVersion};
+    use pathfinder_common::{felt, Chain};
     use pathfinder_storage::{JournalMode, Storage};
-    use starknet_gateway_test_fixtures::zstd_compressed_contracts::{
-        DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
-    };
 
     use crate::v02::types::reply::FeeEstimate;
 
