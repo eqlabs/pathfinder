@@ -66,22 +66,33 @@ pub async fn prefix_rpc_method_names_with_version(
         }
     };
 
-    let body = if is_single {
-        let mut request: jsonrpsee::types::Request<'_> =
-            serde_json::from_slice(&body).map_err(|_| VersioningError::Malformed)?;
-        prefix_method(&mut request, prefixes);
-        serde_json::to_vec(&request)
+    let new_body = if is_single {
+        match serde_json::from_slice::<jsonrpsee::types::Request<'_>>(&body) {
+            Ok(mut request) => {
+                prefix_method(&mut request, prefixes);
+                serde_json::to_vec(&request).map(Option::Some)
+            }
+            Err(_) => Ok(None),
+        }
     } else {
-        let mut batch: Vec<jsonrpsee::types::Request<'_>> =
-            serde_json::from_slice(&body).map_err(|_| VersioningError::Malformed)?;
-        batch
-            .iter_mut()
-            .for_each(|request| prefix_method(request, prefixes));
-        serde_json::to_vec(&batch)
+        match serde_json::from_slice::<Vec<jsonrpsee::types::Request<'_>>>(&body) {
+            Ok(mut batch) => {
+                batch
+                    .iter_mut()
+                    .for_each(|request| prefix_method(request, prefixes));
+                serde_json::to_vec(&batch).map(Option::Some)
+            }
+            Err(_) => Ok(None),
+        }
     };
 
-    let body = match body {
-        Ok(body) => body,
+    let body = match new_body {
+        // Body was read and processed successfuly
+        Ok(Some(new_body)) => new_body,
+        // Body was read successfully but processing failed,
+        // pass the original payload to the inner service for proper error handling
+        Ok(None) => body,
+        // Reserialization failed
         Err(_) => return Err(BoxError::from(VersioningError::Internal)),
     };
 
