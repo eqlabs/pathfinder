@@ -4,7 +4,6 @@ use crate::{
         CallFailure,
     },
     context::RpcContext,
-    error::RpcError,
     v02::types::{reply, request::BroadcastedTransaction},
 };
 
@@ -14,6 +13,22 @@ use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
 use super::common::prepare_handle_and_block;
+
+#[derive(Deserialize, Debug)]
+pub struct SimulateTrasactionInput {
+    block_id: BlockId,
+    transactions: Vec<BroadcastedTransaction>,
+    simulation_flags: dto::SimulationFlags,
+}
+
+#[derive(Debug, Serialize, Eq, PartialEq)]
+pub struct SimulateTransactionResult(pub Vec<dto::SimulatedTransaction>);
+
+crate::error::generate_rpc_error_subset!(
+    SimulateTransactionError: BlockNotFound,
+    ContractNotFound,
+    ContractError
+);
 
 pub async fn simulate_transaction(
     context: RpcContext,
@@ -130,41 +145,6 @@ fn map_trace(
         _ => Err(SimulateTransactionError::Internal(anyhow!(
             "Unmatched transaction trace: '{trace:?}'"
         ))),
-    }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct SimulateTrasactionInput {
-    block_id: BlockId,
-    transactions: Vec<BroadcastedTransaction>,
-    simulation_flags: dto::SimulationFlags,
-}
-
-#[derive(Debug, Serialize, Eq, PartialEq)]
-pub struct SimulateTransactionResult(pub Vec<dto::SimulatedTransaction>);
-
-#[derive(Debug)]
-pub enum SimulateTransactionError {
-    BlockNotFound,
-    ContractNotFound,
-    ContractError,
-    Internal(anyhow::Error),
-}
-
-impl From<SimulateTransactionError> for RpcError {
-    fn from(value: SimulateTransactionError) -> Self {
-        match value {
-            SimulateTransactionError::BlockNotFound => RpcError::BlockNotFound,
-            SimulateTransactionError::ContractNotFound => RpcError::ContractNotFound,
-            SimulateTransactionError::ContractError => RpcError::ContractError,
-            SimulateTransactionError::Internal(e) => RpcError::Internal(e),
-        }
-    }
-}
-
-impl From<anyhow::Error> for SimulateTransactionError {
-    fn from(err: anyhow::Error) -> Self {
-        Self::Internal(err)
     }
 }
 
