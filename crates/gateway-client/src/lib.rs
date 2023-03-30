@@ -1261,31 +1261,32 @@ mod tests {
         };
         use std::collections::HashMap;
 
-        #[tokio::test]
-        async fn invalid_entry_point_selector() {
-            // test with values dumped from `starknet invoke` for a test contract,
-            // except for an invalid entry point value
-            let (_jh, client) = setup([(
-                "/gateway/add_transaction",
-                response_from(StarknetErrorCode::UnsupportedSelectorForFee),
-            )]);
-            let error = client
-                .add_invoke_transaction(
-                    TransactionVersion::ZERO,
-                    Fee(felt!("0x4F388496839")),
+        mod invoke {
+            use super::*;
+
+            fn inputs() -> (
+                TransactionVersion,
+                Fee,
+                Vec<TransactionSignatureElem>,
+                TransactionNonce,
+                ContractAddress,
+                Vec<CallParam>,
+            ) {
+                (
+                    TransactionVersion::ONE,
+                    Fee(felt!("4F388496839")),
                     vec![
                         TransactionSignatureElem(felt!(
-                            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
+                            "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
                         )),
                         TransactionSignatureElem(felt!(
-                            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                            "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                         )),
                     ],
-                    None,
+                    TransactionNonce(felt!("0x1")),
                     ContractAddress::new_or_panic(felt!(
-                        "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
+                        "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                     )),
-                    Some(EntryPoint(Felt::ZERO)),
                     vec![
                         CallParam(felt!("0x1")),
                         CallParam(felt!(
@@ -1301,90 +1302,141 @@ mod tests {
                         CallParam(Felt::ZERO),
                     ],
                 )
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UnsupportedSelectorForFee)
-            );
+            }
+
+            #[tokio::test]
+            async fn v0_is_deprecated() {
+                let (_jh, client) = setup([(
+                    "/gateway/add_transaction",
+                    response_from(StarknetErrorCode::DeprecatedTransaction),
+                )]);
+                let (_, fee, sig, nonce, addr, call) = inputs();
+                let error = client
+                    .add_invoke_transaction(
+                        TransactionVersion::ZERO,
+                        fee,
+                        sig,
+                        Some(nonce),
+                        addr,
+                        None,
+                        call,
+                    )
+                    .await
+                    .unwrap_err();
+                assert_matches!(
+                    error,
+                    SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::DeprecatedTransaction)
+                );
+            }
+
+            #[tokio::test]
+            async fn unauthorized_entry_point() {
+                let (_jh, client) = setup([(
+                    "/gateway/add_transaction",
+                    response_from(StarknetErrorCode::UnauthorizedEntryPointForInvoke),
+                )]);
+                let (ver, fee, sig, nonce, addr, call) = inputs();
+                let error = client
+                    .add_invoke_transaction(
+                        ver,
+                        fee,
+                        sig,
+                        Some(nonce),
+                        addr,
+                        Some(EntryPoint(felt!("0xbeef"))),
+                        call,
+                    )
+                    .await
+                    .unwrap_err();
+                assert_matches!(
+                    error,
+                    SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UnauthorizedEntryPointForInvoke)
+                );
+            }
+
+            #[tokio::test]
+            async fn successful() {
+                let (_jh, client) = setup([(
+                    "/gateway/add_transaction",
+                    (
+                        r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x0389DD0629F42176CC8B6C43ACEFC0713D0064ECDFC0470E0FC179F53421A38B"}"#,
+                        200,
+                    ),
+                )]);
+                // test with values dumped from `starknet invoke` for a test contract
+                let (ver, fee, sig, nonce, addr, call) = inputs();
+                client
+                    .add_invoke_transaction(ver, fee, sig, Some(nonce), addr, None, call)
+                    .await
+                    .unwrap();
+            }
         }
 
-        #[tokio::test]
-        async fn invoke_function() {
-            let (_jh, client) = setup([(
-                "/gateway/add_transaction",
-                (
-                    r#"{"code":"TRANSACTION_RECEIVED","transaction_hash":"0x0389DD0629F42176CC8B6C43ACEFC0713D0064ECDFC0470E0FC179F53421A38B"}"#,
-                    200,
-                ),
-            )]);
-            // test with values dumped from `starknet invoke` for a test contract
-            client
-                .add_invoke_transaction(
-                    TransactionVersion::ZERO,
-                    Fee(felt!("0x4F388496839")),
-                    vec![
-                        TransactionSignatureElem(felt!(
-                            "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                        )),
-                        TransactionSignatureElem(felt!(
-                            "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                        )),
-                    ],
-                    None,
-                    ContractAddress::new_or_panic(felt!(
-                        "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
-                    )),
-                    Some(EntryPoint(felt!(
-                        "015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
-                    ))),
-                    vec![
-                        CallParam(felt!("0x1")),
-                        CallParam(felt!(
-                            "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                        )),
-                        CallParam(felt!(
-                            "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-                        )),
-                        CallParam(Felt::ZERO),
-                        CallParam(felt!("0x1")),
-                        CallParam(felt!("0x1")),
-                        CallParam(felt!("0x2b")),
-                        CallParam(Felt::ZERO),
-                    ],
-                )
-                .await
-                .unwrap();
-        }
+        mod declare {
+            use super::*;
 
-        #[tokio::test]
-        async fn declare_class() {
-            let contract_class = get_contract_class_from_fixture();
+            #[tokio::test]
+            async fn v0_is_deprecated() {
+                let contract_class = get_contract_class_from_fixture();
 
-            let (_jh, client) = setup([(
-                "/gateway/add_transaction",
-                (
-                    r#"{"code": "TRANSACTION_RECEIVED",
-                        "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
-                        "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"}"#,
-                    200,
-                ),
-            )]);
+                let (_jh, client) = setup([(
+                    "/gateway/add_transaction",
+                    response_from(StarknetErrorCode::DeprecatedTransaction),
+                )]);
 
-            client
-                .add_declare_transaction(
-                    TransactionVersion::ZERO,
-                    Fee::ZERO,
-                    vec![],
-                    TransactionNonce(Felt::ZERO),
-                    ContractDefinition::Cairo(contract_class),
-                    // actual address dumped from a `starknet declare` call
-                    ContractAddress::new_or_panic(felt!("0x1")),
-                    None,
-                    None,
-                )
-                .await
-                .unwrap();
+                let error = client
+                    .add_declare_transaction(
+                        TransactionVersion::ZERO,
+                        Fee(Felt::ZERO),
+                        vec![],
+                        TransactionNonce(Felt::ZERO),
+                        ContractDefinition::Cairo(contract_class),
+                        ContractAddress::new_or_panic(felt!("0x1")),
+                        None,
+                        None,
+                    )
+                    .await
+                    .unwrap_err();
+                assert_matches!(
+                    error,
+                    SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::DeprecatedTransaction)
+                );
+            }
+
+            #[tokio::test]
+            async fn successful_v1() {
+                let contract_class = get_contract_class_from_fixture();
+
+                let (_jh, client) = setup([(
+                    "/gateway/add_transaction",
+                    (
+                        r#"{"code": "TRANSACTION_RECEIVED",
+                            "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
+                            "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"}"#,
+                        200,
+                    ),
+                )]);
+
+                client
+                    .add_declare_transaction(
+                        TransactionVersion::ONE,
+                        Fee(felt!("0xFFFF")),
+                        vec![],
+                        TransactionNonce(Felt::ZERO),
+                        ContractDefinition::Cairo(contract_class),
+                        ContractAddress::new_or_panic(felt!("0x1")),
+                        None,
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            // FIXME
+            #[tokio::test]
+            async fn successful_v2() {
+                todo!()
+            }
         }
 
         #[tokio::test]

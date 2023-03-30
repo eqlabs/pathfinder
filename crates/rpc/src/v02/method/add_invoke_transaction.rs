@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "gateway 429"]
+    // #[ignore = "gateway 429"]
     async fn invoke_v0() {
         let context = RpcContext::for_tests();
         let input = AddInvokeTransactionInput {
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "gateway 429"]
+    // #[ignore = "gateway 429"]
     async fn invoke_v1() {
         use crate::v02::types::request::BroadcastedInvokeTransactionV1;
 
