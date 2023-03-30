@@ -893,10 +893,6 @@ mod tests {
 
         #[test]
         fn state_update() {
-            // These fixtures do not contain nonces property (0.10 owards).
-            serde_json::from_str::<MaybePendingStateUpdate>(v0_9_1::state_update::GENESIS).unwrap();
-            serde_json::from_str::<MaybePendingStateUpdate>(v0_9_1::state_update::PENDING).unwrap();
-
             // This is from integration starknet_version 0.11 and contains the new declared_classes field.
             serde_json::from_str::<MaybePendingStateUpdate>(
                 integration::state_update::NUMBER_283364,
