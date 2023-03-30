@@ -2059,10 +2059,12 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
 
 def test_simulate_transaction_succeeds():
-    with open(check_relative_path('../data/contracts/testnet/balance_contract.json')) as file:
+    with open(
+        check_relative_path("../data/contracts/testnet/balance_contract.json")
+    ) as file:
         contract = json.load(file)
-    class_hash = contract['class_hash']
-    class_def = contract['class_definition']
+    class_hash = contract["class_hash"]
+    class_def = contract["class_definition"]
 
     con = inmemory_with_tables()
 

@@ -1005,7 +1005,9 @@ async def do_estimate_fee(
     fees = []
 
     for transaction in transactions:
-        tx_info = await simulate_account_tx(state, general_config, block_info, transaction, skip_validate=False)
+        tx_info = await simulate_account_tx(
+            state, general_config, block_info, transaction, skip_validate=False
+        )
 
         fee = FeeEstimation(
             gas_price=block_info.gas_price,
@@ -1031,7 +1033,9 @@ async def do_simulate_tx(
     simulated_transactions = []
 
     for transaction in transactions:
-        tx_info = await simulate_account_tx(state, general_config, block_info, transaction, skip_validate)
+        tx_info = await simulate_account_tx(
+            state, general_config, block_info, transaction, skip_validate
+        )
 
         trace = TransactionTrace(
             validate_invocation=FunctionInvocation.from_optional_internal(
