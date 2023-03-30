@@ -30,6 +30,19 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
+impl From<CallFailure> for SimulateTransactionError {
+    fn from(value: CallFailure) -> Self {
+        match value {
+            CallFailure::NoSuchBlock => Self::BlockNotFound,
+            CallFailure::NoSuchContract => Self::ContractNotFound,
+            CallFailure::InvalidEntryPoint => Self::ContractError,
+            CallFailure::ExecutionFailed(e) => Self::Internal(anyhow!("Execution failed: {e:?}")),
+            CallFailure::Internal(e) => Self::Internal(anyhow!("Internal error: {e:?}")),
+            CallFailure::Shutdown => Self::Internal(anyhow!("Internal error")),
+        }
+    }
+}
+
 pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
@@ -57,11 +70,7 @@ pub async fn simulate_transaction(
             (skip_execute, skip_validate),
         )
         .await
-        .map_err(|e| match e {
-            CallFailure::NoSuchBlock => SimulateTransactionError::BlockNotFound,
-            CallFailure::NoSuchContract => SimulateTransactionError::ContractNotFound,
-            _ => SimulateTransactionError::ContractError,
-        })?;
+        .map_err(SimulateTransactionError::from)?;
 
     let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTransactionError> =
         txs.into_iter().map(map_tx).collect();
