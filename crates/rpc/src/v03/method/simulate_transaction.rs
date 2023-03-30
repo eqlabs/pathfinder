@@ -1,14 +1,11 @@
 use crate::{
     cairo::ext_py::{
         types::{FeeEstimate, FunctionInvocation, TransactionSimulation, TransactionTrace},
-        CallFailure, GasPriceSource,
+        CallFailure,
     },
     context::RpcContext,
     error::RpcError,
-    v02::{
-        method::estimate_fee::base_block_and_pending_for_call,
-        types::{reply, request::BroadcastedTransaction},
-    },
+    v02::types::{reply, request::BroadcastedTransaction},
 };
 
 use anyhow::anyhow;
@@ -16,32 +13,14 @@ use pathfinder_common::BlockId;
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
+use super::common::prepare_handle_and_block;
+
 pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
 ) -> Result<SimulateTransactionResult, SimulateTransactionError> {
-    let handle = context.call_handle.as_ref().ok_or_else(|| {
-        SimulateTransactionError::Internal(anyhow!("Illegal state: missing call_handle"))
-    })?;
-
-    let gas_price = if matches!(input.block_id, BlockId::Pending | BlockId::Latest) {
-        let gas_price = match context.eth_gas_price.as_ref() {
-            Some(cached) => cached.get().await,
-            None => None,
-        };
-
-        let gas_price =
-            gas_price.ok_or_else(|| anyhow::anyhow!("Current eth_gasPrice is unavailable"))?;
-
-        GasPriceSource::Current(gas_price)
-    } else {
-        GasPriceSource::PastBlock
-    };
-
-    let (at_block, pending_timestamp, pending_update) =
-        base_block_and_pending_for_call(input.block_id, &context.pending_data)
-            .await
-            .map_err(|_| SimulateTransactionError::BlockNotFound)?;
+    let (handle, gas_price, at_block, pending_timestamp, pending_update) =
+        prepare_handle_and_block(&context, input.block_id).await?;
 
     let skip_execute = input
         .simulation_flags

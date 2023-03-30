@@ -7,3 +7,106 @@ pub(super) use estimate_fee::estimate_fee;
 pub(super) use get_events::get_events;
 pub(super) use get_state_update::get_state_update;
 pub(crate) use simulate_transaction::simulate_transaction;
+
+pub(crate) mod common {
+    use std::sync::Arc;
+
+    use pathfinder_common::{BlockId, StarknetBlockTimestamp};
+    use starknet_gateway_types::{pending::PendingData, reply::PendingStateUpdate};
+
+    use crate::{
+        cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource, Handle},
+        context::RpcContext,
+    };
+
+    pub async fn prepare_handle_and_block<'a>(
+        context: &'a RpcContext,
+        block_id: BlockId,
+    ) -> Result<
+        (
+            &'a Handle,
+            GasPriceSource,
+            BlockHashNumberOrLatest,
+            Option<StarknetBlockTimestamp>,
+            Option<Arc<PendingStateUpdate>>,
+        ),
+        anyhow::Error,
+    > {
+        let handle = context
+            .call_handle
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
+
+        // discussed during estimateFee work: when user is requesting using block_hash use the
+        // gasPrice from the starknet_blocks::gas_price column, otherwise (tags) get the latest
+        // eth_gasPrice.
+        //
+        // the fact that [`base_block_and_pending_for_call`] transforms pending cases to use
+        // actual parent blocks by hash is an internal transformation we do for correctness,
+        // unrelated to this consideration.
+        let gas_price = if matches!(block_id, BlockId::Pending | BlockId::Latest) {
+            let gas_price = match context.eth_gas_price.as_ref() {
+                Some(cached) => cached.get().await,
+                None => None,
+            };
+
+            let gas_price =
+                gas_price.ok_or_else(|| anyhow::anyhow!("Current eth_gasPrice is unavailable"))?;
+
+            GasPriceSource::Current(gas_price)
+        } else {
+            GasPriceSource::PastBlock
+        };
+
+        let (when, pending_timestamp, pending_update) =
+            base_block_and_pending_for_call(block_id, &context.pending_data).await?;
+
+        Ok((handle, gas_price, when, pending_timestamp, pending_update))
+    }
+
+    /// Transforms the request to call or estimate fee at some point in time to the type expected
+    /// by [`crate::cairo::ext_py`] with the optional, latest pending data.
+    async fn base_block_and_pending_for_call(
+        at_block: BlockId,
+        pending_data: &Option<PendingData>,
+    ) -> Result<
+        (
+            BlockHashNumberOrLatest,
+            Option<StarknetBlockTimestamp>,
+            Option<Arc<starknet_gateway_types::reply::PendingStateUpdate>>,
+        ),
+        anyhow::Error,
+    > {
+        use crate::cairo::ext_py::Pending;
+
+        match BlockHashNumberOrLatest::try_from(at_block) {
+            Ok(when) => Ok((when, None, None)),
+            Err(Pending) => {
+                // we must have pending_data configured for pending requests, otherwise we fail
+                // fast.
+                match pending_data {
+                    Some(pending) => {
+                        // call on this particular parent block hash; if it's not found at query time over
+                        // at python, it should fall back to latest and **disregard** the pending data.
+                        let pending_on_top_of_a_block = pending
+                            .state_update_on_parent_block()
+                            .await
+                            .map(|(parent_block, timestamp, data)| {
+                                (parent_block.into(), Some(timestamp), Some(data))
+                            });
+
+                        // if there is no pending data available, just execute on whatever latest.
+                        Ok(pending_on_top_of_a_block.unwrap_or((
+                            BlockHashNumberOrLatest::Latest,
+                            None,
+                            None,
+                        )))
+                    }
+                    None => Err(anyhow::anyhow!(
+                        "Pending data not supported in this configuration"
+                    )),
+                }
+            }
+        }
+    }
+}
