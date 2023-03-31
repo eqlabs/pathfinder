@@ -181,12 +181,4 @@ pub mod testnet {
     pub const INVALID_CLASS_HASH: ClassHash = ClassHash(felt!(
         "031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
     ));
-
-    pub mod balance_contract {
-        // This is a hash and a definition of a real 'balance' contract deployed to the testnet.
-        pub const CLASS_HASH: &str =
-            "02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513";
-        pub const CLASS_DEFINITION: &str =
-            str_fixture!("simulate-tx/contracts/balance_contract_definition.txt");
-    }
 }
