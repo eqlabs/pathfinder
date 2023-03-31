@@ -2117,10 +2117,7 @@ def test_simulate_transaction_succeeds():
 
     con.execute("BEGIN")
 
-    (verb, output, _timings) = loop_inner(con, command)
-
-    dump = TransactionSimulation.Schema(many=True).dumps(output)
-    print(f"{dump}")
+    (_verb, output, _timings) = loop_inner(con, command)
 
     expected_json = """
     {
