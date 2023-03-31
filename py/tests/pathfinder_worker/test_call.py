@@ -133,6 +133,7 @@ def test_command_parsing_call():
     )
     assert command.has_pending_data()
 
+
 @pytest.mark.skip(
     reason="this is not a test but utility function working around pytest"
 )
@@ -250,7 +251,7 @@ def inmemory_with_tables():
         type(EXPECTED_SCHEMA_REVISION) is int
     ), f"expected schema revision must be just int, not: {type(EXPECTED_SCHEMA_REVISION)}"
     assert (
-        0 <= EXPECTED_SCHEMA_REVISION < 2**16
+        0 <= EXPECTED_SCHEMA_REVISION < 2 ** 16
     ), f"schema revision out of range: {EXPECTED_SCHEMA_REVISION}"
     cur.execute("pragma user_version = %d" % EXPECTED_SCHEMA_REVISION)
 
@@ -1071,7 +1072,7 @@ def test_nonce_with_dummy():
         child=LeafNode(value=account_contract_state_hash_with_nonce_1),
     )
     test_contract_node = EdgeNode(
-        path=test_contract_address & (2**250 - 1),
+        path=test_contract_address & (2 ** 250 - 1),
         path_length=250,
         child=LeafNode(value=test_contract_state_hash),
     )
@@ -1138,7 +1139,7 @@ def test_nonce_with_dummy():
 
     # this will be used as a basis for the other commands with the `dict(base, **updates)` signature
     base_transaction = InvokeFunction(
-        version=2**128 + 1,
+        version=2 ** 128 + 1,
         sender_address=0x123,
         # this should be: target address, target selector, input len, input..
         calldata=[test_contract_address, get_selector_from_name("get_value"), 1, 132],
@@ -1337,7 +1338,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
         child=LeafNode(value=dummy_account_contract_state_hash),
     )
     sierra_contract_node = EdgeNode(
-        path=sierra_contract_address & (2**250 - 1),
+        path=sierra_contract_address & (2 ** 250 - 1),
         path_length=250,
         child=LeafNode(value=sierra_class_state_hash),
     )
@@ -1452,7 +1453,7 @@ def test_sierra_invoke_function_through_account():
         pending_timestamp=0,
         transactions=[
             InvokeFunction(
-                version=2**128 + 1,
+                version=2 ** 128 + 1,
                 sender_address=dummy_account_contract_address,
                 calldata=[
                     sierra_contract_address,
@@ -1572,7 +1573,7 @@ def test_deploy_account():
                 signature=[],
             ),
             InvokeFunction(
-                version=2**128 + 1,
+                version=2 ** 128 + 1,
                 sender_address=deployed_dummy_account_address,
                 calldata=[
                     sierra_contract_address,
@@ -2067,7 +2068,7 @@ def test_simulate_transaction_succeeds():
         "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
     )
     dummy_account_contract_class_hash = (
-        0x00af5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8
+        0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
     )
     cur = con.execute("BEGIN")
     declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
@@ -2119,7 +2120,7 @@ def test_simulate_transaction_succeeds():
     (verb, output, _timings) = loop_inner(con, command)
 
     dump = TransactionSimulation.Schema(many=True).dumps(output)
-    print(f'{dump}')
+    print(f"{dump}")
 
     expected_json = """
     {
