@@ -2061,21 +2061,17 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
 
 def test_simulate_transaction_succeeds():
-    with open(
-        test_relative_path("../data/contracts/testnet/balance_contract.json")
-    ) as file:
-        contract = json.load(file)
-
     con = inmemory_with_tables()
 
-    con.execute("BEGIN")
-    con.execute(
-        "insert into class_definitions (hash, definition) values (?, ?)",
-        [
-            bytes.fromhex(contract["class_hash"]),
-            bytes.fromhex(contract["class_definition"]),
-        ],
+    dummy_account_contract_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
     )
+    dummy_account_contract_class_hash = (
+        0x00af5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8
+    )
+    cur = con.execute("BEGIN")
+    declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
+
     con.execute(
         """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
         [
@@ -2105,12 +2101,10 @@ def test_simulate_transaction_succeeds():
                     "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
                     "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
                 ],
-                "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+                "class_hash": "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
                 "nonce": "0x0",
                 "version": "0x100000000000000000000000000000001",
-                "constructor_calldata": [
-                    "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-                ],
+                "constructor_calldata": [],
                 "type": "DEPLOY_ACCOUNT"
             }
         ],
@@ -2124,62 +2118,60 @@ def test_simulate_transaction_succeeds():
 
     (verb, output, _timings) = loop_inner(con, command)
 
+    dump = TransactionSimulation.Schema(many=True).dumps(output)
+    print(f'{dump}')
+
     expected_json = """
     {
         "trace": {
-            "validate_invocation": {
-                "caller_address": "0x0",
-                "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
-                "calldata": [
-                    "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-                    "0x046c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
-                    "0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-                ],
-                "call_type": "CALL",
-                "class_hash": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-                "selector": "0x036fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895",
-                "entry_point_type": "EXTERNAL",
-                "result": [],
+            "function_invocation": {
+                "entry_point_type": "CONSTRUCTOR",
                 "internal_calls": [],
-                "events": [],
+                "call_type": "CALL",
+                "contract_address": "0x1557ad3f4f74c08dccbfbe620a57714f607b8c7e4c4dba0e15e1ce3f10db3b5",
+                "class_hash": "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
+                "result": [],
+                "selector": "0x28ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194",
                 "messages": [],
+                "events": [],
+                "calldata": [],
+                "caller_address": "0x0",
                 "execution_resources": {
-                    "n_steps": 75,
-                    "builtin_instance_counter": {
-                        "ecdsa_builtin": 1
-                    },
+                    "builtin_instance_counter": {},
+                    "n_steps": 0,
                     "n_memory_holes": 0
                 }
             },
-            "function_invocation": {
-                "caller_address": "0x0",
-                "contract_address": "0x0332141f07b2081e840cd12f62fb161606a24d1d81d54549cd5fb2ed419db415",
-                "calldata": [
-                    "0x063c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-                ],
-                "call_type": "CALL",
-                "class_hash": "0x02b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
-                "selector": "0x028ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194",
-                "entry_point_type": "CONSTRUCTOR",
-                "result": [],
+            "validate_invocation": {
+                "entry_point_type": "EXTERNAL",
                 "internal_calls": [],
-                "events": [],
+                "call_type": "CALL",
+                "contract_address": "0x1557ad3f4f74c08dccbfbe620a57714f607b8c7e4c4dba0e15e1ce3f10db3b5",
+                "class_hash": "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
+                "result": [],
+                "selector": "0x36fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895",
                 "messages": [],
+                "events": [],
+                "calldata": [
+                    "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
+                    "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971"
+                ],
+                "caller_address": "0x0",
                 "execution_resources": {
-                    "n_steps": 41,
                     "builtin_instance_counter": {},
+                    "n_steps": 13,
                     "n_memory_holes": 0
                 }
             },
             "signature": [
-                "0x0296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-                "0x04e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+                "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+                "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
             ]
         },
         "fee_estimation": {
-            "gas_consumed": "0x10e3",
-            "gas_price": "0x1",
-            "overall_fee": "0x10e3"
+            "gas_consumed": "0xc18",
+            "overall_fee": "0xc18",
+            "gas_price": "0x1"
         }
     }
     """
