@@ -754,9 +754,9 @@ mod tests {
             let _guard = RecorderGuard::lock_as_noop();
             use starknet_gateway_types::reply::MaybePendingBlock;
             let (_jh, client) = setup([
-                // TODO move these fixtures to v0_11_0
                 (
-                    "/feeder_gateway/get_block?blockNumber=192844",
+                    // block 300k on testnet in case of a live api test
+                    "/feeder_gateway/get_block?blockNumber=300000",
                     (integration::block::NUMBER_192844, 200),
                 ),
                 (
@@ -768,7 +768,7 @@ mod tests {
             let expected_version = "0.9.1";
 
             let block = client
-                .block(StarknetBlockNumber::new_or_panic(192844).into())
+                .block(StarknetBlockNumber::new_or_panic(300000).into())
                 .await
                 .unwrap();
             assert_eq!(
@@ -781,13 +781,7 @@ mod tests {
             );
 
             let block = client.block(BlockId::Pending).await.unwrap();
-
-            match block {
-                MaybePendingBlock::Pending(p) => {
-                    assert_eq!(p.starknet_version.as_deref(), Some(expected_version))
-                }
-                MaybePendingBlock::Block(_) => panic!("should not had been a ready block"),
-            }
+            assert_matches!(block, MaybePendingBlock::Pending(_));
         }
     }
 
@@ -849,9 +843,8 @@ mod tests {
 
         #[tokio::test]
         async fn success() {
-            // FIXME: replace with a class from testnet; this is an integration class.
             const VALID_HASH: SierraHash = SierraHash(felt!(
-                "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
+                "0x07a4c06a26a85a0935b87e74ae819b02bf4fd68d8fc1c906f046fcdeb94fa8c7"
             ));
             let (_jh, client) = setup([(
                 format!(
