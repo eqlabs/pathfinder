@@ -313,8 +313,11 @@ pub mod dto {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, Chain, ContractAddress};
+    use pathfinder_common::{felt, Chain, ContractAddress, TransactionVersion};
     use pathfinder_storage::{JournalMode, Storage};
+    use starknet_gateway_test_fixtures::zstd_compressed_contracts::{
+        DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
+    };
     use tempfile::tempdir;
 
     use crate::v02::types::reply::FeeEstimate;
@@ -322,11 +325,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_simulate_transaction_deploy_balance_contract() {
-        use starknet_gateway_test_fixtures::testnet::balance_contract::{
-            CLASS_DEFINITION, CLASS_HASH,
-        };
-
+    async fn test_simulate_transaction() {
         let dir = tempdir().expect("tempdir");
         let mut db_path = dir.path().to_path_buf();
         db_path.push("db.sqlite");
@@ -338,10 +337,7 @@ mod tests {
             let tx = db.transaction().expect("tx");
             tx.execute(
                 "insert into class_definitions (hash, definition) values (?, ?)",
-                [
-                    hex::decode(CLASS_HASH).expect("class hash"),
-                    hex::decode(CLASS_DEFINITION).expect("class def"),
-                ],
+                rusqlite::params![&DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT],
             )
             .expect("insert class");
             tx.execute("insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, x'01', ?)", [
@@ -365,7 +361,7 @@ mod tests {
             .with_storage(storage)
             .with_call_handling(call_handle);
 
-        let input_json = r#"{
+        let input_json = serde_json::json!({
             "block_id": {"block_number": 1},
             "transactions": [
                 {
@@ -376,29 +372,32 @@ mod tests {
                         "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
                     ],
                     "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
+                    "signature": [],
+                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH.to_string(),
                     "nonce": "0x0",
                     "version": "0x100000000000000000000000000000001",
                     "constructor_calldata": [
                         "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
                     ],
+                    "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    "constructor_calldata": [],
                     "type": "DEPLOY_ACCOUNT"
                 }
             ],
             "simulation_flags": []
-        }"#;
-        let input: SimulateTrasactionInput = serde_json::from_str(input_json).expect("input");
+        });
+        let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
 
         let expected: Vec<dto::SimulatedTransaction> = {
             use dto::*;
             use ethers::types::H256;
-
             vec![
             SimulatedTransaction {
                 fee_estimation: Some(
                     FeeEstimate {
-                        gas_consumed: H256::from_low_u64_be(0x010e3),
+                        gas_consumed: H256::from_low_u64_be(0x0c18),
                         gas_price: H256::from_low_u64_be(0x01),
-                        overall_fee: H256::from_low_u64_be(0x010e3),
+                        overall_fee: H256::from_low_u64_be(0x0c18),
                     }
                 ),
                 transaction_trace: Some(
@@ -409,14 +408,14 @@ mod tests {
                                     call_type: Some(CallType::Call),
                                     caller_address: Some(felt!("0x0")),
                                     calls: Some(vec![]),
-                                    code_address: Some(felt!("0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513")),
+                                    code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
                                     entry_point_type: Some(EntryPointType::Constructor),
                                     events: Some(vec![]),
                                     function_call: FunctionCall {
-                                        calldata: vec![
-                                            CallParam(felt!("0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D")),
-                                        ],
-                                        contract_address: ContractAddress::new_or_panic(felt!("0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415")),
+                                        calldata: vec![],
+                                        contract_address: ContractAddress::new_or_panic(felt!(
+                                            "0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"
+                                        )),
                                         entry_point_selector: EntryPoint(felt!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194")),
                                     },
                                     messages: Some(vec![]),
@@ -428,16 +427,17 @@ mod tests {
                                     call_type: Some(CallType::Call),
                                     caller_address: Some(felt!("0x0")),
                                     calls: Some(vec![]),
-                                    code_address: Some(felt!("0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513")),
+                                    code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
                                     entry_point_type: Some(EntryPointType::External),
                                     events: Some(vec![]),
                                     function_call: FunctionCall {
                                         calldata: vec![
-                                            CallParam(felt!("0x02B63CAD399DD78EFBC9938631E74079CBF19C9C08828E820E7606F46B947513")),
+                                            CallParam(DUMMY_ACCOUNT_CLASS_HASH.0),
                                             CallParam(felt!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971")),
-                                            CallParam(felt!("0x063C056DA088A767A6685EA0126F447681B5BCEFF5629789B70738BC26B5469D")),
                                         ],
-                                        contract_address: ContractAddress::new_or_panic(felt!("0x0332141F07B2081E840CD12F62FB161606A24D1D81D54549CD5FB2ED419DB415")),
+                                        contract_address: ContractAddress::new_or_panic(felt!(
+                                            "0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"
+                                        )),
                                         entry_point_selector: EntryPoint(felt!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895")),
                                     },
                                     messages: Some(vec![]),
@@ -452,6 +452,6 @@ mod tests {
         };
 
         let result = simulate_transaction(rpc, input).await.expect("result");
-        assert_eq!(result.0, expected);
+        pretty_assertions::assert_eq!(result.0, expected);
     }
 }
