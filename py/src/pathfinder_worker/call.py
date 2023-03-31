@@ -91,6 +91,12 @@ try:
     )
     from starkware.starkware_utils.error_handling import StarkException
     from starkware.storage.storage import FactFetchingContext, Storage
+    from starkware.starknet.core.os.contract_class.utils import (
+        ClassHashType,
+        class_hash_cache_ctx_var,
+        set_class_hash_cache,
+    )
+    from starkware.starknet.public.abi import starknet_keccak
 
     from starkware.starknet.services.api.feeder_gateway.response_objects import (
         BaseResponseObject,
@@ -143,6 +149,16 @@ class_hash_metadata = dict(
     marshmallow_field=fields.ClassHashIntField.get_marshmallow_field(required=True)
 )
 
+optional_class_hash_metadata = dict(
+    marshmallow_field=fields.OptionalClassHashIntField.get_marshmallow_field()
+)
+
+class_hash_list_metadata = dict(
+    marshmallow_field=mfields.List(
+        fields.OptionalClassHashIntField.get_marshmallow_field()
+    )
+)
+
 
 @marshmallow_dataclass.dataclass(frozen=True)
 class DeployedContract:
@@ -171,6 +187,12 @@ pending_nonces_metadata = dict(
         required=True,
     )
 )
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class TransactionAndClassHashHint:
+    transaction: AccountTransaction
+    class_hash_hint: Optional[int] = field(metadata=optional_class_hash_metadata)
 
 
 @dataclass(frozen=True)
@@ -232,7 +254,6 @@ class EstimateFee(Command):
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
-    transactions: List[AccountTransaction]
 
     def has_pending_data(self):
         return (
@@ -243,6 +264,7 @@ class EstimateFee(Command):
 
     def get_pending_timestamp(self) -> int:
         return self.pending_timestamp
+    transactions: List[TransactionAndClassHashHint]
 
 
 @marshmallow_dataclass.dataclass(frozen=True)
@@ -252,7 +274,7 @@ class SimulateTx(Command):
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
-    transactions: List[AccountTransaction]
+    transactions: List[TransactionAndClassHashHint]
     skip_validate: bool
 
 
@@ -960,10 +982,37 @@ async def do_call(
 async def simulate_account_tx(
     state: CachedState,
     general_config: StarknetGeneralConfig,
-    block_info: BlockInfo,
-    transaction: AccountTransaction,
+    transaction_and_class_hint: TransactionAndClassHashHint,
     skip_validate: bool,
 ):
+
+    class_hash_hint = transaction_and_class_hint.class_hash_hint
+    transaction = transaction_and_class_hint.transaction
+
+    if class_hash_hint is not None:
+        cache = class_hash_cache_ctx_var.get()
+
+        if isinstance(transaction, Declare):
+            contract_class_bytes = transaction.contract_class.dumps(
+                sort_keys=True
+            ).encode()
+            key = (
+                ClassHashType.CONTRACT_CLASS,
+                starknet_keccak(data=contract_class_bytes),
+            )
+        elif isinstance(transaction, DeprecatedDeclare):
+            contract_class_bytes = transaction.contract_class.dumps(
+                sort_keys=True
+            ).encode()
+            key = (
+                ClassHashType.DEPRECATED_COMPILED_CLASS,
+                starknet_keccak(data=contract_class_bytes),
+            )
+        else:
+            raise ValueError("Unexpected class hash hint for non-declare transaction")
+
+        cache[key] = class_hash_hint
+
     internal_transaction = InternalAccountTransactionForSimulate.create_for_simulate(
         transaction, general_config, skip_validate
     )
@@ -993,7 +1042,7 @@ async def do_estimate_fee(
     state: CachedState,
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
-    transactions: List[AccountTransaction],
+    transactions: List[TransactionAndClassHashHint],
 ):
     """
     This is distinct from the call because estimating a fee requires flushing the state to count
@@ -1004,21 +1053,24 @@ async def do_estimate_fee(
 
     fees = []
 
-    for transaction in transactions:
-        tx_info = await simulate_account_tx(
-            state, general_config, block_info, transaction, skip_validate=False
-        )
+    class_hash_cache = LRUCache(maxsize=128)
 
-        fee = FeeEstimation(
-            gas_price=block_info.gas_price,
-            gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
-            overall_fee=tx_info.actual_fee,
-        )
+    with set_class_hash_cache(class_hash_cache):
+        for transaction in transactions:
+            tx_info = await simulate_account_tx(
+                state, general_config, transaction, skip_validate=False
+            )
 
-        # with 0.10 upgrade we changed to division with gas_consumed as well, since
-        # there is opposition to providing the non-multiplied scalar value from
-        # cairo-lang.
-        fees.append(fee)
+            fee = FeeEstimation(
+                gas_price=block_info.gas_price,
+                gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
+                overall_fee=tx_info.actual_fee,
+            )
+
+            # with 0.10 upgrade we changed to division with gas_consumed as well, since
+            # there is opposition to providing the non-multiplied scalar value from
+            # cairo-lang.
+            fees.append(fee)
 
     return fees
 
@@ -1027,36 +1079,38 @@ async def do_simulate_tx(
     state: CachedState,
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
-    transactions: List[AccountTransaction],
+    transactions: List[TransactionAndClassHashHint],
     skip_validate: bool,
 ):
     simulated_transactions = []
 
-    for transaction in transactions:
-        tx_info = await simulate_account_tx(
-            state, general_config, block_info, transaction, skip_validate
-        )
+    class_hash_cache = LRUCache(maxsize=128)
+    with set_class_hash_cache(class_hash_cache):
+        for transaction in transactions:
+            tx_info = await simulate_account_tx(
+                state, general_config, transaction, skip_validate
+            )
 
-        trace = TransactionTrace(
-            validate_invocation=FunctionInvocation.from_optional_internal(
-                tx_info.validate_info
-            ),
-            function_invocation=FunctionInvocation.from_optional_internal(
-                tx_info.call_info
-            ),
-            fee_transfer_invocation=FunctionInvocation.from_optional_internal(
-                tx_info.fee_transfer_info
-            ),
-            signature=transaction.signature,
-        )
+            trace = TransactionTrace(
+                validate_invocation=FunctionInvocation.from_optional_internal(
+                    tx_info.validate_info
+                ),
+                function_invocation=FunctionInvocation.from_optional_internal(
+                    tx_info.call_info
+                ),
+                fee_transfer_invocation=FunctionInvocation.from_optional_internal(
+                    tx_info.fee_transfer_info
+                ),
+                signature=transaction.transaction.signature,
+            )
 
-        fee_estimation = FeeEstimation(
-            gas_price=block_info.gas_price,
-            gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
-            overall_fee=tx_info.actual_fee,
-        )
+            fee_estimation = FeeEstimation(
+                gas_price=block_info.gas_price,
+                gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
+                overall_fee=tx_info.actual_fee,
+            )
 
-        simulated_transactions.append(TransactionSimulation(trace, fee_estimation))
+            simulated_transactions.append(TransactionSimulation(trace, fee_estimation))
 
     return simulated_transactions
 
