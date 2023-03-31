@@ -1,7 +1,10 @@
+use std::io::{Cursor, Read};
+
 use anyhow::Context;
 use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
+use starknet_gateway_types::class_hash::{compute_class_hash, ComputedClassHash};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
@@ -75,6 +78,13 @@ impl ContractClass {
         match self {
             ContractClass::Cairo(_) => None,
             ContractClass::Sierra(sierra) => Some(sierra),
+        }
+    }
+
+    pub fn class_hash(&self) -> Result<ComputedClassHash, anyhow::Error> {
+        match self {
+            ContractClass::Cairo(c) => c.class_hash(),
+            ContractClass::Sierra(c) => c.class_hash(),
         }
     }
 }
@@ -188,6 +198,31 @@ pub struct CairoContractClass {
     pub program: String,
     pub entry_points_by_type: ContractEntryPoints,
     pub abi: Option<Vec<ContractAbiEntry>>,
+}
+
+impl CairoContractClass {
+    pub fn class_hash(&self) -> Result<ComputedClassHash, anyhow::Error> {
+        // decode program
+        let mut decompressor =
+            flate2::read::GzDecoder::new(Cursor::new(base64::decode(&self.program).unwrap()));
+        let mut program = Vec::new();
+        decompressor
+            .read_to_end(&mut program)
+            .context("Decompressing program")?;
+
+        let program: serde_json::Value =
+            serde_json::from_slice(&program).context("Parsing program JSON")?;
+
+        let json = serde_json::json!({
+            "program": program,
+            "entry_points_by_type": self.entry_points_by_type,
+            "abi": self.abi
+        });
+
+        let serialized = serde_json::to_vec(&json)?;
+
+        compute_class_hash(&serialized).context("Compute class hash")
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -371,6 +406,13 @@ pub struct SierraContractClass {
     pub abi: Option<String>,
 }
 
+impl SierraContractClass {
+    pub fn class_hash(&self) -> Result<ComputedClassHash, anyhow::Error> {
+        let definition = serde_json::to_vec(self)?;
+        compute_class_hash(&definition)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[serde(deny_unknown_fields)]
@@ -440,6 +482,32 @@ mod tests {
             };
 
             assert_eq!(result, expected);
+        }
+    }
+
+    mod declare_class_hash {
+        use super::super::ContractClass;
+        use starknet_gateway_test_fixtures::zstd_compressed_contracts::{
+            CAIRO_0_11_SIERRA, CONTRACT_DEFINITION,
+        };
+        use starknet_gateway_types::class_hash::compute_class_hash;
+
+        #[test]
+        fn compute_sierra_class_hash() {
+            let contract_definition = zstd::decode_all(CAIRO_0_11_SIERRA).unwrap();
+            let class_hash = compute_class_hash(&contract_definition).unwrap();
+
+            let class = ContractClass::from_definition_bytes(&contract_definition).unwrap();
+            assert_eq!(class.class_hash().unwrap(), class_hash);
+        }
+
+        #[test]
+        fn compute_cairo_class_hash() {
+            let contract_definition = zstd::decode_all(CONTRACT_DEFINITION).unwrap();
+            let class_hash = compute_class_hash(&contract_definition).unwrap();
+
+            let class = ContractClass::from_definition_bytes(&contract_definition).unwrap();
+            assert_eq!(class.class_hash().unwrap(), class_hash);
         }
     }
 }
