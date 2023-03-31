@@ -25,7 +25,7 @@ pub struct SimulateTrasactionInput {
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
-pub struct SimulateTransactionResult(pub Vec<dto::SimulatedTransaction>);
+pub struct SimulateTransactionOutput(pub Vec<dto::SimulatedTransaction>);
 
 crate::error::generate_rpc_error_subset!(
     SimulateTransactionError: BlockNotFound,
@@ -50,7 +50,7 @@ impl From<CallFailure> for SimulateTransactionError {
 pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
-) -> Result<SimulateTransactionResult, SimulateTransactionError> {
+) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
     let (handle, gas_price, at_block, pending_timestamp, pending_update) =
         prepare_handle_and_block(&context, input.block_id).await?;
 
@@ -73,7 +73,7 @@ pub async fn simulate_transaction(
 
     let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTransactionError> =
         txs.into_iter().map(map_tx).collect();
-    Ok(SimulateTransactionResult(txs?))
+    Ok(SimulateTransactionOutput(txs?))
 }
 
 fn map_tx(
