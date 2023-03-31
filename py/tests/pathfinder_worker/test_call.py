@@ -133,8 +133,10 @@ def test_command_parsing_call():
     )
     assert command.has_pending_data()
 
-
-def check_relative_path(path):
+@pytest.mark.skip(
+    reason="this is not a test but utility function working around pytest"
+)
+def test_relative_path(path):
     """
     Returns a path from this file, py/src/test_call.py
     """
@@ -358,7 +360,7 @@ def populate_test_contract_with_132_on_3(con):
 
     cur = con.execute("BEGIN")
 
-    path = check_relative_path(
+    path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
     )
     declare_class(cur, class_hash, path)
@@ -643,7 +645,7 @@ def test_fee_estimate_for_declare_transaction_directly():
     con = inmemory_with_tables()
     (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
-    path = check_relative_path(
+    path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
     )
 
@@ -1008,7 +1010,7 @@ def test_nonce_with_dummy():
         test_contract_state_hash,
     ) = populate_test_contract_with_132_on_3(con)
 
-    path = check_relative_path(
+    path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
     )
 
@@ -1252,7 +1254,7 @@ def test_nonce_with_dummy():
 
 def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, int]:
     # declare classes
-    sierra_class_path = check_relative_path(
+    sierra_class_path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format.json.zst"
     )
     sierra_class_hash = (
@@ -1260,7 +1262,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
     )
     declare_class(cur, sierra_class_hash, sierra_class_path)
 
-    dummy_account_contract_path = check_relative_path(
+    dummy_account_contract_path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
     )
     dummy_account_contract_class_hash = (
@@ -1269,7 +1271,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
     declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
 
     # CASM class
-    compiled_class_path = check_relative_path(
+    compiled_class_path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format-compiled-casm.json.zst"
     )
     compiled_class_hash = (
@@ -1487,7 +1489,7 @@ def test_sierra_declare_through_account():
     ) = setup_dummy_account_and_sierra_contract(cur)
     con.commit()
 
-    sierra_class_definition_path = check_relative_path(
+    sierra_class_definition_path = test_relative_path(
         "./sierra_class_definition.json.zst"
     )
 
@@ -1624,7 +1626,7 @@ def test_deploy_newly_declared_account():
 
     con.commit()
 
-    dummy_account_contract_path = check_relative_path(
+    dummy_account_contract_path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
     )
     dummy_account_contract_class_hash = (
@@ -1698,7 +1700,7 @@ def test_deploy_newly_declared_sierra_account():
 
     con.commit()
 
-    sierra_class_definition_path = check_relative_path("./sierra_account.json.zst")
+    sierra_class_definition_path = test_relative_path("./sierra_account.json.zst")
 
     with zstandard.open(sierra_class_definition_path, "rb") as file:
         # class_definition = file.read()
@@ -1827,7 +1829,7 @@ def add_casm_definition(
 
 @pytest.mark.skip(reason="this requires up to 2804 block synced database")
 def test_failing_mainnet_tx2():
-    con = sqlite3.connect(check_relative_path("../../../mainnet.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../mainnet.sqlite"))
     con.execute("BEGIN")
 
     # this is running fee estimation on existing transaction from mainnet, on the block before
@@ -1883,7 +1885,7 @@ def test_failing_mainnet_tx2():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_without_deployed():
-    con = sqlite3.connect(check_relative_path("../../../goerli.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../goerli.sqlite"))
     con.execute("BEGIN")
 
     with_updates = Call(
@@ -1929,7 +1931,7 @@ def test_positive_streamed_on_early_goerli_block_without_deployed():
 
 @pytest.mark.skip(reason="this requires a mainnet database with block 11486")
 def test_timestamp_dependent_pending_call():
-    con = sqlite3.connect(check_relative_path("../../../mainnet.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../mainnet.sqlite"))
     con.execute("BEGIN")
 
     # This call fails if we are just using the timestamp from the block specified
@@ -1976,7 +1978,7 @@ def test_timestamp_dependent_pending_call():
 
 @pytest.mark.skip(reason="this requires an early goerli database")
 def test_positive_streamed_on_early_goerli_block_with_deployed():
-    con = sqlite3.connect(check_relative_path("../../../goerli.sqlite"))
+    con = sqlite3.connect(test_relative_path("../../../goerli.sqlite"))
     con.execute("BEGIN")
 
     # this is from the corresponding state update for block 6
@@ -2060,7 +2062,7 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
 def test_simulate_transaction_succeeds():
     with open(
-        check_relative_path("../data/contracts/testnet/balance_contract.json")
+        test_relative_path("../data/contracts/testnet/balance_contract.json")
     ) as file:
         contract = json.load(file)
 
