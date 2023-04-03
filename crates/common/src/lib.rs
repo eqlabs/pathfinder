@@ -430,6 +430,15 @@ impl GasPrice {
     }
 }
 
+impl rusqlite::types::FromSql for GasPrice {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        let blob = value.as_blob()?;
+        let gas_price = GasPrice::from_be_slice(blob)
+            .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
+        Ok(gas_price)
+    }
+}
+
 impl From<u64> for GasPrice {
     fn from(src: u64) -> Self {
         Self(u128::from(src))

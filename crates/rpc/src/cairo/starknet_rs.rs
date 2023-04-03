@@ -128,17 +128,12 @@ pub(crate) fn estimate_fee(
     storage_commitment: StorageCommitment,
     transactions: Vec<BroadcastedTransaction>,
     chain_id: ChainId,
-    gas_price: Option<H256>,
-    gas_price_source: GasPriceSource,
+    gas_price: H256,
 ) -> Result<Vec<FeeEstimate>, CallError> {
     let transactions = transactions
         .into_iter()
         .map(|tx| map_transaction(tx, chain_id))
         .collect::<Result<Vec<_>, TransactionError>>()?;
-
-    // TODO: handle gas price -- as_price() is either 0, which means to use the gas price from the block,
-    // or non-zero, which means a forced gas price to use
-    let g = gas_price.as_ref().or_else(gas_price_source.as_price());
 
     let state_reader = SqliteReader {
         storage: storage,
@@ -150,10 +145,10 @@ pub(crate) fn estimate_fee(
 
     let general_config = StarknetGeneralConfig::default();
 
-    for transaction in &transactions {
-        let res = transaction.execute(state, &general_config)?;
-        dbg!(res.actual_fee);
-    }
+    // for transaction in &transactions {
+    //     let res = transaction.execute(state, &general_config)?;
+    //     dbg!(res.actual_fee);
+    // }
 
     Ok(vec![])
 }

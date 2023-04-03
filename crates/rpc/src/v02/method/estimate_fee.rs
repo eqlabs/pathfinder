@@ -1,6 +1,7 @@
 use crate::context::RpcContext;
 use crate::v02::types::{reply::FeeEstimate, request::BroadcastedTransaction};
 use anyhow::Context;
+use ethers::types::H256;
 use pathfinder_common::BlockId;
 use pathfinder_storage::StarknetBlocksTable;
 
@@ -18,16 +19,13 @@ crate::error::generate_rpc_error_subset!(
     InvalidCallData
 );
 
-impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {
-    fn from(c: crate::cairo::ext_py::CallFailure) -> Self {
-        use crate::cairo::ext_py::CallFailure::*;
-        match c {
-            NoSuchBlock => Self::BlockNotFound,
-            NoSuchContract => Self::ContractNotFound,
-            InvalidEntryPoint => Self::InvalidMessageSelector,
-            ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
-            // Intentionally hide the message under Internal
-            Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),
+impl From<crate::cairo::starknet_rs::CallError> for EstimateFeeError {
+    fn from(value: crate::cairo::starknet_rs::CallError) -> Self {
+        use crate::cairo::starknet_rs::CallError::*;
+        match value {
+            ContractNotFound => Self::ContractNotFound,
+            InvalidMessageSelector => Self::InvalidMessageSelector,
+            Internal(e) => Self::Internal(e),
         }
     }
 }
@@ -43,7 +41,7 @@ pub async fn estimate_fee(
     let span = tracing::Span::current();
 
     // FIXME: handle pending data
-    let result = tokio::task::spawn_blocking(move || {
+    let (storage_commitment, past_gas_price) = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
         let mut db = storage.connection()?;
@@ -53,20 +51,57 @@ pub async fn estimate_fee(
             .context("Reading storage root for block")?
             .ok_or_else(|| EstimateFeeError::BlockNotFound)?;
 
-        let result = crate::cairo::starknet_rs::estimate_fee(
-            context.storage,
-            storage_commitment,
-            input.request.contract_address,
-            input.request.entry_point_selector,
-            input.request.calldata,
-        )?;
+        let past_gas_price = match input.block_id {
+            BlockId::Latest | BlockId::Pending => None,
+            BlockId::Hash(h) => StarknetBlocksTable::get_gas_price(&tx, h.into())?
+                .map(|p| H256::from_slice(&p.0.to_be_bytes())),
+            BlockId::Number(n) => StarknetBlocksTable::get_gas_price(&tx, n.into())?
+                .map(|p| H256::from_slice(&p.0.to_be_bytes())),
+        };
 
-        Ok(result)
+        Ok::<(_, _), EstimateFeeError>((storage_commitment, past_gas_price))
     })
     .await
-    .context("Executing call")?;
+    .context("Getting storage commitment and gas price")??;
 
-    result.map(CallOutput)
+    let gas_price = match past_gas_price {
+        Some(gas_price) => gas_price,
+        None => current_gas_price(&context.eth_gas_price).await?,
+    };
+
+    // FIXME: run as a blocking task
+    let mut result = crate::cairo::starknet_rs::estimate_fee(
+        context.storage,
+        storage_commitment,
+        vec![input.request],
+        context.chain_id,
+        gas_price,
+    )?;
+
+    if result.len() != 1 {
+        return Err(
+            anyhow::anyhow!("Internal error: expected exactly one fee estimation result").into(),
+        );
+    }
+
+    let result = result.pop().unwrap();
+
+    Ok(FeeEstimate {
+        gas_consumed: H256::from_slice(result.gas_consumed.as_be_bytes()),
+        gas_price: result.gas_price,
+        overall_fee: H256::from_slice(result.overall_fee.as_be_bytes()),
+    })
+}
+
+async fn current_gas_price(
+    eth_gas_price: &Option<crate::gas_price::Cached>,
+) -> Result<H256, anyhow::Error> {
+    let gas_price = match eth_gas_price {
+        Some(cached) => cached.get().await,
+        None => None,
+    };
+
+    gas_price.ok_or_else(|| anyhow::anyhow!("Current eth_gasPrice is unavailable"))
 }
 
 #[cfg(test)]
@@ -162,6 +197,8 @@ mod tests {
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     mod ext_py {
+        use std::sync::Arc;
+
         use super::*;
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
