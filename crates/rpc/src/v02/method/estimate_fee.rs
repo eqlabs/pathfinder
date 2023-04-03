@@ -155,7 +155,7 @@ mod tests {
 
         use super::*;
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
+            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
             BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{CairoContractClass, ContractClass};
@@ -290,7 +290,7 @@ mod tests {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let declare_transaction = BroadcastedTransaction::Declare(
-                BroadcastedDeclareTransaction::V0V1(BroadcastedDeclareTransactionV0V1 {
+                BroadcastedDeclareTransaction::V1(BroadcastedDeclareTransactionV1 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
                     max_fee: Fee(Default::default()),
                     signature: vec![],

@@ -186,7 +186,7 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
             ),
             class_hash_hint: None,
         },
-        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
             let class_hash = tx
                 .contract_class
                 .class_hash()

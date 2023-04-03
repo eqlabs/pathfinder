@@ -31,7 +31,6 @@ pub mod request {
         DeployAccount(BroadcastedDeployAccountTransaction),
     }
 
-    // TODO make sure deserialization is not ambiguous between V1 and V2
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[cfg_attr(
         any(test, feature = "rpc-full-serde"),
@@ -39,7 +38,7 @@ pub mod request {
         serde(untagged)
     )]
     pub enum BroadcastedDeclareTransaction {
-        V0V1(BroadcastedDeclareTransactionV0V1),
+        V1(BroadcastedDeclareTransactionV1),
         V2(BroadcastedDeclareTransactionV2),
     }
 
@@ -60,14 +59,13 @@ pub mod request {
             let v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
             match version.version.without_query_version() {
-                0 | 1 => Ok(Self::V0V1(
-                    BroadcastedDeclareTransactionV0V1::deserialize(&v)
-                        .map_err(de::Error::custom)?,
+                1 => Ok(Self::V1(
+                    BroadcastedDeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 2 => Ok(Self::V2(
                     BroadcastedDeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
+                _v => Err(de::Error::custom("version must be 1 or 2")),
             }
         }
     }
@@ -76,7 +74,7 @@ pub mod request {
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
     #[serde(deny_unknown_fields)]
-    pub struct BroadcastedDeclareTransactionV0V1 {
+    pub struct BroadcastedDeclareTransactionV1 {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
@@ -264,8 +262,8 @@ pub mod request {
                     abi: None,
                 };
                 let txs = vec![
-                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(
-                        BroadcastedDeclareTransactionV0V1 {
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
+                        BroadcastedDeclareTransactionV1 {
                             max_fee: Fee(felt!("0x5")),
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x1)),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],

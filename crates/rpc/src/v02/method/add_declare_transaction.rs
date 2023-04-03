@@ -52,7 +52,7 @@ pub async fn add_declare_transaction(
     input: AddDeclareTransactionInput,
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
     match input.declare_transaction {
-        Transaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
+        Transaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
             let contract_definition: CairoContractDefinition = tx
                 .contract_class
                 .try_into()
@@ -109,7 +109,7 @@ pub async fn add_declare_transaction(
 mod tests {
     use super::*;
     use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
+        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
         BroadcastedDeclareTransactionV2,
     };
     use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
@@ -148,11 +148,11 @@ mod tests {
     mod parsing {
         mod v1 {
             use super::super::*;
-            use crate::v02::types::request::BroadcastedDeclareTransactionV0V1;
+            use crate::v02::types::request::BroadcastedDeclareTransactionV1;
 
             fn test_declare_txn() -> Transaction {
-                Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
-                    BroadcastedDeclareTransactionV0V1 {
+                Transaction::Declare(BroadcastedDeclareTransaction::V1(
+                    BroadcastedDeclareTransactionV1 {
                         max_fee: Fee(felt!("0x1")),
                         version: TransactionVersion::ONE,
                         signature: vec![],
@@ -302,7 +302,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
-    async fn invalid_contract_definition() {
+    async fn invalid_contract_definition_v1() {
         let context = RpcContext::for_tests();
 
         let invalid_contract_class = CairoContractClass {
@@ -310,8 +310,8 @@ mod tests {
             ..CONTRACT_CLASS.clone()
         };
 
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
-            BroadcastedDeclareTransactionV0V1 {
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
                 version: TransactionVersion::ONE,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
@@ -374,8 +374,8 @@ mod tests {
     async fn successful_declare_v1() {
         let context = RpcContext::for_tests();
 
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
-            BroadcastedDeclareTransactionV0V1 {
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
                 version: TransactionVersion::ONE,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
