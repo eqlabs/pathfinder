@@ -373,7 +373,7 @@ mod tests {
                     ],
                     "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
                     "signature": [],
-                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH.to_string(),
+                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH,
                     "nonce": "0x0",
                     "version": "0x100000000000000000000000000000001",
                     "constructor_calldata": [
