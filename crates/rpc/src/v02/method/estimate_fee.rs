@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use crate::v02::types::{reply::FeeEstimate, request::BroadcastedTransaction};
 use anyhow::Context;
-use ethers::types::H256;
+use ethers::types::U256;
 use pathfinder_common::BlockId;
 use pathfinder_storage::StarknetBlocksTable;
 
@@ -53,10 +53,12 @@ pub async fn estimate_fee(
 
         let past_gas_price = match input.block_id {
             BlockId::Latest | BlockId::Pending => None,
-            BlockId::Hash(h) => StarknetBlocksTable::get_gas_price(&tx, h.into())?
-                .map(|p| H256::from_slice(&p.0.to_be_bytes())),
-            BlockId::Number(n) => StarknetBlocksTable::get_gas_price(&tx, n.into())?
-                .map(|p| H256::from_slice(&p.0.to_be_bytes())),
+            BlockId::Hash(h) => {
+                StarknetBlocksTable::get_gas_price(&tx, h.into())?.map(|p| p.0.into())
+            }
+            BlockId::Number(n) => {
+                StarknetBlocksTable::get_gas_price(&tx, n.into())?.map(|p| p.0.into())
+            }
         };
 
         Ok::<(_, _), EstimateFeeError>((storage_commitment, past_gas_price))
@@ -87,15 +89,15 @@ pub async fn estimate_fee(
     let result = result.pop().unwrap();
 
     Ok(FeeEstimate {
-        gas_consumed: H256::from_slice(result.gas_consumed.as_be_bytes()),
-        gas_price: result.gas_price,
-        overall_fee: H256::from_slice(result.overall_fee.as_be_bytes()),
+        gas_consumed: result.gas_consumed.into(),
+        gas_price: result.gas_price.into(),
+        overall_fee: result.overall_fee,
     })
 }
 
 async fn current_gas_price(
     eth_gas_price: &Option<crate::gas_price::Cached>,
-) -> Result<H256, anyhow::Error> {
+) -> Result<U256, anyhow::Error> {
     let gas_price = match eth_gas_price {
         Some(cached) => cached.get().await,
         None => None,

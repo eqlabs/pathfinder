@@ -542,9 +542,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             vec![crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x4ea),
-                gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0x4ea),
+                gas_consumed: 0x4ea.into(),
+                gas_price: 1.into(),
+                overall_fee: 0x4ea.into(),
             }]
         );
 
@@ -563,9 +563,9 @@ mod tests {
         assert_eq!(
             current_fee,
             vec![crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x4ea),
-                gas_price: H256::from_low_u64_be(10),
-                overall_fee: H256::from_low_u64_be(0x3124),
+                gas_consumed: 0x4ea.into(),
+                gas_price: 10.into(),
+                overall_fee: 0x3124.into(),
             }]
         );
 
@@ -627,14 +627,12 @@ mod tests {
             .await
             .unwrap();
 
-        use ethers::types::H256;
-
         assert_eq!(
             at_block_fee,
             vec![crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0xc18),
-                gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0xc18),
+                gas_consumed: 0xc18.into(),
+                gas_price: 1.into(),
+                overall_fee: 0xc18.into(),
             }]
         );
 

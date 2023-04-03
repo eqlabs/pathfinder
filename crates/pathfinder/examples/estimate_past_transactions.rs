@@ -69,13 +69,13 @@ struct Work {
     transaction: pathfinder_rpc::v02::types::request::BroadcastedTransaction,
     at_block: pathfinder_common::StarknetBlockHash,
     gas_price: pathfinder_rpc::cairo::ext_py::GasPriceSource,
-    actual_fee: ethers::types::H256,
+    actual_fee: ethers::types::U256,
     span: tracing::Span,
 }
 
 #[derive(Debug)]
 struct ReadyResult {
-    actual_fee: ethers::types::H256,
+    actual_fee: ethers::types::U256,
     result: Result<
         Vec<pathfinder_rpc::v02::types::reply::FeeEstimate>,
         pathfinder_rpc::cairo::ext_py::CallFailure,
@@ -191,7 +191,7 @@ fn feed_work(
         }
         */
 
-        let actual_fee = ethers::types::H256::from(actual_fee.to_be_bytes());
+        let actual_fee = ethers::types::U256::from(actual_fee.to_be_bytes());
 
         invokes += 1;
 
@@ -295,9 +295,8 @@ fn report_ready(mut rx: tokio::sync::mpsc::Receiver<ReadyResult>) {
                 } else {
                     ne += 1;
 
-                    let fee = ethers::types::U256::from_big_endian(fees.overall_fee.as_bytes());
-                    let actual_fee = ethers::types::U256::from_big_endian(actual_fee.as_bytes());
-                    let gas_price = ethers::types::U256::from_big_endian(fees.gas_price.as_bytes());
+                    let fee = fees.overall_fee;
+                    let gas_price = fees.gas_price;
 
                     // this hasn't yet happened that any of the numbers would be
                     // even more than u64...

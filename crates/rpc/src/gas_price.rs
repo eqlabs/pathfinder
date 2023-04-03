@@ -22,7 +22,7 @@ impl Cached {
 
     /// Returns either a fast fresh value, slower a periodically polled value or fails because
     /// polling has stopped.
-    pub async fn get(&self) -> Option<ethers::types::H256> {
+    pub async fn get(&self) -> Option<ethers::types::U256> {
         let mut rx = {
             let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -64,7 +64,7 @@ impl Cached {
                 // it being fast enough, allows us to just coalesce the requests, but also not poll
                 // for fun while no one is using the gas estimation.
                 tokio::spawn(async move {
-                    let price = match eth.gas_price().await {
+                    let gas_price = match eth.gas_price().await {
                         Ok(price) => price,
                         Err(_e) => {
                             let _ = tx.send(None);
@@ -73,10 +73,6 @@ impl Cached {
                     };
 
                     let now = std::time::Instant::now();
-
-                    let mut out = [0u8; 32];
-                    price.to_big_endian(&mut out[..]);
-                    let gas_price = ethers::types::H256::from(out);
 
                     let mut g = inner.lock().unwrap_or_else(|e| e.into_inner());
                     g.latest.replace((now, gas_price));
@@ -97,6 +93,6 @@ impl Cached {
 
 #[derive(Default)]
 struct Inner {
-    latest: Option<(std::time::Instant, ethers::types::H256)>,
-    next: std::sync::Weak<tokio::sync::broadcast::Sender<Option<ethers::types::H256>>>,
+    latest: Option<(std::time::Instant, ethers::types::U256)>,
+    next: std::sync::Weak<tokio::sync::broadcast::Sender<Option<ethers::types::U256>>>,
 }

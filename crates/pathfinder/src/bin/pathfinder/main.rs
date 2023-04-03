@@ -92,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
 
     // TODO: the error could be recovered, but currently it's required for startup. There should
     // not be other reason for the start to fail than python script not firing up.
-    let (call_handle, cairo_handle) = cairo::ext_py::start(
+    let (_call_handle, cairo_handle) = cairo::ext_py::start(
         storage.path().into(),
         config.python_subprocesses,
         futures::future::pending(),

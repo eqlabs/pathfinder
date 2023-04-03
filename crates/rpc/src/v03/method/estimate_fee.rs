@@ -1,11 +1,8 @@
 use crate::{
-    cairo::ext_py::BlockHashNumberOrLatest,
     context::RpcContext,
     v02::types::{reply::FeeEstimate, request::BroadcastedTransaction},
 };
-use pathfinder_common::{BlockId, StarknetBlockTimestamp};
-use starknet_gateway_types::pending::PendingData;
-use std::sync::Arc;
+use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateFeeInput {
@@ -36,56 +33,10 @@ impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {
 }
 
 pub async fn estimate_fee(
-    context: RpcContext,
-    input: EstimateFeeInput,
+    _context: RpcContext,
+    _input: EstimateFeeInput,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
     unimplemented!()
-}
-
-/// Transforms the request to call or estimate fee at some point in time to the type expected
-/// by [`crate::cairo::ext_py`] with the optional, latest pending data.
-async fn base_block_and_pending_for_call(
-    at_block: BlockId,
-    pending_data: &Option<PendingData>,
-) -> Result<
-    (
-        BlockHashNumberOrLatest,
-        Option<StarknetBlockTimestamp>,
-        Option<Arc<starknet_gateway_types::reply::PendingStateUpdate>>,
-    ),
-    anyhow::Error,
-> {
-    use crate::cairo::ext_py::Pending;
-
-    match BlockHashNumberOrLatest::try_from(at_block) {
-        Ok(when) => Ok((when, None, None)),
-        Err(Pending) => {
-            // we must have pending_data configured for pending requests, otherwise we fail
-            // fast.
-            match pending_data {
-                Some(pending) => {
-                    // call on this particular parent block hash; if it's not found at query time over
-                    // at python, it should fall back to latest and **disregard** the pending data.
-                    let pending_on_top_of_a_block = pending
-                        .state_update_on_parent_block()
-                        .await
-                        .map(|(parent_block, timestamp, data)| {
-                            (parent_block.into(), Some(timestamp), Some(data))
-                        });
-
-                    // if there is no pending data available, just execute on whatever latest.
-                    Ok(pending_on_top_of_a_block.unwrap_or((
-                        BlockHashNumberOrLatest::Latest,
-                        None,
-                        None,
-                    )))
-                }
-                None => Err(anyhow::anyhow!(
-                    "Pending data not supported in this configuration"
-                )),
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -237,8 +188,8 @@ mod tests {
             let storage =
                 pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
                     .unwrap();
-            let sync_state = Arc::new(crate::SyncState::default());
-            let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
+            let sync_state = std::sync::Arc::new(crate::SyncState::default());
+            let (_call_handle, _cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
                 std::num::NonZeroUsize::try_from(2).unwrap(),
                 futures::future::pending(),

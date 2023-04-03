@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use cairo_felt::Felt252;
-use ethers::types::H256;
+use ethers::types::U256;
 use pathfinder_common::{
     CallParam, CallResultValue, ChainId, ClassHash, ContractAddress, EntryPoint, StorageAddress,
     StorageCommitment,
@@ -115,9 +115,9 @@ pub(crate) fn call(
 }
 
 pub(crate) struct FeeEstimate {
-    pub gas_consumed: Felt,
-    pub gas_price: ethers::types::H256,
-    pub overall_fee: Felt,
+    pub gas_consumed: U256,
+    pub gas_price: U256,
+    pub overall_fee: U256,
 }
 
 pub(crate) fn estimate_fee(
@@ -125,7 +125,7 @@ pub(crate) fn estimate_fee(
     storage_commitment: StorageCommitment,
     transactions: Vec<BroadcastedTransaction>,
     chain_id: ChainId,
-    gas_price: H256,
+    _gas_price: U256,
 ) -> Result<Vec<FeeEstimate>, CallError> {
     let transactions = transactions
         .into_iter()
