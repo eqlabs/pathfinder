@@ -131,7 +131,7 @@ pub struct ConstructorParam(pub Felt);
 pub struct CallResultValue(pub Felt);
 
 /// The address of a storage element for a StarkNet contract.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord, Hash)]
 pub struct StorageAddress(Felt);
 
 macros::starkhash251::newtype!(StorageAddress);
@@ -268,6 +268,10 @@ pub struct SequencerAddress(pub Felt);
 /// StarkNet fee value.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Fee(pub H128);
+
+impl Fee {
+    pub const ZERO: Self = Self(H128::zero());
+}
 
 /// StarkNet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]

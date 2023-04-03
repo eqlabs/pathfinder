@@ -1,7 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
     EthereumAddress, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp, StateCommitment,
+    StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
@@ -168,6 +168,32 @@ pub struct Transaction {
     pub transaction: Option<transaction::Transaction>,
     #[serde(default)]
     pub transaction_index: Option<u64>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct TransactionReceipt {
+    pub transaction_hash: StarknetTransactionHash,
+    pub status: Status,
+    #[serde(default)]
+    pub transaction_index: Option<StarknetTransactionIndex>,
+    #[serde(default)]
+    pub l1_to_l2_consumed_message: Option<transaction::L1ToL2Message>,
+    #[serde(default)]
+    pub l2_to_l1_messages: Vec<transaction::L2ToL1Message>,
+    #[serde(default)]
+    pub events: Vec<transaction::Event>,
+    #[serde(default)]
+    pub execution_resources: Option<transaction::ExecutionResources>,
+    #[serde_as(as = "Option<pathfinder_serde::FeeAsHexStr>")]
+    #[serde(default)]
+    pub actual_fee: Option<pathfinder_common::Fee>,
+    #[serde(default)]
+    pub transaction_failure_reason: Option<transaction::Failure>,
+    #[serde(default)]
+    pub block_hash: Option<StarknetBlockHash>,
+    #[serde(default)]
+    pub block_number: Option<StarknetBlockNumber>,
 }
 
 /// Used to deserialize replies to StarkNet transaction status requests.
@@ -637,8 +663,7 @@ pub mod transaction {
     #[serde(deny_unknown_fields)]
     pub struct Failure {
         pub code: String,
-        pub error_message: String,
-        pub tx_id: u64,
+        pub error_message: Option<String>,
     }
 }
 

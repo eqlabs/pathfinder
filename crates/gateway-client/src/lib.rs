@@ -46,6 +46,11 @@ pub trait ClientApi {
         transaction_hash: StarknetTransactionHash,
     ) -> Result<reply::Transaction, SequencerError>;
 
+    async fn transaction_receipt(
+        &self,
+        transaction_hash: StarknetTransactionHash,
+    ) -> Result<reply::TransactionReceipt, SequencerError>;
+
     async fn state_update(
         &self,
         block: BlockId,
@@ -279,6 +284,20 @@ impl ClientApi for Client {
     ) -> Result<reply::Transaction, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction()
+            .with_transaction_hash(transaction_hash)
+            .with_retry(Self::RETRY)
+            .get()
+            .await
+    }
+
+    /// Gets transaction receipt by hash.
+    #[tracing::instrument(skip(self))]
+    async fn transaction_receipt(
+        &self,
+        transaction_hash: StarknetTransactionHash,
+    ) -> Result<reply::TransactionReceipt, SequencerError> {
+        self.feeder_gateway_request()
+            .get_transaction_receipt()
             .with_transaction_hash(transaction_hash)
             .with_retry(Self::RETRY)
             .get()
@@ -1066,6 +1085,150 @@ mod tests {
                 client.transaction(INVALID_TX_HASH).await.unwrap().status,
                 Status::NotReceived,
             );
+        }
+    }
+
+    mod transaction_receipt {
+        use pathfinder_common::{
+            felt, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+            StarknetTransactionIndex, Fee,
+        };
+        use starknet_gateway_types::reply::transaction::execution_resources::{
+            BuiltinInstanceCounter, EmptyBuiltinInstanceCounter,
+        };
+        use starknet_gateway_types::reply::transaction::{ExecutionResources, Failure};
+        use starknet_gateway_types::reply::{Status, TransactionReceipt};
+
+        use super::setup;
+        use crate::ClientApi;
+
+        fn default_receipt() -> TransactionReceipt {
+            TransactionReceipt {
+                transaction_hash: StarknetTransactionHash(stark_hash::Felt::ZERO),
+                status: Status::NotReceived,
+                transaction_index: None,
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: Vec::new(),
+                events: Vec::new(),
+                execution_resources: None,
+                actual_fee: None,
+                transaction_failure_reason: None,
+                block_hash: None,
+                block_number: None,
+            }
+        }
+
+        #[tokio::test]
+        async fn valid() {
+            const TX_HASH: &str =
+                "0x6d346ba207eb124355960c19c737698ad37a3c920a588b741e0130ff5bd4d6d";
+            let (_jh, client) = setup([(
+                format!("/feeder_gateway/get_transaction_receipt?transactionHash={TX_HASH}"),
+                (
+                    r#"{
+                        "status": "ACCEPTED_ON_L1",
+                        "block_hash": "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
+                        "block_number": 231579,
+                        "transaction_index": 30,
+                        "transaction_hash": "0x6d346ba207eb124355960c19c737698ad37a3c920a588b741e0130ff5bd4d6d",
+                        "l2_to_l1_messages": [],
+                        "events": [],
+                        "execution_resources": {
+                            "n_steps": 0,
+                            "builtin_instance_counter": {},
+                            "n_memory_holes": 0
+                        },
+                        "actual_fee": "0x0"
+                    }"#,
+                    200,
+                ),
+            )]);
+
+            let mut expected = default_receipt();
+            expected.status = Status::AcceptedOnL1;
+            expected.block_hash = Some(StarknetBlockHash(felt!(
+                "0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
+            )));
+            expected.block_number = Some(StarknetBlockNumber::new_or_panic(231579));
+            expected.transaction_index = Some(StarknetTransactionIndex::new_or_panic(30));
+            expected.transaction_hash = StarknetTransactionHash(felt!(TX_HASH));
+            expected.execution_resources = Some(ExecutionResources {
+                n_steps: 0,
+                builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                    EmptyBuiltinInstanceCounter {},
+                ),
+                n_memory_holes: 0,
+            });
+            expected.actual_fee = Some(Fee::ZERO);
+
+            let reply = client
+                .transaction_receipt(expected.transaction_hash)
+                .await
+                .unwrap();
+
+            assert_eq!(reply, expected);
+        }
+
+        #[tokio::test]
+        async fn rejected() {
+            const TX_HASH: &str =
+                "0x7c64b747bdb0831e7045925625bfa6309c422fded9527bacca91199a1c8d212";
+            let (_jh, client) = setup([(
+                format!("/feeder_gateway/get_transaction_receipt?transactionHash={TX_HASH}"),
+                (
+                    r#"{
+                    "status": "REJECTED",
+                    "transaction_failure_reason": {
+                        "code": "FEE_TRANSFER_FAILURE",
+                        "error_message": "Actual fee exceeded max fee.\n71518524218020 > 64245381333874"
+                    },
+                    "transaction_hash": "0x7c64b747bdb0831e7045925625bfa6309c422fded9527bacca91199a1c8d212",
+                    "l2_to_l1_messages": [],
+                    "events": []
+                }"#,
+                    200,
+                ),
+            )]);
+
+            let mut expected = default_receipt();
+            expected.status = Status::Rejected;
+            expected.transaction_hash = StarknetTransactionHash(felt!(TX_HASH));
+            expected.transaction_failure_reason = Some(Failure {
+                code: "FEE_TRANSFER_FAILURE".to_string(),
+                error_message: Some(
+                    "Actual fee exceeded max fee.\n71518524218020 > 64245381333874".to_string(),
+                ),
+            });
+
+            let reply = client
+                .transaction_receipt(expected.transaction_hash)
+                .await
+                .unwrap();
+
+            assert_eq!(reply, expected);
+        }
+
+        #[tokio::test]
+        async fn non_existant() {
+            let (_jh, client) = setup([(
+                format!("/feeder_gateway/get_transaction_receipt?transactionHash=0xdeadbeef"),
+                (
+                    r#"{"status": "NOT_RECEIVED", "transaction_hash": "0x0", "l2_to_l1_messages": [], "events": []}"#,
+                    200,
+                ),
+            )]);
+
+            let mut expected = default_receipt();
+            expected.status = Status::NotReceived;
+
+            let reply = client
+                .transaction_receipt(StarknetTransactionHash(felt!("0xdeadbeef")))
+                .await
+                .unwrap();
+
+            assert_eq!(reply, expected);
+
+            // {"status": "NOT_RECEIVED", "transaction_hash": "0x0", "l2_to_l1_messages": [], "events": []}
         }
     }
 

@@ -1170,6 +1170,13 @@ mod tests {
             unimplemented!()
         }
 
+        async fn transaction_receipt(
+            &self,
+            _: StarknetTransactionHash,
+        ) -> Result<reply::TransactionReceipt, SequencerError> {
+            unimplemented!()
+        }
+
         async fn state_update(
             &self,
             _: BlockId,

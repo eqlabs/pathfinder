@@ -140,6 +140,7 @@ impl<'a> Request<'a, stage::Method> {
         get_class_by_hash,
         get_storage_at,
         get_transaction,
+        get_transaction_receipt,
         get_state_update,
         get_contract_addresses,
         get_compiled_class_by_class_hash,
