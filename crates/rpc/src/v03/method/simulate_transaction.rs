@@ -68,8 +68,7 @@ pub async fn simulate_transaction(
             input.transactions,
             skip_validate,
         )
-        .await
-        .map_err(SimulateTransactionError::from)?;
+        .await?;
 
     let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTransactionError> =
         txs.into_iter().map(map_tx).collect();
