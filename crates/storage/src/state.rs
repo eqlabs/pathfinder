@@ -402,7 +402,7 @@ impl StarknetBlocksTable {
             StarknetBlocksBlockId::Number(number) => tx.query_row(
                 "SELECT gas_price FROM starknet_blocks WHERE number = ?",
                 [number],
-                |row| row.get(0),
+                |row| row.get::<_, GasPrice>(0),
             ),
             StarknetBlocksBlockId::Hash(hash) => tx.query_row(
                 "SELECT gas_price FROM starknet_blocks WHERE hash = ?",
@@ -416,6 +416,7 @@ impl StarknetBlocksTable {
             ),
         }
         .optional()
+        .map(|g| g.and_then(|g| if g.0 == 0 { None } else { Some(g) }))
         .map_err(|e| e.into())
     }
 
