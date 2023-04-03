@@ -3,6 +3,7 @@ use crate::v02::common::get_block_status;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
 use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable};
+use starknet_gateway_types::pending::PendingData;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionReceiptInput {
@@ -17,22 +18,11 @@ pub async fn get_transaction_receipt(
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
     // First check pending data as this is in-mem and should be faster.
     if let Some(pending) = &context.pending_data {
-        let receipt_transaction = pending.block().await.and_then(|block| {
-            block
-                .transaction_receipts
-                .iter()
-                .zip(block.transactions.iter())
-                .find_map(|(receipt, tx)| {
-                    (receipt.transaction_hash == input.transaction_hash)
-                        .then(|| (receipt.clone(), tx.clone()))
-                })
-        });
-
-        if let Some((receipt, transaction)) = receipt_transaction {
+        if let Some(pending_receipt) = get_pending_receipt(pending, &input.transaction_hash).await {
             return Ok(types::MaybePendingTransactionReceipt::Pending(
-                types::PendingTransactionReceipt::from(receipt, &transaction),
+                pending_receipt,
             ));
-        };
+        }
     }
 
     let storage = context.storage.clone();
@@ -74,6 +64,23 @@ pub async fn get_transaction_receipt(
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+/// Returns the pending transaction receipt if it exists in pending data.
+async fn get_pending_receipt(
+    pending: &PendingData,
+    tx_hash: &StarknetTransactionHash,
+) -> Option<types::PendingTransactionReceipt> {
+    pending.block().await.and_then(|block| {
+        block
+            .transaction_receipts
+            .iter()
+            .zip(block.transactions.iter())
+            .find_map(|(receipt, tx)| {
+                (&receipt.transaction_hash == tx_hash)
+                    .then(|| types::PendingTransactionReceipt::from(receipt.clone(), tx))
+            })
+    })
 }
 
 mod types {
