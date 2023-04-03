@@ -30,17 +30,14 @@ use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
 
 use crate::v02::types::request::BroadcastedTransaction;
 
-use super::ext_py::GasPriceSource;
-
 pub(crate) enum CallError {
     ContractNotFound,
     InvalidMessageSelector,
     Internal(anyhow::Error),
 }
 
-impl From<starknet_rs::business_logic::transaction::error::TransactionError> for CallError {
+impl From<TransactionError> for CallError {
     fn from(value: starknet_rs::business_logic::transaction::error::TransactionError) -> Self {
-        use starknet_rs::business_logic::transaction::error::TransactionError;
         match value {
             TransactionError::EntryPointNotFound => Self::InvalidMessageSelector,
             TransactionError::FailToReadClassHash => Self::ContractNotFound,
@@ -145,10 +142,10 @@ pub(crate) fn estimate_fee(
 
     let general_config = StarknetGeneralConfig::default();
 
-    // for transaction in &transactions {
-    //     let res = transaction.execute(state, &general_config)?;
-    //     dbg!(res.actual_fee);
-    // }
+    for transaction in &transactions {
+        let res = transaction.execute(&mut state, &general_config)?;
+        dbg!(res.actual_fee);
+    }
 
     Ok(vec![])
 }
@@ -167,9 +164,9 @@ impl Transaction {
         general_config: &StarknetGeneralConfig,
     ) -> Result<TransactionExecutionInfo, TransactionError> {
         match self {
-            Transaction::Declare(_) => todo!(),
-            Transaction::Deploy(_) => todo!(),
-            Transaction::DeployAccount(_) => todo!(),
+            Transaction::Declare(tx) => tx.execute(state, general_config),
+            Transaction::Deploy(tx) => tx.execute(state, general_config),
+            Transaction::DeployAccount(tx) => tx.execute(state, general_config),
             Transaction::Invoke(tx) => tx.execute(state, general_config),
         }
     }
