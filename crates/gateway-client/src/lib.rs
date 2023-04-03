@@ -1,8 +1,8 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, CasmHash, Chain, ClassHash, ContractAddress, ContractAddressSalt,
-    EntryPoint, Fee, SierraHash, StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
-    StorageValue, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    BlockId, CallParam, CasmHash, Chain, ClassHash, ContractAddress, ContractAddressSalt, Fee,
+    SierraHash, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
+    TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
@@ -59,9 +59,8 @@ pub trait ClientApi {
         version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
-        nonce: Option<TransactionNonce>,
+        nonce: TransactionNonce,
         contract_address: ContractAddress,
-        entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError>;
 
@@ -315,14 +314,12 @@ impl ClientApi for Client {
         version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
-        nonce: Option<TransactionNonce>,
+        nonce: TransactionNonce,
         sender_address: ContractAddress,
-        entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         let req = AddTransaction::Invoke(InvokeFunction {
             sender_address,
-            entry_point_selector,
             calldata,
             max_fee,
             version,
@@ -1305,45 +1302,12 @@ mod tests {
                 )]);
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let error = client
-                    .add_invoke_transaction(
-                        TransactionVersion::ZERO,
-                        fee,
-                        sig,
-                        Some(nonce),
-                        addr,
-                        None,
-                        call,
-                    )
+                    .add_invoke_transaction(TransactionVersion::ZERO, fee, sig, nonce, addr, call)
                     .await
                     .unwrap_err();
                 assert_matches!(
                     error,
                     SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::DeprecatedTransaction)
-                );
-            }
-
-            #[tokio::test]
-            async fn unauthorized_entry_point() {
-                let (_jh, client) = setup([(
-                    "/gateway/add_transaction",
-                    response_from(StarknetErrorCode::UnauthorizedEntryPointForInvoke),
-                )]);
-                let (ver, fee, sig, nonce, addr, call) = inputs();
-                let error = client
-                    .add_invoke_transaction(
-                        ver,
-                        fee,
-                        sig,
-                        Some(nonce),
-                        addr,
-                        Some(EntryPoint(felt!("0xbeef"))),
-                        call,
-                    )
-                    .await
-                    .unwrap_err();
-                assert_matches!(
-                    error,
-                    SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UnauthorizedEntryPointForInvoke)
                 );
             }
 
@@ -1359,7 +1323,7 @@ mod tests {
                 // test with values dumped from `starknet invoke` for a test contract
                 let (ver, fee, sig, nonce, addr, call) = inputs();
                 client
-                    .add_invoke_transaction(ver, fee, sig, Some(nonce), addr, None, call)
+                    .add_invoke_transaction(ver, fee, sig, nonce, addr, call)
                     .await
                     .unwrap();
             }
@@ -1477,6 +1441,8 @@ mod tests {
 
         /// Return a contract definition that was dumped from a `starknet deploy`.
         fn get_contract_class_from_fixture() -> CairoContractDefinition {
+            use pathfinder_common::EntryPoint;
+
             let json = zstd::decode_all(
                 starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION,
             )
@@ -1500,14 +1466,14 @@ mod tests {
                             SelectorAndOffset {
                                 offset: ByteCodeOffset(felt!("0x3a")),
                                 selector: EntryPoint(felt!(
-                                                "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
+                                    "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
                                 ),
                             },
                             SelectorAndOffset {
                                 offset: ByteCodeOffset(felt!("0x5b")),
                                 selector: EntryPoint(felt!(
-                                                "039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"
-                                        )),
+                                    "039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"
+                                )),
                             },
                         ],
                     ),

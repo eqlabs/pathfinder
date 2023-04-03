@@ -38,9 +38,8 @@ pub async fn add_invoke_transaction(
                 v1.version,
                 v1.max_fee,
                 v1.signature,
-                Some(v1.nonce),
+                v1.nonce,
                 v1.sender_address,
-                None,
                 v1.calldata,
             )
             .await
