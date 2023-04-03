@@ -207,7 +207,7 @@ mod tests {
             BroadcastedInvokeTransactionV0,
         };
         use crate::v02::types::{CairoContractClass, ContractClass};
-        use pathfinder_common::felt_bytes;
+        use pathfinder_common::{felt_bytes, StarknetBlockNumber};
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
@@ -218,7 +218,7 @@ mod tests {
         fn valid_mainnet_invoke_v0() -> BroadcastedInvokeTransactionV0 {
             BroadcastedInvokeTransactionV0 {
                 version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                max_fee: Fee(Default::default()),
+                max_fee: Fee(ethers::types::H128::from_low_u64_be(10_000_000)),
                 signature: vec![],
                 nonce: Some(TransactionNonce(Default::default())),
                 contract_address: ContractAddress::new_or_panic(felt!(
@@ -313,7 +313,7 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: valid_broadcasted_transaction(),
-                block_id: BLOCK_5,
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(31000)),
             };
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(

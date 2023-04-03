@@ -24,7 +24,7 @@ use starknet_rs::business_logic::transaction::objects::{
     internal_invoke_function::InternalInvokeFunction,
 };
 use starknet_rs::core::errors::state_errors::StateError;
-use starknet_rs::definitions::general_config::StarknetGeneralConfig;
+use starknet_rs::definitions::general_config::{StarknetGeneralConfig, StarknetOsConfig};
 use starknet_rs::services::api::contract_class_errors::ContractClassError;
 use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
 
@@ -125,7 +125,7 @@ pub(crate) fn estimate_fee(
     storage_commitment: StorageCommitment,
     transactions: Vec<BroadcastedTransaction>,
     chain_id: ChainId,
-    _gas_price: U256,
+    gas_price: U256,
 ) -> Result<Vec<FeeEstimate>, CallError> {
     let transactions = transactions
         .into_iter()
@@ -140,7 +140,22 @@ pub(crate) fn estimate_fee(
     let contract_class_cache = HashMap::new();
     let mut state = CachedState::new(state_reader, Some(contract_class_cache));
 
-    let general_config = StarknetGeneralConfig::default();
+    let chain_id = match chain_id {
+        ChainId::MAINNET => starknet_rs::definitions::general_config::StarknetChainId::MainNet,
+        ChainId::TESTNET => starknet_rs::definitions::general_config::StarknetChainId::TestNet,
+        ChainId::TESTNET2 => starknet_rs::definitions::general_config::StarknetChainId::TestNet2,
+        _ => return Err(anyhow::anyhow!("Unsupported chain id").into()),
+    };
+
+    let starknet_os_config = StarknetOsConfig::new(
+        chain_id,
+        starknet_rs::utils::Address(0.into()),
+        gas_price.as_u64(),
+    );
+    let mut general_config = StarknetGeneralConfig::default();
+    // FIXME: set up block_info
+    *general_config.starknet_os_config_mut() = starknet_os_config;
+    general_config.block_info_mut().gas_price = gas_price.as_u64();
 
     for transaction in &transactions {
         let res = transaction.execute(&mut state, &general_config)?;
