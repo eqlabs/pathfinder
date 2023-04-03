@@ -19,3 +19,7 @@ pathfinder-var.env
 
 # pyenv
 .python-version
+
+# VS Code
+.vscode/
+

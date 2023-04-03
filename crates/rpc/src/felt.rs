@@ -152,7 +152,6 @@ macro_rules! rpc_felt_251_serde {
             }
         }
 
-        #[cfg(any(test, feature = "rpc-full-serde"))]
         impl From<RpcFelt251> for $target {
             fn from(value: RpcFelt251) -> Self {
                 $target::new_or_panic(value.0.0)

@@ -92,6 +92,12 @@ try:
     from starkware.starkware_utils.error_handling import StarkException
     from starkware.storage.storage import FactFetchingContext, Storage
 
+    from starkware.starknet.services.api.feeder_gateway.response_objects import (
+        BaseResponseObject,
+        FunctionInvocation,
+        TransactionTrace,
+    )
+
 except ModuleNotFoundError:
     print(
         "missing cairo-lang module: please reinstall dependencies to upgrade.",
@@ -113,6 +119,7 @@ DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
 class Verb(Enum):
     CALL = 0
     ESTIMATE_FEE = 1
+    SIMULATE_TX = 2
 
 
 class Chain(Enum):
@@ -171,6 +178,13 @@ class Command:
     at_block: str
     chain: Chain
 
+    pending_updates: Dict[int, List[StorageDiff]] = field(
+        metadata=pending_updates_metadata
+    )
+    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
+    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
+    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
+
     @property
     @classmethod
     @abstractmethod
@@ -191,13 +205,6 @@ class Command:
 @marshmallow_dataclass.dataclass(frozen=True)
 class Call(Command):
     verb: ClassVar[Verb] = Verb.CALL
-
-    pending_updates: Dict[int, List[StorageDiff]] = field(
-        metadata=pending_updates_metadata
-    )
-    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
-    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
-    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
 
     contract_address: int = field(metadata=fields.contract_address_metadata)
     calldata: List[int] = field(metadata=fields.calldata_as_hex_metadata)
@@ -222,13 +229,6 @@ class Call(Command):
 class EstimateFee(Command):
     verb: ClassVar[Verb] = Verb.ESTIMATE_FEE
 
-    pending_updates: Dict[int, List[StorageDiff]] = field(
-        metadata=pending_updates_metadata
-    )
-    pending_deployed: List[DeployedContract] = field(metadata=pending_deployed_metadata)
-    pending_nonces: Dict[int, int] = field(metadata=pending_nonces_metadata)
-    pending_timestamp: int = field(metadata=fields.timestamp_metadata)
-
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
@@ -245,11 +245,23 @@ class EstimateFee(Command):
         return self.pending_timestamp
 
 
+@marshmallow_dataclass.dataclass(frozen=True)
+class SimulateTx(Command):
+    verb: ClassVar[Verb] = Verb.SIMULATE_TX
+
+    # zero means to use the gas price from the current block.
+    gas_price: int = field(metadata=fields.gas_price_metadata)
+
+    transactions: List[AccountTransaction]
+    skip_validate: bool
+
+
 class CommandSchema(marshmallow_oneofschema.OneOfSchema):
     type_field = "verb"
     type_schemas: Dict[str, Type[Schema]] = {
         Verb.CALL.name: Call.Schema,
         Verb.ESTIMATE_FEE.name: EstimateFee.Schema,
+        Verb.SIMULATE_TX.name: SimulateTx.Schema,
     }
 
     at_block = mfields.Str()
@@ -411,6 +423,7 @@ def report_failed(logger, command, e):
 def loop_inner(
     connection: sqlite3.Connection, command: Command, contract_class_cache=None
 ):
+    logger = Logger()
 
     if not check_schema(connection):
         raise UnexpectedSchemaVersion
@@ -493,8 +506,7 @@ def loop_inner(
             )
         )
         ret = (command.verb, result.retdata, timings)
-    else:
-        assert isinstance(command, EstimateFee)
+    elif isinstance(command, EstimateFee):
         fees = asyncio.run(
             do_estimate_fee(
                 async_state,
@@ -504,6 +516,19 @@ def loop_inner(
             )
         )
         ret = (command.verb, fees, timings)
+    elif isinstance(command, SimulateTx):
+        simulated_transactions = asyncio.run(
+            do_simulate_tx(
+                async_state,
+                general_config,
+                block_info,
+                command.transactions,
+                command.skip_validate,
+            )
+        )
+        ret = (command.verb, simulated_transactions, timings)
+    else:
+        logger.error(f"Unrecognised command: {command}")
 
     timings["sql"] = {
         "timings": adapter.elapsed,
@@ -516,22 +541,30 @@ def loop_inner(
 
 
 def render(verb, vals):
-    def prefixed_hex(x):
-        return f"0x{x.to_bytes(32, 'big').hex()}"
-
     if verb == Verb.CALL:
-        return list(map(prefixed_hex, vals))
-    else:
-        assert verb == Verb.ESTIMATE_FEE
+        return list(map(as_hex, vals))
+    elif verb == Verb.ESTIMATE_FEE:
+        return FeeEstimation.Schema(many=True).dump(vals)
+    elif verb == Verb.SIMULATE_TX:
+        return TransactionSimulation.Schema(many=True).dump(vals)
 
-        return [
-            {
-                "gas_consumed": prefixed_hex(val["gas_consumed"]),
-                "gas_price": prefixed_hex(val["gas_price"]),
-                "overall_fee": prefixed_hex(val["overall_fee"]),
-            }
-            for val in vals
-        ]
+
+def as_hex(x):
+    hex = x.to_bytes(32, "big").hex()
+    return f"0x0{hex.lstrip('0')}"
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class FeeEstimation(BaseResponseObject):
+    gas_consumed: int = field(metadata=felt_metadata)
+    gas_price: int = field(metadata=felt_metadata)
+    overall_fee: int = field(metadata=felt_metadata)
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class TransactionSimulation(BaseResponseObject):
+    trace: TransactionTrace
+    fee_estimation: FeeEstimation
 
 
 def int_hash_or_latest(s: str):
@@ -924,6 +957,38 @@ async def do_call(
     return call_info
 
 
+async def simulate_account_tx(
+    state: CachedState,
+    general_config: StarknetGeneralConfig,
+    block_info: BlockInfo,
+    transaction: AccountTransaction,
+    skip_validate: bool,
+):
+    internal_transaction = InternalAccountTransactionForSimulate.create_for_simulate(
+        transaction, general_config, skip_validate
+    )
+
+    with state.copy_and_apply() as state_copy:
+        tx_info = await internal_transaction.apply_state_updates(
+            state_copy, general_config
+        )
+
+    # apply class declarations manually to state,
+    # since apply_state_updates() does not do this
+    if isinstance(transaction, Declare):
+        compiled_class = compile_contract_class(
+            transaction.contract_class,
+            allowed_libfuncs_list_name="experimental_v0.1.0",
+        )
+        state.contract_classes[transaction.compiled_class_hash] = compiled_class
+    elif isinstance(transaction, DeprecatedDeclare):
+        state.contract_classes[
+            internal_transaction.class_hash
+        ] = transaction.contract_class
+
+    return tx_info
+
+
 async def do_estimate_fee(
     state: CachedState,
     general_config: StarknetGeneralConfig,
@@ -940,42 +1005,60 @@ async def do_estimate_fee(
     fees = []
 
     for transaction in transactions:
-        internal_transaction = (
-            InternalAccountTransactionForSimulate.create_for_simulate(
-                transaction, general_config, False
-            )
+        tx_info = await simulate_account_tx(
+            state, general_config, block_info, transaction, skip_validate=False
         )
 
-        with state.copy_and_apply() as state_copy:
-            tx_info = await internal_transaction.apply_state_updates(
-                state_copy, general_config
-            )
-
-        # apply class declarations manually to state, since apply_state_updates() does
-        # not do this
-        if isinstance(transaction, Declare):
-            compiled_class = compile_contract_class(
-                transaction.contract_class,
-                allowed_libfuncs_list_name="experimental_v0.1.0",
-            )
-            state.contract_classes[transaction.compiled_class_hash] = compiled_class
-        elif isinstance(transaction, DeprecatedDeclare):
-            state.contract_classes[
-                internal_transaction.class_hash
-            ] = transaction.contract_class
+        fee = FeeEstimation(
+            gas_price=block_info.gas_price,
+            gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
+            overall_fee=tx_info.actual_fee,
+        )
 
         # with 0.10 upgrade we changed to division with gas_consumed as well, since
         # there is opposition to providing the non-multiplied scalar value from
         # cairo-lang.
-        fees.append(
-            {
-                "gas_consumed": tx_info.actual_fee // max(1, block_info.gas_price),
-                "gas_price": block_info.gas_price,
-                "overall_fee": tx_info.actual_fee,
-            }
-        )
+        fees.append(fee)
 
     return fees
+
+
+async def do_simulate_tx(
+    state: CachedState,
+    general_config: StarknetGeneralConfig,
+    block_info: BlockInfo,
+    transactions: List[AccountTransaction],
+    skip_validate: bool,
+):
+    simulated_transactions = []
+
+    for transaction in transactions:
+        tx_info = await simulate_account_tx(
+            state, general_config, block_info, transaction, skip_validate
+        )
+
+        trace = TransactionTrace(
+            validate_invocation=FunctionInvocation.from_optional_internal(
+                tx_info.validate_info
+            ),
+            function_invocation=FunctionInvocation.from_optional_internal(
+                tx_info.call_info
+            ),
+            fee_transfer_invocation=FunctionInvocation.from_optional_internal(
+                tx_info.fee_transfer_info
+            ),
+            signature=transaction.signature,
+        )
+
+        fee_estimation = FeeEstimation(
+            gas_price=block_info.gas_price,
+            gas_consumed=tx_info.actual_fee // max(1, block_info.gas_price),
+            overall_fee=tx_info.actual_fee,
+        )
+
+        simulated_transactions.append(TransactionSimulation(trace, fee_estimation))
+
+    return simulated_transactions
 
 
 def apply_pending(

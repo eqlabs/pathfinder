@@ -1,5 +1,5 @@
-use crate::context::RpcContext;
 use crate::felt::RpcFelt;
+use crate::{context::RpcContext, v03::method::common::base_block_and_pending_for_call};
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
 crate::error::generate_rpc_error_subset!(
@@ -30,7 +30,7 @@ pub struct CallInput {
     block_id: BlockId,
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,
@@ -65,8 +65,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
         .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
 
     let (when, pending_timestamp, pending_update) =
-        super::estimate_fee::base_block_and_pending_for_call(input.block_id, &context.pending_data)
-            .await?;
+        base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
     let result = handle
         .call(

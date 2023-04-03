@@ -31,6 +31,8 @@ from pathfinder_worker.call import (
     Call,
     Command,
     EstimateFee,
+    FeeEstimation,
+    TransactionSimulation,
     check_cairolang_version,
     do_loop,
     loop_inner,
@@ -456,7 +458,7 @@ def test_success():
     )
 
     [number, block_hash, latest] = output
-    expected = {"status": "ok", "output": ["0x" + (3).to_bytes(32, "big").hex()]}
+    expected = {"status": "ok", "output": ["0x03"]}
 
     assert number == expected == block_hash == latest
 
@@ -632,11 +634,11 @@ def test_fee_estimate_on_positive_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 1258,
-            "gas_price": 1,
-            "overall_fee": 1258,
-        }
+        FeeEstimation(
+            gas_consumed=1258,
+            gas_price=1,
+            overall_fee=1258,
+        )
     ]
 
 
@@ -681,11 +683,11 @@ def test_fee_estimate_for_declare_transaction_directly():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        }
+        FeeEstimation(
+            gas_consumed=1251,
+            gas_price=1,
+            overall_fee=1251,
+        )
     ]
 
 
@@ -744,9 +746,9 @@ def test_fee_estimate_on_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x" + (0).to_bytes(32, "big").hex(),
-                "gas_price": "0x" + (0).to_bytes(32, "big").hex(),
-                "overall_fee": "0x" + (0).to_bytes(32, "big").hex(),
+                "gas_consumed": "0x0",
+                "gas_price": "0x0",
+                "overall_fee": "0x0",
             }
         ],
     }
@@ -755,9 +757,9 @@ def test_fee_estimate_on_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x" + (0x04EA).to_bytes(32, "big").hex(),
-                "gas_price": "0x" + (10).to_bytes(32, "big").hex(),
-                "overall_fee": "0x" + (0x3124).to_bytes(32, "big").hex(),
+                "gas_consumed": "0x4ea",
+                "gas_price": "0xa",
+                "overall_fee": "0x3124",
             },
         ],
     }
@@ -1166,7 +1168,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
+            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1191,7 +1193,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transactions=[dataclasses.replace(base_transaction, nonce=1)],
             ),
-            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
+            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1228,7 +1230,7 @@ def test_nonce_with_dummy():
                 transactions=[dataclasses.replace(base_transaction, nonce=2)],
                 pending_nonces={0x123: 2},
             ),
-            [{"gas_consumed": 1266, "gas_price": 1, "overall_fee": 1266}],
+            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
         ),
         (
             dataclasses.replace(
@@ -1471,11 +1473,11 @@ def test_sierra_invoke_function_through_account():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 3715,
-            "gas_price": 1,
-            "overall_fee": 3715,
-        }
+        FeeEstimation(
+            gas_consumed=3715,
+            gas_price=1,
+            overall_fee=3715,
+        )
     ]
 
 
@@ -1523,11 +1525,11 @@ def test_sierra_declare_through_account():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == [
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        }
+        FeeEstimation(
+            gas_consumed=1251,
+            gas_price=1,
+            overall_fee=1251,
+        )
     ]
 
 
@@ -1592,17 +1594,17 @@ def test_deploy_account():
 
     assert output == [
         # DEPLOY_ACCOUNT
-        {
-            "gas_consumed": 3096,
-            "gas_price": 1,
-            "overall_fee": 3096,
-        },
+        FeeEstimation(
+            gas_consumed=3096,
+            gas_price=1,
+            overall_fee=3096,
+        ),
         # INVOKE_FUNCTION through deployed account
-        {
-            "gas_consumed": 3715,
-            "gas_price": 1,
-            "overall_fee": 3715,
-        },
+        FeeEstimation(
+            gas_consumed=3715,
+            gas_price=1,
+            overall_fee=3715,
+        ),
     ]
 
 
@@ -1681,17 +1683,9 @@ def test_deploy_newly_declared_account():
 
     assert output == [
         # DECLARE an account contract class
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        },
+        FeeEstimation(overall_fee=1251, gas_price=1, gas_consumed=1251),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        {
-            "gas_consumed": 3096,
-            "gas_price": 1,
-            "overall_fee": 3096,
-        },
+        FeeEstimation(overall_fee=3096, gas_price=1, gas_consumed=3096),
     ]
 
 
@@ -1770,17 +1764,9 @@ def test_deploy_newly_declared_sierra_account():
 
     assert output == [
         # DECLARE an account contract class
-        {
-            "gas_consumed": 1251,
-            "gas_price": 1,
-            "overall_fee": 1251,
-        },
+        FeeEstimation(overall_fee=1251, gas_price=1, gas_consumed=1251),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        {
-            "gas_consumed": 3098,
-            "gas_price": 1,
-            "overall_fee": 3098,
-        },
+        FeeEstimation(overall_fee=3098, gas_price=1, gas_consumed=3098),
     ]
 
 
@@ -2073,3 +2059,121 @@ def test_positive_streamed_on_early_goerli_block_with_deployed():
 
     (verb, output, _timings) = loop_inner(con, on_newly_deployed)
     assert output == [0]
+
+
+def test_simulate_transaction_succeeds():
+    con = inmemory_with_tables()
+
+    dummy_account_contract_path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+    )
+    dummy_account_contract_class_hash = (
+        0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
+    )
+    cur = con.execute("BEGIN")
+    declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
+
+    con.execute(
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
+        [
+            b"some blockhash somewhere".rjust(32, b"\x00"),
+            b"\x00" * 32,
+            b"\x00" * 16,
+            b"\x00" * 32,
+        ],
+    )
+    con.commit()
+
+    command_json = """
+    {
+        "verb": "SIMULATE_TX",
+        "at_block": "latest",
+        "chain": "TESTNET",
+        "pending_updates": {},
+        "pending_deployed": [],
+        "pending_nonces": {},
+        "pending_timestamp": 42,
+        "gas_price": "0x1",
+        "transactions": [
+            {
+                "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+                "max_fee": "0x0",
+                "signature": [
+                    "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+                    "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+                ],
+                "class_hash": "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
+                "nonce": "0x0",
+                "version": "0x100000000000000000000000000000001",
+                "constructor_calldata": [],
+                "type": "DEPLOY_ACCOUNT"
+            }
+        ],
+        "skip_validate": false
+    }
+    """
+
+    command = Command.Schema().loads(command_json)
+
+    con.execute("BEGIN")
+
+    (_verb, output, _timings) = loop_inner(con, command)
+
+    expected_json = """
+    {
+        "trace": {
+            "function_invocation": {
+                "entry_point_type": "CONSTRUCTOR",
+                "internal_calls": [],
+                "call_type": "CALL",
+                "contract_address": "0x1557ad3f4f74c08dccbfbe620a57714f607b8c7e4c4dba0e15e1ce3f10db3b5",
+                "class_hash": "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
+                "result": [],
+                "selector": "0x28ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194",
+                "messages": [],
+                "events": [],
+                "calldata": [],
+                "caller_address": "0x0",
+                "execution_resources": {
+                    "builtin_instance_counter": {},
+                    "n_steps": 0,
+                    "n_memory_holes": 0
+                }
+            },
+            "validate_invocation": {
+                "entry_point_type": "EXTERNAL",
+                "internal_calls": [],
+                "call_type": "CALL",
+                "contract_address": "0x1557ad3f4f74c08dccbfbe620a57714f607b8c7e4c4dba0e15e1ce3f10db3b5",
+                "class_hash": "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
+                "result": [],
+                "selector": "0x36fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895",
+                "messages": [],
+                "events": [],
+                "calldata": [
+                    "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
+                    "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971"
+                ],
+                "caller_address": "0x0",
+                "execution_resources": {
+                    "builtin_instance_counter": {},
+                    "n_steps": 13,
+                    "n_memory_holes": 0
+                }
+            },
+            "signature": [
+                "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
+                "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+            ]
+        },
+        "fee_estimation": {
+            "gas_consumed": "0xc18",
+            "overall_fee": "0xc18",
+            "gas_price": "0x1"
+        }
+    }
+    """
+
+    expected = TransactionSimulation.Schema().loads(expected_json)
+
+    assert output == [expected]

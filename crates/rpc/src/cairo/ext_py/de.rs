@@ -1,6 +1,6 @@
 //! The json deserializable types
 
-use super::{CallFailure, SubprocessError};
+use super::{types::TransactionSimulation, CallFailure, SubprocessError};
 use crate::v02::types::reply::FeeEstimate;
 use pathfinder_common::CallResultValue;
 
@@ -29,6 +29,7 @@ pub(crate) struct ChildResponse<'a> {
 pub(crate) enum OutputValue {
     Call(Vec<CallResultValue>),
     Fee(Vec<FeeEstimate>),
+    Traces(Vec<TransactionSimulation>),
 }
 
 impl<'a> ChildResponse<'a> {
