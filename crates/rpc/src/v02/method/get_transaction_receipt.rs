@@ -83,7 +83,7 @@ mod types {
         ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
     };
-    use pathfinder_serde::{EthereumAddressAsHexStr, FeeAsHexStr};
+    use pathfinder_serde::EthereumAddressAsHexStr;
     use serde::Serialize;
     use serde_with::serde_as;
     use starknet_gateway_types::reply::transaction::{L1ToL2Message, L2ToL1Message};
@@ -130,7 +130,6 @@ mod types {
     pub struct CommonTransactionReceiptProperties {
         #[serde_as(as = "RpcFelt")]
         pub transaction_hash: StarknetTransactionHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub actual_fee: Fee,
         pub status: TransactionStatus,
         #[serde_as(as = "RpcFelt")]
@@ -246,7 +245,6 @@ mod types {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonPendingTransactionReceiptProperties {
         pub transaction_hash: StarknetTransactionHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub actual_fee: Fee,
         pub messages_sent: Vec<MessageToL1>,
         pub events: Vec<Event>,
@@ -424,7 +422,7 @@ mod types {
                 pub fn test_data() -> Self {
                     Self {
                         transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef")),
-                        actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x1)),
+                        actual_fee: Fee(felt!("0x1")),
                         status: TransactionStatus::AcceptedOnL1,
                         block_hash: StarknetBlockHash(felt!("0xaaa")),
                         block_number: StarknetBlockNumber::new_or_panic(3),
@@ -445,7 +443,7 @@ mod types {
                 pub fn test_data() -> Self {
                     Self {
                         transaction_hash: StarknetTransactionHash(felt!("0xfeedfeed")),
-                        actual_fee: Fee(ethers::types::H128::from_low_u64_be(0x2)),
+                        actual_fee: Fee(felt!("0x2")),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x5)),
                             payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
@@ -620,7 +618,7 @@ mod tests {
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
                         transaction_hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
-                        actual_fee: Fee(ethers::types::H128::zero()),
+                        actual_fee: Fee::ZERO,
                         status: TransactionStatus::AcceptedOnL2,
                         block_hash: StarknetBlockHash(felt_bytes!(b"genesis")),
                         block_number: StarknetBlockNumber::new_or_panic(0),
@@ -652,7 +650,7 @@ mod tests {
                 PendingInvokeTransactionReceipt {
                     common: CommonPendingTransactionReceiptProperties {
                         transaction_hash,
-                        actual_fee: Fee(ethers::types::H128::zero()),
+                        actual_fee: Fee::ZERO,
                         messages_sent: vec![],
                         events: vec![
                             Event {

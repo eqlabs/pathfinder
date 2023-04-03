@@ -2310,7 +2310,6 @@ mod tests {
         use super::*;
         use crate::test_utils;
         use assert_matches::assert_matches;
-        use ethers::types::H128;
         use pathfinder_common::felt;
         use pathfinder_common::{EntryPoint, EventData, Fee};
 
@@ -2426,7 +2425,7 @@ mod tests {
                         sender_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
                         entry_point_selector: EntryPoint(Felt::ZERO),
-                        max_fee: Fee(H128::zero()),
+                        max_fee: Fee::ZERO,
                         signature: vec![],
                         transaction_hash: StarknetTransactionHash(felt!("0xF")),
                     },
@@ -2438,7 +2437,7 @@ mod tests {
                         sender_address: ContractAddress::new_or_panic(Felt::ZERO),
                         entry_point_type: Some(transaction::EntryPointType::External),
                         entry_point_selector: EntryPoint(Felt::ZERO),
-                        max_fee: Fee(H128::zero()),
+                        max_fee: Fee::ZERO,
                         signature: vec![],
                         transaction_hash: StarknetTransactionHash(felt!("0x1")),
                     },

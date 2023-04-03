@@ -485,7 +485,7 @@ mod tests {
             sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(felt!("0xe")),
-            max_fee: Fee(0u128.to_be_bytes().into()),
+            max_fee: Fee::ZERO,
             signature: vec![
                 TransactionSignatureElem(felt!("0x2")),
                 TransactionSignatureElem(felt!("0x3")),

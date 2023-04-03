@@ -100,11 +100,7 @@ mod tests {
             deploy_account_transaction: Transaction::DeployAccount(
                 BroadcastedDeployAccountTransaction {
                     version: TransactionVersion::ONE,
-                    max_fee: Fee([
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0xf3,
-                        0x91, 0x37, 0x78, 0x13,
-                    ]
-                    .into()),
+                    max_fee: Fee(felt!("0xbf391377813")),
                     signature: vec![
                         TransactionSignatureElem(felt!(
                             "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"

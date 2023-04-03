@@ -1272,7 +1272,7 @@ mod tests {
             let error = client
                 .add_invoke_transaction(
                     TransactionVersion::ZERO,
-                    Fee(5444010076217u128.to_be_bytes().into()),
+                    Fee(felt!("0x4F388496839")),
                     vec![
                         TransactionSignatureElem(felt!(
                             "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
@@ -1322,7 +1322,7 @@ mod tests {
             client
                 .add_invoke_transaction(
                     TransactionVersion::ZERO,
-                    Fee(5444010076217u128.to_be_bytes().into()),
+                    Fee(felt!("0x4F388496839")),
                     vec![
                         TransactionSignatureElem(felt!(
                             "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
@@ -1374,7 +1374,7 @@ mod tests {
             client
                 .add_declare_transaction(
                     TransactionVersion::ZERO,
-                    Fee(0u128.to_be_bytes().into()),
+                    Fee::ZERO,
                     vec![],
                     TransactionNonce(Felt::ZERO),
                     ContractDefinition::Cairo(contract_class),
@@ -1517,7 +1517,7 @@ mod tests {
                 client
                     .add_declare_transaction(
                         TransactionVersion::ZERO,
-                        Fee(0u128.to_be_bytes().into()),
+                        Fee::ZERO,
                         vec![],
                         TransactionNonce::ZERO,
                         ContractDefinition::Cairo(CairoContractDefinition {
@@ -1543,7 +1543,7 @@ mod tests {
                 let err = client
                     .add_declare_transaction(
                         TransactionVersion::ZERO,
-                        Fee(0u128.to_be_bytes().into()),
+                        Fee::ZERO,
                         vec![],
                         TransactionNonce::ZERO,
                         ContractDefinition::Cairo(CairoContractDefinition {

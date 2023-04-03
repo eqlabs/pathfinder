@@ -153,7 +153,7 @@ mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                 crate::v02::types::request::BroadcastedInvokeTransactionV0 {
                     version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                    max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
+                    max_fee: Fee(felt!("0x6")),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
                     nonce: Some(TransactionNonce(felt!("0x8"))),
                     contract_address: ContractAddress::new_or_panic(felt!("0xaaa")),

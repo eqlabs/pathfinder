@@ -354,7 +354,6 @@ struct SimpleDeclare {}
 struct SimpleDeployAccount {
     #[serde_as(as = "pathfinder_serde::TransactionVersionAsHexStr")]
     pub version: pathfinder_common::TransactionVersion,
-    #[serde_as(as = "pathfinder_serde::FeeAsHexStr")]
     pub max_fee: pathfinder_common::Fee,
     #[serde_as(as = "Vec<pathfinder_serde::TransactionSignatureElemAsDecimalStr>")]
     #[serde(default)]
@@ -374,7 +373,6 @@ struct SimpleInvoke {
     #[serde(default)]
     #[serde_as(as = "Option<pathfinder_serde::TransactionVersionAsHexStr>")]
     pub version: Option<pathfinder_common::TransactionVersion>,
-    #[serde_as(as = "pathfinder_serde::FeeAsHexStr")]
     pub max_fee: pathfinder_common::Fee,
     #[serde_as(as = "Vec<pathfinder_serde::TransactionSignatureElemAsDecimalStr>")]
     #[serde(default)]

@@ -81,7 +81,7 @@ mod tests {
         Transaction::Invoke(BroadcastedInvokeTransaction::V0(
             BroadcastedInvokeTransactionV0 {
                 version: TransactionVersion::ZERO,
-                max_fee: Fee(5444010076217u128.to_be_bytes().into()),
+                max_fee: Fee(felt!("0x4F388496839")),
                 signature: vec![
                     TransactionSignatureElem(felt!(
                         "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
@@ -218,7 +218,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let input = BroadcastedInvokeTransactionV1 {
             version: TransactionVersion::ONE,
-            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x630a0aff77)),
+            max_fee: Fee(felt!("0x630a0aff77")),
             signature: vec![
                 TransactionSignatureElem(felt!(
                     "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
