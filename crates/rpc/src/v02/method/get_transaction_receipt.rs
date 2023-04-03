@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
-use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable};
+use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable, Storage};
 use starknet_gateway_types::pending::PendingData;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -16,54 +16,65 @@ pub async fn get_transaction_receipt(
     context: RpcContext,
     input: GetTransactionReceiptInput,
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
+    use types::MaybePendingTransactionReceipt;
+
     // First check pending data as this is in-mem and should be faster.
     if let Some(pending) = &context.pending_data {
         if let Some(pending_receipt) = get_pending_receipt(pending, &input.transaction_hash).await {
-            return Ok(types::MaybePendingTransactionReceipt::Pending(
-                pending_receipt,
-            ));
+            return Ok(MaybePendingTransactionReceipt::Pending(pending_receipt));
         }
     }
 
+    // Check storage for the receipt.
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        let mut db = storage
-            .connection()
-            .context("Opening database connection")?;
 
-        let db_tx = db.transaction().context("Creating database transaction")?;
-
-        match StarknetTransactionsTable::get_transaction_with_receipt(
-            &db_tx,
-            input.transaction_hash,
-        )
-        .context("Reading transaction receipt from database")?
-        {
-            Some((transaction, receipt, block_hash)) => {
-                // We require the block status here as well..
-                let block_number = StarknetBlocksTable::get_number(&db_tx, block_hash)
-                    .context("Reading block from database")?
-                    .context("Block missing from database")?;
-                let block_status = get_block_status(&db_tx, block_number)?;
-
-                Ok(types::MaybePendingTransactionReceipt::Normal(
-                    types::TransactionReceipt::with_block_data(
-                        receipt,
-                        block_status,
-                        block_hash,
-                        block_number,
-                        transaction,
-                    ),
-                ))
-            }
-            None => Err(GetTransactionReceiptError::TxnHashNotFound),
-        }
+        get_receipt_from_storage(&storage, input.transaction_hash)
     });
+    let receipt = jh.await.context("Database read panic or shutting down")??;
+    if let Some(receipt) = receipt {
+        return Ok(MaybePendingTransactionReceipt::Normal(receipt));
+    }
 
-    jh.await.context("Database read panic or shutting down")?
+    // TODO: Lastly, query the gateway for the receipt.
+
+    Err(GetTransactionReceiptError::TxnHashNotFound)
+}
+
+fn get_receipt_from_storage(
+    storage: &Storage,
+    tx_hash: StarknetTransactionHash,
+) -> anyhow::Result<Option<types::TransactionReceipt>> {
+    let mut conn = storage
+        .connection()
+        .context("Opening database connection")?;
+
+    let db_tx = conn
+        .transaction()
+        .context("Creating database transaction")?;
+
+    match StarknetTransactionsTable::get_transaction_with_receipt(&db_tx, tx_hash)
+        .context("Reading transaction receipt from database")?
+    {
+        None => Ok(None),
+        Some((tx, receipt, block_hash)) => {
+            // We require the block status here as well..
+            let block_number = StarknetBlocksTable::get_number(&db_tx, block_hash)
+                .context("Reading block from database")?
+                .context("Block missing from database")?;
+            let block_status = get_block_status(&db_tx, block_number)?;
+
+            Ok(Some(types::TransactionReceipt::with_block_data(
+                receipt,
+                block_status,
+                block_hash,
+                block_number,
+                tx,
+            )))
+        }
+    }
 }
 
 /// Returns the pending transaction receipt if it exists in pending data.
