@@ -1435,7 +1435,7 @@ mod tests {
                 SierraContractDefinition {
                     sierra_program,
                     contract_class_version: "0.1.0".into(),
-                    abi: Some("trust the contract developer".into()),
+                    abi: "trust the contract developer".into(),
                     entry_points_by_type,
                 }
             }

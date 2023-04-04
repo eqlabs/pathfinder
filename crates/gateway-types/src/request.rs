@@ -228,7 +228,7 @@ pub mod add_transaction {
         pub sierra_program: String,
         pub contract_class_version: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>>,
-        pub abi: Option<String>,
+        pub abi: String,
     }
 
     /// Account deployment transaction details.
