@@ -76,7 +76,7 @@ mod tests {
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 crate::v02::types::request::BroadcastedInvokeTransactionV1 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                    version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: Fee(felt!("0x6")),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
                     nonce: TransactionNonce(felt!("0x8")),
@@ -93,14 +93,13 @@ mod tests {
             let positional = r#"[
                 {
                     "type": "INVOKE",
-                    "version": "0x100000000000000000000000000000000",
+                    "version": "0x100000000000000000000000000000001",
                     "max_fee": "0x6",
                     "signature": [
                         "0x7"
                     ],
                     "nonce": "0x8",
-                    "contract_address": "0xaaa",
-                    "entry_point_selector": "0xe",
+                    "sender_address": "0xaaa",
                     "calldata": [
                         "0xff"
                     ]
@@ -124,14 +123,13 @@ mod tests {
             let named_args = r#"{
                 "request": {
                     "type": "INVOKE",
-                    "version": "0x100000000000000000000000000000000",
+                    "version": "0x100000000000000000000000000000001",
                     "max_fee": "0x6",
                     "signature": [
                         "0x7"
                     ],
                     "nonce": "0x8",
-                    "contract_address": "0xaaa",
-                    "entry_point_selector": "0xe",
+                    "sender_address": "0xaaa",
                     "calldata": [
                         "0xff"
                     ]

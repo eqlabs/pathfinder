@@ -1455,7 +1455,7 @@ mod tests {
                 client
                     .add_declare_transaction(
                         TransactionVersion::TWO,
-                        Fee(0xFFFFu128.to_be_bytes().into()),
+                        Fee(felt!("0xffff")),
                         vec![],
                         TransactionNonce(Felt::ZERO),
                         ContractDefinition::Sierra(sierra_contract_class_from_fixture()),

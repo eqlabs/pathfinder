@@ -112,7 +112,7 @@ mod tests {
                         "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                     ],
                     "nonce": "0x1",
-                    "contract_address": "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                    "sender_address": "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
                     "calldata": [
                         "0x1",
                         "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
@@ -148,7 +148,7 @@ mod tests {
                         "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                     ],
                     "nonce": "0x1",
-                    "contract_address": "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                    "sender_address": "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
                     "calldata": [
                         "0x1",
                         "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
