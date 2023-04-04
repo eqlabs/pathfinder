@@ -10,9 +10,7 @@ pub mod request {
         CallParam, CasmHash, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, Fee,
         TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
-    use pathfinder_serde::{
-        FeeAsHexStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
-    };
+    use pathfinder_serde::{TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr};
     use serde::Deserialize;
     use serde_with::serde_as;
 
@@ -82,7 +80,6 @@ pub mod request {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -101,7 +98,6 @@ pub mod request {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -121,7 +117,6 @@ pub mod request {
         // Fields from BROADCASTED_TXN_COMMON_PROPERTIES
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -187,7 +182,6 @@ pub mod request {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub signature: Vec<TransactionSignatureElem>,
         // This is a mistake in RPC specification v0.2. This field should not exist,
@@ -212,7 +206,6 @@ pub mod request {
         // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
         // here in a flattened struct, but `flatten` doesn't work with
         // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
@@ -235,7 +228,6 @@ pub mod request {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         /// EstimateFee hurry: max fee is needed if there's a signature
-        #[serde_as(as = "FeeAsHexStr")]
         #[serde(default = "call_default_max_fee")]
         pub max_fee: Fee,
         /// EstimateFee hurry: transaction version might be interesting, might not be around for
@@ -260,7 +252,7 @@ pub mod request {
     }
 
     impl Call {
-        pub const DEFAULT_MAX_FEE: Fee = Fee(ethers::types::H128::zero());
+        pub const DEFAULT_MAX_FEE: Fee = Fee::ZERO;
         pub const DEFAULT_VERSION: TransactionVersion =
             TransactionVersion(ethers::types::H256::zero());
         pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(stark_hash::Felt::ZERO);
@@ -307,7 +299,7 @@ pub mod request {
                 let txs = vec![
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(
                         BroadcastedDeclareTransactionV0V1 {
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                            max_fee: Fee(felt!("0x5")),
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x1)),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
@@ -317,7 +309,7 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(
                         BroadcastedDeclareTransactionV2 {
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x51)),
+                            max_fee: Fee(felt!("0x51")),
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x2)),
                             signature: vec![TransactionSignatureElem(felt!("0x71"))],
                             nonce: TransactionNonce(felt!("0x81")),
@@ -347,7 +339,7 @@ pub mod request {
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
                         BroadcastedInvokeTransactionV0 {
                             version: TransactionVersion(ethers::types::H256::zero()),
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
+                            max_fee: Fee(felt!("0x6")),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: Some(TransactionNonce(felt!("0x8"))),
                             contract_address: ContractAddress::new_or_panic(felt!("0xaaa")),
@@ -358,7 +350,7 @@ pub mod request {
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
                             version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
+                            max_fee: Fee(felt!("0x6")),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
                             sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
@@ -368,7 +360,7 @@ pub mod request {
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
                             version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x6)),
+                            max_fee: Fee(felt!("0x6")),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
                             sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
@@ -398,7 +390,7 @@ pub mod reply {
         EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
     };
-    use pathfinder_serde::{FeeAsHexStr, TransactionVersionAsHexStr};
+    use pathfinder_serde::TransactionVersionAsHexStr;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
@@ -446,7 +438,6 @@ pub mod reply {
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -645,7 +636,6 @@ pub mod reply {
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
         pub hash: StarknetTransactionHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<RpcFelt>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -895,7 +885,7 @@ pub mod reply {
                     Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
                         common: CommonDeclareInvokeTransactionProperties {
                             hash: StarknetTransactionHash(felt!("0x4")),
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x5)),
+                            max_fee: Fee(felt!("0x5")),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
                         },
@@ -905,7 +895,7 @@ pub mod reply {
                     Transaction::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
                         common: CommonDeclareInvokeTransactionProperties {
                             hash: StarknetTransactionHash(felt!("0x44")),
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x55)),
+                            max_fee: Fee(felt!("0x55")),
                             signature: vec![TransactionSignatureElem(felt!("0x77"))],
                             nonce: TransactionNonce(felt!("0x88")),
                         },
@@ -916,7 +906,7 @@ pub mod reply {
                     Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                         common: CommonDeclareInvokeTransactionProperties {
                             hash: StarknetTransactionHash(felt!("0xb")),
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x999)),
+                            max_fee: Fee(felt!("0x999")),
                             signature: vec![TransactionSignatureElem(felt!("0x777"))],
                             nonce: TransactionNonce(felt!("0xdd")),
                         },
@@ -927,7 +917,7 @@ pub mod reply {
                     Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
                         common: CommonDeclareInvokeTransactionProperties {
                             hash: StarknetTransactionHash(felt!("0xbbb")),
-                            max_fee: Fee(ethers::types::H128::from_low_u64_be(0x9999)),
+                            max_fee: Fee(felt!("0x9999")),
                             signature: vec![TransactionSignatureElem(felt!("0xeee"))],
                             nonce: TransactionNonce(felt!("0xde")),
                         },

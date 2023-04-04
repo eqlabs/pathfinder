@@ -1,5 +1,4 @@
 use anyhow::Context;
-use ethers::types::H128;
 use pathfinder_common::Fee;
 use rusqlite::{named_params, Transaction as RusqliteTransaction};
 
@@ -14,8 +13,8 @@ mod transaction {
         TransactionVersion,
     };
     use pathfinder_serde::{
-        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, FeeAsHexStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, TransactionSignatureElemAsDecimalStr,
+        TransactionVersionAsHexStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -50,7 +49,6 @@ mod transaction {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub struct DeclareTransaction {
         pub class_hash: ClassHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub nonce: TransactionNonce,
         pub sender_address: ContractAddress,
@@ -87,7 +85,6 @@ mod transaction {
         pub entry_point_type: EntryPointType,
         // This is optional because there are old transactions in the DB which don't have it.
         // We fix up missing max_fee with the default (0) before serializing the data.
-        #[serde_as(as = "Option<FeeAsHexStr>")]
         pub max_fee: Option<Fee>,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -172,7 +169,7 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
             }
             transaction::Transaction::Invoke(mut invoke) => {
                 if invoke.max_fee.is_none() {
-                    invoke.max_fee = Some(Fee(H128::zero()));
+                    invoke.max_fee = Some(Fee::ZERO);
                     tracing::trace!(transaction_hash = ?invoke.transaction_hash, "Fixed missing max_fee for invoke transaction");
                 }
                 transaction::Transaction::Invoke(invoke)
@@ -227,8 +224,7 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
 mod tests {
     use super::transaction;
     use crate::schema;
-    use ethers::types::H128;
-    use pathfinder_common::{felt, StarknetTransactionHash};
+    use pathfinder_common::{felt, Fee, StarknetTransactionHash};
     use rusqlite::{named_params, Connection};
 
     #[test]
@@ -439,7 +435,7 @@ mod tests {
 
         use starknet_gateway_types::reply::transaction::{InvokeTransaction, Transaction};
         assert_matches::assert_matches!(migrated_tx, Transaction::Invoke(InvokeTransaction::V0(invoke)) => {
-            assert_eq!(invoke.max_fee.0, H128::zero());
+            assert_eq!(invoke.max_fee, Fee::ZERO);
         });
     }
 }

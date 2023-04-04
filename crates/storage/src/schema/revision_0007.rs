@@ -13,9 +13,8 @@ mod transaction {
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-        TransactionSignatureElemAsDecimalStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
+        L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -146,7 +145,6 @@ mod transaction {
         pub entry_point_type: Option<EntryPointType>,
         #[serde(default)]
         pub entry_point_selector: Option<EntryPoint>,
-        #[serde_as(as = "Option<FeeAsHexStr>")]
         #[serde(default)]
         pub max_fee: Option<Fee>,
         #[serde_as(as = "Option<Vec<TransactionSignatureElemAsDecimalStr>>")]

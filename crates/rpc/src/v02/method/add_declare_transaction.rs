@@ -153,7 +153,7 @@ mod tests {
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
                     BroadcastedDeclareTransactionV0V1 {
-                        max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
+                        max_fee: Fee(felt!("0x1")),
                         version: TransactionVersion::ONE,
                         signature: vec![],
                         nonce: TransactionNonce(Felt::ZERO),
@@ -228,7 +228,7 @@ mod tests {
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(
                     BroadcastedDeclareTransactionV2 {
-                        max_fee: Fee(ethers::types::H128::from_low_u64_be(1)),
+                        max_fee: Fee(felt!("0x1")),
                         version: TransactionVersion::TWO,
                         signature: vec![],
                         nonce: TransactionNonce(Felt::ZERO),
@@ -341,7 +341,7 @@ mod tests {
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V2(
             BroadcastedDeclareTransactionV2 {
                 version: TransactionVersion::TWO,
-                max_fee: Fee(ethers::types::H128::from_low_u64_be(u64::MAX)),
+                max_fee: Fee(Felt::from_be_slice(&u64::MAX.to_be_bytes()).unwrap()),
                 signature: vec![],
                 nonce: TransactionNonce(Default::default()),
                 contract_class: invalid_contract_class,
@@ -410,7 +410,7 @@ mod tests {
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V2(
             BroadcastedDeclareTransactionV2 {
                 version: TransactionVersion::TWO,
-                max_fee: Fee(ethers::types::H128::from_low_u64_be(u64::MAX)),
+                max_fee: Fee(Felt::from_be_slice(&u64::MAX.to_be_bytes()).unwrap()),
                 signature: vec![],
                 nonce: TransactionNonce(Default::default()),
                 contract_class: SIERRA_CLASS.clone(),

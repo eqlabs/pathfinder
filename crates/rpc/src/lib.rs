@@ -137,7 +137,6 @@ mod tests {
 
     // Local test helper
     pub fn setup_storage() -> Storage {
-        use ethers::types::H128;
         use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
@@ -336,7 +335,7 @@ mod tests {
             sender_address: contract0_addr,
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: EntryPoint(Felt::ZERO),
-            max_fee: pathfinder_common::Fee(H128::zero()),
+            max_fee: pathfinder_common::Fee::ZERO,
             signature: vec![],
             transaction_hash: txn0_hash,
         };

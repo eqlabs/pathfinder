@@ -1,7 +1,6 @@
 use super::{
     StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
 };
-use ethers::types::H128;
 use pathfinder_common::{
     felt, CallParam, ClassCommitment, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
@@ -70,7 +69,7 @@ pub(crate) fn create_transactions_and_receipts(
                 } else {
                     EntryPointType::L1Handler
                 }),
-                max_fee: Fee(H128::zero()),
+                max_fee: Fee::ZERO,
                 signature: vec![TransactionSignatureElem(
                     Felt::from_hex_str(&"3".repeat(i + 3)).unwrap(),
                 )],
@@ -102,7 +101,7 @@ pub(crate) fn create_transactions_and_receipts(
         }
         _ => transaction::Transaction::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {
             class_hash: ClassHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
-            max_fee: Fee(H128::zero()),
+            max_fee: Fee::ZERO,
             nonce: TransactionNonce(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap()),
             sender_address: ContractAddress::new_or_panic(
                 Felt::from_hex_str(&"c".repeat(i + 3)).unwrap(),

@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - supports estimating multiple transactions
   - this includes declaring and immediately using a class (not currently possible via the gateway)
 
+### Fixed
+
+- RPC rejects Fee values with more than 32 digits
+
 ## [0.5.1] - 2023-23-23
 
 ### Fixed

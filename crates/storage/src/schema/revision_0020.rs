@@ -275,9 +275,9 @@ mod types {
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
+        L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
+        TransactionVersionAsHexStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -287,7 +287,6 @@ mod types {
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
-        #[serde_as(as = "Option<FeeAsHexStr>")]
         #[serde(default)]
         pub actual_fee: Option<Fee>,
         pub events: Vec<Event>,
@@ -410,7 +409,6 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransaction {
         pub class_hash: ClassHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub nonce: TransactionNonce,
         pub sender_address: ContractAddress,
@@ -505,7 +503,6 @@ mod types {
         pub contract_address: ContractAddress,
         pub entry_point_selector: EntryPoint,
         pub entry_point_type: EntryPointType,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -520,7 +517,6 @@ mod types {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
         pub contract_address: ContractAddress,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,

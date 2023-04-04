@@ -197,8 +197,7 @@ pub mod add_transaction {
         CasmHash, ClassHash, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{
-        CallParamAsDecimalStr, FeeAsHexStr, TransactionSignatureElemAsDecimalStr,
-        TransactionVersionAsHexStr,
+        CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde_with::serde_as;
     use std::collections::HashMap;
@@ -240,7 +239,6 @@ pub mod add_transaction {
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
 
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -261,7 +259,6 @@ pub mod add_transaction {
         pub version: TransactionVersion,
 
         // AccountTransaction properties
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -282,7 +279,6 @@ pub mod add_transaction {
         pub version: TransactionVersion,
 
         // AccountTransaction properties -- except for nonce which is non-optional here
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,

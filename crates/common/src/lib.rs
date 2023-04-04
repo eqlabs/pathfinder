@@ -2,7 +2,7 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
-use ethers::types::{H128, H160, H256};
+use ethers::types::{H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
@@ -267,7 +267,11 @@ pub struct SequencerAddress(pub Felt);
 
 /// StarkNet fee value.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Fee(pub H128);
+pub struct Fee(pub Felt);
+
+impl Fee {
+    pub const ZERO: Self = Self(Felt::ZERO);
+}
 
 /// StarkNet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]

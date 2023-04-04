@@ -190,9 +190,9 @@ pub mod transaction {
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, FeeAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
-        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
+        EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
+        L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
+        TransactionVersionAsHexStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -272,11 +272,9 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction receipt data.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {
-        #[serde_as(as = "Option<FeeAsHexStr>")]
         #[serde(default)]
         pub actual_fee: Option<Fee>,
         pub events: Vec<Event>,
@@ -409,7 +407,6 @@ pub mod transaction {
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV0V1 {
         pub class_hash: ClassHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub nonce: TransactionNonce,
         pub sender_address: ContractAddress,
@@ -425,7 +422,6 @@ pub mod transaction {
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV2 {
         pub class_hash: ClassHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         pub nonce: TransactionNonce,
         pub sender_address: ContractAddress,
@@ -463,7 +459,6 @@ pub mod transaction {
     pub struct DeployAccountTransaction {
         pub contract_address: ContractAddress,
         pub transaction_hash: StarknetTransactionHash,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -544,7 +539,6 @@ pub mod transaction {
         pub entry_point_selector: EntryPoint,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub entry_point_type: Option<EntryPointType>,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -564,7 +558,6 @@ pub mod transaction {
         // transaction naming, or until regenesis removes them all.
         #[serde(alias = "contract_address")]
         pub sender_address: ContractAddress,
-        #[serde_as(as = "FeeAsHexStr")]
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
