@@ -611,8 +611,7 @@ def test_check_cairolang_version():
     # of another constant that needs to be upgraded
     assert check_cairolang_version()
 
-
-def test_fee_estimate_on_positive_directly():
+def test_estimate_fee_for_positive_directly():
     con = inmemory_with_tables()
     (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
@@ -652,8 +651,7 @@ def test_fee_estimate_on_positive_directly():
         )
     ]
 
-
-def test_fee_estimate_for_declare_transaction_directly():
+def test_estimate_fee_for_declare_transaction_directly():
     con = inmemory_with_tables()
     (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
@@ -704,8 +702,7 @@ def test_fee_estimate_for_declare_transaction_directly():
         )
     ]
 
-
-def test_fee_estimate_on_positive():
+def test_estimate_fee_for_positive():
     con = inmemory_with_tables()
     (contract_address, _) = populate_test_contract_with_132_on_3(con)
     contract_address = hex(contract_address)
@@ -1465,7 +1462,7 @@ def test_call_sierra_contract_through_account():
     assert output == [1, 2]
 
 
-def test_sierra_invoke_function_through_account():
+def test_estimate_fee_for_sierra_invoke_function_through_account():
     con = inmemory_with_tables()
     cur = con.execute("BEGIN")
     (
@@ -1517,7 +1514,7 @@ def test_sierra_invoke_function_through_account():
     ]
 
 
-def test_sierra_declare_through_account():
+def test_estimate_fee_for_sierra_declare_through_account():
     con = inmemory_with_tables()
     cur = con.execute("BEGIN")
     (
@@ -1572,7 +1569,7 @@ def test_sierra_declare_through_account():
     ]
 
 
-def test_deploy_account():
+def test_estimate_fee_for_deploy_account():
     con = inmemory_with_tables()
 
     cur = con.execute("BEGIN")
@@ -1653,7 +1650,7 @@ def test_deploy_account():
     ]
 
 
-def test_deploy_newly_declared_account():
+def test_estimate_fee_for_deploy_newly_declared_account():
     con = inmemory_with_tables()
 
     cur = con.execute("BEGIN")
@@ -1740,7 +1737,7 @@ def test_deploy_newly_declared_account():
     ]
 
 
-def test_deploy_newly_declared_sierra_account():
+def test_estimate_fee_for_deploy_newly_declared_sierra_account():
     con = inmemory_with_tables()
 
     cur = con.execute("BEGIN")
