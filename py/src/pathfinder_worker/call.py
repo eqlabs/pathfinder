@@ -215,13 +215,15 @@ class Command:
         Returns the verb
         """
 
-    @abstractmethod
     def has_pending_data(self):
-        pass
+        return (
+            len(self.pending_updates) > 0
+            or len(self.pending_deployed) > 0
+            or len(self.pending_nonces) > 0
+        )
 
-    @abstractmethod
     def get_pending_timestamp(self) -> int:
-        pass
+        return self.pending_timestamp
 
 
 @marshmallow_dataclass.dataclass(frozen=True)
@@ -236,16 +238,6 @@ class Call(Command):
 
     gas_price: int = 0
 
-    def has_pending_data(self):
-        return (
-            len(self.pending_updates) > 0
-            or len(self.pending_deployed) > 0
-            or len(self.pending_nonces) > 0
-        )
-
-    def get_pending_timestamp(self) -> int:
-        return self.pending_timestamp
-
 
 @marshmallow_dataclass.dataclass(frozen=True)
 class EstimateFee(Command):
@@ -254,16 +246,6 @@ class EstimateFee(Command):
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
-
-    def has_pending_data(self):
-        return (
-            len(self.pending_updates) > 0
-            or len(self.pending_deployed) > 0
-            or len(self.pending_nonces) > 0
-        )
-
-    def get_pending_timestamp(self) -> int:
-        return self.pending_timestamp
     transactions: List[TransactionAndClassHashHint]
 
 
