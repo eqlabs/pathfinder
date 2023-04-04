@@ -1330,12 +1330,14 @@ mod tests {
         }
 
         mod declare {
+            use starknet_gateway_types::request::{
+                add_transaction::SierraContractDefinition, contract::SelectorAndFunctionIndex,
+            };
+
             use super::*;
 
             #[tokio::test]
             async fn v0_is_deprecated() {
-                let contract_class = get_contract_class_from_fixture();
-
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
                     response_from(StarknetErrorCode::DeprecatedTransaction),
@@ -1347,7 +1349,7 @@ mod tests {
                         Fee(Felt::ZERO),
                         vec![],
                         TransactionNonce(Felt::ZERO),
-                        ContractDefinition::Cairo(contract_class),
+                        ContractDefinition::Cairo(cairo_contract_class_from_fixture()),
                         ContractAddress::new_or_panic(felt!("0x1")),
                         None,
                         None,
@@ -1362,8 +1364,6 @@ mod tests {
 
             #[tokio::test]
             async fn successful_v1() {
-                let contract_class = get_contract_class_from_fixture();
-
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
                     (
@@ -1380,7 +1380,7 @@ mod tests {
                         Fee(felt!("0xFFFF")),
                         vec![],
                         TransactionNonce(Felt::ZERO),
-                        ContractDefinition::Cairo(contract_class),
+                        ContractDefinition::Cairo(cairo_contract_class_from_fixture()),
                         ContractAddress::new_or_panic(felt!("0x1")),
                         None,
                         None,
@@ -1389,10 +1389,84 @@ mod tests {
                     .unwrap();
             }
 
-            // FIXME
+            fn sierra_contract_class_from_fixture() -> SierraContractDefinition {
+                let sierra_class = zstd::decode_all(
+                    starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA,
+                )
+                .unwrap();
+                let mut sierra_class =
+                    serde_json::from_slice::<serde_json::Value>(&sierra_class).unwrap();
+                let sierra_program = sierra_class.get_mut("sierra_program").unwrap().take();
+                let sierra_program = serde_json::from_value::<Vec<Felt>>(sierra_program).unwrap();
+                let mut gzip_encoder =
+                    flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+                serde_json::to_writer(&mut gzip_encoder, &sierra_program).unwrap();
+                let sierra_program = gzip_encoder.finish().unwrap();
+                let sierra_program = base64::encode(sierra_program);
+
+                let mut entry_points = sierra_class.get_mut("entry_points_by_type").unwrap().take();
+
+                let mut entry_points_by_type: HashMap<
+                    EntryPointType,
+                    Vec<SelectorAndFunctionIndex>,
+                > = Default::default();
+                entry_points_by_type.insert(
+                    EntryPointType::Constructor,
+                    serde_json::from_value::<Vec<SelectorAndFunctionIndex>>(
+                        entry_points.get_mut("CONSTRUCTOR").unwrap().take(),
+                    )
+                    .unwrap(),
+                );
+                entry_points_by_type.insert(
+                    EntryPointType::External,
+                    serde_json::from_value::<Vec<SelectorAndFunctionIndex>>(
+                        entry_points.get_mut("EXTERNAL").unwrap().take(),
+                    )
+                    .unwrap(),
+                );
+                entry_points_by_type.insert(
+                    EntryPointType::L1Handler,
+                    serde_json::from_value::<Vec<SelectorAndFunctionIndex>>(
+                        entry_points.get_mut("L1_HANDLER").unwrap().take(),
+                    )
+                    .unwrap(),
+                );
+
+                SierraContractDefinition {
+                    sierra_program,
+                    contract_class_version: "0.1.0".into(),
+                    abi: Some("trust the contract developer".into()),
+                    entry_points_by_type,
+                }
+            }
+
             #[tokio::test]
             async fn successful_v2() {
-                todo!()
+                let (_jh, client) = setup([(
+                    "/gateway/add_transaction",
+                    (
+                        r#"{"code": "TRANSACTION_RECEIVED",
+                            "transaction_hash": "0x77ccba4df42cf0f74a8eb59a96d7880fae371edca5d000ca5f9985652c8a8ed",
+                            "class_hash": "0x711941b11a8236b8cca42b664e19342ac7300abb1dc44957763cb65877c2708"}"#,
+                        200,
+                    ),
+                )]);
+
+                client
+                    .add_declare_transaction(
+                        TransactionVersion::TWO,
+                        Fee(0xFFFFu128.to_be_bytes().into()),
+                        vec![],
+                        TransactionNonce(Felt::ZERO),
+                        ContractDefinition::Sierra(sierra_contract_class_from_fixture()),
+                        ContractAddress::new_or_panic(felt!("0x1")),
+                        Some(CasmHash::new_or_panic(felt!(
+                            "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
+                        ))),
+                        None,
+                    )
+                    .await
+                    .unwrap();
             }
         }
 
@@ -1440,7 +1514,7 @@ mod tests {
         }
 
         /// Return a contract definition that was dumped from a `starknet deploy`.
-        fn get_contract_class_from_fixture() -> CairoContractDefinition {
+        fn cairo_contract_class_from_fixture() -> CairoContractDefinition {
             use pathfinder_common::EntryPoint;
 
             let json = zstd::decode_all(
