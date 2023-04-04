@@ -166,7 +166,7 @@ mod tests {
         // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
         fn valid_mainnet_invoke_v1() -> BroadcastedInvokeTransactionV1 {
             BroadcastedInvokeTransactionV1 {
-                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
                 nonce: TransactionNonce(Default::default()),
@@ -183,6 +183,22 @@ mod tests {
                 ],
             }
         }
+
+        // fn deploy_account_transaction() -> BroadcastedTransaction {
+        //     BroadcastedTransaction::DeployAccount(BroadcastedDeployAccountTransaction {
+        //         version: TransactionVersion::ONE_WITH_QUERY_VERSION,
+        //         max_fee: Fee(H128::zero()),
+        //         signature: vec![],
+        //         nonce: TransactionNonce::ZERO,
+        //         contract_address_salt: ContractAddressSalt(Felt::ZERO),
+        //         constructor_calldata: vec![CallParam(Felt::ZERO)],
+        //         class_hash: ClassHash(felt!(
+        //             "0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8"
+        //         )),
+        //     })
+        // }
+
+        // fn invoke_v1_transaction(account: ) ->
 
         fn valid_broadcasted_transaction() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
@@ -243,24 +259,6 @@ mod tests {
             assert_matches::assert_matches!(error, Err(EstimateFeeError::ContractNotFound));
         }
 
-        // FIXME doesn't make sense for v1
-        #[tokio::test]
-        async fn invalid_message_selector() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
-
-            let mainnet_invoke = valid_mainnet_invoke_v1();
-            let input = EstimateFeeInput {
-                request: vec![BroadcastedTransaction::Invoke(
-                    BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
-                        ..mainnet_invoke
-                    }),
-                )],
-                block_id: BLOCK_5,
-            };
-            let error = estimate_fee(context, input).await;
-            assert_matches::assert_matches!(error, Err(EstimateFeeError::InvalidMessageSelector));
-        }
-
         #[tokio::test]
         async fn successful_invoke_v1() {
             let (context, _join_handle) = test_context_with_call_handling().await;
@@ -287,14 +285,13 @@ mod tests {
             };
         }
 
-        // FIXME use v1
         #[test_log::test(tokio::test)]
-        async fn successful_declare_v0() {
+        async fn successful_declare_v1() {
             let (context, _join_handle) = test_context_with_call_handling().await;
 
             let declare_transaction = BroadcastedTransaction::Declare(
                 BroadcastedDeclareTransaction::V1(BroadcastedDeclareTransactionV1 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                    version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: Fee(Default::default()),
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
@@ -311,10 +308,7 @@ mod tests {
             assert_eq!(result, vec![FeeEstimate::default()]);
         }
 
-        // FIXME now
         #[test_log::test(tokio::test)]
-        async fn successful_declare_v1() {
-            // TODO
-        }
+        async fn successful_declare_v2() {}
     }
 }

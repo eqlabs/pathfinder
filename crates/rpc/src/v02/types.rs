@@ -31,6 +31,34 @@ pub mod request {
         DeployAccount(BroadcastedDeployAccountTransaction),
     }
 
+    impl BroadcastedTransaction {
+        pub fn into_invoke(self) -> Option<BroadcastedInvokeTransaction> {
+            match self {
+                Self::Invoke(x) => Some(x),
+                _ => None,
+            }
+        }
+
+        pub fn into_declare(self) -> Option<BroadcastedDeclareTransaction> {
+            match self {
+                Self::Declare(x) => Some(x),
+                _ => None,
+            }
+        }
+
+        pub fn into_deploy_account(self) -> Option<BroadcastedDeployAccountTransaction> {
+            match self {
+                Self::DeployAccount(x) => Some(x),
+                _ => None,
+            }
+        }
+
+        #[cfg(test)]
+        pub fn into_invoke_or_panic(self) -> BroadcastedInvokeTransaction {
+            self.into_invoke().unwrap()
+        }
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[cfg_attr(
         any(test, feature = "rpc-full-serde"),
@@ -133,6 +161,19 @@ pub mod request {
     )]
     pub enum BroadcastedInvokeTransaction {
         V1(BroadcastedInvokeTransactionV1),
+    }
+
+    impl BroadcastedInvokeTransaction {
+        pub fn into_v1(self) -> Option<BroadcastedInvokeTransactionV1> {
+            match self {
+                Self::V1(x) => Some(x),
+            }
+        }
+
+        #[cfg(test)]
+        pub fn into_v1_or_panic(self) -> BroadcastedInvokeTransactionV1 {
+            self.into_v1().unwrap()
+        }
     }
 
     impl<'de> Deserialize<'de> for BroadcastedInvokeTransaction {

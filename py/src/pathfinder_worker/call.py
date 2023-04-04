@@ -384,8 +384,8 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
 
                 if exc.message:
                     message = exc.message
-                    if len(message) > 200:
-                        message = message[:197] + "..."
+                    # if len(message) > 200:
+                    #     message = message[:197] + "..."
                     exception_message = f"{exc.code}: {message}"
                 else:
                     exception_message = str(exc.code)
@@ -394,8 +394,8 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
         except Exception as exc:
             stringified = str(exc)
 
-            if len(stringified) > 200:
-                stringified = stringified[:197] + "..."
+            # if len(stringified) > 200:
+            #     stringified = stringified[:197] + "..."
             report_failed(logger, command, exc)
             out = {"status": "failed", "exception": stringified}
         finally:
