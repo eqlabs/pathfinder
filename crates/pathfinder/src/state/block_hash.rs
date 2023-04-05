@@ -1,10 +1,9 @@
 use anyhow::{Context, Error, Result};
-use bitvec::prelude::BitView;
 use pathfinder_common::{
     Chain, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
     StarknetBlockTimestamp, StateCommitment, TransactionCommitment,
 };
-use pathfinder_merkle_tree::merkle_tree::MerkleTree;
+use pathfinder_merkle_tree::TransactionTree;
 use stark_hash::{stark_hash, Felt, HashChain};
 use starknet_gateway_types::reply::{
     transaction::{Event, Receipt, Transaction},
@@ -289,36 +288,6 @@ fn compute_final_hash(
     StarknetBlockHash(chain.finalize())
 }
 
-/// A Patricia Merkle tree with height 64 used to compute transaction and event commitments.
-///
-/// According to the [documentation](https://docs.starknet.io/docs/Blocks/header/#block-header)
-/// the commitment trees are of height 64, because the key used is the 64 bit representation
-/// of the index of the transaction / event within the block.
-///
-/// The tree height is 64 in our case since our set operation takes u64 index values.
-struct CommitmentTree {
-    tree: MerkleTree<pathfinder_merkle_tree::PedersenHash, 64>,
-}
-
-impl Default for CommitmentTree {
-    fn default() -> Self {
-        Self {
-            tree: MerkleTree::empty(),
-        }
-    }
-}
-
-impl CommitmentTree {
-    pub fn set(&mut self, index: u64, value: Felt) -> Result<()> {
-        let key = index.to_be_bytes();
-        self.tree.set(&(), key.view_bits(), value)
-    }
-
-    pub fn commit(self) -> Result<Felt> {
-        self.tree.commit(&())
-    }
-}
-
 /// Calculate transaction commitment hash value.
 ///
 /// The transaction commitment is the root of the Patricia Merkle tree with height 64
@@ -327,7 +296,7 @@ impl CommitmentTree {
 pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
 ) -> Result<TransactionCommitment> {
-    let mut tree = CommitmentTree::default();
+    let mut tree = TransactionTree::default();
 
     transactions
         .iter()
@@ -382,7 +351,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
 pub fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<EventCommitment> {
-    let mut tree = CommitmentTree::default();
+    let mut tree = TransactionTree::default();
 
     transaction_receipts
         .iter()
@@ -500,25 +469,6 @@ mod tests {
                 .unwrap();
         let calculated_final_hash = calculate_transaction_hash_with_signature(&transaction);
         assert_eq!(expected_final_hash, calculated_final_hash);
-    }
-
-    #[test]
-    fn test_commitment_merkle_tree() {
-        let mut tree = CommitmentTree::default();
-
-        for (idx, hash) in [1u64, 2, 3, 4].into_iter().enumerate() {
-            let hash = Felt::from(hash);
-            let idx: u64 = idx.try_into().unwrap();
-            tree.set(idx, hash).unwrap();
-        }
-
-        // produced by the cairo-lang Python implementation:
-        // `hex(asyncio.run(calculate_patricia_root([1, 2, 3, 4], height=64, ffc=ffc))))`
-        let expected_root_hash =
-            felt!("0x1a0e579b6b444769e4626331230b5ae39bd880f47e703b73fa56bf77e52e461");
-        let computed_root_hash = tree.commit().unwrap();
-
-        assert_eq!(expected_root_hash, computed_root_hash);
     }
 
     #[test]
