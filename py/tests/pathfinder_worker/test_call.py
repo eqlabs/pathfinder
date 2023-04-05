@@ -33,6 +33,7 @@ from pathfinder_worker.call import (
     EstimateFee,
     FeeEstimation,
     TransactionSimulation,
+    TransactionAndClassHashHint,
     check_cairolang_version,
     do_loop,
     loop_inner,
@@ -56,14 +57,18 @@ def test_command_parsing_estimate_fee():
         "pending_nonces":{"0x123":"0x1"},
         "pending_timestamp": 0,
         "transactions":[{
-            "type":"INVOKE_FUNCTION",
-            "version":"0x100000000000000000000000000000000",
-            "max_fee":"0x0",
-            "signature":[],
-            "nonce":null,
-            "contract_address":"0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-            "entry_point_selector":"0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0",
-            "calldata":["132"]}]
+            "transaction": {
+                "type":"INVOKE_FUNCTION",
+                "version":"0x100000000000000000000000000000000",
+                "max_fee":"0x0",
+                "signature":[],
+                "nonce":null,
+                "contract_address":"0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+                "entry_point_selector":"0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0",
+                "calldata":["132"]
+            },
+            "class_hash_hint": "0x12345"
+        }]
     }"""
     command = Command.Schema().loads(input)
     assert command == EstimateFee(
@@ -84,14 +89,17 @@ def test_command_parsing_estimate_fee():
         pending_nonces={0x123: 1},
         pending_timestamp=0,
         transactions=[
-            InvokeFunction(
-                version=0x100000000000000000000000000000000,
-                sender_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
-                calldata=[132],
-                entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
-                nonce=None,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=InvokeFunction(
+                    version=0x100000000000000000000000000000000,
+                    sender_address=0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374,
+                    calldata=[132],
+                    entry_point_selector=0x26813D396FDB198E9EAD934E4F7A592A8B88A059E45AB0EB6EE53494E8D45B0,
+                    nonce=None,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=0x12345,
             )
         ],
     )
@@ -619,14 +627,17 @@ def test_fee_estimate_on_positive_directly():
         pending_nonces={},
         pending_timestamp=0,
         transactions=[
-            InvokeFunction(
-                version=0x100000000000000000000000000000000,
-                sender_address=contract_address,
-                calldata=[132],
-                entry_point_selector=get_selector_from_name("get_value"),
-                nonce=None,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=InvokeFunction(
+                    version=0x100000000000000000000000000000000,
+                    sender_address=contract_address,
+                    calldata=[132],
+                    entry_point_selector=get_selector_from_name("get_value"),
+                    nonce=None,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=None,
             )
         ],
     )
@@ -669,13 +680,16 @@ def test_fee_estimate_for_declare_transaction_directly():
         pending_nonces={},
         pending_timestamp=0,
         transactions=[
-            DeprecatedDeclare(
-                version=0x100000000000000000000000000000000,
-                max_fee=0,
-                signature=[],
-                nonce=0,
-                contract_class=contract_definition,
-                sender_address=1,
+            TransactionAndClassHashHint(
+                transaction=DeprecatedDeclare(
+                    version=0x100000000000000000000000000000000,
+                    max_fee=0,
+                    signature=[],
+                    nonce=0,
+                    contract_class=contract_definition,
+                    sender_address=1,
+                ),
+                class_hash_hint=None,
             )
         ],
     )
@@ -707,14 +721,17 @@ def test_fee_estimate_on_positive():
         "pending_nonces":{{}},
         "pending_timestamp":0,
         "transactions":[{{
-            "type":"INVOKE_FUNCTION",
-            "version":"0x100000000000000000000000000000000",
-            "max_fee":"0x0",
-            "signature":[],
-            "nonce":null,
-            "contract_address":"{contract_address}",
-            "entry_point_selector":"{entry_point}",
-            "calldata":["132"]
+            "transaction": {{
+                "type":"INVOKE_FUNCTION",
+                "version":"0x100000000000000000000000000000000",
+                "max_fee":"0x0",
+                "signature":[],
+                "nonce":null,
+                "contract_address":"{contract_address}",
+                "entry_point_selector":"{entry_point}",
+                "calldata":["132"]
+            }},
+            "class_hash_hint": null
         }}]
     }}"""
 
@@ -1148,6 +1165,9 @@ def test_nonce_with_dummy():
         max_fee=0,
         signature=[],
     )
+    base_transaction_and_class_hash_hint = TransactionAndClassHashHint(
+        transaction=base_transaction, class_hash_hint=None
+    )
     base_command = EstimateFee(
         at_block=f'0x{(b"some blockhash somewhere").hex()}',
         chain=call.Chain.MAINNET,
@@ -1156,7 +1176,20 @@ def test_nonce_with_dummy():
         pending_deployed=[],
         pending_nonces={},
         pending_timestamp=0,
-        transactions=[base_transaction],
+        transactions=[base_transaction_and_class_hash_hint],
+    )
+
+    base_transaction_and_class_hash_hint_with_nonce_1 = dataclasses.replace(
+        base_transaction_and_class_hash_hint,
+        transaction=dataclasses.replace(base_transaction, nonce=1),
+    )
+    base_transaction_and_class_hash_hint_with_nonce_2 = dataclasses.replace(
+        base_transaction_and_class_hash_hint,
+        transaction=dataclasses.replace(base_transaction, nonce=2),
+    )
+    base_transaction_and_class_hash_hint_with_nonce_3 = dataclasses.replace(
+        base_transaction_and_class_hash_hint,
+        transaction=dataclasses.replace(base_transaction, nonce=3),
     )
 
     commands = [
@@ -1174,7 +1207,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"another block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=1)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_1],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1182,7 +1215,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"another block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=2)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_2],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1191,7 +1224,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=1)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_1],
             ),
             [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
         ),
@@ -1199,7 +1232,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=2)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_2],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1208,7 +1241,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=3)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_3],
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
         ),
@@ -1217,7 +1250,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=1)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_1],
                 pending_nonces={0x123: 2},
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
@@ -1227,7 +1260,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=2)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_2],
                 pending_nonces={0x123: 2},
             ),
             [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
@@ -1236,7 +1269,7 @@ def test_nonce_with_dummy():
             dataclasses.replace(
                 base_command,
                 at_block=f'0x{(b"third block").hex()}',
-                transactions=[dataclasses.replace(base_transaction, nonce=3)],
+                transactions=[base_transaction_and_class_hash_hint_with_nonce_3],
                 pending_nonces={0x123: 2},
             ),
             "StarknetErrorCode.INVALID_TRANSACTION_NONCE",
@@ -1452,20 +1485,23 @@ def test_sierra_invoke_function_through_account():
         pending_nonces={},
         pending_timestamp=0,
         transactions=[
-            InvokeFunction(
-                version=2**128 + 1,
-                sender_address=dummy_account_contract_address,
-                calldata=[
-                    sierra_contract_address,
-                    get_selector_from_name("test"),
-                    3,
-                    1,
-                    2,
-                    3,
-                ],
-                nonce=0,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=InvokeFunction(
+                    version=2**128 + 1,
+                    sender_address=dummy_account_contract_address,
+                    calldata=[
+                        sierra_contract_address,
+                        get_selector_from_name("test"),
+                        3,
+                        1,
+                        2,
+                        3,
+                    ],
+                    nonce=0,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=None,
             )
         ],
     )
@@ -1510,14 +1546,17 @@ def test_sierra_declare_through_account():
         pending_nonces={},
         pending_timestamp=0,
         transactions=[
-            Declare(
-                version=0x100000000000000000000000000000002,
-                sender_address=dummy_account_contract_address,
-                contract_class=class_definition,
-                compiled_class_hash=0x05BBE92A11E8C31CAD885C72877F12E6EDFB5250AF54430DFA8ED7504C548417,
-                nonce=0,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=Declare(
+                    version=0x100000000000000000000000000000002,
+                    sender_address=dummy_account_contract_address,
+                    contract_class=class_definition,
+                    compiled_class_hash=0x05BBE92A11E8C31CAD885C72877F12E6EDFB5250AF54430DFA8ED7504C548417,
+                    nonce=0,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=0x01B99923210A0077766C2089A14F010F04F37E2F290A4B18A07A3452ED9E8070,
             )
         ],
     )
@@ -1563,29 +1602,35 @@ def test_deploy_account():
         pending_nonces={},
         pending_timestamp=0,
         transactions=[
-            DeployAccount(
-                class_hash=dummy_account_contract_class_hash,
-                contract_address_salt=0,
-                constructor_calldata=[],
-                version=0x100000000000000000000000000000001,
-                nonce=0,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=DeployAccount(
+                    class_hash=dummy_account_contract_class_hash,
+                    contract_address_salt=0,
+                    constructor_calldata=[],
+                    version=0x100000000000000000000000000000001,
+                    nonce=0,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=None,
             ),
-            InvokeFunction(
-                version=2**128 + 1,
-                sender_address=deployed_dummy_account_address,
-                calldata=[
-                    sierra_contract_address,
-                    get_selector_from_name("test"),
-                    3,
-                    1,
-                    2,
-                    3,
-                ],
-                nonce=1,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=InvokeFunction(
+                    version=2**128 + 1,
+                    sender_address=deployed_dummy_account_address,
+                    calldata=[
+                        sierra_contract_address,
+                        get_selector_from_name("test"),
+                        3,
+                        1,
+                        2,
+                        3,
+                    ],
+                    nonce=1,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=None,
             ),
         ],
     )
@@ -1658,23 +1703,29 @@ def test_deploy_newly_declared_account():
         pending_timestamp=0,
         transactions=[
             # DECLARE an account contract class
-            DeprecatedDeclare(
-                version=0x100000000000000000000000000000000,
-                max_fee=0,
-                signature=[],
-                nonce=0,
-                contract_class=dummy_account_contract_definition,
-                sender_address=1,
+            TransactionAndClassHashHint(
+                transaction=DeprecatedDeclare(
+                    version=0x100000000000000000000000000000000,
+                    max_fee=0,
+                    signature=[],
+                    nonce=0,
+                    contract_class=dummy_account_contract_definition,
+                    sender_address=1,
+                ),
+                class_hash_hint=dummy_account_contract_class_hash,
             ),
             # DEPLOY_ACCOUNT the class declared in the previous transaction
-            DeployAccount(
-                class_hash=dummy_account_contract_class_hash,
-                contract_address_salt=0,
-                constructor_calldata=[],
-                version=0x100000000000000000000000000000001,
-                nonce=0,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=DeployAccount(
+                    class_hash=dummy_account_contract_class_hash,
+                    contract_address_salt=0,
+                    constructor_calldata=[],
+                    version=0x100000000000000000000000000000001,
+                    nonce=0,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=None,
             ),
         ],
     )
@@ -1738,24 +1789,30 @@ def test_deploy_newly_declared_sierra_account():
         pending_timestamp=0,
         transactions=[
             # DECLARE an account contract class
-            Declare(
-                version=0x100000000000000000000000000000002,
-                max_fee=0,
-                signature=[],
-                nonce=0,
-                contract_class=class_definition,
-                compiled_class_hash=compiled_class_hash,
-                sender_address=dummy_account_contract_address,
+            TransactionAndClassHashHint(
+                transaction=Declare(
+                    version=0x100000000000000000000000000000002,
+                    max_fee=0,
+                    signature=[],
+                    nonce=0,
+                    contract_class=class_definition,
+                    compiled_class_hash=compiled_class_hash,
+                    sender_address=dummy_account_contract_address,
+                ),
+                class_hash_hint=class_hash,
             ),
             # DEPLOY_ACCOUNT the class declared in the previous transaction
-            DeployAccount(
-                class_hash=class_hash,
-                contract_address_salt=0,
-                constructor_calldata=[0],
-                version=0x100000000000000000000000000000001,
-                nonce=0,
-                max_fee=0,
-                signature=[],
+            TransactionAndClassHashHint(
+                transaction=DeployAccount(
+                    class_hash=class_hash,
+                    contract_address_salt=0,
+                    constructor_calldata=[0],
+                    version=0x100000000000000000000000000000001,
+                    nonce=0,
+                    max_fee=0,
+                    signature=[],
+                ),
+                class_hash_hint=None,
             ),
         ],
     )
@@ -2094,8 +2151,8 @@ def test_simulate_transaction_succeeds():
         "pending_nonces": {},
         "pending_timestamp": 42,
         "gas_price": "0x1",
-        "transactions": [
-            {
+        "transactions": [{
+            "transaction": {
                 "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
                 "max_fee": "0x0",
                 "signature": [
@@ -2107,8 +2164,9 @@ def test_simulate_transaction_succeeds():
                 "version": "0x100000000000000000000000000000001",
                 "constructor_calldata": [],
                 "type": "DEPLOY_ACCOUNT"
-            }
-        ],
+            },
+            "class_hash_hint": null
+        }],
         "skip_validate": false
     }
     """

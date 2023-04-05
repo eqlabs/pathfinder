@@ -19,8 +19,7 @@ use crate::v02::types::reply::FeeEstimate;
 use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
-use pathfinder_common::{CallResultValue, StarknetBlockTimestamp};
-use starknet_gateway_types::request::add_transaction::AddTransaction;
+use pathfinder_common::{CallResultValue, ClassHash, StarknetBlockTimestamp};
 use starknet_gateway_types::{reply::PendingStateUpdate, request::add_transaction};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -143,7 +142,7 @@ impl Handle {
 
         let continued_span = tracing::info_span!("ext_py_sim_tx", pid = Empty);
 
-        let transactions: Result<Vec<AddTransaction>, _> =
+        let transactions: Result<Vec<TransactionAndClassHashHint>, _> =
             transactions.into_iter().map(map_tx).collect();
         let transactions = transactions?;
 
@@ -171,70 +170,97 @@ impl Handle {
     }
 }
 
-fn map_tx(tx: BroadcastedTransaction) -> Result<AddTransaction, CallFailure> {
+fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, CallFailure> {
     Ok(match tx {
-        BroadcastedTransaction::DeployAccount(tx) => {
-            add_transaction::AddTransaction::DeployAccount(add_transaction::DeployAccount {
-                version: tx.version,
-                max_fee: tx.max_fee,
-                signature: tx.signature,
-                nonce: tx.nonce,
-                class_hash: tx.class_hash,
-                contract_address_salt: tx.contract_address_salt,
-                constructor_calldata: tx.constructor_calldata,
-            })
-        }
+        BroadcastedTransaction::DeployAccount(tx) => TransactionAndClassHashHint {
+            transaction: add_transaction::AddTransaction::DeployAccount(
+                add_transaction::DeployAccount {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    nonce: tx.nonce,
+                    class_hash: tx.class_hash,
+                    contract_address_salt: tx.contract_address_salt,
+                    constructor_calldata: tx.constructor_calldata,
+                },
+            ),
+            class_hash_hint: None,
+        },
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
-            add_transaction::AddTransaction::Declare(add_transaction::Declare {
-                version: tx.version,
-                max_fee: tx.max_fee,
-                signature: tx.signature,
-                contract_class: add_transaction::ContractDefinition::Cairo(
-                    tx.contract_class.try_into().map_err(|_| {
-                        CallFailure::Internal("contract class serialization failure")
-                    })?,
-                ),
-                sender_address: tx.sender_address,
-                nonce: tx.nonce,
-                compiled_class_hash: None,
-            })
+            let class_hash = tx
+                .contract_class
+                .class_hash()
+                .map_err(|_| CallFailure::Internal("Failed to calculate class hash"))?;
+            TransactionAndClassHashHint {
+                transaction: add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    contract_class: add_transaction::ContractDefinition::Cairo(
+                        tx.contract_class.try_into().map_err(|_| {
+                            CallFailure::Internal("contract class serialization failure")
+                        })?,
+                    ),
+                    sender_address: tx.sender_address,
+                    nonce: tx.nonce,
+                    compiled_class_hash: None,
+                }),
+                class_hash_hint: Some(class_hash.hash()),
+            }
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
-            add_transaction::AddTransaction::Declare(add_transaction::Declare {
-                version: tx.version,
-                max_fee: tx.max_fee,
-                signature: tx.signature,
-                contract_class: add_transaction::ContractDefinition::Sierra(
-                    tx.contract_class.try_into().map_err(|_| {
-                        CallFailure::Internal("contract class serialization failure")
-                    })?,
-                ),
-                sender_address: tx.sender_address,
-                nonce: tx.nonce,
-                compiled_class_hash: Some(tx.compiled_class_hash),
-            })
+            let class_hash = tx
+                .contract_class
+                .class_hash()
+                .map_err(|_| CallFailure::Internal("Failed to calculate class hash"))?;
+            TransactionAndClassHashHint {
+                transaction: add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    contract_class: add_transaction::ContractDefinition::Sierra(
+                        tx.contract_class.try_into().map_err(|_| {
+                            CallFailure::Internal("contract class serialization failure")
+                        })?,
+                    ),
+                    sender_address: tx.sender_address,
+                    nonce: tx.nonce,
+                    compiled_class_hash: Some(tx.compiled_class_hash),
+                }),
+                class_hash_hint: Some(class_hash.hash()),
+            }
         }
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(tx)) => {
-            add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
-                version: tx.version,
-                max_fee: tx.max_fee,
-                signature: tx.signature,
-                nonce: None,
-                sender_address: tx.contract_address,
-                entry_point_selector: Some(tx.entry_point_selector),
-                calldata: tx.calldata,
-            })
+            TransactionAndClassHashHint {
+                transaction: add_transaction::AddTransaction::Invoke(
+                    add_transaction::InvokeFunction {
+                        version: tx.version,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: None,
+                        sender_address: tx.contract_address,
+                        entry_point_selector: Some(tx.entry_point_selector),
+                        calldata: tx.calldata,
+                    },
+                ),
+                class_hash_hint: None,
+            }
         }
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
-            add_transaction::AddTransaction::Invoke(add_transaction::InvokeFunction {
-                version: tx.version,
-                max_fee: tx.max_fee,
-                signature: tx.signature,
-                nonce: Some(tx.nonce),
-                sender_address: tx.sender_address,
-                entry_point_selector: None,
-                calldata: tx.calldata,
-            })
+            TransactionAndClassHashHint {
+                transaction: add_transaction::AddTransaction::Invoke(
+                    add_transaction::InvokeFunction {
+                        version: tx.version,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: Some(tx.nonce),
+                        sender_address: tx.sender_address,
+                        entry_point_selector: None,
+                        calldata: tx.calldata,
+                    },
+                ),
+                class_hash_hint: None,
+            }
         }
     })
 }
@@ -314,7 +340,7 @@ enum Command {
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
-        transactions: Vec<add_transaction::AddTransaction>,
+        transactions: Vec<TransactionAndClassHashHint>,
         at_block: BlockHashNumberOrLatest,
         /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
@@ -324,7 +350,7 @@ enum Command {
         response: oneshot::Sender<Result<Vec<FeeEstimate>, CallFailure>>,
     },
     SimulateTransaction {
-        transactions: Vec<add_transaction::AddTransaction>,
+        transactions: Vec<TransactionAndClassHashHint>,
         at_block: BlockHashNumberOrLatest,
         skip_validate: bool,
         /// Price input for the fee estimation, also communicated back in response
@@ -334,6 +360,12 @@ enum Command {
         block_timestamp: Option<StarknetBlockTimestamp>,
         response: oneshot::Sender<Result<Vec<TransactionSimulation>, CallFailure>>,
     },
+}
+
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct TransactionAndClassHashHint {
+    pub transaction: add_transaction::AddTransaction,
+    pub class_hash_hint: Option<ClassHash>,
 }
 
 impl Command {

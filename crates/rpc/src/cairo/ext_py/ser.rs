@@ -9,9 +9,11 @@ use starknet_gateway_types::{
         state_update::{DeployedContract, StorageDiff},
         PendingStateUpdate,
     },
-    request::{add_transaction::AddTransaction, BlockHashOrTag, BlockNumberOrTag, Tag},
+    request::{BlockHashOrTag, BlockNumberOrTag, Tag},
 };
 use std::collections::HashMap;
+
+use super::TransactionAndClassHashHint;
 
 /// The command we send to the Python loop.
 #[serde_with::serde_as]
@@ -33,7 +35,7 @@ pub(crate) enum ChildCommand<'a> {
         // zero means use the gas price from the block.
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
         gas_price: &'a ethers::types::H256,
-        transactions: &'a [AddTransaction],
+        transactions: &'a [TransactionAndClassHashHint],
     },
     SimulateTx {
         #[serde(flatten)]
@@ -42,7 +44,7 @@ pub(crate) enum ChildCommand<'a> {
         // zero means use the gas price from the block.
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
         gas_price: &'a ethers::types::H256,
-        transactions: &'a [AddTransaction],
+        transactions: &'a [TransactionAndClassHashHint],
         skip_validate: &'a bool,
     },
 }
