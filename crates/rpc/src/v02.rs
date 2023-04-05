@@ -59,6 +59,10 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method(
             "v0.2_starknet_addDeployAccountTransaction",
             method::add_deploy_account_transaction,
+        )?
+        .register_method(
+            "v0.2_pathfinder_getProof",
+            crate::pathfinder::methods::get_proof,
         )?;
 
     Ok(module)

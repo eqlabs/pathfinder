@@ -1,1 +1,3 @@
-pub(crate) mod get_proof;
+mod get_proof;
+
+pub(crate) use get_proof::get_proof;

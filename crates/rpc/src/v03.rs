@@ -71,6 +71,10 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method(
             "v0.3_starknet_simulateTransaction",
             method::simulate_transaction,
+        )?
+        .register_method(
+            "v0.3_pathfinder_getProof",
+            crate::pathfinder::methods::get_proof,
         )?;
 
     Ok(module)
