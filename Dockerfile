@@ -49,6 +49,7 @@ RUN TARGETARCH=${TARGETARCH} \
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-python-starkhash-planner
 COPY crates/stark_curve crates/stark_curve
 COPY crates/stark_hash crates/stark_hash
+COPY crates/stark_poseidon crates/stark_poseidon
 COPY crates/stark_hash_python crates/stark_hash_python
 RUN cd crates/stark_hash_python && \
     cargo chef prepare --recipe-path recipe.json
@@ -61,6 +62,7 @@ RUN TARGETARCH=${TARGETARCH} ./prepare-stark_hash_python.sh
 COPY --from=rust-python-starkhash-planner /usr/src/pathfinder/crates/stark_hash_python/recipe.json /usr/src/pathfinder/crates/stark_hash_python/recipe.json
 COPY crates/stark_curve crates/stark_curve
 COPY crates/stark_hash crates/stark_hash
+COPY crates/stark_poseidon crates/stark_poseidon
 COPY ./build/cargo-chef-cook.sh ./crates/stark_hash_python/cargo-chef-cook.sh
 RUN cd crates/stark_hash_python && TARGETARCH=${TARGETARCH} ./cargo-chef-cook.sh --release --recipe-path recipe.json
 
