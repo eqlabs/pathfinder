@@ -12,7 +12,7 @@ use pathfinder_common::{
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
-    state_tree::{ClassCommitmentTree, StorageCommitmentTree},
+    ClassCommitmentTree, StorageCommitmentTree,
 };
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},

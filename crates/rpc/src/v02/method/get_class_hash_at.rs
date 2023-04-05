@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress, ContractStateHash};
-use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
+use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use starknet_gateway_types::pending::PendingData;
 

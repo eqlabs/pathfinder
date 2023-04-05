@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
-use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
+use pathfinder_merkle_tree::{ContractsStateTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use serde::Deserialize;
 use stark_hash::Felt;

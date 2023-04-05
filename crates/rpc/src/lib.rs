@@ -119,7 +119,7 @@ mod tests {
         StarknetTransactionIndex, StateCommitment, StorageAddress, StorageCommitment,
         TransactionVersion,
     };
-    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
+    use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, StarknetBlock,
         StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,

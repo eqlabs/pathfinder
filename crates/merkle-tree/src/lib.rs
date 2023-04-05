@@ -3,7 +3,11 @@ use stark_hash::Felt;
 pub mod contract_state;
 pub mod merkle_node;
 pub mod merkle_tree;
-pub mod state_tree;
+
+mod class;
+mod contract;
+pub use class::ClassCommitmentTree;
+pub use contract::{ContractsStateTree, StorageCommitmentTree};
 
 /// Hashing function used by a particular merkle tree implementation.
 pub trait Hash {

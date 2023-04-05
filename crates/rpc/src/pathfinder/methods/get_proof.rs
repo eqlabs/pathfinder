@@ -8,7 +8,7 @@ use pathfinder_common::{
     StateCommitment, StorageAddress,
 };
 use pathfinder_merkle_tree::merkle_tree::ProofNode;
-use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
+use pathfinder_merkle_tree::{ContractsStateTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use stark_hash::Felt;
 

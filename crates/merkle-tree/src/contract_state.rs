@@ -1,4 +1,4 @@
-use crate::state_tree::{ContractsStateTree, StorageCommitmentTree};
+use crate::{ContractsStateTree, StorageCommitmentTree};
 use anyhow::Context;
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,

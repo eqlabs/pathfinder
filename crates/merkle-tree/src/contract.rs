@@ -3,15 +3,15 @@
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
+use crate::PedersenHash;
 use crate::{
     merkle_node::Node,
     merkle_tree::{MerkleTree, ProofNode, Visit},
 };
-use crate::{PedersenHash, PoseidonHash};
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
-    ClassCommitment, ClassCommitmentLeafHash, ContractAddress, ContractRoot, ContractStateHash,
-    SierraHash, StorageAddress, StorageCommitment, StorageValue,
+    ContractAddress, ContractRoot, ContractStateHash, StorageAddress, StorageCommitment,
+    StorageValue,
 };
 use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
@@ -107,35 +107,5 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
         self.tree.dfs(f)
-    }
-}
-
-/// Merkle tree which contains Starknet's class commitment.
-///
-/// This tree maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
-pub struct ClassCommitmentTree<'tx, 'queries> {
-    tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PoseidonHash>,
-}
-
-impl<'tx> ClassCommitmentTree<'tx, '_> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
-        let tree = MerkleTree::load("tree_class", transaction, root.0)?;
-
-        Ok(Self { tree })
-    }
-
-    /// Adds a leaf node for a Sierra -> CASM commitment.
-    ///
-    /// Note that the leaf value is _not_ the Cairo hash, but a hashed value based on that.
-    /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
-    /// for details.
-    pub fn set(&mut self, class: SierraHash, value: ClassCommitmentLeafHash) -> anyhow::Result<()> {
-        self.tree.set(class.view_bits(), value.0)
-    }
-
-    /// Applies and persists any changes. Returns the new global root.
-    pub fn apply(self) -> anyhow::Result<ClassCommitment> {
-        let root = self.tree.commit()?;
-        Ok(ClassCommitment(root))
     }
 }
