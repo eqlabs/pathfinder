@@ -101,7 +101,6 @@ fn check_database(
     Ok(Some(status))
 }
 
-
 /// A local definition of the [gateway's status type](starknet_gateway_types::reply::Status) to decouple this from the official gateway types.
 #[derive(Copy, Clone, Debug, serde::Serialize, PartialEq)]
 pub enum GatewayStatus {

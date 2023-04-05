@@ -10,7 +10,10 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
             Result::<_, RpcError>::Ok(pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT)
         })?
         .register_method("v0.1_pathfinder_getProof", methods::get_proof)?
-        .register_method("v0.1_pathfinder_getTransactionStatus", methods::get_transaction_status)?;
+        .register_method(
+            "v0.1_pathfinder_getTransactionStatus",
+            methods::get_transaction_status,
+        )?;
 
     Ok(module)
 }
