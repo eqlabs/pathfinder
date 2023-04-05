@@ -119,6 +119,28 @@
                     "$ref": "#/components/errors/PROOF_LIMIT_EXCEEDED"
                 }
             ]
+        },
+        {
+            "name": "pathfinder_getTransactionStatus",
+            "summary": "Returns the status of a transaction",
+            "description": "Returns a transaction's current status, including if it has been rejected by the sequencer.",
+            "params": [
+                {
+                    "name": "transaction_hash",
+                    "summary": "The hash of the requested transaction",
+                    "required": true,
+                    "schema": {
+                        "$ref": "#/components/schemas/TXN_HASH"
+                    }
+                }
+            ],
+            "result": {
+                "name": "result",
+                "description": "The status of the transaction.",
+                "schema": {
+                    "$ref": "#/components/schemas/TX_GATEWAY_STATUS"
+                }
+            }
         }
     ],
     "components": {
@@ -160,8 +182,8 @@
                 "type": "string",
                 "title": "Field element",
                 "$comment": "A field element, represented as a string of hex digits",
-                "description": "A field element represented as a string of hex digits with a 0x prefix",
-                "pattern": "^0x0[a-fA-F0-9]{1,63}$"
+                "description": "A field element represented as a string of hex digits with a 0x prefix and up-to 63 hex digits",
+                "pattern": "^0x(0|[a-fA-F1-9]{1}[a-fA-F0-9]{0,62})$"
             },
             "BLOCK_NUMBER": {
                 "description": "The block's number (its height)",
@@ -254,6 +276,25 @@
                 "required": [
                     "edge"
                 ]
+            },
+            "TXN_HASH": {
+                "$ref": "#/components/schemas/FELT",
+                "description": "The transaction hash, as assigned in StarkNet",
+                "title": "A transaction's hash"
+            },
+            "TX_GATEWAY_STATUS": {
+                "type": "string",
+                "enum": [
+                    "NOT_RECEIVED",
+                    "RECEIVED",
+                    "PENDING",
+                    "REJECTED",
+                    "ACCEPTED_ON_L1",
+                    "ACCEPTED_ON_L2",
+                    "REVERTED",
+                    "ABORTED"
+                ],
+                "description": "The status of a transaction"
             }
         },
         "errors": {

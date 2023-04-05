@@ -40,8 +40,8 @@ pub async fn prefix_rpc_method_names_with_version(
         // However for a non-empty path adding a trailing slash
         // makes it a different path from the original,
         // that's why we have to account for those separately.
-        "/" | "/rpc/v0.2" | "/rpc/v0.2/" => &[("starknet_", "v0.2_"), ("pathfinder_", "v0.1_")][..],
-        "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_")][..],
+        "/" | "/rpc/v0.2" | "/rpc/v0.2/" => &[("starknet_", "v0.2_"), ("pathfinder_", "v0.2_")][..],
+        "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..],
         "/rpc/pathfinder/v0.1" | "/rpc/pathfinder/v0.1/" => &[("pathfinder_", "v0.1_")][..],
         _ => {
             return Err(BoxError::from(VersioningError::InvalidPath));
@@ -200,6 +200,7 @@ mod tests {
             "starknet_blockNumber",
             "starknet_call",
             "starknet_chainId",
+            "starknet_estimateFee",
             "starknet_getBlockWithTxHashes",
             "starknet_getBlockWithTxs",
             "starknet_getBlockTransactionCount",
@@ -215,15 +216,17 @@ mod tests {
             "starknet_getTransactionReceipt",
             "starknet_pendingTransactions",
             "starknet_syncing",
+            "pathfinder_getProof",
+            "pathfinder_getTransactionStatus",
         ]
         .into_iter();
         // Methods available only in starknet RPC spec v0.2
-        let v02_only = ["starknet_estimateFee"].into_iter();
+        let v03_only = ["starknet_simulateTransaction"].into_iter();
         // Methods available in pathfinder RPC spec v0.1
-        let pathfinder_only = ["pathfinder_getProof", "pathfinder_version"].into_iter();
+        let pathfinder_only = ["pathfinder_version"].into_iter();
 
-        let v02_methods = common.clone().chain(v02_only.clone()).collect::<Vec<_>>();
-        let v03_methods = common.clone().collect::<Vec<_>>();
+        let v02_methods = common.clone().collect::<Vec<_>>();
+        let v03_methods = common.clone().chain(v03_only.clone()).collect::<Vec<_>>();
         let pathfinder_methods = pathfinder_only.clone().collect::<Vec<_>>();
 
         for (paths, version, methods) in vec![
@@ -233,16 +236,8 @@ mod tests {
                 v02_methods,
             ),
             (vec!["/rpc/v0.3", "/rpc/v0.3/"], "v0.3", v03_methods),
-            // rpc/pathfinder/v0.1 methods are also available in the default RPC api version, which is starknet v0.2
             (
-                vec![
-                    "",
-                    "/",
-                    "/rpc/v0.2",
-                    "/rpc/v0.2/",
-                    "/rpc/pathfinder/v0.1",
-                    "/rpc/pathfinder/v0.1/",
-                ],
+                vec!["/rpc/pathfinder/v0.1", "/rpc/pathfinder/v0.1/"],
                 "v0.1",
                 pathfinder_methods,
             ),
