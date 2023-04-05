@@ -297,13 +297,13 @@ fn compute_final_hash(
 ///
 /// The tree height is 64 in our case since our set operation takes u64 index values.
 struct CommitmentTree {
-    tree: MerkleTree<(), pathfinder_merkle_tree::PedersenHash, 64>,
+    tree: MerkleTree<pathfinder_merkle_tree::PedersenHash, 64>,
 }
 
 impl Default for CommitmentTree {
     fn default() -> Self {
         Self {
-            tree: MerkleTree::empty(()),
+            tree: MerkleTree::empty(),
         }
     }
 }
@@ -311,11 +311,11 @@ impl Default for CommitmentTree {
 impl CommitmentTree {
     pub fn set(&mut self, index: u64, value: Felt) -> Result<()> {
         let key = index.to_be_bytes();
-        self.tree.set(key.view_bits(), value)
+        self.tree.set(&(), key.view_bits(), value)
     }
 
     pub fn commit(self) -> Result<Felt> {
-        self.tree.commit()
+        self.tree.commit(&())
     }
 }
 

@@ -8,6 +8,7 @@ use crate::{
     merkle_node::Node,
     merkle_tree::{MerkleTree, ProofNode, Visit},
 };
+use anyhow::Context;
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, StorageAddress, StorageCommitment,
@@ -20,35 +21,37 @@ use std::ops::ControlFlow;
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.
 pub struct ContractsStateTree<'tx, 'queries> {
-    tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash, 251>,
+    tree: MerkleTree<PedersenHash, 251>,
+    storage: RcNodeStorage<'tx, 'queries>,
 }
 
 impl<'tx> ContractsStateTree<'tx, '_> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> anyhow::Result<Self> {
-        // TODO: move the string into storage.
-        let tree = MerkleTree::load("tree_contracts", transaction, root.0)?;
+        let tree = MerkleTree::new(root.0);
+        let storage = RcNodeStorage::open("tree_contracts", transaction)
+            .context("Opening tree_contracts storage")?;
 
-        Ok(Self { tree })
+        Ok(Self { tree, storage })
     }
 
     #[allow(dead_code)]
     pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
-        let value = self.tree.get(address.view_bits())?;
+        let value = self.tree.get(&self.storage, address.view_bits())?;
         Ok(value.map(StorageValue))
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
     pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
-        self.tree.get_proof(key)
+        self.tree.get_proof(&self.storage, key)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
-        self.tree.set(address.view_bits(), value.0)
+        self.tree.set(&self.storage, address.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new tree root.
     pub fn apply(self) -> anyhow::Result<ContractRoot> {
-        let root = self.tree.commit()?;
+        let root = self.tree.commit(&self.storage)?;
         Ok(ContractRoot(root))
     }
 
@@ -57,13 +60,14 @@ impl<'tx> ContractsStateTree<'tx, '_> {
         &self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
-        self.tree.dfs(f)
+        self.tree.dfs(&self.storage, f)
     }
 }
 
 /// A Binary Merkle-Patricia Tree which contains StarkNet's storage commitment.
 pub struct StorageCommitmentTree<'tx, 'queries> {
-    tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash, 251>,
+    tree: MerkleTree<PedersenHash, 251>,
+    storage: RcNodeStorage<'tx, 'queries>,
 }
 
 impl<'tx> StorageCommitmentTree<'tx, '_> {
@@ -71,14 +75,15 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
         transaction: &'tx Transaction<'tx>,
         root: StorageCommitment,
     ) -> anyhow::Result<Self> {
-        // TODO: move the string into storage.
-        let tree = MerkleTree::load("tree_global", transaction, root.0)?;
+        let tree = MerkleTree::new(root.0);
+        let storage = RcNodeStorage::open("tree_contracts", transaction)
+            .context("Opening tree_global storage")?;
 
-        Ok(Self { tree })
+        Ok(Self { tree, storage })
     }
 
     pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
-        let value = self.tree.get(address.view_bits())?;
+        let value = self.tree.get(&self.storage, address.view_bits())?;
         Ok(value.map(ContractStateHash))
     }
 
@@ -87,18 +92,18 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
         address: ContractAddress,
         value: ContractStateHash,
     ) -> anyhow::Result<()> {
-        self.tree.set(address.view_bits(), value.0)
+        self.tree.set(&self.storage, address.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new global root.
     pub fn apply(self) -> anyhow::Result<StorageCommitment> {
-        let root = self.tree.commit()?;
+        let root = self.tree.commit(&self.storage)?;
         Ok(StorageCommitment(root))
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
     pub fn get_proof(&self, address: &ContractAddress) -> anyhow::Result<Vec<ProofNode>> {
-        self.tree.get_proof(address.view_bits())
+        self.tree.get_proof(&self.storage, address.view_bits())
     }
 
     /// See [`MerkleTree::dfs`]
@@ -106,6 +111,6 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
         &self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
-        self.tree.dfs(f)
+        self.tree.dfs(&self.storage, f)
     }
 }

@@ -53,9 +53,9 @@ Above generates the py/test_call.py::populate_test_contract_with_132_on_3 tree_g
 
     let mut line_number = 0;
 
-    let mut tree = pathfinder_merkle_tree::merkle_tree::MerkleTree::<_, PedersenHash, 251>::empty(
-        RefCell::new(Default::default()),
-    );
+    let mut tree = pathfinder_merkle_tree::merkle_tree::MerkleTree::<PedersenHash, 251>::empty();
+
+    let storage = RefCell::new(Default::default());
 
     let mut folded_first = None;
 
@@ -97,15 +97,13 @@ Above generates the py/test_call.py::populate_test_contract_with_132_on_3 tree_g
             );
         }
 
-        tree.set(key.view_bits(), value)
+        tree.set(&storage, key.view_bits(), value)
             .with_context(|| format!("Insert key and value to tree from line {line_number}"))?;
     }
 
-    let root = tree.commit_mut().context("Compute tree")?;
+    let root = tree.commit_mut(&storage).context("Compute tree")?;
 
     println!("root: {root:x}");
-
-    let storage = tree.into_storage();
 
     println!("nodes:");
     let mut data = [0u8; 65];
