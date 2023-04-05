@@ -5,7 +5,7 @@
 
 use crate::PedersenHash;
 use crate::{
-    merkle_node::Node,
+    merkle_node::InternalNode,
     merkle_tree::{MerkleTree, ProofNode, Visit},
 };
 use anyhow::Context;
@@ -14,24 +14,25 @@ use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, StorageAddress, StorageCommitment,
     StorageValue,
 };
-use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
 use std::ops::ControlFlow;
 
+crate::define_sqlite_storage!(ContractsStorage, "tree_contracts");
+crate::define_sqlite_storage!(GlobalStorage, "tree_global");
+
 /// A Binary Merkle-Patricia Tree which contains
 /// the storage state of all StarkNet contracts.
-pub struct ContractsStateTree<'tx, 'queries> {
+pub struct ContractsStateTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
-    storage: RcNodeStorage<'tx, 'queries>,
+    storage: ContractsStorage<'tx>,
 }
 
-impl<'tx> ContractsStateTree<'tx, '_> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> anyhow::Result<Self> {
+impl<'tx> ContractsStateTree<'tx> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = RcNodeStorage::open("tree_contracts", transaction)
-            .context("Opening tree_contracts storage")?;
+        let storage = ContractsStorage::new(&transaction);
 
-        Ok(Self { tree, storage })
+        Self { tree, storage }
     }
 
     #[allow(dead_code)]
@@ -56,7 +57,7 @@ impl<'tx> ContractsStateTree<'tx, '_> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
         &self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
@@ -65,21 +66,17 @@ impl<'tx> ContractsStateTree<'tx, '_> {
 }
 
 /// A Binary Merkle-Patricia Tree which contains StarkNet's storage commitment.
-pub struct StorageCommitmentTree<'tx, 'queries> {
+pub struct StorageCommitmentTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
-    storage: RcNodeStorage<'tx, 'queries>,
+    storage: GlobalStorage<'tx>,
 }
 
-impl<'tx> StorageCommitmentTree<'tx, '_> {
-    pub fn load(
-        transaction: &'tx Transaction<'tx>,
-        root: StorageCommitment,
-    ) -> anyhow::Result<Self> {
+impl<'tx> StorageCommitmentTree<'tx> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: StorageCommitment) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = RcNodeStorage::open("tree_contracts", transaction)
-            .context("Opening tree_global storage")?;
+        let storage = GlobalStorage::new(&transaction);
 
-        Ok(Self { tree, storage })
+        Self { tree, storage }
     }
 
     pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
@@ -107,7 +104,7 @@ impl<'tx> StorageCommitmentTree<'tx, '_> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&Node, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
         &self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {

@@ -100,8 +100,7 @@ fn get_definition_at(
         .context("Reading storage commitment from database")?
         .ok_or(GetClassAtError::BlockNotFound)?;
 
-    let tree = StorageCommitmentTree::load(tx, storage_commitment)
-        .context("Loading storage commitment tree")?;
+    let tree = StorageCommitmentTree::load(tx, storage_commitment);
     let state_hash = tree
         .get(contract)
         .context("Fetching contract leaf in storage commitment tree")?

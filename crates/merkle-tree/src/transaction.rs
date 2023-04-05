@@ -22,14 +22,28 @@ impl Default for TransactionTree {
     }
 }
 
+struct NullStorage;
+
+impl crate::storage::Storage for NullStorage {
+    type Error = std::convert::Infallible;
+
+    fn get(&self, _node: &Felt) -> Result<Option<crate::Node>, Self::Error> {
+        Ok(None)
+    }
+
+    fn insert(&self, _hash: &Felt, _node: &crate::Node) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl TransactionTree {
     pub fn set(&mut self, index: u64, value: Felt) -> anyhow::Result<()> {
         let key = index.to_be_bytes();
-        self.tree.set(&(), key.view_bits(), value)
+        self.tree.set(&NullStorage {}, key.view_bits(), value)
     }
 
     pub fn commit(self) -> anyhow::Result<Felt> {
-        self.tree.commit(&())
+        self.tree.commit(&NullStorage {})
     }
 }
 

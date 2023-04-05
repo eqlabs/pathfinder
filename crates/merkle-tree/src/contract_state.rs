@@ -17,7 +17,7 @@ pub fn update_contract_state(
     updates: &[StorageDiff],
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
-    storage_commitment_tree: &StorageCommitmentTree<'_, '_>,
+    storage_commitment_tree: &StorageCommitmentTree<'_>,
     db: &Transaction<'_>,
 ) -> anyhow::Result<ContractStateHash> {
     // Update the contract state tree.
@@ -43,8 +43,7 @@ pub fn update_contract_state(
 
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
-        let mut contract_tree =
-            ContractsStateTree::load(db, old_root).context("Load contract state tree")?;
+        let mut contract_tree = ContractsStateTree::load(db, old_root);
         for storage_diff in updates {
             contract_tree
                 .set(storage_diff.key, storage_diff.value)

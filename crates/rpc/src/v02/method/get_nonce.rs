@@ -49,8 +49,7 @@ pub async fn get_nonce(
             .context("Fetching storage commitment")?
             .ok_or(GetNonceError::BlockNotFound)?;
 
-        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
-            .context("Loading storage commitment tree")?;
+        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
 
         let state_hash = storage_commitment_tree
             .get(input.contract_address)

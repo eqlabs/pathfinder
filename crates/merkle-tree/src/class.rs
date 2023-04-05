@@ -1,6 +1,5 @@
 use anyhow::Context;
 use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
-use pathfinder_storage::merkle_tree::RcNodeStorage;
 use rusqlite::Transaction;
 
 use crate::merkle_tree::MerkleTree;
@@ -9,18 +8,19 @@ use crate::PoseidonHash;
 /// Merkle tree which contains Starknet's class commitment.
 ///
 /// This tree maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
-pub struct ClassCommitmentTree<'tx, 'queries> {
+pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
-    storage: RcNodeStorage<'tx, 'queries>,
+    storage: ClassStorage<'tx>,
 }
 
-impl<'tx> ClassCommitmentTree<'tx, '_> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
-        let tree = MerkleTree::new(root.0);
-        let storage =
-            RcNodeStorage::open("tree_class", transaction).context("Opening tree_class storage")?;
+crate::define_sqlite_storage!(ClassStorage, "tree_class");
 
-        Ok(Self { tree, storage })
+impl<'tx> ClassCommitmentTree<'tx> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
+        let tree = MerkleTree::new(root.0);
+        let storage = ClassStorage::new(&transaction);
+
+        Self { tree, storage }
     }
 
     /// Adds a leaf node for a Sierra -> CASM commitment.

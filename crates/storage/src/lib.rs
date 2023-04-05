@@ -4,7 +4,6 @@
 
 mod contract;
 mod ethereum;
-pub mod merkle_tree;
 mod schema;
 mod state;
 #[cfg(any(feature = "test-utils", test))]

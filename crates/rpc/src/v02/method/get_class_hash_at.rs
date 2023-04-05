@@ -54,8 +54,7 @@ pub async fn get_class_hash_at(
             .context("Reading storage commitment from database")?
             .ok_or(GetClassHashAtError::BlockNotFound)?;
 
-        let tree = StorageCommitmentTree::load(&tx, storage_commitment)
-            .context("Loading storage commitment tree")?;
+        let tree = StorageCommitmentTree::load(&tx, storage_commitment);
         let state_hash = tree
             .get(input.contract_address)
             .context("Fetching contract leaf in storage commitment tree")?

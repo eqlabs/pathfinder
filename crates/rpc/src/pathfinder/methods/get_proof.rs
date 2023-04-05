@@ -198,8 +198,7 @@ pub async fn get_proof(
             )
         };
 
-        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
-            .context("Storage commitment tree")?;
+        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
@@ -231,8 +230,7 @@ pub async fn get_proof(
                     .into()
                 })?;
 
-        let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
-            .context("Load contract state tree")?;
+        let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root);
 
         let storage_proofs = input
             .keys
