@@ -14,10 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - support `starknet_estimateFee` in the JSON-RPC v0.3 API
   - supports estimating multiple transactions
   - this includes declaring and immediately using a class (not currently possible via the gateway)
+- support `pathfinder_getTransactionStatus` which is exposed on all RPC routes
+  - this enables querying a transactions current status, including whether the gateway has received or rejected it
 
 ### Fixed
 
 - RPC rejects Fee values with more than 32 digits
+- RPC does not expose `pathfinder_getProof` on v0.2 and v0.3 routes
 
 ## [0.5.1] - 2023-23-23
 

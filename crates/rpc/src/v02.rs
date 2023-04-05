@@ -1,6 +1,6 @@
 use crate::module::Module;
 
-mod common;
+pub mod common;
 pub mod method;
 pub mod types;
 
@@ -63,6 +63,10 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method(
             "v0.2_pathfinder_getProof",
             crate::pathfinder::methods::get_proof,
+        )?
+        .register_method(
+            "v0.2_pathfinder_getTransactionStatus",
+            crate::pathfinder::methods::get_transaction_status,
         )?;
 
     Ok(module)
