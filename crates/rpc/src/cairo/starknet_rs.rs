@@ -157,12 +157,18 @@ pub(crate) fn estimate_fee(
     *general_config.starknet_os_config_mut() = starknet_os_config;
     general_config.block_info_mut().gas_price = gas_price.as_u64();
 
+    let mut fees = Vec::new();
+
     for transaction in &transactions {
-        let res = transaction.execute(&mut state, &general_config)?;
-        dbg!(res.actual_fee);
+        let tx_info = transaction.execute(&mut state, &general_config)?;
+        fees.push(FeeEstimate {
+            gas_consumed: U256::from(tx_info.actual_fee) / std::cmp::max(1.into(), gas_price),
+            gas_price,
+            overall_fee: tx_info.actual_fee.into(),
+        });
     }
 
-    Ok(vec![])
+    Ok(fees)
 }
 
 enum Transaction {
@@ -179,10 +185,10 @@ impl Transaction {
         general_config: &StarknetGeneralConfig,
     ) -> Result<TransactionExecutionInfo, TransactionError> {
         match self {
-            Transaction::Declare(tx) => tx.execute(state, general_config),
+            Transaction::Declare(tx) => tx.execute(state, general_config, true),
             Transaction::Deploy(tx) => tx.execute(state, general_config),
-            Transaction::DeployAccount(tx) => tx.execute(state, general_config),
-            Transaction::Invoke(tx) => tx.execute(state, general_config),
+            Transaction::DeployAccount(tx) => tx.execute(state, general_config, true),
+            Transaction::Invoke(tx) => tx.execute(state, general_config, true),
         }
     }
 }
