@@ -218,7 +218,7 @@ mod tests {
         fn valid_mainnet_invoke_v0() -> BroadcastedInvokeTransactionV0 {
             BroadcastedInvokeTransactionV0 {
                 version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                max_fee: Fee(ethers::types::H128::from_low_u64_be(10_000_000)),
+                max_fee: Fee(ethers::types::H128::from_low_u64_be(10_000_000_000_000_000)),
                 signature: vec![],
                 nonce: Some(TransactionNonce(Default::default())),
                 contract_address: ContractAddress::new_or_panic(felt!(
