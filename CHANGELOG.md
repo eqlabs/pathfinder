@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - RPC rejects Fee values with more than 32 digits
-- RPC does not expose `pathfinder_getProof` on v0.2 and v0.3 routes
+- RPC does not expose `pathfinder_getProof` on v0.3 route
+- RPC exposes `pathfinder_version` on v0.2 route
 
 ## [0.5.1] - 2023-23-23
 
