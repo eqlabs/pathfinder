@@ -168,6 +168,8 @@ pub struct Transaction {
     pub transaction: Option<transaction::Transaction>,
     #[serde(default)]
     pub transaction_index: Option<u64>,
+    #[serde(default)]
+    pub transaction_failure_reason: Option<transaction::Failure>,
 }
 
 /// Used to deserialize replies to StarkNet transaction status requests.
@@ -627,7 +629,6 @@ pub mod transaction {
     pub struct Failure {
         pub code: String,
         pub error_message: String,
-        pub tx_id: u64,
     }
 }
 
