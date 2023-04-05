@@ -903,11 +903,8 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            pathfinder_merkle_tree::StorageCommitmentTree::load(
-                tx,
-                StorageCommitment(Felt::ZERO),
-            )
-            .unwrap();
+            pathfinder_merkle_tree::StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO))
+                .unwrap();
 
         storage_commitment_tree
             .set(test_contract_address, test_contract_state_hash)
@@ -965,11 +962,8 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            pathfinder_merkle_tree::StorageCommitmentTree::load(
-                tx,
-                StorageCommitment(Felt::ZERO),
-            )
-            .unwrap();
+            pathfinder_merkle_tree::StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO))
+                .unwrap();
 
         storage_commitment_tree
             .set(account_contract_address, account_contract_state_hash)
@@ -1027,11 +1021,8 @@ mod tests {
         ContractCodeTable::insert(tx, class_hash, contract_definition).unwrap();
 
         // set up contract state tree
-        let mut contract_state = pathfinder_merkle_tree::ContractsStateTree::load(
-            tx,
-            ContractRoot(Felt::ZERO),
-        )
-        .unwrap();
+        let mut contract_state =
+            pathfinder_merkle_tree::ContractsStateTree::load(tx, ContractRoot(Felt::ZERO)).unwrap();
         for (storage_address, storage_value) in storage_updates {
             contract_state
                 .set(*storage_address, *storage_value)

@@ -21,12 +21,13 @@ pub fn chunked_inserts(tx: &rusqlite::Transaction<'_>, keys: &[Felt], batch_size
     let mut hash = stark_hash::Felt::ZERO;
 
     for keys in keys.chunks(batch_size) {
-        let mut uut = pathfinder_merkle_tree::merkle_tree::MerkleTree::<_, PedersenHash>::load(
-            "tree_contracts",
-            tx,
-            hash,
-        )
-        .unwrap();
+        let mut uut =
+            pathfinder_merkle_tree::merkle_tree::MerkleTree::<_, PedersenHash, 251>::load(
+                "tree_contracts",
+                tx,
+                hash,
+            )
+            .unwrap();
 
         keys.iter()
             .enumerate()

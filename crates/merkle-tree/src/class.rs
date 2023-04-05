@@ -9,7 +9,7 @@ use crate::PoseidonHash;
 ///
 /// This tree maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
 pub struct ClassCommitmentTree<'tx, 'queries> {
-    tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PoseidonHash>,
+    tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PoseidonHash, 251>,
 }
 
 impl<'tx> ClassCommitmentTree<'tx, '_> {

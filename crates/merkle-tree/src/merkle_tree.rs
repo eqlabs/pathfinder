@@ -107,14 +107,15 @@ pub enum ProofNode {
 ///
 /// For more information on how this functions internally, see [here](super::merkle_tree).
 #[derive(Debug, Clone)]
-pub struct MerkleTree<T, H: Hash> {
+pub struct MerkleTree<T, H: Hash, const HEIGHT: usize> {
     storage: T,
     root: Rc<RefCell<Node>>,
-    max_height: u8,
     _hasher: std::marker::PhantomData<H>,
 }
 
-impl<'tx, 'queries, H: Hash> MerkleTree<RcNodeStorage<'tx, 'queries>, H> {
+impl<'tx, 'queries, H: Hash, const HEIGHT: usize>
+    MerkleTree<RcNodeStorage<'tx, 'queries>, H, HEIGHT>
+{
     /// Loads an existing tree or creates a new one if it does not yet exist.
     ///
     /// Use the [Felt::ZERO] as root if the tree does not yet exist, will otherwise
@@ -136,11 +137,11 @@ impl<'tx, 'queries, H: Hash> MerkleTree<RcNodeStorage<'tx, 'queries>, H> {
         root: Felt,
     ) -> anyhow::Result<Self> {
         let storage = RcNodeStorage::open(table, transaction)?;
-        Self::new(storage, root, 251)
+        Self::new(storage, root)
     }
 }
 
-impl<T: NodeStorage, H: Hash> MerkleTree<T, H> {
+impl<T: NodeStorage, H: Hash, const HEIGHT: usize> MerkleTree<T, H, HEIGHT> {
     /// Removes one instance of the tree and its root from persistent storage.
     ///
     /// This implies decrementing the root's reference count. The root will
@@ -163,12 +164,11 @@ impl<T: NodeStorage, H: Hash> MerkleTree<T, H> {
     /// Less visible initialization for `MerkleTree<T>` as the main entry points should be
     /// [`MerkleTree::<RcNodeStorage>::load`] for persistent trees and [`MerkleTree::empty`] for
     /// transient ones.
-    fn new(storage: T, root: Felt, max_height: u8) -> anyhow::Result<Self> {
+    fn new(storage: T, root: Felt) -> anyhow::Result<Self> {
         let root_node = Rc::new(RefCell::new(Node::Unresolved(root)));
         let mut tree = Self {
             storage,
             root: root_node,
-            max_height,
             _hasher: std::marker::PhantomData,
         };
         if root != Felt::ZERO {
@@ -181,8 +181,8 @@ impl<T: NodeStorage, H: Hash> MerkleTree<T, H> {
         Ok(tree)
     }
 
-    pub fn empty(storage: T, max_height: u8) -> Self {
-        Self::new(storage, Felt::ZERO, max_height).expect(
+    pub fn empty(storage: T) -> Self {
+        Self::new(storage, Felt::ZERO).expect(
             "Since called with ZERO as root, there should not have been a query, and therefore no error",
         )
     }
@@ -576,7 +576,7 @@ impl<T: NodeStorage, H: Hash> MerkleTree<T, H> {
     ///
     /// Result will be either a [Binary](Node::Binary), [Edge](Node::Edge) or [Leaf](Node::Leaf) node.
     fn resolve(&self, hash: Felt, height: usize) -> anyhow::Result<Node> {
-        if height == self.max_height as usize {
+        if height == HEIGHT {
             #[cfg(debug_assertions)]
             match self.storage.get(hash)? {
                 Some(PersistedNode::Edge(_) | PersistedNode::Binary(_)) | None => {
@@ -611,7 +611,7 @@ impl<T: NodeStorage, H: Hash> MerkleTree<T, H> {
             }),
             PersistedNode::Leaf => anyhow::bail!(
                 "Retrieved node {hash} is a leaf at {height} out of {}",
-                self.max_height
+                HEIGHT
             ),
         };
 
@@ -759,11 +759,13 @@ mod tests {
     use bitvec::prelude::*;
     use pathfinder_common::felt;
 
+    type TestTree<'tx, 'queries> = MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash, 251>;
+
     #[test]
     fn get_empty() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
-        let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+        let uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
         let key = felt!("0x99cadc82").view_bits().to_bitvec();
         assert_eq!(uut.get(&key).unwrap(), None);
@@ -775,7 +777,7 @@ mod tests {
         let transaction = conn.transaction().unwrap();
 
         let non_root = felt!("0x99cadc82");
-        MerkleTree::<_, PedersenHash>::load("test", &transaction, non_root).unwrap_err();
+        TestTree::load("test", &transaction, non_root).unwrap_err();
     }
 
     mod set {
@@ -785,8 +787,7 @@ mod tests {
         fn set_get() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
@@ -809,8 +810,7 @@ mod tests {
         fn overwrite() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = felt!("0x123").view_bits().to_bitvec();
             let old_value = felt!("0xabc");
@@ -830,8 +830,7 @@ mod tests {
         fn single_leaf() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = felt!("0x123").view_bits().to_bitvec();
             let value = felt!("0xabc");
@@ -867,8 +866,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(&key0, value0).unwrap();
             uut.set(&key1, value1).unwrap();
@@ -931,8 +929,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(&key0, value0).unwrap();
             uut.set(&key1, value1).unwrap();
@@ -981,8 +978,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(&key0, value0).unwrap();
             uut.set(&key1, value1).unwrap();
@@ -1024,8 +1020,7 @@ mod tests {
         fn empty() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             assert_eq!(*uut.root.borrow(), Node::Unresolved(Felt::ZERO));
         }
@@ -1038,8 +1033,7 @@ mod tests {
         fn empty() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = felt!("0x123abc").view_bits().to_bitvec();
             uut.delete_leaf(&key).unwrap();
@@ -1051,8 +1045,7 @@ mod tests {
         fn single_insert_and_removal() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = felt!("0x123").view_bits().to_bitvec();
             let value = felt!("0xabc");
@@ -1068,8 +1061,7 @@ mod tests {
         fn three_leaves_and_one_removal() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
@@ -1098,8 +1090,7 @@ mod tests {
         fn set() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
@@ -1115,7 +1106,7 @@ mod tests {
 
             let root = uut.commit().unwrap();
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             assert_eq!(uut.get(&key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&key1).unwrap(), Some(val1));
@@ -1130,8 +1121,7 @@ mod tests {
             // causing a malformed tree.
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let leaves = [
                 (
@@ -1164,7 +1154,7 @@ mod tests {
             let root = uut.commit().unwrap();
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
-            let mut uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let mut uut = TestTree::load("test", &transaction, root).unwrap();
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&key, val).unwrap();
@@ -1189,32 +1179,29 @@ mod tests {
                 let val1 = felt!("0x2");
                 let val2 = felt!("0x3");
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+                let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root0).unwrap();
                 uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root1).unwrap();
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = TestTree::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = TestTree::load("test", &transaction, root1).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = TestTree::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1233,32 +1220,29 @@ mod tests {
                 let val1 = felt!("0x2");
                 let val2 = felt!("0x3");
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+                let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root0).unwrap();
                 uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root1).unwrap();
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = TestTree::load("test", &transaction, root1).unwrap();
                 uut.delete().unwrap();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = TestTree::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap_err();
+                TestTree::load("test", &transaction, root1).unwrap_err();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = TestTree::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1281,32 +1265,29 @@ mod tests {
                 let val1 = felt!("0x2");
                 let val2 = felt!("0x3");
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+                let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root0).unwrap();
                 uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root0).unwrap();
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = TestTree::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = TestTree::load("test", &transaction, root1).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), Some(val1));
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = TestTree::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1325,32 +1306,29 @@ mod tests {
                 let val1 = felt!("0x2");
                 let val2 = felt!("0x3");
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+                let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
                 uut.set(&key0, val0).unwrap();
                 let root0 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root0).unwrap();
                 uut.set(&key1, val1).unwrap();
                 let root1 = uut.commit().unwrap();
 
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let mut uut = TestTree::load("test", &transaction, root0).unwrap();
                 uut.set(&key2, val2).unwrap();
                 let root2 = uut.commit().unwrap();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+                let uut = TestTree::load("test", &transaction, root1).unwrap();
                 uut.delete().unwrap();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+                let uut = TestTree::load("test", &transaction, root0).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), None);
 
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap_err();
+                TestTree::load("test", &transaction, root1).unwrap_err();
 
-                let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root2).unwrap();
+                let uut = TestTree::load("test", &transaction, root2).unwrap();
                 assert_eq!(uut.get(&key0).unwrap(), Some(val0));
                 assert_eq!(uut.get(&key1).unwrap(), None);
                 assert_eq!(uut.get(&key2).unwrap(), Some(val2));
@@ -1361,8 +1339,7 @@ mod tests {
         fn multiple_identical_roots() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = felt!("0x99cadc82").view_bits().to_bitvec();
             let val = felt!("0x12345678");
@@ -1370,32 +1347,32 @@ mod tests {
 
             let root0 = uut.commit().unwrap();
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+            let uut = TestTree::load("test", &transaction, root0).unwrap();
             let root1 = uut.commit().unwrap();
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root1).unwrap();
+            let uut = TestTree::load("test", &transaction, root1).unwrap();
             let root2 = uut.commit().unwrap();
 
             assert_eq!(root0, root1);
             assert_eq!(root0, root2);
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+            let uut = TestTree::load("test", &transaction, root0).unwrap();
             uut.delete().unwrap();
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+            let uut = TestTree::load("test", &transaction, root0).unwrap();
             assert_eq!(uut.get(&key).unwrap(), Some(val));
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+            let uut = TestTree::load("test", &transaction, root0).unwrap();
             uut.delete().unwrap();
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+            let uut = TestTree::load("test", &transaction, root0).unwrap();
             assert_eq!(uut.get(&key).unwrap(), Some(val));
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap();
+            let uut = TestTree::load("test", &transaction, root0).unwrap();
             uut.delete().unwrap();
 
             // This should fail since the root has been deleted.
-            MerkleTree::<_, PedersenHash>::load("test", &transaction, root0).unwrap_err();
+            TestTree::load("test", &transaction, root0).unwrap_err();
         }
     }
 
@@ -1409,8 +1386,7 @@ mod tests {
 
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             uut.set(felt!("0x1").view_bits(), felt!("0x0")).unwrap();
 
@@ -1459,8 +1435,7 @@ mod tests {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
 
-            let mut tree =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut tree = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             for (key, val) in leaves {
                 let key = key.view_bits();
@@ -1477,9 +1452,7 @@ mod tests {
     }
 
     mod dfs {
-        use crate::PedersenHash;
-
-        use super::{BinaryNode, EdgeNode, MerkleTree, Node, Visit};
+        use super::{BinaryNode, EdgeNode, Node, TestTree, Visit};
         use bitvec::slice::BitSlice;
         use bitvec::{bitvec, prelude::Msb0};
         use pathfinder_common::felt;
@@ -1492,8 +1465,7 @@ mod tests {
         fn empty_tree() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &Node, path: &BitSlice<Msb0, u8>| {
@@ -1508,8 +1480,7 @@ mod tests {
         fn one_leaf() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key = felt!("0x1");
             let value = felt!("0x2");
@@ -1544,8 +1515,7 @@ mod tests {
         fn two_leaves() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key_left = felt!("0x0");
             let value_left = felt!("0x2");
@@ -1593,8 +1563,7 @@ mod tests {
         fn three_leaves() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             let key_a = felt!("0x10");
             let value_a = felt!("0xa");
@@ -1689,6 +1658,7 @@ mod tests {
 
         use super::{
             BinaryProofNode, Direction, EdgeProofNode, MerkleTree, ProofNode, RcNodeStorage,
+            TestTree,
         };
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
@@ -1821,14 +1791,13 @@ mod tests {
             keys: Vec<Felt>,
             values: Vec<Felt>,
             root: Felt,
-            tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash>,
+            tree: MerkleTree<RcNodeStorage<'tx, 'queries>, PedersenHash, 251>,
         }
 
         impl<'tx> RandomTree<'tx, '_> {
             /// Creates a new random tree with `len` key / value pairs.
             fn new(len: usize, transaction: &'tx Transaction<'tx>) -> Self {
-                let mut uut =
-                    MerkleTree::<_, PedersenHash>::load("test", transaction, Felt::ZERO).unwrap();
+                let mut uut = TestTree::load("test", transaction, Felt::ZERO).unwrap();
 
                 // Create random keys
                 let keys: Vec<Felt> = gen_random_hashes(len);
@@ -1842,7 +1811,7 @@ mod tests {
                     .for_each(|(k, v)| uut.set(k.view_bits(), *v).unwrap());
 
                 let root = uut.commit().unwrap();
-                let tree = MerkleTree::<_, PedersenHash>::load("test", transaction, root).unwrap();
+                let tree = TestTree::load("test", transaction, root).unwrap();
 
                 Self {
                     keys,
@@ -1869,9 +1838,9 @@ mod tests {
         }
 
         /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
-        fn get_proofs<H: crate::Hash>(
+        fn get_proofs<H: crate::Hash, const HEIGHT: usize>(
             keys: &'_ [&BitSlice<Msb0, u8>],
-            tree: &MerkleTree<RcNodeStorage<'_, '_>, H>,
+            tree: &MerkleTree<RcNodeStorage<'_, '_>, H, HEIGHT>,
         ) -> anyhow::Result<Vec<Vec<ProofNode>>> {
             keys.iter().map(|k| tree.get_proof(k)).collect()
         }
@@ -1880,8 +1849,7 @@ mod tests {
         fn simple_binary() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //   (250, 0, x1)
             //        |
@@ -1903,7 +1871,7 @@ mod tests {
             uut.set(key2, value_2).unwrap();
             let root = uut.commit().unwrap();
 
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let proofs = get_proofs(&keys, &uut).unwrap();
 
@@ -1916,8 +1884,7 @@ mod tests {
         fn double_binary() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (249,0,x3)
             //               |
@@ -1945,7 +1912,7 @@ mod tests {
             uut.set(key3, value_3).unwrap();
 
             let root = uut.commit().unwrap();
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
@@ -1962,8 +1929,7 @@ mod tests {
         fn left_edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //  (251,0x00,0x99)
             //       /
@@ -1980,7 +1946,7 @@ mod tests {
             uut.set(key1, value_1).unwrap();
 
             let root = uut.commit().unwrap();
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
@@ -1991,8 +1957,7 @@ mod tests {
         fn left_right_edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //  (251,0xff,0xaa)
             //     /
@@ -2009,7 +1974,7 @@ mod tests {
             uut.set(key1, value_1).unwrap();
 
             let root = uut.commit().unwrap();
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
@@ -2020,8 +1985,7 @@ mod tests {
         fn right_most_edge() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //  (251,0x7fff...,0xbb)
             //          \
@@ -2038,7 +2002,7 @@ mod tests {
             uut.set(key1, value_1).unwrap();
 
             let root = uut.commit().unwrap();
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
@@ -2049,8 +2013,7 @@ mod tests {
         fn binary_root() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (0, 0, x)
             //    /                    \
@@ -2072,7 +2035,7 @@ mod tests {
             uut.set(key2, value_2).unwrap();
 
             let root = uut.commit().unwrap();
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let proofs = get_proofs(&keys, &uut).unwrap();
             let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
@@ -2171,8 +2134,7 @@ mod tests {
         fn modified_binary_left() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (0, 0, x)
             //    /                    \
@@ -2194,7 +2156,7 @@ mod tests {
             uut.set(key2, value_2).unwrap();
 
             let root = uut.commit().unwrap();
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let mut proofs = get_proofs(&keys, &uut).unwrap();
 
@@ -2213,8 +2175,7 @@ mod tests {
         fn modified_edge_child() {
             let mut conn = rusqlite::Connection::open_in_memory().unwrap();
             let transaction = conn.transaction().unwrap();
-            let mut uut =
-                MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+            let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
             //           (0, 0, x)
             //    /                    \
@@ -2236,7 +2197,7 @@ mod tests {
             uut.set(key2, value_2).unwrap();
 
             let root = uut.commit().unwrap();
-            let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+            let uut = TestTree::load("test", &transaction, root).unwrap();
 
             let mut proofs = get_proofs(&keys, &uut).unwrap();
 
@@ -2256,8 +2217,7 @@ mod tests {
     fn dfs_on_leaf_to_binary_collision_tree() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         let transaction = conn.transaction().unwrap();
-        let mut uut =
-            MerkleTree::<_, PedersenHash>::load("test", &transaction, Felt::ZERO).unwrap();
+        let mut uut = TestTree::load("test", &transaction, Felt::ZERO).unwrap();
 
         let value = felt!("0x1");
         let key0 = felt!("0xee00").view_bits().to_bitvec();
@@ -2272,7 +2232,7 @@ mod tests {
 
         let root = uut.commit().unwrap();
 
-        let uut = MerkleTree::<_, PedersenHash>::load("test", &transaction, root).unwrap();
+        let uut = TestTree::load("test", &transaction, root).unwrap();
         // this used to panic because it did find the binary on dev profile with the leaf hash
         let mut visited = Vec::new();
         uut.dfs(&mut |n: &_, p: &_| -> ControlFlow<(), Visit> {
