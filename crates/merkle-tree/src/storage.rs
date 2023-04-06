@@ -106,8 +106,25 @@ macro_rules! define_sqlite_storage {
         pub struct $name<'tx>(&'tx rusqlite::Transaction<'tx>);
 
         impl<'tx> $name<'tx> {
+            #[allow(dead_code)]
             pub fn new(tx: &'tx rusqlite::Transaction<'tx>) -> Self {
                 Self(tx)
+            }
+
+            #[allow(dead_code)]
+            fn insert(&self, hash: &stark_hash::Felt, node: &$crate::Node) -> anyhow::Result<()> {
+                self.0
+                    .execute(
+                        concat!(
+                            "INSERT OR IGNORE INTO ",
+                            $table,
+                            " (hash, data) VALUES (?, ?)"
+                        ),
+                        rusqlite::params![hash.as_be_bytes(), node],
+                    )
+                    .context("Inserting node into tree_class table")?;
+
+                Ok(())
             }
         }
 
@@ -126,24 +143,6 @@ macro_rules! define_sqlite_storage {
                     .optional()
                     .context("Fetching node data from $table in database")
                     .map_err($crate::storage::AnyhowError::from)
-            }
-        }
-
-        impl<'tx> $name<'tx> {
-            #[allow(dead_code)]
-            fn insert(&self, hash: &stark_hash::Felt, node: &$crate::Node) -> anyhow::Result<()> {
-                self.0
-                    .execute(
-                        concat!(
-                            "INSERT OR IGNORE INTO ",
-                            $table,
-                            " (hash, data) VALUES (?, ?)"
-                        ),
-                        rusqlite::params![hash.as_be_bytes(), node],
-                    )
-                    .context("Inserting node into tree_class table")?;
-
-                Ok(())
             }
         }
     };
