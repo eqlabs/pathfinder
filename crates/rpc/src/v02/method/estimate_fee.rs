@@ -60,7 +60,7 @@ pub async fn estimate_fee(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
@@ -148,7 +148,7 @@ mod tests {
     }
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
-    mod ext_py {
+    pub(crate) mod ext_py {
         use std::sync::Arc;
 
         use super::*;
@@ -166,11 +166,13 @@ mod tests {
         use stark_hash::Felt;
 
         // Mainnet block number 5
-        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
+        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         )));
 
-        fn valid_mainnet_invoke_v1(account_address: ContractAddress) -> BroadcastedTransaction {
+        pub(crate) fn valid_mainnet_invoke_v1(
+            account_address: ContractAddress,
+        ) -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
@@ -237,7 +239,7 @@ mod tests {
             ))
         }
 
-        async fn test_context_with_call_handling() -> (
+        pub(crate) async fn test_context_with_call_handling() -> (
             RpcContext,
             tokio::task::JoinHandle<()>,
             ContractAddress,
@@ -385,14 +387,13 @@ mod tests {
             let (context, _join_handle, account_address, _) =
                 test_context_with_call_handling().await;
 
-            let mainnet_invoke = valid_mainnet_invoke_v1(account_address)
-                .into_invoke_or_panic()
-                .into_v1_or_panic();
             let input = EstimateFeeInput {
                 request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                     BroadcastedInvokeTransactionV1 {
                         sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
-                        ..mainnet_invoke
+                        ..valid_mainnet_invoke_v1(account_address)
+                            .into_invoke_or_panic()
+                            .into_v1_or_panic()
                     },
                 )),
                 block_id: BLOCK_5,
