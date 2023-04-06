@@ -3,18 +3,18 @@ use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
 
-/// A Patricia Merkle tree with height 64 used to compute transaction and event commitments.
+/// A (Patricia Merkle tree)[MerkleTree] which can be used to calculate transaction or event commitments.
 ///
-/// According to the [documentation](https://docs.starknet.io/docs/Blocks/header/#block-header)
-/// the commitment trees are of height 64, because the key used is the 64 bit representation
-/// of the index of the transaction / event within the block.
+/// The tree has a height of 64 bits and is ephemeral -- it has no persistent storage. This is sensible
+/// as each event or transaction tree is confined to a single starknet block i.e. each block a new event / transaction
+/// tree is formed from an empty one.
 ///
-/// The tree height is 64 in our case since our set operation takes u64 index values.
-pub struct TransactionTree {
+/// More information about these commitments can be found in the Starknet [documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/header/).
+pub struct TransactionOrEventTree {
     tree: MerkleTree<crate::PedersenHash, 64>,
 }
 
-impl Default for TransactionTree {
+impl Default for TransactionOrEventTree {
     fn default() -> Self {
         Self {
             tree: MerkleTree::empty(),
@@ -22,6 +22,7 @@ impl Default for TransactionTree {
     }
 }
 
+/// [Storage](crate::storage::Storage) type which always returns [None].
 struct NullStorage;
 
 impl crate::storage::Storage for NullStorage {
@@ -32,7 +33,7 @@ impl crate::storage::Storage for NullStorage {
     }
 }
 
-impl TransactionTree {
+impl TransactionOrEventTree {
     pub fn set(&mut self, index: u64, value: Felt) -> anyhow::Result<()> {
         let key = index.to_be_bytes();
         self.tree.set(&NullStorage {}, key.view_bits(), value)
@@ -51,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_commitment_merkle_tree() {
-        let mut tree = TransactionTree::default();
+        let mut tree = TransactionOrEventTree::default();
 
         for (idx, hash) in [1u64, 2, 3, 4].into_iter().enumerate() {
             let hash = Felt::from(hash);

@@ -1,4 +1,4 @@
-use crate::{ContractsStateTree, StorageCommitmentTree};
+use crate::{ContractsStorageTree, StorageCommitmentTree};
 use anyhow::Context;
 use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
@@ -11,7 +11,7 @@ use starknet_gateway_types::reply::state_update::StorageDiff;
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.
 ///
-/// Specifically, it updates the [ContractsStateTree] and [ContractsStateTable].
+/// Specifically, it updates the [ContractsStorageTree] and [ContractsStateTable].
 pub fn update_contract_state(
     contract_address: ContractAddress,
     updates: &[StorageDiff],
@@ -43,7 +43,7 @@ pub fn update_contract_state(
 
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
-        let mut contract_tree = ContractsStateTree::load(db, old_root);
+        let mut contract_tree = ContractsStorageTree::load(db, old_root);
         for storage_diff in updates {
             contract_tree
                 .set(storage_diff.key, storage_diff.value)

@@ -2,7 +2,7 @@
 //! used by Starknet.
 //!
 //! For more information about how these Starknet trees are structured, see
-//! [`MerkleTree`](super::merkle_tree::MerkleTree).
+//! [`MerkleTree`](crate::tree::MerkleTree).
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -26,7 +26,7 @@ pub enum InternalNode {
     Leaf(Felt),
 }
 
-/// Describes the [Node::Binary] variant.
+/// Describes the [InternalNode::Binary] variant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
     /// The hash of this node. Is [None] if the node

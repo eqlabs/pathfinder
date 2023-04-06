@@ -1016,7 +1016,7 @@ mod tests {
         contract_definition: &[u8],
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {
-        use pathfinder_merkle_tree::ContractsStateTree;
+        use pathfinder_merkle_tree::ContractsStorageTree;
 
         let class_hash =
             starknet_gateway_types::class_hash::compute_class_hash(contract_definition).unwrap();
@@ -1026,7 +1026,7 @@ mod tests {
         ContractCodeTable::insert(tx, class_hash, contract_definition).unwrap();
 
         // set up contract state tree
-        let mut contract_state = ContractsStateTree::load(tx, ContractRoot(Felt::ZERO));
+        let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO));
         for (storage_address, storage_value) in storage_updates {
             contract_state
                 .set(*storage_address, *storage_value)

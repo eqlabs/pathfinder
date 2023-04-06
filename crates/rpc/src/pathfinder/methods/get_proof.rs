@@ -8,7 +8,7 @@ use pathfinder_common::{
     StateCommitment, StorageAddress,
 };
 use pathfinder_merkle_tree::Node;
-use pathfinder_merkle_tree::{ContractsStateTree, StorageCommitmentTree};
+use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use stark_hash::Felt;
 
@@ -230,7 +230,7 @@ pub async fn get_proof(
                     .into()
                 })?;
 
-        let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root);
+        let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
 
         let storage_proofs = input
             .keys

@@ -1,4 +1,4 @@
-//! Contains the [Hash] trait and implementations thereof for the [Pedersen](PedersenHash) hash and [Poseidon](PoseidonHash).
+//! Contains the [Hash] trait and implementations thereof for the [Pedersen](PedersenHash) and [Poseidon](PoseidonHash) hashes.
 
 use stark_hash::Felt;
 

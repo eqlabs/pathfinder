@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use pathfinder_common::{ContractRoot, StorageAddress, StorageValue};
-use pathfinder_merkle_tree::ContractsStateTree;
+use pathfinder_merkle_tree::ContractsStorageTree;
 use stark_hash::Felt;
 
 fn gen_random_keys(n: usize) -> Vec<Felt> {
@@ -22,7 +22,7 @@ pub fn chunked_inserts(tx: &rusqlite::Transaction<'_>, keys: &[Felt], batch_size
     let mut hash = ContractRoot::ZERO;
 
     for keys in keys.chunks(batch_size) {
-        let mut uut = ContractsStateTree::load(tx, hash);
+        let mut uut = ContractsStorageTree::load(tx, hash);
 
         keys.iter()
             .enumerate()

@@ -13,11 +13,12 @@ use bitvec::vec::BitVec;
 use stark_hash::Felt;
 
 pub use class::ClassCommitmentTree;
-pub use contract::{ContractsStateTree, StorageCommitmentTree};
+pub use contract::{ContractsStorageTree, StorageCommitmentTree};
 pub use hash::{Hash, PedersenHash, PoseidonHash};
 pub use storage::Storage;
-pub use transaction::TransactionTree;
+pub use transaction::TransactionOrEventTree;
 
+/// A node of a committed [MerkleTree](tree::MerkleTree).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Binary { left: Felt, right: Felt },

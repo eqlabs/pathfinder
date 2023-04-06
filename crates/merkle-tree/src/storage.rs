@@ -4,13 +4,14 @@ use stark_hash::Felt;
 
 use crate::Node;
 
-/// Read-only storage used by the [Merkle tree](Tree).
+/// Read-only storage used by the [Merkle tree](crate::tree::MerkleTree).
 pub trait Storage {
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn get(&self, node: &Felt) -> Result<Option<Node>, Self::Error>;
 }
 
+/// Wrapper around [anyhow::Error].
 #[derive(Debug)]
 pub struct AnyhowError(anyhow::Error);
 impl std::fmt::Display for AnyhowError {
@@ -25,6 +26,7 @@ impl From<anyhow::Error> for AnyhowError {
     }
 }
 
+/// Database serialization for [Node].
 impl rusqlite::types::FromSql for Node {
     fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
         let data = value.as_blob()?;
@@ -70,6 +72,7 @@ impl rusqlite::types::FromSql for Node {
     }
 }
 
+/// Database deserialization for [Node].
 impl rusqlite::types::ToSql for Node {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
         use bitvec::view::BitView;
@@ -100,6 +103,18 @@ impl rusqlite::types::ToSql for Node {
     }
 }
 
+/// This macro defines a [Storage] adapter for a Sqlite table.
+///
+/// The table schema is expected to already be created and should match:
+/// ```sql
+/// hash: BLOB,
+/// data: BLOB,
+/// ```
+///
+/// Usage:
+/// ```
+/// define_sqlite_storage!(AdapterStructName, "table_name");
+/// ````
 #[macro_export]
 macro_rules! define_sqlite_storage {
     ($name: ident, $table: literal) => {

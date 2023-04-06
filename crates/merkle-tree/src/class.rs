@@ -5,9 +5,11 @@ use rusqlite::Transaction;
 use crate::tree::MerkleTree;
 use crate::PoseidonHash;
 
-/// Merkle tree which contains Starknet's class commitment.
+/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to Starknet's Sierra classes.
 ///
-/// This tree maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
+/// It maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
+///
+/// Tree data is persisted by a sqlite table 'tree_class'.
 pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
     storage: ClassStorage<'tx>,

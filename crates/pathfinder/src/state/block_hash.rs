@@ -3,7 +3,7 @@ use pathfinder_common::{
     Chain, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
     StarknetBlockTimestamp, StateCommitment, TransactionCommitment,
 };
-use pathfinder_merkle_tree::TransactionTree;
+use pathfinder_merkle_tree::TransactionOrEventTree;
 use stark_hash::{stark_hash, Felt, HashChain};
 use starknet_gateway_types::reply::{
     transaction::{Event, Receipt, Transaction},
@@ -296,7 +296,7 @@ fn compute_final_hash(
 pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
 ) -> Result<TransactionCommitment> {
-    let mut tree = TransactionTree::default();
+    let mut tree = TransactionOrEventTree::default();
 
     transactions
         .iter()
@@ -351,7 +351,7 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
 pub fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<EventCommitment> {
-    let mut tree = TransactionTree::default();
+    let mut tree = TransactionOrEventTree::default();
 
     transaction_receipts
         .iter()

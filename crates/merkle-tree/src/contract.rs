@@ -1,5 +1,5 @@
-//! Contains the [StorageCommitmentTree] and [ContractsStateTree] trees, which combined
-//! store the total StarkNet state.
+//! Contains the [StorageCommitmentTree] and [ContractsStorageTree] trees, which combined
+//! store the total StarkNet storage state.
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 
@@ -20,14 +20,17 @@ use std::ops::ControlFlow;
 crate::define_sqlite_storage!(ContractsStorage, "tree_contracts");
 crate::define_sqlite_storage!(GlobalStorage, "tree_global");
 
-/// A Binary Merkle-Patricia Tree which contains
-/// the storage state of all StarkNet contracts.
-pub struct ContractsStateTree<'tx> {
+/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to a Starknet contract's storage.
+///
+/// It maps a contract's [storage addresses](StorageAddress) to their [values](StorageValue).
+///
+/// Tree data is persisted by a sqlite table 'tree_contracts'.
+pub struct ContractsStorageTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
     storage: ContractsStorage<'tx>,
 }
 
-impl<'tx> ContractsStateTree<'tx> {
+impl<'tx> ContractsStorageTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> Self {
         let tree = MerkleTree::new(root.0);
         let storage = ContractsStorage::new(transaction);
@@ -68,7 +71,11 @@ impl<'tx> ContractsStateTree<'tx> {
     }
 }
 
-/// A Binary Merkle-Patricia Tree which contains StarkNet's storage commitment.
+/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to all of Starknet's storage.
+///
+/// It maps each contract's [address](ContractAddress) to it's [state hash](ContractStateHash).
+///
+/// Tree data is persisted by a sqlite table 'tree_global'.
 pub struct StorageCommitmentTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
     storage: GlobalStorage<'tx>,

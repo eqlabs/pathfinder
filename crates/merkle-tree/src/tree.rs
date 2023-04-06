@@ -54,19 +54,19 @@ use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
-/// A Starknet binary Merkle-Patricia tree with a specific root entry-point and storage.
-///
-/// This is used to update, mutate and access global Starknet state as well as individual contract states.
-///
-/// For more information on how this functions internally, see [here](super::merkle_tree).
+/// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
 pub struct MerkleTree<H: Hash, const HEIGHT: usize> {
     root: Rc<RefCell<InternalNode>>,
     _hasher: std::marker::PhantomData<H>,
 }
 
+/// The result of committing a [MerkleTree]. Contains the new root and any
+/// new nodes added in this update.
 pub struct Update {
     pub root: Felt,
+    /// New nodes added. Note that these may contain false positives if the
+    /// mutations resulted in removing and then re-adding the same nodes within the tree.
     pub added: HashMap<Felt, crate::Node>,
 }
 
@@ -435,16 +435,16 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             .collect())
     }
 
-    /// Traverses from the current root towards the destination [Leaf](Node::Leaf) node.
+    /// Traverses from the current root towards destination node.
     /// Returns the list of nodes along the path.
     ///
     /// If the destination node exists, it will be the final node in the list.
     ///
-    /// This means that the final node will always be either a the destination [Leaf](Node::Leaf) node,
-    /// or an [Edge](Node::Edge) node who's path suffix does not match the leaf's path.
+    /// This means that the final node will always be either a the destination [Leaf](InternalNode::Leaf) node,
+    /// or an [Edge](InternalNode::Edge) node who's path suffix does not match the leaf's path.
     ///
-    /// The final node can __not__ be a [Binary](Node::Binary) node since it would always be possible to continue
-    /// on towards the destination. Nor can it be an [Unresolved](Node::Unresolved) node since this would be
+    /// The final node can __not__ be a [Binary](InternalNode::Binary) node since it would always be possible to continue
+    /// on towards the destination. Nor can it be an [Unresolved](InternalNode::Unresolved) node since this would be
     /// resolved to check if we can travel further.
     fn traverse(
         &self,
@@ -493,7 +493,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Retrieves the requested node from storage.
     ///
-    /// Result will be either a [Binary](Node::Binary), [Edge](Node::Edge) or [Leaf](Node::Leaf) node.
+    /// Result will be either a [Binary](InternalNode::Binary), [Edge](InternalNode::Edge) or [Leaf](InternalNode::Leaf) node.
     fn resolve(
         &self,
         storage: &impl Storage,
@@ -556,7 +556,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Visits all of the nodes in the tree in pre-order using the given visitor function.
     ///
-    /// For each node, there will first be a visit for `Node::Unresolved(hash)` followed by visit
+    /// For each node, there will first be a visit for `InternalNode::Unresolved(hash)` followed by visit
     /// at the loaded node when [`Visit::ContinueDeeper`] is returned. At any time the visitor
     /// function can also return `ControlFlow::Break` to stop the visit with the given return
     /// value, which will be returned as `Some(value))` to the caller.
@@ -662,12 +662,12 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 #[derive(Default)]
 pub enum Visit {
     /// Instructs that the visit should visit any subtrees of the current node. This is a no-op for
-    /// [`Node::Leaf`].
+    /// [`InternalNode::Leaf`].
     #[default]
     ContinueDeeper,
-    /// Returning this value for [`Node::Binary`] or [`Node::Edge`] will ignore all of the children
+    /// Returning this value for [`InternalNode::Binary`] or [`InternalNode::Edge`] will ignore all of the children
     /// of the node for the rest of the iteration. This is useful because two trees often share a
-    /// number of subtrees with earlier blocks. Returning this for [`Node::Leaf`] is a no-op.
+    /// number of subtrees with earlier blocks. Returning this for [`InternalNode::Leaf`] is a no-op.
     StopSubtree,
 }
 
