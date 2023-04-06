@@ -83,7 +83,7 @@ impl Serialize for ProofNodes {
                             state.end()
                         }
                         Node::Edge { child, path } => {
-                            let value = Felt::from_bits(&path).unwrap();
+                            let value = Felt::from_bits(path).unwrap();
                             let path = PathWrapper {
                                 value,
                                 len: path.len(),

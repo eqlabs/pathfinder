@@ -63,11 +63,9 @@ impl rusqlite::types::FromSql for Node {
 
                 anyhow::Result::Ok(Node::Edge { path, child })
             }
-            other => {
-                return Err(FromSqlError::Other(
-                    anyhow::anyhow!("Bad node length: {other}").into(),
-                ))
-            }
+            other => Err(FromSqlError::Other(
+                anyhow::anyhow!("Bad node length: {other}").into(),
+            )),
         }
     }
 }
@@ -92,7 +90,7 @@ impl rusqlite::types::ToSql for Node {
                 // to the end of the slice.
                 buffer.resize(65, 0);
                 buffer[32..][..32].view_bits_mut::<Msb0>()[256 - path.len()..]
-                    .copy_from_bitslice(&path);
+                    .copy_from_bitslice(path);
 
                 buffer[64] = path.len() as u8;
             }
@@ -113,30 +111,34 @@ macro_rules! define_sqlite_storage {
             }
         }
 
-        impl<'tx> crate::storage::Storage for $name<'tx> {
-            type Error = crate::storage::AnyhowError;
+        impl<'tx> $crate::storage::Storage for $name<'tx> {
+            type Error = $crate::storage::AnyhowError;
 
-            fn get(&self, node: &stark_hash::Felt) -> Result<Option<crate::Node>, Self::Error> {
+            fn get(&self, node: &stark_hash::Felt) -> Result<Option<$crate::Node>, Self::Error> {
                 use rusqlite::OptionalExtension;
 
                 self.0
                     .query_row(
                         concat!("SELECT data FROM ", $table, " WHERE hash = ?"),
                         rusqlite::params![node.as_be_bytes()],
-                        |row| row.get::<_, crate::Node>(0),
+                        |row| row.get::<_, $crate::Node>(0),
                     )
                     .optional()
                     .context("Fetching node data from $table in database")
-                    .map_err(crate::storage::AnyhowError::from)
+                    .map_err($crate::storage::AnyhowError::from)
             }
         }
 
         impl<'tx> $name<'tx> {
             #[allow(dead_code)]
-            fn insert(&self, hash: &stark_hash::Felt, node: &crate::Node) -> anyhow::Result<()> {
+            fn insert(&self, hash: &stark_hash::Felt, node: &$crate::Node) -> anyhow::Result<()> {
                 self.0
                     .execute(
-                        concat!("INSERT OR IGNORE INTO ", $table, " (hash, data) VALUES (?, ?)"),
+                        concat!(
+                            "INSERT OR IGNORE INTO ",
+                            $table,
+                            " (hash, data) VALUES (?, ?)"
+                        ),
                         rusqlite::params![hash.as_be_bytes(), node],
                     )
                     .context("Inserting node into tree_class table")?;

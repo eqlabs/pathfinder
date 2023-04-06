@@ -18,7 +18,7 @@ crate::define_sqlite_storage!(ClassStorage, "tree_class");
 impl<'tx> ClassCommitmentTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = ClassStorage::new(&transaction);
+        let storage = ClassStorage::new(transaction);
 
         Self { tree, storage }
     }

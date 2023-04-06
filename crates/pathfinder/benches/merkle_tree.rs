@@ -22,7 +22,7 @@ pub fn chunked_inserts(tx: &rusqlite::Transaction<'_>, keys: &[Felt], batch_size
     let mut hash = ContractRoot::ZERO;
 
     for keys in keys.chunks(batch_size) {
-        let mut uut = ContractsStateTree::load(&tx, hash);
+        let mut uut = ContractsStateTree::load(tx, hash);
 
         keys.iter()
             .enumerate()

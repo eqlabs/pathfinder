@@ -30,7 +30,7 @@ pub struct ContractsStateTree<'tx> {
 impl<'tx> ContractsStateTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = ContractsStorage::new(&transaction);
+        let storage = ContractsStorage::new(transaction);
 
         Self { tree, storage }
     }
@@ -77,7 +77,7 @@ pub struct StorageCommitmentTree<'tx> {
 impl<'tx> StorageCommitmentTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: StorageCommitment) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = GlobalStorage::new(&transaction);
+        let storage = GlobalStorage::new(transaction);
 
         Self { tree, storage }
     }

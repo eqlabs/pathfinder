@@ -91,7 +91,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn commit_mut(&mut self) -> anyhow::Result<Update> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = HashMap::new();
-        self.commit_subtree(&mut self.root.borrow_mut(), &mut added)?;
+        Self::commit_subtree(&mut self.root.borrow_mut(), &mut added)?;
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
 
@@ -106,7 +106,6 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// In effect, the entire subtree gets persisted.
     fn commit_subtree(
-        &self,
         node: &mut InternalNode,
         added: &mut HashMap<Felt, crate::Node>,
     ) -> anyhow::Result<()> {
@@ -118,8 +117,8 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             Edge(edge) if edge.hash.is_some() => { /* not dirty, already persisted */ }
 
             Binary(binary) => {
-                self.commit_subtree(&mut binary.left.borrow_mut(), added)?;
-                self.commit_subtree(&mut binary.right.borrow_mut(), added)?;
+                Self::commit_subtree(&mut binary.left.borrow_mut(), added)?;
+                Self::commit_subtree(&mut binary.right.borrow_mut(), added)?;
                 // This will succeed as `commit_subtree` will set the child hashes.
                 binary.calculate_hash::<H>();
                 // unwrap is safe as `commit_subtree` will set the hashes.
@@ -131,7 +130,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             }
 
             Edge(edge) => {
-                self.commit_subtree(&mut edge.child.borrow_mut(), added)?;
+                Self::commit_subtree(&mut edge.child.borrow_mut(), added)?;
                 // This will succeed as `commit_subtree` will set the child's hash.
                 edge.calculate_hash::<H>();
 
@@ -525,7 +524,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             crate::Node::Edge { child, path } => InternalNode::Edge(EdgeNode {
                 hash: Some(hash),
                 height,
-                path: path,
+                path,
                 child: Rc::new(RefCell::new(InternalNode::Unresolved(child))),
             }),
         };
