@@ -23,3 +23,20 @@ pub enum Node {
     Binary { left: Felt, right: Felt },
     Edge { child: Felt, path: BitVec<Msb0, u8> },
 }
+
+impl Node {
+    pub fn hash<H: Hash>(&self) -> Felt {
+        match self {
+            Node::Binary { left, right } => H::hash(*left, *right),
+            Node::Edge { child, path } => {
+                let mut length = [0; 32];
+                // // Safe as len() is guaranteed to be <= 251
+                length[31] = path.len() as u8;
+                let path = Felt::from_bits(&path).unwrap();
+
+                let length = Felt::from_be_bytes(length).unwrap();
+                H::hash(*child, path) + length
+            }
+        }
+    }
+}

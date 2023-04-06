@@ -6,7 +6,7 @@
 use crate::PedersenHash;
 use crate::{
     merkle_node::InternalNode,
-    merkle_tree::{MerkleTree, ProofNode, Visit},
+    merkle_tree::{MerkleTree, Visit},
 };
 use anyhow::Context;
 use bitvec::{prelude::Msb0, slice::BitSlice};
@@ -42,7 +42,7 @@ impl<'tx> ContractsStateTree<'tx> {
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<ProofNode>> {
+    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<crate::Node>> {
         self.tree.get_proof(&self.storage, key)
     }
 
@@ -105,7 +105,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(&self, address: &ContractAddress) -> anyhow::Result<Vec<ProofNode>> {
+    pub fn get_proof(&self, address: &ContractAddress) -> anyhow::Result<Vec<crate::Node>> {
         self.tree.get_proof(&self.storage, address.view_bits())
     }
 

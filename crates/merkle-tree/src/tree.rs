@@ -54,6 +54,51 @@ use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
+/// Lightweight representation of [BinaryNode]. Only holds left and right hashes.
+#[derive(Debug, PartialEq, Eq)]
+pub struct BinaryProofNode {
+    pub left_hash: Felt,
+    pub right_hash: Felt,
+}
+
+impl From<&BinaryNode> for ProofNode {
+    fn from(bin: &BinaryNode) -> Self {
+        Self::Binary(BinaryProofNode {
+            left_hash: bin.left.borrow().hash().expect("Node should be committed"),
+            right_hash: bin.right.borrow().hash().expect("Node should be committed"),
+        })
+    }
+}
+
+/// Ligthtweight representation of [EdgeNode]. Only holds its path and its child's hash.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EdgeProofNode {
+    pub path: BitVec<Msb0, u8>,
+    pub child_hash: Felt,
+}
+
+impl From<&EdgeNode> for ProofNode {
+    fn from(edge: &EdgeNode) -> Self {
+        Self::Edge(EdgeProofNode {
+            path: edge.path.clone(),
+            child_hash: edge
+                .child
+                .borrow()
+                .hash()
+                .expect("Node should be committed"),
+        })
+    }
+}
+
+/// [ProofNode] s are lightweight versions of their `Node` counterpart.
+/// They only consist of [BinaryProofNode] and [EdgeProofNode] because `Leaf`
+/// and `Unresolved` nodes should not appear in a proof.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ProofNode {
+    Binary(BinaryProofNode),
+    Edge(EdgeProofNode),
+}
+
 /// A Starknet binary Merkle-Patricia tree with a specific root entry-point and storage.
 ///
 /// This is used to update, mutate and access global Starknet state as well as individual contract states.
@@ -84,14 +129,14 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     }
 
     /// Commits all tree mutations and returns the [changes](Update) to the tree.
-    pub fn commit(mut self) -> anyhow::Result<Update> {
-        self.commit_mut()
+    pub fn commit(mut self, storage: &impl Storage) -> anyhow::Result<Update> {
+        self.commit_mut(storage)
     }
 
-    pub fn commit_mut(&mut self) -> anyhow::Result<Update> {
+    pub fn commit_mut(&mut self, storage: &impl Storage) -> anyhow::Result<Update> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = HashMap::new();
-        self.commit_subtree(&mut self.root.borrow_mut(), &mut added)?;
+        self.commit_subtree(storage, &mut self.root.borrow_mut(), &mut added)?;
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
 
@@ -107,6 +152,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// In effect, the entire subtree gets persisted.
     fn commit_subtree(
         &self,
+        storage: &impl Storage,
         node: &mut InternalNode,
         added: &mut HashMap<Felt, crate::Node>,
     ) -> anyhow::Result<()> {
@@ -118,8 +164,8 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             Edge(edge) if edge.hash.is_some() => { /* not dirty, already persisted */ }
 
             Binary(binary) => {
-                self.commit_subtree(&mut binary.left.borrow_mut(), added)?;
-                self.commit_subtree(&mut binary.right.borrow_mut(), added)?;
+                self.commit_subtree(storage, &mut binary.left.borrow_mut(), added)?;
+                self.commit_subtree(storage, &mut binary.right.borrow_mut(), added)?;
                 // This will succeed as `commit_subtree` will set the child hashes.
                 binary.calculate_hash::<H>();
                 // unwrap is safe as `commit_subtree` will set the hashes.
@@ -131,7 +177,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             }
 
             Edge(edge) => {
-                self.commit_subtree(&mut edge.child.borrow_mut(), added)?;
+                self.commit_subtree(storage, &mut edge.child.borrow_mut(), added)?;
                 // This will succeed as `commit_subtree` will set the child's hash.
                 edge.calculate_hash::<H>();
 
@@ -389,7 +435,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Generates a merkle-proof for a given `key`.
     ///
-    /// Returns vector of [`crate::Node`] which form a chain from the root to the key,
+    /// Returns vector of [`ProofNode`] which form a chain from the root to the key,
     /// if it exists, or down to the node which proves that the key does not exist.
     ///
     /// The nodes are returned in order, root first.
@@ -402,7 +448,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         &self,
         storage: &impl Storage,
         key: &BitSlice<Msb0, u8>,
-    ) -> anyhow::Result<Vec<crate::Node>> {
+    ) -> anyhow::Result<Vec<ProofNode>> {
         let mut nodes = self.traverse(storage, key)?;
 
         // Return an empty list if tree is empty.
@@ -419,18 +465,8 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(nodes
             .iter()
             .map(|node| match &*node.borrow() {
-                InternalNode::Binary(bin) => crate::Node::Binary {
-                    left: bin.left.borrow().hash().expect("Node should be committed"),
-                    right: bin.right.borrow().hash().expect("Node should be committed"),
-                },
-                InternalNode::Edge(edge) => crate::Node::Edge {
-                    child: edge
-                        .child
-                        .borrow()
-                        .hash()
-                        .expect("Node should be committed"),
-                    path: edge.path.clone(),
-                },
+                InternalNode::Binary(bin) => ProofNode::from(bin),
+                InternalNode::Edge(edge) => ProofNode::from(edge),
                 _ => unreachable!(),
             })
             .collect())
@@ -1025,7 +1061,7 @@ mod tests {
             uut.set(&storage, &key1, val1).unwrap();
             uut.set(&storage, &key2, val2).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
 
             let uut = TestTree::new(root);
 
@@ -1073,14 +1109,14 @@ mod tests {
                 let key = key.view_bits();
                 uut.set(&storage, key, *val).unwrap();
             }
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
             let mut uut = TestTree::new(root);
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&storage, &key, val).unwrap();
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let expect = felt!("0x5f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
             assert_eq!(root, expect);
         }
@@ -1101,15 +1137,15 @@ mod tests {
             let mut uut = TestTree::empty();
             let storage = TestStorage::new(&transaction);
             uut.set(&storage, &key0, val0).unwrap();
-            let root0 = uut.commit().unwrap().root;
+            let root0 = uut.commit(&storage).unwrap().root;
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key1, val1).unwrap();
-            let root1 = uut.commit().unwrap().root;
+            let root1 = uut.commit(&storage).unwrap().root;
 
             let mut uut = TestTree::new(root1);
             uut.set(&storage, &key2, val2).unwrap();
-            let root2 = uut.commit().unwrap().root;
+            let root2 = uut.commit(&storage).unwrap().root;
 
             let uut = TestTree::new(root0);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
@@ -1143,15 +1179,15 @@ mod tests {
             let mut uut = TestTree::empty();
             let storage = TestStorage::new(&transaction);
             uut.set(&storage, &key0, val0).unwrap();
-            let root0 = uut.commit().unwrap().root;
+            let root0 = uut.commit(&storage).unwrap().root;
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key1, val1).unwrap();
-            let root1 = uut.commit().unwrap().root;
+            let root1 = uut.commit(&storage).unwrap().root;
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key2, val2).unwrap();
-            let root2 = uut.commit().unwrap().root;
+            let root2 = uut.commit(&storage).unwrap().root;
 
             let uut = TestTree::new(root0);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
@@ -1180,13 +1216,13 @@ mod tests {
             let val = felt!("0x12345678");
             uut.set(&storage, &key, val).unwrap();
 
-            let root0 = uut.commit().unwrap().root;
+            let root0 = uut.commit(&storage).unwrap().root;
 
             let uut = TestTree::new(root0);
-            let root1 = uut.commit().unwrap().root;
+            let root1 = uut.commit(&storage).unwrap().root;
 
             let uut = TestTree::new(root1);
-            let root2 = uut.commit().unwrap().root;
+            let root2 = uut.commit(&storage).unwrap().root;
 
             assert_eq!(root0, root1);
             assert_eq!(root0, root2);
@@ -1215,7 +1251,7 @@ mod tests {
             uut.set(&storage, felt!("0x87").view_bits(), felt!("0x2"))
                 .unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
 
             assert_eq!(
                 root,
@@ -1264,7 +1300,7 @@ mod tests {
                 tree.set(&storage, key, val).unwrap();
             }
 
-            let root = tree.commit().unwrap().root;
+            let root = tree.commit(&storage).unwrap().root;
 
             let expected =
                 felt!("0x6ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
@@ -1486,12 +1522,48 @@ mod tests {
         use crate::storage::Storage;
         use crate::PedersenHash;
 
-        use super::{Direction, MerkleTree, TestStorage, TestTree};
+        use super::{
+            BinaryProofNode, Direction, EdgeProofNode, MerkleTree, ProofNode, TestStorage, TestTree,
+        };
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
         use pathfinder_common::felt;
         use rusqlite::Transaction;
         use stark_hash::Felt;
+
+        impl EdgeProofNode {
+            fn hash(&self) -> Felt {
+                // Code taken from [merkle_node::EdgeNode::calculate_hash]
+                let child_hash = self.child_hash;
+
+                // Path should be valid, so `unwrap()` is safe to use here.
+                let path = Felt::from_bits(&self.path).unwrap();
+                let mut length = [0; 32];
+                // Safe as len() is guaranteed to be <= 251
+                length[31] = self.path.len() as u8;
+
+                // Length should be smaller than the maximum size of a stark hash.
+                let length = Felt::from_be_bytes(length).unwrap();
+
+                stark_hash::stark_hash(child_hash, path) + length
+            }
+        }
+
+        impl BinaryProofNode {
+            fn hash(&self) -> Felt {
+                // Code taken from [merkle_node::EdgeNode::calculate_hash]
+                stark_hash::stark_hash(self.left_hash, self.right_hash)
+            }
+        }
+
+        impl ProofNode {
+            fn hash(&self) -> Felt {
+                match self {
+                    ProofNode::Binary(bin) => bin.hash(),
+                    ProofNode::Edge(edge) => edge.hash(),
+                }
+            }
+        }
 
         #[derive(Debug, PartialEq, Eq)]
         pub enum Membership {
@@ -1520,7 +1592,7 @@ mod tests {
             root: Felt,
             key: &BitSlice<Msb0, u8>,
             value: Felt,
-            proofs: &[crate::Node],
+            proofs: &[ProofNode],
         ) -> Option<Membership> {
             // Protect from ill-formed keys
             if key.len() != 251 {
@@ -1532,11 +1604,11 @@ mod tests {
 
             for proof_node in proofs.iter() {
                 // Hash mismatch? Return None.
-                if proof_node.hash::<PedersenHash>() != expected_hash {
+                if proof_node.hash() != expected_hash {
                     return None;
                 }
                 match proof_node {
-                    crate::Node::Binary { left, right } => {
+                    ProofNode::Binary(bin) => {
                         // Direction will always correspond to the 0th index
                         // because we're removing bits on every iteration.
                         let direction = Direction::from(remaining_path[0]);
@@ -1544,15 +1616,16 @@ mod tests {
                         // Set the next hash to be the left or right hash,
                         // depending on the direction
                         expected_hash = match direction {
-                            Direction::Left => *left,
-                            Direction::Right => *right,
+                            Direction::Left => bin.left_hash,
+                            Direction::Right => bin.right_hash,
                         };
 
                         // Advance by a single bit
                         remaining_path = &remaining_path[1..];
                     }
-                    crate::Node::Edge { child, path } => {
-                        if path != &remaining_path[..path.len()] {
+                    ProofNode::Edge(edge) => {
+                        let path_matches = edge.path == remaining_path[..edge.path.len()];
+                        if !path_matches {
                             // If paths don't match, we've found a proof of non membership because we:
                             // 1. Correctly moved towards the target insofar as is possible, and
                             // 2. hashing all the nodes along the path does result in the root hash, which means
@@ -1561,10 +1634,10 @@ mod tests {
                         }
 
                         // Set the next hash to the child's hash
-                        expected_hash = *child;
+                        expected_hash = edge.child_hash;
 
                         // Advance by the whole edge path
-                        remaining_path = &remaining_path[path.len()..];
+                        remaining_path = &remaining_path[edge.path.len()..];
                     }
                 }
             }
@@ -1604,7 +1677,7 @@ mod tests {
                     .zip(values.iter())
                     .for_each(|(k, v)| uut.set(&storage, k.view_bits(), *v).unwrap());
 
-                let root = uut.commit().unwrap().root;
+                let root = uut.commit(&storage).unwrap().root;
                 let tree = TestTree::new(root);
 
                 Self {
@@ -1637,7 +1710,7 @@ mod tests {
             keys: &'_ [&BitSlice<Msb0, u8>],
             tree: &MerkleTree<H, HEIGHT>,
             storage: &impl Storage,
-        ) -> anyhow::Result<Vec<Vec<crate::Node>>> {
+        ) -> anyhow::Result<Vec<Vec<ProofNode>>> {
             keys.iter().map(|k| tree.get_proof(storage, k)).collect()
         }
 
@@ -1666,7 +1739,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
 
             let uut = TestTree::new(root);
 
@@ -1709,7 +1782,7 @@ mod tests {
             uut.set(&storage, key2, value_2).unwrap();
             uut.set(&storage, key3, value_3).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1744,7 +1817,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1773,7 +1846,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1802,7 +1875,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1836,7 +1909,7 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1959,20 +2032,17 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let uut = TestTree::new(root);
 
             let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
 
             // Modify the left hash
-            let new_node = match &proofs[0][0] {
-                crate::Node::Binary { right, .. } => crate::Node::Binary {
-                    left: felt!("0x42"),
-                    right: *right,
-                },
+            let to_change = proofs[0].get_mut(0).unwrap();
+            match to_change {
+                ProofNode::Binary(bin) => bin.left_hash = felt!("0x42"),
                 _ => unreachable!(),
             };
-            proofs[0][0] = new_node;
 
             let verified = verify_proof(root, key1, value_1, &proofs[0]);
             assert!(verified.is_none());
@@ -2004,20 +2074,17 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = uut.commit().unwrap().root;
+            let root = uut.commit(&storage).unwrap().root;
             let uut = TestTree::new(root);
 
             let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
 
             // Modify the child hash
-            let new_node = match &proofs[0][1] {
-                crate::Node::Edge { path, .. } => crate::Node::Edge {
-                    child: felt!("0x42"),
-                    path: path.clone(),
-                },
+            let to_change = proofs[0].get_mut(1).unwrap();
+            match to_change {
+                ProofNode::Edge(edge) => edge.child_hash = felt!("0x42"),
                 _ => unreachable!(),
             };
-            proofs[0][1] = new_node;
 
             let verified = verify_proof(root, key1, value_1, &proofs[0]);
             assert!(verified.is_none());
@@ -2042,7 +2109,7 @@ mod tests {
         uut.set(&storage, &key0, value).unwrap();
         uut.set(&storage, &key1, value).unwrap();
 
-        let root = uut.commit().unwrap().root;
+        let root = uut.commit(&storage).unwrap().root;
 
         let uut = TestTree::new(root);
         // this used to panic because it did find the binary on dev profile with the leaf hash
