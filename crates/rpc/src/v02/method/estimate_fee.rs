@@ -154,12 +154,12 @@ mod tests {
         use super::*;
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
-            BroadcastedInvokeTransactionV1,
+            BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
-        use crate::v02::types::{CairoContractClass, ContractClass};
+        use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{
-            felt_bytes, ClassCommitment, ClassHash, ContractNonce, ContractRoot, GasPrice,
-            SequencerAddress, StarknetBlockTimestamp, StateCommitment,
+            felt_bytes, CasmHash, ClassCommitment, ClassHash, ContractNonce, ContractRoot,
+            GasPrice, SequencerAddress, StarknetBlockTimestamp, StateCommitment,
         };
         use pathfinder_storage::types::CompressedContract;
         use pathfinder_storage::{StarknetBlock, StarknetBlocksTable};
@@ -414,18 +414,20 @@ mod tests {
             assert_eq!(result, FeeEstimate::default(),);
         }
 
-        lazy_static::lazy_static! {
-            pub static ref CONTRACT_CLASS: CairoContractClass = {
-                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
-                let json = zstd::decode_all(compressed_json).unwrap();
-                ContractClass::from_definition_bytes(&json).unwrap().as_cairo().unwrap()
-            };
-        }
-
         #[test_log::test(tokio::test)]
         async fn successful_declare_v1() {
             let (context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
+
+            let contract_class = {
+                let compressed_json =
+                    starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
+                let json = zstd::decode_all(compressed_json).unwrap();
+                ContractClass::from_definition_bytes(&json)
+                    .unwrap()
+                    .as_cairo()
+                    .unwrap()
+            };
 
             let declare_transaction = BroadcastedTransaction::Declare(
                 BroadcastedDeclareTransaction::V1(BroadcastedDeclareTransactionV1 {
@@ -433,7 +435,7 @@ mod tests {
                     max_fee: Fee(Default::default()),
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
-                    contract_class: CONTRACT_CLASS.clone(),
+                    contract_class,
                     sender_address: account_address,
                 }),
             );
@@ -447,6 +449,41 @@ mod tests {
         }
 
         #[test_log::test(tokio::test)]
-        async fn successful_declare_v2() {}
+        async fn successful_declare_v2() {
+            let (context, _join_handle, account_address, latest_block_hash) =
+                test_context_with_call_handling().await;
+
+            let contract_class: SierraContractClass = {
+                let definition = starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA;
+                let definition = zstd::decode_all(definition).unwrap();
+                ContractClass::from_definition_bytes(&definition)
+                    .unwrap()
+                    .as_sierra()
+                    .unwrap()
+            };
+
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
+                    version: TransactionVersion::TWO_WITH_QUERY_VERSION,
+                    max_fee: Fee(Default::default()),
+                    signature: vec![],
+                    nonce: TransactionNonce(Default::default()),
+                    contract_class,
+                    sender_address: account_address,
+                    // Taken from
+                    // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=284544
+                    compiled_class_hash: CasmHash::new_or_panic(felt!(
+                        "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
+                    )),
+                }),
+            );
+
+            let input = EstimateFeeInput {
+                request: declare_transaction,
+                block_id: BlockId::Hash(latest_block_hash),
+            };
+            let result = estimate_fee(context, input).await.unwrap();
+            assert_eq!(result, FeeEstimate::default(),);
+        }
     }
 }
