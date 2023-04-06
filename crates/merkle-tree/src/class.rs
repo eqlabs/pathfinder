@@ -2,7 +2,7 @@ use anyhow::Context;
 use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
 use rusqlite::Transaction;
 
-use crate::merkle_tree::MerkleTree;
+use crate::tree::MerkleTree;
 use crate::PoseidonHash;
 
 /// Merkle tree which contains Starknet's class commitment.

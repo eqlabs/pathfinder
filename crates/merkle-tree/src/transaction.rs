@@ -1,7 +1,7 @@
 use bitvec::view::BitView;
 use stark_hash::Felt;
 
-use crate::merkle_tree::MerkleTree;
+use crate::tree::MerkleTree;
 
 /// A Patricia Merkle tree with height 64 used to compute transaction and event commitments.
 ///

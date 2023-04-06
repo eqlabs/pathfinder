@@ -6,7 +6,7 @@
 use crate::PedersenHash;
 use crate::{
     merkle_node::InternalNode,
-    merkle_tree::{MerkleTree, Visit},
+    tree::{MerkleTree, Visit},
 };
 use anyhow::Context;
 use bitvec::{prelude::Msb0, slice::BitSlice};
