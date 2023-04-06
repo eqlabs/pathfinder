@@ -148,7 +148,7 @@ mod tests {
     mod ext_py {
         use super::*;
         use crate::v02::method::estimate_fee::tests::ext_py::{
-            test_context_with_call_handling, valid_mainnet_invoke_v1, BLOCK_5,
+            test_context_with_call_handling, valid_invoke_v1, BLOCK_5,
         };
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
@@ -159,11 +159,11 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_block() {
-            let (context, _join_handle, account_address, _) =
+            let (_db_file, context, _join_handle, account_address, _) =
                 test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
-                request: vec![valid_mainnet_invoke_v1(account_address)],
+                request: vec![valid_invoke_v1(account_address)],
                 block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = estimate_fee(context, input).await;
@@ -172,10 +172,10 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (context, _join_handle, account_address, _) =
+            let (_db_file, context, _join_handle, account_address, _) =
                 test_context_with_call_handling().await;
 
-            let mainnet_invoke = valid_mainnet_invoke_v1(account_address)
+            let mainnet_invoke = valid_invoke_v1(account_address)
                 .into_invoke_or_panic()
                 .into_v1_or_panic();
             let input = EstimateFeeInput {
@@ -193,10 +193,10 @@ mod tests {
 
         #[tokio::test]
         async fn successful_invoke_v1() {
-            let (context, _join_handle, account_address, latest_block_hash) =
+            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
-            let transaction0 = valid_mainnet_invoke_v1(account_address);
+            let transaction0 = valid_invoke_v1(account_address);
             let transaction1 = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 BroadcastedInvokeTransactionV1 {
                     nonce: TransactionNonce(felt!("0x1")),
@@ -216,7 +216,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v1() {
-            let (context, _join_handle, account_address, latest_block_hash) =
+            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let contract_class = {
@@ -250,7 +250,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v2() {
-            let (context, _join_handle, account_address, latest_block_hash) =
+            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let contract_class: SierraContractClass = {

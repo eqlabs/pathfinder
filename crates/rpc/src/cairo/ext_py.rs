@@ -439,10 +439,10 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 
 #[cfg(test)]
 mod tests {
-    use super::sub_process::launch_python;
-    use crate::v02::types::request::{
-        BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction,
-        BroadcastedInvokeTransactionV1, BroadcastedTransaction,
+    use super::{sub_process::launch_python, BlockHashNumberOrLatest};
+    use crate::{
+        cairo::ext_py::GasPriceSource,
+        v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
     };
     use pathfinder_common::{
         felt, felt_bytes, CallParam, CallResultValue, Chain, ClassCommitment, ClassHash,
@@ -456,6 +456,7 @@ mod tests {
         ContractCodeTable, ContractsStateTable, JournalMode, StarknetBlock, StarknetBlocksTable,
         Storage,
     };
+    use rusqlite::params;
     use stark_hash::Felt;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
@@ -562,24 +563,26 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn estimate_fee_for_example() {
-        // TODO: refactor the outer parts to a with_test_env or similar?
-        let db_file = tempfile::NamedTempFile::new().unwrap();
+        use crate::v02::method::estimate_fee::tests::ext_py::{
+            test_storage_with_account, valid_invoke_v1,
+        };
 
-        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
+        let (_db_file, storage, account_address, latest_block_hash, latest_block_number) =
+            test_storage_with_account();
+        let db_path = storage.path();
 
-        let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
-
-        let tx = conn.transaction().unwrap();
-
-        deploy_test_contract_in_block_one(&tx);
-
-        tx.commit().unwrap();
+        let db_conn = storage.connection().unwrap();
+        db_conn
+            .execute(
+                "UPDATE starknet_blocks SET gas_price = ? where hash = ?",
+                params![1u128.to_be_bytes(), latest_block_hash],
+            )
+            .unwrap();
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
         let (handle, jh) = super::start(
-            PathBuf::from(db_file.path()),
+            PathBuf::from(db_path),
             std::num::NonZeroUsize::new(1).unwrap(),
             async move {
                 let _ = shutdown_rx.await;
@@ -590,61 +593,43 @@ mod tests {
         .await
         .unwrap();
 
-        let transactions = vec![BroadcastedTransaction::Invoke(
-            BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
-                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                max_fee: super::Call::DEFAULT_MAX_FEE,
-                signature: Default::default(),
-                nonce: super::Call::DEFAULT_NONCE,
-                sender_address: ContractAddress::new_or_panic(felt!(
-                    "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                )),
-                calldata: vec![CallParam(felt!("0x84"))],
-            }),
-        )];
-
-        let at_block_fee = handle
-            .estimate_fee(
-                transactions.clone(),
-                StarknetBlockNumber::new_or_panic(1).into(),
-                super::GasPriceSource::PastBlock,
-                None,
-                None,
-            )
-            .await
-            .unwrap();
+        let transactions = vec![valid_invoke_v1(account_address)];
 
         use ethers::types::H256;
 
-        assert_eq!(
-            at_block_fee,
-            vec![crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x4ea),
-                gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0x4ea),
-            }]
-        );
+        const EXPECTED_GAS_CONSUMED: u64 = 1_266;
 
-        let current_fee = handle
-            .estimate_fee(
-                transactions.clone(),
-                StarknetBlockHash(Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap())
-                    .into(),
-                super::GasPriceSource::Current(H256::from_low_u64_be(10)),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
+        for (gas_price_u64, block, use_past_block) in [
+            (1, latest_block_number.into(), true),
+            (10, latest_block_hash.into(), false),
+            (123, BlockHashNumberOrLatest::Latest, false),
+        ] {
+            let gas_price = H256::from_low_u64_be(gas_price_u64);
+            let fee = handle
+                .estimate_fee(
+                    transactions.clone(),
+                    block,
+                    if use_past_block {
+                        GasPriceSource::PastBlock
+                    } else {
+                        GasPriceSource::Current(gas_price)
+                    },
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
 
-        assert_eq!(
-            current_fee,
-            vec![crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0x4ea),
-                gas_price: H256::from_low_u64_be(10),
-                overall_fee: H256::from_low_u64_be(0x3124),
-            }]
-        );
+            assert_eq!(
+                fee,
+                vec![crate::v02::types::reply::FeeEstimate {
+                    gas_consumed: H256::from_low_u64_be(EXPECTED_GAS_CONSUMED),
+                    gas_price,
+                    overall_fee: H256::from_low_u64_be(EXPECTED_GAS_CONSUMED * gas_price_u64),
+                }],
+                "block: {block}, gas_price: {gas_price}"
+            );
+        }
 
         shutdown_tx.send(()).unwrap();
 

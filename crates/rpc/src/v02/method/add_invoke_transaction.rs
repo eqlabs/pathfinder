@@ -63,7 +63,7 @@ mod tests {
     fn test_invoke_txn() -> Transaction {
         Transaction::Invoke(BroadcastedInvokeTransaction::V1(
             BroadcastedInvokeTransactionV1 {
-                version: TransactionVersion::ZERO,
+                version: TransactionVersion::ONE,
                 max_fee: Fee(felt!("0x4F388496839")),
                 signature: vec![
                     TransactionSignatureElem(felt!(
@@ -131,7 +131,7 @@ mod tests {
             let expected = AddInvokeTransactionInput {
                 invoke_transaction: test_invoke_txn(),
             };
-            assert_eq!(input, expected);
+            pretty_assertions::assert_eq!(input, expected);
         }
 
         #[test]

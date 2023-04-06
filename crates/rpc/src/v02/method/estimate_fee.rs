@@ -159,10 +159,11 @@ pub(crate) mod tests {
         use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{
             felt_bytes, CasmHash, ClassCommitment, ClassHash, ContractNonce, ContractRoot,
-            GasPrice, SequencerAddress, StarknetBlockTimestamp, StateCommitment,
+            GasPrice, SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp,
+            StateCommitment,
         };
         use pathfinder_storage::types::CompressedContract;
-        use pathfinder_storage::{StarknetBlock, StarknetBlocksTable};
+        use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
         use stark_hash::Felt;
 
         // Mainnet block number 5
@@ -170,9 +171,7 @@ pub(crate) mod tests {
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         )));
 
-        pub(crate) fn valid_mainnet_invoke_v1(
-            account_address: ContractAddress,
-        ) -> BroadcastedTransaction {
+        pub(crate) fn valid_invoke_v1(account_address: ContractAddress) -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
@@ -239,14 +238,13 @@ pub(crate) mod tests {
             ))
         }
 
-        pub(crate) async fn test_context_with_call_handling() -> (
-            RpcContext,
-            tokio::task::JoinHandle<()>,
+        pub(crate) fn test_storage_with_account() -> (
+            tempfile::NamedTempFile,
+            Storage,
             ContractAddress,
             StarknetBlockHash,
+            StarknetBlockNumber,
         ) {
-            use pathfinder_common::ChainId;
-
             let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             source_path.push("fixtures/mainnet.sqlite");
 
@@ -256,7 +254,29 @@ pub(crate) mod tests {
 
             let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
 
-            let (account_address, latest_block_hash) = add_dummy_account(storage.clone());
+            let (account_address, latest_block_hash, latest_block_number) =
+                add_dummy_account(storage.clone());
+
+            (
+                db_file,
+                storage,
+                account_address,
+                latest_block_hash,
+                latest_block_number,
+            )
+        }
+
+        pub(crate) async fn test_context_with_call_handling() -> (
+            tempfile::NamedTempFile,
+            RpcContext,
+            tokio::task::JoinHandle<()>,
+            ContractAddress,
+            StarknetBlockHash,
+        ) {
+            use pathfinder_common::ChainId;
+
+            let (db_file, storage, account_address, latest_block_hash, _) =
+                test_storage_with_account();
 
             let sync_state = Arc::new(crate::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
@@ -271,6 +291,7 @@ pub(crate) mod tests {
             let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (
+                db_file,
                 context.with_call_handling(call_handle),
                 cairo_handle,
                 account_address,
@@ -280,7 +301,7 @@ pub(crate) mod tests {
 
         fn add_dummy_account(
             storage: pathfinder_storage::Storage,
-        ) -> (ContractAddress, StarknetBlockHash) {
+        ) -> (ContractAddress, StarknetBlockHash, StarknetBlockNumber) {
             let mut db_conn = storage.connection().unwrap();
             let db_txn = db_conn.transaction().unwrap();
 
@@ -366,16 +387,16 @@ pub(crate) mod tests {
             // Persist
             db_txn.commit().unwrap();
 
-            (contract_address, new_block.hash)
+            (contract_address, new_block.hash, new_block.number)
         }
 
         #[tokio::test]
         async fn no_such_block() {
-            let (context, _join_handle, account_address, _) =
+            let (_db_file, context, _join_handle, account_address, _) =
                 test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
-                request: valid_mainnet_invoke_v1(account_address),
+                request: valid_invoke_v1(account_address),
                 block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = estimate_fee(context, input).await;
@@ -384,14 +405,14 @@ pub(crate) mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (context, _join_handle, account_address, _) =
+            let (_db_file, context, _join_handle, account_address, _) =
                 test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
                 request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                     BroadcastedInvokeTransactionV1 {
                         sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
-                        ..valid_mainnet_invoke_v1(account_address)
+                        ..valid_invoke_v1(account_address)
                             .into_invoke_or_panic()
                             .into_v1_or_panic()
                     },
@@ -404,11 +425,11 @@ pub(crate) mod tests {
 
         #[tokio::test]
         async fn successful_invoke_v1() {
-            let (context, _join_handle, account_address, latest_block_hash) =
+            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
-                request: valid_mainnet_invoke_v1(account_address),
+                request: valid_invoke_v1(account_address),
                 block_id: BlockId::Hash(latest_block_hash),
             };
             let result = estimate_fee(context, input).await.unwrap();
@@ -417,7 +438,7 @@ pub(crate) mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v1() {
-            let (context, _join_handle, account_address, latest_block_hash) =
+            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let contract_class = {
@@ -451,7 +472,7 @@ pub(crate) mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v2() {
-            let (context, _join_handle, account_address, latest_block_hash) =
+            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let contract_class: SierraContractClass = {
