@@ -51,9 +51,12 @@ impl<'tx> ContractsStateTree<'tx> {
     }
 
     /// Applies and persists any changes. Returns the new tree root.
-    pub fn apply(self) -> anyhow::Result<ContractRoot> {
-        let root = self.tree.commit(&self.storage)?;
-        Ok(ContractRoot(root))
+    pub fn commit_and_persist_changes(self) -> anyhow::Result<ContractRoot> {
+        let update = self.tree.commit()?;
+        for (hash, node) in update.added {
+            self.storage.insert(&hash, &node)?;
+        }
+        Ok(ContractRoot(update.root))
     }
 
     /// See [`MerkleTree::dfs`]
@@ -93,9 +96,12 @@ impl<'tx> StorageCommitmentTree<'tx> {
     }
 
     /// Applies and persists any changes. Returns the new global root.
-    pub fn apply(self) -> anyhow::Result<StorageCommitment> {
-        let root = self.tree.commit(&self.storage)?;
-        Ok(StorageCommitment(root))
+    pub fn commit_and_persist_changes(self) -> anyhow::Result<StorageCommitment> {
+        let update = self.tree.commit()?;
+        for (hash, node) in update.added {
+            self.storage.insert(&hash, &node)?;
+        }
+        Ok(StorageCommitment(update.root))
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].

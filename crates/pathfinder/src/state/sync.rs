@@ -763,7 +763,7 @@ fn update_starknet_state(
 
     // Apply storage commitment tree changes.
     let new_storage_commitment = storage_commitment_tree
-        .apply()
+        .commit_and_persist_changes()
         .context("Apply storage commitment tree updates")?;
 
     // Add new Sierra classes to class commitment tree.
@@ -788,7 +788,7 @@ fn update_starknet_state(
 
     // Apply all class commitment tree changes.
     let new_class_commitment = class_commitment_tree
-        .apply()
+        .commit_and_persist_changes()
         .context("Apply class commitment tree updates")?;
 
     Ok((new_storage_commitment, new_class_commitment))

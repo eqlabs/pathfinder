@@ -909,7 +909,9 @@ mod tests {
         storage_commitment_tree
             .set(test_contract_address, test_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree.apply().unwrap();
+        let storage_commitment = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
@@ -967,7 +969,9 @@ mod tests {
         storage_commitment_tree
             .set(account_contract_address, account_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree.apply().unwrap();
+        let storage_commitment = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
@@ -1028,7 +1032,7 @@ mod tests {
                 .set(*storage_address, *storage_value)
                 .unwrap();
         }
-        let contract_state_root = contract_state.apply().unwrap();
+        let contract_state_root = contract_state.commit_and_persist_changes().unwrap();
 
         let contract_nonce = ContractNonce(Felt::ZERO);
 

@@ -34,7 +34,7 @@ pub fn chunked_inserts(tx: &rusqlite::Transaction<'_>, keys: &[Felt], batch_size
             })
             .unwrap();
 
-        hash = uut.apply().unwrap();
+        hash = uut.commit_and_persist_changes().unwrap();
     }
 
     hash.0

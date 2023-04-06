@@ -215,7 +215,9 @@ mod tests {
         storage_commitment_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment0 = storage_commitment_tree.apply().unwrap();
+        let storage_commitment0 = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
         let contract_state_hash = update_contract_state(
@@ -242,7 +244,9 @@ mod tests {
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment1 = storage_commitment_tree.apply().unwrap();
+        let storage_commitment1 = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
         let contract_state_hash = update_contract_state(
@@ -269,7 +273,9 @@ mod tests {
         storage_commitment_tree
             .set(contract2_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment2 = storage_commitment_tree.apply().unwrap();
+        let storage_commitment2 = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
 
         let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {

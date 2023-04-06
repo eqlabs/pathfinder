@@ -50,7 +50,7 @@ pub fn update_contract_state(
                 .context("Update contract storage tree")?;
         }
         contract_tree
-            .apply()
+            .commit_and_persist_changes()
             .context("Apply contract storage tree changes")?
     } else {
         old_root

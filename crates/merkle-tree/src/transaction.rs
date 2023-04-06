@@ -30,10 +30,6 @@ impl crate::storage::Storage for NullStorage {
     fn get(&self, _node: &Felt) -> Result<Option<crate::Node>, Self::Error> {
         Ok(None)
     }
-
-    fn insert(&self, _hash: &Felt, _node: &crate::Node) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 impl TransactionTree {
@@ -43,7 +39,7 @@ impl TransactionTree {
     }
 
     pub fn commit(self) -> anyhow::Result<Felt> {
-        self.tree.commit(&NullStorage {})
+        self.tree.commit().map(|update| update.root)
     }
 }
 

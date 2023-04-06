@@ -9,8 +9,6 @@ pub trait Storage {
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn get(&self, node: &Felt) -> Result<Option<Node>, Self::Error>;
-
-    fn insert(&self, hash: &Felt, node: &Node) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug)]
@@ -131,12 +129,11 @@ macro_rules! define_sqlite_storage {
                     .context("Fetching node data from $table in database")
                     .map_err(crate::storage::AnyhowError::from)
             }
+        }
 
-            fn insert(
-                &self,
-                hash: &stark_hash::Felt,
-                node: &crate::Node,
-            ) -> Result<(), Self::Error> {
+        impl<'tx> $name<'tx> {
+            #[allow(dead_code)]
+            fn insert(&self, hash: &stark_hash::Felt, node: &crate::Node) -> anyhow::Result<()> {
                 self.0
                     .execute(
                         concat!("INSERT OR IGNORE INTO ", $table, " (hash, data) VALUES (?, ?)"),

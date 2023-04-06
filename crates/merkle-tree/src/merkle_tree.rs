@@ -50,6 +50,7 @@ use crate::Hash;
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use stark_hash::Felt;
+use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
@@ -109,6 +110,11 @@ pub struct MerkleTree<H: Hash, const HEIGHT: usize> {
     _hasher: std::marker::PhantomData<H>,
 }
 
+pub struct Update {
+    pub root: Felt,
+    pub added: HashMap<Felt, crate::Node>,
+}
+
 impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn new(root: Felt) -> Self {
         let root_node = Rc::new(RefCell::new(InternalNode::Unresolved(root)));
@@ -122,23 +128,19 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Self::new(Felt::ZERO)
     }
 
-    /// Persists all changes to storage and returns the new root hash.
-    ///
-    /// Note that the root is reference counted in storage. Committing the
-    /// same tree again will therefore increment the count again.
-    pub fn commit(mut self, storage: &impl Storage) -> anyhow::Result<Felt> {
-        self.commit_mut(storage)
+    /// Commits all tree mutations and returns the [changes](Update) to the tree.
+    pub fn commit(mut self) -> anyhow::Result<Update> {
+        self.commit_mut()
     }
 
-    pub fn commit_mut(&mut self, storage: &impl Storage) -> anyhow::Result<Felt> {
-        // Go through tree, collect dirty nodes, calculate their hashes and
-        // persist them. Take care to increment ref counts of child nodes. So in order
-        // to do this correctly, will have to start back-to-front.
-        self.commit_subtree(storage, &mut self.root.borrow_mut())?;
+    pub fn commit_mut(&mut self) -> anyhow::Result<Update> {
+        // Go through tree, collect mutated nodes and calculate their hashes.
+        let mut added = HashMap::new();
+        self.commit_subtree(&mut self.root.borrow_mut(), &mut added)?;
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
 
-        Ok(root)
+        Ok(Update { root, added })
     }
 
     /// Persists any changes in this subtree to storage.
@@ -150,8 +152,8 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// In effect, the entire subtree gets persisted.
     fn commit_subtree(
         &self,
-        storage: &impl Storage,
         node: &mut InternalNode,
+        added: &mut HashMap<Felt, crate::Node>,
     ) -> anyhow::Result<()> {
         use InternalNode::*;
         match node {
@@ -161,8 +163,8 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             Edge(edge) if edge.hash.is_some() => { /* not dirty, already persisted */ }
 
             Binary(binary) => {
-                self.commit_subtree(storage, &mut binary.left.borrow_mut())?;
-                self.commit_subtree(storage, &mut binary.right.borrow_mut())?;
+                self.commit_subtree(&mut binary.left.borrow_mut(), added)?;
+                self.commit_subtree(&mut binary.right.borrow_mut(), added)?;
                 // This will succeed as `commit_subtree` will set the child hashes.
                 binary.calculate_hash::<H>();
                 // unwrap is safe as `commit_subtree` will set the hashes.
@@ -170,13 +172,11 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 let right = binary.right.borrow().hash().unwrap();
                 let persisted_node = crate::Node::Binary { left, right };
                 // unwrap is safe as we just set the hash.
-                storage
-                    .insert(&binary.hash.unwrap(), &persisted_node)
-                    .context("Failed to insert binary node")?;
+                added.insert(binary.hash.unwrap(), persisted_node);
             }
 
             Edge(edge) => {
-                self.commit_subtree(storage, &mut edge.child.borrow_mut())?;
+                self.commit_subtree(&mut edge.child.borrow_mut(), added)?;
                 // This will succeed as `commit_subtree` will set the child's hash.
                 edge.calculate_hash::<H>();
 
@@ -187,9 +187,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     child,
                 };
                 // unwrap is safe as we just set the hash.
-                storage
-                    .insert(&edge.hash.unwrap(), &persisted_node)
-                    .context("Failed to insert edge node")?;
+                added.insert(edge.hash.unwrap(), persisted_node);
             }
         }
 
@@ -1062,7 +1060,7 @@ mod tests {
             uut.set(&storage, &key1, val1).unwrap();
             uut.set(&storage, &key2, val2).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
 
             let uut = TestTree::new(root);
 
@@ -1110,14 +1108,14 @@ mod tests {
                 let key = key.view_bits();
                 uut.set(&storage, key, *val).unwrap();
             }
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
             let mut uut = TestTree::new(root);
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&storage, &key, val).unwrap();
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let expect = felt!("0x5f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
             assert_eq!(root, expect);
         }
@@ -1138,15 +1136,15 @@ mod tests {
             let mut uut = TestTree::empty();
             let storage = TestStorage::new(&transaction);
             uut.set(&storage, &key0, val0).unwrap();
-            let root0 = uut.commit(&storage).unwrap();
+            let root0 = uut.commit().unwrap().root;
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key1, val1).unwrap();
-            let root1 = uut.commit(&storage).unwrap();
+            let root1 = uut.commit().unwrap().root;
 
             let mut uut = TestTree::new(root1);
             uut.set(&storage, &key2, val2).unwrap();
-            let root2 = uut.commit(&storage).unwrap();
+            let root2 = uut.commit().unwrap().root;
 
             let uut = TestTree::new(root0);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
@@ -1180,15 +1178,15 @@ mod tests {
             let mut uut = TestTree::empty();
             let storage = TestStorage::new(&transaction);
             uut.set(&storage, &key0, val0).unwrap();
-            let root0 = uut.commit(&storage).unwrap();
+            let root0 = uut.commit().unwrap().root;
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key1, val1).unwrap();
-            let root1 = uut.commit(&storage).unwrap();
+            let root1 = uut.commit().unwrap().root;
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key2, val2).unwrap();
-            let root2 = uut.commit(&storage).unwrap();
+            let root2 = uut.commit().unwrap().root;
 
             let uut = TestTree::new(root0);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
@@ -1217,13 +1215,13 @@ mod tests {
             let val = felt!("0x12345678");
             uut.set(&storage, &key, val).unwrap();
 
-            let root0 = uut.commit(&storage).unwrap();
+            let root0 = uut.commit().unwrap().root;
 
             let uut = TestTree::new(root0);
-            let root1 = uut.commit(&storage).unwrap();
+            let root1 = uut.commit().unwrap().root;
 
             let uut = TestTree::new(root1);
-            let root2 = uut.commit(&storage).unwrap();
+            let root2 = uut.commit().unwrap().root;
 
             assert_eq!(root0, root1);
             assert_eq!(root0, root2);
@@ -1252,7 +1250,7 @@ mod tests {
             uut.set(&storage, felt!("0x87").view_bits(), felt!("0x2"))
                 .unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
 
             assert_eq!(
                 root,
@@ -1301,7 +1299,7 @@ mod tests {
                 tree.set(&storage, key, val).unwrap();
             }
 
-            let root = tree.commit(&storage).unwrap();
+            let root = tree.commit().unwrap().root;
 
             let expected =
                 felt!("0x6ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
@@ -1678,7 +1676,7 @@ mod tests {
                     .zip(values.iter())
                     .for_each(|(k, v)| uut.set(&storage, k.view_bits(), *v).unwrap());
 
-                let root = uut.commit(&storage).unwrap();
+                let root = uut.commit().unwrap().root;
                 let tree = TestTree::new(root);
 
                 Self {
@@ -1740,7 +1738,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
 
             let uut = TestTree::new(root);
 
@@ -1783,7 +1781,7 @@ mod tests {
             uut.set(&storage, key2, value_2).unwrap();
             uut.set(&storage, key3, value_3).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1818,7 +1816,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1847,7 +1845,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1876,7 +1874,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1910,7 +1908,7 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -2033,7 +2031,7 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let uut = TestTree::new(root);
 
             let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -2075,7 +2073,7 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = uut.commit(&storage).unwrap();
+            let root = uut.commit().unwrap().root;
             let uut = TestTree::new(root);
 
             let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -2110,7 +2108,7 @@ mod tests {
         uut.set(&storage, &key0, value).unwrap();
         uut.set(&storage, &key1, value).unwrap();
 
-        let root = uut.commit(&storage).unwrap();
+        let root = uut.commit().unwrap().root;
 
         let uut = TestTree::new(root);
         // this used to panic because it did find the binary on dev profile with the leaf hash

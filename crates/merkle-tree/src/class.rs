@@ -33,8 +33,11 @@ impl<'tx> ClassCommitmentTree<'tx> {
     }
 
     /// Applies and persists any changes. Returns the new global root.
-    pub fn apply(self) -> anyhow::Result<ClassCommitment> {
-        let root = self.tree.commit(&self.storage)?;
-        Ok(ClassCommitment(root))
+    pub fn commit_and_persist_changes(self) -> anyhow::Result<ClassCommitment> {
+        let update = self.tree.commit()?;
+        for (hash, node) in update.added {
+            self.storage.insert(&hash, &node)?;
+        }
+        Ok(ClassCommitment(update.root))
     }
 }
