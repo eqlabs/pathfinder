@@ -611,6 +611,7 @@ def test_check_cairolang_version():
     # of another constant that needs to be upgraded
     assert check_cairolang_version()
 
+
 def test_estimate_fee_for_positive_directly():
     con = inmemory_with_tables()
     (contract_address, _) = populate_test_contract_with_132_on_3(con)
@@ -650,6 +651,7 @@ def test_estimate_fee_for_positive_directly():
             overall_fee=1258,
         )
     ]
+
 
 def test_estimate_fee_for_declare_transaction_directly():
     con = inmemory_with_tables()
@@ -701,6 +703,7 @@ def test_estimate_fee_for_declare_transaction_directly():
             overall_fee=1251,
         )
     ]
+
 
 def test_estimate_fee_for_positive():
     con = inmemory_with_tables()
