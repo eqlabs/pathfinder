@@ -1,12 +1,12 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
-use ethers::types::{H160, H256};
 use num_bigint::BigUint;
 use pathfinder_common::{
     CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, GasPrice,
     L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
     TransactionSignatureElem, TransactionVersion,
 };
+use primitive_types::{H160, H256};
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
 use stark_hash::{Felt, HexParseError, OverflowError};
@@ -241,7 +241,7 @@ serde_with::serde_conv!(
 
 serde_with::serde_conv!(
     pub H256AsHexStr,
-    ethers::types::H256,
+    primitive_types::H256,
     |u: &H256| bytes_to_hex_str(u.as_bytes()),
     |s: &str| bytes_from_hex_str::<32>(s).map(H256::from)
 );

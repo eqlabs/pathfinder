@@ -250,7 +250,7 @@ pub mod request {
     impl Call {
         pub const DEFAULT_MAX_FEE: Fee = Fee::ZERO;
         pub const DEFAULT_VERSION: TransactionVersion =
-            TransactionVersion(ethers::types::H256::zero());
+            TransactionVersion(primitive_types::H256::zero());
         pub const DEFAULT_NONCE: TransactionNonce = TransactionNonce(stark_hash::Felt::ZERO);
     }
 
@@ -296,7 +296,9 @@ pub mod request {
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
                         BroadcastedDeclareTransactionV1 {
                             max_fee: Fee(felt!("0x5")),
-                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x1)),
+                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(
+                                0x1,
+                            )),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
                             contract_class,
@@ -306,7 +308,9 @@ pub mod request {
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(
                         BroadcastedDeclareTransactionV2 {
                             max_fee: Fee(felt!("0x51")),
-                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(0x2)),
+                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(
+                                0x2,
+                            )),
                             signature: vec![TransactionSignatureElem(felt!("0x71"))],
                             nonce: TransactionNonce(felt!("0x81")),
                             compiled_class_hash: CasmHash(felt!("0x91")),
@@ -334,7 +338,7 @@ pub mod request {
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
-                            version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
+                            version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
                             max_fee: Fee(felt!("0x6")),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
@@ -449,7 +453,7 @@ pub mod reply {
         where
             D: serde::Deserializer<'de>,
         {
-            use ethers::types::H256;
+            use primitive_types::H256;
             use serde::de;
 
             fn transaction_version_one() -> TransactionVersion {
@@ -547,7 +551,7 @@ pub mod reply {
         where
             D: serde::Deserializer<'de>,
         {
-            use ethers::types::H256;
+            use primitive_types::H256;
             use serde::de;
 
             const VERSION_0: H256 = H256::zero();
@@ -832,13 +836,13 @@ pub mod reply {
     pub struct FeeEstimate {
         /// The Ethereum gas cost of the transaction
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub gas_consumed: ethers::types::H256,
+        pub gas_consumed: primitive_types::H256,
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub gas_price: ethers::types::H256,
+        pub gas_price: primitive_types::H256,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
         #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub overall_fee: ethers::types::H256,
+        pub overall_fee: primitive_types::H256,
     }
 
     #[cfg(test)]
@@ -912,13 +916,13 @@ pub mod reply {
                     Transaction::Deploy(DeployTransaction {
                         hash: StarknetTransactionHash(felt!("0xe")),
                         class_hash: ClassHash(felt!("0x10")),
-                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
+                        version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
                         contract_address_salt: ContractAddressSalt(felt!("0xee")),
                         constructor_calldata: vec![ConstructorParam(felt!("0x11"))],
                     }),
                     Transaction::L1Handler(L1HandlerTransaction {
                         hash: StarknetTransactionHash(felt!("0xf")),
-                        version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
+                        version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
                         nonce: TransactionNonce(felt!("0x8")),
                         contract_address: ContractAddress::new_or_panic(felt!("0xfff")),
                         entry_point_selector: EntryPoint(felt!("0xf")),

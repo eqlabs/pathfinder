@@ -2,7 +2,7 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
-use ethers::types::{H160, H256};
+use primitive_types::{H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
@@ -142,7 +142,7 @@ pub struct StorageValue(pub Felt);
 /// The commitment for the state of a StarkNet block.
 ///
 /// Before StarkNet v0.11.0 this was equivalent to [StorageCommitment].
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StateCommitment(pub Felt);
 
 impl StateCommitment {
@@ -186,7 +186,7 @@ impl StorageCommitment {
 pub struct StarknetBlockHash(pub Felt);
 
 /// A StarkNet block number.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Copy, Debug, Default, Clone, PartialEq, Eq, PartialOrd)]
 pub struct StarknetBlockNumber(u64);
 
 macros::i64_backed_u64::to_from_sql!(StarknetBlockNumber);
@@ -327,11 +327,11 @@ impl TransactionVersion {
 pub struct EthereumAddress(pub H160);
 
 /// An Ethereum block hash.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumBlockHash(pub H256);
 
 /// An Ethereum block number.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumBlockNumber(pub u64);
 
 /// An Ethereum transaction hash.
@@ -396,12 +396,6 @@ impl std::ops::SubAssign<u64> for StarknetBlockNumber {
     }
 }
 
-impl From<EthereumBlockNumber> for ethers::types::BlockId {
-    fn from(number: EthereumBlockNumber) -> Self {
-        ethers::types::BlockId::Number(ethers::types::BlockNumber::Number(number.0.into()))
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 #[error("expected slice length of 16 or less, got {0}")]
 pub struct FromSliceError(usize);
@@ -455,7 +449,7 @@ impl From<StarknetBlockHash> for BlockId {
 pub enum EthereumChain {
     Mainnet,
     Goerli,
-    Other(ethers::types::U256),
+    Other(primitive_types::U256),
 }
 
 /// Starknet chain.

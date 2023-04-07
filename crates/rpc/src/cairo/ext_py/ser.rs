@@ -34,7 +34,7 @@ pub(crate) enum ChildCommand<'a> {
 
         // zero means use the gas price from the block.
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
-        gas_price: &'a ethers::types::H256,
+        gas_price: &'a primitive_types::H256,
         transactions: &'a [TransactionAndClassHashHint],
     },
     SimulateTx {
@@ -43,7 +43,7 @@ pub(crate) enum ChildCommand<'a> {
 
         // zero means use the gas price from the block.
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
-        gas_price: &'a ethers::types::H256,
+        gas_price: &'a primitive_types::H256,
         transactions: &'a [TransactionAndClassHashHint],
         skip_validate: &'a bool,
     },

@@ -6,7 +6,7 @@ use pathfinder_common::EthereumAddress;
 use pathfinder_common::{
     consts::VERGEN_GIT_DESCRIBE, Chain, ChainId, EthereumChain, StarknetBlockNumber,
 };
-use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
+use pathfinder_ethereum::EthereumClient;
 use pathfinder_lib::{
     monitoring::{self},
     state,
@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
-        ethereum.transport.clone(),
+        ethereum.client.clone(),
         pathfinder_context.network,
         pathfinder_context.l1_core_address.0,
         pathfinder_context.gateway.clone(),
@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
         state::l2::BlockValidationMode::Strict,
     ));
 
-    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum.transport));
+    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum.client));
 
     let context = pathfinder_rpc::context::RpcContext::new(
         storage.clone(),
@@ -273,22 +273,26 @@ async fn spawn_monitoring(
 
 /// Convenience bundle for an Ethereum transport and chain.
 struct EthereumContext {
-    transport: HttpProvider,
+    client: EthereumClient,
     chain: EthereumChain,
 }
 
 impl EthereumContext {
     /// Configure an [EthereumContext]'s transport and read the chain ID using it.
     async fn setup(url: reqwest::Url, password: Option<String>) -> anyhow::Result<Self> {
-        let transport = HttpProvider::from_config(url, password).context("Creating transport")?;
+        // TODO(SM): add client with necessary properties (including auth)
+        let client = EthereumClient::dummy();
 
-        let chain = transport.chain().await.context(
-            r"Determining Ethereum chain.
-                            
-Hint: Make sure the provided ethereum.url and ethereum.password are good.",
-        )?;
+        //         let transport = HttpProvider::from_config(url, password).context("Creating transport")?;
+        //         let chain = transport.chain().await.context(
+        //             r"Determining Ethereum chain.\n
+        // Hint: Make sure the provided ethereum.url and ethereum.password are good.",
+        //         )?;
 
-        Ok(Self { transport, chain })
+        Ok(Self {
+            client,
+            chain: EthereumChain::Mainnet,
+        })
     }
 
     /// Maps the Ethereum network to its default Starknet network:
@@ -326,19 +330,12 @@ mod pathfinder_context {
 
     use anyhow::Context;
     use pathfinder_common::{Chain, ChainId, EthereumAddress};
+    use pathfinder_ethereum::core_contract::{INTEGRATION, MAINNET, TESTNET, TESTNET2};
+    use primitive_types::H160;
     use reqwest::Url;
     use starknet_gateway_client::Client as GatewayClient;
 
-    use pathfinder_ethereum::contract::{
-        INTEGRATION_ADDRESSES, MAINNET_ADDRESSES, TESTNET2_ADDRESSES, TESTNET_ADDRESSES,
-    };
-
     impl PathfinderContext {
-        const MAINNET_CORE: EthereumAddress = EthereumAddress(MAINNET_ADDRESSES.core);
-        const TESTNET_CORE: EthereumAddress = EthereumAddress(TESTNET_ADDRESSES.core);
-        const TESTNET2_CORE: EthereumAddress = EthereumAddress(TESTNET2_ADDRESSES.core);
-        const INTEGRATION_CORE: EthereumAddress = EthereumAddress(INTEGRATION_ADDRESSES.core);
-
         pub async fn configure_and_proxy_check(
             cfg: NetworkConfig,
             data_directory: PathBuf,
@@ -349,28 +346,28 @@ mod pathfinder_context {
                     network_id: ChainId::MAINNET,
                     gateway: GatewayClient::mainnet(),
                     database: data_directory.join("mainnet.sqlite"),
-                    l1_core_address: Self::MAINNET_CORE,
+                    l1_core_address: EthereumAddress(H160::from_slice(&MAINNET)),
                 },
                 NetworkConfig::Testnet => Self {
                     network: Chain::Testnet,
                     network_id: ChainId::TESTNET,
                     gateway: GatewayClient::testnet(),
                     database: data_directory.join("goerli.sqlite"),
-                    l1_core_address: Self::TESTNET_CORE,
+                    l1_core_address: EthereumAddress(H160::from_slice(&TESTNET)),
                 },
                 NetworkConfig::Testnet2 => Self {
                     network: Chain::Testnet2,
                     network_id: ChainId::TESTNET2,
                     gateway: GatewayClient::testnet2(),
                     database: data_directory.join("testnet2.sqlite"),
-                    l1_core_address: Self::TESTNET2_CORE,
+                    l1_core_address: EthereumAddress(H160::from_slice(&TESTNET2)),
                 },
                 NetworkConfig::Integration => Self {
                     network: Chain::Integration,
                     network_id: ChainId::INTEGRATION,
                     gateway: GatewayClient::integration(),
                     database: data_directory.join("integration.sqlite"),
-                    l1_core_address: Self::INTEGRATION_CORE,
+                    l1_core_address: EthereumAddress(H160::from_slice(&INTEGRATION)),
                 },
                 NetworkConfig::Custom {
                     gateway,
@@ -410,10 +407,10 @@ mod pathfinder_context {
 
             // Check for proxies by comparing the core address against those of the known networks.
             let network = match l1_core_address {
-                x if x == Self::MAINNET_CORE => Chain::Mainnet,
-                x if x == Self::TESTNET_CORE => Chain::Testnet,
-                x if x == Self::TESTNET2_CORE => Chain::Testnet2,
-                x if x == Self::INTEGRATION_CORE => Chain::Integration,
+                x if x.0.as_bytes() == &MAINNET => Chain::Mainnet,
+                x if x.0.as_bytes() == &TESTNET => Chain::Testnet,
+                x if x.0.as_bytes() == &TESTNET2 => Chain::Testnet2,
+                x if x.0.as_bytes() == &INTEGRATION => Chain::Integration,
                 _ => Chain::Custom,
             };
 

@@ -277,13 +277,13 @@ pub enum GasPriceSource {
     ///
     /// U256 is not used for serialization matters, [u8; 32] could be used as well. python side's
     /// serialization limits this value to u128 but in general `eth_gasPrice` is U256.
-    Current(ethers::types::H256),
+    Current(primitive_types::H256),
 }
 
 impl GasPriceSource {
-    const GAS_PRICE_ZERO: ethers::types::H256 = ethers::types::H256::zero();
+    const GAS_PRICE_ZERO: primitive_types::H256 = primitive_types::H256::zero();
     /// Convert to `&H256`, for use in serialization.
-    fn as_price(&self) -> &ethers::types::H256 {
+    fn as_price(&self) -> &primitive_types::H256 {
         match self {
             GasPriceSource::PastBlock => &Self::GAS_PRICE_ZERO,
             GasPriceSource::Current(price) => price,
@@ -595,7 +595,7 @@ mod tests {
 
         let transactions = vec![valid_invoke_v1(account_address)];
 
-        use ethers::types::H256;
+        use primitive_types::H256;
 
         const EXPECTED_GAS_CONSUMED: u64 = 1_266;
 
@@ -689,7 +689,7 @@ mod tests {
             .await
             .unwrap();
 
-        use ethers::types::H256;
+        use primitive_types::H256;
 
         assert_eq!(
             at_block_fee,

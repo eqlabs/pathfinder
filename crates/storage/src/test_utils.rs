@@ -96,7 +96,7 @@ pub(crate) fn create_transactions_and_receipts(
                 transaction_hash: StarknetTransactionHash(
                     Felt::from_hex_str(&"9".repeat(i + 3)).unwrap(),
                 ),
-                version: TransactionVersion(ethers::types::H256::zero()),
+                version: TransactionVersion(primitive_types::H256::zero()),
             })
         }
         _ => transaction::Transaction::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {

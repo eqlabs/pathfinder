@@ -10,7 +10,7 @@ test-utils = ["dep:metrics"]
 
 [dependencies]
 bitvec = "0.20.4"
-ethers = "1.0.2"
+primitive-types = { version = "0.12.1", features = ["serde"] }
 metrics = { version = "0.20.1", optional = true }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }

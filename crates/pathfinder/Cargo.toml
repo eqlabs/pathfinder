@@ -23,7 +23,7 @@ cairo-lang-starknet = { git = "https://github.com/starkware-libs/cairo", tag = "
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
 enum-iterator = "1.2.0"
-ethers = "1.0.2"
+primitive-types = { version = "0.12.1", features = ["serde"] }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
 metrics = "0.20.1"

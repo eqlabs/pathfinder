@@ -1,6 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use pathfinder_ethereum::EthereumClient;
+use primitive_types::H256;
+
 /// Caching of `eth_gasPrice` with single request at a time refreshing.
 ///
 /// The `gasPrice` is used for `estimate_fee` when user
@@ -8,14 +11,12 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct Cached {
     inner: Arc<std::sync::Mutex<Inner>>,
-    eth: Arc<dyn pathfinder_ethereum::provider::EthereumTransport + Send + Sync + 'static>,
+    eth: Arc<EthereumClient>,
     stale_limit: Duration,
 }
 
 impl Cached {
-    pub fn new(
-        eth: Arc<dyn pathfinder_ethereum::provider::EthereumTransport + Send + Sync + 'static>,
-    ) -> Self {
+    pub fn new(eth: Arc<EthereumClient>) -> Self {
         Cached {
             inner: Default::default(),
             eth,
@@ -25,7 +26,7 @@ impl Cached {
 
     /// Returns either a fast fresh value, slower a periodically polled value or fails because
     /// polling has stopped.
-    pub async fn get(&self) -> Option<ethers::types::H256> {
+    pub async fn get(&self) -> Option<H256> {
         let mut rx = {
             let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -77,7 +78,7 @@ impl Cached {
 
                     let mut out = [0u8; 32];
                     price.to_big_endian(&mut out[..]);
-                    let gas_price = ethers::types::H256::from(out);
+                    let gas_price = H256::from(out);
 
                     let mut g = inner.lock().unwrap_or_else(|e| e.into_inner());
                     g.latest.replace((now, gas_price));
@@ -98,6 +99,6 @@ impl Cached {
 
 #[derive(Default)]
 struct Inner {
-    latest: Option<(std::time::Instant, ethers::types::H256)>,
-    next: std::sync::Weak<tokio::sync::broadcast::Sender<Option<ethers::types::H256>>>,
+    latest: Option<(std::time::Instant, H256)>,
+    next: std::sync::Weak<tokio::sync::broadcast::Sender<Option<H256>>>,
 }

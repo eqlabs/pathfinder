@@ -111,7 +111,6 @@ impl Default for SyncState {
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
-    use ethers::types::H256;
     use pathfinder_common::{
         felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
         EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
@@ -124,6 +123,7 @@ pub mod test_utils {
         types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, StarknetBlock,
         StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
+    use primitive_types::H256;
     use stark_hash::Felt;
     use starknet_gateway_types::{
         pending::PendingData,

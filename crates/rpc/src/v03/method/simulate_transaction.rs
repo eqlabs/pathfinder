@@ -390,7 +390,7 @@ mod tests {
 
         let expected: Vec<dto::SimulatedTransaction> = {
             use dto::*;
-            use ethers::types::H256;
+            use primitive_types::H256;
             vec![
             SimulatedTransaction {
                 fee_estimation: Some(
