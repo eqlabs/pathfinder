@@ -106,7 +106,15 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
             .map(|calls| calls.into_iter().map(map_function_invocation).collect()),
         code_address: fi.class_hash,
         entry_point_type: fi.entry_point_type,
-        events: fi.events,
+        events: fi.events.map(|events| {
+            events
+                .into_iter()
+                .map(|event| dto::Event {
+                    data: event.data,
+                    keys: event.keys,
+                })
+                .collect()
+        }),
         messages: fi.messages,
         function_call: FunctionCall {
             calldata: fi.calldata.into_iter().map(CallParam).collect(),

@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use stark_hash::Felt;
 
-use crate::v03::method::simulate_transaction::dto::{EntryPointType, Event, MsgToL1};
+use crate::felt::RpcFelt;
+use crate::v03::method::simulate_transaction::dto::{EntryPointType, MsgToL1};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -27,6 +28,16 @@ pub enum CallType {
     Call,
     #[serde(rename = "DELEGATE")]
     Delegate,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+pub struct Event {
+    pub order: i64,
+    #[serde_as(as = "Vec<RpcFelt>")]
+    pub data: Vec<Felt>,
+    #[serde_as(as = "Vec<RpcFelt>")]
+    pub keys: Vec<Felt>,
 }
 
 #[serde_with::skip_serializing_none]
