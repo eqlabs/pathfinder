@@ -95,7 +95,7 @@ Examples:
     #[arg(
         long = "max-rpc-connections",
         long_help = "Set the maximum number of connections allowed",
-        env = "PATHFINDER_MAX_CONNECTIONS",
+        env = "PATHFINDER_MAX_RPC_CONNECTIONS",
         default_value = "1024"
     )]
     max_rpc_connections: std::num::NonZeroU32,
