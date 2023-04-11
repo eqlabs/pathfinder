@@ -156,11 +156,9 @@ fn map_trace(
 }
 
 pub mod dto {
-    use pathfinder_common::ContractAddress;
     use serde_with::serde_as;
 
     use crate::felt::RpcFelt;
-    use crate::felt::RpcFelt251;
     use crate::v02::method::call::FunctionCall;
     use crate::v02::types::reply::FeeEstimate;
 
@@ -185,8 +183,8 @@ pub mod dto {
     pub enum CallType {
         #[serde(rename = "CALL")]
         Call,
-        #[serde(rename = "LIBRARY_CALL")]
-        LibraryCall,
+        #[serde(rename = "DELEGATE")]
+        Delegate,
     }
 
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -238,15 +236,6 @@ pub mod dto {
     #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct Event {
-        #[serde(flatten)]
-        pub event_content: EventContent,
-        #[serde_as(as = "RpcFelt251")]
-        pub from_address: ContractAddress,
-    }
-
-    #[serde_with::serde_as]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct EventContent {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<Felt>,
         #[serde_as(as = "Vec<RpcFelt>")]
