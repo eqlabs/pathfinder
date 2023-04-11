@@ -46,8 +46,8 @@ impl RpcServer {
         }
     }
 
-    pub fn with_max_connections(mut self, max_connections: Option<u32>) -> Self {
-        self.max_connections = max_connections.unwrap_or(DEFAULT_MAX_CONNECTIONS);
+    pub fn with_max_connections(mut self, max_connections: u32) -> Self {
+        self.max_connections = max_connections;
         self
     }
 

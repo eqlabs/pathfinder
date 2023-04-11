@@ -94,10 +94,11 @@ Examples:
 
     #[arg(
         long = "max-connections",
-        long_help = "Set the maximum number of connections allowed. Default is 1024.",
-        env = "PATHFINDER_MAX_CONNECTIONS"
+        long_help = "Set the maximum number of connections allowed",
+        env = "PATHFINDER_MAX_CONNECTIONS",
+        default_value = "1024"
     )]
-    max_connections: Option<u32>,
+    max_connections: std::num::NonZeroU32,
 }
 
 #[derive(clap::Args)]
@@ -172,7 +173,7 @@ pub struct Config {
     pub poll_pending: bool,
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
-    pub max_connections: Option<u32>,
+    pub max_connections: std::num::NonZeroU32,
 }
 
 pub struct Ethereum {
