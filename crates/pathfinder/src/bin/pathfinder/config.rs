@@ -70,7 +70,7 @@ Examples:
         long = "poll-pending",
         long_help = "Enable polling pending block",
         action = clap::ArgAction::Set,
-        default_value = "true",
+        default_value = "false",
         env = "PATHFINDER_POLL_PENDING", 
     )]
     poll_pending: bool,
