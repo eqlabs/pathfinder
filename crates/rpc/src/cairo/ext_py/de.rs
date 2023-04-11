@@ -108,3 +108,16 @@ pub(super) enum RefinedStatus<'a> {
     Error(ErrorKind),
     Failed(std::borrow::Cow<'a, str>),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression: https://github.com/eqlabs/pathfinder/issues/1018
+    #[test]
+    fn test_parse_tx_traces() {
+        let json = include_str!("../../../fixtures/ext_py/tx_traces.json");
+        let output: OutputValue = serde_json::from_str(json).unwrap();
+        assert_matches::assert_matches!(output, OutputValue::Traces(_));
+    }
+}

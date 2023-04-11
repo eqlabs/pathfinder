@@ -93,8 +93,12 @@ fn map_fee(fee: FeeEstimate) -> reply::FeeEstimate {
 }
 
 fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocation {
+    use crate::cairo::ext_py::types;
     dto::FunctionInvocation {
-        call_type: fi.call_type,
+        call_type: fi.call_type.map(|call_type| match call_type {
+            types::CallType::Call => dto::CallType::Call,
+            types::CallType::Delegate => dto::CallType::LibraryCall,
+        }),
         caller_address: fi.caller_address,
         calls: fi
             .internal_calls
@@ -102,7 +106,15 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
             .map(|calls| calls.into_iter().map(map_function_invocation).collect()),
         code_address: fi.class_hash,
         entry_point_type: fi.entry_point_type,
-        events: fi.events,
+        events: fi.events.map(|events| {
+            events
+                .into_iter()
+                .map(|event| dto::Event {
+                    data: event.data,
+                    keys: event.keys,
+                })
+                .collect()
+        }),
         messages: fi.messages,
         function_call: FunctionCall {
             calldata: fi.calldata.into_iter().map(CallParam).collect(),
@@ -156,11 +168,9 @@ fn map_trace(
 }
 
 pub mod dto {
-    use pathfinder_common::ContractAddress;
     use serde_with::serde_as;
 
     use crate::felt::RpcFelt;
-    use crate::felt::RpcFelt251;
     use crate::v02::method::call::FunctionCall;
     use crate::v02::types::reply::FeeEstimate;
 
@@ -238,15 +248,6 @@ pub mod dto {
     #[serde_with::serde_as]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct Event {
-        #[serde(flatten)]
-        pub event_content: EventContent,
-        #[serde_as(as = "RpcFelt251")]
-        pub from_address: ContractAddress,
-    }
-
-    #[serde_with::serde_as]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct EventContent {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<Felt>,
         #[serde_as(as = "Vec<RpcFelt>")]
