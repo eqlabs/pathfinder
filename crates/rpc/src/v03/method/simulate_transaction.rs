@@ -93,8 +93,12 @@ fn map_fee(fee: FeeEstimate) -> reply::FeeEstimate {
 }
 
 fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocation {
+    use crate::cairo::ext_py::types;
     dto::FunctionInvocation {
-        call_type: fi.call_type,
+        call_type: fi.call_type.map(|call_type| match call_type {
+            types::CallType::Call => dto::CallType::Call,
+            types::CallType::Delegate => dto::CallType::LibraryCall,
+        }),
         caller_address: fi.caller_address,
         calls: fi
             .internal_calls
@@ -183,8 +187,8 @@ pub mod dto {
     pub enum CallType {
         #[serde(rename = "CALL")]
         Call,
-        #[serde(rename = "DELEGATE")]
-        Delegate,
+        #[serde(rename = "LIBRARY_CALL")]
+        LibraryCall,
     }
 
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]

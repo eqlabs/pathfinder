@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use stark_hash::Felt;
 
-use crate::v03::method::simulate_transaction::dto::{CallType, EntryPointType, Event, MsgToL1};
+use crate::v03::method::simulate_transaction::dto::{EntryPointType, Event, MsgToL1};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -19,6 +19,14 @@ pub struct TransactionTrace {
     pub function_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
     pub signature: Vec<Felt>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+pub enum CallType {
+    #[serde(rename = "CALL")]
+    Call,
+    #[serde(rename = "DELEGATE")]
+    Delegate,
 }
 
 #[serde_with::skip_serializing_none]
