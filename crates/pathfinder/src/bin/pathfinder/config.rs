@@ -91,6 +91,14 @@ Examples:
         env = "PATHFINDER_SQLITE_WAL", 
     )]
     sqlite_wal: bool,
+
+    #[arg(
+        long = "max-rpc-connections",
+        long_help = "Set the maximum number of connections allowed",
+        env = "PATHFINDER_MAX_RPC_CONNECTIONS",
+        default_value = "1024"
+    )]
+    max_rpc_connections: std::num::NonZeroU32,
 }
 
 #[derive(clap::Args)]
@@ -165,6 +173,7 @@ pub struct Config {
     pub poll_pending: bool,
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
+    pub max_rpc_connections: std::num::NonZeroU32,
 }
 
 pub struct Ethereum {
@@ -248,6 +257,7 @@ impl Config {
                 true => JournalMode::WAL,
                 false => JournalMode::Rollback,
             },
+            max_rpc_connections: cli.max_rpc_connections,
         }
     }
 }
