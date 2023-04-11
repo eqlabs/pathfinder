@@ -91,6 +91,13 @@ Examples:
         env = "PATHFINDER_SQLITE_WAL", 
     )]
     sqlite_wal: bool,
+
+    #[arg(
+        long = "max-connections",
+        long_help = "Set the maximum number of connections allowed. Default is 1024.",
+        env = "PATHFINDER_MAX_CONNECTIONS"
+    )]
+    max_connections: Option<u32>,
 }
 
 #[derive(clap::Args)]
@@ -165,6 +172,7 @@ pub struct Config {
     pub poll_pending: bool,
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
+    pub max_connections: Option<u32>,
 }
 
 pub struct Ethereum {
@@ -248,6 +256,7 @@ impl Config {
                 true => JournalMode::WAL,
                 false => JournalMode::Rollback,
             },
+            max_connections: cli.max_connections,
         }
     }
 }

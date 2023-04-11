@@ -20,10 +20,13 @@ use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 
+const DEFAULT_MAX_CONNECTIONS: u32 = 1024;
+
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,
     logger: MaybeRpcMetricsLogger,
+    max_connections: u32,
 }
 
 impl RpcServer {
@@ -32,6 +35,7 @@ impl RpcServer {
             addr,
             context,
             logger: MaybeRpcMetricsLogger::NoOp,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
         }
     }
 
@@ -42,11 +46,17 @@ impl RpcServer {
         }
     }
 
+    pub fn with_max_connections(mut self, max_connections: Option<u32>) -> Self {
+        self.max_connections = max_connections.unwrap_or(DEFAULT_MAX_CONNECTIONS);
+        self
+    }
+
     /// Starts the HTTP-RPC server.
     pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
         const TEN_MB: u32 = 10 * 1024 * 1024;
 
         let server = ServerBuilder::default()
+            .max_connections(self.max_connections)
             .max_request_body_size(TEN_MB)
             .set_logger(self.logger)
             .set_middleware(tower::ServiceBuilder::new()

@@ -134,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
 
     let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.rpc_address, context)
         .with_logger(RpcMetricsLogger)
+        .with_max_connections(config.max_connections)
         .run()
         .await
         .context("Starting the RPC server")?;
