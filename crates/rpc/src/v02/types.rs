@@ -52,11 +52,6 @@ pub mod request {
                 _ => None,
             }
         }
-
-        #[cfg(test)]
-        pub fn into_invoke_or_panic(self) -> BroadcastedInvokeTransaction {
-            self.into_invoke().unwrap()
-        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -168,11 +163,6 @@ pub mod request {
             match self {
                 Self::V1(x) => Some(x),
             }
-        }
-
-        #[cfg(test)]
-        pub fn into_v1_or_panic(self) -> BroadcastedInvokeTransactionV1 {
-            self.into_v1().unwrap()
         }
     }
 

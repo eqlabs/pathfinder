@@ -413,8 +413,10 @@ pub(crate) mod tests {
                     BroadcastedInvokeTransactionV1 {
                         sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
                         ..valid_invoke_v1(account_address)
-                            .into_invoke_or_panic()
-                            .into_v1_or_panic()
+                            .into_invoke()
+                            .unwrap()
+                            .into_v1()
+                            .unwrap()
                     },
                 )),
                 block_id: BLOCK_5,

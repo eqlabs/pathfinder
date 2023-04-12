@@ -172,8 +172,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // TODO leave ignore?
-    // #[ignore = "gateway 429"]
+    #[ignore = "gateway 429"]
     async fn invoke_v1() {
         use crate::v02::types::request::BroadcastedInvokeTransactionV1;
 

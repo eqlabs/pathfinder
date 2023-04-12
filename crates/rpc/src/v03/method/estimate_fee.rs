@@ -176,8 +176,10 @@ mod tests {
                 test_context_with_call_handling().await;
 
             let mainnet_invoke = valid_invoke_v1(account_address)
-                .into_invoke_or_panic()
-                .into_v1_or_panic();
+                .into_invoke()
+                .unwrap()
+                .into_v1()
+                .unwrap();
             let input = EstimateFeeInput {
                 request: vec![BroadcastedTransaction::Invoke(
                     BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
@@ -202,8 +204,10 @@ mod tests {
                     nonce: TransactionNonce(felt!("0x1")),
                     ..transaction0
                         .clone()
-                        .into_invoke_or_panic()
-                        .into_v1_or_panic()
+                        .into_invoke()
+                        .unwrap()
+                        .into_v1()
+                        .unwrap()
                 },
             ));
             let input = EstimateFeeInput {
