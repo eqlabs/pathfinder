@@ -14,13 +14,13 @@ anyhow = { workspace = true }
 base64 = "0.13.1"
 bitvec = "0.20.4"
 data-encoding = "2.3.3"
-primitive-types = { version = "0.12.1", features = ["serde"] }
 flate2 = "1.0.25"
 hex = "0.4.3"
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
+primitive-types = { version = "0.12.1", features = ["serde"] }
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.21.0"
 rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }

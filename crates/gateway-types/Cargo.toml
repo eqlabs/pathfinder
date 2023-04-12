@@ -8,9 +8,9 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-primitive-types = { version = "0.12.1", features = ["serde"] }
 pathfinder-common = { path = "../common" }
 pathfinder-serde = { path = "../serde" }
+primitive-types = { version = "0.12.1", features = ["serde"] }
 reqwest = "0.11.13"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }

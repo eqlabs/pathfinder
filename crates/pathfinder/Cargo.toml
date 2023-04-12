@@ -23,7 +23,6 @@ cairo-lang-starknet = { git = "https://github.com/starkware-libs/cairo", tag = "
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
 enum-iterator = "1.2.0"
-primitive-types = { version = "0.12.1", features = ["serde"] }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
 metrics = "0.20.1"
@@ -37,6 +36,7 @@ pathfinder-retry = { path = "../retry" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
+primitive-types = { version = "0.12.1", features = ["serde"] }
 reqwest = { version = "0.11.13", features = ["json"] }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 semver = "1.0.14"

@@ -5,18 +5,17 @@ use pathfinder_common::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     },
     Chain, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
-    ContractStateHash, EthereumBlockHash, EthereumBlockNumber, EventCommitment, EventData,
-    EventKey, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, StorageCommitment,
-    TransactionCommitment,
+    ContractStateHash, EventCommitment, EventData, EventKey, GasPrice, SequencerAddress,
+    StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    StateCommitment, StorageCommitment, TransactionCommitment,
 };
-use pathfinder_ethereum::{EthereumBlock, L1StateUpdate};
+use pathfinder_ethereum::L1StateUpdate;
 use primitive_types::H256;
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
 
-/// Contains the [L1 Starknet update logs](StateUpdateLog).
+/// Contains the [L1 Starknet update logs](L1StateUpdate).
 pub struct L1StateTable {}
 
 /// Identifies block in some [L1StateTable] queries.
@@ -32,26 +31,23 @@ impl From<StarknetBlockNumber> for L1TableBlockId {
 }
 
 impl L1StateTable {
-    /// Inserts a new [update](StateUpdateLog), replaces if it already exists.
+    /// Inserts a new [update](L1StateUpdate), replaces if it already exists.
     pub fn upsert(tx: &Transaction<'_>, update: &L1StateUpdate) -> anyhow::Result<()> {
-        // TODO(SM): add migration to remove columns: thereum_transaction_hash, ethereum_transaction_index, ethereum_log_index
+        // TODO(SM): add migration to remove columns: ethereum_transaction_hash, ethereum_transaction_index, ethereum_log_index, ethereum_block_hash
         tx.execute(
             r"INSERT OR REPLACE INTO l1_state (
                         starknet_block_number,
                         starknet_global_root,
-                        ethereum_block_hash,
                         ethereum_block_number
                     ) VALUES (
                         :starknet_block_number,
                         :starknet_global_root,
-                        :ethereum_block_hash,
                         :ethereum_block_number
                     )",
             named_params! {
+                ":ethereum_block_number": update.eth_block_number,
                 ":starknet_block_number": update.block_number,
-                ":starknet_global_root": &update.global_root,
-                ":ethereum_block_hash": &update.eth_block.hash.0[..],
-                ":ethereum_block_number": update.eth_block.number.0,
+                ":starknet_global_root": update.global_root.as_bytes(),
             },
         )?;
 
@@ -87,7 +83,7 @@ impl L1StateTable {
             .map_err(|e| e.into())
     }
 
-    /// Returns the [update](StateUpdateLog) of the given block.
+    /// Returns the [update](L1StateUpdate) of the given block.
     pub fn get(
         tx: &Transaction<'_>,
         block: L1TableBlockId,
@@ -96,14 +92,12 @@ impl L1StateTable {
             L1TableBlockId::Number(_) => tx.prepare(
                 r"SELECT starknet_block_number,
                     starknet_global_root,
-                    ethereum_block_hash,
                     ethereum_block_number
                 FROM l1_state WHERE starknet_block_number = ?",
             ),
             L1TableBlockId::Latest => tx.prepare(
                 r"SELECT starknet_block_number,
                     starknet_global_root,
-                    ethereum_block_hash,
                     ethereum_block_number
                 FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1",
             ),
@@ -120,24 +114,17 @@ impl L1StateTable {
             None => return Ok(None),
         };
 
-        let starknet_block_number = row.get_unwrap("starknet_block_number");
+        let starknet_block_number: u64 = row.get_unwrap("starknet_block_number");
+        let ethereum_block_number: u64 = row.get_unwrap("ethereum_block_number");
 
-        let starknet_global_root = row.get_unwrap("starknet_global_root");
-
-        let ethereum_block_hash = row.get_ref_unwrap("ethereum_block_hash").as_blob().unwrap();
-        let ethereum_block_hash = EthereumBlockHash(H256(ethereum_block_hash.try_into().unwrap()));
-
-        let ethereum_block_number = row
-            .get_ref_unwrap("ethereum_block_number")
-            .as_i64()
-            .unwrap() as u64;
-        let ethereum_block_number = EthereumBlockNumber(ethereum_block_number);
+        let starknet_global_root = row
+            .get_ref_unwrap("starknet_global_root")
+            .as_blob()
+            .unwrap();
+        let starknet_global_root = H256::from_slice(starknet_global_root);
 
         Ok(Some(L1StateUpdate {
-            eth_block: EthereumBlock {
-                hash: ethereum_block_hash,
-                number: ethereum_block_number,
-            },
+            eth_block_number: ethereum_block_number,
             global_root: starknet_global_root,
             block_number: starknet_block_number,
         }))

@@ -23,7 +23,6 @@ use pathfinder_storage::{
     L1StateTable, L1TableBlockId, RefsTable, StarknetBlock, StarknetBlocksBlockId,
     StarknetBlocksTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
 };
-use primitive_types::H160;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
 use starknet_gateway_client::ClientApi;
@@ -43,10 +42,9 @@ pub async fn sync<SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
     ethereum_client: EthereumClient,
     chain: Chain,
-    core_address: H160,
     sequencer: SequencerClient,
     state: Arc<SyncState>,
-    mut l1_sync: L1Sync,
+    l1_sync: L1Sync,
     l2_sync: L2Sync,
     pending_data: PendingData,
     pending_poll_interval: Option<std::time::Duration>,
@@ -56,7 +54,7 @@ where
     SequencerClient: ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<L1StateUpdate>, EthereumClient, Chain, H160) -> F1,
+    L1Sync: Fn(mpsc::Sender<L1StateUpdate>, EthereumClient, std::time::Duration) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
@@ -74,6 +72,7 @@ where
     let (tx_l1, mut rx_l1) = mpsc::channel(1);
     let (tx_l2, mut rx_l2) = mpsc::channel(1);
 
+    #[allow(unused_variables)] // TODO(SM): deal with unused var
     let (l1_head, l2_head) = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
         let l1_head = L1StateTable::get(&tx, L1TableBlockId::Latest)
@@ -100,7 +99,9 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum_client, chain, core_address));
+    let poll_interval = head_poll_interval(chain);
+    #[allow(unused_variables)] // TODO(SM): deal with unused var
+    let l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum_client, poll_interval));
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
         sequencer.clone(),
@@ -122,11 +123,9 @@ where
 
     loop {
         tokio::select! {
-            l1_event = rx_l1.recv() => match l1_event {
-                Some(L1StateUpdate { global_root, block_number, .. }) => {
-                    tracing::info!("L1 state update: root={} block={}", global_root, block_number);
-                },
-                _ => { /* noop */ },
+            l1_event = rx_l1.recv() => if let Some(L1StateUpdate { global_root, block_number, .. }) = l1_event {
+                tracing::info!("L1 state update: root={} block={}", global_root, block_number);
+                // TODO(SM): use pathfinder_storage::StarknetStateUpdatesTable to query/update the state
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {

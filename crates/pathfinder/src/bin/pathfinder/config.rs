@@ -168,7 +168,7 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub monitor_address: Option<SocketAddr>,
-    pub network: Option<NetworkConfig>,
+    pub network: NetworkConfig,
     pub poll_pending: bool,
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
@@ -235,11 +235,17 @@ impl NetworkConfig {
     }
 }
 
+fn get_default_network(_ethereum_url: &Url) -> NetworkConfig {
+    // TODO(SM): define which one is the "default" network
+    NetworkConfig::Testnet
+}
+
 impl Config {
     pub fn parse() -> Self {
         let cli = Cli::parse();
 
-        let network = NetworkConfig::from_components(cli.network);
+        let network = NetworkConfig::from_components(cli.network)
+            .unwrap_or_else(|| get_default_network(&cli.ethereum_url));
 
         Config {
             data_directory: cli.data_directory,
