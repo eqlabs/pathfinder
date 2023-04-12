@@ -18,6 +18,7 @@ impl Hash for PedersenHash {
 }
 
 /// Implements [Hash] for the [StarkNet Poseidon hash](stark_poseidon::poseidon_hash).
+#[derive(Debug, Clone, Copy)]
 pub struct PoseidonHash;
 impl crate::Hash for PoseidonHash {
     fn hash(a: Felt, b: Felt) -> Felt {

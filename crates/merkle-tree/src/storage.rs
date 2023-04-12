@@ -12,19 +12,9 @@ pub trait Storage {
 }
 
 /// Wrapper around [anyhow::Error].
-#[derive(Debug)]
-pub struct AnyhowError(anyhow::Error);
-impl std::fmt::Display for AnyhowError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self.0))
-    }
-}
-impl std::error::Error for AnyhowError {}
-impl From<anyhow::Error> for AnyhowError {
-    fn from(value: anyhow::Error) -> Self {
-        AnyhowError(value)
-    }
-}
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub struct AnyhowError(#[from] anyhow::Error);
 
 /// Database serialization for [Node].
 impl rusqlite::types::FromSql for Node {

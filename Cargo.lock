@@ -5298,6 +5298,7 @@ dependencies = [
  "stark_hash",
  "stark_poseidon",
  "starknet-gateway-types",
+ "thiserror",
 ]
 
 [[package]]

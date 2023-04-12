@@ -17,6 +17,7 @@ stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
 starknet-gateway-types = { path = "../gateway-types" }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"

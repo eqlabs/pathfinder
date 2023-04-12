@@ -31,7 +31,7 @@ impl Node {
             Node::Binary { left, right } => H::hash(*left, *right),
             Node::Edge { child, path } => {
                 let mut length = [0; 32];
-                // // Safe as len() is guaranteed to be <= 251
+                // Safe as len() is guaranteed to be <= 251
                 length[31] = path.len() as u8;
                 let path = Felt::from_bits(path).unwrap();
 
