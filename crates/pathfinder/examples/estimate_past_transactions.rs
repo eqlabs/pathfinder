@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_common::TransactionVersion;
 use stark_hash::Felt;
 
 fn main() -> Result<(), anyhow::Error> {
@@ -158,7 +159,13 @@ fn feed_work(
                 if !previously_declared_deployed_in_the_same_block
                     .contains(tx.contract_address.get()) =>
             {
-                tx.into()
+                match tx.version {
+                    Some(version) if version.without_query_version() == 1 => tx.into(),
+                    None | Some(_) => {
+                        // Cannot estimate v0s, just skip them
+                        continue;
+                    }
+                }
             }
             SimpleTransaction::Invoke(SimpleInvoke {
                 contract_address, ..
@@ -380,11 +387,10 @@ struct SimpleInvoke {
     #[serde(default = "default_transaction_nonce")]
     pub nonce: pathfinder_common::TransactionNonce,
 
+    #[serde(alias = "sender_address")]
     contract_address: pathfinder_common::ContractAddress,
     #[serde_as(as = "Vec<pathfinder_serde::CallParamAsDecimalStr>")]
     pub calldata: Vec<pathfinder_common::CallParam>,
-    #[serde(default)]
-    pub entry_point_selector: Option<pathfinder_common::EntryPoint>,
 }
 
 fn default_transaction_nonce() -> pathfinder_common::TransactionNonce {
@@ -397,19 +403,6 @@ impl From<SimpleInvoke> for pathfinder_rpc::v02::types::request::BroadcastedTran
 
         match tx.version {
             Some(version) => match version.without_query_version() {
-                0 => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                    BroadcastedInvokeTransactionV0 {
-                        version,
-                        max_fee: tx.max_fee,
-                        signature: tx.signature,
-                        nonce: None,
-                        contract_address: tx.contract_address,
-                        entry_point_selector: tx
-                            .entry_point_selector
-                            .unwrap_or(pathfinder_common::EntryPoint(Felt::ZERO)),
-                        calldata: tx.calldata,
-                    },
-                )),
                 1 => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                     BroadcastedInvokeTransactionV1 {
                         version,
@@ -425,16 +418,13 @@ impl From<SimpleInvoke> for pathfinder_rpc::v02::types::request::BroadcastedTran
                     tx.version
                 ),
             },
-            None => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                BroadcastedInvokeTransactionV0 {
-                    version: pathfinder_common::TransactionVersion::ZERO,
+            None => BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                BroadcastedInvokeTransactionV1 {
+                    version: TransactionVersion::ONE,
                     max_fee: tx.max_fee,
                     signature: tx.signature,
-                    nonce: None,
-                    contract_address: tx.contract_address,
-                    entry_point_selector: tx
-                        .entry_point_selector
-                        .unwrap_or(pathfinder_common::EntryPoint(Felt::ZERO)),
+                    nonce: tx.nonce,
+                    sender_address: tx.contract_address,
                     calldata: tx.calldata,
                 },
             )),

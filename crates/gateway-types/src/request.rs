@@ -1,6 +1,6 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
 use pathfinder_common::{
-    CallParam, ContractAddress, EntryPoint, Fee, StarknetBlockHash, StarknetBlockNumber,
+    CallParam, ContractAddress, Fee, StarknetBlockHash, StarknetBlockNumber,
     TransactionSignatureElem,
 };
 use serde::{Deserialize, Serialize};
@@ -192,7 +192,7 @@ pub mod contract {
 
 pub mod add_transaction {
     use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
-    use super::{CallParam, ContractAddress, EntryPoint, Fee, TransactionSignatureElem};
+    use super::{CallParam, ContractAddress, Fee, TransactionSignatureElem};
     use pathfinder_common::{
         CasmHash, ClassHash, ContractAddressSalt, TransactionNonce, TransactionVersion,
     };
@@ -228,7 +228,7 @@ pub mod add_transaction {
         pub sierra_program: String,
         pub contract_class_version: String,
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndFunctionIndex>>,
-        pub abi: Option<String>,
+        pub abi: String,
     }
 
     /// Account deployment transaction details.
@@ -262,10 +262,9 @@ pub mod add_transaction {
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
-        pub nonce: Option<TransactionNonce>,
+        pub nonce: TransactionNonce,
 
         pub sender_address: ContractAddress,
-        pub entry_point_selector: Option<EntryPoint>,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
     }

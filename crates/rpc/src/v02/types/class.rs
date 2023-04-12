@@ -402,8 +402,7 @@ pub struct SierraContractClass {
     pub sierra_program: Vec<Felt>,
     pub contract_class_version: String,
     pub entry_points_by_type: SierraEntryPoints,
-    #[serde(default)]
-    pub abi: Option<String>,
+    pub abi: String,
 }
 
 impl SierraContractClass {

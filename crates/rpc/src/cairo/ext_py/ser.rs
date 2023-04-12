@@ -11,7 +11,7 @@ use starknet_gateway_types::{
     },
     request::{BlockHashOrTag, BlockNumberOrTag, Tag},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use super::TransactionAndClassHashHint;
 
@@ -227,11 +227,21 @@ impl<'a> serde::Serialize for NoncesWrapper<'a> {
 }
 
 /// Custom "when" without the Pending tag, which has no meaning crossing process boundaries.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum BlockHashNumberOrLatest {
     Hash(StarknetBlockHash),
     Number(StarknetBlockNumber),
     Latest,
+}
+
+impl Display for BlockHashNumberOrLatest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockHashNumberOrLatest::Hash(h) => f.write_fmt(format_args!("Hash({h})")),
+            BlockHashNumberOrLatest::Number(n) => f.write_fmt(format_args!("Number({n})")),
+            BlockHashNumberOrLatest::Latest => f.write_str("latest"),
+        }
+    }
 }
 
 impl serde::Serialize for BlockHashNumberOrLatest {

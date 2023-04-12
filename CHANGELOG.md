@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `poll-pending` default value restored to `false`
 - handling of invalid JSON-RPC requests
 
+### Removed
+
+- support for `BROADCASTED` transactions version 0
+
 ## [0.5.2] - 2023-03-28
 
 ### Added

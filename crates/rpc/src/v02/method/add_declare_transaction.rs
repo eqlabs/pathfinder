@@ -52,7 +52,7 @@ pub async fn add_declare_transaction(
     input: AddDeclareTransactionInput,
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
     match input.declare_transaction {
-        Transaction::Declare(BroadcastedDeclareTransaction::V0V1(tx)) => {
+        Transaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
             let contract_definition: CairoContractDefinition = tx
                 .contract_class
                 .try_into()
@@ -109,7 +109,7 @@ pub async fn add_declare_transaction(
 mod tests {
     use super::*;
     use crate::v02::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
+        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
         BroadcastedDeclareTransactionV2,
     };
     use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
@@ -148,11 +148,11 @@ mod tests {
     mod parsing {
         mod v1 {
             use super::super::*;
-            use crate::v02::types::request::BroadcastedDeclareTransactionV0V1;
+            use crate::v02::types::request::BroadcastedDeclareTransactionV1;
 
             fn test_declare_txn() -> Transaction {
-                Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
-                    BroadcastedDeclareTransactionV0V1 {
+                Transaction::Declare(BroadcastedDeclareTransaction::V1(
+                    BroadcastedDeclareTransactionV1 {
                         max_fee: Fee(felt!("0x1")),
                         version: TransactionVersion::ONE,
                         signature: vec![],
@@ -302,7 +302,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     #[ignore = "gateway 429"]
-    async fn invalid_contract_definition() {
+    async fn invalid_contract_definition_v1() {
         let context = RpcContext::for_tests();
 
         let invalid_contract_class = CairoContractClass {
@@ -310,8 +310,8 @@ mod tests {
             ..CONTRACT_CLASS.clone()
         };
 
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
-            BroadcastedDeclareTransactionV0V1 {
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
                 version: TransactionVersion::ONE,
                 max_fee: Fee(Default::default()),
                 signature: vec![],
@@ -330,6 +330,7 @@ mod tests {
     }
 
     #[test_log::test(tokio::test)]
+    #[ignore = "gateway 429"]
     async fn invalid_contract_definition_v2() {
         let context = RpcContext::for_tests_on(pathfinder_common::Chain::Integration);
 
@@ -374,10 +375,10 @@ mod tests {
     async fn successful_declare_v1() {
         let context = RpcContext::for_tests();
 
-        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V0V1(
-            BroadcastedDeclareTransactionV0V1 {
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
                 version: TransactionVersion::ONE,
-                max_fee: Fee(Default::default()),
+                max_fee: Fee(Felt::from_be_slice(&u64::MAX.to_be_bytes()).unwrap()),
                 signature: vec![],
                 nonce: TransactionNonce(Default::default()),
                 contract_class: CONTRACT_CLASS.clone(),
@@ -394,16 +395,17 @@ mod tests {
             result,
             AddDeclareTransactionOutput {
                 transaction_hash: StarknetTransactionHash(felt!(
-                    "04b3791d16301be48268bfe1c0da7a9ad458847fd4666c98057d3940ef31775d"
+                    "0xE32B5DC53B104DCC8487F8721A9AE26D038C5C667F83A15FD00E4BB87C4A6E"
                 )),
                 class_hash: ClassHash(felt!(
-                    "050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
+                    "0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
                 )),
             }
         );
     }
 
     #[test_log::test(tokio::test)]
+    #[ignore = "gateway 429"]
     async fn successful_declare_v2() {
         let context = RpcContext::for_tests_on(pathfinder_common::Chain::Integration);
 

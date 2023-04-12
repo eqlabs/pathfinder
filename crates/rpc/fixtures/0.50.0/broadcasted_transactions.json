@@ -59,20 +59,6 @@
     },
     {
         "type": "INVOKE",
-        "version": "0x0",
-        "max_fee": "0x6",
-        "signature": [
-            "0x7"
-        ],
-        "nonce": "0x8",
-        "contract_address": "0xaaa",
-        "entry_point_selector": "0xe",
-        "calldata": [
-            "0xff"
-        ]
-    },
-    {
-        "type": "INVOKE",
         "version": "0x1",
         "max_fee": "0x6",
         "signature": [

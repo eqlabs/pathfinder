@@ -213,6 +213,7 @@ Note that:
 
 - `mainnet` requires an additional `token` parameter to submit deploy and declare transactions.
 - `starknet_addDeployTransaction` is not supported.
+- All BROADCASTED V0 transactions are not supported.
 - To be able to represent BROADCASTED DECLARE V2 transactions introduced in Starknet 0.11.0 we use `BROADCASTED_DECLARE_TXN` type from `v0.3.0` of the JSON-RPC specification.
 
 ### pathfinder extension API

@@ -1058,7 +1058,7 @@ mod tests {
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
         BlockId, CallParam, CasmHash, Chain, ClassCommitment, ClassHash, ContractAddress,
-        ContractAddressSalt, EntryPoint, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
+        ContractAddressSalt, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
         SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, StorageAddress,
@@ -1186,9 +1186,8 @@ mod tests {
             _: TransactionVersion,
             _: Fee,
             _: Vec<TransactionSignatureElem>,
-            _: Option<TransactionNonce>,
+            _: TransactionNonce,
             _: ContractAddress,
-            _: Option<EntryPoint>,
             _: Vec<CallParam>,
         ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
             unimplemented!()

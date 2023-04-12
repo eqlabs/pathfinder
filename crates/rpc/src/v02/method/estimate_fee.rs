@@ -60,12 +60,12 @@ pub async fn estimate_fee(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
-        felt, CallParam, Chain, ContractAddress, EntryPoint, Fee, StarknetBlockHash,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        felt, CallParam, Chain, ContractAddress, Fee, StarknetBlockHash, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_storage::JournalMode;
     use std::path::PathBuf;
@@ -74,14 +74,13 @@ mod tests {
         use super::*;
 
         fn test_invoke_txn() -> BroadcastedTransaction {
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                crate::v02::types::request::BroadcastedInvokeTransactionV0 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                crate::v02::types::request::BroadcastedInvokeTransactionV1 {
+                    version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: Fee(felt!("0x6")),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                    nonce: Some(TransactionNonce(felt!("0x8"))),
-                    contract_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                    entry_point_selector: EntryPoint(felt!("0xe")),
+                    nonce: TransactionNonce(felt!("0x8")),
+                    sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
                     calldata: vec![CallParam(felt!("0xff"))],
                 },
             ))
@@ -94,14 +93,13 @@ mod tests {
             let positional = r#"[
                 {
                     "type": "INVOKE",
-                    "version": "0x100000000000000000000000000000000",
+                    "version": "0x100000000000000000000000000000001",
                     "max_fee": "0x6",
                     "signature": [
                         "0x7"
                     ],
                     "nonce": "0x8",
-                    "contract_address": "0xaaa",
-                    "entry_point_selector": "0xe",
+                    "sender_address": "0xaaa",
                     "calldata": [
                         "0xff"
                     ]
@@ -125,14 +123,13 @@ mod tests {
             let named_args = r#"{
                 "request": {
                     "type": "INVOKE",
-                    "version": "0x100000000000000000000000000000000",
+                    "version": "0x100000000000000000000000000000001",
                     "max_fee": "0x6",
                     "signature": [
                         "0x7"
                     ],
                     "nonce": "0x8",
-                    "contract_address": "0xaaa",
-                    "entry_point_selector": "0xe",
+                    "sender_address": "0xaaa",
                     "calldata": [
                         "0xff"
                     ]
@@ -151,60 +148,137 @@ mod tests {
     }
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
-    mod ext_py {
+    pub(crate) mod ext_py {
         use std::sync::Arc;
 
         use super::*;
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0V1,
-            BroadcastedInvokeTransactionV0,
+            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
+            BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
-        use crate::v02::types::{CairoContractClass, ContractClass};
-        use pathfinder_common::felt_bytes;
+        use crate::v02::types::{ContractClass, SierraContractClass};
+        use pathfinder_common::{
+            felt_bytes, CasmHash, ClassCommitment, ContractNonce, ContractRoot, GasPrice,
+            SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
+        };
+        use pathfinder_storage::types::CompressedContract;
+        use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
+        use stark_hash::Felt;
 
         // Mainnet block number 5
-        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
+        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         )));
 
-        // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
-        fn valid_mainnet_invoke_v0() -> BroadcastedInvokeTransactionV0 {
-            BroadcastedInvokeTransactionV0 {
-                version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                max_fee: Fee(Default::default()),
-                signature: vec![],
-                nonce: Some(TransactionNonce(Default::default())),
-                contract_address: ContractAddress::new_or_panic(felt!(
-                    "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
-                )),
-                entry_point_selector: EntryPoint(felt!(
-                    "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
-                )),
-                calldata: vec![
-                    CallParam(felt!(
-                        "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
-                    )),
-                    CallParam(felt!(
-                        "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
-                    )),
-                ],
-            }
-        }
-
-        fn valid_broadcasted_transaction() -> BroadcastedTransaction {
-            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                valid_mainnet_invoke_v0(),
+        pub(crate) fn valid_invoke_v1(account_address: ContractAddress) -> BroadcastedTransaction {
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                BroadcastedInvokeTransactionV1 {
+                    version: TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    max_fee: Fee(Default::default()),
+                    signature: vec![],
+                    nonce: TransactionNonce(Default::default()),
+                    sender_address: account_address,
+                    calldata: vec![
+                        // Transaction data taken from:
+                        // https://alpha-mainnet.starknet.io/feeder_gateway/get_transaction?transactionHash=0x000c52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5
+                        //
+                        // Structure of "outer" calldata (BroadcastedInvokeTransactionV1::calldata) is based on:
+                        //
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/4dd04250c55ae8a5bbcb72663c989bb204e8d998/src/openzeppelin/account/IAccount.cairo#L30
+                        //
+                        // func __execute__(
+                        //     call_array_len: felt,          // <-- number of contract calls passed through this account in this transaction (here: 1)
+                        //     call_array: AccountCallArray*, // <-- metadata for each passed contract call
+                        //     calldata_len: felt,            // <-- unused
+                        //     calldata: felt*                // <-- this entire "outer" vector (BroadcastedInvokeTransactionV1::calldata)
+                        // )
+                        //
+                        // Metadata for each contract call passed through the account
+                        //
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/4dd04250c55ae8a5bbcb72663c989bb204e8d998/src/openzeppelin/account/library.cairo#L52
+                        //
+                        // struct AccountCallArray {
+                        //     to: felt,            // The address of the contract that is being called
+                        //     selector: felt,      // Entry point selector for the contract function called
+                        //     data_offset: felt,   // Offset in the "outer" calldata (BroadcastedInvokeTransactionV1::calldata) to the next contract's calldata
+                        //     data_len: felt,      // Size of the calldata for this contract function call
+                        // }
+                        //
+                        // To see how the above structure is translated to a proper calldata for a single call instance see
+                        // a "preset" implementation of IAccount
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/4dd04250c55ae8a5bbcb72663c989bb204e8d998/src/openzeppelin/account/presets/Account.cairo#L128
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/main/src/openzeppelin/account/library.cairo#L239
+                        //
+                        // especially
+                        //
+                        // func _from_call_array_to_call{syscall_ptr: felt*}(
+                        //     call_array_len: felt, call_array: AccountCallArray*, calldata: felt*, calls: Call*
+                        // )
+                        //
+                        // Called contract address, i.e. AccountCallArray::to
+                        CallParam(felt!(
+                            "05a02acdbf218464be3dd787df7a302f71fab586cad5588410ba88b3ed7b3a21"
+                        )),
+                        // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                        CallParam(felt!(
+                            "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
+                        )),
+                        // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                        CallParam(felt!("2")),
+                        // Proper calldata for this contract
+                        CallParam(felt!(
+                            "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
+                        )),
+                        CallParam(felt!(
+                            "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
+                        )),
+                    ],
+                },
             ))
         }
 
-        async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+        pub(crate) fn test_storage_with_account() -> (
+            tempfile::TempDir,
+            Storage,
+            ContractAddress,
+            StarknetBlockHash,
+            StarknetBlockNumber,
+        ) {
+            let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            source_path.push("fixtures/mainnet.sqlite");
+
+            let db_dir = tempfile::TempDir::new().unwrap();
+            let mut db_path = PathBuf::from(db_dir.path());
+            db_path.push("mainnet.sqlite");
+
+            std::fs::copy(source_path, db_path.clone()).unwrap();
+
+            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
+
+            let (account_address, latest_block_hash, latest_block_number) =
+                add_dummy_account(storage.clone());
+
+            (
+                db_dir,
+                storage,
+                account_address,
+                latest_block_hash,
+                latest_block_number,
+            )
+        }
+
+        pub(crate) async fn test_context_with_call_handling() -> (
+            tempfile::TempDir,
+            RpcContext,
+            tokio::task::JoinHandle<()>,
+            ContractAddress,
+            StarknetBlockHash,
+        ) {
             use pathfinder_common::ChainId;
 
-            let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            database_path.push("fixtures/mainnet.sqlite");
-            let storage =
-                pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
-                    .unwrap();
+            let (db_dir, storage, account_address, latest_block_hash, _) =
+                test_storage_with_account();
+
             let sync_state = Arc::new(crate::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
@@ -217,15 +291,112 @@ mod tests {
 
             let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
-            (context.with_call_handling(call_handle), cairo_handle)
+            (
+                db_dir,
+                context.with_call_handling(call_handle),
+                cairo_handle,
+                account_address,
+                latest_block_hash,
+            )
+        }
+
+        fn add_dummy_account(
+            storage: pathfinder_storage::Storage,
+        ) -> (ContractAddress, StarknetBlockHash, StarknetBlockNumber) {
+            let mut db_conn = storage.connection().unwrap();
+            let db_txn = db_conn.transaction().unwrap();
+
+            //
+            // "Declare"
+            //
+            let class_hash =
+                starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT_CLASS_HASH;
+            let class = CompressedContract {
+                definition:
+                    starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT
+                        .to_vec(),
+                hash: class_hash,
+            };
+
+            pathfinder_storage::ContractCodeTable::insert_compressed(&db_txn, &class).unwrap();
+
+            //
+            // "Deploy"
+            //
+            let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"account"));
+            let contract_root = ContractRoot::ZERO;
+            let contract_nonce = ContractNonce::ZERO;
+            let contract_state_hash =
+                pathfinder_merkle_tree::contract_state::calculate_contract_state_hash(
+                    class_hash,
+                    contract_root,
+                    contract_nonce,
+                );
+
+            pathfinder_storage::ContractsStateTable::upsert(
+                &db_txn,
+                contract_state_hash,
+                class_hash,
+                contract_root,
+                contract_nonce,
+            )
+            .unwrap();
+
+            let storage_commitment = StarknetBlocksTable::get_storage_commitment(
+                &db_txn,
+                pathfinder_storage::StarknetBlocksBlockId::Latest,
+            )
+            .unwrap()
+            .unwrap();
+
+            let latest_block_number = StarknetBlocksTable::get_latest_number(&db_txn)
+                .unwrap()
+                .unwrap();
+
+            let mut storage_commitment_tree =
+                pathfinder_merkle_tree::StorageCommitmentTree::load(&db_txn, storage_commitment);
+
+            storage_commitment_tree
+                .set(contract_address, contract_state_hash)
+                .unwrap();
+
+            let new_storage_commitment = storage_commitment_tree
+                .commit_and_persist_changes()
+                .unwrap();
+
+            let new_block = StarknetBlock {
+                number: latest_block_number + 1,
+                hash: StarknetBlockHash(felt_bytes!(b"latest block")),
+                root: StateCommitment::calculate(new_storage_commitment, ClassCommitment::ZERO),
+                timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                gas_price: GasPrice::ZERO,
+                sequencer_address: SequencerAddress(Felt::ZERO),
+                transaction_commitment: None,
+                event_commitment: None,
+            };
+
+            pathfinder_storage::StarknetBlocksTable::insert(
+                &db_txn,
+                &new_block,
+                None,
+                new_storage_commitment,
+                ClassCommitment::ZERO,
+            )
+            .unwrap();
+
+            // Persist
+            db_txn.commit().unwrap();
+
+            (contract_address, new_block.hash, new_block.number)
         }
 
         #[tokio::test]
         async fn no_such_block() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let (_db_dir, context, _join_handle, account_address, _) =
+                test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
-                request: valid_broadcasted_transaction(),
+                request: valid_invoke_v1(account_address),
                 block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = estimate_fee(context, input).await;
@@ -234,14 +405,18 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let (_db_dir, context, _join_handle, account_address, _) =
+                test_context_with_call_handling().await;
 
-            let mainnet_invoke = valid_mainnet_invoke_v0();
             let input = EstimateFeeInput {
-                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                    BroadcastedInvokeTransactionV0 {
-                        contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
-                        ..mainnet_invoke
+                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                    BroadcastedInvokeTransactionV1 {
+                        sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+                        ..valid_invoke_v1(account_address)
+                            .into_invoke()
+                            .unwrap()
+                            .into_v1()
+                            .unwrap()
                     },
                 )),
                 block_id: BLOCK_5,
@@ -251,100 +426,88 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn invalid_message_selector() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
-
-            let mainnet_invoke = valid_mainnet_invoke_v0();
-            let input = EstimateFeeInput {
-                request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V0(
-                    BroadcastedInvokeTransactionV0 {
-                        entry_point_selector: EntryPoint(Default::default()),
-                        ..mainnet_invoke
-                    },
-                )),
-                block_id: BLOCK_5,
-            };
-            let error = estimate_fee(context, input).await;
-            assert_matches::assert_matches!(error, Err(EstimateFeeError::InvalidMessageSelector));
-        }
-
-        #[tokio::test]
-        async fn successful_invoke_v0() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+        async fn successful_invoke_v1() {
+            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
+                test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
-                request: valid_broadcasted_transaction(),
-                block_id: BLOCK_5,
+                request: valid_invoke_v1(account_address),
+                block_id: BlockId::Hash(latest_block_hash),
             };
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(result, FeeEstimate::default(),);
         }
 
-        lazy_static::lazy_static! {
-            pub static ref CONTRACT_CLASS: CairoContractClass = {
-                let compressed_json = starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
-                let json = zstd::decode_all(compressed_json).unwrap();
-                ContractClass::from_definition_bytes(&json).unwrap().as_cairo().unwrap()
-            };
-        }
-
         #[test_log::test(tokio::test)]
-        async fn successful_declare_v0() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+        async fn successful_declare_v1() {
+            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
+                test_context_with_call_handling().await;
+
+            let contract_class = {
+                let compressed_json =
+                    starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
+                let json = zstd::decode_all(compressed_json).unwrap();
+                ContractClass::from_definition_bytes(&json)
+                    .unwrap()
+                    .as_cairo()
+                    .unwrap()
+            };
 
             let declare_transaction = BroadcastedTransaction::Declare(
-                BroadcastedDeclareTransaction::V0V1(BroadcastedDeclareTransactionV0V1 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                BroadcastedDeclareTransaction::V1(BroadcastedDeclareTransactionV1 {
+                    version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: Fee(Default::default()),
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
-                    contract_class: CONTRACT_CLASS.clone(),
-                    sender_address: ContractAddress::new_or_panic(felt!("01")),
+                    contract_class,
+                    sender_address: account_address,
                 }),
             );
 
             let input = EstimateFeeInput {
                 request: declare_transaction,
-                block_id: BLOCK_5,
+                block_id: BlockId::Hash(latest_block_hash),
             };
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(result, FeeEstimate::default(),);
         }
 
-        #[ignore = "fixme for v0.11.0"]
         #[test_log::test(tokio::test)]
         async fn successful_declare_v2() {
-            /*
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
+                test_context_with_call_handling().await;
+
+            let contract_class: SierraContractClass = {
+                let definition = starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA;
+                let definition = zstd::decode_all(definition).unwrap();
+                ContractClass::from_definition_bytes(&definition)
+                    .unwrap()
+                    .as_sierra()
+                    .unwrap()
+            };
 
             let declare_transaction = BroadcastedTransaction::Declare(
                 BroadcastedDeclareTransaction::V2(BroadcastedDeclareTransactionV2 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                    version: TransactionVersion::TWO_WITH_QUERY_VERSION,
                     max_fee: Fee(Default::default()),
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
-                    contract_class: todo!("fixme v0.11.0"),
-                    sender_address: ContractAddress::new_or_panic(felt!(
-                        "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
+                    contract_class,
+                    sender_address: account_address,
+                    // Taken from
+                    // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=284544
+                    compiled_class_hash: CasmHash::new_or_panic(felt!(
+                        "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
                     )),
-                    compiled_class_hash: todo!("fixme v0.11.0"),
                 }),
             );
 
             let input = EstimateFeeInput {
                 request: declare_transaction,
-                block_id: BLOCK_5,
+                block_id: BlockId::Hash(latest_block_hash),
             };
             let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(
-                result,
-                FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
-                }
-            );
-            */
+            assert_eq!(result, FeeEstimate::default(),);
         }
     }
 }
