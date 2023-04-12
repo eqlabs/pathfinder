@@ -19,10 +19,12 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Update pathfinder package version
+      - name: Update pathfinder package version and lock file
         run: |
-          sed -i -e 's/version = ".*"/version = "${{ github.event.inputs.version }}"/' crates/pathfinder/Cargo.toml
+          sed -i -e 's/^version = ".*"$/version = "${{ github.event.inputs.version }}"/' crates/pathfinder/Cargo.toml
+          cargo update --offline -p pathfinder
 
       - name: Create PR
         env:
