@@ -159,7 +159,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_block() {
-            let (_db_file, context, _join_handle, account_address, _) =
+            let (_db_dir, context, _join_handle, account_address, _) =
                 test_context_with_call_handling().await;
 
             let input = EstimateFeeInput {
@@ -172,7 +172,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (_db_file, context, _join_handle, account_address, _) =
+            let (_db_dir, context, _join_handle, account_address, _) =
                 test_context_with_call_handling().await;
 
             let mainnet_invoke = valid_invoke_v1(account_address)
@@ -195,7 +195,7 @@ mod tests {
 
         #[tokio::test]
         async fn successful_invoke_v1() {
-            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
+            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let transaction0 = valid_invoke_v1(account_address);
@@ -220,7 +220,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v1() {
-            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
+            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let contract_class = {
@@ -254,7 +254,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v2() {
-            let (_db_file, context, _join_handle, account_address, latest_block_hash) =
+            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
                 test_context_with_call_handling().await;
 
             let contract_class: SierraContractClass = {

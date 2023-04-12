@@ -567,7 +567,7 @@ mod tests {
             test_storage_with_account, valid_invoke_v1,
         };
 
-        let (_db_file, storage, account_address, latest_block_hash, latest_block_number) =
+        let (_db_dir, storage, account_address, latest_block_hash, latest_block_number) =
             test_storage_with_account();
         let db_path = storage.path();
 
