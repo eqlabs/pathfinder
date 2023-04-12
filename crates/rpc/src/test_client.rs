@@ -60,7 +60,7 @@ impl Default for TestClientBuilder {
     fn default() -> Self {
         Self {
             request_timeout: Duration::from_secs(120),
-            address: *super::tests::LOCALHOST,
+            address: ([127, 0, 0, 1], 0).into(),
             endpoint: None,
         }
     }
