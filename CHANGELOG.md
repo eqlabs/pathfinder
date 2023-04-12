@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `max-rpc-connections` command-line argument
 - `cairo-lang` upgraded to 0.11.0.2
+
 ### Fixed
 
 - `starknet_simulateTransaction` data model inconsistency
