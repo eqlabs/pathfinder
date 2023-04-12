@@ -111,9 +111,9 @@ pub struct Client {
 }
 
 impl Client {
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-utils")))]
     const RETRY: builder::Retry = builder::Retry::Enabled;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     const RETRY: builder::Retry = builder::Retry::Disabled;
 
     /// Creates a new Sequencer client for the given chain.
@@ -408,16 +408,11 @@ impl ClientApi for Client {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use assert_matches::assert_matches;
-    use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
-    use stark_hash::Felt;
-    use starknet_gateway_test_fixtures::{testnet::*, *};
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils {
+    use super::Client;
+    use pathfinder_common::Chain;
     use starknet_gateway_types::error::StarknetErrorCode;
-    use starknet_gateway_types::request::Tag;
-    use std::collections::VecDeque;
 
     /// Helper funtion which allows for easy creation of a response tuple
     /// that contains a [StarknetError] for a given [StarknetErrorCode].
@@ -426,7 +421,7 @@ mod tests {
     ///
     /// The `message` field is always an empty string.
     /// The HTTP status code for this response is always `500` (`Internal Server Error`).
-    fn response_from(code: StarknetErrorCode) -> (String, u16) {
+    pub fn response_from(code: StarknetErrorCode) -> (String, u16) {
         use starknet_gateway_types::error::StarknetError;
 
         let e = StarknetError {
@@ -449,7 +444,7 @@ mod tests {
     ///      url paths & queries and respective fixtures for replies
     ///    - creates a [sequencer::Client] instance which connects to the mock server
     ///
-    fn setup<S1, S2, const N: usize>(
+    pub fn setup<S1, S2, const N: usize>(
         url_paths_queries_and_response_fixtures: [(S1, (S2, u16)); N],
     ) -> (Option<tokio::task::JoinHandle<()>>, Client)
     where
@@ -522,12 +517,17 @@ mod tests {
     /// Panics if replies for a particular path & query have been exhausted and the
     /// client still attempts to query the very same path.
     ///
-    fn setup_with_varied_responses<const M: usize, const N: usize>(
+    pub fn setup_with_varied_responses<const M: usize, const N: usize>(
         url_paths_queries_and_response_fixtures: [(String, [(String, u16); M]); N],
     ) -> (Option<tokio::task::JoinHandle<()>>, Client) {
         let url_paths_queries_and_response_fixtures = url_paths_queries_and_response_fixtures
             .into_iter()
-            .map(|x| (x.0.clone(), x.1.into_iter().collect::<VecDeque<_>>()))
+            .map(|x| {
+                (
+                    x.0.clone(),
+                    x.1.into_iter().collect::<std::collections::VecDeque<_>>(),
+                )
+            })
             .collect::<Vec<_>>();
         use std::sync::{Arc, Mutex};
 
@@ -577,6 +577,17 @@ mod tests {
             Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap()).unwrap();
         (Some(server_handle), client)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{test_utils::*, *};
+    use assert_matches::assert_matches;
+    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use stark_hash::Felt;
+    use starknet_gateway_test_fixtures::{testnet::*, *};
+    use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::request::Tag;
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
@@ -1749,185 +1760,6 @@ mod tests {
         async fn invalid() {
             let (_server_handle, sequencer) = setup_server(TargetChain::Invalid);
             sequencer.chain().await.unwrap_err();
-        }
-    }
-
-    mod metrics {
-        use super::*;
-        use futures::stream::StreamExt;
-        use pathfinder_common::BlockId;
-        use pretty_assertions::assert_eq;
-        use std::future::Future;
-
-        #[tokio::test]
-        async fn all_counter_types_including_tags() {
-            use super::ClientApi;
-
-            with_method(
-                "get_block",
-                |client, x| async move {
-                    let _ = client.block(x).await;
-                },
-                (v0_9_0::block::GENESIS.to_owned(), 200),
-            )
-            .await;
-            with_method(
-                "get_state_update",
-                |client, x| async move {
-                    let _ = client.state_update(x).await;
-                },
-                (v0_11_0::state_update::GENESIS.to_owned(), 200),
-            )
-            .await;
-        }
-
-        async fn with_method<F, Fut, T>(method_name: &'static str, f: F, response: (String, u16))
-        where
-            F: Fn(Client, BlockId) -> Fut,
-            Fut: Future<Output = T>,
-        {
-            use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
-
-            let recorder = FakeRecorder::new_for(&["get_block", "get_state_update"]);
-            let handle = recorder.handle();
-
-            let guard = RecorderGuard::lock(recorder);
-
-            let responses = [
-                // Any valid fixture
-                response,
-                // 1 StarkNet error
-                response_from(StarknetErrorCode::BlockNotFound),
-                // 2 decode errors
-                (r#"{"not":"valid"}"#.to_owned(), 200),
-                (r#"{"not":"valid, again"}"#.to_owned(), 200),
-                // 3 of rate limiting
-                ("you're being rate limited".to_owned(), 429),
-                ("".to_owned(), 429),
-                ("".to_owned(), 429),
-            ];
-
-            let (_jh, client) = setup_with_varied_responses([
-                (
-                    format!("/feeder_gateway/{method_name}?blockNumber=123"),
-                    responses.clone(),
-                ),
-                (
-                    format!("/feeder_gateway/{method_name}?blockNumber=latest"),
-                    responses.clone(),
-                ),
-                (
-                    format!("/feeder_gateway/{method_name}?blockNumber=pending"),
-                    responses,
-                ),
-            ]);
-            [BlockId::Number(StarknetBlockNumber::new_or_panic(123)); 7]
-                .into_iter()
-                .chain([BlockId::Latest; 7].into_iter())
-                .chain([BlockId::Pending; 7].into_iter())
-                .map(|x| f(client.clone(), x))
-                .collect::<futures::stream::FuturesUnordered<_>>()
-                .collect::<Vec<_>>()
-                .await;
-
-            // Drop the global recorder guard to avoid poisoning its internal lock if
-            // the following asserts fail which would fail other tests using the `RecorderGuard`
-            // at the same time.
-            //
-            // The recorder itself still exists since dropping the guard only unregisters the recorder
-            // and leaks it making the handle still valid past this point.
-            drop(guard);
-
-            // IMPORTANT
-            //
-            // We're not using any crate::sequencer::metrics consts here, because this is public API
-            // and we'd like to catch if/when it changed (apparently due to a bug)
-            [
-                ("gateway_requests_total", None, None, 21),
-                ("gateway_requests_total", Some("latest"), None, 7),
-                ("gateway_requests_total", Some("pending"), None, 7),
-                ("gateway_requests_failed_total", None, None, 18),
-                ("gateway_requests_failed_total", Some("latest"), None, 6),
-                ("gateway_requests_failed_total", Some("pending"), None, 6),
-                ("gateway_requests_failed_total", None, Some("starknet"), 3),
-                (
-                    "gateway_requests_failed_total",
-                    Some("latest"),
-                    Some("starknet"),
-                    1,
-                ),
-                (
-                    "gateway_requests_failed_total",
-                    Some("pending"),
-                    Some("starknet"),
-                    1,
-                ),
-                ("gateway_requests_failed_total", None, Some("decode"), 6),
-                (
-                    "gateway_requests_failed_total",
-                    Some("latest"),
-                    Some("decode"),
-                    2,
-                ),
-                (
-                    "gateway_requests_failed_total",
-                    Some("pending"),
-                    Some("decode"),
-                    2,
-                ),
-                (
-                    "gateway_requests_failed_total",
-                    None,
-                    Some("rate_limiting"),
-                    9,
-                ),
-                (
-                    "gateway_requests_failed_total",
-                    Some("latest"),
-                    Some("rate_limiting"),
-                    3,
-                ),
-                (
-                    "gateway_requests_failed_total",
-                    Some("pending"),
-                    Some("rate_limiting"),
-                    3,
-                ),
-            ]
-            .into_iter()
-            .for_each(|(counter_name, tag, failure_reason, expected_count)| {
-                match (tag, failure_reason) {
-                    (None, None) => assert_eq!(
-                        handle.get_counter_value(counter_name, method_name),
-                        expected_count,
-                        "counter: {counter_name}, method: {method_name}"
-                    ),
-                    (None, Some(reason)) => assert_eq!(
-                        handle.get_counter_value_by_label(
-                            counter_name,
-                            [("method", method_name), ("reason", reason)]
-                        ),
-                        expected_count,
-                        "counter: {counter_name}, method: {method_name}, reason: {reason}"
-                    ),
-                    (Some(tag), None) => assert_eq!(
-                        handle.get_counter_value_by_label(
-                            counter_name,
-                            [("method", method_name), ("tag", tag)]
-                        ),
-                        expected_count,
-                        "counter: {counter_name}, method: {method_name}, tag: {tag}"
-                    ),
-                    (Some(tag), Some(reason)) => assert_eq!(
-                        handle.get_counter_value_by_label(
-                            counter_name,
-                            [("method", method_name), ("tag", tag), ("reason", reason)]
-                        ),
-                        expected_count,
-                        "counter: {counter_name}, method: {method_name}, tag: {tag}, reason: {reason}"
-                    ),
-                }
-            });
         }
     }
 
