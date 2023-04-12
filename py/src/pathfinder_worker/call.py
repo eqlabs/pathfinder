@@ -113,7 +113,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 30
-EXPECTED_CAIRO_VERSION = "0.11.0"
+EXPECTED_CAIRO_VERSION = "0.11.0.2"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -231,7 +231,7 @@ class Call(Command):
     verb: ClassVar[Verb] = Verb.CALL
 
     contract_address: int = field(metadata=fields.contract_address_metadata)
-    calldata: List[int] = field(metadata=fields.calldata_as_hex_metadata)
+    calldata: List[int] = field(metadata=fields.call_data_as_hex_metadata)
     entry_point_selector: Optional[int] = field(
         default=None, metadata=fields.optional_entry_point_selector_metadata
     )

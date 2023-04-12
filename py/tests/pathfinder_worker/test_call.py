@@ -2156,8 +2156,8 @@ def test_simulate_transaction_succeeds():
                 "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
                 "max_fee": "0x0",
                 "signature": [
-                    "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-                    "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+                    "1170834978714321566077679750967140861184150362209174632516285135242242468744",
+                    "2219253403036539770789681704965496671569485440675085228837892314921869016439"
                 ],
                 "class_hash": "0xaf5f6ee1c2ad961f0b1cd3fa4285cefad65a418dd105719faa5d47583eb0a8",
                 "nonce": "0x0",
@@ -2220,8 +2220,8 @@ def test_simulate_transaction_succeeds():
                 }
             },
             "signature": [
-                "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-                "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
+                "1170834978714321566077679750967140861184150362209174632516285135242242468744",
+                "2219253403036539770789681704965496671569485440675085228837892314921869016439"
             ]
         },
         "fee_estimation": {
