@@ -283,7 +283,7 @@ mod tests {
                         ..mainnet_invoke
                     },
                 )),
-                block_id: BLOCK_5,
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(31000)),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::ContractNotFound));
@@ -301,7 +301,7 @@ mod tests {
                         ..mainnet_invoke
                     },
                 )),
-                block_id: BLOCK_5,
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(31000)),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::InvalidMessageSelector));
@@ -319,9 +319,9 @@ mod tests {
             assert_eq!(
                 result,
                 FeeEstimate {
-                    gas_consumed: Default::default(),
-                    gas_price: Default::default(),
-                    overall_fee: Default::default()
+                    gas_consumed: 3568u64.into(),
+                    gas_price: 18248879642u64.into(),
+                    overall_fee: 65112002562656u64.into()
                 }
             );
         }
@@ -351,7 +351,7 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: declare_transaction,
-                block_id: BLOCK_5,
+                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(31000)),
             };
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(
