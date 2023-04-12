@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.3] - 2023-04-12
+
+### Added
+
+- `max-rpc-connections` command-line argument
+- `cairo-lang` upgraded to 0.11.0.2
+### Fixed
+
+- `starknet_simulateTransaction` data model inconsistency
+- `poll-pending` default value restored to `false`
+
 ## [0.5.2] - 2023-03-28
 
 ### Added
