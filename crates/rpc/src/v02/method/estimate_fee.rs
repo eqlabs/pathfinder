@@ -308,9 +308,8 @@ pub(crate) mod tests {
             //
             // "Declare"
             //
-            let class_hash = ClassHash(felt!(
-                "00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8"
-            ));
+            let class_hash =
+                starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT_CLASS_HASH;
             let class = CompressedContract {
                 definition:
                     starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT
