@@ -159,7 +159,13 @@ fn feed_work(
                 if !previously_declared_deployed_in_the_same_block
                     .contains(tx.contract_address.get()) =>
             {
-                tx.into()
+                match tx.version {
+                    Some(version) if version.without_query_version() == 1 => tx.into(),
+                    None | Some(_) => {
+                        // Cannot estimate v0s, just skip them
+                        continue;
+                    }
+                }
             }
             SimpleTransaction::Invoke(SimpleInvoke {
                 contract_address, ..
@@ -381,6 +387,7 @@ struct SimpleInvoke {
     #[serde(default = "default_transaction_nonce")]
     pub nonce: pathfinder_common::TransactionNonce,
 
+    #[serde(alias = "sender_address")]
     contract_address: pathfinder_common::ContractAddress,
     #[serde_as(as = "Vec<pathfinder_serde::CallParamAsDecimalStr>")]
     pub calldata: Vec<pathfinder_common::CallParam>,
