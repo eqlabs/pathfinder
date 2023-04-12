@@ -22,7 +22,7 @@ jobs:
 
       - name: Update pathfinder package version
         run: |
-          sed -i -e 's/version = ".*"/version = "${{ github.event.inputs.version }}"/' crates/pathfinder/Cargo.toml
+          sed -i -e 's/^version = ".*"$/version = "${{ github.event.inputs.version }}"/' crates/pathfinder/Cargo.toml
 
       - name: Create PR
         env:
