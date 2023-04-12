@@ -1,29 +1,43 @@
-use stark_hash::Felt;
-
 pub mod contract_state;
 pub mod merkle_node;
-pub mod merkle_tree;
-pub mod state_tree;
+pub mod tree;
 
-/// Hashing function used by a particular merkle tree implementation.
-pub trait Hash {
-    fn hash(left: Felt, right: Felt) -> Felt;
+mod class;
+mod contract;
+mod hash;
+mod storage;
+mod transaction;
+
+use bitvec::prelude::Msb0;
+use bitvec::vec::BitVec;
+use stark_hash::Felt;
+
+pub use class::ClassCommitmentTree;
+pub use contract::{ContractsStorageTree, StorageCommitmentTree};
+pub use hash::{Hash, PedersenHash, PoseidonHash};
+pub use storage::Storage;
+pub use transaction::TransactionOrEventTree;
+
+/// A node of a committed [MerkleTree](tree::MerkleTree).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Node {
+    Binary { left: Felt, right: Felt },
+    Edge { child: Felt, path: BitVec<Msb0, u8> },
 }
 
-/// Implements [Hash] for the [StarkNet Pedersen hash](stark_hash::stark_hash).
-#[derive(Debug, Clone, Copy)]
-pub struct PedersenHash {}
+impl Node {
+    pub fn hash<H: Hash>(&self) -> Felt {
+        match self {
+            Node::Binary { left, right } => H::hash(*left, *right),
+            Node::Edge { child, path } => {
+                let mut length = [0; 32];
+                // Safe as len() is guaranteed to be <= 251
+                length[31] = path.len() as u8;
+                let path = Felt::from_bits(path).unwrap();
 
-impl Hash for PedersenHash {
-    fn hash(left: Felt, right: Felt) -> Felt {
-        stark_hash::stark_hash(left, right)
-    }
-}
-
-/// Implements [Hash] for the [StarkNet Poseidon hash](stark_poseidon::poseidon_hash).
-struct PoseidonHash;
-impl crate::Hash for PoseidonHash {
-    fn hash(left: Felt, right: Felt) -> Felt {
-        stark_poseidon::poseidon_hash(left.into(), right.into()).into()
+                let length = Felt::from_be_bytes(length).unwrap();
+                H::hash(*child, path) + length
+            }
+        }
     }
 }

@@ -119,7 +119,7 @@ mod tests {
         StarknetTransactionIndex, StateCommitment, StorageAddress, StorageCommitment,
         TransactionVersion,
     };
-    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
+    use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, StarknetBlock,
         StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
@@ -202,7 +202,7 @@ mod tests {
         ContractCodeTable::insert_compressed(&db_txn, &contract2_code).unwrap();
 
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
+            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
@@ -215,10 +215,11 @@ mod tests {
         storage_commitment_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment0 = storage_commitment_tree.apply().unwrap();
+        let storage_commitment0 = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
 
-        let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, storage_commitment0).unwrap();
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
@@ -243,10 +244,11 @@ mod tests {
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment1 = storage_commitment_tree.apply().unwrap();
+        let storage_commitment1 = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
 
-        let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, storage_commitment1).unwrap();
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
@@ -271,7 +273,9 @@ mod tests {
         storage_commitment_tree
             .set(contract2_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment2 = storage_commitment_tree.apply().unwrap();
+        let storage_commitment2 = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
 
         let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {

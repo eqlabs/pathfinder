@@ -20,7 +20,7 @@ pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<GetNonceOutput, GetNonceError> {
-    use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
+    use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 
     // We can potentially read the nonce from pending without having to reach out to the database.
@@ -49,8 +49,7 @@ pub async fn get_nonce(
             .context("Fetching storage commitment")?
             .ok_or(GetNonceError::BlockNotFound)?;
 
-        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment)
-            .context("Loading storage commitment tree")?;
+        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
 
         let state_hash = storage_commitment_tree
             .get(input.contract_address)

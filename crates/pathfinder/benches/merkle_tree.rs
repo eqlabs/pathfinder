@@ -1,5 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pathfinder_merkle_tree::PedersenHash;
+use pathfinder_common::{ContractRoot, StorageAddress, StorageValue};
+use pathfinder_merkle_tree::ContractsStorageTree;
 use stark_hash::Felt;
 
 fn gen_random_keys(n: usize) -> Vec<Felt> {
@@ -18,30 +19,25 @@ fn gen_random_keys(n: usize) -> Vec<Felt> {
 }
 
 pub fn chunked_inserts(tx: &rusqlite::Transaction<'_>, keys: &[Felt], batch_size: usize) -> Felt {
-    let mut hash = stark_hash::Felt::ZERO;
+    let mut hash = ContractRoot::ZERO;
 
     for keys in keys.chunks(batch_size) {
-        let mut uut = pathfinder_merkle_tree::merkle_tree::MerkleTree::<_, PedersenHash>::load(
-            "tree_contracts",
-            tx,
-            hash,
-        )
-        .unwrap();
+        let mut uut = ContractsStorageTree::load(tx, hash);
 
         keys.iter()
             .enumerate()
             .try_for_each(|(value, key)| {
                 uut.set(
-                    key.view_bits(),
-                    stark_hash::Felt::from_be_slice(&value.to_be_bytes()).unwrap(),
+                    StorageAddress::new_or_panic(*key),
+                    StorageValue(stark_hash::Felt::from_be_slice(&value.to_be_bytes()).unwrap()),
                 )
             })
             .unwrap();
 
-        hash = uut.commit().unwrap();
+        hash = uut.commit_and_persist_changes().unwrap();
     }
 
-    hash
+    hash.0
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {

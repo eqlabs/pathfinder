@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
-use pathfinder_merkle_tree::state_tree::{ContractsStateTree, StorageCommitmentTree};
+use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -76,8 +76,7 @@ pub async fn get_storage_at(
             // by using a dedicated error code from the RPC API spec
             .ok_or(GetStorageAtError::BlockNotFound)?;
 
-        let storage_commitment_tree =
-            StorageCommitmentTree::load(&tx, storage_commitment).context("Global state tree")?;
+        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
 
         let contract_state_hash = storage_commitment_tree
             .get(input.contract_address)
@@ -93,8 +92,7 @@ pub async fn get_storage_at(
                 )
             })?;
 
-        let contract_state_tree = ContractsStateTree::load(&tx, contract_state_root)
-            .context("Load contract state tree")?;
+        let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
 
         let storage_val = contract_state_tree
             .get(input.key)

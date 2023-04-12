@@ -12,7 +12,7 @@ use pathfinder_common::{
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
-    state_tree::{ClassCommitmentTree, StorageCommitmentTree},
+    ClassCommitmentTree, StorageCommitmentTree,
 };
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
@@ -682,8 +682,7 @@ fn update_starknet_state(
             .context("Query latest state commitment")?
             .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
-    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
-        .context("Loading storage commitment tree")?;
+    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment);
 
     for contract in &state_update.state_diff.deployed_contracts {
         deploy_contract(transaction, &mut storage_commitment_tree, contract)
@@ -764,12 +763,11 @@ fn update_starknet_state(
 
     // Apply storage commitment tree changes.
     let new_storage_commitment = storage_commitment_tree
-        .apply()
+        .commit_and_persist_changes()
         .context("Apply storage commitment tree updates")?;
 
     // Add new Sierra classes to class commitment tree.
-    let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment)
-        .context("Loading class commitment tree")?;
+    let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment);
 
     for sierra_class in &state_update.state_diff.declared_classes {
         let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(
@@ -790,7 +788,7 @@ fn update_starknet_state(
 
     // Apply all class commitment tree changes.
     let new_class_commitment = class_commitment_tree
-        .apply()
+        .commit_and_persist_changes()
         .context("Apply class commitment tree updates")?;
 
     Ok((new_storage_commitment, new_class_commitment))
@@ -798,7 +796,7 @@ fn update_starknet_state(
 
 fn deploy_contract(
     transaction: &Transaction<'_>,
-    storage_commitment_tree: &mut StorageCommitmentTree<'_, '_>,
+    storage_commitment_tree: &mut StorageCommitmentTree<'_>,
     contract: &DeployedContract,
 ) -> anyhow::Result<()> {
     // Add a new contract to global tree, the contract root is initialized to ZERO.

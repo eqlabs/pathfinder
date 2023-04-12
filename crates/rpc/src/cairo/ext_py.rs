@@ -468,6 +468,7 @@ mod tests {
         StarknetBlockTimestamp, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
         TransactionVersion,
     };
+    use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         ContractCodeTable, ContractsStateTable, JournalMode, StarknetBlock, StarknetBlocksTable,
         Storage,
@@ -903,16 +904,14 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            pathfinder_merkle_tree::state_tree::StorageCommitmentTree::load(
-                tx,
-                StorageCommitment(Felt::ZERO),
-            )
-            .unwrap();
+            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO));
 
         storage_commitment_tree
             .set(test_contract_address, test_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree.apply().unwrap();
+        let storage_commitment = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
@@ -965,16 +964,14 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            pathfinder_merkle_tree::state_tree::StorageCommitmentTree::load(
-                tx,
-                StorageCommitment(Felt::ZERO),
-            )
-            .unwrap();
+            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO));
 
         storage_commitment_tree
             .set(account_contract_address, account_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree.apply().unwrap();
+        let storage_commitment = storage_commitment_tree
+            .commit_and_persist_changes()
+            .unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
         // create a block with the global root
@@ -1019,6 +1016,8 @@ mod tests {
         contract_definition: &[u8],
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {
+        use pathfinder_merkle_tree::ContractsStorageTree;
+
         let class_hash =
             starknet_gateway_types::class_hash::compute_class_hash(contract_definition).unwrap();
         let class_hash = class_hash.hash();
@@ -1027,17 +1026,13 @@ mod tests {
         ContractCodeTable::insert(tx, class_hash, contract_definition).unwrap();
 
         // set up contract state tree
-        let mut contract_state = pathfinder_merkle_tree::state_tree::ContractsStateTree::load(
-            tx,
-            ContractRoot(Felt::ZERO),
-        )
-        .unwrap();
+        let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO));
         for (storage_address, storage_value) in storage_updates {
             contract_state
                 .set(*storage_address, *storage_value)
                 .unwrap();
         }
-        let contract_state_root = contract_state.apply().unwrap();
+        let contract_state_root = contract_state.commit_and_persist_changes().unwrap();
 
         let contract_nonce = ContractNonce(Felt::ZERO);
 

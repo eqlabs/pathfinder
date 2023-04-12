@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use pathfinder_merkle_tree::state_tree::StorageCommitmentTree;
+use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
 use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
@@ -100,8 +100,7 @@ fn get_definition_at(
         .context("Reading storage commitment from database")?
         .ok_or(GetClassAtError::BlockNotFound)?;
 
-    let tree = StorageCommitmentTree::load(tx, storage_commitment)
-        .context("Loading storage commitment tree")?;
+    let tree = StorageCommitmentTree::load(tx, storage_commitment);
     let state_hash = tree
         .get(contract)
         .context("Fetching contract leaf in storage commitment tree")?

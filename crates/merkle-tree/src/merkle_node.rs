@@ -2,7 +2,7 @@
 //! used by Starknet.
 //!
 //! For more information about how these Starknet trees are structured, see
-//! [`MerkleTree`](super::merkle_tree::MerkleTree).
+//! [`MerkleTree`](crate::tree::MerkleTree).
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -13,7 +13,7 @@ use crate::Hash;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Node {
+pub enum InternalNode {
     /// A node that has not been fetched from storage yet.
     ///
     /// As such, all we know is its hash.
@@ -26,7 +26,7 @@ pub enum Node {
     Leaf(Felt),
 }
 
-/// Describes the [Node::Binary] variant.
+/// Describes the [InternalNode::Binary] variant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
     /// The hash of this node. Is [None] if the node
@@ -35,9 +35,9 @@ pub struct BinaryNode {
     /// The height of this node in the tree.
     pub height: usize,
     /// [Left](Direction::Left) child.
-    pub left: Rc<RefCell<Node>>,
+    pub left: Rc<RefCell<InternalNode>>,
     /// [Right](Direction::Right) child.
-    pub right: Rc<RefCell<Node>>,
+    pub right: Rc<RefCell<InternalNode>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -50,7 +50,7 @@ pub struct EdgeNode {
     /// The path this edge takes.
     pub path: BitVec<Msb0, u8>,
     /// The child of this node.
-    pub child: Rc<RefCell<Node>>,
+    pub child: Rc<RefCell<InternalNode>>,
 }
 
 /// Describes the direction a child of a [BinaryNode] may have.
@@ -109,7 +109,7 @@ impl BinaryNode {
     ///
     /// [Left]: Direction::Left
     /// [Right]: Direction::Right
-    pub fn get_child(&self, direction: Direction) -> Rc<RefCell<Node>> {
+    pub fn get_child(&self, direction: Direction) -> Rc<RefCell<InternalNode>> {
         match direction {
             Direction::Left => self.left.clone(),
             Direction::Right => self.right.clone(),
@@ -141,15 +141,15 @@ impl BinaryNode {
     }
 }
 
-impl Node {
+impl InternalNode {
     /// Convenience function which sets the inner node's hash to [None], if
     /// applicable.
     ///
     /// Used to indicate that this node has been mutated.
     pub fn mark_dirty(&mut self) {
         match self {
-            Node::Binary(inner) => inner.hash = None,
-            Node::Edge(inner) => inner.hash = None,
+            InternalNode::Binary(inner) => inner.hash = None,
+            InternalNode::Edge(inner) => inner.hash = None,
             _ => {}
         }
     }
@@ -160,35 +160,35 @@ impl Node {
     /// This can occur for the root node in an empty graph.
     pub fn is_empty(&self) -> bool {
         match self {
-            Node::Unresolved(hash) => hash == &Felt::ZERO,
+            InternalNode::Unresolved(hash) => hash == &Felt::ZERO,
             _ => false,
         }
     }
 
     pub fn is_binary(&self) -> bool {
-        matches!(self, Node::Binary(..))
+        matches!(self, InternalNode::Binary(..))
     }
 
     pub fn as_binary(&self) -> Option<&BinaryNode> {
         match self {
-            Node::Binary(binary) => Some(binary),
+            InternalNode::Binary(binary) => Some(binary),
             _ => None,
         }
     }
 
     pub fn as_edge(&self) -> Option<&EdgeNode> {
         match self {
-            Node::Edge(edge) => Some(edge),
+            InternalNode::Edge(edge) => Some(edge),
             _ => None,
         }
     }
 
     pub fn hash(&self) -> Option<Felt> {
         match self {
-            Node::Unresolved(hash) => Some(*hash),
-            Node::Binary(binary) => binary.hash,
-            Node::Edge(edge) => edge.hash,
-            Node::Leaf(value) => Some(*value),
+            InternalNode::Unresolved(hash) => Some(*hash),
+            InternalNode::Binary(binary) => binary.hash,
+            InternalNode::Edge(edge) => edge.hash,
+            InternalNode::Leaf(value) => Some(*value),
         }
     }
 }
@@ -281,8 +281,8 @@ mod tests {
             let uut = BinaryNode {
                 hash: None,
                 height: 1,
-                left: Rc::new(RefCell::new(Node::Leaf(felt!("0xabc")))),
-                right: Rc::new(RefCell::new(Node::Leaf(felt!("0xdef")))),
+                left: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc")))),
+                right: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef")))),
             };
 
             let mut zero_key = bitvec![Msb0, u8; 1; 251];
@@ -300,8 +300,8 @@ mod tests {
 
         #[test]
         fn get_child() {
-            let left = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
-            let right = Rc::new(RefCell::new(Node::Leaf(felt!("0xdef"))));
+            let left = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+            let right = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef"))));
 
             let uut = BinaryNode {
                 hash: None,
@@ -328,8 +328,8 @@ mod tests {
             let left = felt!("0x1234");
             let right = felt!("0xabcd");
 
-            let left = Rc::new(RefCell::new(Node::Unresolved(left)));
-            let right = Rc::new(RefCell::new(Node::Unresolved(right)));
+            let left = Rc::new(RefCell::new(InternalNode::Unresolved(left)));
+            let right = Rc::new(RefCell::new(InternalNode::Unresolved(right)));
 
             let mut uut = BinaryNode {
                 hash: None,
@@ -360,7 +360,7 @@ mod tests {
             )
             .unwrap();
             let child = felt!("0x1234ABCD");
-            let child = Rc::new(RefCell::new(Node::Unresolved(child)));
+            let child = Rc::new(RefCell::new(InternalNode::Unresolved(child)));
             // Path = 42 in binary.
             let path = bitvec![Msb0, u8; 1, 0, 1, 0, 1, 0];
 
@@ -383,7 +383,7 @@ mod tests {
             #[test]
             fn full() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
 
                 let uut = EdgeNode {
                     hash: None,
@@ -398,7 +398,7 @@ mod tests {
             #[test]
             fn prefix() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[..45].to_bitvec();
 
@@ -415,7 +415,7 @@ mod tests {
             #[test]
             fn suffix() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[50..].to_bitvec();
 
@@ -432,7 +432,7 @@ mod tests {
             #[test]
             fn middle_slice() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(Node::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
 
                 let path = key.view_bits()[230..235].to_bitvec();
 

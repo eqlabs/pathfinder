@@ -18,7 +18,7 @@ serde_with = "2.1.0"
 sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
-thiserror = "1.0.37"
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
