@@ -19,7 +19,7 @@ sha3 = "0.10"
 stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
-thiserror = "1.0.37"
+thiserror = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["git"] }

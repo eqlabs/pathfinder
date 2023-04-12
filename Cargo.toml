@@ -35,4 +35,5 @@ anyhow = { version = "1.0.66" }
 clap = { version = "4.1.13" }
 fake = { version = "2.5.0", features = ["derive"] }
 rand = "0.8.5"
+thiserror = "1.0.37"
 tokio = "1.24.2"
