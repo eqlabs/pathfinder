@@ -176,80 +176,174 @@ impl EthereumClient {
     }
 }
 
-// TODO(SM): make tests hermetic (test against local http mock server)
 #[cfg(test)]
 mod tests {
-    use primitive_types::H160;
-
     use super::*;
+
+    use httpmock::prelude::*;
+    use primitive_types::H160;
+    use std::str::FromStr;
 
     #[tokio::test]
     async fn test_get_block_number() {
-        // curl -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":0}' https://eth.llamarpc.com
-        // {"jsonrpc":"2.0","id":0,"result":"0x103588d"}
+        let server = MockServer::start_async().await;
 
-        let eth = EthereumClient::new("https://eth.llamarpc.com", EthereumAddress(H160::zero()));
+        let mock = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_blockNumber","params":[]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x103588d"}"#);
+        });
+
+        let url = server.url("/");
+        let eth = EthereumClient::new(&url, EthereumAddress(H160::zero()));
         let block_number = eth.get_block_number().await.expect("get_block_number");
 
-        let expected = U256::from_dec_str("17027570").expect("min block");
-        assert!(block_number >= expected);
+        mock.assert();
+        let expected = U256::from_str_radix("0x103588d", 16).expect("block number");
+        assert_eq!(block_number, expected);
     }
 
     #[tokio::test]
     async fn test_gas_price() {
-        // $ curl -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"eth_gasPrice","params":[],"id":42}' https://eth.llamarpc.com
-        // {"jsonrpc":"2.0","id":42,"result":"0x52df48d1d"}
+        let server = MockServer::start_async().await;
 
-        let eth = EthereumClient::new("https://eth.llamarpc.com", EthereumAddress(H160::zero()));
+        let mock = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_gasPrice","params":[]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x52df48d1d"}"#);
+        });
+
+        let url = server.url("/");
+        let eth = EthereumClient::new(&url, EthereumAddress(H160::zero()));
         let gas_price = eth.gas_price().await.expect("gas_price");
 
-        let zero = U256::zero();
-        assert!(gas_price > zero);
+        mock.assert();
+        let expected = U256::from_str_radix("0x52df48d1d", 16).expect("gas price");
+        assert_eq!(gas_price, expected);
     }
 
     #[tokio::test]
     async fn test_get_starknet_block_number() {
-        // $ curl -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"eth_call","params":[{"to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0","data":"0x35befa5d"}, "0x103588d"],"id":1}' https://eth.llamarpc.com
-        // {"jsonrpc":"2.0","id":1,"result":"0x0000000000000000000000000000000000000000000000000000000000007eeb"}
+        let server = MockServer::start_async().await;
 
+        let mock = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x0000000000000000000000000000000000000000000000000000000000007eeb"}"#);
+        });
+
+        let url = server.url("/");
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
-        let eth = EthereumClient::new("https://eth.llamarpc.com", l1_addr);
+        let eth = EthereumClient::new(&url, l1_addr);
 
-        let eth_block_number = U256::from_dec_str("17027570").expect("eth_block_number");
-
+        let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("eth_block_number");
         let block_number = eth
             .get_starknet_block_number(&eth_block_number)
             .await
             .expect("get_starknet_block_number");
 
-        let expected = U256::from_dec_str("36284").expect("min block");
-        assert!(block_number >= expected);
+        mock.assert();
+        let expected = U256::from_str_radix("0x7eeb", 16).expect("starknet block number");
+        assert_eq!(block_number, expected);
     }
 
     #[tokio::test]
     async fn test_get_starknet_state_root() {
-        // $ curl -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"eth_call","params":[{"to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0","data":"0x9588eca2"}, "0x103588d"],"id":1}' https://eth.llamarpc.com
-        // {"jsonrpc":"2.0","id":1,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}
+        let server = MockServer::start_async().await;
 
+        let mock = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x9588eca2","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
+        });
+
+        let url = server.url("/");
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
-        let eth = EthereumClient::new("https://eth.llamarpc.com", l1_addr);
+        let eth = EthereumClient::new(&url, l1_addr);
 
-        let eth_block_number = U256::from_dec_str("17027570").expect("eth_block_number");
+        let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("eth_block_number");
 
         let state_root = eth
             .get_starknet_state_root(&eth_block_number)
             .await
             .expect("get_starknet_state_root");
 
-        let zero = H256::zero();
-        assert!(state_root > zero);
+        mock.assert();
+        let expected =
+            H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")
+                .expect("starknet state root");
+        assert_eq!(state_root, expected);
     }
 
     #[tokio::test]
     async fn test_get_starknet_state() {
-        let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
-        let eth = EthereumClient::new("https://eth.llamarpc.com", l1_addr);
+        let server = MockServer::start_async().await;
 
-        assert!(eth.get_starknet_state().await.is_ok());
+        let mock_block_number = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_blockNumber","params":[]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x103d1f2"}"#);
+        });
+
+        let mock_block = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x0000000000000000000000000000000000000000000000000000000000007eeb"}"#);
+        });
+
+        let mock_state = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x9588eca2","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
+        });
+
+        let url = server.url("/");
+        let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
+        let eth = EthereumClient::new(&url, l1_addr);
+
+        let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("block number");
+        let block_number = U256::from_str_radix("0x7eeb", 16).expect("starknet block number");
+        let global_root =
+            H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")
+                .expect("starknet state root");
+        let expected = L1StateUpdate {
+            eth_block_number: eth_block_number.as_u64(),
+            block_number: block_number.as_u64(),
+            global_root,
+        };
+
+        let state = eth.get_starknet_state().await.expect("state");
+        mock_block_number.assert();
+        mock_block.assert();
+        mock_state.assert();
+        assert_eq!(state, expected);
     }
 }
