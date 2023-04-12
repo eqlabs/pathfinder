@@ -123,9 +123,11 @@ where
 
     loop {
         tokio::select! {
-            l1_event = rx_l1.recv() => if let Some(L1StateUpdate { global_root, block_number, .. }) = l1_event {
-                tracing::info!("L1 state update: root={} block={}", global_root, block_number);
-                // TODO(SM): use pathfinder_storage::StarknetStateUpdatesTable to query/update the state
+            l1_event = rx_l1.recv() => if let Some(update) = l1_event {
+                let tx = db_conn.transaction().context("Create database transaction")?;
+                L1StateTable::upsert(&tx, &update).context("Upsert l1_state")?;
+                tx.commit().context("Commit database transaction")?;
+                tracing::info!("L1 state update: block={} root={}", update.block_number, update.global_root);
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {

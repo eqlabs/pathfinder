@@ -33,7 +33,16 @@ impl From<StarknetBlockNumber> for L1TableBlockId {
 impl L1StateTable {
     /// Inserts a new [update](L1StateUpdate), replaces if it already exists.
     pub fn upsert(tx: &Transaction<'_>, update: &L1StateUpdate) -> anyhow::Result<()> {
-        // TODO(SM): add migration to remove columns: ethereum_transaction_hash, ethereum_transaction_index, ethereum_log_index, ethereum_block_hash
+        tx.execute(
+            r"DELETE FROM l1_state WHERE 
+            starknet_block_number >= :starknet_block_number OR 
+            ethereum_block_number >= :ethereum_block_number",
+            named_params! {
+                ":starknet_block_number": update.block_number,
+                ":ethereum_block_number": update.eth_block_number,
+            },
+        )?;
+
         tx.execute(
             r"INSERT OR REPLACE INTO l1_state (
                         starknet_block_number,
