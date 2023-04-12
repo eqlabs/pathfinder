@@ -7690,6 +7690,7 @@ dependencies = [
 [[package]]
 name = "starknet-rs"
 version = "0.1.0"
+source = "git+https://github.com/kkovaacs/starknet_in_rust?branch=krisztian/state-api-returns-owned-values#181ed8dad9f9a9762f61f852fdf4dc0c0085bb9b"
 dependencies = [
  "actix-web",
  "awc",
