@@ -308,12 +308,11 @@ mod tests {
     #[tokio::test]
     async fn api_versions_dont_leak_between_each_other() {
         use crate::test_client::TestClientBuilder;
-        use crate::{RpcContext, RpcMetricsLogger, RpcServer};
+        use crate::{RpcContext, RpcServer};
         use serde_json::json;
 
         let context = RpcContext::for_tests();
         let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-            .with_logger(RpcMetricsLogger)
             .run()
             .await
             .unwrap();
