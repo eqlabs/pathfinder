@@ -55,7 +55,7 @@ impl FieldElement {
     pub fn into_bits(mut self) -> BitArray<Lsb0, [u64; 4]> {
         #[cfg(not(target_endian = "little"))]
         {
-            todo!("untested and probably unimplemented: big-endian targets")
+            unimplemented!("untested and probably unimplemented: big-endian targets")
         }
 
         #[cfg(target_endian = "little")]

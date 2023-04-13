@@ -68,7 +68,6 @@ where
         ) -> F2
         + Copy,
 {
-    // TODO: should this be owning a Storage, or just take in a Connection?
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
@@ -647,8 +646,6 @@ async fn l2_reorg(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
-
-        // TODO: clean up state tree's as well...
 
         CanonicalBlocksTable::reorg(&transaction, reorg_tail)
             .context("Delete canonical blocks from database")?;

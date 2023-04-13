@@ -301,7 +301,6 @@ pub fn starkhash_to_dec_str(h: &Felt) -> String {
 
 /// A helper conversion function. Only use with __sequencer API related types__.
 fn starkhash_from_dec_str(s: &str) -> Result<Felt, anyhow::Error> {
-    // TODO remove fallback to hex string representation once mainnet moves to cairo-0.8.0
     match BigUint::from_str(s) {
         Ok(b) => {
             let h = starkhash_from_biguint(b)?;
@@ -604,12 +603,6 @@ mod tests {
 
     #[test]
     fn invalid_digit() {
-        // TODO revert when mainnet moves to cairo-0.8.0
-        // use num_bigint::ParseBigIntError;
-        // starkhash_from_dec_str("123z")
-        //     .unwrap_err()
-        //     .downcast::<ParseBigIntError>()
-        //     .unwrap();
         starkhash_from_dec_str("123a").unwrap();
         assert_eq!(
             starkhash_from_dec_str("123z")
