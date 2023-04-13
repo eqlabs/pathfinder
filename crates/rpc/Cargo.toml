@@ -23,8 +23,8 @@ pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
-reqwest = { version = "0.11.13", features = ["json"], optional = true }
 primitive-types = { version = "0.12.1", features = ["serde"] }
+reqwest = { version = "0.11.13", features = ["json"], optional = true }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
