@@ -180,6 +180,7 @@ pub struct Ethereum {
     pub password: Option<String>,
 }
 
+#[derive(Clone)]
 pub enum NetworkConfig {
     Mainnet,
     Testnet,

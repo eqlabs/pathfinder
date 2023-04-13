@@ -278,7 +278,7 @@ mod pathfinder_context {
     impl PathfinderContext {
         pub async fn configure_and_proxy_check(config: &Config) -> anyhow::Result<Self> {
             let data_directory = config.data_directory.clone();
-            let context = match &config.network {
+            let context = match config.network.clone() {
                 NetworkConfig::Mainnet => Self {
                     network: Chain::Mainnet,
                     network_id: ChainId::MAINNET,
@@ -323,15 +323,15 @@ mod pathfinder_context {
         /// by checking for a proxy gateway by comparing against L1 starknet address against of
         /// the known networks.
         async fn configure_custom(
-            gateway: &Url,
-            feeder: &Url,
-            chain_id: &String,
+            gateway: Url,
+            feeder: Url,
+            chain_id: String,
             data_directory: PathBuf,
         ) -> anyhow::Result<Self> {
             use stark_hash::Felt;
             use starknet_gateway_client::ClientApi;
 
-            let gateway = GatewayClient::with_urls(gateway.clone(), feeder.clone())
+            let gateway = GatewayClient::with_urls(gateway, feeder)
                 .context("Creating gateway client")?;
 
             let network_id =
