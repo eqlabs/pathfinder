@@ -54,13 +54,19 @@ where
     SequencerClient: ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: Fn(mpsc::Sender<L1StateUpdate>, StarknetEthereumClient, std::time::Duration) -> F1,
+    L1Sync: Fn(
+        mpsc::Sender<L1StateUpdate>,
+        StarknetEthereumClient,
+        std::time::Duration,
+        std::time::Duration,
+    ) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
             Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
             Chain,
             Option<std::time::Duration>,
+            std::time::Duration,
             l2::BlockValidationMode,
         ) -> F2
         + Copy,
@@ -97,13 +103,20 @@ where
 
     // Start L1 and L2 sync processes.
     let poll_interval = head_poll_interval(chain);
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum_client.clone(), poll_interval));
+    let no_delay = std::time::Duration::ZERO;
+    let mut l1_handle = tokio::spawn(l1_sync(
+        tx_l1,
+        ethereum_client.clone(),
+        no_delay,
+        poll_interval,
+    ));
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
         sequencer.clone(),
         l2_head,
         chain,
         pending_poll_interval,
+        no_delay,
         block_validation_mode,
     ));
 
@@ -112,10 +125,9 @@ where
     let mut last_block_start = std::time::Instant::now();
     let mut block_time_avg = std::time::Duration::ZERO;
     const BLOCK_TIME_WEIGHT: f32 = 0.05;
-    /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
-    /// tasks are crashing.
-    #[cfg(not(test))]
-    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
+
+    // Delay before restarting L1 or L2 tasks if they fail.
+    static START_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
 
     loop {
         tokio::select! {
@@ -140,12 +152,8 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    let fut = l1_sync(new_tx, ethereum_client.clone(), poll_interval);
-                    l1_handle = tokio::spawn(async move {
-                        #[cfg(not(test))]
-                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        fut.await
-                    });
+                    let fut = l1_sync(new_tx, ethereum_client.clone(), START_DELAY, poll_interval);
+                    l1_handle = tokio::spawn(async move { fut.await });
                     tracing::info!("L1 sync process restarted.")
                 }
             },
@@ -304,13 +312,9 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval, block_validation_mode);
+                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval, START_DELAY, block_validation_mode);
 
-                    l2_handle = tokio::spawn(async move {
-                        #[cfg(not(test))]
-                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        fut.await
-                    });
+                    l2_handle = tokio::spawn(async move { fut.await });
                     tracing::info!("L2 sync process restarted.");
                 }
             }

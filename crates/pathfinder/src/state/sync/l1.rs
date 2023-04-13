@@ -5,8 +5,11 @@ use tokio::sync::mpsc::Sender;
 pub async fn sync(
     tx_event: Sender<L1StateUpdate>,
     ethereum_client: StarknetEthereumClient,
+    start_delay: std::time::Duration,
     poll_interval: std::time::Duration,
 ) -> anyhow::Result<()> {
+    tokio::time::sleep(start_delay).await;
+
     loop {
         tokio::time::sleep(poll_interval).await;
 
