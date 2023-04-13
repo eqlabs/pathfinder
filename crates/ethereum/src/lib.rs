@@ -232,7 +232,7 @@ impl StarknetEthereumClient {
     }
 
     pub async fn gas_price(&self) -> anyhow::Result<U256> {
-        Ok(self.eth.gas_price().await?)
+        self.eth.gas_price().await
     }
 }
 
