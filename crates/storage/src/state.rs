@@ -10,7 +10,6 @@ use pathfinder_common::{
     StateCommitment, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::L1StateUpdate;
-use primitive_types::H256;
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
@@ -90,53 +89,6 @@ impl L1StateTable {
         row.get("starknet_global_root")
             .map(Some)
             .map_err(|e| e.into())
-    }
-
-    /// Returns the [update](L1StateUpdate) of the given block.
-    pub fn get(
-        tx: &Transaction<'_>,
-        block: L1TableBlockId,
-    ) -> anyhow::Result<Option<L1StateUpdate>> {
-        let mut statement = match block {
-            L1TableBlockId::Number(_) => tx.prepare(
-                r"SELECT starknet_block_number,
-                    starknet_global_root,
-                    ethereum_block_number
-                FROM l1_state WHERE starknet_block_number = ?",
-            ),
-            L1TableBlockId::Latest => tx.prepare(
-                r"SELECT starknet_block_number,
-                    starknet_global_root,
-                    ethereum_block_number
-                FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1",
-            ),
-        }?;
-
-        let mut rows = match block {
-            L1TableBlockId::Number(number) => statement.query([number]),
-            L1TableBlockId::Latest => statement.query([]),
-        }?;
-
-        let row = rows.next()?;
-        let row = match row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let starknet_block_number: u64 = row.get_unwrap("starknet_block_number");
-        let ethereum_block_number: u64 = row.get_unwrap("ethereum_block_number");
-
-        let starknet_global_root = row
-            .get_ref_unwrap("starknet_global_root")
-            .as_blob()
-            .unwrap();
-        let starknet_global_root = H256::from_slice(starknet_global_root);
-
-        Ok(Some(L1StateUpdate {
-            eth_block_number: ethereum_block_number,
-            global_root: starknet_global_root,
-            block_number: starknet_block_number,
-        }))
     }
 }
 

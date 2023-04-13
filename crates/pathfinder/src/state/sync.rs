@@ -20,8 +20,8 @@ use pathfinder_rpc::{
 use pathfinder_storage::{
     types::{CompressedCasmClass, CompressedContract},
     CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable,
-    L1StateTable, L1TableBlockId, RefsTable, StarknetBlock, StarknetBlocksBlockId,
-    StarknetBlocksTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+    L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+    StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
@@ -72,15 +72,12 @@ where
     let (tx_l1, mut rx_l1) = mpsc::channel(1);
     let (tx_l2, mut rx_l2) = mpsc::channel(1);
 
-    #[allow(unused_variables)] // TODO(SM): deal with unused var
-    let (l1_head, l2_head) = tokio::task::block_in_place(|| -> anyhow::Result<_> {
+    let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
-        let l1_head = L1StateTable::get(&tx, L1TableBlockId::Latest)
-            .context("Query L1 head from database")?;
         let l2_head = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
             .map(|block| (block.number, block.hash, block.root));
-        Ok((l1_head, l2_head))
+        Ok(l2_head)
     })?;
 
     // Start update sync-status process.
@@ -100,8 +97,7 @@ where
 
     // Start L1 and L2 sync processes.
     let poll_interval = head_poll_interval(chain);
-    #[allow(unused_variables)] // TODO(SM): deal with unused var
-    let l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum_client, poll_interval));
+    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum_client.clone(), poll_interval));
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
         sequencer.clone(),
@@ -123,11 +119,35 @@ where
 
     loop {
         tokio::select! {
-            l1_event = rx_l1.recv() => if let Some(update) = l1_event {
-                let tx = db_conn.transaction().context("Create database transaction")?;
-                L1StateTable::upsert(&tx, &update).context("Upsert l1_state")?;
-                tx.commit().context("Commit database transaction")?;
-                tracing::info!("L1 state update: block={} root={}", update.block_number, update.global_root);
+            l1_event = rx_l1.recv() => match l1_event {
+                Some(update) => {
+                    let tx = db_conn.transaction().context("Create database transaction")?;
+                    L1StateTable::upsert(&tx, &update).context("Upsert l1_state")?;
+                    tx.commit().context("Commit database transaction")?;
+                    tracing::info!("L1 state update: block={} root={}", update.block_number, update.global_root);
+                },
+                None => {
+                    // L1 sync process failed; restart it.
+                    match l1_handle.await.context("Join L1 sync process handle")? {
+                        Ok(()) => {
+                            tracing::error!("L1 sync process terminated without an error.");
+                        }
+                        Err(e) => {
+                            tracing::warn!("L1 sync process terminated with: {:?}", e);
+                        }
+                    }
+
+                    let (new_tx, new_rx) = mpsc::channel(1);
+                    rx_l1 = new_rx;
+
+                    let fut = l1_sync(new_tx, ethereum_client.clone(), poll_interval);
+                    l1_handle = tokio::spawn(async move {
+                        #[cfg(not(test))]
+                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
+                        fut.await
+                    });
+                    tracing::info!("L1 sync process restarted.")
+                }
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {
