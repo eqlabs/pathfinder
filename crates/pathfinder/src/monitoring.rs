@@ -89,23 +89,21 @@ mod tests {
 
     #[tokio::test]
     async fn metrics() {
-        use pathfinder_common::test_utils::metrics::RecorderGuard;
+        use pathfinder_common::test_utils::metrics::ScopedRecorderGuard;
 
         let recorder = PrometheusBuilder::new().build_recorder();
         let handle = recorder.handle();
-        // Other concurrent tests could be setting their own recorders
-        let guard = RecorderGuard::lock(recorder);
+        // Automatically deregister the recorder
+        let _guard = ScopedRecorderGuard::new(recorder);
 
+        // We don't care about the recorder being a singleton as the counter name here does not
+        // interfere with any other "real" counter registered in pathfinder or other tests
         let counter = metrics::register_counter!("x");
         counter.increment(123);
 
         let readiness = Arc::new(AtomicBool::new(false));
         let filter = super::routes(readiness.clone(), handle);
         let response = warp::test::request().path("/metrics").reply(&filter).await;
-
-        // Drop to avoid poisoning the internal lock if the following asserts fail
-        // which would fail other tests using the `RecorderGuard`.
-        drop(guard);
 
         assert_eq!(response.status(), http::StatusCode::OK);
         assert_eq!(response.body(), "# TYPE x counter\nx 123\n\n");

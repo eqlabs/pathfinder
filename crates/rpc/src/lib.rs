@@ -7,11 +7,11 @@ pub mod gas_price;
 pub mod metrics;
 mod module;
 mod pathfinder;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_client;
 pub mod v02;
 pub mod v03;
-mod versioning;
+pub mod versioning;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
@@ -109,8 +109,8 @@ impl Default for SyncState {
     }
 }
 
-#[cfg(test)]
-mod tests {
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils {
     use ethers::types::H256;
     use pathfinder_common::{
         felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
@@ -136,16 +136,9 @@ mod tests {
             },
         },
     };
-    use std::{
-        net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-        sync::Arc,
-    };
+    use std::sync::Arc;
 
-    lazy_static::lazy_static! {
-        pub static ref LOCALHOST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
-    }
-
-    // Local test helper
+    // Creates storage for tests
     pub fn setup_storage() -> Storage {
         use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -600,6 +593,10 @@ mod tests {
             .await;
         pending_data
     }
+}
+
+#[cfg(test)]
+mod tests {
 
     #[test]
     fn roundtrip_syncing() {
