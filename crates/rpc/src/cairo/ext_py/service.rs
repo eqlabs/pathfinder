@@ -40,7 +40,6 @@ pub async fn start(
 
     let metrics = Metrics::register();
 
-    // TODO: might be better to use tokio's JoinSet?
     let mut joinhandles = futures::stream::FuturesUnordered::new();
 
     let jh = tokio::task::spawn(

@@ -32,7 +32,6 @@ env_logger = "0.10.0"
 fake = { workspace = true }
 hex = "0.4.3"
 p2p_proto = { path = "../p2p_proto", features = ["test-utils"] }
-# TODO Move felt!() to stark_hash crate
 pathfinder-common = { path = "../common" }
 rand = { workspace = true }
 stark_hash = { path = "../stark_hash", features = ["test-utils"] }

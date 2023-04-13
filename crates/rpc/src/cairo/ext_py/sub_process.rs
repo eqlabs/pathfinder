@@ -50,8 +50,6 @@ pub(super) async fn launch_python(
 
     let mut command_buffer = Vec::new();
 
-    // TODO: Why not have an outer loop to respawn a process fast? The idea occured during review.
-    // Currently the "policy" over respawning is controlled by the "service" in `super::start`.
     let exit_reason = loop {
         let command = async {
             let mut locked = commands.lock().await;
@@ -452,12 +450,10 @@ async fn process(
             let error = CallFailure::Internal("Input/output");
             let _ = command.fail(error);
 
-            // TODO: consider if we'd just retry; put this back into the queue?
             return Err(Some(SubprocessExitReason::UnrecoverableIO));
         }
     };
 
-    // TODO: this could be pushed to Command but ...
     match (command, output) {
         (Command::Call { response, .. }, Ok(OutputValue::Call(x))) => {
             let _ = response.send(Ok(x));
@@ -487,9 +483,6 @@ async fn rpc_round<'a>(
     stdout: &mut tokio::io::BufReader<tokio::process::ChildStdout>,
     buffer: &'a mut String,
 ) -> Result<RefinedChildResponse<'a>, SubprocessError> {
-    // TODO: using a vectored write here would make most sense, but alas, advancing [IoSlice]'s is
-    // still unstable. it could be copied, but we'd still lack `write_vectored_all`.
-    //
     // note: write_all are not cancellation safe, and we call this from tokio::select! see callsite
     // for more discussion.
     stdin.write_all(cmd).await?;
