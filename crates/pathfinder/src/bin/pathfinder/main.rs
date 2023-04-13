@@ -53,8 +53,11 @@ async fn main() -> anyhow::Result<()> {
             .context("Starting monitoring task")?;
     }
 
-    // TODO(SM): deal with config.ethereum.password
-    let ethereum_client = EthereumClient::new(config.ethereum.url.as_str());
+    let ethereum_client = if let Some(password) = config.ethereum.password {
+        EthereumClient::new_with_password(config.ethereum.url, &password)?
+    } else {
+        EthereumClient::new(config.ethereum.url)
+    };
     let ethereum_chain_id = ethereum_client.chain_id().await?;
     let network = match config.network {
         Some(network) => match (&network, &ethereum_chain_id) {

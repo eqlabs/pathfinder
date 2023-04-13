@@ -1,5 +1,6 @@
 use pathfinder_common::{EthereumAddress, EthereumChain};
 use primitive_types::{H256, U256};
+use reqwest::{Client, Url};
 
 /// Describes a state update log event.
 ///
@@ -19,19 +20,31 @@ pub struct StarknetEthereumClient {
 
 #[derive(Clone)]
 pub struct EthereumClient {
-    rpc_url: String,
-    http: reqwest::Client,
+    url: Url,
+    http: Client,
 }
 
 impl EthereumClient {
-    pub fn new(rpc_url: &str) -> Self {
+    pub fn new(url: reqwest::Url) -> Self {
         let http_client = reqwest::ClientBuilder::new()
             .build()
             .expect("reqwest HTTP client");
         Self {
-            rpc_url: rpc_url.to_string(),
+            url,
             http: http_client,
         }
+    }
+
+    pub fn new_with_password(mut url: reqwest::Url, password: &str) -> anyhow::Result<Self> {
+        url.set_password(Some(password))
+            .map_err(|_| anyhow::anyhow!("Setting password failed"))?;
+        let http_client = reqwest::ClientBuilder::new()
+            .build()
+            .expect("reqwest HTTP client");
+        Ok(Self {
+            url,
+            http: http_client,
+        })
     }
 }
 
@@ -78,7 +91,7 @@ impl EthereumClient {
         });
         let res: serde_json::Value = self
             .http
-            .post(&self.rpc_url)
+            .post(self.url.as_str())
             .json(&req)
             .send()
             .await?
@@ -100,7 +113,7 @@ impl EthereumClient {
         });
         let res: serde_json::Value = self
             .http
-            .post(&self.rpc_url)
+            .post(self.url.as_str())
             .json(&req)
             .send()
             .await?
@@ -122,7 +135,7 @@ impl EthereumClient {
         });
         let res: serde_json::Value = self
             .http
-            .post(&self.rpc_url)
+            .post(self.url.as_str())
             .json(&req)
             .send()
             .await?
@@ -169,7 +182,7 @@ impl StarknetEthereumClient {
         let res: serde_json::Value = self
             .eth
             .http
-            .post(&self.eth.rpc_url)
+            .post(self.eth.url.as_str())
             .json(&req)
             .send()
             .await?
@@ -199,7 +212,7 @@ impl StarknetEthereumClient {
         let res: serde_json::Value = self
             .eth
             .http
-            .post(&self.eth.rpc_url)
+            .post(self.eth.url.as_str())
             .json(&req)
             .send()
             .await?
@@ -245,8 +258,8 @@ mod tests {
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x103588d"}"#);
         });
 
-        let url = server.url("/");
-        let eth = EthereumClient::new(&url);
+        let url = Url::parse(&server.url("/")).expect("url");
+        let eth = EthereumClient::new(url);
         let block_number = eth.get_block_number().await.expect("get_block_number");
 
         mock.assert();
@@ -268,8 +281,8 @@ mod tests {
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x52df48d1d"}"#);
         });
 
-        let url = server.url("/");
-        let eth = EthereumClient::new(&url);
+        let url = Url::parse(&server.url("/")).expect("url");
+        let eth = EthereumClient::new(url);
         let gas_price = eth.gas_price().await.expect("gas_price");
 
         mock.assert();
@@ -291,8 +304,8 @@ mod tests {
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x1"}"#);
         });
 
-        let url = server.url("/");
-        let eth = EthereumClient::new(&url);
+        let url = Url::parse(&server.url("/")).expect("url");
+        let eth = EthereumClient::new(url);
         let chain_id = eth.chain_id().await.expect("chain_id");
 
         mock.assert();
@@ -313,8 +326,8 @@ mod tests {
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x0000000000000000000000000000000000000000000000000000000000007eeb"}"#);
         });
 
-        let url = server.url("/");
-        let eth = EthereumClient::new(&url);
+        let url = Url::parse(&server.url("/")).expect("url");
+        let eth = EthereumClient::new(url);
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(eth, l1_addr);
 
@@ -343,8 +356,8 @@ mod tests {
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
         });
 
-        let url = server.url("/");
-        let eth = EthereumClient::new(&url);
+        let url = Url::parse(&server.url("/")).expect("url");
+        let eth = EthereumClient::new(url);
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(eth, l1_addr);
 
@@ -396,8 +409,8 @@ mod tests {
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
         });
 
-        let url = server.url("/");
-        let eth = EthereumClient::new(&url);
+        let url = Url::parse(&server.url("/")).expect("url");
+        let eth = EthereumClient::new(url);
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(eth, l1_addr);
 
