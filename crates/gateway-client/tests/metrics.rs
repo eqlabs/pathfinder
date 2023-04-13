@@ -37,12 +37,13 @@ where
     F: Fn(Client, BlockId) -> Fut,
     Fut: Future<Output = T>,
 {
-    use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
+    use pathfinder_common::test_utils::metrics::{FakeRecorder, ScopedRecorderGuard};
 
     let recorder = FakeRecorder::new_for(&["get_block", "get_state_update"]);
     let handle = recorder.handle();
 
-    let guard = RecorderGuard::lock(recorder);
+    // Automatically deregister the recorder
+    let _guard = ScopedRecorderGuard::new(recorder);
 
     let responses = [
         // Any valid fixture
@@ -81,14 +82,6 @@ where
         .collect::<futures::stream::FuturesUnordered<_>>()
         .collect::<Vec<_>>()
         .await;
-
-    // Drop the global recorder guard to avoid poisoning its internal lock if
-    // the following asserts fail which would fail other tests using the `RecorderGuard`
-    // at the same time.
-    //
-    // The recorder itself still exists since dropping the guard only unregisters the recorder
-    // and leaks it making the handle still valid past this point.
-    drop(guard);
 
     // IMPORTANT
     //

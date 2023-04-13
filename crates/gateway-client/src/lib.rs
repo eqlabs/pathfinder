@@ -591,15 +591,11 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use pathfinder_common::{
-            consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, test_utils::metrics::RecorderGuard,
-            StarknetBlockTimestamp,
-        };
+        use pathfinder_common::{consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, StarknetBlockTimestamp};
         use starknet_gateway_types::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
 
-        let _guard = RecorderGuard::lock_as_noop();
         let filter = warp::header::optional("user-agent").and_then(
             |user_agent: Option<String>| async move {
                 let user_agent = user_agent.expect("user-agent set");
@@ -642,11 +638,10 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
-        use pathfinder_common::{felt, test_utils::metrics::RecorderGuard};
+        use pathfinder_common::felt;
 
         #[tokio::test]
         async fn genesis() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     format!("/feeder_gateway/get_block?blockHash={GENESIS_BLOCK_HASH}"),
@@ -670,7 +665,6 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_block?blockHash=0x40ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746",
@@ -700,12 +694,11 @@ mod tests {
 
     mod block {
         use super::*;
-        use pathfinder_common::{test_utils::metrics::RecorderGuard, BlockId};
+        use pathfinder_common::BlockId;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
         async fn latest() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=latest",
                 (v0_9_0::block::NUMBER_231579, 200),
@@ -715,7 +708,6 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_block?blockNumber=pending",
                 (v0_9_0::block::PENDING, 200),
@@ -725,7 +717,6 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_hash() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockHash={INVALID_BLOCK_HASH}"),
                 response_from(StarknetErrorCode::BlockNotFound),
@@ -742,7 +733,6 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockNumber={INVALID_BLOCK_NUMBER}"),
                 response_from(StarknetErrorCode::BlockNotFound),
@@ -759,7 +749,6 @@ mod tests {
 
         #[tokio::test]
         async fn with_starknet_version_added_in_0_9_1() {
-            let _guard = RecorderGuard::lock_as_noop();
             use starknet_gateway_types::reply::MaybePendingBlock;
             let (_jh, client) = setup([
                 (
@@ -1075,9 +1064,7 @@ mod tests {
             reply::state_update::{DeployedContract, StorageDiff},
             *,
         };
-        use pathfinder_common::{
-            felt, test_utils::metrics::RecorderGuard, ContractAddress, StateCommitment,
-        };
+        use pathfinder_common::{felt, ContractAddress, StateCommitment};
         use pretty_assertions::assert_eq;
         use starknet_gateway_types::reply::MaybePendingStateUpdate;
         use std::collections::{BTreeSet, HashMap};
@@ -1124,7 +1111,6 @@ mod tests {
 
         #[tokio::test]
         async fn genesis() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=0".to_string(),
@@ -1151,7 +1137,6 @@ mod tests {
 
         #[tokio::test]
         async fn specific_block() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([
                 (
                     "/feeder_gateway/get_state_update?blockNumber=315700",
@@ -1184,11 +1169,9 @@ mod tests {
 
     mod state_update {
         use super::*;
-        use pathfinder_common::test_utils::metrics::RecorderGuard;
 
         #[test_log::test(tokio::test)]
         async fn invalid_number() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_state_update?blockNumber={INVALID_BLOCK_NUMBER}"),
                 response_from(StarknetErrorCode::BlockNotFound),
@@ -1205,7 +1188,6 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_hash() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_state_update?blockHash={INVALID_BLOCK_HASH}"),
                 response_from(StarknetErrorCode::BlockNotFound),
@@ -1222,7 +1204,6 @@ mod tests {
 
         #[tokio::test]
         async fn latest() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=latest",
                 (v0_11_0::state_update::NUMBER_315700, 200),
@@ -1232,7 +1213,6 @@ mod tests {
 
         #[tokio::test]
         async fn pending() {
-            let _guard = RecorderGuard::lock_as_noop();
             let (_jh, client) = setup([(
                 "/feeder_gateway/get_state_update?blockNumber=pending",
                 (v0_11_0::state_update::PENDING, 200),
@@ -1767,14 +1747,13 @@ mod tests {
         // Ensures the versions in the pathfinder_common::version_check! macro are kept in sync with reality.
         //
         // The tests are kept here to prevent crate dependency cycles while keeping the macro widely available.
-        use pathfinder_common::{test_utils::metrics::RecorderGuard, version_check};
+        use pathfinder_common::version_check;
 
         use crate::{Client, ClientApi};
         use anyhow::Context;
         use pathfinder_common::BlockId;
 
         async fn get_latest_version(client: &Client) -> anyhow::Result<(u64, u64, u64)> {
-            let _guard = RecorderGuard::lock_as_noop();
             let version = client
                 .block(BlockId::Latest)
                 .await?

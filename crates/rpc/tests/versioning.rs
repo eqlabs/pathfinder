@@ -5,7 +5,7 @@
 
 #[tokio::test]
 async fn api_versions_are_routed_correctly_for_all_methods() {
-    use pathfinder_common::test_utils::metrics::{FakeRecorder, RecorderGuard};
+    use pathfinder_common::test_utils::metrics::{FakeRecorder, ScopedRecorderGuard};
     use pathfinder_rpc::test_client::TestClientBuilder;
     use pathfinder_rpc::versioning::test_utils::{method_names, paths};
     use pathfinder_rpc::{context::RpcContext, metrics::logger::RpcMetricsLogger, RpcServer};
@@ -41,14 +41,11 @@ async fn api_versions_are_routed_correctly_for_all_methods() {
     {
         let recorder = FakeRecorder::default();
         let handle = recorder.handle();
-        // Other concurrent tests could be setting their own recorders
-        let guard = RecorderGuard::lock(recorder);
-
-        let paths_len = paths.len();
-        let paths_iter = paths.iter();
+        // Automatically deregister the recorder
+        let _guard = ScopedRecorderGuard::new(recorder);
 
         // Perform all the calls but don't assert the results just yet
-        for path in paths_iter.clone().map(ToOwned::to_owned) {
+        for (i, path) in paths.iter().map(ToOwned::to_owned).enumerate() {
             let client = TestClientBuilder::default()
                 .address(address)
                 .endpoint(path.into())
@@ -62,35 +59,20 @@ async fn api_versions_are_routed_correctly_for_all_methods() {
                     Err(jsonrpsee::core::Error::Call(
                         jsonrpsee::types::error::CallError::Custom(e),
                     )) if e.code() == jsonrpsee::types::error::METHOD_NOT_FOUND_CODE => {
-                        // Don't poison the internal lock
-                        drop(guard);
                         panic!("Unregistered method called, path: {path}, method: {method}")
                     }
-                    Ok(_) | Err(_) => {}
+                    Ok(_) | Err(_) => {
+                        let expected_counter = (i as u64) + 1;
+                        let actual_counter = handle.get_counter_value_by_label(
+                            "rpc_method_calls_total",
+                            [("method", method), ("version", version)],
+                        );
+                        assert_eq!(
+                            actual_counter, expected_counter,
+                            "path: {path}, method: {method}"
+                        );
+                    }
                 }
-            }
-        }
-
-        // Drop the global recorder guard to avoid poisoning its internal lock if
-        // the following asserts fail which would fail other tests using the `RecorderGuard`
-        // at the same time.
-        //
-        // The recorder itself still exists since dropping the guard only unregisters the recorder
-        // and leaks it making the handle still valid past this point.
-        drop(guard);
-
-        // Now we can safely assert all results
-        for path in paths_iter.clone() {
-            for method in methods.iter() {
-                let expected_counter = paths_len as u64;
-                let actual_counter = handle.get_counter_value_by_label(
-                    "rpc_method_calls_total",
-                    [("method", method), ("version", version)],
-                );
-                assert_eq!(
-                    actual_counter, expected_counter,
-                    "path: {path}, method: {method}"
-                );
             }
         }
     }

@@ -8,82 +8,35 @@ pub mod metrics {
     use std::borrow::Cow;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
-
-    // The flag means if the current recorder is a noop one
-    static RECORDER_LOCK: RwLock<()> = RwLock::new(());
-
-    enum GuardType<'a> {
-        CommonNoop(RwLockReadGuard<'a, ()>),
-        Exclusive(RwLockWriteGuard<'a, ()>),
-    }
+    use std::sync::{Arc, RwLock};
 
     /// # Purpose
     ///
-    /// Allows to safely set a [`metrics::Recorder`] for a particular test.
-    /// The recorder will be removed when this guard is dropped.
-    /// Internal mutex protects us from inter-test recorder races.
+    /// Unset the global recorder when this guard is dropped, so you don't have to remember to call
+    /// `metrics::clear_recorder()` manually at the end of a test.
+    ///
+    /// # Warning
+    ///
+    /// Does __not__ provide any safety wrt. threading/reentrancy/etc.
     ///
     /// # Rationale
     ///
     /// The [`metrics`] crate relies on the recorder being a [singleton](https://docs.rs/metrics/latest/metrics/#installing-recorders).
-    pub struct RecorderGuard<'a>(GuardType<'a>);
+    pub struct ScopedRecorderGuard;
 
-    impl<'a> RecorderGuard<'a> {
-        /// # Usage
-        ///
-        /// Use this lock in a test if you wish to test if particular metrics were recorded properly.
-        /// This is an __exclusive__ lock, which means all other tests that use the [`RecorderGuard`]
-        /// will wait for this test to finish (this instance of the guard to be dropped).
-        ///
-        /// Locks the global RwLock for writing and sets the global `metrics::Recorder` for the current test.
-        /// The global recorder is cleared and the write lock is unlocked when the guard is dropped.
-        ///
-        /// # Caveats
-        ///
-        /// The `recorder` passed to this function will be moved onto the heap and then __leaked__
-        /// but we don't really care as this is purely a testing aid.
-        ///
-        /// # Panics
-        ///
-        /// If the internal locking for write or setting the global recorder fails.
-        pub fn lock<R>(recorder: R) -> Self
+    impl ScopedRecorderGuard {
+        pub fn new<R>(recorder: R) -> Self
         where
             R: Recorder + 'static,
         {
-            let guard = RECORDER_LOCK.write().unwrap();
-
             metrics::set_boxed_recorder(Box::new(recorder)).unwrap();
-
-            Self(GuardType::Exclusive(guard))
-        }
-
-        /// # Usage
-        ///
-        /// If a particular test depends on incrementing a metrics counter other tests
-        /// that also could be incrementing this counter concurrently need to
-        /// perform this lock to avoid interference which will result in invalid
-        /// counts in the original test.
-        ///
-        /// The internal RwLock is locked for reading which means that all tests
-        /// that `lock_as_noop()` concurrently don't wait for each other.
-        ///
-        /// # Panics
-        ///
-        /// If internal locking for read fails.
-        pub fn lock_as_noop() -> Self {
-            let guard = RECORDER_LOCK.read().unwrap();
-
-            Self(GuardType::CommonNoop(guard))
+            Self
         }
     }
 
-    impl<'a> Drop for RecorderGuard<'a> {
+    impl Drop for ScopedRecorderGuard {
         fn drop(&mut self) {
-            match self.0 {
-                GuardType::CommonNoop(_) => {}
-                GuardType::Exclusive(_) => unsafe { metrics::clear_recorder() },
-            }
+            unsafe { metrics::clear_recorder() }
         }
     }
 
@@ -113,13 +66,6 @@ pub mod metrics {
         ///
         /// Returns `Counter::noop()` in other cases.
         ///
-        /// # Rationale
-        /// All tests that are executed concurrently and don't use a `RecorderGuard` of their own
-        /// will ultimately attempt at registering their own counters every time they create an instance of `RpcApi`.
-        /// This is why it really makes sense to filter out the keys that we don't care about to avoid creating
-        /// any additional lock contention. For the other keys that we do care about we should effectively
-        /// ignore consecutive attempts to re-register a counter for a given key except the first one,
-        /// which means just get the exiting counter instance asap.
         fn register_counter(&self, key: &Key) -> Counter {
             if self.is_key_used(key) {
                 // Check if the counter is already registered
