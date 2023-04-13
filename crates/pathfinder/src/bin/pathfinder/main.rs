@@ -2,11 +2,11 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_common::EthereumAddress;
 use pathfinder_common::{
     consts::VERGEN_GIT_DESCRIBE, Chain, ChainId, StarknetBlockNumber,
 };
-use pathfinder_ethereum::EthereumClient;
+use pathfinder_common::{EthereumAddress, EthereumChain};
+use pathfinder_ethereum::{EthereumClient, StarknetEthereumClient};
 use pathfinder_lib::{
     monitoring::{self},
     state,
@@ -19,6 +19,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
+
+use crate::config::NetworkConfig;
 
 mod config;
 mod update;
@@ -51,9 +53,36 @@ async fn main() -> anyhow::Result<()> {
             .context("Starting monitoring task")?;
     }
 
-    let context = PathfinderContext::configure_and_proxy_check(&config)
+    // TODO(SM): deal with config.ethereum.password
+    let ethereum_client = EthereumClient::new(config.ethereum.url.as_str());
+    let ethereum_chain_id = ethereum_client.chain_id().await?;
+    let network = match config.network {
+        Some(network) => match (&network, &ethereum_chain_id) {
+            (NetworkConfig::Mainnet, EthereumChain::Mainnet) => network,
+            (NetworkConfig::Testnet, EthereumChain::Goerli) => network,
+            (NetworkConfig::Testnet2, EthereumChain::Goerli) => network,
+            (NetworkConfig::Integration, EthereumChain::Goerli) => network,
+            (NetworkConfig::Custom { .. }, _) => network,
+            _ => anyhow::bail!(
+                "Network setup mismatch: Starknet={}, Ethereum={}",
+                network,
+                ethereum_chain_id
+            ),
+        },
+        None => match ethereum_chain_id {
+            EthereumChain::Mainnet => NetworkConfig::Mainnet,
+            EthereumChain::Goerli => NetworkConfig::Testnet,
+            EthereumChain::Other(id) => {
+                anyhow::bail!("Network is undefined. Ethereum chain_id={id}")
+            }
+        },
+    };
+
+    let context = PathfinderContext::configure_and_proxy_check(network, config.data_directory)
         .await
         .context("Configuring pathfinder")?;
+
+    let ethereum_client = StarknetEthereumClient::new(ethereum_client, context.l1_core_address);
 
     // Setup and verify database
     let storage = Storage::migrate(context.database.clone(), config.sqlite_wal).unwrap();
@@ -80,13 +109,11 @@ async fn main() -> anyhow::Result<()> {
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
-    // TODO(SM): deal with config.ethereum.password
-    let ethereum_client =
-        EthereumClient::new(config.ethereum.url.as_str(), context.l1_core_address);
+    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum_client.eth.clone()));
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
-        ethereum_client.clone(),
+        ethereum_client,
         context.network,
         context.gateway.clone(),
         sync_state.clone(),
@@ -96,8 +123,6 @@ async fn main() -> anyhow::Result<()> {
         pending_interval,
         state::l2::BlockValidationMode::Strict,
     ));
-
-    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum_client));
 
     let rpc_context = pathfinder_rpc::context::RpcContext::new(
         storage.clone(),
@@ -264,7 +289,7 @@ struct PathfinderContext {
 /// Used to hide private fn's for [PathfinderContext].
 mod pathfinder_context {
     use super::PathfinderContext;
-    use crate::config::{Config, NetworkConfig};
+    use crate::config::NetworkConfig;
 
     use std::path::PathBuf;
 
@@ -276,9 +301,11 @@ mod pathfinder_context {
     use starknet_gateway_client::Client as GatewayClient;
 
     impl PathfinderContext {
-        pub async fn configure_and_proxy_check(config: &Config) -> anyhow::Result<Self> {
-            let data_directory = config.data_directory.clone();
-            let context = match config.network.clone() {
+        pub async fn configure_and_proxy_check(
+            network: NetworkConfig,
+            data_directory: PathBuf,
+        ) -> anyhow::Result<Self> {
+            let context = match network {
                 NetworkConfig::Mainnet => Self {
                     network: Chain::Mainnet,
                     network_id: ChainId::MAINNET,
@@ -331,8 +358,8 @@ mod pathfinder_context {
             use stark_hash::Felt;
             use starknet_gateway_client::ClientApi;
 
-            let gateway = GatewayClient::with_urls(gateway, feeder)
-                .context("Creating gateway client")?;
+            let gateway =
+                GatewayClient::with_urls(gateway, feeder).context("Creating gateway client")?;
 
             let network_id =
                 ChainId(Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?);

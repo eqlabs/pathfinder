@@ -1,10 +1,10 @@
-use pathfinder_ethereum::{EthereumClient, L1StateUpdate};
+use pathfinder_ethereum::{L1StateUpdate, StarknetEthereumClient};
 use tokio::sync::mpsc::Sender;
 
 /// Syncs L1 state updates.
 pub async fn sync(
     tx_event: Sender<L1StateUpdate>,
-    ethereum_client: EthereumClient,
+    ethereum_client: StarknetEthereumClient,
     poll_interval: std::time::Duration,
 ) -> anyhow::Result<()> {
     loop {

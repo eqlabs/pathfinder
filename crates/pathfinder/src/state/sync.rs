@@ -8,7 +8,7 @@ use pathfinder_common::{
     SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment, StorageCommitment,
     TransactionCommitment,
 };
-use pathfinder_ethereum::{EthereumClient, L1StateUpdate};
+use pathfinder_ethereum::{L1StateUpdate, StarknetEthereumClient};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
     ClassCommitmentTree, StorageCommitmentTree,
@@ -40,7 +40,7 @@ use tokio::sync::mpsc;
 #[allow(clippy::too_many_arguments)]
 pub async fn sync<SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
-    ethereum_client: EthereumClient,
+    ethereum_client: StarknetEthereumClient,
     chain: Chain,
     sequencer: SequencerClient,
     state: Arc<SyncState>,
@@ -54,7 +54,7 @@ where
     SequencerClient: ClientApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: Fn(mpsc::Sender<L1StateUpdate>, EthereumClient, std::time::Duration) -> F1,
+    L1Sync: Fn(mpsc::Sender<L1StateUpdate>, StarknetEthereumClient, std::time::Duration) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,

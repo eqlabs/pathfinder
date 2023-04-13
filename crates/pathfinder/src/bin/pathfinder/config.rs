@@ -1,6 +1,7 @@
 use clap::{CommandFactory, Parser};
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
+use std::fmt::Display;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -168,7 +169,7 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub monitor_address: Option<SocketAddr>,
-    pub network: NetworkConfig,
+    pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
@@ -191,6 +192,18 @@ pub enum NetworkConfig {
         feeder_gateway: Url,
         chain_id: String,
     },
+}
+
+impl Display for NetworkConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Mainnet => write!(f, "Mainnet"),
+            Self::Testnet => write!(f, "Testnet"),
+            Self::Testnet2 => write!(f, "Testnet2"),
+            Self::Integration => write!(f, "Integration"),
+            Self::Custom { chain_id, .. } => write!(f, "Custom(id={})", chain_id),
+        }
+    }
 }
 
 impl NetworkConfig {
@@ -236,18 +249,9 @@ impl NetworkConfig {
     }
 }
 
-fn get_default_network(_ethereum_url: &Url) -> NetworkConfig {
-    // TODO(SM): define which one is the "default" network
-    NetworkConfig::Testnet
-}
-
 impl Config {
     pub fn parse() -> Self {
         let cli = Cli::parse();
-
-        let network = NetworkConfig::from_components(cli.network)
-            .unwrap_or_else(|| get_default_network(&cli.ethereum_url));
-
         Config {
             data_directory: cli.data_directory,
             ethereum: Ethereum {
@@ -256,7 +260,7 @@ impl Config {
             },
             rpc_address: cli.rpc_address,
             monitor_address: cli.monitor_address,
-            network,
+            network: NetworkConfig::from_components(cli.network),
             poll_pending: cli.poll_pending,
             python_subprocesses: cli.python_subprocesses,
             sqlite_wal: match cli.sqlite_wal {

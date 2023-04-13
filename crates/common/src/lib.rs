@@ -2,6 +2,8 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
+use std::fmt::Display;
+
 use primitive_types::{H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
@@ -450,6 +452,16 @@ pub enum EthereumChain {
     Mainnet,
     Goerli,
     Other(primitive_types::U256),
+}
+
+impl Display for EthereumChain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Mainnet => write!(f, "Mainnet"),
+            Self::Goerli => write!(f, "Goerli"),
+            Self::Other(id) => write!(f, "Other(id={})", id),
+        }
+    }
 }
 
 /// Starknet chain.

@@ -1,4 +1,4 @@
-use pathfinder_common::EthereumAddress;
+use pathfinder_common::{EthereumAddress, EthereumChain};
 use primitive_types::{H256, U256};
 
 /// Describes a state update log event.
@@ -12,21 +12,34 @@ pub struct L1StateUpdate {
 }
 
 #[derive(Clone)]
+pub struct StarknetEthereumClient {
+    pub l1_addr: EthereumAddress,
+    pub eth: EthereumClient,
+}
+
+#[derive(Clone)]
 pub struct EthereumClient {
-    l1_addr: EthereumAddress,
     rpc_url: String,
-    http_client: reqwest::Client,
+    http: reqwest::Client,
 }
 
 impl EthereumClient {
-    pub fn new(rpc_url: &str, l1_addr: EthereumAddress) -> Self {
+    pub fn new(rpc_url: &str) -> Self {
         let http_client = reqwest::ClientBuilder::new()
             .build()
             .expect("reqwest HTTP client");
         Self {
+            rpc_url: rpc_url.to_string(),
+            http: http_client,
+        }
+    }
+}
+
+impl StarknetEthereumClient {
+    pub fn new(client: EthereumClient, l1_addr: EthereumAddress) -> Self {
+        Self {
             l1_addr,
-            rpc_url: rpc_url.to_owned(),
-            http_client,
+            eth: client,
         }
     }
 }
@@ -56,17 +69,6 @@ pub mod core_contract {
 }
 
 impl EthereumClient {
-    pub async fn get_starknet_state(&self) -> anyhow::Result<L1StateUpdate> {
-        let eth_block_number = self.get_block_number().await?;
-        let starknet_block_number = self.get_starknet_block_number(&eth_block_number).await?;
-        let starknet_state_root = self.get_starknet_state_root(&eth_block_number).await?;
-        Ok(L1StateUpdate {
-            eth_block_number: eth_block_number.as_u64(),
-            block_number: starknet_block_number.as_u64(),
-            global_root: starknet_state_root,
-        })
-    }
-
     async fn get_block_number(&self) -> anyhow::Result<U256> {
         let req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -75,7 +77,7 @@ impl EthereumClient {
             "id" :0
         });
         let res: serde_json::Value = self
-            .http_client
+            .http
             .post(&self.rpc_url)
             .json(&req)
             .send()
@@ -87,6 +89,67 @@ impl EthereumClient {
             .and_then(|txt| U256::from_str_radix(txt, 16).ok())
             .ok_or(anyhow::anyhow!("Failed to get block number"))?;
         Ok(block_number)
+    }
+
+    pub async fn gas_price(&self) -> anyhow::Result<U256> {
+        let req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "eth_gasPrice",
+            "params": [],
+            "id" :0
+        });
+        let res: serde_json::Value = self
+            .http
+            .post(&self.rpc_url)
+            .json(&req)
+            .send()
+            .await?
+            .json()
+            .await?;
+        let block_number = res["result"]
+            .as_str()
+            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
+            .ok_or(anyhow::anyhow!("Failed to get gas price"))?;
+        Ok(block_number)
+    }
+
+    pub async fn chain_id(&self) -> anyhow::Result<EthereumChain> {
+        let req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "eth_chainId",
+            "params": [],
+            "id" :0
+        });
+        let res: serde_json::Value = self
+            .http
+            .post(&self.rpc_url)
+            .json(&req)
+            .send()
+            .await?
+            .json()
+            .await?;
+        let id = res["result"]
+            .as_str()
+            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
+            .ok_or(anyhow::anyhow!("Failed to get chain id"))?;
+        Ok(match id {
+            x if x == U256::from(1u32) => EthereumChain::Mainnet,
+            x if x == U256::from(5u32) => EthereumChain::Goerli,
+            x => EthereumChain::Other(x),
+        })
+    }
+}
+
+impl StarknetEthereumClient {
+    pub async fn get_starknet_state(&self) -> anyhow::Result<L1StateUpdate> {
+        let eth_block_number = self.eth.get_block_number().await?;
+        let starknet_block_number = self.get_starknet_block_number(&eth_block_number).await?;
+        let starknet_state_root = self.get_starknet_state_root(&eth_block_number).await?;
+        Ok(L1StateUpdate {
+            eth_block_number: eth_block_number.as_u64(),
+            block_number: starknet_block_number.as_u64(),
+            global_root: starknet_state_root,
+        })
     }
 
     async fn get_starknet_block_number(&self, block_number: &U256) -> anyhow::Result<U256> {
@@ -104,8 +167,9 @@ impl EthereumClient {
             "id" :0
         });
         let res: serde_json::Value = self
-            .http_client
-            .post(&self.rpc_url)
+            .eth
+            .http
+            .post(&self.eth.rpc_url)
             .json(&req)
             .send()
             .await?
@@ -133,8 +197,9 @@ impl EthereumClient {
             "id" :0
         });
         let res: serde_json::Value = self
-            .http_client
-            .post(&self.rpc_url)
+            .eth
+            .http
+            .post(&self.eth.rpc_url)
             .json(&req)
             .send()
             .await?
@@ -154,47 +219,7 @@ impl EthereumClient {
     }
 
     pub async fn gas_price(&self) -> anyhow::Result<U256> {
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_gasPrice",
-            "params": [],
-            "id" :0
-        });
-        let res: serde_json::Value = self
-            .http_client
-            .post(&self.rpc_url)
-            .json(&req)
-            .send()
-            .await?
-            .json()
-            .await?;
-        let block_number = res["result"]
-            .as_str()
-            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to get gas price"))?;
-        Ok(block_number)
-    }
-
-    pub async fn chain_id(&self) -> anyhow::Result<U256> {
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_chainId",
-            "params": [],
-            "id" :0
-        });
-        let res: serde_json::Value = self
-            .http_client
-            .post(&self.rpc_url)
-            .json(&req)
-            .send()
-            .await?
-            .json()
-            .await?;
-        let block_number = res["result"]
-            .as_str()
-            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to get gas price"))?;
-        Ok(block_number)
+        Ok(self.eth.gas_price().await?)
     }
 }
 
@@ -221,7 +246,7 @@ mod tests {
         });
 
         let url = server.url("/");
-        let eth = EthereumClient::new(&url, EthereumAddress(H160::zero()));
+        let eth = EthereumClient::new(&url);
         let block_number = eth.get_block_number().await.expect("get_block_number");
 
         mock.assert();
@@ -244,7 +269,7 @@ mod tests {
         });
 
         let url = server.url("/");
-        let eth = EthereumClient::new(&url, EthereumAddress(H160::zero()));
+        let eth = EthereumClient::new(&url);
         let gas_price = eth.gas_price().await.expect("gas_price");
 
         mock.assert();
@@ -267,11 +292,11 @@ mod tests {
         });
 
         let url = server.url("/");
-        let eth = EthereumClient::new(&url, EthereumAddress(H160::zero()));
+        let eth = EthereumClient::new(&url);
         let chain_id = eth.chain_id().await.expect("chain_id");
 
         mock.assert();
-        assert_eq!(chain_id.as_u32(), 1);
+        assert_eq!(chain_id, EthereumChain::Mainnet);
     }
 
     #[tokio::test]
@@ -289,8 +314,9 @@ mod tests {
         });
 
         let url = server.url("/");
+        let eth = EthereumClient::new(&url);
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
-        let eth = EthereumClient::new(&url, l1_addr);
+        let eth = StarknetEthereumClient::new(eth, l1_addr);
 
         let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("eth_block_number");
         let block_number = eth
@@ -318,8 +344,9 @@ mod tests {
         });
 
         let url = server.url("/");
+        let eth = EthereumClient::new(&url);
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
-        let eth = EthereumClient::new(&url, l1_addr);
+        let eth = StarknetEthereumClient::new(eth, l1_addr);
 
         let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("eth_block_number");
 
@@ -370,8 +397,9 @@ mod tests {
         });
 
         let url = server.url("/");
+        let eth = EthereumClient::new(&url);
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
-        let eth = EthereumClient::new(&url, l1_addr);
+        let eth = StarknetEthereumClient::new(eth, l1_addr);
 
         let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("block number");
         let block_number = U256::from_str_radix("0x7eeb", 16).expect("starknet block number");
