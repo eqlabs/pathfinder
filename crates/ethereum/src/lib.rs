@@ -67,6 +67,28 @@ impl EthereumClient {
         })
     }
 
+    async fn get_block_number(&self) -> anyhow::Result<U256> {
+        let req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "eth_blockNumber",
+            "params": [],
+            "id" :0
+        });
+        let res: serde_json::Value = self
+            .http_client
+            .post(&self.rpc_url)
+            .json(&req)
+            .send()
+            .await?
+            .json()
+            .await?;
+        let block_number = res["result"]
+            .as_str()
+            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
+            .ok_or(anyhow::anyhow!("Failed to get block number"))?;
+        Ok(block_number)
+    }
+
     async fn get_starknet_block_number(&self, block_number: &U256) -> anyhow::Result<U256> {
         let req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -153,10 +175,10 @@ impl EthereumClient {
         Ok(block_number)
     }
 
-    pub async fn get_block_number(&self) -> anyhow::Result<U256> {
+    pub async fn chain_id(&self) -> anyhow::Result<U256> {
         let req = serde_json::json!({
             "jsonrpc": "2.0",
-            "method": "eth_blockNumber",
+            "method": "eth_chainId",
             "params": [],
             "id" :0
         });
@@ -171,7 +193,7 @@ impl EthereumClient {
         let block_number = res["result"]
             .as_str()
             .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to get block number"))?;
+            .ok_or(anyhow::anyhow!("Failed to get gas price"))?;
         Ok(block_number)
     }
 }
@@ -228,6 +250,28 @@ mod tests {
         mock.assert();
         let expected = U256::from_str_radix("0x52df48d1d", 16).expect("gas price");
         assert_eq!(gas_price, expected);
+    }
+
+    #[tokio::test]
+    async fn test_chain_id() {
+        let server = MockServer::start_async().await;
+
+        let mock = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_chainId","params":[]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x1"}"#);
+        });
+
+        let url = server.url("/");
+        let eth = EthereumClient::new(&url, EthereumAddress(H160::zero()));
+        let chain_id = eth.chain_id().await.expect("chain_id");
+
+        mock.assert();
+        assert_eq!(chain_id.as_u32(), 1);
     }
 
     #[tokio::test]
