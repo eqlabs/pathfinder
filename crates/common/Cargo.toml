@@ -13,8 +13,8 @@ bitvec = "0.20.4"
 ethers = "1.0.2"
 metrics = { version = "0.20.1", optional = true }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
-serde = { version = "1.0.149", features = ["derive"] }
-serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 sha3 = "0.10"
 stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
