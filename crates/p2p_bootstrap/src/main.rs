@@ -11,7 +11,7 @@ use libp2p::identity::Keypair;
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Transport;
 use libp2p::{dns, noise, Multiaddr};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use zeroize::Zeroizing;
 
 mod behaviour;

@@ -12,8 +12,7 @@ base64 = "0.13.0"
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 futures = "0.3.21"
 libp2p = { version = "0.50.0", default-features = false, features = ["identify", "kad", "noise", "ping", "dns", "tcp", "tokio", "yamux", "relay", "autonat", "macros"] }
-serde = { workspace = true }
-serde_derive = "1.0.144"
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { version = "1.20.1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1.31"
