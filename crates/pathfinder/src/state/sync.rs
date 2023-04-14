@@ -212,8 +212,6 @@ where
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {
-                    pending_data.clear().await;
-
                     let block_number = block.block_number;
                     let block_hash = block.block_hash;
                     let storage_updates: usize = state_update.state_diff.storage_diffs.values().map(|storage_diffs| storage_diffs.len()).sum();
@@ -221,6 +219,10 @@ where
                     l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
                         .await
                         .with_context(|| format!("Update L2 state to {block_number}"))?;
+                    // This opens a short window where `pending` overlaps with `latest` in storage. Unfortuantely
+                    // there is no easy way of having a transaction over both memory and database. sqlite does support
+                    // multi-database transactions, but it does not work for WAL mode.
+                    pending_data.clear().await;
                     let block_time = last_block_start.elapsed();
                     let update_t = update_t.elapsed();
                     last_block_start = std::time::Instant::now();
