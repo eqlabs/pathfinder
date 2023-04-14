@@ -16,9 +16,8 @@ futures = "0.3.21"
 libp2p = { version = "0.50.0", default-features = false, features = ["identify", "gossipsub", "kad", "noise", "ping", "dns", "tcp", "tokio", "yamux", "request-response", "autonat", "relay", "dcutr", "macros"] }
 p2p_proto = { path = "../p2p_proto" }
 prost = "0.11.2"
-serde = "1.0.144"
-serde_derive = "1.0.144"
-serde_json = "1.0.85"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sha2 = "0.10.2"
 stark_hash = { path = "../stark_hash" }
 tokio = { version = "1.20.1", features = ["rt-multi-thread", "macros", "sync"] }

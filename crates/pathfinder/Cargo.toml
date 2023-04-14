@@ -40,8 +40,8 @@ pathfinder-storage = { path = "../storage" }
 reqwest = { version = "0.11.13", features = ["json"] }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 semver = "1.0.14"
-serde = { version = "1.0.149", features = ["derive"] }
-serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
@@ -75,5 +75,5 @@ name = "merkle_tree"
 harness = false
 
 [build-dependencies]
-serde = { version = "1.0.149", features = ["derive"] }
-serde_json = { version = "1.0.89", features = ["arbitrary_precision", "raw_value"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }

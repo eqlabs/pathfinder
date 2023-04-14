@@ -5014,7 +5014,6 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "serde",
- "serde_derive",
  "serde_json",
  "sha2 0.10.6",
  "stark_hash",
@@ -5035,7 +5034,6 @@ dependencies = [
  "futures",
  "libp2p",
  "serde",
- "serde_derive",
  "serde_json",
  "tokio",
  "tracing",
@@ -6614,9 +6612,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.95"
+version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d721eca97ac802aa7777b701877c8004d950fc142651367300d21c1cc0194744"
+checksum = "057d394a50403bcac12672b2b18fb387ab6d289d957dab67dd201875391e52f1"
 dependencies = [
  "itoa",
  "ryu",

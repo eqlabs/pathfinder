@@ -9,7 +9,7 @@ use libp2p::{identity::Keypair, PeerId};
 use p2p::Peers;
 use p2p_proto as proto;
 use proto::sync::{BlockBodies, StateDiffs};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use stark_hash::Felt;
 use tokio::sync::RwLock;
 use zeroize::Zeroizing;
