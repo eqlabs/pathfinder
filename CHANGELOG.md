@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - rpc server panic for unprefixed unregistered method names
+- remove a small time window where data which is transitioning from pending to latest block was not available for RPC queries.
+  - this was commonly seen when rapidly monitoring a new transaction, which would go from `PENDING` to `TXN_HASH_NOT_FOUND` to `ACCEPTED_ON_L2`.
 
 ## [0.5.3] - 2023-04-12
 
