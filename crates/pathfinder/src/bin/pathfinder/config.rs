@@ -13,7 +13,6 @@ use pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT;
 #[command(
     about = "A StarkNet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
 )]
-#[command(author, version, about, long_about = None)]
 struct Cli {
     #[arg(
         long,
