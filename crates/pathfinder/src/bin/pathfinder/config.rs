@@ -371,7 +371,7 @@ mod tests {
                 RpcCorsDomainsParseError::InvalidDomain(empty.clone()),
             ),
             (
-                vec![empty.clone(), wildcard.clone()],
+                vec![empty, wildcard.clone()],
                 RpcCorsDomainsParseError::WildcardAmongOtherValues,
             ),
             (
@@ -392,7 +392,7 @@ mod tests {
             ),
             (
                 vec![valid.clone(), with_path.clone()],
-                RpcCorsDomainsParseError::InvalidDomain(with_path.clone()),
+                RpcCorsDomainsParseError::InvalidDomain(with_path),
             ),
             (
                 vec![valid.clone(), with_query.clone()],
