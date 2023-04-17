@@ -81,7 +81,7 @@ impl ContractClass {
         }
     }
 
-    pub fn class_hash(&self) -> Result<ComputedClassHash, anyhow::Error> {
+    pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
         match self {
             ContractClass::Cairo(c) => c.class_hash(),
             ContractClass::Sierra(c) => c.class_hash(),
@@ -201,7 +201,13 @@ pub struct CairoContractClass {
 }
 
 impl CairoContractClass {
-    pub fn class_hash(&self) -> Result<ComputedClassHash, anyhow::Error> {
+    pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
+        let serialized = self.serialize_to_json()?;
+
+        compute_class_hash(&serialized).context("Compute class hash")
+    }
+
+    pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
         // decode program
         let mut decompressor =
             flate2::read::GzDecoder::new(Cursor::new(base64::decode(&self.program).unwrap()));
@@ -221,7 +227,7 @@ impl CairoContractClass {
 
         let serialized = serde_json::to_vec(&json)?;
 
-        compute_class_hash(&serialized).context("Compute class hash")
+        Ok(serialized)
     }
 }
 
@@ -406,8 +412,14 @@ pub struct SierraContractClass {
 }
 
 impl SierraContractClass {
-    pub fn class_hash(&self) -> Result<ComputedClassHash, anyhow::Error> {
-        let definition = serde_json::to_vec(self)?;
+    pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
+        let json = serde_json::to_vec(self)?;
+
+        Ok(json)
+    }
+
+    pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
+        let definition = self.serialize_to_json()?;
         compute_class_hash(&definition)
     }
 }

@@ -248,6 +248,7 @@ impl<'inner> Transaction<'inner> {
         class::class_definition(self, class_hash)
     }
 
+    /// Returns the uncompressed class definition if it has been declared at `block_id`.
     pub fn class_definition_at(
         &self,
         block_id: BlockId,
@@ -256,12 +257,40 @@ impl<'inner> Transaction<'inner> {
         class::class_definition_at(self, block_id, class_hash)
     }
 
+    /// Returns the uncompressed compiled class definition.
+    pub fn casm_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
+        class::casm_definition(self, class_hash)
+    }
+
+    /// Returns the uncompressed compiled class definition if it has been declared at `block_id`.
+    pub fn casm_definition_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        class::casm_definition_at(self, block_id, class_hash)
+    }
+
     pub fn contract_class_hash(
         &self,
         block_id: BlockId,
         contract_address: ContractAddress,
     ) -> anyhow::Result<Option<ClassHash>> {
         state_update::contract_class_hash(self, block_id, contract_address)
+    }
+
+    /// Returns the compiled class hash for a class.
+    pub fn casm_hash(&self, class_hash: ClassHash) -> anyhow::Result<Option<CasmHash>> {
+        class::casm_hash(self, class_hash)
+    }
+
+    /// Returns the compiled class hash for a class if it has been declared at `block_id`.
+    pub fn casm_hash_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<CasmHash>> {
+        class::casm_hash_at(self, block_id, class_hash)
     }
 
     /// Stores the class trie information using reference counting.

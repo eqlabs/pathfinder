@@ -586,7 +586,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn estimate_fee_for_example() {
-        use crate::v03::method::estimate_fee::tests::ext_py::{
+        use crate::v03::method::estimate_fee::tests::mainnet::{
             test_storage_with_account, valid_invoke_v1,
         };
 

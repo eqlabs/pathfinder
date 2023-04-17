@@ -1,11 +1,11 @@
+use anyhow::Context;
+
 use crate::{
     context::RpcContext,
     v02::{method::call::FunctionCall, types::reply::FeeEstimate},
 };
 use pathfinder_common::{BlockId, EthereumAddress};
 use serde::Deserialize;
-
-use super::common::prepare_handle_and_block;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateMessageFeeInput {
@@ -20,14 +20,25 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<crate::cairo::ext_py::CallFailure> for EstimateMessageFeeError {
-    fn from(c: crate::cairo::ext_py::CallFailure) -> Self {
-        use crate::cairo::ext_py::CallFailure::*;
+impl From<crate::cairo::starknet_rs::CallError> for EstimateMessageFeeError {
+    fn from(c: crate::cairo::starknet_rs::CallError) -> Self {
+        use crate::cairo::starknet_rs::CallError::*;
         match c {
-            NoSuchBlock => Self::BlockNotFound,
-            NoSuchContract => Self::ContractNotFound,
-            ExecutionFailed(_) | InvalidEntryPoint => Self::ContractError,
-            Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),
+            InvalidMessageSelector => Self::ContractError,
+            ContractNotFound => Self::ContractNotFound,
+            Reverted(revert_error) => {
+                Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
+            }
+            Internal(e) => Self::Internal(e),
+        }
+    }
+}
+
+impl From<super::common::ExecutionStateError> for EstimateMessageFeeError {
+    fn from(error: super::common::ExecutionStateError) -> Self {
+        match error {
+            super::common::ExecutionStateError::BlockNotFound => Self::BlockNotFound,
+            super::common::ExecutionStateError::Internal(e) => Self::Internal(e),
         }
     }
 }
@@ -36,28 +47,36 @@ pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
 ) -> Result<FeeEstimate, EstimateMessageFeeError> {
-    let (handle, gas_price, when, pending_timestamp, pending_update) =
-        prepare_handle_and_block(&context, input.block_id).await?;
+    let execution_state = super::common::execution_state(context, input.block_id, None).await?;
 
-    let result = handle
-        .estimate_message_fee(
+    let span = tracing::Span::current();
+
+    let result = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+
+        let result = crate::cairo::starknet_rs::estimate_message_fee(
+            execution_state,
+            input.message,
             input.sender_address,
-            input.message.into(),
-            when,
-            gas_price,
-            pending_update,
-            pending_timestamp,
-        )
-        .await?;
+        )?;
 
-    Ok(result)
+        Ok::<_, EstimateMessageFeeError>(result)
+    })
+    .await
+    .context("Executing transaction")??;
+
+    Ok(FeeEstimate {
+        gas_consumed: result.gas_consumed,
+        gas_price: result.gas_price,
+        overall_fee: result.overall_fee,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, GasPrice, StateUpdate,
+        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, GasPrice, StateUpdate,
     };
     use pathfinder_storage::{JournalMode, Storage};
     use primitive_types::H160;
@@ -161,15 +180,21 @@ mod tests {
             )
             .expect("insert class");
 
-            let block_number = BlockNumber::GENESIS + 1;
+            let block1_number = BlockNumber::GENESIS + 1;
+            let block1_hash = BlockHash(felt!("0xb01"));
 
             if !matches!(mode, Setup::SkipBlock) {
                 let header = BlockHeader::builder()
-                    .with_number(block_number)
+                    .with_number(BlockNumber::GENESIS)
+                    .with_timestamp(BlockTimestamp::new_or_panic(0))
+                    .finalize_with_hash(BlockHash(felt!("0xb00")));
+                tx.insert_block_header(&header).unwrap();
+
+                let header = BlockHeader::builder()
+                    .with_number(block1_number)
                     .with_timestamp(BlockTimestamp::new_or_panic(1))
                     .with_gas_price(GasPrice(1))
-                    .finalize_with_hash(BlockHash::ZERO);
-
+                    .finalize_with_hash(block1_hash);
                 tx.insert_block_header(&header).unwrap();
             }
 
@@ -179,24 +204,14 @@ mod tests {
                 );
                 let state_update =
                     StateUpdate::default().with_deployed_contract(contract_address, class_hash);
-                tx.insert_state_update(block_number, &state_update).unwrap();
+                tx.insert_state_update(block1_number, &state_update)
+                    .unwrap();
             }
 
             tx.commit().unwrap();
         }
 
-        let (call_handle, _join_handle) = crate::cairo::ext_py::start(
-            storage.path().into(),
-            std::num::NonZeroUsize::try_from(1).unwrap(),
-            futures::future::pending(),
-            Chain::Testnet,
-        )
-        .await
-        .unwrap();
-
-        let rpc = RpcContext::for_tests()
-            .with_storage(storage)
-            .with_call_handling(call_handle);
+        let rpc = RpcContext::for_tests().with_storage(storage);
 
         Ok(rpc)
     }
@@ -220,9 +235,9 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
-            gas_consumed: 0x42d1.into(),
+            gas_consumed: 17104.into(),
             gas_price: 1.into(),
-            overall_fee: 0x42d1.into(),
+            overall_fee: 17104.into(),
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");
@@ -257,7 +272,7 @@ mod tests {
         let rpc = setup(Setup::Full).await.expect("RPC context");
         assert_matches::assert_matches!(
             estimate_message_fee(rpc, input).await,
-            Err(EstimateMessageFeeError::ContractError)
+            Err(EstimateMessageFeeError::Internal(e)) if (e.to_string() == "Transaction reverted: Requested entry point was not found")
         );
     }
 }

@@ -270,6 +270,7 @@ pub trait RowExt {
     }
 
     row_felt_wrapper!(get_block_hash, BlockHash);
+    row_felt_wrapper!(get_casm_hash, CasmHash);
     row_felt_wrapper!(get_class_hash, ClassHash);
     row_felt_wrapper!(get_state_commitment, StateCommitment);
     row_felt_wrapper!(get_storage_commitment, StorageCommitment);

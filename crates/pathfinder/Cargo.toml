@@ -22,7 +22,7 @@ bitvec = "0.20.4"
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
-casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.1.0-rc1" }
+casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.1.0-rc3" }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
 futures = { version = "0.3", default-features = false, features = ["std"] }
@@ -42,7 +42,10 @@ primitive-types = "0.12.1"
 reqwest = { version = "0.11.13", features = ["json"] }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
@@ -52,7 +55,11 @@ time = { version = "0.3.20", features = ["macros"] }
 tokio = { workspace = true, features = ["process"] }
 toml = "0.5.9"
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.16", features = ["env-filter", "time", "ansi"] }
+tracing-subscriber = { version = "0.3.16", features = [
+    "env-filter",
+    "time",
+    "ansi",
+] }
 url = "2.3.1"
 warp = "0.3.3"
 
@@ -61,11 +68,16 @@ assert_matches = { workspace = true }
 bytes = "1.3.0"
 const-decoder = "0.3.0"
 criterion = { workspace = true }
+crossbeam-channel = "0.5.8"
 fake = { version = "2.5.0", features = ["derive"] }
 flate2 = "1.0.25"
 http = "0.2.8"
+mimalloc = { version = "0.1.37", default-features = false }
 mockall = "0.11.3"
+num_cpus = "1.15.0"
 pathfinder-common = { path = "../common", features = ["full-serde"] }
+pathfinder-rpc = { path = "../rpc" }
+pathfinder-storage = { path = "../storage" }
 pretty_assertions = "1.3.0"
 proptest = "1.2.0"
 rand = "0.8"
@@ -78,4 +90,7 @@ zstd = "0.12"
 
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
