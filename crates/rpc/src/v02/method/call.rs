@@ -1,6 +1,13 @@
+use std::sync::Arc;
+
+use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::{context::RpcContext, v03::method::common::base_block_and_pending_for_call};
-use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
+use anyhow::Context;
+use pathfinder_common::{
+    BlockId, BlockTimestamp, CallParam, CallResultValue, ContractAddress, EntryPoint,
+};
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
@@ -10,16 +17,24 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<crate::cairo::ext_py::CallFailure> for CallError {
-    fn from(c: crate::cairo::ext_py::CallFailure) -> Self {
-        use crate::cairo::ext_py::CallFailure::*;
-        match c {
-            NoSuchBlock => Self::BlockNotFound,
-            NoSuchContract => Self::ContractNotFound,
-            InvalidEntryPoint => Self::InvalidMessageSelector,
-            ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
-            // Intentionally hide the message under Internal
-            Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),
+impl From<starknet_rs::business_logic::transaction::error::TransactionError> for CallError {
+    fn from(value: starknet_rs::business_logic::transaction::error::TransactionError) -> Self {
+        use starknet_rs::business_logic::transaction::error::TransactionError;
+        match value {
+            TransactionError::EntryPointNotFound => Self::InvalidMessageSelector,
+            TransactionError::FailToReadClassHash => Self::ContractNotFound,
+            e => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
+        }
+    }
+}
+
+impl From<crate::cairo::starknet_rs::CallError> for CallError {
+    fn from(value: crate::cairo::starknet_rs::CallError) -> Self {
+        use crate::cairo::starknet_rs::CallError::*;
+        match value {
+            ContractNotFound => Self::ContractNotFound,
+            InvalidMessageSelector => Self::InvalidMessageSelector,
+            Internal(e) => Self::Internal(e),
         }
     }
 }
@@ -37,46 +52,87 @@ pub struct FunctionCall {
     pub calldata: Vec<CallParam>,
 }
 
-impl From<FunctionCall> for crate::v02::types::request::Call {
-    fn from(call: FunctionCall) -> Self {
-        Self {
-            contract_address: call.contract_address,
-            calldata: call.calldata,
-            entry_point_selector: Some(call.entry_point_selector),
-            // TODO: these fields are estimateFee-only and effectively ignored
-            // by the underlying implementation. We can remove these once
-            // JSON-RPC v0.1.0 is removed.
-            signature: vec![],
-            max_fee: Self::DEFAULT_MAX_FEE,
-            version: Self::DEFAULT_VERSION,
-            nonce: Self::DEFAULT_NONCE,
-        }
-    }
-}
-
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug)]
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
-    let handle = context
-        .call_handle
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
-
-    let (when, pending_timestamp, pending_update) =
+    let (block_id, _pending_timestamp, _pending_update) =
         base_block_and_pending_for_call(input.block_id, &context.pending_data).await?;
 
-    let result = handle
-        .call(
-            input.request.into(),
-            when,
-            pending_update,
-            pending_timestamp,
-        )
-        .await?;
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
 
-    Ok(CallOutput(result))
+    // FIXME: handle pending data
+    let result = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+
+        let mut db = storage.connection()?;
+        let tx = db.transaction().context("Creating database transaction")?;
+
+        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
+            .context("Reading storage root for block")?
+            .ok_or_else(|| CallError::BlockNotFound)?;
+
+        let result = crate::cairo::starknet_rs::call(
+            context.storage,
+            storage_commitment,
+            input.request.contract_address,
+            input.request.entry_point_selector,
+            input.request.calldata,
+        )?;
+
+        Ok(result)
+    })
+    .await
+    .context("Executing call")?;
+
+    result.map(CallOutput)
+}
+
+/// Transforms pending requests into latest + optional pending data to apply.
+pub(super) async fn base_block_and_pending_for_call(
+    at_block: BlockId,
+    pending_data: &Option<PendingData>,
+) -> Result<
+    (
+        StarknetBlocksBlockId,
+        Option<BlockTimestamp>,
+        Option<Arc<starknet_gateway_types::reply::PendingStateUpdate>>,
+    ),
+    anyhow::Error,
+> {
+    match at_block {
+        BlockId::Pending => {
+            // we must have pending_data configured for pending requests, otherwise we fail
+            // fast.
+            match pending_data {
+                Some(pending) => {
+                    // call on this particular parent block hash; if it's not found at query time over
+                    // at python, it should fall back to latest and **disregard** the pending data.
+                    let pending_on_top_of_a_block = pending
+                        .state_update_on_parent_block()
+                        .await
+                        .map(|(parent_block, timestamp, data)| {
+                            (parent_block.into(), Some(timestamp), Some(data))
+                        });
+
+                    // if there is no pending data available, just execute on whatever latest.
+                    Ok(pending_on_top_of_a_block.unwrap_or((
+                        StarknetBlocksBlockId::Latest,
+                        None,
+                        None,
+                    )))
+                }
+                None => Err(anyhow::anyhow!(
+                    "Pending data not supported in this configuration"
+                )),
+            }
+        }
+        BlockId::Number(n) => Ok((StarknetBlocksBlockId::Number(n), None, None)),
+        BlockId::Hash(h) => Ok((StarknetBlocksBlockId::Hash(h), None, None)),
+        BlockId::Latest => Ok((StarknetBlocksBlockId::Latest, None, None)),
+    }
 }
 
 #[cfg(test)]
@@ -162,7 +218,7 @@ mod tests {
             }
         }
 
-        async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+        async fn test_context_with_call_handling() -> RpcContext {
             use pathfinder_common::ChainId;
 
             let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -171,24 +227,15 @@ mod tests {
                 pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
                     .unwrap();
             let sync_state = Arc::new(crate::SyncState::default());
-            let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
-                storage.path().into(),
-                std::num::NonZeroUsize::try_from(2).unwrap(),
-                futures::future::pending(),
-                Chain::Mainnet,
-            )
-            .await
-            .unwrap();
 
             let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
 
-            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
-            (context.with_call_handling(call_handle), cairo_handle)
+            RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer)
         }
 
         #[tokio::test]
         async fn no_such_block() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: valid_mainnet_call(),
@@ -200,7 +247,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: FunctionCall {
@@ -215,7 +262,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_message_selector() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: FunctionCall {
@@ -230,7 +277,7 @@ mod tests {
 
         #[tokio::test]
         async fn successful_call() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let context = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: valid_mainnet_call(),

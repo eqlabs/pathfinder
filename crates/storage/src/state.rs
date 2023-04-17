@@ -453,6 +453,33 @@ impl StarknetBlocksTable {
         }
     }
 
+    /// Returns the [gas price](GasPrice) of the given block.
+    pub fn get_gas_price(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksBlockId,
+    ) -> anyhow::Result<Option<GasPrice>> {
+        match block {
+            StarknetBlocksBlockId::Number(number) => tx.query_row(
+                "SELECT gas_price FROM starknet_blocks WHERE number = ?",
+                [number],
+                |row| row.get::<_, GasPrice>(0),
+            ),
+            StarknetBlocksBlockId::Hash(hash) => tx.query_row(
+                "SELECT gas_price FROM starknet_blocks WHERE hash = ?",
+                [hash],
+                |row| row.get(0),
+            ),
+            StarknetBlocksBlockId::Latest => tx.query_row(
+                "SELECT gas_price FROM starknet_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            ),
+        }
+        .optional()
+        .map(|g| g.and_then(|g| if g.0 == 0 { None } else { Some(g) }))
+        .map_err(|e| e.into())
+    }
+
     /// Deletes all rows from __head down-to reorg_tail__
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
     pub fn reorg(tx: &Transaction<'_>, reorg_tail: BlockNumber) -> anyhow::Result<()> {

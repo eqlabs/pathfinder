@@ -57,6 +57,25 @@ impl<T> Dummy<T> for Felt {
     }
 }
 
+impl From<cairo_vm::felt::Felt252> for Felt {
+    fn from(value: cairo_vm::felt::Felt252) -> Self {
+        // unwrap() is safe here because Felt252 is guaranteed to not exceed the group size P
+        Self::from_be_slice(&value.to_be_bytes()).unwrap()
+    }
+}
+
+impl Into<cairo_vm::felt::Felt252> for Felt {
+    fn into(self) -> cairo_vm::felt::Felt252 {
+        cairo_vm::felt::Felt252::from_bytes_be(self.as_be_bytes())
+    }
+}
+
+impl Into<cairo_vm::felt::Felt252> for &Felt {
+    fn into(self) -> cairo_vm::felt::Felt252 {
+        cairo_vm::felt::Felt252::from_bytes_be(self.as_be_bytes())
+    }
+}
+
 /// Error returned by [Felt::from_be_bytes] indicating that
 /// the maximum field value was exceeded.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

@@ -1,6 +1,6 @@
 //! Utilities used for serializing/deserializing sequencer REST API related data.
 
-use ethers::types::{H160, H256};
+use ethers::types::{H160, H256, U256};
 use num_bigint::BigUint;
 use pathfinder_common::{
     BlockNumber, CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, GasPrice,
@@ -244,6 +244,13 @@ serde_with::serde_conv!(
     ethers::types::H256,
     |u: &H256| bytes_to_hex_str(u.as_bytes()),
     |s: &str| bytes_from_hex_str::<32>(s).map(H256::from)
+);
+
+serde_with::serde_conv!(
+    pub U256AsHexStr,
+    ethers::types::U256,
+    |u: &U256| { let mut b = [0u8; 32]; u.to_big_endian(&mut b); bytes_to_hex_str(&b) },
+    |s: &str| bytes_from_hex_str::<32>(s).map(U256::from)
 );
 
 pub struct U64AsHexStr(pub u64);
