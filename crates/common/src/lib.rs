@@ -87,6 +87,15 @@ impl StateCommitment {
     }
 }
 
+impl StorageAddress {
+    pub fn from_name(input: &[u8]) -> Self {
+        use sha3::Digest;
+        Self(truncated_keccak(<[u8; 32]>::from(sha3::Keccak256::digest(
+            input,
+        ))))
+    }
+}
+
 /// A Starknet block number.
 #[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
 pub struct BlockNumber(u64);

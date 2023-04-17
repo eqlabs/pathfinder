@@ -64,12 +64,18 @@ warp = "0.3.3"
 assert_matches = { workspace = true }
 bytes = "1.3.0"
 const-decoder = "0.3.0"
+criterion = { workspace = true }
+crossbeam-channel = "0.5.8"
 fake = { version = "2.5.0", features = ["derive"] }
 flate2 = "1.0.25"
 http = "0.2.8"
+mimalloc = { version = "0.1.37", default-features = false }
 mockall = "0.11.3"
+num_cpus = "1.15.0"
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-rpc = { path = "../rpc" }
+pathfinder-storage = { path = "../storage" }
 pretty_assertions = "1.3.0"
 proptest = "1.2.0"
 rand = "0.8"

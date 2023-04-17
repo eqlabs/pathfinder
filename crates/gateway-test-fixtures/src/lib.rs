@@ -174,6 +174,8 @@ pub mod class_definitions {
     use pathfinder_common::ClassHash;
 
     pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json");
+    pub const CONTRACT_DEFINITION_CLASS_HASH: ClassHash =
+        class_hash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json");
     pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash =
         class_hash!("0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf");
