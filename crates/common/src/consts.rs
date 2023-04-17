@@ -3,13 +3,10 @@
 use crate::{felt, StarknetBlockHash};
 
 /// Vergen string
-pub const VERGEN_GIT_SEMVER_LIGHTWEIGHT: &str = env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT");
+pub const VERGEN_GIT_DESCRIBE: &str = env!("VERGEN_GIT_DESCRIBE");
 
 /// User agent used in http clients
-pub const USER_AGENT: &str = concat!(
-    "starknet-pathfinder/",
-    env!("VERGEN_GIT_SEMVER_LIGHTWEIGHT")
-);
+pub const USER_AGENT: &str = concat!("starknet-pathfinder/", env!("VERGEN_GIT_DESCRIBE"));
 
 pub const TESTNET_GENESIS_HASH: StarknetBlockHash = StarknetBlockHash(felt!(
     "07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"

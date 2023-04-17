@@ -4,12 +4,12 @@ use reqwest::Url;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use pathfinder_common::consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT;
+use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
 #[command(author = "Equilibrium Labs")]
-#[command(version = VERGEN_GIT_SEMVER_LIGHTWEIGHT)]
+#[command(version = VERGEN_GIT_DESCRIBE)]
 #[command(
     about = "A StarkNet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
 )]

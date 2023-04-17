@@ -60,6 +60,9 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      # Required for git security reasons. See https://github.com/rustyhorde/vergen/pull/126#issuecomment-1201088162
+      - name: Vergen git safe directory
+        run: git config --global --add safe.directory /workspace
       - name: Build
         id: docker_build
         uses: docker/build-push-action@v3

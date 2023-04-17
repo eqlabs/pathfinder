@@ -591,7 +591,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use pathfinder_common::{consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, StarknetBlockTimestamp};
+        use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, StarknetBlockTimestamp};
         use starknet_gateway_types::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
@@ -602,7 +602,7 @@ mod tests {
                 let (name, version) = user_agent.split_once('/').unwrap();
 
                 assert_eq!(name, "starknet-pathfinder");
-                assert_eq!(version, VERGEN_GIT_SEMVER_LIGHTWEIGHT);
+                assert_eq!(version, VERGEN_GIT_DESCRIBE);
 
                 Ok::<_, Infallible>(warp::reply::json(&Block {
                     block_hash: StarknetBlockHash(Felt::ZERO),

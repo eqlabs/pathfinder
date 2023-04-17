@@ -22,4 +22,4 @@ stark_poseidon = { path = "../stark_poseidon" }
 thiserror = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["git"] }
+vergen = { version = "8", default-features = false, features = ["git", "gitcl"] }
