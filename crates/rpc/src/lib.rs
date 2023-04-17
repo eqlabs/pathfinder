@@ -73,11 +73,11 @@ impl RpcServer {
             .set_host_filtering(AllowHosts::Any)
             .set_logger(self.logger)
             .set_middleware(tower::ServiceBuilder::new()
+                .option_layer(self.cors)
                 .map_result(middleware::versioning::try_map_errors_to_responses)
                 .filter_async(|result| async move {
                     middleware::versioning::prefix_rpc_method_names_with_version(result, TEN_MB).await
                 })
-                .option_layer(self.cors)
             )
             .build(self.addr)
             .await

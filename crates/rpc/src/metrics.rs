@@ -29,8 +29,14 @@ pub mod logger {
             _kind: jsonrpsee::server::logger::MethodKind,
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
-            let (version, method_name) = split_version_prefix(method_name);
-            metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version);
+            match split_version_prefix(method_name) {
+                Some((version, method_name)) => {
+                    metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version)
+                }
+                None => {
+                    metrics::increment_counter!("rpc_method_calls_total", "method" => method_name.to_owned())
+                }
+            }
         }
 
         fn on_result(
@@ -41,8 +47,14 @@ pub mod logger {
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
             if !success {
-                let (version, method_name) = split_version_prefix(method_name);
-                metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => version);
+                match split_version_prefix(method_name) {
+                    Some((version, method_name)) => {
+                        metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => version)
+                    }
+                    None => {
+                        metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name.to_owned())
+                    }
+                }
             }
         }
 
