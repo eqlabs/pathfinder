@@ -57,8 +57,8 @@ Examples:
     rpc_address: SocketAddr,
 
     #[arg(
-        long = "http-rpc.cors-domains",
-        long_help = r"Comma separated list of domains from which Cross-Origin requests will be accepted by the HTTP-RPC server.
+        long = "rpc.cors-domains",
+        long_help = r"Comma separated list of domains from which Cross-Origin requests will be accepted by the RPC server.
         
 Examples:
     single: http://one.io
@@ -66,7 +66,7 @@ Examples:
     any:    *",
         value_name = "DOMAIN-LIST",
         value_delimiter = ',',
-        env = "PATHFINDER_HTTP_RPC_CORS_DOMAINS"
+        env = "PATHFINDER_RPC_CORS_DOMAINS"
     )]
     rpc_cors_domains: Vec<String>,
 
