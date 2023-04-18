@@ -16,7 +16,6 @@ pub mod v03;
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use context::RpcContext;
-use jsonrpsee::core::server::host_filtering::AllowHosts;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use pathfinder_common::AllowedOrigins;
 use std::{net::SocketAddr, result::Result};
@@ -70,7 +69,6 @@ impl RpcServer {
         let server = ServerBuilder::default()
             .max_connections(self.max_connections)
             .max_request_body_size(TEN_MB)
-            .set_host_filtering(AllowHosts::Any)
             .set_logger(self.logger)
             .set_middleware(tower::ServiceBuilder::new()
                 .option_layer(self.cors)
