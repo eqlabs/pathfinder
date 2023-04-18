@@ -82,11 +82,12 @@ pub mod core_contract {
 }
 
 impl EthereumClient {
-    async fn get_block_number(&self) -> anyhow::Result<U256> {
+    async fn get_latest_block(&self) -> anyhow::Result<(U256, H256)> {
+        use std::str::FromStr;
         let req = serde_json::json!({
             "jsonrpc": "2.0",
-            "method": "eth_blockNumber",
-            "params": [],
+            "method": "eth_getBlockByNumber",
+            "params": ["latest", false],
             "id" :0
         });
         let res: serde_json::Value = self
@@ -97,11 +98,16 @@ impl EthereumClient {
             .await?
             .json()
             .await?;
-        let block_number = res["result"]
+        let res = &res["result"];
+        let block_num = res["number"]
             .as_str()
             .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to get block number"))?;
-        Ok(block_number)
+            .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
+        let block_hash = res["hash"]
+            .as_str()
+            .and_then(|txt| H256::from_str(txt).ok())
+            .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
+        Ok((block_num, block_hash))
     }
 
     pub async fn gas_price(&self) -> anyhow::Result<U256> {
@@ -155,9 +161,9 @@ impl EthereumClient {
 
 impl StarknetEthereumClient {
     pub async fn get_starknet_state(&self) -> anyhow::Result<L1StateUpdate> {
-        let eth_block_number = self.eth.get_block_number().await?;
-        let starknet_block_number = self.get_starknet_block_number(&eth_block_number).await?;
-        let starknet_state_root = self.get_starknet_state_root(&eth_block_number).await?;
+        let (eth_block_number, eth_block_hash) = self.eth.get_latest_block().await?;
+        let starknet_block_number = self.get_starknet_block_number(&eth_block_hash).await?;
+        let starknet_state_root = self.get_starknet_state_root(&eth_block_hash).await?;
         Ok(L1StateUpdate {
             eth_block_number: eth_block_number.as_u64(),
             block_number: starknet_block_number.as_u64(),
@@ -165,7 +171,7 @@ impl StarknetEthereumClient {
         })
     }
 
-    async fn get_starknet_block_number(&self, block_number: &U256) -> anyhow::Result<U256> {
+    async fn get_starknet_block_number(&self, block_hash: &H256) -> anyhow::Result<U256> {
         let req = serde_json::json!({
             "jsonrpc": "2.0",
             "method": "eth_call",
@@ -175,7 +181,7 @@ impl StarknetEthereumClient {
                     "value": "0x0",
                     "data": "0x35befa5d"
                 },
-                block_number
+                {"blockHash": block_hash}
             ],
             "id" :0
         });
@@ -195,7 +201,7 @@ impl StarknetEthereumClient {
         Ok(block_number)
     }
 
-    async fn get_starknet_state_root(&self, block_number: &U256) -> anyhow::Result<H256> {
+    async fn get_starknet_state_root(&self, block_hash: &H256) -> anyhow::Result<H256> {
         let req = serde_json::json!({
             "jsonrpc": "2.0",
             "method": "eth_call",
@@ -205,7 +211,7 @@ impl StarknetEthereumClient {
                     "value": "0x0",
                     "data": "0x9588eca2"
                 },
-                block_number
+                {"blockHash": block_hash}
             ],
             "id" :0
         });
@@ -245,26 +251,29 @@ mod tests {
     use std::str::FromStr;
 
     #[tokio::test]
-    async fn test_get_block_number() {
+    async fn test_get_latest_block() {
         let server = MockServer::start_async().await;
 
         let mock = server.mock(|when, then| {
             when.path("/")
                 .method(POST)
                 .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_blockNumber","params":[]}"#);
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",false]}"#);
             then.status(200)
                 .header("Content-type", "application/json")
-                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x103588d"}"#);
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":{"number":"0x1048e0e","hash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}}"#);
         });
 
         let url = Url::parse(&server.url("/")).expect("url");
         let eth = EthereumClient::new(url);
-        let block_number = eth.get_block_number().await.expect("get_block_number");
+        let (block_num, block_hash) = eth.get_latest_block().await.expect("get_latest_block");
 
         mock.assert();
-        let expected = U256::from_str_radix("0x103588d", 16).expect("block number");
-        assert_eq!(block_number, expected);
+        let expected_num = U256::from_str_radix("0x1048e0e", 16).expect("block number");
+        let expected_hash =
+            H256::from_str("0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff")
+                .expect("block hash");
+        assert_eq!((block_num, block_hash), (expected_num, expected_hash));
     }
 
     #[tokio::test]
@@ -320,7 +329,7 @@ mod tests {
             when.path("/")
                 .method(POST)
                 .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},{"blockHash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}]}"#);
             then.status(200)
                 .header("Content-type", "application/json")
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x0000000000000000000000000000000000000000000000000000000000007eeb"}"#);
@@ -331,9 +340,11 @@ mod tests {
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(eth, l1_addr);
 
-        let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("eth_block_number");
+        let eth_block_hash =
+            H256::from_str("0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff")
+                .expect("eth_block_hash");
         let block_number = eth
-            .get_starknet_block_number(&eth_block_number)
+            .get_starknet_block_number(&eth_block_hash)
             .await
             .expect("get_starknet_block_number");
 
@@ -350,7 +361,7 @@ mod tests {
             when.path("/")
                 .method(POST)
                 .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x9588eca2","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x9588eca2","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},{"blockHash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}]}"#);
             then.status(200)
                 .header("Content-type", "application/json")
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
@@ -361,10 +372,11 @@ mod tests {
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(eth, l1_addr);
 
-        let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("eth_block_number");
-
+        let eth_block_hash =
+            H256::from_str("0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff")
+                .expect("eth_block_hash");
         let state_root = eth
-            .get_starknet_state_root(&eth_block_number)
+            .get_starknet_state_root(&eth_block_hash)
             .await
             .expect("get_starknet_state_root");
 
@@ -383,17 +395,17 @@ mod tests {
             when.path("/")
                 .method(POST)
                 .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_blockNumber","params":[]}"#);
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",false]}"#);
             then.status(200)
                 .header("Content-type", "application/json")
-                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x103d1f2"}"#);
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":{"number":"0x1048e0e","hash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}}"#);
         });
 
         let mock_block = server.mock(|when, then| {
             when.path("/")
                 .method(POST)
                 .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},{"blockHash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}]}"#);
             then.status(200)
                 .header("Content-type", "application/json")
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x0000000000000000000000000000000000000000000000000000000000007eeb"}"#);
@@ -403,7 +415,7 @@ mod tests {
             when.path("/")
                 .method(POST)
                 .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x9588eca2","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0x103d1f2"]}"#);
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x9588eca2","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},{"blockHash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}]}"#);
             then.status(200)
                 .header("Content-type", "application/json")
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f"}"#);
@@ -414,7 +426,7 @@ mod tests {
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(eth, l1_addr);
 
-        let eth_block_number = U256::from_str_radix("0x103d1f2", 16).expect("block number");
+        let eth_block_number = U256::from_str_radix("0x1048e0e", 16).expect("block number");
         let block_number = U256::from_str_radix("0x7eeb", 16).expect("starknet block number");
         let global_root =
             H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")
