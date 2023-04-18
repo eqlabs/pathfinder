@@ -127,7 +127,7 @@ where
     const BLOCK_TIME_WEIGHT: f32 = 0.05;
 
     // Delay before restarting L1 or L2 tasks if they fail.
-    static START_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
+    const RESTART_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
 
     loop {
         tokio::select! {
@@ -152,7 +152,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    let fut = l1_sync(new_tx, ethereum_client.clone(), START_DELAY, poll_interval);
+                    let fut = l1_sync(new_tx, ethereum_client.clone(), RESTART_DELAY, poll_interval);
                     l1_handle = tokio::spawn(async move { fut.await });
                     tracing::info!("L1 sync process restarted.")
                 }
@@ -312,7 +312,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
 
-                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval, START_DELAY, block_validation_mode);
+                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval, RESTART_DELAY, block_validation_mode);
 
                     l2_handle = tokio::spawn(async move { fut.await });
                     tracing::info!("L2 sync process restarted.");

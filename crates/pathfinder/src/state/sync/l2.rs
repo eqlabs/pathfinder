@@ -907,7 +907,7 @@ mod tests {
             })
         }
 
-        static NO_DELAY: std::time::Duration = std::time::Duration::ZERO;
+        const NO_DELAY: std::time::Duration = std::time::Duration::ZERO;
 
         mod happy_path {
             use super::*;
