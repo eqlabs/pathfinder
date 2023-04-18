@@ -2,9 +2,7 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_common::{
-    consts::VERGEN_GIT_DESCRIBE, Chain, ChainId, StarknetBlockNumber,
-};
+use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, Chain, ChainId, StarknetBlockNumber};
 use pathfinder_common::{EthereumAddress, EthereumChain};
 use pathfinder_ethereum::{EthereumClient, StarknetEthereumClient};
 use pathfinder_lib::{
@@ -175,7 +173,10 @@ fn make_ethereum_client(config: &config::Config) -> anyhow::Result<EthereumClien
     })
 }
 
-fn verify_network(network: Option<NetworkConfig>, ethereum_chain_id: EthereumChain) -> anyhow::Result<NetworkConfig> {
+fn verify_network(
+    network: Option<NetworkConfig>,
+    ethereum_chain_id: EthereumChain,
+) -> anyhow::Result<NetworkConfig> {
     Ok(match network {
         Some(network) => match (&network, &ethereum_chain_id) {
             (NetworkConfig::Mainnet, EthereumChain::Mainnet) => network,

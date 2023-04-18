@@ -378,13 +378,19 @@ async fn download_block(
                     _,
                 ) => Ok(DownloadBlock::Block(block, commitments)),
                 (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::NotVerifiable, _) => {
-                    Ok(DownloadBlock::Block(block, (TransactionCommitment::ZERO, EventCommitment::ZERO)))
+                    Ok(DownloadBlock::Block(
+                        block,
+                        (TransactionCommitment::ZERO, EventCommitment::ZERO),
+                    ))
                 }
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
                     VerifyResult::Mismatch,
                     BlockValidationMode::AllowMismatch,
-                ) => Ok(DownloadBlock::Block(block, (TransactionCommitment::ZERO, EventCommitment::ZERO))),
+                ) => Ok(DownloadBlock::Block(
+                    block,
+                    (TransactionCommitment::ZERO, EventCommitment::ZERO),
+                )),
                 (_, VerifyResult::Mismatch, BlockValidationMode::Strict) => {
                     Err(anyhow!("Block hash mismatch"))
                 }
