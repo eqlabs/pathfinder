@@ -189,7 +189,7 @@ pub struct StarknetBlockHash(pub Felt);
 
 /// A StarkNet block number.
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
-pub struct StarknetBlockNumber(u64);
+pub struct StarknetBlockNumber(pub u64);
 
 macros::i64_backed_u64::to_from_sql!(StarknetBlockNumber);
 macros::i64_backed_u64::new_get_partialeq!(StarknetBlockNumber);

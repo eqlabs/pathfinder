@@ -9,88 +9,9 @@ use pathfinder_common::{
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
     StateCommitment, StorageCommitment, TransactionCommitment,
 };
-use pathfinder_ethereum::L1StateUpdate;
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
-
-/// Contains the [L1 Starknet update logs](L1StateUpdate).
-pub struct L1StateTable {}
-
-/// Identifies block in some [L1StateTable] queries.
-pub enum L1TableBlockId {
-    Number(StarknetBlockNumber),
-    Latest,
-}
-
-impl From<StarknetBlockNumber> for L1TableBlockId {
-    fn from(number: StarknetBlockNumber) -> Self {
-        L1TableBlockId::Number(number)
-    }
-}
-
-impl L1StateTable {
-    /// Inserts a new [update](L1StateUpdate), replaces if it already exists.
-    pub fn upsert(tx: &Transaction<'_>, update: &L1StateUpdate) -> anyhow::Result<()> {
-        tx.execute(
-            r"DELETE FROM l1_state WHERE 
-            starknet_block_number >= :starknet_block_number OR 
-            ethereum_block_number >= :ethereum_block_number",
-            named_params! {
-                ":starknet_block_number": update.block_number,
-                ":ethereum_block_number": update.eth_block_number,
-            },
-        )?;
-
-        tx.execute(
-            r"INSERT OR REPLACE INTO l1_state (
-                        starknet_block_number,
-                        starknet_global_root,
-                        ethereum_block_number
-                    ) VALUES (
-                        :starknet_block_number,
-                        :starknet_global_root,
-                        :ethereum_block_number
-                    )",
-            named_params! {
-                ":ethereum_block_number": update.eth_block_number,
-                ":starknet_block_number": update.block_number,
-                ":starknet_global_root": update.global_root.as_bytes(),
-            },
-        )?;
-
-        Ok(())
-    }
-
-    /// Returns the [state commitment](StateCommitment) of the given block.
-    pub fn get_state_commitment(
-        tx: &Transaction<'_>,
-        block: L1TableBlockId,
-    ) -> anyhow::Result<Option<StateCommitment>> {
-        let mut statement = match block {
-            L1TableBlockId::Number(_) => {
-                tx.prepare("SELECT starknet_global_root FROM l1_state WHERE starknet_block_number = ?")
-            }
-            L1TableBlockId::Latest => tx
-                .prepare("SELECT starknet_global_root FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1"),
-        }?;
-
-        let mut rows = match block {
-            L1TableBlockId::Number(number) => statement.query([number]),
-            L1TableBlockId::Latest => statement.query([]),
-        }?;
-
-        let row = rows.next()?;
-        let row = match row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        row.get("starknet_global_root")
-            .map(Some)
-            .map_err(|e| e.into())
-    }
-}
 
 pub struct RefsTable {}
 

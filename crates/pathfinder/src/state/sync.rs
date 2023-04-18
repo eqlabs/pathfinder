@@ -19,9 +19,9 @@ use pathfinder_rpc::{
 };
 use pathfinder_storage::{
     types::{CompressedCasmClass, CompressedContract},
-    CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable,
-    L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-    StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+    CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable, RefsTable,
+    StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable,
+    StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
@@ -134,9 +134,13 @@ where
             l1_event = rx_l1.recv() => match l1_event {
                 Some(update) => {
                     let tx = db_conn.transaction().context("Create database transaction")?;
-                    L1StateTable::upsert(&tx, &update).context("Upsert l1_state")?;
+                    let l1_l2_head = RefsTable::get_l1_l2_head(&tx)?.map(|x| x.0).unwrap_or_default();
+                    if update.block_number <= l1_l2_head {
+                        tracing::info!(block=update.block_number, "L1 reorg detected");
+                    }
+                    RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(update.block_number)))?;
                     tx.commit().context("Commit database transaction")?;
-                    tracing::info!("L1 state update: block={} root={}", update.block_number, update.global_root);
+                    tracing::info!(block=update.block_number, "L1 state update");
                 },
                 None => {
                     // L1 sync process failed; restart it.
@@ -484,21 +488,8 @@ async fn l2_update(
         )
         .context("Insert transaction data into database")?;
 
-        // Track combined L1 and L2 state.
-        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
-        let expected_next = l1_l2_head
-            .map(|head| head + 1)
-            .unwrap_or(StarknetBlockNumber::GENESIS);
-
-        if expected_next == starknet_block.number {
-            let l1_root =
-                L1StateTable::get_state_commitment(&transaction, starknet_block.number.into())
-                    .context("Query L1 root")?;
-            if l1_root == Some(starknet_block.root) {
-                RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
-                    .context("Update L1-L2 head")?;
-            }
-        }
+        RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
+            .context("Update L1-L2 head")?;
 
         transaction.commit().context("Commit database transaction")
     })

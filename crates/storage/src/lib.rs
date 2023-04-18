@@ -18,10 +18,10 @@ pub use contract::{CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable
 pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 use rusqlite::functions::FunctionFlags;
 pub use state::{
-    CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
-    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent,
-    StarknetEventFilter, StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
-    V02KeyFilter, V03KeyFilter,
+    CanonicalBlocksTable, ContractsStateTable, EventFilterError, RefsTable, StarknetBlock,
+    StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter,
+    StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable, V02KeyFilter,
+    V03KeyFilter,
 };
 
 use anyhow::Context;
