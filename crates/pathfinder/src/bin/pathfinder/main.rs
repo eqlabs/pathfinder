@@ -4,7 +4,7 @@ use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::EthereumAddress;
 use pathfinder_common::{
-    consts::VERGEN_GIT_SEMVER_LIGHTWEIGHT, Chain, ChainId, EthereumChain, StarknetBlockNumber,
+    consts::VERGEN_GIT_DESCRIBE, Chain, ChainId, EthereumChain, StarknetBlockNumber,
 };
 use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
 use pathfinder_lib::{
@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
-        version = VERGEN_GIT_SEMVER_LIGHTWEIGHT,
+        version = VERGEN_GIT_DESCRIBE,
         "🏁 Starting node."
     );
 
