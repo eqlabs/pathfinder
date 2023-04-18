@@ -7,7 +7,7 @@ pub async fn sync(
     ethereum_client: StarknetEthereumClient,
     start_delay: std::time::Duration,
     poll_interval: std::time::Duration,
-) -> anyhow::Result<()> {
+) {
     tokio::time::sleep(start_delay).await;
 
     let mut backoff = RetryBackoff::new(std::time::Duration::from_secs(1), poll_interval);
@@ -17,7 +17,9 @@ pub async fn sync(
         match ethereum_client.get_starknet_state().await {
             Ok(state) => {
                 backoff.success();
-                tx_event.send(state).await?;
+                if let Err(e) = tx_event.send(state).await {
+                    tracing::error!(reason=?e, "L1 state update propagation failed");
+                }
             }
             Err(e) => {
                 backoff.failure();

@@ -52,7 +52,7 @@ pub async fn sync<SequencerClient, F1, F2, L1Sync, L2Sync>(
 ) -> anyhow::Result<()>
 where
     SequencerClient: ClientApi + Clone + Send + Sync + 'static,
-    F1: Future<Output = anyhow::Result<()>> + Send + 'static,
+    F1: Future<Output = ()> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
     L1Sync: Fn(
         mpsc::Sender<L1StateUpdate>,
@@ -104,7 +104,7 @@ where
     // Start L1 and L2 sync processes.
     let poll_interval = head_poll_interval(chain);
     let no_delay = std::time::Duration::ZERO;
-    let mut l1_handle = tokio::spawn(l1_sync(
+    tokio::spawn(l1_sync(
         tx_l1,
         ethereum_client.clone(),
         no_delay,
@@ -143,22 +143,8 @@ where
                     tracing::info!(block=update.block_number, "L1 state update");
                 },
                 None => {
-                    // L1 sync process failed; restart it.
-                    match l1_handle.await.context("Join L1 sync process handle")? {
-                        Ok(()) => {
-                            tracing::error!("L1 sync process terminated without an error.");
-                        }
-                        Err(e) => {
-                            tracing::warn!("L1 sync process terminated with: {:?}", e);
-                        }
-                    }
-
-                    let (new_tx, new_rx) = mpsc::channel(1);
-                    rx_l1 = new_rx;
-
-                    let fut = l1_sync(new_tx, ethereum_client.clone(), RESTART_DELAY, poll_interval);
-                    l1_handle = tokio::spawn(async move { fut.await });
-                    tracing::info!("L1 sync process restarted.")
+                    tracing::info!("L1 sync failure: something went very wrong.");
+                    break;
                 }
             },
             l2_event = rx_l2.recv() => match l2_event {
@@ -324,6 +310,8 @@ where
             }
         }
     }
+
+    Ok(())
 }
 
 /// Periodically updates sync state with the latest block height.
