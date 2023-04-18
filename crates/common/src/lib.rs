@@ -144,7 +144,7 @@ pub struct StorageValue(pub Felt);
 /// The commitment for the state of a StarkNet block.
 ///
 /// Before StarkNet v0.11.0 this was equivalent to [StorageCommitment].
-#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StateCommitment(pub Felt);
 
 impl StateCommitment {
@@ -188,7 +188,7 @@ impl StorageCommitment {
 pub struct StarknetBlockHash(pub Felt);
 
 /// A StarkNet block number.
-#[derive(Copy, Debug, Default, Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct StarknetBlockNumber(u64);
 
 macros::i64_backed_u64::to_from_sql!(StarknetBlockNumber);
@@ -210,7 +210,7 @@ macros::i64_backed_u64::new_get_partialeq!(StarknetBlockTimestamp);
 macros::i64_backed_u64::serdes!(StarknetBlockTimestamp);
 
 /// A StarkNet events commitment of a block.
-#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EventCommitment(pub Felt);
 
 impl EventCommitment {
@@ -218,7 +218,7 @@ impl EventCommitment {
 }
 
 /// A StarkNet transactions commitment of a block.
-#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionCommitment(pub Felt);
 
 impl TransactionCommitment {
@@ -329,11 +329,11 @@ impl TransactionVersion {
 pub struct EthereumAddress(pub H160);
 
 /// An Ethereum block hash.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumBlockHash(pub H256);
 
 /// An Ethereum block number.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EthereumBlockNumber(pub u64);
 
 /// An Ethereum transaction hash.
