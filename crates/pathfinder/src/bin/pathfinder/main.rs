@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
     let ethereum_client = StarknetEthereumClient::new(ethereum_client, context.l1_core_address);
 
     // Setup and verify database
-    let storage = Storage::migrate(context.database.clone(), config.sqlite_wal).unwrap();
+    let storage = Storage::migrate(context.database.clone(), config.sqlite_wal)?;
     info!(location=?context.database, "Database migrated.");
     verify_database(&storage, context.network, &context.gateway)
         .await
