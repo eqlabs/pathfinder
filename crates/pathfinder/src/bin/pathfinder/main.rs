@@ -53,33 +53,9 @@ async fn main() -> anyhow::Result<()> {
             .context("Starting monitoring task")?;
     }
 
-    let ethereum_client = if let Some(password) = config.ethereum.password {
-        EthereumClient::new_with_password(config.ethereum.url, &password)?
-    } else {
-        EthereumClient::new(config.ethereum.url)
-    };
+    let ethereum_client = make_ethereum_client(&config)?;
     let ethereum_chain_id = ethereum_client.chain_id().await?;
-    let network = match config.network {
-        Some(network) => match (&network, &ethereum_chain_id) {
-            (NetworkConfig::Mainnet, EthereumChain::Mainnet) => network,
-            (NetworkConfig::Testnet, EthereumChain::Goerli) => network,
-            (NetworkConfig::Testnet2, EthereumChain::Goerli) => network,
-            (NetworkConfig::Integration, EthereumChain::Goerli) => network,
-            (NetworkConfig::Custom { .. }, _) => network,
-            _ => anyhow::bail!(
-                "Network setup mismatch: Starknet={}, Ethereum={}",
-                network,
-                ethereum_chain_id
-            ),
-        },
-        None => match ethereum_chain_id {
-            EthereumChain::Mainnet => NetworkConfig::Mainnet,
-            EthereumChain::Goerli => NetworkConfig::Testnet,
-            EthereumChain::Other(id) => {
-                anyhow::bail!("Network is undefined. Ethereum chain_id={id}")
-            }
-        },
-    };
+    let network = verify_network(config.network, ethereum_chain_id)?;
 
     let context = PathfinderContext::configure_and_proxy_check(network, config.data_directory)
         .await
@@ -189,6 +165,38 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn make_ethereum_client(config: &config::Config) -> anyhow::Result<EthereumClient> {
+    Ok(if let Some(password) = &config.ethereum.password {
+        EthereumClient::new_with_password(config.ethereum.url.clone(), password)?
+    } else {
+        EthereumClient::new(config.ethereum.url.clone())
+    })
+}
+
+fn verify_network(network: Option<NetworkConfig>, ethereum_chain_id: EthereumChain) -> anyhow::Result<NetworkConfig> {
+    Ok(match network {
+        Some(network) => match (&network, &ethereum_chain_id) {
+            (NetworkConfig::Mainnet, EthereumChain::Mainnet) => network,
+            (NetworkConfig::Testnet, EthereumChain::Goerli) => network,
+            (NetworkConfig::Testnet2, EthereumChain::Goerli) => network,
+            (NetworkConfig::Integration, EthereumChain::Goerli) => network,
+            (NetworkConfig::Custom { .. }, _) => network,
+            _ => anyhow::bail!(
+                "Network setup mismatch: Starknet={}, Ethereum={}",
+                network,
+                ethereum_chain_id
+            ),
+        },
+        None => match ethereum_chain_id {
+            EthereumChain::Mainnet => NetworkConfig::Mainnet,
+            EthereumChain::Goerli => NetworkConfig::Testnet,
+            EthereumChain::Other(id) => {
+                anyhow::bail!("Network is undefined. Ethereum chain_id={id}")
+            }
+        },
+    })
 }
 
 #[cfg(feature = "tokio-console")]
