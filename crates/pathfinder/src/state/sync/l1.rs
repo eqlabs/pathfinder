@@ -15,7 +15,7 @@ pub async fn sync(
 
         match ethereum_client.get_starknet_state().await {
             Ok(state) => tx_event.send(state).await?,
-            Err(e) => tracing::error!("L1 call failed: {e:?}"),
+            Err(e) => tracing::error!(reason=?e, "L1 call failed"),
         }
     }
 }
