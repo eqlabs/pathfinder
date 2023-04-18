@@ -548,6 +548,21 @@ pub enum AllowedOrigins {
     List(Vec<String>),
 }
 
+impl<S> From<S> for AllowedOrigins
+where
+    S: ToString,
+{
+    fn from(value: S) -> Self {
+        let s = value.to_string();
+
+        if s == "*" {
+            Self::Any
+        } else {
+            Self::List(vec![s])
+        }
+    }
+}
+
 /// See:
 /// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
 pub fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
