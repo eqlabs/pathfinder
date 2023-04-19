@@ -81,76 +81,82 @@ pub mod core_contract {
         Decoder::Hex.decode(b"d5c325D183C592C94998000C5e0EED9e6655c020");
 }
 
+fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
+    value
+        .as_str()
+        .and_then(|txt| U256::from_str_radix(txt, 16).ok())
+        .ok_or(anyhow::anyhow!("Failed to fetch U256"))
+}
+
+fn get_h256(value: &serde_json::Value) -> anyhow::Result<H256> {
+    use std::str::FromStr;
+    value
+        .as_str()
+        .and_then(|txt| H256::from_str(txt).ok())
+        .ok_or(anyhow::anyhow!("Failed to fetch H256"))
+}
+
 impl EthereumClient {
-    async fn get_latest_block(&self) -> anyhow::Result<(U256, H256)> {
-        use std::str::FromStr;
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_getBlockByNumber",
-            "params": ["latest", false],
-            "id" :0
-        });
-        let res: serde_json::Value = self
+    async fn call_rpc(&self, request: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let response: serde_json::Value = self
             .http
             .post(self.url.as_str())
-            .json(&req)
+            .json(&request)
             .send()
             .await?
             .json()
             .await?;
-        let res = &res["result"];
-        let block_num = res["number"]
-            .as_str()
-            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
-        let block_hash = res["hash"]
-            .as_str()
-            .and_then(|txt| H256::from_str(txt).ok())
-            .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
+        Ok(response["result"].clone())
+    }
+
+    async fn get_block_number(&self) -> anyhow::Result<U256> {
+        let result = self
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_blockNumber",
+                "params": [],
+                "id" :0
+            }))
+            .await?;
+        get_u256(&result)
+    }
+
+    async fn get_latest_block(&self) -> anyhow::Result<(U256, H256)> {
+        let result = self
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_getBlockByNumber",
+                "params": ["latest", false],
+                "id" :0
+            }))
+            .await?;
+        let block_num = get_u256(&result["number"])?;
+        let block_hash = get_h256(&result["hash"])?;
         Ok((block_num, block_hash))
     }
 
     pub async fn gas_price(&self) -> anyhow::Result<U256> {
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_gasPrice",
-            "params": [],
-            "id" :0
-        });
-        let res: serde_json::Value = self
-            .http
-            .post(self.url.as_str())
-            .json(&req)
-            .send()
-            .await?
-            .json()
+        let result = self
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_gasPrice",
+                "params": [],
+                "id" :0
+            }))
             .await?;
-        let block_number = res["result"]
-            .as_str()
-            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to get gas price"))?;
-        Ok(block_number)
+        get_u256(&result)
     }
 
     pub async fn chain_id(&self) -> anyhow::Result<EthereumChain> {
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_chainId",
-            "params": [],
-            "id" :0
-        });
-        let res: serde_json::Value = self
-            .http
-            .post(self.url.as_str())
-            .json(&req)
-            .send()
-            .await?
-            .json()
+        let result = self
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_chainId",
+                "params": [],
+                "id" :0
+            }))
             .await?;
-        let id = res["result"]
-            .as_str()
-            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to get chain id"))?;
+        let id = get_u256(&result)?;
         Ok(match id {
             x if x == U256::from(1u32) => EthereumChain::Mainnet,
             x if x == U256::from(5u32) => EthereumChain::Goerli,
@@ -172,69 +178,43 @@ impl StarknetEthereumClient {
     }
 
     async fn get_starknet_block_number(&self, block_hash: &H256) -> anyhow::Result<U256> {
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_call",
-            "params": [
-                {
-                    "to": self.l1_addr,
-                    "value": "0x0",
-                    "data": "0x35befa5d"
-                },
-                {"blockHash": block_hash}
-            ],
-            "id" :0
-        });
-        let res: serde_json::Value = self
+        let result = self
             .eth
-            .http
-            .post(self.eth.url.as_str())
-            .json(&req)
-            .send()
-            .await?
-            .json()
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [
+                    {
+                        "to": self.l1_addr,
+                        "value": "0x0",
+                        "data": "0x35befa5d"
+                    },
+                    {"blockHash": block_hash}
+                ],
+                "id" :0
+            }))
             .await?;
-        let block_number = res["result"]
-            .as_str()
-            .and_then(|txt| U256::from_str_radix(txt, 16).ok())
-            .ok_or(anyhow::anyhow!("Failed to get starknet block number"))?;
-        Ok(block_number)
+        get_u256(&result)
     }
 
     async fn get_starknet_state_root(&self, block_hash: &H256) -> anyhow::Result<H256> {
-        let req = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "eth_call",
-            "params": [
-                {
-                    "to": self.l1_addr,
-                    "value": "0x0",
-                    "data": "0x9588eca2"
-                },
-                {"blockHash": block_hash}
-            ],
-            "id" :0
-        });
-        let res: serde_json::Value = self
+        let result = self
             .eth
-            .http
-            .post(self.eth.url.as_str())
-            .json(&req)
-            .send()
-            .await?
-            .json()
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [
+                    {
+                        "to": self.l1_addr,
+                        "value": "0x0",
+                        "data": "0x9588eca2"
+                    },
+                    {"blockHash": block_hash}
+                ],
+                "id" :0
+            }))
             .await?;
-        let state_root = res["result"]
-            .as_str()
-            .and_then(|txt| {
-                let u256 = U256::from_str_radix(txt, 16).ok()?;
-                let mut h256 = H256::zero();
-                u256.to_big_endian(h256.as_mut());
-                Some(h256)
-            })
-            .ok_or(anyhow::anyhow!("Failed to get starknet state root"))?;
-
-        Ok(state_root)
+        get_h256(&result)
     }
 
     pub async fn gas_price(&self) -> anyhow::Result<U256> {
@@ -274,6 +254,29 @@ mod tests {
             H256::from_str("0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff")
                 .expect("block hash");
         assert_eq!((block_num, block_hash), (expected_num, expected_hash));
+    }
+
+    #[tokio::test]
+    async fn test_get_block_number() {
+        let server = MockServer::start_async().await;
+
+        let mock = server.mock(|when, then| {
+            when.path("/")
+                .method(POST)
+                .header("Content-type", "application/json")
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_blockNumber","params":[]}"#);
+            then.status(200)
+                .header("Content-type", "application/json")
+                .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x1048e0e"}"#);
+        });
+
+        let url = Url::parse(&server.url("/")).expect("url");
+        let eth = EthereumClient::new(url);
+        let block_number = eth.get_block_number().await.expect("get_block_number");
+
+        mock.assert();
+        let expected = U256::from_str_radix("0x1048e0e", 16).expect("block number");
+        assert_eq!(block_number, expected);
     }
 
     #[tokio::test]
