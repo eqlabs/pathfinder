@@ -182,22 +182,34 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
 fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
-    let version = schema_version(connection)?;
+    let current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
     // Check that the database is not newer than this application knows of.
     anyhow::ensure!(
-        version <= migrations.len(),
+        current_revision <= migrations.len(),
         "Database version is newer than this application ({} > {})",
-        version,
+        current_revision,
         migrations.len()
     );
 
+    // Early exit to prevent logging
+    if current_revision == migrations.len() {
+        tracing::info!(%current_revision, "No database migrations required");
+        return Ok(());
+    }
+
+    let latest_revision = migrations.len();
+    let amount = latest_revision - current_revision;
+    tracing::info!(%current_revision, %latest_revision, migrations=%amount, "Performing database migrations");
+
+    let span = tracing::info_span!("db migration", revision = tracing::field::Empty);
+    let _enter = span.enter();
     // Sequentially apply each missing migration.
     migrations
         .iter()
         .enumerate()
-        .skip(version)
+        .skip(current_revision)
         .try_for_each(|(from, migration)| {
             let mut do_migration = || -> anyhow::Result<()> {
                 let transaction = connection
@@ -213,6 +225,8 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
 
                 Ok(())
             };
+
+            span.record("revision", from + 1);
 
             do_migration().with_context(|| format!("Migrating from {from}"))
         })?;
