@@ -203,9 +203,15 @@ fn setup_tracing() {
 
 #[cfg(not(feature = "tokio-console"))]
 fn setup_tracing() {
+    use time::macros::format_description;
+
+    let time_fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
+    let time_fmt = tracing_subscriber::fmt::time::UtcTime::new(time_fmt);
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_target(false)
+        .with_timer(time_fmt)
         .compact()
         .init();
 }
