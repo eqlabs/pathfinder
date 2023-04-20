@@ -317,7 +317,9 @@ mod tests {
         let block = U256::from_str("0x7eeb").expect("block");
 
         let expected = U256::from(16996031u64);
-        let found = bsearch_starknet_block(&eth, block.as_u64()).await.expect("found");
+        let found = bsearch_starknet_block(&eth, block.as_u64())
+            .await
+            .expect("found");
         assert!(found >= expected, "{} >= {}", found, expected);
     }
 
