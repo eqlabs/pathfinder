@@ -46,6 +46,12 @@ impl std::default::Default for Felt {
     }
 }
 
+impl AsRef<[u8]> for Felt {
+    fn as_ref(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
+
 #[cfg(feature = "test-utils")]
 impl<T> Dummy<T> for Felt {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {

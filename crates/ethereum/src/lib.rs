@@ -134,19 +134,18 @@ async fn get_starknet_block_num(
         .and_then(|x| get_u256(&x))
 }
 
-pub async fn bsearch_starknet_block(
+pub async fn bsearch_starknet_matching_block(
     client: &StarknetEthereumClient,
     block_number: u64,
+    min_block: u64,
 ) -> anyhow::Result<U256> {
-    let min_block = U256::from(core_contract::get_init_block(&client.l1_addr));
+    let min_block = U256::from(core_contract::get_init_block(&client.l1_addr).max(min_block));
     let max_block = client.eth.get_block_number().await?;
-    let mut hi = max_block;
     let mut lo = min_block;
-    println!("block: {block_number}");
+    let mut hi = max_block;
     while lo < hi {
         let m = lo + (hi - lo) / 2;
         let block = get_starknet_block_num(client, m).await?;
-        println!("checking: {m} = {block} (lo={lo} hi={hi})");
         if block.as_u64() == block_number {
             // Early exit: we are good with any block, not necessary the lowest one
             return Ok(m);
@@ -186,8 +185,7 @@ impl EthereumClient {
         get_u256(&result)
     }
 
-    #[allow(dead_code)] // TODO(SM): use or remove
-    async fn get_block_hash(&self, number: U256) -> anyhow::Result<H256> {
+    pub async fn get_block_hash(&self, number: U256) -> anyhow::Result<H256> {
         let result = self
             .call_rpc(serde_json::json!({
                 "jsonrpc": "2.0",
@@ -275,7 +273,7 @@ impl StarknetEthereumClient {
         get_u256(&result)
     }
 
-    async fn get_starknet_state_root(&self, block_hash: &H256) -> anyhow::Result<H256> {
+    pub async fn get_starknet_state_root(&self, block_hash: &H256) -> anyhow::Result<H256> {
         let result = self
             .eth
             .call_rpc(serde_json::json!({
@@ -294,10 +292,6 @@ impl StarknetEthereumClient {
             .await?;
         get_h256(&result)
     }
-
-    pub async fn gas_price(&self) -> anyhow::Result<U256> {
-        self.eth.gas_price().await
-    }
 }
 
 #[cfg(test)]
@@ -310,7 +304,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore] // TODO(SM): make hermetic
-    async fn test_bsearch_starknet_block() {
+    async fn test_bsearch_starknet_matching_block() {
         let url = Url::parse("https://eth.llamarpc.com").expect("url");
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(EthereumClient::new(url), l1_addr);
@@ -318,7 +312,7 @@ mod tests {
         let block = U256::from_str("0x7eeb").expect("block");
 
         let expected = U256::from(16996031u64);
-        let found = bsearch_starknet_block(&eth, block.as_u64())
+        let found = bsearch_starknet_matching_block(&eth, block.as_u64(), 0)
             .await
             .expect("found");
         assert!(found >= expected, "{} >= {}", found, expected);

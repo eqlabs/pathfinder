@@ -1,4 +1,3 @@
-pub mod l1;
 pub mod l2;
 mod pending;
 
@@ -8,7 +7,7 @@ use pathfinder_common::{
     SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment, StorageCommitment,
     TransactionCommitment,
 };
-use pathfinder_ethereum::{L1StateUpdate, StarknetEthereumClient};
+use pathfinder_ethereum::{bsearch_starknet_matching_block, StarknetEthereumClient};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
     ClassCommitmentTree, StorageCommitmentTree,
@@ -36,15 +35,38 @@ use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
 
+async fn find_matching_ethereum_block(
+    client: &StarknetEthereumClient,
+    block: &Block,
+    current_head: u64,
+) -> anyhow::Result<u64> {
+    let eth_block_num =
+        bsearch_starknet_matching_block(client, block.block_number.0, current_head).await?;
+    let eth_block_hash = client.eth.get_block_hash(eth_block_num).await?;
+    let expected_state_root = client.get_starknet_state_root(&eth_block_hash).await?;
+    let expected_state_root = expected_state_root.as_bytes();
+    let received_state_root = block.state_commitment.0.as_ref();
+
+    if received_state_root == expected_state_root {
+        Ok(eth_block_num.as_u64())
+    } else {
+        Err(anyhow::anyhow!(
+            "Block state root mismatch: block={} expected={:?} received={:?}",
+            block.block_number,
+            expected_state_root,
+            received_state_root
+        ))
+    }
+}
+
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
-pub async fn sync<SequencerClient, F1, F2, L1Sync, L2Sync>(
+pub async fn sync<SequencerClient, F, L2Sync>(
     storage: Storage,
     ethereum_client: StarknetEthereumClient,
     chain: Chain,
     sequencer: SequencerClient,
     state: Arc<SyncState>,
-    l1_sync: L1Sync,
     l2_sync: L2Sync,
     pending_data: PendingData,
     pending_poll_interval: Option<std::time::Duration>,
@@ -52,14 +74,7 @@ pub async fn sync<SequencerClient, F1, F2, L1Sync, L2Sync>(
 ) -> anyhow::Result<()>
 where
     SequencerClient: ClientApi + Clone + Send + Sync + 'static,
-    F1: Future<Output = ()> + Send + 'static,
-    F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: Fn(
-        mpsc::Sender<L1StateUpdate>,
-        StarknetEthereumClient,
-        std::time::Duration,
-        std::time::Duration,
-    ) -> F1,
+    F: Future<Output = anyhow::Result<()>> + Send + 'static,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
@@ -68,14 +83,13 @@ where
             Option<std::time::Duration>,
             std::time::Duration,
             l2::BlockValidationMode,
-        ) -> F2
+        ) -> F
         + Copy,
 {
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
 
-    let (tx_l1, mut rx_l1) = mpsc::channel(1);
     let (tx_l2, mut rx_l2) = mpsc::channel(1);
 
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
@@ -102,14 +116,7 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let poll_interval = head_poll_interval(chain);
     let no_delay = std::time::Duration::ZERO;
-    tokio::spawn(l1_sync(
-        tx_l1,
-        ethereum_client.clone(),
-        no_delay,
-        poll_interval,
-    ));
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
         sequencer.clone(),
@@ -131,25 +138,23 @@ where
 
     loop {
         tokio::select! {
-            l1_event = rx_l1.recv() => match l1_event {
-                Some(update) => {
-                    let tx = db_conn.transaction().context("Create database transaction")?;
-                    let l1_l2_head = RefsTable::get_l1_l2_head(&tx)?.map(|x| x.0).unwrap_or_default();
-                    if update.block_number <= l1_l2_head {
-                        tracing::info!(block=update.block_number, "L1 reorg detected");
-                    }
-                    RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(update.block_number)))?;
-                    tx.commit().context("Commit database transaction")?;
-                    tracing::info!(block=update.block_number, "L1 state update");
-                },
-                None => {
-                    tracing::info!("L1 sync failure: something went very wrong.");
-                    break;
-                }
-            },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {
                     pending_data.clear().await;
+
+                    let current_head = {
+                        let tx = db_conn.transaction().context("db tx")?;
+                        RefsTable::get_l1_l2_head(&tx).unwrap_or_default().map(|x| x.0).unwrap_or_default()
+                    };
+                    match find_matching_ethereum_block(&ethereum_client, &block, current_head).await {
+                        Ok(ethereum_block_number) => {
+                        let tx = db_conn.transaction().context("db tx")?;
+                            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(ethereum_block_number)))?;
+                            tx.commit().context("db tx commit")?;
+                            tracing::info!(block=ethereum_block_number, "L1 state update");
+                        },
+                        Err(e) => tracing::error!("{e}"),
+                    }
 
                     let block_number = block.block_number;
                     let block_hash = block.block_hash;
@@ -310,8 +315,6 @@ where
             }
         }
     }
-
-    Ok(())
 }
 
 /// Periodically updates sync state with the latest block height.
