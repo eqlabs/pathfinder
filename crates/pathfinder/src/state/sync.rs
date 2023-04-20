@@ -148,7 +148,7 @@ where
                     };
                     match find_matching_ethereum_block(&ethereum_client, &block, current_head).await {
                         Ok(ethereum_block_number) => {
-                        let tx = db_conn.transaction().context("db tx")?;
+                            let tx = db_conn.transaction().context("db tx")?;
                             RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(ethereum_block_number)))?;
                             tx.commit().context("db tx commit")?;
                             tracing::info!(block=ethereum_block_number, "L1 head update");
@@ -182,30 +182,23 @@ where
                         }
                     }
 
-                    // Give a simple log under INFO level, and a more verbose log
-                    // with timing information under DEBUG+ level.
-                    //
-                    // This should be removed if we have a configurable log level.
-                    // See the docs for LevelFilter for more information.
-                    match tracing::level_filters::LevelFilter::current().into_level() {
-                        None => {}
-                        Some(level) if level <= tracing::Level::INFO => {
-                            tracing::info!("Updated StarkNet state with block {}", block_number)
-                        }
-                        Some(_) => {
-                            tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
-                                block_number,
-                                block_time.as_secs_f32(),
-                                block_time_avg.as_secs_f32(),
-                                existed.0,
-                                existed.0 - existed.1,
-                                timings.class_declaration.as_secs_f32(),
-                                storage_updates,
-                                update_t.as_secs_f32(),
-                                timings.block_download.as_secs_f32(),
-                                timings.state_diff_download.as_secs_f32(),
-                            );
-                        }
+                    tracing::info!(block=block_number.0, "StarkNet state update");
+                    let is_debug = tracing::level_filters::LevelFilter::current().into_level()
+                        .map(|level| level <= tracing::Level::DEBUG)
+                        .unwrap_or_default();
+                    if is_debug  {
+                        tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                            block_number,
+                            block_time.as_secs_f32(),
+                            block_time_avg.as_secs_f32(),
+                            existed.0,
+                            existed.0 - existed.1,
+                            timings.class_declaration.as_secs_f32(),
+                            storage_updates,
+                            update_t.as_secs_f32(),
+                            timings.block_download.as_secs_f32(),
+                            timings.state_diff_download.as_secs_f32(),
+                        );
                     }
                 }
                 Some(l2::Event::Reorg(reorg_tail)) => {
