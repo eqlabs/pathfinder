@@ -6,6 +6,7 @@ mod contract;
 mod ethereum;
 mod schema;
 mod state;
+mod state_update;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
@@ -23,6 +24,7 @@ pub use state::{
     StarknetEventFilter, StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
     V02KeyFilter, V03KeyFilter,
 };
+pub use state_update::insert_canonical_state_diff;
 
 use anyhow::Context;
 use r2d2::Pool;
