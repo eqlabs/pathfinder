@@ -151,7 +151,7 @@ where
                         let tx = db_conn.transaction().context("db tx")?;
                             RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(ethereum_block_number)))?;
                             tx.commit().context("db tx commit")?;
-                            tracing::info!(block=ethereum_block_number, "L1 state update");
+                            tracing::info!(block=ethereum_block_number, "L1 head update");
                         },
                         Err(e) => tracing::error!("{e}"),
                     }

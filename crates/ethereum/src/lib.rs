@@ -155,7 +155,7 @@ pub async fn bsearch_starknet_matching_block(
         } else {
             lo = m + 1;
         }
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
     Err(anyhow::anyhow!("No matching block found"))
 }
@@ -170,6 +170,7 @@ impl EthereumClient {
             .await?
             .json()
             .await?;
+        tracing::debug!(method=?request["method"], result=?response["result"], "L1 call");
         Ok(response["result"].clone())
     }
 
