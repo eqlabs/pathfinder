@@ -145,7 +145,7 @@ pub async fn bsearch_starknet_block(
     println!("block: {block_number}");
     while lo < hi {
         let m = lo + (hi - lo) / 2;
-        let block = get_starknet_block_num(&client, m).await?;
+        let block = get_starknet_block_num(client, m).await?;
         println!("checking: {m} = {block} (lo={lo} hi={hi})");
         if block.as_u64() == block_number {
             // Early exit: we are good with any block, not necessary the lowest one
@@ -186,6 +186,7 @@ impl EthereumClient {
         get_u256(&result)
     }
 
+    #[allow(dead_code)] // TODO(SM): use or remove
     async fn get_block_hash(&self, number: U256) -> anyhow::Result<H256> {
         let result = self
             .call_rpc(serde_json::json!({
