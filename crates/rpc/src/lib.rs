@@ -134,8 +134,9 @@ pub mod test_utils {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, StarknetBlock,
-        StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
+        insert_canonical_state_diff, types::CompressedContract, CanonicalBlocksTable,
+        ContractCodeTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+        StarknetTransactionsTable, Storage,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::{
@@ -155,6 +156,7 @@ pub mod test_utils {
     pub fn setup_storage() -> Storage {
         use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
+        use pathfinder_storage::types::state_update::StateDiff;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
@@ -171,6 +173,17 @@ pub mod test_utils {
         let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
         let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
         let class2_hash = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
+
+        let state_diff0 = StateDiff::default()
+            .add_deployed_contract(contract0_addr, class0_hash)
+            .add_nonce_update(contract0_addr, ContractNonce(felt!("0x1")));
+
+        let state_diff1 = StateDiff::default().add_deployed_contract(contract1_addr, class1_hash);
+
+        let state_diff2 = StateDiff::default()
+            .add_deployed_contract(contract2_addr, class2_hash)
+            .add_nonce_update(contract1_addr, ContractNonce(felt!("0x10")))
+            .add_nonce_update(contract2_addr, ContractNonce(felt!("0xfeed")));
 
         let contract0_update = vec![];
 
@@ -424,6 +437,10 @@ pub mod test_utils {
             .unwrap();
         StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
             .unwrap();
+
+        insert_canonical_state_diff(&db_txn, block0.number, &state_diff0).unwrap();
+        insert_canonical_state_diff(&db_txn, block1.number, &state_diff1).unwrap();
+        insert_canonical_state_diff(&db_txn, block2.number, &state_diff2).unwrap();
 
         db_txn.commit().unwrap();
         storage

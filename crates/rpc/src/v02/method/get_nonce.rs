@@ -1,7 +1,9 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
+use crate::v02::method::get_nonce::database::get_nonce_at_block;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
+use pathfinder_storage::StarknetBlocksTable;
 use starknet_gateway_types::pending::PendingData;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -20,8 +22,7 @@ pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<GetNonceOutput, GetNonceError> {
-    use pathfinder_merkle_tree::StorageCommitmentTree;
-    use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
+    use pathfinder_storage::StarknetBlocksBlockId;
 
     // We can potentially read the nonce from pending without having to reach out to the database.
     let block_id = match input.block_id {
@@ -36,6 +37,8 @@ pub async fn get_nonce(
         BlockId::Number(number) => number.into(),
     };
 
+    let contract_address = input.contract_address;
+
     let storage = context.storage.clone();
     let span = tracing::Span::current();
     let jh = tokio::task::spawn_blocking(move || -> Result<_, GetNonceError> {
@@ -45,26 +48,125 @@ pub async fn get_nonce(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-            .context("Fetching storage commitment")?
-            .ok_or(GetNonceError::BlockNotFound)?;
+        let nonce = match block_id {
+            StarknetBlocksBlockId::Number(block_number) => {
+                // check that block exists
+                let latest = StarknetBlocksTable::get_latest_number(&tx)
+                    .context("Querying latest block number")?
+                    .ok_or(GetNonceError::BlockNotFound)?;
+                if block_number > latest {
+                    return Err(GetNonceError::BlockNotFound);
+                }
 
-        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
+                match get_nonce_at_block(&tx, contract_address, block_number)? {
+                    Some(nonce) => Ok(nonce),
+                    None => {
+                        database::contract_exists_at_block(&tx, contract_address, block_number)?
+                            .then_some(ContractNonce::default())
+                            .ok_or(GetNonceError::ContractNotFound)
+                    }
+                }
+            }
+            StarknetBlocksBlockId::Hash(block_hash) => {
+                // Get the block number from the hash.
+                let block_number = StarknetBlocksTable::get_number(&tx, block_hash)
+                    .context("Fetching block number")?
+                    .ok_or(GetNonceError::BlockNotFound)?;
 
-        let state_hash = storage_commitment_tree
-            .get(input.contract_address)
-            .context("Get contract state hash from storage commitment tree")?
-            .ok_or(GetNonceError::ContractNotFound)?;
-
-        let nonce = ContractsStateTable::get_nonce(&tx, state_hash)
-            .context("Reading contract nonce")?
-            // Since the contract does exist, the nonce should not be missing.
-            .context("Contract nonce is missing from database")?;
+                match get_nonce_at_block(&tx, contract_address, block_number)? {
+                    Some(nonce) => Ok(nonce),
+                    None => {
+                        database::contract_exists_at_block(&tx, contract_address, block_number)?
+                            .then_some(ContractNonce::default())
+                            .ok_or(GetNonceError::ContractNotFound)
+                    }
+                }
+            }
+            StarknetBlocksBlockId::Latest => {
+                match database::get_nonce_at_latest(&tx, contract_address)? {
+                    Some(nonce) => Ok(nonce),
+                    None => database::contract_exists_at_latest(&tx, contract_address)?
+                        .then_some(ContractNonce::default())
+                        .ok_or(GetNonceError::ContractNotFound),
+                }
+            }
+        }?;
 
         Ok(GetNonceOutput(nonce))
     });
     jh.await.context("Database read panic or shutting down")?
 }
+
+mod database {
+    use pathfinder_common::StarknetBlockNumber;
+    use rusqlite::{params, OptionalExtension, Transaction};
+
+    use super::*;
+
+    pub fn get_nonce_at_latest(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+    ) -> anyhow::Result<Option<ContractNonce>> {
+        tx.query_row(
+            r"SELECT nonce FROM nonce_updates 
+                WHERE contract_address = ? 
+                ORDER BY block_number DESC LIMIT 1",
+            params![contract_address],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Querying database for latest nonce")
+    }
+
+    pub fn get_nonce_at_block(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+        block_number: StarknetBlockNumber,
+    ) -> anyhow::Result<Option<ContractNonce>> {
+        tx.query_row(
+            r"SELECT nonce FROM nonce_updates 
+                WHERE contract_address = ? AND block_number <= ? 
+                ORDER BY block_number DESC LIMIT 1",
+            params![contract_address, block_number],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Querying database for latest nonce")
+    }
+
+    pub fn contract_exists_at_latest(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+    ) -> anyhow::Result<bool> {
+        let tf = tx.query_row(
+            r"SELECT EXISTS(
+                SELECT 1 FROM contract_updates 
+                    WHERE contract_address = ?
+            )",
+            params![contract_address],
+            |row| row.get(0),
+        )?;
+        Ok(tf)
+    }
+
+    pub fn contract_exists_at_block(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+        block_number: StarknetBlockNumber,
+    ) -> anyhow::Result<bool> {
+        let tf = tx.query_row(
+            r"SELECT EXISTS(
+                SELECT 1 FROM contract_updates 
+                    WHERE contract_address = ? AND block_number <= ?
+            )",
+            params![contract_address, block_number],
+            |row| row.get(0),
+        )?;
+        Ok(tf)
+    }
+}
+
+// 020CFA74EE3564B4CD5435CDACE0F9C4D43B939620E4A0BB5076105DF0A626C6
 
 /// Returns the contract's pending nonce.
 async fn get_pending_nonce(
@@ -217,6 +319,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
+
         assert_eq!(nonce.0, ContractNonce::ZERO);
     }
 
