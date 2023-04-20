@@ -82,6 +82,8 @@ pub async fn sync(
         let mut next_block = None;
         let mut next_state_update = None;
 
+        // TODO(SM): use `pathfinder_ethereum::bsearch_starknet_block()` to verify state_root of a block against L1.
+
         let (block, commitments) = loop {
             match download_block(
                 next,

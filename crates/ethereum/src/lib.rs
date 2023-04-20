@@ -79,6 +79,21 @@ pub mod core_contract {
     pub const TESTNET2: [u8; 20] = Decoder::Hex.decode(b"a4eD3aD27c294565cB0DCc993BDdCC75432D498c");
     pub const INTEGRATION: [u8; 20] =
         Decoder::Hex.decode(b"d5c325D183C592C94998000C5e0EED9e6655c020");
+
+    pub fn get_init_block(addr: &super::EthereumAddress) -> u64 {
+        let addr: [u8; 20] = addr.0.as_bytes().try_into().unwrap_or_default();
+        match addr {
+            // https://etherscan.io/tx/0x4810a17f4fa3460fa20990b786d0b5be1be66a2cdc261e85f8e482e2ea06ba54
+            MAINNET => 13620297,
+            // https://goerli.etherscan.io/tx/0x87f8705d0f9d39409519f57bd1633617417223a9dec38d7b57fc4a6560d2e7fd
+            TESTNET => 5853128,
+            // https://goerli.etherscan.io/tx/0x15f897201c15b66d12f431d97b1118be5640530e539f3ee3c7f5dacf3e9e2b7b
+            TESTNET2 => 7843384,
+            // https://goerli.etherscan.io/tx/0xbfeb9011a4a8c203467dca1e0fe312df8d6ce9764118f369fff6f98dea2f5cad
+            INTEGRATION => 5986750,
+            _ => 0,
+        }
+    }
 }
 
 fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
@@ -94,6 +109,56 @@ fn get_h256(value: &serde_json::Value) -> anyhow::Result<H256> {
         .as_str()
         .and_then(|txt| H256::from_str(txt).ok())
         .ok_or(anyhow::anyhow!("Failed to fetch H256"))
+}
+
+async fn get_starknet_block_num(
+    client: &StarknetEthereumClient,
+    eth_block_num: U256,
+) -> anyhow::Result<U256> {
+    client
+        .eth
+        .call_rpc(serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "eth_call",
+            "params": [
+                {
+                    "to": client.l1_addr,
+                    "value": "0x0",
+                    "data": "0x35befa5d"
+                },
+                eth_block_num
+            ],
+            "id": 0
+        }))
+        .await
+        .and_then(|x| get_u256(&x))
+}
+
+pub async fn bsearch_starknet_block(
+    client: &StarknetEthereumClient,
+    block_number: u64,
+) -> anyhow::Result<U256> {
+    let min_block = U256::from(core_contract::get_init_block(&client.l1_addr));
+    let max_block = client.eth.get_block_number().await?;
+    let mut hi = max_block;
+    let mut lo = min_block;
+    println!("block: {block_number}");
+    while lo < hi {
+        let m = lo + (hi - lo) / 2;
+        let block = get_starknet_block_num(&client, m).await?;
+        println!("checking: {m} = {block} (lo={lo} hi={hi})");
+        if block.as_u64() == block_number {
+            // Early exit: we are good with any block, not necessary the lowest one
+            return Ok(m);
+        }
+        if block_number < block.as_u64() {
+            hi = m;
+        } else {
+            lo = m + 1;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    Err(anyhow::anyhow!("No matching block found"))
 }
 
 impl EthereumClient {
@@ -119,6 +184,18 @@ impl EthereumClient {
             }))
             .await?;
         get_u256(&result)
+    }
+
+    async fn get_block_hash(&self, number: U256) -> anyhow::Result<H256> {
+        let result = self
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_getBlockByNumber",
+                "params": [number, false],
+                "id" :0
+            }))
+            .await?;
+        get_h256(&result["hash"])
     }
 
     async fn get_latest_block(&self) -> anyhow::Result<(U256, H256)> {
@@ -229,6 +306,20 @@ mod tests {
     use httpmock::prelude::*;
     use primitive_types::H160;
     use std::str::FromStr;
+
+    #[tokio::test]
+    #[ignore] // TODO(SM): make hermetic
+    async fn test_bsearch_starknet_block() {
+        let url = Url::parse("https://eth.llamarpc.com").expect("url");
+        let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
+        let eth = StarknetEthereumClient::new(EthereumClient::new(url), l1_addr);
+
+        let block = U256::from_str("0x7eeb").expect("block");
+
+        let expected = U256::from(16996031u64);
+        let found = bsearch_starknet_block(&eth, block.as_u64()).await.expect("found");
+        assert!(found >= expected, "{} >= {}", found, expected);
+    }
 
     #[tokio::test]
     async fn test_get_latest_block() {

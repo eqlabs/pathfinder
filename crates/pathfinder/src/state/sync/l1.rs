@@ -14,6 +14,7 @@ pub async fn sync(
     loop {
         tokio::time::sleep(backoff.delay()).await;
 
+        // TODO(SM): with block state_root validation against L1 per block, L1 sync might be unnecessary at all.
         match ethereum_client.get_starknet_state().await {
             Ok(state) => {
                 backoff.success();
