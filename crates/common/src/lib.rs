@@ -20,7 +20,7 @@ macros::starkhash251::deserialization!(ContractAddress);
 
 /// A nonce that is associated with a particular deployed StarkNet contract
 /// distinguishing it from other contracts that use the same contract class.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ContractNonce(pub Felt);
 
 impl ContractNonce {
