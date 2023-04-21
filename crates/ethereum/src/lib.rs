@@ -160,6 +160,30 @@ pub async fn bsearch_starknet_matching_block(
     Err(anyhow::anyhow!("No matching block found"))
 }
 
+// TODO(SM): use or remove
+#[allow(dead_code)]
+async fn find_matching_ethereum_block(
+    client: &StarknetEthereumClient,
+    block_number: u64,
+    block_root: &[u8],
+    current_head: u64,
+) -> anyhow::Result<u64> {
+    let eth_block_num = bsearch_starknet_matching_block(client, block_number, current_head).await?;
+    let eth_block_hash = client.eth.get_block_hash(eth_block_num).await?;
+    let expected_state_root = client.get_starknet_state_root(&eth_block_hash).await?;
+    let expected_state_root = expected_state_root.as_bytes();
+
+    if expected_state_root == block_root {
+        Ok(eth_block_num.as_u64())
+    } else {
+        Err(anyhow::anyhow!(
+            "State root did not match L1 ({:?}) for block {}.",
+            expected_state_root,
+            block_number,
+        ))
+    }
+}
+
 impl EthereumClient {
     async fn call_rpc(&self, request: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let response: serde_json::Value = self

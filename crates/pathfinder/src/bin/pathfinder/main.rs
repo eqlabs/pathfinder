@@ -94,6 +94,7 @@ async fn main() -> anyhow::Result<()> {
         context.network,
         context.gateway.clone(),
         sync_state.clone(),
+        state::l1::sync,
         state::l2::sync,
         pending_state.clone(),
         pending_interval,
