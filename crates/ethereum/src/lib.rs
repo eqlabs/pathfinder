@@ -328,18 +328,50 @@ mod tests {
     use std::str::FromStr;
 
     #[tokio::test]
-    #[ignore] // TODO(SM): make hermetic
     async fn test_bsearch_starknet_matching_block() {
-        let url = Url::parse("https://eth.llamarpc.com").expect("url");
+        let server = MockServer::start_async().await;
+
+        let mocks = vec![
+            server.mock(|when, then| {
+                when.path("/")
+                    .method(POST)
+                    .header("Content-type", "application/json")
+                    .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_blockNumber","params":[]}"#);
+                then.status(200)
+                    .header("Content-type", "application/json")
+                    .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x104d733"}"#);
+            }),
+            server.mock(|when, then| {
+                when.path("/")
+                    .method(POST)
+                    .header("Content-type", "application/json")
+                    .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0xea55be"]}"#);
+                then.status(200)
+                    .header("Content-type", "application/json")
+                    .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x00000000000000000000000000000000000000000000000000000000000010f5"}"#);
+            }),
+            server.mock(|when, then| {
+                when.path("/")
+                    .method(POST)
+                    .header("Content-type", "application/json")
+                    .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_call","params":[{"data":"0x35befa5d","to":"0xc662c410c0ecf747543f5ba90660f6abebd9c8c4","value":"0x0"},"0xf79679"]}"#);
+                then.status(200)
+                    .header("Content-type", "application/json")
+                    .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x000000000000000000000000000000000000000000000000000000000000430d"}"#);
+            }),
+        ];
+
+        let url = Url::parse(&server.url("/")).expect("url");
         let l1_addr = EthereumAddress(H160::from_slice(&core_contract::MAINNET));
         let eth = StarknetEthereumClient::new(EthereumClient::new(url), l1_addr);
 
-        let block = U256::from_str("0x7eeb").expect("block");
-
-        let expected = U256::from(16996031u64);
+        let block = U256::from_str("0x430d").expect("block");
         let found = bsearch_starknet_matching_block(&eth, block.as_u64(), 0)
             .await
             .expect("found");
+        let expected = U256::from_str("0xf79679").expect("expected");
+
+        mocks.into_iter().for_each(|mock| mock.assert());
         assert!(found >= expected, "{} >= {}", found, expected);
     }
 
