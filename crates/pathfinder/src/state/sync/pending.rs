@@ -184,7 +184,9 @@ mod tests {
             .await
             .expect("Channel should be dropped");
         assert_matches!(result, None);
-        jh.await.unwrap().unwrap();
+
+        let (full_block, _) = jh.await.unwrap().unwrap();
+        assert_eq!(full_block.unwrap(), *NEXT_BLOCK);
     }
 
     #[tokio::test]
@@ -194,19 +196,20 @@ mod tests {
 
         // Construct some full diff
         let pending_diff = PENDING_DIFF.clone();
-        let full_diff = MaybePendingStateUpdate::StateUpdate(StateUpdate {
+        let full_diff = StateUpdate {
             block_hash: NEXT_BLOCK.block_hash,
             new_root: StateCommitment(felt!("0x12")),
             old_root: pending_diff.old_root,
             state_diff: pending_diff.state_diff,
-        });
+        };
+        let full_diff0 = full_diff.clone();
 
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
-            .returning(move |_| Ok(full_diff.clone()));
+            .returning(move |_| Ok(MaybePendingStateUpdate::StateUpdate(full_diff0.clone())));
 
         let jh = tokio::spawn(async move {
             poll_pending(
@@ -222,7 +225,9 @@ mod tests {
             .await
             .expect("Channel should be dropped");
         assert_matches!(result, None);
-        jh.await.unwrap().unwrap();
+
+        let (_, full_state_update) = jh.await.unwrap().unwrap();
+        assert_eq!(full_state_update.unwrap(), full_diff);
     }
 
     #[tokio::test]
