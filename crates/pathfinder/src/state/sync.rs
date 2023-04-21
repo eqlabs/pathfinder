@@ -126,7 +126,7 @@ where
                     let tx = db_conn.transaction().context("db tx")?;
 
                     let l1_l2_head = RefsTable::get_l1_l2_head(&tx)?.map(|x| x.0).unwrap_or_default();
-                    if update.block_number <= l1_l2_head {
+                    if update.block_number < l1_l2_head {
                         tracing::info!(block=update.block_number, "L1 reorg detected");
                     }
                     RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(update.block_number)))?;
@@ -135,7 +135,6 @@ where
                     if let Some(block) = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Number(StarknetBlockNumber(update.block_number)))? {
                         if block.root.0.as_ref() != update.global_root.as_bytes() {
                             tracing::warn!(block=update.block_number, "Block root mismatch (L1={}, DB={})", update.global_root, block.root);
-                            // TODO(SM): shut down? ignore?
                         }
                     }
 
