@@ -1,3 +1,5 @@
+use starknet_gateway_types::reply::{Block, StateUpdate};
+
 /// Poll's the Sequencer's pending block and emits [Event::Pending](super::l2::Event::Pending)
 /// until the pending block is no longer connected to our current head.
 ///
@@ -5,6 +7,8 @@
 /// - `pending.parent_hash != head`, or
 /// - `pending` is a fully formed block and not [PendingBlock](starknet_gateway_types::reply::MaybePendingBlock::Pending), or
 /// - the state update parent root does not match head.
+///
+/// A full block or full state update can be returned from this function if it is encountered during polling.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
     sequencer: &impl starknet_gateway_client::ClientApi,
@@ -13,7 +17,7 @@ pub async fn poll_pending(
         pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
     use anyhow::Context;
     use pathfinder_common::BlockId;
     use std::sync::Arc;
@@ -34,14 +38,14 @@ pub async fn poll_pending(
             }
             MaybePendingBlock::Block(block) => {
                 tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
-                return Ok(());
+                return Ok((Some(block), None));
             }
             MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
                 tracing::trace!(
                     pending=%pending.parent_hash, head=%head.0,
                     "Pending block's parent hash does not match head, exiting pending mode"
                 );
-                return Ok(());
+                return Ok((None, None));
             }
             MaybePendingBlock::Pending(pending) => pending,
         };
@@ -61,20 +65,20 @@ pub async fn poll_pending(
             Ok(gateway_result) => gateway_result,
             Err(_timeout) => {
                 tracing::debug!("Pending state update query timed out, exiting pending mode.");
-                return Ok(());
+                return Ok((None, None));
             }
         }
         .context("Downloading pending state update")?;
 
         match state_update {
-            MaybePendingStateUpdate::StateUpdate(_) => {
+            MaybePendingStateUpdate::StateUpdate(state_update) => {
                 tracing::trace!("Found full state update, exiting pending mode.");
-                return Ok(());
+                return Ok((None, Some(state_update)));
             }
             MaybePendingStateUpdate::Pending(pending_state_update) => {
                 if pending_state_update.old_root != head.1 {
                     tracing::trace!(pending=%pending_state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
-                    return Ok(());
+                    return Ok((None, None));
                 }
 
                 // Emit new pending data.

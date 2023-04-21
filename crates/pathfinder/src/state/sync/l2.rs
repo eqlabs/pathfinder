@@ -1,4 +1,5 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
+use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
     CasmHash, Chain, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber,
@@ -75,10 +76,15 @@ pub async fn sync(
             None => (StarknetBlockNumber::GENESIS, None),
         };
         let t_block = std::time::Instant::now();
+        // Next block and state update which we can get for free when exiting poll pending mode
+        let mut next_block = None;
+        let mut next_state_update = None;
 
         let (block, commitments) = loop {
             match download_block(
                 next,
+                // Reuse the next full block if we got it for free when polling pending
+                std::mem::take(&mut next_block),
                 chain,
                 head_meta.map(|h| h.1),
                 &sequencer,
@@ -94,7 +100,7 @@ pub async fn sync(
                             tracing::trace!("Entering pending mode");
                             let head = head_meta
                                 .expect("Head hash should exist when entering pending mode");
-                            crate::state::sync::pending::poll_pending(
+                            (next_block, next_state_update) = pending::poll_pending(
                                 tx_event.clone(),
                                 &sequencer,
                                 (head.1, head.2),
@@ -147,10 +153,18 @@ pub async fn sync(
         // Unwrap in both block and state update is safe as the block hash always exists (unless we query for pending).
         let block_hash = block.block_hash;
         let t_update = std::time::Instant::now();
-        let state_update = sequencer
-            .state_update(block_hash.into())
-            .await
-            .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?;
+
+        let state_update = match next_state_update {
+            // Reuse the next full state update if we got it for free when polling pending
+            Some(state_update) if state_update.block_hash == block_hash => {
+                MaybePendingStateUpdate::StateUpdate(state_update)
+            }
+            // We were unlucky or poll pending is disabled
+            Some(_) | None => sequencer
+                .state_update(block_hash.into())
+                .await
+                .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?,
+        };
 
         let state_update = match state_update {
             MaybePendingStateUpdate::StateUpdate(su) => su,
@@ -324,6 +338,8 @@ pub enum BlockValidationMode {
 
 async fn download_block(
     block_number: StarknetBlockNumber,
+    // Poll pending could exit when it encountered a finalized block, so we'd like to reuse it
+    next_block: Option<Block>,
     chain: Chain,
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl ClientApi,
@@ -334,7 +350,12 @@ async fn download_block(
         error::StarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
     };
 
-    let result = sequencer.block(block_number.into()).await;
+    let result = match next_block {
+        // Reuse a finalized block downloaded before pending mode exited
+        Some(block) if block.block_number == block_number => Ok(MaybePendingBlock::Block(block)),
+        // Bad luck or poll pending is disabled
+        Some(_) | None => sequencer.block(block_number.into()).await,
+    };
 
     match result {
         Ok(MaybePendingBlock::Block(block)) => {
@@ -436,6 +457,7 @@ async fn reorg(
 
         match download_block(
             previous_block_number,
+            None,
             chain,
             Some(previous.0),
             sequencer,
