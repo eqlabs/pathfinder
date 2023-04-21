@@ -140,10 +140,7 @@ where
 
                     tx.commit().context("db tx commit")?;
                 },
-                None => {
-                    tracing::warn!("L1 sync stop");
-                    return Ok(());
-                }
+                None => unreachable!()
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {
