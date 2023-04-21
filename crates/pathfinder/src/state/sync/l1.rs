@@ -20,7 +20,7 @@ pub async fn sync(
             }
             Err(e) => {
                 backoff.failure();
-                tracing::error!(reason=?e, "L1 call failed");
+                tracing::debug!(reason=?e, "L1 call failed");
             }
         }
     }
