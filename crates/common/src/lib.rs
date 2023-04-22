@@ -66,8 +66,6 @@ macros::starkhash251::deserialization!(ClassCommitment);
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ClassCommitmentLeafHash(pub Felt);
 
-macros::starkhash::to_from_sql!(ClassCommitmentLeafHash);
-
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -504,33 +502,12 @@ impl std::fmt::Display for Chain {
     }
 }
 
-// these types are used in sequencer tests, which require special fixed width representation
-// FIXME: it'd be better if these had normal varlen display and lenient parsing.
-macros::fmt::thin_debug!(ContractAddress);
-macros::fmt::thin_display!(ContractAddress);
-macros::starkhash::to_from_sql!(ContractAddress);
-
-macros::fmt::thin_debug!(StarknetTransactionHash);
-macros::fmt::thin_display!(StarknetTransactionHash);
-macros::starkhash::to_from_sql!(StarknetTransactionHash);
-
-macros::fmt::thin_debug!(ClassHash);
-macros::fmt::thin_display!(ClassHash);
-macros::starkhash::to_from_sql!(ClassHash);
-
-macros::fmt::thin_debug!(SierraHash);
-macros::fmt::thin_display!(SierraHash);
-macros::starkhash::to_from_sql!(SierraHash);
-
-macros::fmt::thin_debug!(CasmHash);
-macros::fmt::thin_display!(CasmHash);
-macros::starkhash::to_from_sql!(CasmHash);
-
-macros::fmt::thin_debug!(ClassCommitment);
-macros::fmt::thin_display!(ClassCommitment);
-macros::starkhash::to_from_sql!(ClassCommitment);
-
 macros::starkhash::common_newtype!(
+    CasmHash,
+    ClassCommitment,
+    ClassCommitmentLeafHash,
+    ClassHash,
+    ContractAddress,
     ContractAddressSalt,
     ContractNonce,
     ContractStateHash,
@@ -540,6 +517,7 @@ macros::starkhash::common_newtype!(
     CallParam,
     ConstructorParam,
     CallResultValue,
+    SierraHash,
     StateCommitment,
     StorageAddress,
     StorageValue,
@@ -554,6 +532,7 @@ macros::starkhash::common_newtype!(
     EventData,
     EventKey,
     SequencerAddress,
+    StarknetTransactionHash,
     TransactionNonce,
 );
 
