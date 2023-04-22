@@ -502,6 +502,12 @@ impl std::fmt::Display for Chain {
     }
 }
 
+macros::starkhash::common_newtype_with_compressed_sql!(
+    ContractNonce,
+    StorageValue,
+    TransactionNonce
+);
+
 macros::starkhash::common_newtype!(
     ByteCodeOffset,
     CallParam,
@@ -513,7 +519,6 @@ macros::starkhash::common_newtype!(
     ConstructorParam,
     ContractAddress,
     ContractAddressSalt,
-    ContractNonce,
     ContractStateHash,
     ContractRoot,
     EntryPoint,
@@ -529,10 +534,8 @@ macros::starkhash::common_newtype!(
     StarknetTransactionHash,
     StateCommitment,
     StorageAddress,
-    StorageValue,
     StorageCommitment,
     TransactionCommitment,
-    TransactionNonce,
     TransactionSignatureElem,
 );
 
