@@ -5,15 +5,13 @@ use crate::reply::transaction::{
     DeployTransaction, InvokeTransaction, InvokeTransactionV0, InvokeTransactionV1,
     L1HandlerTransaction, Transaction,
 };
-use pathfinder_common::StarknetTransactionHash;
+use pathfinder_common::{StarknetTransactionHash, TransactionVersion};
 
 use crate::class_hash::truncated_keccak;
-use anyhow::{Context, Error, Result};
-use pathfinder_common::{felt_bytes, ChainId, ClassHash};
-use serde::Serialize;
+use anyhow::{Context, Result};
+use pathfinder_common::{felt_bytes, ChainId};
 use sha3::{Digest, Keccak256};
 use stark_hash::{Felt, HashChain};
-use stark_poseidon::PoseidonHasher;
 
 #[derive(Debug, PartialEq)]
 pub enum ComputedTransactionHash {
@@ -46,9 +44,8 @@ pub fn compute_transaction_hash(
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
     match txn {
-        Transaction::Declare(DeclareTransaction::V0(txn) | DeclareTransaction::V1(txn)) => {
-            compute_declare_v0v1_hash(txn)
-        }
+        Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
+        Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn),
         Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn),
         Transaction::Deploy(txn) => compute_deploy_hash(txn, chain_id),
         Transaction::DeployAccount(txn) => compute_deploy_account_hash(txn),
@@ -58,7 +55,38 @@ pub fn compute_transaction_hash(
     }
 }
 
-fn compute_declare_v0v1_hash(_txn: &DeclareTransactionV0V1) -> Result<ComputedTransactionHash> {
+/// Computes declare v0 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v0_hash_calculation_2):
+/// ```text=
+/// declare_v0_tx_hash = h("declare", version, sender_address,
+///     0, h([]), max_fee, chain_id, class_hash)
+/// ```
+///
+/// FIXME Tell SW to fix their formula
+///
+/// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
+fn compute_declare_v0_hash(
+    txn: &DeclareTransactionV0V1,
+    chain_id: ChainId,
+) -> Result<ComputedTransactionHash> {
+    let mut h = HashChain::default();
+    h.update(felt_bytes!(b"declare"));
+    h.update(
+        Felt::from_be_slice(TransactionVersion::ZERO.0.as_bytes())
+            .context("Converting version into Felt")?,
+    );
+    h.update(*txn.sender_address.get());
+    h.update(Felt::ZERO);
+    h.update(HashChain::default().finalize());
+    h.update(txn.max_fee.0);
+    h.update(chain_id.0);
+    h.update(txn.class_hash.0);
+
+    Ok(ComputedTransactionHash::Deploy(StarknetTransactionHash(
+        h.finalize(),
+    )))
+}
+
+fn compute_declare_v1_hash(_txn: &DeclareTransactionV0V1) -> Result<ComputedTransactionHash> {
     todo!()
 }
 
@@ -85,7 +113,7 @@ fn compute_deploy_hash(
     );
     h.update(*txn.contract_address.get());
     let c = {
-        let mut keccak = sha3::Keccak256::default();
+        let mut keccak = Keccak256::default();
         keccak.update(b"constructor");
         truncated_keccak(<[u8; 32]>::from(keccak.finalize()))
     };
@@ -165,7 +193,7 @@ mod tests {
         let l1_handler_v0_790k = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_790K);
 
         [
-            // declare_v0_231579,
+            declare_v0_231579,
             // declare_v1_463319,
             // declare_v1_797215,
             // declare_v2_797220,
