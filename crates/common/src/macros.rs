@@ -105,16 +105,10 @@ pub(super) mod i64_backed_u64 {
 
 /// Macros for general StarkHash newtypes.
 pub(super) mod starkhash {
-
-    /// Adds the common ToSql and FromSql implementations for the type.
+    /// Implements [rusqlite::ToSql] for the target [Felt](stark_hash::Felt) newtype.
     ///
-    /// This avoids having to implement the traits over at `stark_hash` which would require a
-    /// dependency to `rusqlite` over at `stark_hash`.
-    ///
-    /// This allows direct use of the values as sql parameters or reading them from the rows. It should
-    /// be noted that `Option<_>` must be used to when reading a nullable column, as this
-    /// implementation will error at `as_blob()?`.
-    macro_rules! to_from_sql {
+    /// Writes the full underlying bytes (no compression).
+    macro_rules! to_sql {
         ($target:ty) => {
             impl rusqlite::ToSql for $target {
                 fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
@@ -122,7 +116,32 @@ pub(super) mod starkhash {
                     Ok(ToSqlOutput::Borrowed(ValueRef::Blob(self.0.as_be_bytes())))
                 }
             }
+        };
+    }
 
+    /// Implements [rusqlite::ToSql] for the target [Felt] newtype.
+    ///
+    /// Same as [to_sql!] except it compresses the [Felt] by skipping leading zeros.
+    ///
+    /// [Felt]: stark_hash::Felt
+    macro_rules! to_sql_compressed {
+        ($target:ty) => {
+            impl rusqlite::ToSql for $target {
+                fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+                    use rusqlite::types::{ToSqlOutput, ValueRef};
+                    let bytes = self.0.as_be_bytes();
+                    let num_zeroes = bytes.iter().take_while(|v| **v == 0).count();
+                    Ok(ToSqlOutput::Borrowed(ValueRef::Blob(&bytes[num_zeroes..])))
+                }
+            }
+        };
+    }
+
+    /// Implements [rusqlite::types::FromSql] for the target [Felt](stark_hash::Felt) newtype.
+    ///
+    /// Compatible with both [to_sql!] and [to_sql_compressed!].
+    macro_rules! from_sql {
+        ($target:ty) => {
             impl rusqlite::types::FromSql for $target {
                 fn column_result(
                     value: rusqlite::types::ValueRef<'_>,
@@ -140,7 +159,8 @@ pub(super) mod starkhash {
     /// with single field.
     macro_rules! common_newtype {
         ($target:ty) => {
-            crate::macros::starkhash::to_from_sql!($target);
+            crate::macros::starkhash::to_sql!($target);
+            crate::macros::starkhash::from_sql!($target);
             crate::macros::fmt::thin_debug!($target);
             crate::macros::fmt::thin_display!($target);
         };
@@ -151,7 +171,25 @@ pub(super) mod starkhash {
         };
     }
 
-    pub(crate) use {common_newtype, to_from_sql};
+    /// Same as [common_newtype] except the [rusqlite::ToSql] implementation uses [to_sql_compressed!]
+    /// instead of [to_sql].
+    macro_rules! common_newtype_with_compressed_sql {
+        ($target:ty) => {
+            $crate::macros::starkhash::to_sql_compressed!($target);
+            $crate::macros::starkhash::from_sql!($target);
+            $crate::macros::fmt::thin_debug!($target);
+            $crate::macros::fmt::thin_display!($target);
+        };
+
+        ($head:ty, $($tail:ty),+ $(,)?) => {
+            $crate::macros::starkhash::common_newtype_with_compressed_sql!($head);
+            $crate::macros::starkhash::common_newtype_with_compressed_sql!($($tail),+);
+        };
+    }
+
+    pub(crate) use {
+        common_newtype, common_newtype_with_compressed_sql, from_sql, to_sql, to_sql_compressed,
+    };
 }
 
 pub(super) mod starkhash251 {

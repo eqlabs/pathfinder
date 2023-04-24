@@ -66,8 +66,6 @@ macros::starkhash251::deserialization!(ClassCommitment);
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ClassCommitmentLeafHash(pub Felt);
 
-macros::starkhash::to_from_sql!(ClassCommitmentLeafHash);
-
 /// A StarkNet contract's state hash. This is the value stored
 /// in the global state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -504,57 +502,41 @@ impl std::fmt::Display for Chain {
     }
 }
 
-// these types are used in sequencer tests, which require special fixed width representation
-// FIXME: it'd be better if these had normal varlen display and lenient parsing.
-macros::fmt::thin_debug!(ContractAddress);
-macros::fmt::thin_display!(ContractAddress);
-macros::starkhash::to_from_sql!(ContractAddress);
-
-macros::fmt::thin_debug!(StarknetTransactionHash);
-macros::fmt::thin_display!(StarknetTransactionHash);
-macros::starkhash::to_from_sql!(StarknetTransactionHash);
-
-macros::fmt::thin_debug!(ClassHash);
-macros::fmt::thin_display!(ClassHash);
-macros::starkhash::to_from_sql!(ClassHash);
-
-macros::fmt::thin_debug!(SierraHash);
-macros::fmt::thin_display!(SierraHash);
-macros::starkhash::to_from_sql!(SierraHash);
-
-macros::fmt::thin_debug!(CasmHash);
-macros::fmt::thin_display!(CasmHash);
-macros::starkhash::to_from_sql!(CasmHash);
-
-macros::fmt::thin_debug!(ClassCommitment);
-macros::fmt::thin_display!(ClassCommitment);
-macros::starkhash::to_from_sql!(ClassCommitment);
+macros::starkhash::common_newtype_with_compressed_sql!(
+    ContractNonce,
+    StorageValue,
+    TransactionNonce
+);
 
 macros::starkhash::common_newtype!(
+    ByteCodeOffset,
+    CallParam,
+    CallResultValue,
+    CasmHash,
+    ClassCommitment,
+    ClassCommitmentLeafHash,
+    ClassHash,
+    ConstructorParam,
+    ContractAddress,
     ContractAddressSalt,
-    ContractNonce,
     ContractStateHash,
     ContractRoot,
     EntryPoint,
-    ByteCodeOffset,
-    CallParam,
-    ConstructorParam,
-    CallResultValue,
-    StateCommitment,
-    StorageAddress,
-    StorageValue,
-    StorageCommitment,
-    StarknetBlockHash,
     EventCommitment,
-    TransactionCommitment,
-    TransactionSignatureElem,
+    EventData,
+    EventKey,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem,
-    EventData,
-    EventKey,
     SequencerAddress,
-    TransactionNonce,
+    SierraHash,
+    StarknetBlockHash,
+    StarknetTransactionHash,
+    StateCommitment,
+    StorageAddress,
+    StorageCommitment,
+    TransactionCommitment,
+    TransactionSignatureElem,
 );
 
 macros::fmt::thin_display!(StarknetBlockNumber);

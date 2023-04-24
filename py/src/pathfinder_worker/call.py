@@ -112,7 +112,7 @@ except ModuleNotFoundError:
 
 
 # used from tests, and the query which asserts that the schema is of expected version.
-EXPECTED_SCHEMA_REVISION = 30
+EXPECTED_SCHEMA_REVISION = 31
 EXPECTED_CAIRO_VERSION = "0.11.0.2"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
@@ -827,6 +827,12 @@ class SqliteAdapter(Storage):
             # "contract_state:00..00" key, for which it hopes to find this to
             # know that the leaf and the contract state did not exist.
             return NOT_FOUND_CONTRACT_STATE
+
+        # Nonces are stored with leading zeros stripped for compression.
+        # This means 0x0 is stored as an empty array but cairo-lang expects
+        # '0x0' and not '0x' so we assign at least one byte here.
+        if len(nonce) == 0:
+            nonce = bytearray(1)
 
         return (
             b'{"storage_commitment_tree": {"root": "'
