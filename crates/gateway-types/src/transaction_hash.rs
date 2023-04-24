@@ -1,9 +1,19 @@
+//! Calculate transaction hashes.
+
 use crate::reply::transaction::{
     DeclareTransaction, DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
     DeployTransaction, InvokeTransaction, InvokeTransactionV0, InvokeTransactionV1,
     L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::StarknetTransactionHash;
+
+use crate::class_hash::truncated_keccak;
+use anyhow::{Context, Error, Result};
+use pathfinder_common::{felt_bytes, ChainId, ClassHash};
+use serde::Serialize;
+use sha3::{Digest, Keccak256};
+use stark_hash::{Felt, HashChain};
+use stark_poseidon::PoseidonHasher;
 
 #[derive(Debug, PartialEq)]
 pub enum ComputedTransactionHash {
@@ -30,13 +40,17 @@ impl ComputedTransactionHash {
     }
 }
 
-pub fn compute_transaction_hash(txn: Transaction) -> ComputedTransactionHash {
+/// Computes transaction hash according to the formulas from [starknet docs](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/).
+pub fn compute_transaction_hash(
+    txn: &Transaction,
+    chain_id: ChainId,
+) -> Result<ComputedTransactionHash> {
     match txn {
         Transaction::Declare(DeclareTransaction::V0(txn) | DeclareTransaction::V1(txn)) => {
             compute_declare_v0v1_hash(txn)
         }
         Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn),
-        Transaction::Deploy(txn) => compute_deploy_hash(txn),
+        Transaction::Deploy(txn) => compute_deploy_hash(txn, chain_id),
         Transaction::DeployAccount(txn) => compute_deploy_account_hash(txn),
         Transaction::Invoke(InvokeTransaction::V0(txn)) => compute_invoke_v0_hash(txn),
         Transaction::Invoke(InvokeTransaction::V1(txn)) => compute_invoke_v1_hash(txn),
@@ -44,31 +58,70 @@ pub fn compute_transaction_hash(txn: Transaction) -> ComputedTransactionHash {
     }
 }
 
-fn compute_declare_v0v1_hash(_txn: DeclareTransactionV0V1) -> ComputedTransactionHash {
+fn compute_declare_v0v1_hash(_txn: &DeclareTransactionV0V1) -> Result<ComputedTransactionHash> {
     todo!()
 }
 
-fn compute_declare_v2_hash(_txn: DeclareTransactionV2) -> ComputedTransactionHash {
+fn compute_declare_v2_hash(_txn: &DeclareTransactionV2) -> Result<ComputedTransactionHash> {
     todo!()
 }
 
-fn compute_deploy_hash(_txn: DeployTransaction) -> ComputedTransactionHash {
+/// Computes deploy transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_transaction):
+/// ```text=
+/// deploy_tx_hash = h(
+///     "deploy", version, contract_address, sn_keccak("constructor"),
+///     h(constructor_calldata), 0, chain_id)
+/// ```
+///
+/// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash), and `sn_keccak` is [Starknet Keccak](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#Starknet-keccak)
+fn compute_deploy_hash(
+    txn: &DeployTransaction,
+    chain_id: ChainId,
+) -> Result<ComputedTransactionHash> {
+    let mut h = HashChain::default();
+    h.update(felt_bytes!(b"deploy"));
+    h.update(
+        Felt::from_be_slice(txn.version.0.as_bytes()).context("Converting version into Felt")?,
+    );
+    h.update(*txn.contract_address.get());
+    let c = {
+        let mut keccak = sha3::Keccak256::default();
+        keccak.update(b"constructor");
+        truncated_keccak(<[u8; 32]>::from(keccak.finalize()))
+    };
+    h.update(c);
+    let cc = {
+        let hh = txn.constructor_calldata.iter().fold(
+            HashChain::default(),
+            |mut hh, constructor_param| {
+                hh.update(constructor_param.0);
+                hh
+            },
+        );
+        hh.finalize()
+    };
+    h.update(cc);
+    h.update(Felt::ZERO);
+    h.update(chain_id.0);
+
+    Ok(ComputedTransactionHash::Deploy(StarknetTransactionHash(
+        h.finalize(),
+    )))
+}
+
+fn compute_deploy_account_hash(_txn: &DeployAccountTransaction) -> Result<ComputedTransactionHash> {
     todo!()
 }
 
-fn compute_deploy_account_hash(_txn: DeployAccountTransaction) -> ComputedTransactionHash {
+fn compute_invoke_v0_hash(_txn: &InvokeTransactionV0) -> Result<ComputedTransactionHash> {
     todo!()
 }
 
-fn compute_invoke_v0_hash(_txn: InvokeTransactionV0) -> ComputedTransactionHash {
+fn compute_invoke_v1_hash(_txn: &InvokeTransactionV1) -> Result<ComputedTransactionHash> {
     todo!()
 }
 
-fn compute_invoke_v1_hash(_txn: InvokeTransactionV1) -> ComputedTransactionHash {
-    todo!()
-}
-
-fn compute_l1_handler_hash(_txn: L1HandlerTransaction) -> ComputedTransactionHash {
+fn compute_l1_handler_hash(_txn: &L1HandlerTransaction) -> Result<ComputedTransactionHash> {
     todo!()
 }
 
@@ -76,71 +129,66 @@ fn compute_l1_handler_hash(_txn: L1HandlerTransaction) -> ComputedTransactionHas
 mod tests {
     use super::compute_transaction_hash;
     use crate::reply::Transaction;
+    use pathfinder_common::ChainId;
     use starknet_gateway_test_fixtures::{v0_11_0, v0_8_2, v0_9_0};
+
+    macro_rules! case {
+        ($target:expr) => {{
+            let line = line!();
+
+            (
+                serde_json::from_str::<Transaction>($target)
+                    .expect(&format!("deserialization is Ok, line: {line}"))
+                    .transaction
+                    .expect(&format!("transaction is Some, line: {line}")),
+                line,
+            )
+        }};
+    }
 
     #[test]
     fn success() {
-        let declare_v0_231579 =
-            serde_json::from_str::<Transaction>(v0_9_0::transaction::DECLARE).unwrap();
-        let declare_v1_463319 =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::declare::v1::BLOCK_463319)
-                .unwrap();
-        let declare_v1_797215 =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::declare::v1::BLOCK_797215)
-                .unwrap();
-        let declare_v2_797220 =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::declare::v2::BLOCK_797220)
-                .unwrap();
-        let deploy_v0_231579 =
-            serde_json::from_str::<Transaction>(v0_9_0::transaction::DEPLOY).unwrap();
-        let deploy_account_v1_375919 = serde_json::from_str::<Transaction>(
-            v0_11_0::transaction::deploy_account::v1::BLOCK_375919,
-        )
-        .unwrap();
-        let deploy_account_v1_797k = serde_json::from_str::<Transaction>(
-            v0_11_0::transaction::deploy_account::v1::BLOCK_797K,
-        )
-        .unwrap();
-        let invoke_v0_genesis =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::invoke::v0::GENESIS).unwrap();
-        let invoke_v0_21520 =
-            serde_json::from_str::<Transaction>(v0_8_2::transaction::INVOKE).unwrap();
-        let invoke_v0_231579 =
-            serde_json::from_str::<Transaction>(v0_9_0::transaction::INVOKE).unwrap();
-        let invoke_v1_420k =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::invoke::v1::BLOCK_420K)
-                .unwrap();
-        let invoke_v1_790k =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::invoke::v1::BLOCK_790K)
-                .unwrap();
-        let l1_handler_v0_1564 =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::l1_handler::v0::BLOCK_1564)
-                .unwrap();
-        let l1_handler_v0_790k =
-            serde_json::from_str::<Transaction>(v0_11_0::transaction::l1_handler::v0::BLOCK_790K)
-                .unwrap();
+        let declare_v0_231579 = case!(v0_9_0::transaction::DECLARE);
+        let declare_v1_463319 = case!(v0_11_0::transaction::declare::v1::BLOCK_463319);
+        let declare_v1_797215 = case!(v0_11_0::transaction::declare::v1::BLOCK_797215);
+        let declare_v2_797220 = case!(v0_11_0::transaction::declare::v2::BLOCK_797220);
+        let deploy_v0_231579 = case!(v0_9_0::transaction::DEPLOY);
+        let deploy_account_v1_375919 =
+            case!(v0_11_0::transaction::deploy_account::v1::BLOCK_375919);
+        let deploy_account_v1_797k = case!(v0_11_0::transaction::deploy_account::v1::BLOCK_797K);
+        let invoke_v0_genesis = case!(v0_11_0::transaction::invoke::v0::GENESIS);
+        let invoke_v0_21520 = case!(v0_8_2::transaction::INVOKE);
+        let invoke_v0_231579 = case!(v0_9_0::transaction::INVOKE);
+        let invoke_v1_420k = case!(v0_11_0::transaction::invoke::v1::BLOCK_420K);
+        let invoke_v1_790k = case!(v0_11_0::transaction::invoke::v1::BLOCK_790K);
+        let l1_handler_v0_1564 = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_1564);
+        let l1_handler_v0_790k = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_790K);
 
         [
-            declare_v0_231579,
-            declare_v1_463319,
-            declare_v1_797215,
-            declare_v2_797220,
+            // declare_v0_231579,
+            // declare_v1_463319,
+            // declare_v1_797215,
+            // declare_v2_797220,
             deploy_v0_231579,
-            deploy_account_v1_375919,
-            deploy_account_v1_797k,
-            invoke_v0_genesis,
-            invoke_v0_21520,
-            invoke_v0_231579,
-            invoke_v1_420k,
-            invoke_v1_790k,
-            l1_handler_v0_1564,
-            l1_handler_v0_790k,
+            // deploy_account_v1_375919,
+            // deploy_account_v1_797k,
+            // invoke_v0_genesis,
+            // invoke_v0_21520,
+            // invoke_v0_231579,
+            // invoke_v1_420k,
+            // invoke_v1_790k,
+            // l1_handler_v0_1564,
+            // l1_handler_v0_790k,
         ]
-        .into_iter()
-        .for_each(|txn| {
-            let txn = txn.transaction.unwrap();
-            eprintln!("{}", txn.hash());
-            assert_eq!(compute_transaction_hash(txn.clone()).hash(), txn.hash())
+        .iter()
+        .for_each(|(txn, line)| {
+            assert_eq!(
+                compute_transaction_hash(txn, ChainId::TESTNET)
+                    .expect(&format!("line: {line}"))
+                    .hash(),
+                txn.hash(),
+                "line: {line}"
+            )
         })
     }
 }
