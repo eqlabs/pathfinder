@@ -1,0 +1,21 @@
+{
+    "status": "ACCEPTED_ON_L1",
+    "block_hash": "0x4edeaad096487ce06187cff8ce1379d58089216bdad902760969f3fe67e9f",
+    "block_number": 790000,
+    "transaction_index": 5,
+    "transaction": {
+        "transaction_hash": "0x760ee8357ed0145d7b024132168232218ac4e8c1c0fb619ca94ce382df01702",
+        "version": "0x1",
+        "max_fee": "0x1694359ae09a4",
+        "signature": [
+            "0x5cc77c1d7b985df6071cf4b73be98f9299af0b9d63036d8a02f953981b353e1",
+            "0x1a20acc7cdb55e32294b1a6b8fafac2059803dcfe42e65e68a76881ec0480e2"
+        ],
+        "nonce": "0x2",
+        "sender_address": "0x44d8599d9b7dc4b2fa66058bf24e5d45435544012da62d325536a366bda8846",
+        "calldata": [
+            "0x1"
+        ],
+        "type": "INVOKE_FUNCTION"
+    }
+}

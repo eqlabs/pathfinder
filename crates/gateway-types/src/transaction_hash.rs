@@ -75,25 +75,72 @@ fn compute_l1_handler_hash(_txn: L1HandlerTransaction) -> ComputedTransactionHas
 #[cfg(test)]
 mod tests {
     use super::compute_transaction_hash;
-    use crate::reply::transaction::Transaction;
-    use starknet_gateway_test_fixtures::{v0_8_2, v0_9_0};
+    use crate::reply::Transaction;
+    use starknet_gateway_test_fixtures::{v0_11_0, v0_8_2, v0_9_0};
 
     #[test]
     fn success() {
-        let declare_v0 = serde_json::from_str::<Transaction>(v0_9_0::transaction::DECLARE).unwrap();
-        let deploy_v0 = serde_json::from_str::<Transaction>(v0_9_0::transaction::DEPLOY).unwrap();
-        let invoke_v0_starknet_v0_8 =
+        let declare_v0_231579 =
+            serde_json::from_str::<Transaction>(v0_9_0::transaction::DECLARE).unwrap();
+        let declare_v1_463319 =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::declare::v1::BLOCK_463319)
+                .unwrap();
+        let declare_v1_797215 =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::declare::v1::BLOCK_797215)
+                .unwrap();
+        let declare_v2_797220 =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::declare::v2::BLOCK_797220)
+                .unwrap();
+        let deploy_v0_231579 =
+            serde_json::from_str::<Transaction>(v0_9_0::transaction::DEPLOY).unwrap();
+        let deploy_account_v1_375919 = serde_json::from_str::<Transaction>(
+            v0_11_0::transaction::deploy_account::v1::BLOCK_375919,
+        )
+        .unwrap();
+        let deploy_account_v1_797k = serde_json::from_str::<Transaction>(
+            v0_11_0::transaction::deploy_account::v1::BLOCK_797K,
+        )
+        .unwrap();
+        let invoke_v0_genesis =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::invoke::v0::GENESIS).unwrap();
+        let invoke_v0_21520 =
             serde_json::from_str::<Transaction>(v0_8_2::transaction::INVOKE).unwrap();
-        let invoke_v0_starknet_v0_9 =
+        let invoke_v0_231579 =
             serde_json::from_str::<Transaction>(v0_9_0::transaction::INVOKE).unwrap();
+        let invoke_v1_420k =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::invoke::v1::BLOCK_420K)
+                .unwrap();
+        let invoke_v1_790k =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::invoke::v1::BLOCK_790K)
+                .unwrap();
+        let l1_handler_v0_1564 =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::l1_handler::v0::BLOCK_1564)
+                .unwrap();
+        let l1_handler_v0_790k =
+            serde_json::from_str::<Transaction>(v0_11_0::transaction::l1_handler::v0::BLOCK_790K)
+                .unwrap();
 
         [
-            declare_v0,
-            deploy_v0,
-            invoke_v0_starknet_v0_8,
-            invoke_v0_starknet_v0_9,
+            declare_v0_231579,
+            declare_v1_463319,
+            declare_v1_797215,
+            declare_v2_797220,
+            deploy_v0_231579,
+            deploy_account_v1_375919,
+            deploy_account_v1_797k,
+            invoke_v0_genesis,
+            invoke_v0_21520,
+            invoke_v0_231579,
+            invoke_v1_420k,
+            invoke_v1_790k,
+            l1_handler_v0_1564,
+            l1_handler_v0_790k,
         ]
         .into_iter()
-        .for_each(|txn| assert_eq!(compute_transaction_hash(txn.clone()).hash(), txn.hash()))
+        .for_each(|txn| {
+            let txn = txn.transaction.unwrap();
+            eprintln!("{}", txn.hash());
+            assert_eq!(compute_transaction_hash(txn.clone()).hash(), txn.hash())
+        })
     }
 }

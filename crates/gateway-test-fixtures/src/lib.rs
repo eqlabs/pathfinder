@@ -46,20 +46,66 @@ pub mod v0_9_0 {
     }
 }
 
-pub mod v0_11_0 {
-    pub mod state_update {
-        pub const GENESIS: &str = str_fixture!("0.11.0/state-update/genesis.json");
-        pub const NUMBER_315700: &str = str_fixture!("0.11.0/state-update/315700.json");
-        pub const PENDING: &str = str_fixture!("0.11.0/state-update/pending.json");
-    }
-}
-
 pub mod v0_10_1 {
     pub mod add_transaction {
         pub const DEPLOY_ACCOUNT_REQUEST: &str =
             str_fixture!("0.10.1/add-transaction/deploy-account-request.json");
         pub const DEPLOY_ACCOUNT_RESPONSE: &str =
             str_fixture!("0.10.1/add-transaction/deploy-account-response.json");
+    }
+}
+
+pub mod v0_11_0 {
+    pub mod state_update {
+        pub const GENESIS: &str = str_fixture!("0.11.0/state-update/genesis.json");
+        pub const NUMBER_315700: &str = str_fixture!("0.11.0/state-update/315700.json");
+        pub const PENDING: &str = str_fixture!("0.11.0/state-update/pending.json");
+    }
+
+    pub mod transaction {
+        pub mod declare {
+            pub mod v1 {
+                pub const BLOCK_463319: &str =
+                    str_fixture!("0.11.0/transaction/declare_v1_block_463319.json");
+                pub const BLOCK_797215: &str =
+                    str_fixture!("0.11.0/transaction/declare_v1_block_797215.json");
+            }
+
+            pub mod v2 {
+                pub const BLOCK_797220: &str =
+                    str_fixture!("0.11.0/transaction/declare_v2_block_797220.json");
+            }
+        }
+
+        pub mod deploy_account {
+            pub mod v1 {
+                pub const BLOCK_375919: &str =
+                    str_fixture!("0.11.0/transaction/deploy_account_v1_block_375919.json");
+                pub const BLOCK_797K: &str =
+                    str_fixture!("0.11.0/transaction/deploy_account_v1_block_797k.json");
+            }
+        }
+
+        pub mod invoke {
+            pub mod v0 {
+                pub const GENESIS: &str = str_fixture!("0.11.0/transaction/invoke_v0_genesis.json");
+            }
+            pub mod v1 {
+                pub const BLOCK_420K: &str =
+                    str_fixture!("0.11.0/transaction/invoke_v1_block_420k.json");
+                pub const BLOCK_790K: &str =
+                    str_fixture!("0.11.0/transaction/invoke_v1_block_790k.json");
+            }
+        }
+
+        pub mod l1_handler {
+            pub mod v0 {
+                pub const BLOCK_1564: &str =
+                    str_fixture!("0.11.0/transaction/l1_handler_v0_block_1564.json");
+                pub const BLOCK_790K: &str =
+                    str_fixture!("0.11.0/transaction/l1_handler_v0_block_790k.json");
+            }
+        }
     }
 }
 

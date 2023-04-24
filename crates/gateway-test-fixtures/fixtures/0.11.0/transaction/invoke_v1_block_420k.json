@@ -1,0 +1,31 @@
+{
+    "status": "ACCEPTED_ON_L1",
+    "block_hash": "0x3191ac3e71785613c3aaa806a927cd2b986df7570b160a7db649a99001c8d94",
+    "block_number": 420000,
+    "transaction_index": 0,
+    "transaction": {
+        "transaction_hash": "0x2a52c8972c79da4fbb9ae07da6d40ca28962d797b63b7d82525032d1f72b27d",
+        "version": "0x1",
+        "max_fee": "0x407b643f408d0",
+        "signature": [
+            "0x75eef430357cd669ca4ae358264ca05b3f2dd2a6e04af72a6e60bead9465d53",
+            "0x48a9b01a8d88dbc121d030b78a9a35ea39cf624ef4229cc96a0a850bb12bb6a"
+        ],
+        "nonce": "0x6",
+        "sender_address": "0x41dacf31e2230499a7ea5b0682a29bf5ffc2cc33ef0a4e065b8a16f473633d8",
+        "calldata": [
+            "0x1",
+            "0x68c6b0cab1423338dd3ee6affb14a8e53ec0c64c27075d6137f6b8d2b4ccc73",
+            "0x152cd4b259505a6a714c2ad0327f82b18084b3bc5e264451a52193d972c2a5a",
+            "0x0",
+            "0x5",
+            "0x5",
+            "0x8",
+            "0xf0bf",
+            "0x0",
+            "0x9d411086ae32c1958679ba3c9b9ab2c6574f5645ea4aedeff74f2a2303388b",
+            "0x7819cfb8d24994a3aa1cec1f5b16ee52fee35c169e363875ffd6f3c83c88d3a"
+        ],
+        "type": "INVOKE_FUNCTION"
+    }
+}

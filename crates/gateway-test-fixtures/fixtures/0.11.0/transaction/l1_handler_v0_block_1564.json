@@ -1,0 +1,18 @@
+{
+    "status": "ACCEPTED_ON_L1",
+    "block_hash": "0x333e2ed0da16224c62c50e6807975779496448844e608736695c99d5ed5cc48",
+    "block_number": 1564,
+    "transaction_index": 2,
+    "transaction": {
+        "transaction_hash": "0xfb118dc1d4a4141b7718da4b7fa98980b11caf5aa5d6e1e35e9b050aae788b",
+        "version": "0x0",
+        "contract_address": "0x55a46448decca3b138edf0104b7a47d41365b8293bdfd59b03b806c102b12b7",
+        "entry_point_selector": "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01",
+        "calldata": [
+            "0x2db8c2615db39a5ed8750b87ac8f217485be11ec",
+            "0xbc614e",
+            "0x258"
+        ],
+        "type": "L1_HANDLER"
+    }
+}
