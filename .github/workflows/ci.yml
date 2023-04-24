@@ -120,13 +120,13 @@ jobs:
       - run: |
           pip install -r py/requirements-dev.txt
           pip install -e py/.
-      # Install fresh stark_hash_rust
+      # Install fresh starknet_pathfinder_crypto
       - uses: actions/download-artifact@v3
         with:
           name: pathfinder-starkhash-wheels
       - name: Install Pedersen hash Python wrapper
         run: |
-          pip install --no-index --force-reinstall ./stark_hash_rust-*.whl
+          pip install --no-index --force-reinstall ./starknet_pathfinder_crypto-*.whl
   
       # We want to strip the debug info as some of these test binaries are 100MB+ and pathfinder_lib is 1GB+
       # Integration tests have to be called explicitly
@@ -218,7 +218,7 @@ jobs:
           name: pathfinder-starkhash-wheels
       - name: Install Pedersen hash Python wrapper
         run: |
-          pip install --no-index --force-reinstall ./stark_hash_rust-*.whl
+          pip install --no-index --force-reinstall ./starknet_pathfinder_crypto-*.whl
 
       - name: Test (python)
         run: |
@@ -258,7 +258,7 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: pathfinder-starkhash-wheels
-          path: crates/stark_hash_python/dist/stark_hash_rust*.whl
+          path: crates/stark_hash_python/dist/starknet_pathfinder_crypto*.whl
           if-no-files-found: error
 
   fuzz_targets:

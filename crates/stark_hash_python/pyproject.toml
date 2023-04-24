@@ -3,7 +3,7 @@ requires = ["maturin>=0.14,<0.15"]
 build-backend = "maturin"
 
 [project]
-name = "stark_hash_rust"
+name = "starknet_pathfinder_crypto"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",

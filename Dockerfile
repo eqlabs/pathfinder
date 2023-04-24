@@ -70,7 +70,7 @@ COPY crates/stark_hash_python crates/stark_hash_python
 COPY ./build/cargo-build.sh ./crates/stark_hash_python/cargo-build.sh
 RUN cd crates/stark_hash_python \
     && TARGETARCH=${TARGETARCH} ./cargo-build.sh --locked --release \
-    && cp target/*-unknown-linux-gnu/release/libstark_hash_rust.so stark_hash_rust.so-${TARGETARCH}
+    && cp target/*-unknown-linux-gnu/release/libstarknet_pathfinder_crypto.so starknet_pathfinder_crypto.so-${TARGETARCH}
 
 #######################################
 # Stage 2: Build the Python libraries #
@@ -83,7 +83,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-d
 WORKDIR /usr/share/pathfinder
 COPY py py
 RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip --disable-pip-version-check install py/.
-COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/stark_hash_python/stark_hash_rust.so-${TARGETARCH} /usr/local/lib/python3.9/site-packages/stark_hash_rust.so
+COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/stark_hash_python/starknet_pathfinder_crypto.so-${TARGETARCH} /usr/local/lib/python3.9/site-packages/starknet_pathfinder_crypto.so
 
 # This reduces the size of the python libs by about 50%
 ENV PY_PATH=/usr/local/lib/python3.9/

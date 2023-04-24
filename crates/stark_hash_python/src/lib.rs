@@ -112,7 +112,7 @@ fn poseidon_perm(a: BigUint, b: BigUint, c: BigUint) -> PyResult<Vec<BigUint>> {
 }
 
 #[pymodule]
-fn stark_hash_rust(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn starknet_pathfinder_crypto(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pedersen_hash, m)?)?;
     m.add_function(wrap_pyfunction!(pedersen_hash_func, m)?)?;
     m.add_function(wrap_pyfunction!(poseidon_hash, m)?)?;

@@ -1,11 +1,11 @@
-# stark_hash_rust
+# starknet_pathfinder_crypto
 
 Python wrapper of the Rust implementations of Pedersen and Poseidon hash functions from pathfinder.
 
 ## Installation
 
 ```bash
-pip install stark_hash_rust
+pip install starknet_pathfinder_crypto
 ```
 
 ## Usage
@@ -23,24 +23,24 @@ used in `cairo-lang`:
 You can use them directly, or monkey-patch cairo-lang:
 
 ```python
-import stark_hash_rust
+import starknet_pathfinder_crypto
 import starkware.crypto.signature.fast_pedersen_hash
 import starkware.cairo.common.poseidon_hash
 
 starkware.crypto.signature.fast_pedersen_hash.pedersen_hash_func = (
-    stark_hash_rust.pedersen_hash_func
+    starknet_pathfinder_crypto.pedersen_hash_func
 )
 starkware.crypto.signature.fast_pedersen_hash.pedersen_hash = (
-    stark_hash_rust.pedersen_hash
+    starknet_pathfinder_crypto.pedersen_hash
 )
-starkware.cairo.common.poseidon_hash.poseidon_hash = stark_hash_rust.poseidon_hash
+starkware.cairo.common.poseidon_hash.poseidon_hash = starknet_pathfinder_crypto.poseidon_hash
 starkware.cairo.common.poseidon_hash.poseidon_hash_func = (
-    stark_hash_rust.poseidon_hash_func
+    starknet_pathfinder_crypto.poseidon_hash_func
 )
 starkware.cairo.common.poseidon_hash.poseidon_hash_many = (
-    stark_hash_rust.poseidon_hash_many
+    starknet_pathfinder_crypto.poseidon_hash_many
 )
-starkware.cairo.common.poseidon_hash.poseidon_perm = stark_hash_rust.poseidon_perm
+starkware.cairo.common.poseidon_hash.poseidon_perm = starknet_pathfinder_crypto.poseidon_perm
 ```
 
 ## License
