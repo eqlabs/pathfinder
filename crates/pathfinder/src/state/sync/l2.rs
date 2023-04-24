@@ -112,6 +112,7 @@ pub async fn sync(
                                 head = reorg(some_head, &tx_event, &sequencer)
                                     .await
                                     .context("L2 reorg")?;
+                                continue 'outer;
                             }
                         }
                         match pending_poll_interval {
@@ -639,6 +640,15 @@ async fn download_and_compress_class(
         }
     }
 }
+
+// FIXME TODO(SM): These tests cement existing impl instead of validating invariants
+
+// TODO(SM): Refactor further until test assertions can be made without hard-coded mocking
+
+// Suggestion: reduce of infinite stream of events (event == response from the sequencer), 
+// with each event extended and mapped along the way (e.g. reorg - into Reorg(new_head), 
+// new block - into Block(block,commitments,classes,state_update,...)).
+// Then testing is a simple assertion from sequencer events mapped to L2 events.
 
 #[cfg(test)]
 mod tests {
