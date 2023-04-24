@@ -69,7 +69,8 @@ pub async fn sync(
     pending_poll_interval: Option<Duration>,
     block_validation_mode: BlockValidationMode,
 ) -> anyhow::Result<()> {
-    use crate::state::sync::head_poll_interval;
+    use starknet_gateway_types::error::StarknetErrorCode::BlockNotFound;
+    let poll_interval = crate::state::sync::head_poll_interval(chain);
 
     'outer: loop {
         // Get the next block from L2.
@@ -77,11 +78,12 @@ pub async fn sync(
             Some(head) => (head.0 + 1, Some(head)),
             None => (StarknetBlockNumber::GENESIS, None),
         };
-        let t_block = std::time::Instant::now();
+
         // Next block and state update which we can get for free when exiting poll pending mode
-        let mut next_block = None;
+        let mut next_block: Option<Block> = None;
         let mut next_state_update = None;
 
+        let t_block = std::time::Instant::now();
         let (block, commitments) = loop {
             match download_block(
                 next,
@@ -95,28 +97,51 @@ pub async fn sync(
             )
             .await?
             {
-                DownloadBlock::Block(block, commitments) => break (block, commitments),
-                DownloadBlock::AtHead => {
-                    // Poll pending if it is enabled, otherwise just wait to poll head again.
-                    match pending_poll_interval {
-                        Some(interval) => {
-                            tracing::trace!("Entering pending mode");
-                            let head = head_meta
-                                .expect("Head hash should exist when entering pending mode");
-                            (next_block, next_state_update) = pending::poll_pending(
-                                tx_event.clone(),
-                                &sequencer,
-                                (head.1, head.2),
-                                interval,
-                            )
-                            .await
-                            .context("Polling pending block")?;
+                block
+            } else {
+                match sequencer.block(next.into()).await {
+                    Ok(MaybePendingBlock::Block(block)) => block,
+                    Ok(MaybePendingBlock::Pending(_)) => {
+                        anyhow::bail!("Sequencer returned `pending` block")
+                    }
+                    Err(SequencerError::StarknetError(err)) => {
+                        if err.code == BlockNotFound {
+                            let prev_block_hash = head_meta.map(|h| h.1);
+                            if is_reorg_required(next, prev_block_hash, &sequencer).await? {
+                                let some_head = head.unwrap();
+                                head = reorg(some_head, &tx_event, &sequencer)
+                                    .await
+                                    .context("L2 reorg")?;
+                            }
                         }
-                        None => {
-                            let poll_interval = head_poll_interval(chain);
-                            tracing::info!(poll_interval=?poll_interval, "At head of chain");
-                            tokio::time::sleep(poll_interval).await;
+                        match pending_poll_interval {
+                            Some(interval) => {
+                                tracing::trace!("Entering pending mode");
+                                let head = head_meta
+                                    .expect("Head hash should exist when entering pending mode");
+                                if let Ok(pending) = pending::poll_pending(
+                                    tx_event.clone(),
+                                    &sequencer,
+                                    (head.1, head.2),
+                                    interval,
+                                )
+                                .await
+                                .context("Polling pending block")
+                                {
+                                    (next_block, next_state_update) = pending;
+                                }
+                            }
+                            None => {
+                                tracing::info!(poll_interval=?poll_interval, "At head of chain");
+                                tokio::time::sleep(poll_interval).await;
+                            }
                         }
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::warn!(error=?e, "Sequencer request failed");
+                        // TODO(SM): exponential backoff in case of failure?
+                        continue 'outer;
                     }
                 }
                 DownloadBlock::Reorg => {
@@ -132,9 +157,8 @@ pub async fn sync(
                     .await
                     .context("L2 reorg")?;
 
-                    continue 'outer;
-                }
-            }
+            let (block, commitments) = check_block(block, chain, block_validation_mode).await?;
+            break (block, commitments);
         };
         let t_block = t_block.elapsed();
 
@@ -333,12 +357,6 @@ async fn download_new_classes(
     Ok(())
 }
 
-enum DownloadBlock {
-    Block(Box<Block>, (TransactionCommitment, EventCommitment)),
-    AtHead,
-    Reorg,
-}
-
 #[derive(Copy, Clone, Default)]
 pub enum BlockValidationMode {
     #[default]
@@ -348,10 +366,8 @@ pub enum BlockValidationMode {
     AllowMismatch,
 }
 
-async fn download_block(
-    block_number: StarknetBlockNumber,
-    // Poll pending could exit when it encountered a finalized block, so we'd like to reuse it
-    next_block: Option<Block>,
+async fn check_block(
+    block: Block,
     chain: Chain,
     chain_id: ChainId,
     prev_block_hash: Option<StarknetBlockHash>,
@@ -479,6 +495,12 @@ async fn reorg(
 
         let previous_block_number = reorg_tail.0 - 1;
 
+        let block = match sequencer.block(previous_block_number.into()).await? {
+            MaybePendingBlock::Block(block) => block,
+            MaybePendingBlock::Pending(_) => anyhow::bail!("Sequencer returned `pending` block"),
+        };
+
+        // TODO(SM): Use `Storage` in `l2::sync` get rid of `l2::Event::Query*` workaround
         let (tx, rx) = oneshot::channel();
         tx_event
             .send(Event::QueryBlock(previous_block_number, tx))
@@ -505,10 +527,9 @@ async fn reorg(
             DownloadBlock::Block(block, _) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
             }
-            _ => {}
-        };
-
-        reorg_tail = (previous_block_number, previous.0, previous.1);
+        } else {
+            break None;
+        }
     };
 
     let reorg_tail = new_head
