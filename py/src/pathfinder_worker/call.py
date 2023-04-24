@@ -15,24 +15,28 @@ from enum import Enum
 from typing import ClassVar, Dict, List, Optional, Tuple, Type
 
 try:
-    import stark_hash_rust
+    import starknet_pathfinder_crypto
     import starkware.crypto.signature.fast_pedersen_hash
     import starkware.cairo.common.poseidon_hash
 
     starkware.crypto.signature.fast_pedersen_hash.pedersen_hash_func = (
-        stark_hash_rust.pedersen_hash_func
+        starknet_pathfinder_crypto.pedersen_hash_func
     )
     starkware.crypto.signature.fast_pedersen_hash.pedersen_hash = (
-        stark_hash_rust.pedersen_hash
+        starknet_pathfinder_crypto.pedersen_hash
     )
-    starkware.cairo.common.poseidon_hash.poseidon_hash = stark_hash_rust.poseidon_hash
+    starkware.cairo.common.poseidon_hash.poseidon_hash = (
+        starknet_pathfinder_crypto.poseidon_hash
+    )
     starkware.cairo.common.poseidon_hash.poseidon_hash_func = (
-        stark_hash_rust.poseidon_hash_func
+        starknet_pathfinder_crypto.poseidon_hash_func
     )
     starkware.cairo.common.poseidon_hash.poseidon_hash_many = (
-        stark_hash_rust.poseidon_hash_many
+        starknet_pathfinder_crypto.poseidon_hash_many
     )
-    starkware.cairo.common.poseidon_hash.poseidon_perm = stark_hash_rust.poseidon_perm
+    starkware.cairo.common.poseidon_hash.poseidon_perm = (
+        starknet_pathfinder_crypto.poseidon_perm
+    )
 except ModuleNotFoundError:
     # Monkey-patching with our fast implementation of the Pedersen hash failed.
     # This is not fatal, some operations will be slower this way.
