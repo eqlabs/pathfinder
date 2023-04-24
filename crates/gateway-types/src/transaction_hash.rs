@@ -15,7 +15,8 @@ use stark_hash::{Felt, HashChain};
 
 #[derive(Debug, PartialEq)]
 pub enum ComputedTransactionHash {
-    DeclareV0V1(StarknetTransactionHash),
+    DeclareV0(StarknetTransactionHash),
+    DeclareV1(StarknetTransactionHash),
     DeclareV2(StarknetTransactionHash),
     Deploy(StarknetTransactionHash),
     DeployAccount(StarknetTransactionHash),
@@ -27,7 +28,8 @@ pub enum ComputedTransactionHash {
 impl ComputedTransactionHash {
     pub fn hash(&self) -> StarknetTransactionHash {
         match self {
-            ComputedTransactionHash::DeclareV0V1(h) => *h,
+            ComputedTransactionHash::DeclareV0(h) => *h,
+            ComputedTransactionHash::DeclareV1(h) => *h,
             ComputedTransactionHash::DeclareV2(h) => *h,
             ComputedTransactionHash::Deploy(h) => *h,
             ComputedTransactionHash::DeployAccount(h) => *h,
@@ -45,7 +47,7 @@ pub fn compute_transaction_hash(
 ) -> Result<ComputedTransactionHash> {
     match txn {
         Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
-        Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn),
+        Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn),
         Transaction::Deploy(txn) => compute_deploy_hash(txn, chain_id),
         Transaction::DeployAccount(txn) => compute_deploy_account_hash(txn),
@@ -61,7 +63,7 @@ pub fn compute_transaction_hash(
 ///     0, h([]), max_fee, chain_id, class_hash)
 /// ```
 ///
-/// FIXME Tell SW to fix their formula
+/// FIXME: SW should fix the formula
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
 fn compute_declare_v0_hash(
@@ -81,13 +83,45 @@ fn compute_declare_v0_hash(
     h.update(chain_id.0);
     h.update(txn.class_hash.0);
 
-    Ok(ComputedTransactionHash::Deploy(StarknetTransactionHash(
+    Ok(ComputedTransactionHash::DeclareV0(StarknetTransactionHash(
         h.finalize(),
     )))
 }
 
-fn compute_declare_v1_hash(_txn: &DeclareTransactionV0V1) -> Result<ComputedTransactionHash> {
-    todo!()
+/// Computes declare v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation_2):
+/// ```text=
+/// declare_v0_tx_hash = h("declare", version, sender_address,
+///     0, h([class_hash]), max_fee, chain_id, nonce)
+/// ```
+///
+/// FIXME: SW should fix the formula
+///
+/// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
+fn compute_declare_v1_hash(
+    txn: &DeclareTransactionV0V1,
+    chain_id: ChainId,
+) -> Result<ComputedTransactionHash> {
+    let mut h = HashChain::default();
+    h.update(felt_bytes!(b"declare"));
+    h.update(
+        Felt::from_be_slice(TransactionVersion::ONE.0.as_bytes())
+            .context("Converting version into Felt")?,
+    );
+    h.update(*txn.sender_address.get());
+    h.update(Felt::ZERO);
+    let cc = {
+        let mut hh = HashChain::default();
+        hh.update(txn.class_hash.0);
+        hh.finalize()
+    };
+    h.update(cc);
+    h.update(txn.max_fee.0);
+    h.update(chain_id.0);
+    h.update(txn.nonce.0);
+
+    Ok(ComputedTransactionHash::DeclareV1(StarknetTransactionHash(
+        h.finalize(),
+    )))
 }
 
 fn compute_declare_v2_hash(_txn: &DeclareTransactionV2) -> Result<ComputedTransactionHash> {
@@ -194,8 +228,8 @@ mod tests {
 
         [
             declare_v0_231579,
-            // declare_v1_463319,
-            // declare_v1_797215,
+            declare_v1_463319,
+            declare_v1_797215,
             // declare_v2_797220,
             deploy_v0_231579,
             // deploy_account_v1_375919,
