@@ -6131,6 +6131,7 @@ dependencies = [
  "test-log",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tower",
  "tower-http",
  "tracing",
@@ -8208,6 +8209,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util 0.7.7",
 ]
 
 [[package]]

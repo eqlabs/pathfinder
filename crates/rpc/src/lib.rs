@@ -13,12 +13,14 @@ pub mod test_client;
 mod utils;
 pub mod v02;
 pub mod v03;
+pub mod websocket;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use context::RpcContext;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use pathfinder_common::AllowedOrigins;
+use starknet_gateway_types::websocket::WebsocketSenders;
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
