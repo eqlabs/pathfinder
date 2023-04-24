@@ -1,3 +1,5 @@
+use starknet_gateway_types::reply::{Block, StateUpdate};
+
 /// Poll's the Sequencer's pending block and emits [Event::Pending](super::l2::Event::Pending)
 /// until the pending block is no longer connected to our current head.
 ///
@@ -5,6 +7,8 @@
 /// - `pending.parent_hash != head`, or
 /// - `pending` is a fully formed block and not [PendingBlock](starknet_gateway_types::reply::MaybePendingBlock::Pending), or
 /// - the state update parent root does not match head.
+///
+/// A full block or full state update can be returned from this function if it is encountered during polling.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
     sequencer: &impl starknet_gateway_client::ClientApi,
@@ -13,7 +17,7 @@ pub async fn poll_pending(
         pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
     use anyhow::Context;
     use pathfinder_common::BlockId;
     use std::sync::Arc;
@@ -34,14 +38,14 @@ pub async fn poll_pending(
             }
             MaybePendingBlock::Block(block) => {
                 tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
-                return Ok(());
+                return Ok((Some(block), None));
             }
             MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
                 tracing::trace!(
                     pending=%pending.parent_hash, head=%head.0,
                     "Pending block's parent hash does not match head, exiting pending mode"
                 );
-                return Ok(());
+                return Ok((None, None));
             }
             MaybePendingBlock::Pending(pending) => pending,
         };
@@ -61,20 +65,20 @@ pub async fn poll_pending(
             Ok(gateway_result) => gateway_result,
             Err(_timeout) => {
                 tracing::debug!("Pending state update query timed out, exiting pending mode.");
-                return Ok(());
+                return Ok((None, None));
             }
         }
         .context("Downloading pending state update")?;
 
         match state_update {
-            MaybePendingStateUpdate::StateUpdate(_) => {
+            MaybePendingStateUpdate::StateUpdate(state_update) => {
                 tracing::trace!("Found full state update, exiting pending mode.");
-                return Ok(());
+                return Ok((None, Some(state_update)));
             }
             MaybePendingStateUpdate::Pending(pending_state_update) => {
                 if pending_state_update.old_root != head.1 {
                     tracing::trace!(pending=%pending_state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
-                    return Ok(());
+                    return Ok((None, None));
                 }
 
                 // Emit new pending data.
@@ -180,7 +184,9 @@ mod tests {
             .await
             .expect("Channel should be dropped");
         assert_matches!(result, None);
-        jh.await.unwrap().unwrap();
+
+        let (full_block, _) = jh.await.unwrap().unwrap();
+        assert_eq!(full_block.unwrap(), *NEXT_BLOCK);
     }
 
     #[tokio::test]
@@ -190,19 +196,20 @@ mod tests {
 
         // Construct some full diff
         let pending_diff = PENDING_DIFF.clone();
-        let full_diff = MaybePendingStateUpdate::StateUpdate(StateUpdate {
+        let full_diff = StateUpdate {
             block_hash: NEXT_BLOCK.block_hash,
             new_root: StateCommitment(felt!("0x12")),
             old_root: pending_diff.old_root,
             state_diff: pending_diff.state_diff,
-        });
+        };
+        let full_diff0 = full_diff.clone();
 
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
-            .returning(move |_| Ok(full_diff.clone()));
+            .returning(move |_| Ok(MaybePendingStateUpdate::StateUpdate(full_diff0.clone())));
 
         let jh = tokio::spawn(async move {
             poll_pending(
@@ -218,7 +225,9 @@ mod tests {
             .await
             .expect("Channel should be dropped");
         assert_matches!(result, None);
-        jh.await.unwrap().unwrap();
+
+        let (_, full_state_update) = jh.await.unwrap().unwrap();
+        assert_eq!(full_state_update.unwrap(), full_diff);
     }
 
     #[tokio::test]
