@@ -48,7 +48,7 @@ pub fn compute_transaction_hash(
     match txn {
         Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
-        Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn),
+        Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn, chain_id),
         Transaction::Deploy(txn) => compute_deploy_hash(txn, chain_id),
         Transaction::DeployAccount(txn) => compute_deploy_account_hash(txn, chain_id),
         Transaction::Invoke(InvokeTransaction::V0(txn)) => compute_invoke_v0_hash(txn),
@@ -90,7 +90,7 @@ fn compute_declare_v0_hash(
 
 /// Computes declare v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation_2):
 /// ```text=
-/// declare_v0_tx_hash = h("declare", version, sender_address,
+/// declare_v1_tx_hash = h("declare", version, sender_address,
 ///     0, h([class_hash]), max_fee, chain_id, nonce)
 /// ```
 ///
@@ -124,8 +124,41 @@ fn compute_declare_v1_hash(
     )))
 }
 
-fn compute_declare_v2_hash(_txn: &DeclareTransactionV2) -> Result<ComputedTransactionHash> {
-    todo!()
+/// Computes declare v2 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v2_hash_calculation):
+/// ```text=
+/// declare_v2_tx_hash = h("declare", version, sender_address,
+///     0, h([class_hash]), max_fee, chain_id, nonce, compiled_class_hash)
+/// ```
+///
+/// FIXME: SW should fix the formula
+///
+/// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
+fn compute_declare_v2_hash(
+    txn: &DeclareTransactionV2,
+    chain_id: ChainId,
+) -> Result<ComputedTransactionHash> {
+    let mut h = HashChain::default();
+    h.update(felt_bytes!(b"declare"));
+    h.update(
+        Felt::from_be_slice(TransactionVersion::TWO.0.as_bytes())
+            .context("Converting version into Felt")?,
+    );
+    h.update(*txn.sender_address.get());
+    h.update(Felt::ZERO);
+    let cc = {
+        let mut hh = HashChain::default();
+        hh.update(txn.class_hash.0);
+        hh.finalize()
+    };
+    h.update(cc);
+    h.update(txn.max_fee.0);
+    h.update(chain_id.0);
+    h.update(txn.nonce.0);
+    h.update(txn.compiled_class_hash.0);
+
+    Ok(ComputedTransactionHash::DeclareV2(StarknetTransactionHash(
+        h.finalize(),
+    )))
 }
 
 /// Computes deploy transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_transaction):
@@ -271,7 +304,7 @@ mod tests {
             declare_v0_231579,
             declare_v1_463319,
             declare_v1_797215,
-            // declare_v2_797220,
+            declare_v2_797220,
             deploy_v0_231579,
             deploy_account_v1_375919,
             deploy_account_v1_797k,
