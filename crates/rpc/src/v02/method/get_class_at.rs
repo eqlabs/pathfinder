@@ -2,8 +2,7 @@ use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use pathfinder_merkle_tree::StorageCommitmentTree;
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use pathfinder_storage::StarknetBlocksBlockId;
 use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
 
@@ -20,7 +19,7 @@ pub async fn get_class_at(
     input: GetClassAtInput,
 ) -> Result<ContractClass, GetClassAtError> {
     let span = tracing::Span::current();
-    let block = match input.block_id {
+    let block_id = match input.block_id {
         BlockId::Number(number) => number.into(),
         BlockId::Hash(hash) => hash.into(),
         BlockId::Latest => StarknetBlocksBlockId::Latest,
@@ -36,7 +35,7 @@ pub async fn get_class_at(
 
                         let tx = db.transaction().context("Creating database transaction")?;
 
-                        let definition = get_definition(&tx, class)?;
+                        let definition = database::definition_unchecked(&tx, class)?;
                         let class = ContractClass::from_definition_bytes(&definition)
                             .context("Parsing class definition")?;
 
@@ -61,7 +60,33 @@ pub async fn get_class_at(
             .context("Opening database connection")?;
 
         let tx = db.transaction().context("Creating database transaction")?;
-        let definition = get_definition_at(&tx, block, input.contract_address)?;
+
+        if !crate::utils::block_exists(&tx, block_id)? {
+            return Err(GetClassAtError::BlockNotFound);
+        }
+
+        let compressed_definition = match block_id {
+            StarknetBlocksBlockId::Number(number) => {
+                database::definition_at_block_number(&tx, input.contract_address, number)
+            }
+            StarknetBlocksBlockId::Hash(hash) => {
+                database::definition_at_block_hash(&tx, input.contract_address, hash)
+            }
+            StarknetBlocksBlockId::Latest => {
+                database::definition_at_latest_block(&tx, input.contract_address)
+            }
+        }?
+        .ok_or(GetClassAtError::ContractNotFound)?;
+
+        let definition = zstd::decode_all(&*compressed_definition)
+            .context("Decompressing contract definition")
+            .map_err(|e| {
+                GetClassAtError::Internal(anyhow::anyhow!(
+                    "Decompressing class definition failed: {}",
+                    e
+                ))
+            })?;
+
         let class = ContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
 
@@ -71,64 +96,80 @@ pub async fn get_class_at(
     jh.await.context("Reading class from database")?
 }
 
-/// Fetches the class's definition without checking any block requirements.
-///
-/// This is useful if you have previously already verified that the class should exist.
-fn get_definition(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> anyhow::Result<Vec<u8>> {
-    let definition = tx
-        .query_row(
+mod database {
+    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+
+    use super::*;
+
+    pub fn definition_at_latest_block(
+        tx: &rusqlite::Transaction<'_>,
+        contract: ContractAddress,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        tx.query_row(
+            r"SELECT definition FROM class_definitions 
+                JOIN contract_updates ON (class_definitions.hash = contract_updates.class_hash)
+                WHERE contract_updates.contract_address = ?
+                ORDER BY contract_updates.block_number DESC LIMIT 1",
+            [contract],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Fetching class definition at latest block")
+    }
+
+    pub fn definition_at_block_number(
+        tx: &rusqlite::Transaction<'_>,
+        contract: ContractAddress,
+        block_number: StarknetBlockNumber,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        tx.query_row(
+            r"SELECT definition FROM class_definitions 
+                JOIN contract_updates ON (class_definitions.hash = contract_updates.class_hash)
+                WHERE contract_updates.contract_address = ?
+                    AND contract_updates.block_number <= ?
+                ORDER BY contract_updates.block_number DESC LIMIT 1",
+            rusqlite::params![contract, block_number],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Fetching class definition at block number")
+    }
+
+    pub fn definition_at_block_hash(
+        tx: &rusqlite::Transaction<'_>,
+        contract: ContractAddress,
+        block_hash: StarknetBlockHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        tx.query_row(
+            r"SELECT definition FROM class_definitions 
+                JOIN contract_updates ON (class_definitions.hash = contract_updates.class_hash)
+                WHERE contract_updates.contract_address = ?
+                    AND contract_updates.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)
+                ORDER BY contract_updates.block_number DESC LIMIT 1",
+            rusqlite::params![contract, block_hash],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Fetching class definition at block hash")
+    }
+
+    /// Fetches the class's definition without checking any block requirements.
+    ///
+    /// This is useful if you have previously already verified that the class should exist,
+    /// for example if the class declaration is part of the pending block.
+    pub fn definition_unchecked(
+        tx: &rusqlite::Transaction<'_>,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Vec<u8>> {
+        tx.query_row(
             "SELECT definition FROM class_definitions WHERE hash=?",
-            [class],
-            |row| {
-                let data = row.get_ref_unwrap(0).as_blob()?.to_vec();
-                Ok(data)
-            },
+            [class_hash],
+            |row| row.get(0),
         )
         .optional()
         .context("Reading definition from database")?
-        .context("Class definition is missing")?;
-
-    Ok(definition)
-}
-
-fn get_definition_at(
-    tx: &rusqlite::Transaction<'_>,
-    block: StarknetBlocksBlockId,
-    contract: ContractAddress,
-) -> Result<Vec<u8>, GetClassAtError> {
-    let storage_commitment = StarknetBlocksTable::get_storage_commitment(tx, block)
-        .context("Reading storage commitment from database")?
-        .ok_or(GetClassAtError::BlockNotFound)?;
-
-    let tree = StorageCommitmentTree::load(tx, storage_commitment);
-    let state_hash = tree
-        .get(contract)
-        .context("Fetching contract leaf in storage commitment tree")?
-        .ok_or(GetClassAtError::ContractNotFound)?;
-
-    let definition = tx
-        .query_row(
-            "SELECT definition FROM class_definitions code JOIN contract_states states ON (code.hash = states.hash) WHERE states.state_hash=?",
-            [state_hash],
-            |row| {
-                let data = row.get_ref_unwrap(0).as_blob()?.to_vec();
-                Ok(data)
-            }
-        )
-        .optional()
-        .context("Reading definition from database")?
-        .context("Class definition is missing")?;
-
-    let definition = zstd::decode_all(&*definition)
-        .context("Decompressing contract definition")
-        .map_err(|e| {
-            GetClassAtError::Internal(anyhow::anyhow!(
-                "Decompressing class definition failed: {}",
-                e
-            ))
-        })?;
-
-    Ok(definition)
+        .context("Class definition is missing")
+    }
 }
 
 /// Returns the [ClassHash] of the given [ContractAddress] if any is defined in the pending data.
