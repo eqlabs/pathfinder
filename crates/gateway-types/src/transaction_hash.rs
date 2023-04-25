@@ -173,12 +173,28 @@ fn compute_deploy_hash(
     txn: &DeployTransaction,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
+    let h = compute_deploy_hash0(txn, chain_id, true)?;
+    if h.hash() == txn.transaction_hash {
+        Ok(h)
+    } else {
+        compute_deploy_hash0(txn, chain_id, false)
+    }
+}
+
+fn compute_deploy_hash0(
+    txn: &DeployTransaction,
+    chain_id: ChainId,
+    is_ge_0_8_0: bool,
+) -> Result<ComputedTransactionHash> {
     let mut h = HashChain::default();
     h.update(felt_bytes!(b"deploy"));
     // Version field added to hash in Cairo >= 0.8.0
-    h.update(
-        Felt::from_be_slice(txn.version.0.as_bytes()).context("Converting version into Felt")?,
-    );
+    if is_ge_0_8_0 {
+        h.update(
+            Felt::from_be_slice(txn.version.0.as_bytes())
+                .context("Converting version into Felt")?,
+        );
+    }
     h.update(*txn.contract_address.get());
     let c = {
         let mut keccak = Keccak256::default();
@@ -198,7 +214,9 @@ fn compute_deploy_hash(
     };
     h.update(cc);
     // Max fee field added to hash in Cairo >= 0.8.0
-    h.update(Felt::ZERO);
+    if is_ge_0_8_0 {
+        h.update(Felt::ZERO);
+    }
     h.update(chain_id.0);
 
     Ok(ComputedTransactionHash::Deploy(StarknetTransactionHash(
@@ -264,13 +282,28 @@ fn compute_invoke_v0_hash(
     txn: &InvokeTransactionV0,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
+    let h = compute_invoke_v0_hash0(txn, chain_id, true)?;
+    if h.hash() == txn.transaction_hash {
+        Ok(h)
+    } else {
+        compute_invoke_v0_hash0(txn, chain_id, false)
+    }
+}
+
+fn compute_invoke_v0_hash0(
+    txn: &InvokeTransactionV0,
+    chain_id: ChainId,
+    is_ge_0_8_0: bool,
+) -> Result<ComputedTransactionHash> {
     let mut h = HashChain::default();
     h.update(felt_bytes!(b"invoke"));
     // Version field added to hash in Cairo >= 0.8.0
-    h.update(
-        Felt::from_be_slice(TransactionVersion::ZERO.0.as_bytes())
-            .context("Converting version into Felt")?,
-    );
+    if is_ge_0_8_0 {
+        h.update(
+            Felt::from_be_slice(TransactionVersion::ZERO.0.as_bytes())
+                .context("Converting version into Felt")?,
+        );
+    }
     h.update(*txn.sender_address.get());
     h.update(txn.entry_point_selector.0);
     let cc = {
@@ -283,7 +316,9 @@ fn compute_invoke_v0_hash(
     };
     h.update(cc);
     // Max fee field added to hash in Cairo >= 0.8.0
-    h.update(txn.max_fee.0);
+    if is_ge_0_8_0 {
+        h.update(txn.max_fee.0);
+    }
     h.update(chain_id.0);
 
     Ok(ComputedTransactionHash::DeployAccount(
@@ -337,6 +372,10 @@ fn compute_invoke_v1_hash(
 /// FIXME: SW should fix the formula
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
+///
+/// ## Important
+///
+/// Guarantees correct computation for Starknet **0.9.1** transactions onwards
 fn compute_l1_handler_hash(
     txn: &L1HandlerTransaction,
     chain_id: ChainId,
@@ -396,18 +435,22 @@ mod tests {
         let declare_v1_463319 = case!(v0_11_0::transaction::declare::v1::BLOCK_463319);
         let declare_v1_797215 = case!(v0_11_0::transaction::declare::v1::BLOCK_797215);
         let declare_v2_797220 = case!(v0_11_0::transaction::declare::v2::BLOCK_797220);
+
         let deploy_v0_genesis = case!(v0_11_0::transaction::deploy::v0::GENESIS);
         let deploy_v0_231579 = case!(v0_9_0::transaction::DEPLOY);
         let deploy_v1_485004 = case!(v0_11_0::transaction::deploy::v1::BLOCK_485004);
+
         let deploy_account_v1_375919 =
             case!(v0_11_0::transaction::deploy_account::v1::BLOCK_375919);
         let deploy_account_v1_797k = case!(v0_11_0::transaction::deploy_account::v1::BLOCK_797K);
+
         let invoke_v0_genesis = case!(v0_11_0::transaction::invoke::v0::GENESIS);
         let invoke_v0_21520 = case!(v0_8_2::transaction::INVOKE);
         let invoke_v0_231579 = case!(v0_9_0::transaction::INVOKE);
         let invoke_v1_420k = case!(v0_11_0::transaction::invoke::v1::BLOCK_420K);
         let invoke_v1_790k = case!(v0_11_0::transaction::invoke::v1::BLOCK_790K);
-        let l1_handler_v0_1564 = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_1564);
+
+        let _l1_handler_v0_1564 = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_1564);
         let l1_handler_v0_272866 = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_272866);
         let l1_handler_v0_790k = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_790K);
 
@@ -416,17 +459,17 @@ mod tests {
             declare_v1_463319,
             declare_v1_797215,
             declare_v2_797220,
-            // deploy_v0_genesis, // First deploy, < cairo 0.8.0
-            deploy_v0_231579, // >= cairo 0.8.8
-            deploy_v1_485004, // Last deploy
+            deploy_v0_genesis, // < 0.8.0
+            deploy_v0_231579,  // >= 0.8.0
+            deploy_v1_485004,  // Last deploy
             deploy_account_v1_375919,
             deploy_account_v1_797k,
-            // invoke_v0_genesis,   // <- pre cairo 0.8.0
-            // invoke_v0_21520,     // <- pre cairo 0.8.0
-            invoke_v0_231579, // >= 0.8.0
+            invoke_v0_genesis, // < 0.8.0
+            invoke_v0_21520,   // < 0.8.0
+            invoke_v0_231579,  // >= 0.8.0
             invoke_v1_420k,
             invoke_v1_790k,
-            // l1_handler_v0_1564, // < cairo 0.8.0
+            // _l1_handler_v0_1564, // < ? , always fails, even if fallback hash implementation is used, similarly to deploy and ignore
             l1_handler_v0_272866, // < cairo 0.9.1
             l1_handler_v0_790k,
         ]

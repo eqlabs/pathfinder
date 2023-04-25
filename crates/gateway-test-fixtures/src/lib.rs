@@ -62,6 +62,8 @@ pub mod v0_11_0 {
         pub const PENDING: &str = str_fixture!("0.11.0/state-update/pending.json");
     }
 
+    /// Some of the following transactions are "as of" 0.11.0 and not really
+    /// introduced in the chain in 0.11.0
     pub mod transaction {
         pub mod declare {
             pub mod v1 {
