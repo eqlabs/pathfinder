@@ -358,8 +358,8 @@ pub mod test_utils {
         CanonicalBlocksTable::insert(&db_txn, block1.number, block1.hash).unwrap();
         CanonicalBlocksTable::insert(&db_txn, block2.number, block2.hash).unwrap();
 
-        ContractCodeTable::update_declared_on_if_null(&db_txn, class0_hash, block1.hash).unwrap();
-        ContractCodeTable::update_declared_on_if_null(&db_txn, class2_hash, block2.hash).unwrap();
+        ContractCodeTable::update_block_number_if_null(&db_txn, class0_hash, block1.number).unwrap();
+        ContractCodeTable::update_block_number_if_null(&db_txn, class2_hash, block2.number).unwrap();
 
         let txn0_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too

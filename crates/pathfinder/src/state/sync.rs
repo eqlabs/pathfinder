@@ -593,10 +593,10 @@ async fn l2_update(
             .chain(declared_cairo_class_hashes)
             .chain(deployed_class_hashes);
         for class_hash in declared_class_hashes {
-            ContractCodeTable::update_declared_on_if_null(
+            ContractCodeTable::update_block_number_if_null(
                 &transaction,
                 class_hash,
-                block.block_hash,
+                block.block_number,
             )
             .with_context(|| format!("Setting declared_on for class={:?}", class_hash))?;
         }
