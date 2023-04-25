@@ -352,4 +352,19 @@ mod tests {
 
         assert_eq!(output.split(' ').count(), 256);
     }
+
+    #[test]
+    fn rpc_test_db_is_migrated() {
+        let database = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..") // puts us in crates folder.
+            .join("rpc")
+            .join("fixtures")
+            .join("mainnet.sqlite");
+
+        let database = rusqlite::Connection::open(database).unwrap();
+        let version = schema_version(&database).unwrap();
+        let expected = schema::migrations().len();
+
+        assert_eq!(version, expected, "RPC database fixture needs migrating");
+    }
 }
