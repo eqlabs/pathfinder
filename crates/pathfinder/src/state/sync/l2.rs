@@ -645,8 +645,8 @@ async fn download_and_compress_class(
 
 // TODO(SM): Refactor further until test assertions can be made without hard-coded mocking
 
-// Suggestion: reduce of infinite stream of events (event == response from the sequencer), 
-// with each event extended and mapped along the way (e.g. reorg - into Reorg(new_head), 
+// Suggestion: reduce of infinite stream of events (event == response from the sequencer),
+// with each event extended and mapped along the way (e.g. reorg - into Reorg(new_head),
 // new block - into Block(block,commitments,classes,state_update,...)).
 // Then testing is a simple assertion from sequencer events mapped to L2 events.
 
