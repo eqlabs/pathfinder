@@ -50,7 +50,7 @@ pub fn compute_transaction_hash(
         Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V2(txn)) => compute_declare_v2_hash(txn),
         Transaction::Deploy(txn) => compute_deploy_hash(txn, chain_id),
-        Transaction::DeployAccount(txn) => compute_deploy_account_hash(txn),
+        Transaction::DeployAccount(txn) => compute_deploy_account_hash(txn, chain_id),
         Transaction::Invoke(InvokeTransaction::V0(txn)) => compute_invoke_v0_hash(txn),
         Transaction::Invoke(InvokeTransaction::V1(txn)) => compute_invoke_v1_hash(txn),
         Transaction::L1Handler(txn) => compute_l1_handler_hash(txn),
@@ -171,8 +171,49 @@ fn compute_deploy_hash(
     )))
 }
 
-fn compute_deploy_account_hash(_txn: &DeployAccountTransaction) -> Result<ComputedTransactionHash> {
-    todo!()
+/// Computes deploy account transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_account_hash_calculation):
+/// ```text=
+/// deploy_account_tx_hash = h(
+///     "deploy_account", version, contract_address, 0,
+///     h(class_hash, contract_address_salt, constructor_calldata),
+///     max_fee, chain_id, nonce)
+/// ```
+///
+/// FIXME: SW should fix the formula
+///
+/// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
+fn compute_deploy_account_hash(
+    txn: &DeployAccountTransaction,
+    chain_id: ChainId,
+) -> Result<ComputedTransactionHash> {
+    let mut h = HashChain::default();
+    h.update(felt_bytes!(b"deploy_account"));
+    h.update(
+        Felt::from_be_slice(txn.version.0.as_bytes()).context("Converting version into Felt")?,
+    );
+    h.update(*txn.contract_address.get());
+    h.update(Felt::ZERO);
+    let cc = {
+        let mut hh = HashChain::default();
+        hh.update(txn.class_hash.0);
+        hh.update(txn.contract_address_salt.0);
+        hh = txn
+            .constructor_calldata
+            .iter()
+            .fold(hh, |mut hh, constructor_param| {
+                hh.update(constructor_param.0);
+                hh
+            });
+        hh.finalize()
+    };
+    h.update(cc);
+    h.update(txn.max_fee.0);
+    h.update(chain_id.0);
+    h.update(txn.nonce.0);
+
+    Ok(ComputedTransactionHash::DeployAccount(
+        StarknetTransactionHash(h.finalize()),
+    ))
 }
 
 fn compute_invoke_v0_hash(_txn: &InvokeTransactionV0) -> Result<ComputedTransactionHash> {
@@ -232,8 +273,8 @@ mod tests {
             declare_v1_797215,
             // declare_v2_797220,
             deploy_v0_231579,
-            // deploy_account_v1_375919,
-            // deploy_account_v1_797k,
+            deploy_account_v1_375919,
+            deploy_account_v1_797k,
             // invoke_v0_genesis,
             // invoke_v0_21520,
             // invoke_v0_231579,
