@@ -5,11 +5,14 @@ use crate::reply::transaction::{
     DeployTransaction, InvokeTransaction, InvokeTransactionV0, InvokeTransactionV1,
     L1HandlerTransaction, Transaction,
 };
-use pathfinder_common::{StarknetTransactionHash, TransactionVersion};
+use pathfinder_common::{
+    CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
+    TransactionNonce, TransactionVersion,
+};
 
 use crate::class_hash::truncated_keccak;
 use anyhow::{Context, Result};
-use pathfinder_common::{felt_bytes, ChainId};
+use pathfinder_common::ChainId;
 use sha3::{Digest, Keccak256};
 use stark_hash::{Felt, HashChain};
 
@@ -63,29 +66,25 @@ pub fn compute_transaction_hash(
 ///     0, h([]), max_fee, chain_id, class_hash)
 /// ```
 ///
-/// FIXME: SW should fix the formula
+/// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
 fn compute_declare_v0_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"declare"));
-    h.update(
-        Felt::from_be_slice(TransactionVersion::ZERO.0.as_bytes())
-            .context("Converting version into Felt")?,
-    );
-    h.update(*txn.sender_address.get());
-    h.update(Felt::ZERO);
-    h.update(HashChain::default().finalize());
-    h.update(txn.max_fee.0);
-    h.update(chain_id.0);
-    h.update(txn.class_hash.0);
-
-    Ok(ComputedTransactionHash::DeclareV0(StarknetTransactionHash(
-        h.finalize(),
-    )))
+    compute_txn_hash_ge_0_8_0(
+        b"declare",
+        TransactionVersion::ZERO,
+        txn.sender_address,
+        None,
+        HashChain::default().finalize(), // Hash of an empty Felt list
+        None,
+        chain_id,
+        txn.class_hash,
+        None,
+    )
+    .map(ComputedTransactionHash::DeclareV0)
 }
 
 /// Computes declare v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation_2):
@@ -94,34 +93,29 @@ fn compute_declare_v0_hash(
 ///     0, h([class_hash]), max_fee, chain_id, nonce)
 /// ```
 ///
-/// FIXME: SW should fix the formula
+/// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
 fn compute_declare_v1_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"declare"));
-    h.update(
-        Felt::from_be_slice(TransactionVersion::ONE.0.as_bytes())
-            .context("Converting version into Felt")?,
-    );
-    h.update(*txn.sender_address.get());
-    h.update(Felt::ZERO);
-    let cc = {
-        let mut hh = HashChain::default();
-        hh.update(txn.class_hash.0);
-        hh.finalize()
-    };
-    h.update(cc);
-    h.update(txn.max_fee.0);
-    h.update(chain_id.0);
-    h.update(txn.nonce.0);
-
-    Ok(ComputedTransactionHash::DeclareV1(StarknetTransactionHash(
-        h.finalize(),
-    )))
+    compute_txn_hash_ge_0_8_0(
+        b"declare",
+        TransactionVersion::ONE,
+        txn.sender_address,
+        None,
+        {
+            let mut h = HashChain::default();
+            h.update(txn.class_hash.0);
+            h.finalize()
+        },
+        Some(txn.max_fee),
+        chain_id,
+        txn.nonce,
+        None,
+    )
+    .map(ComputedTransactionHash::DeclareV1)
 }
 
 /// Computes declare v2 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v2_hash_calculation):
@@ -130,35 +124,29 @@ fn compute_declare_v1_hash(
 ///     0, h([class_hash]), max_fee, chain_id, nonce, compiled_class_hash)
 /// ```
 ///
-/// FIXME: SW should fix the formula
+/// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
 fn compute_declare_v2_hash(
     txn: &DeclareTransactionV2,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"declare"));
-    h.update(
-        Felt::from_be_slice(TransactionVersion::TWO.0.as_bytes())
-            .context("Converting version into Felt")?,
-    );
-    h.update(*txn.sender_address.get());
-    h.update(Felt::ZERO);
-    let cc = {
-        let mut hh = HashChain::default();
-        hh.update(txn.class_hash.0);
-        hh.finalize()
-    };
-    h.update(cc);
-    h.update(txn.max_fee.0);
-    h.update(chain_id.0);
-    h.update(txn.nonce.0);
-    h.update(txn.compiled_class_hash.0);
-
-    Ok(ComputedTransactionHash::DeclareV2(StarknetTransactionHash(
-        h.finalize(),
-    )))
+    compute_txn_hash_ge_0_8_0(
+        b"declare",
+        TransactionVersion::TWO,
+        txn.sender_address,
+        None,
+        {
+            let mut h = HashChain::default();
+            h.update(txn.class_hash.0);
+            h.finalize()
+        },
+        Some(txn.max_fee),
+        chain_id,
+        txn.nonce,
+        Some(txn.compiled_class_hash),
+    )
+    .map(ComputedTransactionHash::DeclareV2)
 }
 
 /// Computes deploy transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_transaction):
@@ -173,36 +161,14 @@ fn compute_deploy_hash(
     txn: &DeployTransaction,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let h = compute_deploy_hash0(txn, chain_id, true)?;
-    if h.hash() == txn.transaction_hash {
-        Ok(h)
-    } else {
-        compute_deploy_hash0(txn, chain_id, false)
-    }
-}
+    lazy_static::lazy_static!(
+        static ref CONSTRUCTOR: EntryPoint = {
+            let mut keccak = Keccak256::default();
+            keccak.update(b"constructor");
+            EntryPoint(truncated_keccak(<[u8; 32]>::from(keccak.finalize())))};
+    );
 
-fn compute_deploy_hash0(
-    txn: &DeployTransaction,
-    chain_id: ChainId,
-    is_ge_0_8_0: bool,
-) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"deploy"));
-    // Version field added to hash in Cairo >= 0.8.0
-    if is_ge_0_8_0 {
-        h.update(
-            Felt::from_be_slice(txn.version.0.as_bytes())
-                .context("Converting version into Felt")?,
-        );
-    }
-    h.update(*txn.contract_address.get());
-    let c = {
-        let mut keccak = Keccak256::default();
-        keccak.update(b"constructor");
-        truncated_keccak(<[u8; 32]>::from(keccak.finalize()))
-    };
-    h.update(c);
-    let cc = {
+    let constructor_params_hash = {
         let hh = txn.constructor_calldata.iter().fold(
             HashChain::default(),
             |mut hh, constructor_param| {
@@ -212,16 +178,31 @@ fn compute_deploy_hash0(
         );
         hh.finalize()
     };
-    h.update(cc);
-    // Max fee field added to hash in Cairo >= 0.8.0
-    if is_ge_0_8_0 {
-        h.update(Felt::ZERO);
+    let h = compute_txn_hash_lt_0_8_0(
+        b"deploy",
+        txn.contract_address,
+        Some(*CONSTRUCTOR),
+        constructor_params_hash,
+        chain_id,
+    )?;
+    {
+        if h == txn.transaction_hash {
+            Ok(h)
+        } else {
+            compute_txn_hash_ge_0_8_0(
+                b"deploy",
+                txn.version,
+                txn.contract_address,
+                Some(*CONSTRUCTOR),
+                constructor_params_hash,
+                None,
+                chain_id,
+                (),
+                None,
+            )
+        }
     }
-    h.update(chain_id.0);
-
-    Ok(ComputedTransactionHash::Deploy(StarknetTransactionHash(
-        h.finalize(),
-    )))
+    .map(ComputedTransactionHash::Deploy)
 }
 
 /// Computes deploy account transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_account_hash_calculation):
@@ -232,41 +213,37 @@ fn compute_deploy_hash0(
 ///     max_fee, chain_id, nonce)
 /// ```
 ///
-/// FIXME: SW should fix the formula
+/// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
 fn compute_deploy_account_hash(
     txn: &DeployAccountTransaction,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"deploy_account"));
-    h.update(
-        Felt::from_be_slice(txn.version.0.as_bytes()).context("Converting version into Felt")?,
-    );
-    h.update(*txn.contract_address.get());
-    h.update(Felt::ZERO);
-    let cc = {
-        let mut hh = HashChain::default();
-        hh.update(txn.class_hash.0);
-        hh.update(txn.contract_address_salt.0);
-        hh = txn
-            .constructor_calldata
-            .iter()
-            .fold(hh, |mut hh, constructor_param| {
-                hh.update(constructor_param.0);
-                hh
-            });
-        hh.finalize()
-    };
-    h.update(cc);
-    h.update(txn.max_fee.0);
-    h.update(chain_id.0);
-    h.update(txn.nonce.0);
-
-    Ok(ComputedTransactionHash::DeployAccount(
-        StarknetTransactionHash(h.finalize()),
-    ))
+    compute_txn_hash_ge_0_8_0(
+        b"deploy_account",
+        txn.version,
+        txn.contract_address,
+        None,
+        {
+            let mut hh = HashChain::default();
+            hh.update(txn.class_hash.0);
+            hh.update(txn.contract_address_salt.0);
+            hh = txn
+                .constructor_calldata
+                .iter()
+                .fold(hh, |mut hh, constructor_param| {
+                    hh.update(constructor_param.0);
+                    hh
+                });
+            hh.finalize()
+        },
+        Some(txn.max_fee),
+        chain_id,
+        txn.nonce,
+        None,
+    )
+    .map(ComputedTransactionHash::DeployAccount)
 }
 
 /// Computes invoke v0 account transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v0_hash_calculation):
@@ -275,38 +252,14 @@ fn compute_deploy_account_hash(
 ///     entry_point_selector, h(calldata), max_fee, chain_id)
 /// ```
 ///
-/// FIXME: SW should fix the formula
+/// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
 fn compute_invoke_v0_hash(
     txn: &InvokeTransactionV0,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let h = compute_invoke_v0_hash0(txn, chain_id, true)?;
-    if h.hash() == txn.transaction_hash {
-        Ok(h)
-    } else {
-        compute_invoke_v0_hash0(txn, chain_id, false)
-    }
-}
-
-fn compute_invoke_v0_hash0(
-    txn: &InvokeTransactionV0,
-    chain_id: ChainId,
-    is_ge_0_8_0: bool,
-) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"invoke"));
-    // Version field added to hash in Cairo >= 0.8.0
-    if is_ge_0_8_0 {
-        h.update(
-            Felt::from_be_slice(TransactionVersion::ZERO.0.as_bytes())
-                .context("Converting version into Felt")?,
-        );
-    }
-    h.update(*txn.sender_address.get());
-    h.update(txn.entry_point_selector.0);
-    let cc = {
+    let list_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
             hh.update(call_param.0);
@@ -314,16 +267,29 @@ fn compute_invoke_v0_hash0(
         });
         hh.finalize()
     };
-    h.update(cc);
-    // Max fee field added to hash in Cairo >= 0.8.0
-    if is_ge_0_8_0 {
-        h.update(txn.max_fee.0);
+    let h = compute_txn_hash_lt_0_8_0(
+        b"invoke",
+        txn.sender_address,
+        Some(txn.entry_point_selector),
+        list_hash,
+        chain_id,
+    )?;
+    if h == txn.transaction_hash {
+        Ok(h)
+    } else {
+        compute_txn_hash_ge_0_8_0(
+            b"invoke",
+            TransactionVersion::ZERO,
+            txn.sender_address,
+            Some(txn.entry_point_selector),
+            list_hash,
+            Some(txn.max_fee),
+            chain_id,
+            (),
+            None,
+        )
     }
-    h.update(chain_id.0);
-
-    Ok(ComputedTransactionHash::DeployAccount(
-        StarknetTransactionHash(h.finalize()),
-    ))
+    .map(ComputedTransactionHash::InvokeV0)
 }
 
 /// Computes invoke v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation):
@@ -337,30 +303,25 @@ fn compute_invoke_v1_hash(
     txn: &InvokeTransactionV1,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"invoke"));
-    h.update(
-        Felt::from_be_slice(TransactionVersion::ONE.0.as_bytes())
-            .context("Converting version into Felt")?,
-    );
-    h.update(*txn.sender_address.get());
-    h.update(Felt::ZERO);
-    let cc = {
-        let mut hh = HashChain::default();
-        hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
-            hh.update(call_param.0);
-            hh
-        });
-        hh.finalize()
-    };
-    h.update(cc);
-    h.update(txn.max_fee.0);
-    h.update(chain_id.0);
-    h.update(txn.nonce.0);
-
-    Ok(ComputedTransactionHash::DeployAccount(
-        StarknetTransactionHash(h.finalize()),
-    ))
+    compute_txn_hash_ge_0_8_0(
+        b"invoke",
+        TransactionVersion::ONE,
+        txn.sender_address,
+        None,
+        {
+            let mut hh = HashChain::default();
+            hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
+                hh.update(call_param.0);
+                hh
+            });
+            hh.finalize()
+        },
+        Some(txn.max_fee),
+        chain_id,
+        txn.nonce,
+        None,
+    )
+    .map(ComputedTransactionHash::InvokeV1)
 }
 
 /// Computes l1 handler transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/L1-L2_Communication/messaging-mechanism/#structure_and_hashing_l1-l2):
@@ -369,7 +330,7 @@ fn compute_invoke_v1_hash(
 ///     entry_point_selector, h(calldata), 0, chain_id, nonce)
 /// ```
 ///
-/// FIXME: SW should fix the formula
+/// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
 ///
@@ -380,29 +341,102 @@ fn compute_l1_handler_hash(
     txn: &L1HandlerTransaction,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let mut h = HashChain::default();
-    h.update(felt_bytes!(b"l1_handler"));
-    h.update(
-        Felt::from_be_slice(txn.version.0.as_bytes()).context("Converting version into Felt")?,
-    );
-    h.update(*txn.contract_address.get());
-    h.update(txn.entry_point_selector.0);
-    let cc = {
-        let mut hh = HashChain::default();
-        hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
-            hh.update(call_param.0);
-            hh
-        });
-        hh.finalize()
-    };
-    h.update(cc);
-    h.update(Felt::ZERO);
-    h.update(chain_id.0);
-    h.update(txn.nonce.0);
+    compute_txn_hash_ge_0_8_0(
+        b"l1_handler",
+        txn.version,
+        txn.contract_address,
+        Some(txn.entry_point_selector),
+        {
+            let mut hh = HashChain::default();
+            hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
+                hh.update(call_param.0);
+                hh
+            });
+            hh.finalize()
+        },
+        None,
+        chain_id,
+        txn.nonce,
+        None,
+    )
+    .map(ComputedTransactionHash::L1Handler)
+}
 
-    Ok(ComputedTransactionHash::DeployAccount(
-        StarknetTransactionHash(h.finalize()),
-    ))
+#[derive(Copy, Clone, Debug)]
+enum NonceOrClassHash {
+    Nonce(TransactionNonce),
+    ClassHash(ClassHash),
+    None,
+}
+
+impl From<TransactionNonce> for NonceOrClassHash {
+    fn from(n: TransactionNonce) -> Self {
+        Self::Nonce(n)
+    }
+}
+
+impl From<ClassHash> for NonceOrClassHash {
+    fn from(c: ClassHash) -> Self {
+        Self::ClassHash(c)
+    }
+}
+
+impl From<()> for NonceOrClassHash {
+    fn from(_: ()) -> Self {
+        Self::None
+    }
+}
+
+/// _Generic_ compute transaction hash for transactions preceding Starknet 0.8.0
+fn compute_txn_hash_lt_0_8_0(
+    prefix: &[u8],
+    address: ContractAddress,
+    entry_point_selector: Option<EntryPoint>,
+    list_hash: Felt,
+    chain_id: ChainId,
+) -> Result<StarknetTransactionHash> {
+    let mut h = HashChain::default();
+    h.update(Felt::from_be_slice(prefix).context("Converting prefix into felt")?);
+    h.update(*address.get());
+    h.update(entry_point_selector.map(|e| e.0).unwrap_or(Felt::ZERO));
+    h.update(list_hash);
+    h.update(chain_id.0);
+
+    Ok(StarknetTransactionHash(h.finalize()))
+}
+
+/// _Generic_ compute transaction hash for transactions from Starknet 0.8.0 onwards
+fn compute_txn_hash_ge_0_8_0(
+    prefix: &[u8],
+    version: TransactionVersion,
+    address: ContractAddress,
+    entry_point_selector: Option<EntryPoint>,
+    list_hash: Felt,
+    max_fee: Option<Fee>,
+    chain_id: ChainId,
+    nonce_or_class_hash: impl Into<NonceOrClassHash>,
+    compiled_class_hash: Option<CasmHash>,
+) -> Result<StarknetTransactionHash> {
+    let mut h = HashChain::default();
+    h.update(Felt::from_be_slice(prefix).context("Converting prefix into felt")?);
+    h.update(Felt::from_be_slice(version.0.as_bytes()).context("Converting version into felt")?);
+    h.update(*address.get());
+    h.update(entry_point_selector.map(|e| e.0).unwrap_or(Felt::ZERO));
+    h.update(list_hash);
+    h.update(max_fee.map(|e| e.0).unwrap_or(Felt::ZERO));
+    h.update(chain_id.0);
+
+    match nonce_or_class_hash.into() {
+        NonceOrClassHash::Nonce(nonce) => h.update(nonce.0),
+        NonceOrClassHash::ClassHash(class_hash) => h.update(class_hash.0),
+        NonceOrClassHash::None => {}
+    }
+
+    if let Some(compiled_class_hash) = compiled_class_hash {
+        h.update(compiled_class_hash.0);
+    }
+
+    Ok(StarknetTransactionHash(h.finalize()))
 }
 
 #[cfg(test)]
@@ -469,7 +503,7 @@ mod tests {
             invoke_v0_231579,  // >= 0.8.0
             invoke_v1_420k,
             invoke_v1_790k,
-            // _l1_handler_v0_1564, // < ? , always fails, even if fallback hash implementation is used, similarly to deploy and ignore
+            // _l1_handler_v0_1564, // < ? , always fails, even if fallback hash implementation is used (similarly to deploy and ignore)
             l1_handler_v0_272866, // < cairo 0.9.1
             l1_handler_v0_790k,
         ]
