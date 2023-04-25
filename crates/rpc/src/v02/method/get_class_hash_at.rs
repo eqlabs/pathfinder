@@ -44,12 +44,7 @@ pub async fn get_class_hash_at(
         let tx = db.transaction().context("Creating database transaction")?;
 
         // Check for block existence.
-        let block_exists = match block_id {
-            StarknetBlocksBlockId::Number(number) => database::block_number_exists(&tx, number),
-            StarknetBlocksBlockId::Hash(hash) => database::block_hash_exists(&tx, hash),
-            StarknetBlocksBlockId::Latest => Ok(true),
-        }?;
-        if !block_exists {
+        if !crate::utils::block_exists(&tx, block_id)? {
             return Err(GetClassHashAtError::BlockNotFound);
         }
 
@@ -140,30 +135,6 @@ mod database {
         )
         .optional()
         .context("Querying database for class hash at block hash")
-    }
-
-    pub fn block_hash_exists(
-        tx: &Transaction<'_>,
-        block_hash: StarknetBlockHash,
-    ) -> anyhow::Result<bool> {
-        tx.query_row(
-            "SELECT EXISTS(SELECT 1  from canonical_blocks WHERE hash = ?)",
-            [block_hash],
-            |row| row.get(0),
-        )
-        .context("Querying for existence of block hash")
-    }
-
-    pub fn block_number_exists(
-        tx: &Transaction<'_>,
-        block_number: StarknetBlockNumber,
-    ) -> anyhow::Result<bool> {
-        tx.query_row(
-            "SELECT EXISTS (SELECT 1 from canonical_blocks WHERE number = ?)",
-            [block_number],
-            |row| row.get(0),
-        )
-        .context("Querying for existence of block number")
     }
 }
 
