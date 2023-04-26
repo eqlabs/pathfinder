@@ -24,10 +24,6 @@ macros::starkhash251::deserialization!(ContractAddress);
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ContractNonce(pub Felt);
 
-impl ContractNonce {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
-
 /// The salt of a StarkNet contract address.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub Felt);
@@ -55,10 +51,6 @@ macros::starkhash251::deserialization!(CasmHash);
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct ClassCommitment(pub Felt);
 
-impl ClassCommitment {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
-
 macros::starkhash251::newtype!(ClassCommitment);
 macros::starkhash251::deserialization!(ClassCommitment);
 
@@ -77,10 +69,6 @@ pub struct ContractStateHash(pub Felt);
 /// state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractRoot(pub Felt);
-
-impl ContractRoot {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
 
 // Bytecode and entry point list of a class
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -178,9 +166,6 @@ impl StateCommitment {
 /// Before StarkNet v0.11.0 this was equivalent to [StateCommitment].
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StorageCommitment(pub Felt);
-impl StorageCommitment {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
 
 /// A StarkNet block hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -212,17 +197,9 @@ macros::i64_backed_u64::serdes!(StarknetBlockTimestamp);
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EventCommitment(pub Felt);
 
-impl EventCommitment {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
-
 /// A StarkNet transactions commitment of a block.
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionCommitment(pub Felt);
-
-impl TransactionCommitment {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
 
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -265,12 +242,8 @@ pub struct EventKey(pub Felt);
 pub struct SequencerAddress(pub Felt);
 
 /// StarkNet fee value.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Fee(pub Felt);
-
-impl Fee {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
 
 /// StarkNet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -279,10 +252,6 @@ pub struct GasPrice(pub u128);
 // Starknet transaction nonce.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionNonce(pub Felt);
-
-impl TransactionNonce {
-    pub const ZERO: Self = Self(Felt::ZERO);
-}
 
 /// StarkNet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -565,6 +534,7 @@ macros::starkhash::common_newtype!(
     EventCommitment,
     EventData,
     EventKey,
+    Fee,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem,
