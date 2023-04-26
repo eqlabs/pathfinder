@@ -163,6 +163,10 @@ pub(super) mod starkhash {
             crate::macros::starkhash::from_sql!($target);
             crate::macros::fmt::thin_debug!($target);
             crate::macros::fmt::thin_display!($target);
+
+            impl $target {
+                pub const ZERO: Self = Self(Felt::ZERO);
+            }
         };
 
         ($head:ty, $($tail:ty),+ $(,)?) => {
@@ -179,6 +183,10 @@ pub(super) mod starkhash {
             $crate::macros::starkhash::from_sql!($target);
             $crate::macros::fmt::thin_debug!($target);
             $crate::macros::fmt::thin_display!($target);
+
+            impl $target {
+                pub const ZERO: Self = Self(Felt::ZERO);
+            }
         };
 
         ($head:ty, $($tail:ty),+ $(,)?) => {
