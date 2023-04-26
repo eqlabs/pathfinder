@@ -2,10 +2,8 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
-use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
-use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
+use pathfinder_storage::StarknetBlocksBlockId;
 use serde::Deserialize;
-use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStorageAtInput {
@@ -68,41 +66,124 @@ pub async fn get_storage_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        // Use internal error to indicate that the process of querying for a particular block failed,
-        // which is not the same as being sure that the block is not in the db.
-        let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-            .context("Get storage commitment for block")?
-            // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
-            // by using a dedicated error code from the RPC API spec
-            .ok_or(GetStorageAtError::BlockNotFound)?;
+        // Check for block existence.
+        if !crate::utils::block_exists(&tx, block_id)? {
+            return Err(GetStorageAtError::BlockNotFound);
+        }
 
-        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
+        let value = match block_id {
+            StarknetBlocksBlockId::Number(number) => {
+                database::storage_at_block_number(&tx, input.contract_address, input.key, number)
+            }
+            StarknetBlocksBlockId::Hash(hash) => {
+                database::storage_at_block_hash(&tx, input.contract_address, input.key, hash)
+            }
+            StarknetBlocksBlockId::Latest => {
+                database::storage_at_latest(&tx, input.contract_address, input.key)
+            }
+        }?;
 
-        let contract_state_hash = storage_commitment_tree
-            .get(input.contract_address)
-            .context("Get contract state hash from global state tree")?
-            .ok_or(GetStorageAtError::ContractNotFound)?;
-
-        let contract_state_root = ContractsStateTable::get_root(&tx, contract_state_hash)
-            .context("Get contract state root")?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Contract state root not found for contract state hash {}",
-                    contract_state_hash.0
-                )
-            })?;
-
-        let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
-
-        let storage_val = contract_state_tree
-            .get(input.key)
-            .context("Get value from contract state tree")?
-            .unwrap_or(StorageValue(Felt::ZERO));
-
-        Ok(GetStorageOutput(storage_val))
+        match value {
+            Some(value) => Ok(GetStorageOutput(value)),
+            None => {
+                if database::contract_exists(&tx, input.contract_address, block_id)? {
+                    Ok(GetStorageOutput(StorageValue::ZERO))
+                } else {
+                    Err(GetStorageAtError::ContractNotFound)
+                }
+            }
+        }
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+mod database {
+    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use rusqlite::{params, OptionalExtension, Transaction};
+
+    use super::*;
+
+    pub fn storage_at_latest(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+        key: StorageAddress,
+    ) -> anyhow::Result<Option<StorageValue>> {
+        tx.query_row(
+            r"SELECT storage_value FROM storage_updates 
+                WHERE contract_address = ? AND storage_address = ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![contract_address, key],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Reading latest storage value")
+    }
+
+    pub fn storage_at_block_hash(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+        key: StorageAddress,
+        block: StarknetBlockHash,
+    ) -> anyhow::Result<Option<StorageValue>> {
+        tx.query_row(
+            r"SELECT storage_value FROM storage_updates 
+                WHERE contract_address = ? AND storage_address = ? AND block_number <= (
+                    SELECT number FROM canonical_blocks WHERE hash = ?
+                )
+                ORDER BY block_number DESC LIMIT 1",
+            params![contract_address, key, block],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Reading storage value at block hash")
+    }
+
+    pub fn storage_at_block_number(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+        key: StorageAddress,
+        block: StarknetBlockNumber,
+    ) -> anyhow::Result<Option<StorageValue>> {
+        tx.query_row(
+            r"SELECT storage_value FROM storage_updates 
+                WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![contract_address, key, block],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Reading storage value at block number")
+    }
+
+    pub fn contract_exists(
+        tx: &Transaction<'_>,
+        contract_address: ContractAddress,
+        block_id: StarknetBlocksBlockId,
+    ) -> anyhow::Result<bool> {
+        match block_id {
+            StarknetBlocksBlockId::Number(number) => tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= ?)",
+                params![contract_address, number],
+                |row| row.get(0),
+            ),
+            StarknetBlocksBlockId::Hash(hash) => tx.query_row(
+                r"SELECT EXISTS(
+                    SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= (
+                        SELECT number FROM canonical_blocks WHERE hash = ?
+                    )
+                )",
+                params![contract_address, hash],
+                |row| row.get(0),
+            ),
+            StarknetBlocksBlockId::Latest => tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ?)",
+                [contract_address],
+                |row| row.get(0),
+            ),
+        }
+        .context("Querying that contract exists")
+    }
 }
 
 #[cfg(test)]

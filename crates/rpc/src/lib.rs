@@ -175,16 +175,29 @@ pub mod test_utils {
         let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
         let class2_hash = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
 
+        let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
+
         let state_diff0 = StateDiff::default()
             .add_deployed_contract(contract0_addr, class0_hash)
             .add_nonce_update(contract0_addr, ContractNonce(felt!("0x1")));
 
-        let state_diff1 = StateDiff::default().add_deployed_contract(contract1_addr, class1_hash);
+        let state_diff1 = StateDiff::default()
+            .add_deployed_contract(contract1_addr, class1_hash)
+            .add_storage_update(
+                contract1_addr,
+                storage_addr,
+                StorageValue(felt_bytes!(b"storage value 1")),
+            );
 
         let state_diff2 = StateDiff::default()
             .add_deployed_contract(contract2_addr, class2_hash)
             .add_nonce_update(contract1_addr, ContractNonce(felt!("0x10")))
-            .add_nonce_update(contract2_addr, ContractNonce(felt!("0xfeed")));
+            .add_nonce_update(contract2_addr, ContractNonce(felt!("0xfeed")))
+            .add_storage_update(
+                contract1_addr,
+                storage_addr,
+                StorageValue(felt_bytes!(b"storage value 2")),
+            );
 
         let contract0_update = vec![];
 
