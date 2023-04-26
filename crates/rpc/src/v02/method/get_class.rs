@@ -37,6 +37,18 @@ pub async fn get_class(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
+        // Check that block exists.
+        use crate::utils::block_exists;
+        use pathfinder_storage::StarknetBlocksBlockId;
+        let exists = match block {
+            BlockId::Pending | BlockId::Latest => true,
+            BlockId::Hash(hash) => block_exists(&tx, StarknetBlocksBlockId::Hash(hash))?,
+            BlockId::Number(number) => block_exists(&tx, StarknetBlocksBlockId::Number(number))?,
+        };
+        if !exists {
+            return Err(GetClassError::BlockNotFound);
+        }
+
         let definition = match block {
             BlockId::Pending => read_pending(&tx, input.class_hash),
             BlockId::Number(number) => read_at_number(&tx, input.class_hash, number),
@@ -79,12 +91,9 @@ fn read_pending(
 fn read_latest(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> Result<Vec<u8>, GetClassError> {
     // This works because declared_on is only set if the class was declared in a canonical block.
     tx.query_row(
-        "SELECT definition FROM class_definitions WHERE hash=? AND declared_on IS NOT NULL",
+        "SELECT definition FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
         rusqlite::params! { class },
-        |row| {
-            let def = row.get_ref_unwrap(0).as_blob()?.to_owned();
-            Ok(def)
-        },
+        |row| row.get(0),
     )
     .optional()
     .context("Reading class definition from database")?
@@ -98,27 +107,11 @@ fn read_at_hash(
     class: ClassHash,
     block: pathfinder_common::StarknetBlockHash,
 ) -> Result<Vec<u8>, GetClassError> {
-    let number = tx
-        .query_row(
-            "SELECT number FROM canonical_blocks WHERE hash=?",
-            rusqlite::params! { block },
-            |row| {
-                let number = row.get_ref_unwrap(0).as_i64()?;
-                Ok(number)
-            },
-        )
-        .optional()
-        .context("Reading block number from database")?
-        .ok_or(GetClassError::BlockNotFound)?;
-
     tx.query_row(
-        r"SELECT definition FROM class_definitions code JOIN canonical_blocks blocks ON (code.declared_on = blocks.hash)
-        WHERE code.hash=? AND blocks.number <= ?",
-        rusqlite::params! { class, number },
-        |row| {
-            let def = row.get_ref_unwrap(0).as_blob()?.to_owned();
-            Ok(def)
-        },
+        r"SELECT definition FROM class_definitions
+            WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
+        rusqlite::params! { class, block },
+        |row| row.get(0)
     )
     .optional()
     .context("Reading class definition from database")?
@@ -131,27 +124,10 @@ fn read_at_number(
     class: ClassHash,
     block: pathfinder_common::StarknetBlockNumber,
 ) -> Result<Vec<u8>, GetClassError> {
-    // Check that the block number exists. This has to happen first as the <= check
-    // in the class selection query will work even if the block number exceeds what
-    // is available in canonical_blocks.
-    let latest = tx
-        .query_row("SELECT MAX(number) FROM canonical_blocks", [], |row| {
-            let num = row.get_ref_unwrap(0).as_i64()?;
-            Ok(num)
-        })
-        .context("Reading latest block number")?;
-    if block.get() > latest as u64 {
-        return Err(GetClassError::BlockNotFound);
-    }
-
     tx.query_row(
-        r"SELECT definition FROM class_definitions code JOIN canonical_blocks blocks ON (code.declared_on = blocks.hash)
-        WHERE code.hash=? AND blocks.number <= ?",
+        r"SELECT definition FROM class_definitions WHERE hash=? AND block_number <= ?",
         rusqlite::params! { class, block },
-        |row| {
-            let def = row.get_ref_unwrap(0).as_blob()?.to_owned();
-            Ok(def)
-        },
+        |row| row.get(0),
     )
     .optional()
     .context("Reading class definition from database")?
