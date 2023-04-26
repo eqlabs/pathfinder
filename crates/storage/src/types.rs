@@ -118,6 +118,20 @@ pub mod state_update {
             });
             self
         }
+
+        pub fn add_storage_update(
+            mut self,
+            contract_address: ContractAddress,
+            key: StorageAddress,
+            value: StorageValue,
+        ) -> Self {
+            self.storage_diffs.push(StorageDiff {
+                address: contract_address,
+                key,
+                value,
+            });
+            self
+        }
     }
 
     impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
