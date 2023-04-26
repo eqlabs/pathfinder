@@ -100,6 +100,8 @@ CREATE TABLE storage_updates (
     // tx.execute("DROP TABLE starknet_state_updates", [])
     //     .context("Dropping starknet_state_updates")?;
 
+    // tx.execute("CREATE INDEX contract_updates_address_number ON contract_updates (contract_address, block_number)")
+
     Ok(())
 }
 
