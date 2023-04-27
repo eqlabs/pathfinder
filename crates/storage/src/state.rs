@@ -294,7 +294,7 @@ impl StarknetBlocksTable {
 
                 let hash = row.get_unwrap("hash");
 
-                let state_commitment = row.get_unwrap("root");
+                let storage_commitment = row.get_unwrap("root");
 
                 let timestamp = row.get_unwrap("timestamp");
 
@@ -310,7 +310,7 @@ impl StarknetBlocksTable {
                 let class_commitment = row
                     .get_unwrap::<_, Option<_>>("class_commitment")
                     .unwrap_or(ClassCommitment::ZERO);
-                let root = StateCommitment::calculate(state_commitment, class_commitment);
+                let root = StateCommitment::calculate(storage_commitment, class_commitment);
 
                 let block = StarknetBlock {
                     number,
