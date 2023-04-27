@@ -44,6 +44,12 @@ impl ComputedTransactionHash {
 }
 
 /// Computes transaction hash according to the formulas from [starknet docs](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/).
+///
+/// ## Important
+///
+/// For __Invoke v0__, __Deploy__ and __L1 Handler__ there is a fallback hash calculation
+/// algorithm used in case a hash mismatch is encountered and the fallback's result becomes
+/// the ultimate result of the computation.
 pub fn compute_transaction_hash(
     txn: &Transaction,
     chain_id: ChainId,
@@ -73,7 +79,7 @@ fn compute_declare_v0_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    compute_txn_hash_ge_0_8_0(
+    compute_txn_hash(
         b"declare",
         TransactionVersion::ZERO,
         txn.sender_address,
@@ -100,7 +106,7 @@ fn compute_declare_v1_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    compute_txn_hash_ge_0_8_0(
+    compute_txn_hash(
         b"declare",
         TransactionVersion::ONE,
         txn.sender_address,
@@ -131,7 +137,7 @@ fn compute_declare_v2_hash(
     txn: &DeclareTransactionV2,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    compute_txn_hash_ge_0_8_0(
+    compute_txn_hash(
         b"declare",
         TransactionVersion::TWO,
         txn.sender_address,
@@ -178,31 +184,31 @@ fn compute_deploy_hash(
         );
         hh.finalize()
     };
-    let h = compute_txn_hash_lt_0_8_0(
+
+    let h = compute_txn_hash(
         b"deploy",
+        txn.version,
         txn.contract_address,
         Some(*CONSTRUCTOR),
         constructor_params_hash,
+        None,
         chain_id,
+        (),
+        None,
     )?;
-    {
-        if h == txn.transaction_hash {
-            Ok(h)
-        } else {
-            compute_txn_hash_ge_0_8_0(
-                b"deploy",
-                txn.version,
-                txn.contract_address,
-                Some(*CONSTRUCTOR),
-                constructor_params_hash,
-                None,
-                chain_id,
-                (),
-                None,
-            )
-        }
-    }
-    .map(ComputedTransactionHash::Deploy)
+
+    let h = if h == txn.transaction_hash {
+        h
+    } else {
+        legacy_compute_txn_hash(
+            b"deploy",
+            txn.contract_address,
+            Some(*CONSTRUCTOR),
+            constructor_params_hash,
+            chain_id,
+        )?
+    };
+    Ok(ComputedTransactionHash::Deploy(h))
 }
 
 /// Computes deploy account transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_account_hash_calculation):
@@ -220,7 +226,7 @@ fn compute_deploy_account_hash(
     txn: &DeployAccountTransaction,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    compute_txn_hash_ge_0_8_0(
+    compute_txn_hash(
         b"deploy_account",
         txn.version,
         txn.contract_address,
@@ -259,7 +265,7 @@ fn compute_invoke_v0_hash(
     txn: &InvokeTransactionV0,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    let list_hash = {
+    let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
             hh.update(call_param.0);
@@ -267,29 +273,31 @@ fn compute_invoke_v0_hash(
         });
         hh.finalize()
     };
-    let h = compute_txn_hash_lt_0_8_0(
+
+    let h = compute_txn_hash(
         b"invoke",
+        TransactionVersion::ZERO,
         txn.sender_address,
         Some(txn.entry_point_selector),
-        list_hash,
+        call_params_hash,
+        Some(txn.max_fee),
         chain_id,
+        (),
+        None,
     )?;
-    if h == txn.transaction_hash {
-        Ok(h)
+
+    let h = if h == txn.transaction_hash {
+        h
     } else {
-        compute_txn_hash_ge_0_8_0(
+        legacy_compute_txn_hash(
             b"invoke",
-            TransactionVersion::ZERO,
             txn.sender_address,
             Some(txn.entry_point_selector),
-            list_hash,
-            Some(txn.max_fee),
+            call_params_hash,
             chain_id,
-            (),
-            None,
-        )
-    }
-    .map(ComputedTransactionHash::InvokeV0)
+        )?
+    };
+    Ok(ComputedTransactionHash::InvokeV0(h))
 }
 
 /// Computes invoke v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation):
@@ -303,7 +311,7 @@ fn compute_invoke_v1_hash(
     txn: &InvokeTransactionV1,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    compute_txn_hash_ge_0_8_0(
+    compute_txn_hash(
         b"invoke",
         TransactionVersion::ONE,
         txn.sender_address,
@@ -341,7 +349,16 @@ fn compute_l1_handler_hash(
     txn: &L1HandlerTransaction,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    compute_txn_hash_ge_0_8_0(
+    let call_params_hash = {
+        let mut hh = HashChain::default();
+        hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
+            hh.update(call_param.0);
+            hh
+        });
+        hh.finalize()
+    };
+
+    let h = compute_txn_hash(
         b"l1_handler",
         txn.version,
         txn.contract_address,
@@ -358,8 +375,23 @@ fn compute_l1_handler_hash(
         chain_id,
         txn.nonce,
         None,
-    )
-    .map(ComputedTransactionHash::L1Handler)
+    )?;
+
+    let h = if h == txn.transaction_hash {
+        h
+    } else {
+        legacy_compute_txn_hash(
+            // Oldest L1 Handler transactions were actually Invokes
+            // which later on were "renamed" to be the former,
+            // yet the hashes remain, hence the prefix
+            b"invoke",
+            txn.contract_address,
+            Some(txn.entry_point_selector),
+            call_params_hash,
+            chain_id,
+        )?
+    };
+    Ok(ComputedTransactionHash::L1Handler(h))
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -387,8 +419,8 @@ impl From<()> for NonceOrClassHash {
     }
 }
 
-/// _Generic_ compute transaction hash for transactions preceding Starknet 0.8.0
-fn compute_txn_hash_lt_0_8_0(
+/// _Generic_ compute transaction hash for older transactions (pre 0.8-ish)
+fn legacy_compute_txn_hash(
     prefix: &[u8],
     address: ContractAddress,
     entry_point_selector: Option<EntryPoint>,
@@ -405,8 +437,8 @@ fn compute_txn_hash_lt_0_8_0(
     Ok(StarknetTransactionHash(h.finalize()))
 }
 
-/// _Generic_ compute transaction hash for transactions from Starknet 0.8.0 onwards
-fn compute_txn_hash_ge_0_8_0(
+/// _Generic_ compute transaction hash for transactions
+fn compute_txn_hash(
     prefix: &[u8],
     version: TransactionVersion,
     address: ContractAddress,
@@ -465,57 +497,35 @@ mod tests {
         // Block on testnet where starknet version was added (0.9.1)
         // https://alpha4.starknet.io/feeder_gateway/get_block?blockNumber=272881
 
-        let declare_v0_231579 = case!(v0_9_0::transaction::DECLARE);
-        let declare_v1_463319 = case!(v0_11_0::transaction::declare::v1::BLOCK_463319);
-        let declare_v1_797215 = case!(v0_11_0::transaction::declare::v1::BLOCK_797215);
-        let declare_v2_797220 = case!(v0_11_0::transaction::declare::v2::BLOCK_797220);
-
-        let deploy_v0_genesis = case!(v0_11_0::transaction::deploy::v0::GENESIS);
-        let deploy_v0_231579 = case!(v0_9_0::transaction::DEPLOY);
-        let deploy_v1_485004 = case!(v0_11_0::transaction::deploy::v1::BLOCK_485004);
-
-        let deploy_account_v1_375919 =
-            case!(v0_11_0::transaction::deploy_account::v1::BLOCK_375919);
-        let deploy_account_v1_797k = case!(v0_11_0::transaction::deploy_account::v1::BLOCK_797K);
-
-        let invoke_v0_genesis = case!(v0_11_0::transaction::invoke::v0::GENESIS);
-        let invoke_v0_21520 = case!(v0_8_2::transaction::INVOKE);
-        let invoke_v0_231579 = case!(v0_9_0::transaction::INVOKE);
-        let invoke_v1_420k = case!(v0_11_0::transaction::invoke::v1::BLOCK_420K);
-        let invoke_v1_790k = case!(v0_11_0::transaction::invoke::v1::BLOCK_790K);
-
-        let _l1_handler_v0_1564 = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_1564);
-        let l1_handler_v0_272866 = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_272866);
-        let l1_handler_v0_790k = case!(v0_11_0::transaction::l1_handler::v0::BLOCK_790K);
-
         [
-            declare_v0_231579, // First declare
-            declare_v1_463319,
-            declare_v1_797215,
-            declare_v2_797220,
-            deploy_v0_genesis, // < 0.8.0
-            deploy_v0_231579,  // >= 0.8.0
-            deploy_v1_485004,  // Last deploy
-            deploy_account_v1_375919,
-            deploy_account_v1_797k,
-            invoke_v0_genesis, // < 0.8.0
-            invoke_v0_21520,   // < 0.8.0
-            invoke_v0_231579,  // >= 0.8.0
-            invoke_v1_420k,
-            invoke_v1_790k,
-            // _l1_handler_v0_1564, // < ? , always fails, even if fallback hash implementation is used (similarly to deploy and ignore)
-            l1_handler_v0_272866, // < cairo 0.9.1
-            l1_handler_v0_790k,
+            // Declare
+            case!(v0_9_0::transaction::DECLARE), // v0
+            case!(v0_11_0::transaction::declare::v1::BLOCK_463319),
+            case!(v0_11_0::transaction::declare::v1::BLOCK_797215),
+            case!(v0_11_0::transaction::declare::v2::BLOCK_797220),
+            // Deploy
+            case!(v0_11_0::transaction::deploy::v0::GENESIS),
+            case!(v0_9_0::transaction::DEPLOY), // v0
+            case!(v0_11_0::transaction::deploy::v1::BLOCK_485004),
+            // Deploy account
+            case!(v0_11_0::transaction::deploy_account::v1::BLOCK_375919),
+            case!(v0_11_0::transaction::deploy_account::v1::BLOCK_797K),
+            // Invoke
+            case!(v0_11_0::transaction::invoke::v0::GENESIS),
+            case!(v0_8_2::transaction::INVOKE),
+            case!(v0_9_0::transaction::INVOKE),
+            case!(v0_11_0::transaction::invoke::v1::BLOCK_420K),
+            case!(v0_11_0::transaction::invoke::v1::BLOCK_790K),
+            // L1 Handler
+            case!(v0_11_0::transaction::l1_handler::v0::BLOCK_1564),
+            case!(v0_11_0::transaction::l1_handler::v0::BLOCK_272866),
+            case!(v0_11_0::transaction::l1_handler::v0::BLOCK_790K),
         ]
         .iter()
         .for_each(|(txn, line)| {
-            assert_eq!(
-                compute_transaction_hash(txn, ChainId::TESTNET)
-                    .expect(&format!("line: {line}"))
-                    .hash(),
-                txn.hash(),
-                "line: {line}"
-            )
-        })
+            let actual_hash =
+                compute_transaction_hash(txn, ChainId::TESTNET).expect(&format!("line: {line}"));
+            assert_eq!(actual_hash.hash(), txn.hash(), "line: {line}");
+        });
     }
 }
