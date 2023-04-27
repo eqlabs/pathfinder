@@ -151,16 +151,33 @@ fn get_state_update_from_storage(
         .collect::<Result<Vec<_>, _>>()
         .context("Iterating over class declaration query rows")?;
 
-    // TODO: map and distinguish deployed and replaced.
-    //
-    // The select is not completely finished, still need to figure out the exists thing somehow.
-    // let stmt = tx
-    //     .prepare_cached(
-    //         r"SELECT cu1.contract_address, cu1.class_hash, cu2.exists FROM contract_updates cu1
-    //             LEFT OUTER JOIN contract_updates cu2 ON cu1.contract_address = cu2.contract_address AND cu2.block_number < cu1.block_number
-    //             WHERE block_number = ?",
-    //     )
-    //     .context("Preparing contract update query statement")?;
+    let mut stmt = tx
+        .prepare_cached(
+            r"SELECT
+                cu1.contract_address AS contract_address,
+                cu1.class_hash AS class_hash
+            FROM
+                contract_updates cu1
+            LEFT OUTER JOIN
+                contract_updates cu2 ON cu1.contract_address = cu2.contract_address AND cu2.block_number < cu1.block_number
+            WHERE
+                cu1.block_number = ? AND
+                cu2.block_number IS NULL",
+        )
+        .context("Preparing contract update query statement")?;
+    let deployed_contracts = stmt
+        .query_map([number], |row| {
+            let address: ContractAddress = row.get(0)?;
+            let class_hash: ClassHash = row.get(1)?;
+
+            Ok(types::DeployedContract {
+                address,
+                class_hash,
+            })
+        })
+        .context("Querying contract deployments")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over contract deployment query rows")?;
 
     let state_update = types::StateUpdate {
         block_hash: Some(block_hash),
@@ -169,7 +186,7 @@ fn get_state_update_from_storage(
         state_diff: types::StateDiff {
             storage_diffs,
             declared_contract_hashes,
-            deployed_contracts: todo!(),
+            deployed_contracts,
             nonces,
         },
     };
