@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use pathfinder_ethereum::EthereumClient;
+use pathfinder_ethereum::{EthereumClientApi, StarknetEthereumClient};
 use primitive_types::H256;
 
 /// Caching of `eth_gasPrice` with single request at a time refreshing.
@@ -11,12 +11,12 @@ use primitive_types::H256;
 #[derive(Clone)]
 pub struct Cached {
     inner: Arc<std::sync::Mutex<Inner>>,
-    eth: Arc<EthereumClient>,
+    eth: Arc<StarknetEthereumClient>,
     stale_limit: Duration,
 }
 
 impl Cached {
-    pub fn new(eth: Arc<EthereumClient>) -> Self {
+    pub fn new(eth: Arc<StarknetEthereumClient>) -> Self {
         Cached {
             inner: Default::default(),
             eth,

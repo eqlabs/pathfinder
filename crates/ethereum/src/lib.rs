@@ -12,6 +12,12 @@ pub struct L1StateUpdate {
     pub global_root: H256,
 }
 
+#[async_trait::async_trait]
+pub trait EthereumClientApi {
+    async fn gas_price(&self) -> anyhow::Result<U256>;
+    async fn get_starknet_state(&self) -> anyhow::Result<L1StateUpdate>;
+}
+
 #[derive(Clone)]
 pub struct StarknetEthereumClient {
     pub l1_addr: EthereumAddress,
@@ -54,6 +60,33 @@ impl StarknetEthereumClient {
             l1_addr,
             eth: client,
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl EthereumClientApi for StarknetEthereumClient {
+    async fn gas_price(&self) -> anyhow::Result<U256> {
+        let result = self
+            .eth
+            .call_rpc(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "eth_gasPrice",
+                "params": [],
+                "id" :0
+            }))
+            .await?;
+        get_u256(&result)
+    }
+
+    async fn get_starknet_state(&self) -> anyhow::Result<L1StateUpdate> {
+        let (eth_block_number, eth_block_hash) = self.eth.get_latest_block().await?;
+        let starknet_block_number = self.get_starknet_block_number(&eth_block_hash).await?;
+        let starknet_state_root = self.get_starknet_state_root(&eth_block_hash).await?;
+        Ok(L1StateUpdate {
+            eth_block_number: eth_block_number.as_u64(),
+            block_number: starknet_block_number.as_u64(),
+            global_root: starknet_state_root,
+        })
     }
 }
 
@@ -236,18 +269,6 @@ impl EthereumClient {
         Ok((block_num, block_hash))
     }
 
-    pub async fn gas_price(&self) -> anyhow::Result<U256> {
-        let result = self
-            .call_rpc(serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "eth_gasPrice",
-                "params": [],
-                "id" :0
-            }))
-            .await?;
-        get_u256(&result)
-    }
-
     pub async fn chain_id(&self) -> anyhow::Result<EthereumChain> {
         let result = self
             .call_rpc(serde_json::json!({
@@ -267,17 +288,6 @@ impl EthereumClient {
 }
 
 impl StarknetEthereumClient {
-    pub async fn get_starknet_state(&self) -> anyhow::Result<L1StateUpdate> {
-        let (eth_block_number, eth_block_hash) = self.eth.get_latest_block().await?;
-        let starknet_block_number = self.get_starknet_block_number(&eth_block_hash).await?;
-        let starknet_state_root = self.get_starknet_state_root(&eth_block_hash).await?;
-        Ok(L1StateUpdate {
-            eth_block_number: eth_block_number.as_u64(),
-            block_number: starknet_block_number.as_u64(),
-            global_root: starknet_state_root,
-        })
-    }
-
     async fn get_starknet_block_number(&self, block_hash: &H256) -> anyhow::Result<U256> {
         let result = self
             .eth
@@ -440,6 +450,8 @@ mod tests {
 
         let url = Url::parse(&server.url("/")).expect("url");
         let eth = EthereumClient::new(url);
+        let l1_addr = EthereumAddress(H160::default());
+        let eth = StarknetEthereumClient::new(eth, l1_addr);
         let gas_price = eth.gas_price().await.expect("gas_price");
 
         mock.assert();

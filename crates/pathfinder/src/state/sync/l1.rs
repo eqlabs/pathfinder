@@ -1,10 +1,10 @@
-use pathfinder_ethereum::{L1StateUpdate, StarknetEthereumClient};
+use pathfinder_ethereum::{EthereumClientApi, L1StateUpdate};
 use tokio::sync::mpsc::Sender;
 
 /// Syncs L1 state updates.
 pub async fn sync(
     tx_event: Sender<L1StateUpdate>,
-    ethereum_client: StarknetEthereumClient,
+    ethereum_client: impl EthereumClientApi,
     poll_interval: std::time::Duration,
 ) {
     let mut backoff = RetryBackoff::new(std::time::Duration::from_secs(1), poll_interval);
@@ -15,7 +15,7 @@ pub async fn sync(
             Ok(state) => {
                 backoff.success();
                 if let Err(e) = tx_event.send(state).await {
-                    tracing::error!(reason=?e, "L1 event sending failed");
+                    tracing::error!(reason=?e, "L1 update failed");
                 }
             }
             Err(e) => {

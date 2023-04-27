@@ -86,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
-    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum_client.eth.clone()));
+    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum_client.clone()));
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
