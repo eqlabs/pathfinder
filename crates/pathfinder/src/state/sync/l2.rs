@@ -65,6 +65,7 @@ pub async fn sync(
     sequencer: impl ClientApi,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
     chain: Chain,
+    chain_id: ChainId,
     pending_poll_interval: Option<Duration>,
     block_validation_mode: BlockValidationMode,
 ) -> anyhow::Result<()> {
@@ -87,6 +88,7 @@ pub async fn sync(
                 // Reuse the next full block if we got it for free when polling pending
                 std::mem::take(&mut next_block),
                 chain,
+                chain_id,
                 head_meta.map(|h| h.1),
                 &sequencer,
                 block_validation_mode,
@@ -122,6 +124,7 @@ pub async fn sync(
                     head = reorg(
                         some_head,
                         chain,
+                        chain_id,
                         &tx_event,
                         &sequencer,
                         block_validation_mode,
@@ -140,6 +143,7 @@ pub async fn sync(
                 head = reorg(
                     some_head,
                     chain,
+                    chain_id,
                     &tx_event,
                     &sequencer,
                     block_validation_mode,
@@ -349,6 +353,7 @@ async fn download_block(
     // Poll pending could exit when it encountered a finalized block, so we'd like to reuse it
     next_block: Option<Block>,
     chain: Chain,
+    chain_id: ChainId,
     prev_block_hash: Option<StarknetBlockHash>,
     sequencer: &impl ClientApi,
     mode: BlockValidationMode,
@@ -372,7 +377,7 @@ async fn download_block(
             let expected_block_hash = block.block_hash;
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
-                let verify_result = verify_block_hash(&block, chain, expected_block_hash)
+                let verify_result = verify_block_hash(&block, chain, chain_id, expected_block_hash)
                     .with_context(move || format!("Verify block {block_number}"))?;
                 Ok((block, verify_result))
             });
@@ -435,14 +440,13 @@ async fn download_block(
     match result {
         Ok(DownloadBlock::Block(block, commitments)) => {
             for (i, txn) in block.transactions.iter().enumerate() {
-                let computed_hash =
-                    compute_transaction_hash(txn, ChainId::TESTNET).with_context(|| {
-                        format!(
-                            "Verify transaction {} block {} idx {i}",
-                            txn.hash(),
-                            block.block_number,
-                        )
-                    })?;
+                let computed_hash = compute_transaction_hash(txn, chain_id).with_context(|| {
+                    format!(
+                        "Verify transaction {} block {} idx {i}",
+                        txn.hash(),
+                        block.block_number,
+                    )
+                })?;
 
                 if computed_hash.hash() != txn.hash() {
                     return Err(anyhow!(
@@ -463,6 +467,7 @@ async fn download_block(
 async fn reorg(
     head: (StarknetBlockNumber, StarknetBlockHash, StateCommitment),
     chain: Chain,
+    chain_id: ChainId,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl ClientApi,
     mode: BlockValidationMode,
@@ -493,6 +498,7 @@ async fn reorg(
             previous_block_number,
             None,
             chain,
+            chain_id,
             Some(previous.0),
             sequencer,
             mode,
@@ -623,9 +629,9 @@ mod tests {
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
-            BlockId, ClassHash, ContractAddress, GasPrice, SequencerAddress, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
-            StorageAddress, StorageValue,
+            BlockId, Chain, ChainId, ClassHash, ContractAddress, GasPrice, SequencerAddress,
+            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
+            StateCommitment, StorageAddress, StorageValue,
         };
         use stark_hash::Felt;
         use starknet_gateway_client::MockClientApi;
@@ -942,7 +948,6 @@ mod tests {
 
         mod happy_path {
             use super::*;
-            use pathfinder_common::Chain;
             use pretty_assertions::assert_eq;
 
             #[tokio::test]
@@ -1004,7 +1009,15 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let _jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1084,6 +1097,7 @@ mod tests {
                     mock,
                     Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
                     Chain::Testnet,
+                    ChainId::TESTNET,
                     None,
                     MODE,
                 ));
@@ -1123,7 +1137,15 @@ mod tests {
                 block.status = Status::Reverted;
                 expect_block(&mut mock, &mut seq, BLOCK0_NUMBER.into(), Ok(block.into()));
 
-                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
                 let error = jh.await.unwrap().unwrap_err();
                 assert_eq!(
                     &error.to_string(),
@@ -1226,7 +1248,15 @@ mod tests {
                 );
 
                 // Let's run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let _jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1427,7 +1457,15 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let _jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1701,7 +1739,15 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let _jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -1904,7 +1950,15 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let _jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2096,7 +2150,15 @@ mod tests {
                 );
 
                 // Run the UUT
-                let _jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let _jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
@@ -2169,7 +2231,15 @@ mod tests {
                 );
 
                 // Run the UUT
-                let jh = tokio::spawn(sync(tx_event, mock, None, Chain::Testnet, None, MODE));
+                let jh = tokio::spawn(sync(
+                    tx_event,
+                    mock,
+                    None,
+                    Chain::Testnet,
+                    ChainId::TESTNET,
+                    None,
+                    MODE,
+                ));
 
                 // Wrap this in a timeout so we don't wait forever in case of test failure.
                 // Right now closing the channel causes an error.
