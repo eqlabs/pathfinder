@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use crate::context::RpcContext;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    BlockId, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
+    BlockId, ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
     StorageAddress, StorageValue,
 };
-use pathfinder_storage::StarknetBlocksBlockId;
-use rusqlite::OptionalExtension;
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use stark_hash::Felt;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -60,56 +60,36 @@ pub async fn get_state_update(
 fn block_info(
     tx: &rusqlite::Transaction<'_>,
     block: StarknetBlocksBlockId,
-) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>> {
-    let output = match block {
-        StarknetBlocksBlockId::Number(number) => {
-            let output = tx.query_row(
-                r"SELECT starknet_blocks.hash, starknet_blocks.root FROM starknet_blocks
-                    JOIN canonical_blocks ON (starknet_blocks.hash = canonical_blocks.hash)
-                    WHERE starknet_blocks.number = ?", [number], |row| {
-                        let hash: StarknetBlockHash = row.get(0)?;
-                        let root: StateCommitment = row.get(1)?;
-                        Ok((hash, root))
-                    })
-                    .optional()
-                    .context("Querying block info by number")?
-                    .map(|(hash, root)| (number, hash, root));
-                Ok(output)
-        },
-        StarknetBlocksBlockId::Hash(hash) => {
-            let output = tx.query_row(
-                r"SELECT starknet_blocks.number, starknet_blocks.root FROM starknet_blocks
-                    JOIN canonical_blocks ON (starknet_blocks.hash = canonical_blocks.hash)
-                    WHERE starknet_blocks.hash = ?", [hash], |row| {
-                        let number: StarknetBlockNumber = row.get(0)?;
-                        let root: StateCommitment = row.get(1)?;
-                        Ok((number, root))
-                    })
-                    .optional()
-                    .context("Querying block info by hash")?
-                    .map(|(number, root)| (number, hash, root));
-                Ok(output)
-            },
-        StarknetBlocksBlockId::Latest => tx.query_row(
-            r"SELECT starknet_blocks.number, starknet_blocks.hash, starknet_blocks.root FROM starknet_blocks
-                JOIN canonical_blocks ON (starknet_blocks.hash = canonical_blocks.hash)
-                ORDER BY starknet_blocks.number DESC LIMIT 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        ).optional().context("Querying latest block info"),
+) -> Result<
+    (
+        StarknetBlockNumber,
+        StarknetBlockHash,
+        StateCommitment,
+        StateCommitment,
+    ),
+    GetStateUpdateError,
+> {
+    let block = StarknetBlocksTable::get(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;
+
+    let old_root = if block.number == StarknetBlockNumber::GENESIS {
+        StateCommitment(Felt::ZERO)
+    } else {
+        let previous_block_number = StarknetBlockNumber::new_or_panic(block.number.get() - 1);
+        let previous_block =
+            StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
+                .ok_or(GetStateUpdateError::BlockNotFound)?;
+
+        previous_block.root
     };
 
-    // TODO: also output parent block's root (or ZERO if we are at genesis..).
-
-    output
+    Ok((block.number, block.hash, block.root, old_root))
 }
 
 fn get_state_update_from_storage(
     tx: &rusqlite::Transaction<'_>,
     block: StarknetBlocksBlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let (number, block_hash, new_root) =
-        block_info(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;
+    let (number, block_hash, new_root, old_root) = block_info(tx, block)?;
 
     let mut stmt = tx
         .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
@@ -185,7 +165,7 @@ fn get_state_update_from_storage(
     let state_update = types::StateUpdate {
         block_hash: Some(block_hash),
         new_root: Some(new_root),
-        old_root: todo!(),
+        old_root,
         state_diff: types::StateDiff {
             storage_diffs,
             declared_contract_hashes,
