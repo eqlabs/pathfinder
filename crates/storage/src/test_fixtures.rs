@@ -31,8 +31,9 @@ pub(crate) use hash;
 pub mod init {
     use super::*;
     use crate::{
-        state_update::insert_canonical_state_diff, CanonicalBlocksTable, ContractCodeTable,
-        StarknetBlocksTable, StarknetStateUpdatesTable,
+        state_update::insert_canonical_state_diff, types::CompressedCasmClass,
+        CanonicalBlocksTable, CasmClassTable, ContractCodeTable, StarknetBlocksTable,
+        StarknetStateUpdatesTable,
     };
     use pathfinder_common::{ClassCommitment, StorageCommitment};
 
@@ -62,6 +63,24 @@ pub mod init {
                         tx,
                         declared_class.class_hash,
                         block_number,
+                    )
+                    .unwrap();
+                }
+
+                for declared_sierra_class in &update.state_diff.declared_sierra_classes {
+                    let class_hash = ClassHash(declared_sierra_class.class_hash.0);
+                    ContractCodeTable::insert(tx, class_hash, b"").unwrap();
+                    ContractCodeTable::update_block_number_if_null(tx, class_hash, block_number)
+                        .unwrap();
+                    let casm_class = CompressedCasmClass {
+                        definition: vec![],
+                        hash: class_hash,
+                    };
+                    CasmClassTable::upsert_compressed(
+                        tx,
+                        &casm_class,
+                        &declared_sierra_class.compiled_class_hash,
+                        "1.0.alpha6",
                     )
                     .unwrap();
                 }

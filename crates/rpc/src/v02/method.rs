@@ -12,7 +12,7 @@ mod get_class_at;
 mod get_class_hash_at;
 mod get_events;
 mod get_nonce;
-mod get_state_update;
+pub(crate) mod get_state_update;
 mod get_storage_at;
 mod get_transaction_by_block_id_and_index;
 mod get_transaction_by_hash;
