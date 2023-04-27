@@ -64,14 +64,23 @@ fn main() -> anyhow::Result<()> {
                     txn.hash()
                 )
             })?;
-            if computed_hash.hash() != txn.hash() {
-                println!(
-                    "Mismatch: {} block {block_number} idx {i} expected {} computed {} full_txn\n{}",
+            match computed_hash.hash() {
+                Some(computed_hash) => {
+                    if computed_hash != txn.hash() {
+                        println!(
+                        "Mismatch: {} block {block_number} idx {i} expected {} computed {} full_txn\n{}",
+                        transaction_type(txn),
+                        txn.hash(),
+                        computed_hash,
+                        serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into()))
+                    }
+                }
+                None => println!(
+                    "Ignored: {} block {block_number} idx {i} hash {} full_txn\n{}",
                     transaction_type(txn),
                     txn.hash(),
-                    computed_hash.hash(),
-                    serde_json::to_string(&txn).unwrap_or("Failed to deserialize".into()),
-                )
+                    serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
+                ),
             }
         }
     }
