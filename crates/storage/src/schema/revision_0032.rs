@@ -97,10 +97,15 @@ CREATE TABLE storage_updates (
         }
     }
 
+    tx.execute_batch(
+        r"
+        CREATE INDEX contract_updates_address_block_number ON contract_updates (contract_address, block_number);
+        CREATE INDEX contract_updates_block_number ON contract_updates (block_number);",
+    )
+    .context("Creating indexes")?;
+
     // tx.execute("DROP TABLE starknet_state_updates", [])
     //     .context("Dropping starknet_state_updates")?;
-
-    // tx.execute("CREATE INDEX contract_updates_address_number ON contract_updates (contract_address, block_number)")
 
     Ok(())
 }
