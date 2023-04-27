@@ -32,7 +32,7 @@ use rusqlite::Connection;
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
 
-type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
+pub type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 
 /// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
 /// of the [Storage].

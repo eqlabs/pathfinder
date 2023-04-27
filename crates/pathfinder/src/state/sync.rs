@@ -19,9 +19,9 @@ use pathfinder_rpc::{
 };
 use pathfinder_storage::{
     types::{CompressedCasmClass, CompressedContract},
-    CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable, RefsTable,
-    StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable,
-    StarknetTransactionsTable, Storage,
+    CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable,
+    PooledConnection, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+    StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
@@ -35,6 +35,9 @@ use starknet_gateway_types::{
 use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
+
+// Delay before restarting L1 or L2 tasks if they fail.
+const RESTART_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
@@ -110,194 +113,213 @@ where
         block_validation_mode,
     ));
 
-    let mut existed = (0, 0);
-
-    let mut last_block_start = std::time::Instant::now();
-    let mut block_time_avg = std::time::Duration::ZERO;
-    const BLOCK_TIME_WEIGHT: f32 = 0.05;
-
-    // Delay before restarting L1 or L2 tasks if they fail.
-    const RESTART_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
-
     loop {
         tokio::select! {
-            l1_event = rx_l1.recv() => match l1_event {
-                Some(update) => {
-                    let tx = db_conn.transaction().context("db tx")?;
-
-                    let l1_l2_head = RefsTable::get_l1_l2_head(&tx)?.map(|x| x.0).unwrap_or_default();
-                    if update.block_number < l1_l2_head {
-                        tracing::info!(block=update.block_number, "L1 reorg detected");
-                    }
-                    RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(update.block_number)))?;
-                    tracing::info!(block=update.block_number, "L1-L2 head update");
-
-                    if let Some(block) = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Number(StarknetBlockNumber(update.block_number)))? {
-                        if block.root.0.as_ref() != update.global_root.as_bytes() {
-                            tracing::warn!(block=update.block_number, "Block root mismatch (L1={}, DB={})", update.global_root, block.root);
-                        }
-                    }
-
-                    tx.commit().context("db tx commit")?;
-                },
-                None => unreachable!()
+            l1_event = rx_l1.recv() => if let Some(update) = l1_event {
+                handle_l1_event(update, &mut db_conn)?;
             },
-            l2_event = rx_l2.recv() => match l2_event {
-                Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {
-                    pending_data.clear().await;
-
-                    let block_number = block.block_number;
-                    let block_hash = block.block_hash;
-                    let storage_updates: usize = state_update.state_diff.storage_diffs.values().map(|storage_diffs| storage_diffs.len()).sum();
-                    let update_t = std::time::Instant::now();
-                    l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
-                        .await
-                        .with_context(|| format!("Update L2 state to {block_number}"))?;
-                    let block_time = last_block_start.elapsed();
-                    let update_t = update_t.elapsed();
-                    last_block_start = std::time::Instant::now();
-
-                    block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
-                        + block_time.mul_f32(BLOCK_TIME_WEIGHT);
-
-                    // Update sync status
-                    match &mut *state.status.write().await {
-                        Syncing::False(_) => {}
-                        Syncing::Status(status) => {
-                            status.current = NumberedBlock::from((block_hash, block_number));
-
-                            if status.highest.number <= block_number {
-                                status.highest = status.current;
-                            }
-                        }
+            l2_event = rx_l2.recv() => if let Some(event) = l2_event {
+                handle_l2_event(event, &mut db_conn, &pending_data, &sequencer, chain, state.clone()).await?;
+            } else {
+                pending_data.clear().await;
+                // L2 sync process failed; restart it.
+                match l2_handle.await.context("Join L2 sync process handle")? {
+                    Ok(()) => {
+                        tracing::error!("L2 sync process terminated without an error.");
                     }
-
-                    tracing::info!(block=block_number.0, "StarkNet state update");
-                    let is_debug = tracing::level_filters::LevelFilter::current().into_level()
-                        .map(|level| level <= tracing::Level::DEBUG)
-                        .unwrap_or_default();
-                    if is_debug  {
-                        tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
-                            block_number,
-                            block_time.as_secs_f32(),
-                            block_time_avg.as_secs_f32(),
-                            existed.0,
-                            existed.0 - existed.1,
-                            timings.class_declaration.as_secs_f32(),
-                            storage_updates,
-                            update_t.as_secs_f32(),
-                            timings.block_download.as_secs_f32(),
-                            timings.state_diff_download.as_secs_f32(),
-                        );
+                    Err(e) => {
+                        tracing::warn!("L2 sync process terminated with: {:?}", e);
                     }
                 }
-                Some(l2::Event::Reorg(reorg_tail)) => {
-                    pending_data.clear().await;
 
-                    l2_reorg(&mut db_conn, reorg_tail)
-                        .await
-                        .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
+                let l2_head = tokio::task::block_in_place(|| {
+                    let tx = db_conn.transaction()?;
+                    StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+                })
+                .context("Query L2 head from database")?
+                .map(|block| (block.number, block.hash, block.root));
 
-                    let new_head = match reorg_tail {
-                        StarknetBlockNumber::GENESIS => None,
-                        other => Some(other - 1),
-                    };
-                    match new_head {
-                        Some(head) => {
-                            tracing::info!("L2 reorg occurred, new L2 head is block {}", head)
-                        }
-                        None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
-                    }
-                }
-                Some(l2::Event::NewCairoContract(contract)) => {
-                    tokio::task::block_in_place(|| {
-                        ContractCodeTable::insert_compressed(&db_conn, &contract)
-                    })
-                    .with_context(|| {
-                        format!("Insert Cairo contract definition with hash: {:?}", contract.hash)
-                    })?;
+                let (new_tx, new_rx) = mpsc::channel(1);
+                rx_l2 = new_rx;
 
-                    tracing::trace!("Inserted new Cairo contract {}", contract.hash.0.to_hex_str());
-                }
-                Some(l2::Event::NewSierraContract(sierra_class, casm_class, compiled_class_hash)) => {
-                    tokio::task::block_in_place(|| {
-                        ContractCodeTable::insert_compressed(&db_conn, &sierra_class)?;
-                        CasmClassTable::upsert_compressed(&db_conn, &casm_class, &compiled_class_hash, crate::sierra::COMPILER_VERSION)
-                    })
-                    .with_context(|| {
-                        format!("Insert Sierra contract definition with hash: {:?}", sierra_class.hash)
-                    })?;
+                let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval, RESTART_DELAY, block_validation_mode);
 
-                    tracing::trace!("Inserted new Sierra contract {}", sierra_class.hash.0.to_hex_str());
-                }
-                Some(l2::Event::QueryBlock(number, tx)) => {
-                    let block = tokio::task::block_in_place(|| {
-                        let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, number.into())
-                    })
-                    .with_context(|| format!("Query L2 block hash for block {number}"))?
-                    .map(|block| (block.hash, block.root));
-                    let _ = tx.send(block);
-
-                    tracing::trace!(%number, "Query hash for L2 block");
-                }
-                Some(l2::Event::QueryContractExistance(contracts, tx)) => {
-                    let exists =
-                        tokio::task::block_in_place(|| {
-                            let tx = db_conn.transaction()?;
-                            ContractCodeTable::exists(&tx, &contracts)
-                        })
-                        .with_context(|| {
-                            format!("Query storage for existance of contracts {contracts:?}")
-                        })?;
-                    let count = exists.iter().filter(|b| **b).count();
-
-                    // Fixme: This stat tracking is now incorrect, as these are shared by deploy and declare.
-                    //        Overall, quite nasty as is, so should get a proper refactor instead.
-                    existed = (contracts.len(), count);
-
-                    let _ = tx.send(exists);
-
-                    tracing::trace!("Query for existence of contracts: {:?}", contracts);
-                }
-                Some(l2::Event::Pending(block, state_update)) => {
-                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain)
-                        .await
-                        .context("Downloading missing classes for pending block")?;
-
-                    pending_data.set(block, state_update).await;
-                    tracing::debug!("Updated pending data");
-                }
-                None => {
-                    pending_data.clear().await;
-                    // L2 sync process failed; restart it.
-                    match l2_handle.await.context("Join L2 sync process handle")? {
-                        Ok(()) => {
-                            tracing::error!("L2 sync process terminated without an error.");
-                        }
-                        Err(e) => {
-                            tracing::warn!("L2 sync process terminated with: {:?}", e);
-                        }
-                    }
-
-                    let l2_head = tokio::task::block_in_place(|| {
-                        let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
-                    })
-                    .context("Query L2 head from database")?
-                    .map(|block| (block.number, block.hash, block.root));
-
-                    let (new_tx, new_rx) = mpsc::channel(1);
-                    rx_l2 = new_rx;
-
-                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, pending_poll_interval, RESTART_DELAY, block_validation_mode);
-
-                    l2_handle = tokio::spawn(async move { fut.await });
-                    tracing::info!("L2 sync process restarted.");
-                }
+                l2_handle = tokio::spawn(async move { fut.await });
+                tracing::info!("L2 sync process restarted.");
             }
         }
     }
+}
+
+fn handle_l1_event(update: L1StateUpdate, db: &mut PooledConnection) -> anyhow::Result<()> {
+    let tx = db.transaction().context("db tx")?;
+
+    let l1_l2_head = RefsTable::get_l1_l2_head(&tx)?
+        .map(|x| x.0)
+        .unwrap_or_default();
+    if update.block_number < l1_l2_head {
+        tracing::info!(block = update.block_number, "L1 reorg detected");
+    }
+    RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber(update.block_number)))?;
+    tracing::info!(block = update.block_number, "L1-L2 head update");
+
+    if let Some(block) = StarknetBlocksTable::get(
+        &tx,
+        StarknetBlocksBlockId::Number(StarknetBlockNumber(update.block_number)),
+    )? {
+        if block.root.0.as_ref() != update.global_root.as_bytes() {
+            tracing::warn!(
+                block = update.block_number,
+                "Block root mismatch (L1={}, DB={})",
+                update.global_root,
+                block.root
+            );
+        }
+    }
+
+    tx.commit().context("db tx commit")?;
+    Ok(())
+}
+
+async fn handle_l2_event(
+    event: l2::Event,
+    db: &mut PooledConnection,
+    pending_data: &PendingData,
+    sequencer: &impl ClientApi,
+    chain: Chain,
+    state: Arc<SyncState>,
+) -> anyhow::Result<()> {
+    match event {
+        l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings) => {
+            pending_data.clear().await;
+
+            let block_number = block.block_number;
+            let block_hash = block.block_hash;
+            let storage_updates: usize = state_update
+                .state_diff
+                .storage_diffs
+                .values()
+                .map(|storage_diffs| storage_diffs.len())
+                .sum();
+            let update_t = std::time::Instant::now();
+            l2_update(db, *block, tx_comm, ev_comm, *state_update)
+                .await
+                .with_context(|| format!("Update L2 state to {block_number}"))?;
+            let update_t = update_t.elapsed();
+
+            // Update sync status
+            match &mut *state.status.write().await {
+                Syncing::False(_) => {}
+                Syncing::Status(status) => {
+                    status.current = NumberedBlock::from((block_hash, block_number));
+
+                    if status.highest.number <= block_number {
+                        status.highest = status.current;
+                    }
+                }
+            }
+
+            tracing::info!(block = block_number.0, "StarkNet state update");
+            let is_debug = tracing::level_filters::LevelFilter::current()
+                .into_level()
+                .map(|level| level <= tracing::Level::DEBUG)
+                .unwrap_or_default();
+            if is_debug {
+                tracing::debug!("Updated StarkNet state with block {}. Contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                    block_number,
+                    timings.class_declaration.as_secs_f32(),
+                    storage_updates,
+                    update_t.as_secs_f32(),
+                    timings.block_download.as_secs_f32(),
+                    timings.state_diff_download.as_secs_f32(),
+                );
+            }
+        }
+        l2::Event::Reorg(reorg_tail) => {
+            pending_data.clear().await;
+
+            l2_reorg(db, reorg_tail)
+                .await
+                .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
+
+            let new_head = match reorg_tail {
+                StarknetBlockNumber::GENESIS => None,
+                other => Some(other - 1),
+            };
+            match new_head {
+                Some(head) => {
+                    tracing::info!("L2 reorg occurred, new L2 head is block {}", head)
+                }
+                None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
+            }
+        }
+        l2::Event::NewCairoContract(contract) => {
+            tokio::task::block_in_place(|| ContractCodeTable::insert_compressed(db, &contract))
+                .with_context(|| {
+                    format!(
+                        "Insert Cairo contract definition with hash: {:?}",
+                        contract.hash
+                    )
+                })?;
+
+            tracing::trace!(
+                "Inserted new Cairo contract {}",
+                contract.hash.0.to_hex_str()
+            );
+        }
+        l2::Event::NewSierraContract(sierra_class, casm_class, compiled_class_hash) => {
+            tokio::task::block_in_place(|| {
+                ContractCodeTable::insert_compressed(db, &sierra_class)?;
+                CasmClassTable::upsert_compressed(
+                    db,
+                    &casm_class,
+                    &compiled_class_hash,
+                    crate::sierra::COMPILER_VERSION,
+                )
+            })
+            .with_context(|| {
+                format!(
+                    "Insert Sierra contract definition with hash: {:?}",
+                    sierra_class.hash
+                )
+            })?;
+
+            tracing::trace!(
+                "Inserted new Sierra contract {}",
+                sierra_class.hash.0.to_hex_str()
+            );
+        }
+        l2::Event::QueryBlock(number, tx) => {
+            let block = tokio::task::block_in_place(|| {
+                let tx = db.transaction()?;
+                StarknetBlocksTable::get(&tx, number.into())
+            })
+            .with_context(|| format!("Query L2 block hash for block {number}"))?
+            .map(|block| (block.hash, block.root));
+            let _ = tx.send(block);
+
+            tracing::trace!(%number, "Query hash for L2 block");
+        }
+        l2::Event::QueryContractExistance(contracts, tx) => {
+            let exists = tokio::task::block_in_place(|| {
+                let tx = db.transaction()?;
+                ContractCodeTable::exists(&tx, &contracts)
+            })
+            .with_context(|| format!("Query storage for existance of contracts {contracts:?}"))?;
+            let _ = tx.send(exists);
+
+            tracing::trace!("Query for existence of contracts: {:?}", contracts);
+        }
+        l2::Event::Pending(block, state_update) => {
+            download_verify_and_insert_missing_classes(sequencer, db, &state_update, chain)
+                .await
+                .context("Downloading missing classes for pending block")?;
+
+            pending_data.set(block, state_update).await;
+            tracing::debug!("Updated pending data");
+        }
+    }
+    Ok(())
 }
 
 /// Periodically updates sync state with the latest block height.
@@ -653,7 +675,7 @@ fn deploy_contract(
 /// Downloads and inserts class definitions for any classes in the
 /// list which are not already present in the database.
 async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
-    sequencer: SequencerClient,
+    sequencer: &SequencerClient,
     connection: &mut Connection,
     state_update: &PendingStateUpdate,
     chain: Chain,
@@ -709,7 +731,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
 
     // For each missing, download, verify and insert definition.
     for class_hash in missing {
-        let class = download_class(&sequencer, class_hash, chain).await?;
+        let class = download_class(sequencer, class_hash, chain).await?;
 
         match class {
             DownloadedClass::Cairo(class) => {
