@@ -57,39 +57,41 @@ pub async fn get_state_update(
     jh.await.context("Database read panic or shutting down")?
 }
 
-fn block_info(
+pub(crate) fn block_info(
     tx: &rusqlite::Transaction<'_>,
     block: StarknetBlocksBlockId,
-) -> Result<
-    (
+) -> anyhow::Result<
+    Option<(
         StarknetBlockNumber,
         StarknetBlockHash,
         StateCommitment,
         StateCommitment,
-    ),
-    GetStateUpdateError,
+    )>,
 > {
-    let block = StarknetBlocksTable::get(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;
+    let block = StarknetBlocksTable::get(tx, block)?;
+    Ok(match block {
+        None => None,
+        Some(block) => {
+            let old_root = if block.number == StarknetBlockNumber::GENESIS {
+                Some(StateCommitment(Felt::ZERO))
+            } else {
+                let previous_block_number =
+                    StarknetBlockNumber::new_or_panic(block.number.get() - 1);
+                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
+                    .map(|b| b.root)
+            };
 
-    let old_root = if block.number == StarknetBlockNumber::GENESIS {
-        StateCommitment(Felt::ZERO)
-    } else {
-        let previous_block_number = StarknetBlockNumber::new_or_panic(block.number.get() - 1);
-        let previous_block =
-            StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
-                .ok_or(GetStateUpdateError::BlockNotFound)?;
-
-        previous_block.root
-    };
-
-    Ok((block.number, block.hash, block.root, old_root))
+            old_root.map(|old_root| (block.number, block.hash, block.root, old_root))
+        }
+    })
 }
 
 fn get_state_update_from_storage(
     tx: &rusqlite::Transaction<'_>,
     block: StarknetBlocksBlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let (number, block_hash, new_root, old_root) = block_info(tx, block)?;
+    let (number, block_hash, new_root, old_root) =
+        block_info(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;
 
     let mut stmt = tx
         .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
@@ -270,7 +272,17 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                declared_contract_hashes: state_diff.old_declared_contracts,
+                // For the v02 API we're returning  Cairo _and_ Sierra class hashes here
+                declared_contract_hashes: state_diff
+                    .old_declared_contracts
+                    .into_iter()
+                    .chain(
+                        state_diff
+                            .declared_classes
+                            .into_iter()
+                            .map(|d| ClassHash(d.class_hash.0)),
+                    )
+                    .collect(),
                 deployed_contracts: state_diff
                     .deployed_contracts
                     .into_iter()
@@ -323,10 +335,16 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
+                // For the v02 API we're returning  Cairo _and_ Sierra class hashes here
                 declared_contract_hashes: diff
                     .declared_contracts
                     .into_iter()
                     .map(|d| d.class_hash)
+                    .chain(
+                        diff.declared_sierra_classes
+                            .into_iter()
+                            .map(|d| ClassHash(d.class_hash.0)),
+                    )
                     .collect(),
                 deployed_contracts: diff
                     .deployed_contracts
@@ -552,6 +570,7 @@ mod tests {
 
     /// Common assertion type for most of the test cases
     fn assert_ok(expected: types::StateUpdate) -> TestCaseHandler {
+        use pretty_assertions::assert_eq;
         Box::new(move |i: usize, result| {
             assert_matches!(result, Ok(actual) => assert_eq!(
                 *actual,
