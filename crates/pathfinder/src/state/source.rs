@@ -82,13 +82,13 @@ mod ex {
     }
 
     async fn sync_l2(
-        ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
+        _ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
     ) -> anyhow::Result<Option<Event>> {
         Ok(None)
     }
 
     async fn sync_status(
-        ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
+        _ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
     ) -> anyhow::Result<Option<Event>> {
         Ok(None)
     }
@@ -178,7 +178,7 @@ impl<T: Send + 'static, C: Send + 'static> Source<T, C> {
         self
     }
 
-    fn run(mut self) -> Self {
+    fn run(self) -> Self {
         self.go.notify_waiters();
         self
     }

@@ -1,4 +1,5 @@
 pub mod block_hash;
+#[allow(dead_code)] // TODO(SM): remove
 mod source;
 mod sync;
 
