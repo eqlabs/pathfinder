@@ -2,7 +2,7 @@ use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    CasmHash, Chain, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber,
+    CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber,
     StarknetVersion, StateCommitment, TransactionCommitment,
 };
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
@@ -14,6 +14,7 @@ use starknet_gateway_types::{
         state_update::StateDiff, Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate,
         StateUpdate, Status,
     },
+    transaction_hash::compute_transaction_hash,
 };
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
@@ -364,7 +365,7 @@ async fn download_block(
         Some(_) | None => sequencer.block(block_number.into()).await,
     };
 
-    match result {
+    let result = match result {
         Ok(MaybePendingBlock::Block(block)) => {
             let block = Box::new(block);
             // Check if block hash is correct.
@@ -430,6 +431,32 @@ async fn download_block(
             }
         }
         Err(other) => Err(other).context("Download block from sequencer"),
+    };
+    match result {
+        Ok(DownloadBlock::Block(block, commitments)) => {
+            for (i, txn) in block.transactions.iter().enumerate() {
+                let computed_hash =
+                    compute_transaction_hash(txn, ChainId::TESTNET).with_context(|| {
+                        format!(
+                            "Verify transaction {} block {} idx {i}",
+                            txn.hash(),
+                            block.block_number,
+                        )
+                    })?;
+
+                if computed_hash.hash() != txn.hash() {
+                    return Err(anyhow!(
+                        "Transaction hash mismatch: expected {} calculated {} block {} idx {i}",
+                        txn.hash(),
+                        computed_hash.hash(),
+                        block.block_number
+                    ));
+                }
+            }
+
+            Ok(DownloadBlock::Block(block, commitments))
+        }
+        Ok(DownloadBlock::AtHead | DownloadBlock::Reorg) | Err(_) => result,
     }
 }
 
