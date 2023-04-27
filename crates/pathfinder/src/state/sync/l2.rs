@@ -43,6 +43,8 @@ pub enum Event {
     NewCairoContract(CompressedContract),
     /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
     NewSierraContract(CompressedContract, CompressedCasmClass, CasmHash),
+
+    // TODO(SM): remove (inversion of the message flow)
     /// Query for the [block hash](StarknetBlockHash) and [root](StateCommitment) of the given block.
     ///
     /// The receiver should return the data using the [oneshot::channel].
@@ -50,11 +52,14 @@ pub enum Event {
         StarknetBlockNumber,
         oneshot::Sender<Option<(StarknetBlockHash, StateCommitment)>>,
     ),
+
+    // TODO(SM): remove (inversion of the message flow)
     /// Query for the existance of the the given [contracts](ClassHash) in storage.
     ///
     /// The receiver should return true (if the contract exists) or false (if it does not exist)
     /// for each contract using the [oneshot::channel].
     QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
+
     /// A new L2 pending update was polled.
     Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
 }
@@ -83,7 +88,6 @@ pub async fn sync(
         let mut next_block = None;
         let mut next_state_update = None;
 
-        // TODO(SM): use `pathfinder_ethereum::bsearch_starknet_block()` to verify state_root of a block against L1.
         let (block, commitments) = loop {
             match download_block(
                 next,
