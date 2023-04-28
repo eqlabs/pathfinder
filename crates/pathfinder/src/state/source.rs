@@ -114,20 +114,19 @@ mod ex {
         ))))
     }
 
+    const ETH_URL: &str = "https://eth.llamarpc.com";
+    const SEQ_URL: &str = "https://alpha-mainnet.starknet.io/gateway";
+
     // TODO(SM): remove
     // cargo test --package pathfinder --lib -- state::source::ex::example --exact --nocapture
     #[tokio::test]
     async fn example() -> anyhow::Result<()> {
-        let url: reqwest::Url = "https://eth.llamarpc.com".parse().expect("url");
         let eth = StarknetEthereumClient::new(
-            EthereumClient::new(url.clone()),
+            EthereumClient::new(ETH_URL.parse().expect("url")),
             EthereumAddress(H160::from_slice(&core_contract::MAINNET)),
         );
 
-        let url: reqwest::Url = "https://alpha-mainnet.starknet.io/gateway"
-            .parse()
-            .expect("url");
-        let seq = starknet_gateway_client::Client::with_base_url(url)?;
+        let seq = starknet_gateway_client::Client::with_base_url(SEQ_URL.parse().expect("url"))?;
 
         let sync = Arc::new(SyncState::default());
         let chain = Chain::Mainnet;
