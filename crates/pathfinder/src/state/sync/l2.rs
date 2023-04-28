@@ -14,7 +14,7 @@ use starknet_gateway_types::{
         state_update::StateDiff, Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate,
         StateUpdate, Status,
     },
-    transaction_hash::compute_transaction_hash,
+    transaction_hash::verify,
 };
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
@@ -374,10 +374,9 @@ async fn download_block(
         Ok(MaybePendingBlock::Block(block)) => {
             let block = Box::new(block);
             // Check if block hash is correct.
-            let expected_block_hash = block.block_hash;
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let block_number = block.block_number;
-                let verify_result = verify_block_hash(&block, chain, chain_id, expected_block_hash)
+                let verify_result = verify_block_hash(&block, chain, chain_id, block.block_hash)
                     .with_context(move || format!("Verify block {block_number}"))?;
                 Ok((block, verify_result))
             });
@@ -440,21 +439,12 @@ async fn download_block(
     match result {
         Ok(DownloadBlock::Block(block, commitments)) => {
             for (i, txn) in block.transactions.iter().enumerate() {
-                let computed_hash = compute_transaction_hash(txn, chain_id).with_context(|| {
-                    format!(
-                        "Verify transaction {} block {} idx {i}",
-                        txn.hash(),
-                        block.block_number,
+                let skipped = verify(txn, chain_id, block_number)?;
+                if skipped {
+                    tracing::trace!(
+                        "Skipping transaction verification: block {block_number} idx {i} hash {}",
+                        txn.hash()
                     )
-                })?;
-
-                if computed_hash.hash() != txn.hash() {
-                    return Err(anyhow!(
-                        "Transaction hash mismatch: expected {} calculated {} block {} idx {i}",
-                        txn.hash(),
-                        computed_hash.hash(),
-                        block.block_number
-                    ));
                 }
             }
 

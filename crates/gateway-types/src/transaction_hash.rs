@@ -6,8 +6,8 @@ use crate::reply::transaction::{
     L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::{
-    CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
-    TransactionNonce, TransactionVersion,
+    CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, StarknetBlockNumber,
+    StarknetTransactionHash, TransactionNonce, TransactionVersion,
 };
 
 use crate::class_hash::truncated_keccak;
@@ -15,6 +15,61 @@ use anyhow::{Context, Result};
 use pathfinder_common::ChainId;
 use sha3::{Digest, Keccak256};
 use stark_hash::{Felt, HashChain};
+
+pub fn verify(
+    txn: &Transaction,
+    chain_id: ChainId,
+    block_number: StarknetBlockNumber,
+) -> Result<bool> {
+    // Earlier blocks on testnet2 used the same chain id as testnet (ie. goerli)
+    let chain_id = if chain_id == ChainId::TESTNET2 && block_number.get() <= 21086 {
+        ChainId::TESTNET
+    } else {
+        chain_id
+    };
+
+    let computed_hash =
+        compute_transaction_hash(txn, chain_id).context("Compute transaction hash")?;
+    match computed_hash.hash() {
+        Some(computed_hash) if computed_hash != txn.hash() => Err(anyhow::anyhow!(
+            "Transaction hash mismatch: expected {} computed {}",
+            txn.hash(),
+            computed_hash,
+        )),
+        Some(_) => Ok(false),
+        None => Ok(true), // Unable to compute, skipping
+    }
+}
+
+pub fn verify2(
+    txn: &Transaction,
+    chain_id: ChainId,
+    block_number: StarknetBlockNumber,
+    txn_idx: usize,
+) -> Result<bool> {
+    // Earlier blocks on testnet2 used the same chain id as testnet (ie. goerli)
+    let chain_id = if chain_id == ChainId::TESTNET2 && block_number.get() <= 21086 {
+        ChainId::TESTNET
+    } else {
+        chain_id
+    };
+
+    let computed_hash = compute_transaction_hash(txn, chain_id).with_context(|| {
+        format!(
+            "Compute hash for transaction: block {block_number} idx {txn_idx} hash {}",
+            txn.hash()
+        )
+    })?;
+    match computed_hash.hash() {
+        Some(computed_hash) if computed_hash == txn.hash() => Err(anyhow::anyhow!(
+            "Transaction hash mismatch: block {block_number} idx {txn_idx} expected {} computed {}",
+            txn.hash(),
+            computed_hash,
+        )),
+        Some(_) => Ok(false),
+        None => Ok(true), // Unable to compute, skipping
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum ComputedTransactionHash {
@@ -40,7 +95,7 @@ impl ComputedTransactionHash {
             ComputedTransactionHash::DeclareV2(h) => *h,
             ComputedTransactionHash::Deploy(h) => *h,
             ComputedTransactionHash::DeployAccount(h) => *h,
-            ComputedTransactionHash::InvokeV0(h) => unreachable!(),
+            ComputedTransactionHash::InvokeV0(_) => unreachable!("already handled"),
             ComputedTransactionHash::InvokeV1(h) => *h,
             ComputedTransactionHash::L1Handler(h) => *h,
         })
@@ -480,8 +535,7 @@ fn compute_txn_hash(
 #[cfg(test)]
 mod tests {
     use super::compute_transaction_hash;
-    use crate::reply::Transaction;
-    use pathfinder_common::{felt, ChainId};
+    use pathfinder_common::ChainId;
     use starknet_gateway_test_fixtures::{v0_11_0, v0_8_2, v0_9_0};
 
     macro_rules! case {
@@ -489,7 +543,7 @@ mod tests {
             let line = line!();
 
             (
-                serde_json::from_str::<Transaction>($target)
+                serde_json::from_str::<crate::reply::Transaction>($target)
                     .expect(&format!("deserialization is Ok, line: {line}"))
                     .transaction
                     .expect(&format!("transaction is Some, line: {line}")),
@@ -499,16 +553,41 @@ mod tests {
     }
 
     #[test]
-    fn success() {
+    fn computation() {
         // Block on testnet where starknet version was added (0.9.1)
         // https://alpha4.starknet.io/feeder_gateway/get_block?blockNumber=272881
 
         // Invoke which is in fact an old L1 Handler
+        // Dunno how to compute the hash
         let block_854_idx_96 = r#"{"type":"INVOKE_FUNCTION","version":"0x0","calldata":["7184257680882984759486662715103668781242208776","917789154208678215885349831600092172101398039978","2","1957115730347262841245066474128500922180113325335838466518362100423532002451"],"sender_address":"0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3","entry_point_selector":"0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b","entry_point_type":"L1_HANDLER","max_fee":"0x0","signature":[],"transaction_hash":"0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"}"#;
         let block_854_idx_96 =
             serde_json::from_str::<crate::reply::transaction::Transaction>(block_854_idx_96)
                 .unwrap();
-        let block_854_idx_96 = (block_854_idx_96, line!());
+
+        assert!(
+            compute_transaction_hash(&block_854_idx_96, ChainId::TESTNET)
+                .unwrap()
+                .hash()
+                .is_none()
+        );
+
+        // let block_854_idx_96 = (block_854_idx_96, line!());
+
+        let testnet2_with_wrong_chain_id = r#"{"type":"DEPLOY","contract_address":"0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7","contract_address_salt":
+        "0x322c2610264639f6b2cee681ac53fa65c37e187ea24292d1b21d859c55e1a78","class_hash":"0xd0e183745e9dae3e4e78a8ffedcce0903fc4900beace4e0abf192d4c202da3","constructor_calldata":[
+        "0"],"transaction_hash":"0x356893f6716b2817ebb7b817ef8d5d6bfa0e10b14ad1bac654119f09f5b892c","version":"0x1"}"#;
+        let testnet2_with_wrong_chain_id = serde_json::from_str::<
+            crate::reply::transaction::Transaction,
+        >(testnet2_with_wrong_chain_id)
+        .unwrap();
+
+        assert_eq!(
+            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::TESTNET)
+                .unwrap()
+                .hash()
+                .unwrap(),
+            testnet2_with_wrong_chain_id.hash()
+        );
 
         [
             // block_854_idx_96, // <-- unsupported
@@ -541,5 +620,51 @@ mod tests {
                 compute_transaction_hash(txn, ChainId::TESTNET).expect(&format!("line: {line}"));
             assert_eq!(actual_hash.hash().unwrap(), txn.hash(), "line: {line}");
         });
+    }
+
+    mod verification {
+        use super::super::verify;
+        use pathfinder_common::{ChainId, StarknetBlockNumber};
+
+        #[test]
+        fn skipped() {
+            // Invoke which is in fact an old L1 Handler
+            // Dunno how to compute the hash
+            let block_854_idx_96 = r#"{"type":"INVOKE_FUNCTION","version":"0x0","calldata":["7184257680882984759486662715103668781242208776","917789154208678215885349831600092172101398039978","2","1957115730347262841245066474128500922180113325335838466518362100423532002451"],"sender_address":"0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3","entry_point_selector":"0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b","entry_point_type":"L1_HANDLER","max_fee":"0x0","signature":[],"transaction_hash":"0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"}"#;
+            let block_854_idx_96 =
+                serde_json::from_str::<crate::reply::transaction::Transaction>(block_854_idx_96)
+                    .unwrap();
+
+            assert!(verify(
+                &block_854_idx_96,
+                ChainId::TESTNET,
+                StarknetBlockNumber::new_or_panic(854),
+            )
+            .unwrap());
+        }
+
+        #[test]
+        fn ok() {
+            let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
+
+            assert!(!verify(
+                &txn,
+                ChainId::TESTNET,
+                StarknetBlockNumber::new_or_panic(797220),
+            )
+            .unwrap());
+        }
+
+        #[test]
+        fn failed() {
+            let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
+            // Wrong chain id to force failure
+            verify(
+                &txn,
+                ChainId::MAINNET,
+                StarknetBlockNumber::new_or_panic(797220),
+            )
+            .unwrap_err();
+        }
     }
 }

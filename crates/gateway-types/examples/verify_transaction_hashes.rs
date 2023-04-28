@@ -3,10 +3,7 @@ use pathfinder_common::{ChainId, StarknetBlockNumber};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
-use starknet_gateway_types::{
-    reply::transaction::{DeclareTransaction, InvokeTransaction, Transaction},
-    transaction_hash::compute_transaction_hash,
-};
+use starknet_gateway_types::transaction_hash::verify;
 
 /// Verify transaction hashes in a pathfinder database.
 ///
@@ -58,27 +55,19 @@ fn main() -> anyhow::Result<()> {
         drop(tx);
 
         for (i, (txn, _)) in transactions.iter().enumerate() {
-            let computed_hash = compute_transaction_hash(txn, chain_id).with_context(|| {
-                format!(
-                    "Compute hash for transaction: block {block_number} idx {i} hash {}",
-                    txn.hash()
-                )
-            })?;
-            match computed_hash.hash() {
-                Some(computed_hash) => {
-                    if computed_hash != txn.hash() {
-                        println!(
-                        "Mismatch: {} block {block_number} idx {i} expected {} computed {} full_txn\n{}",
-                        transaction_type(txn),
-                        txn.hash(),
-                        computed_hash,
-                        serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into()))
-                    }
-                }
-                None => println!(
-                    "Ignored: {} block {block_number} idx {i} hash {} full_txn\n{}",
-                    transaction_type(txn),
+            match verify(
+                txn,
+                chain_id,
+                StarknetBlockNumber::new_or_panic(block_number),
+            ) {
+                Ok(skipped) if skipped => println!(
+                    "Skipped: block {block_number} idx {i} hash {} full_txn\n{}",
                     txn.hash(),
+                    serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
+                ),
+                Ok(_) => { /* Verification passed */ }
+                Err(e) => println!(
+                    "{e}, block {block_number} idx {i} full_txn {}",
                     serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
                 ),
             }
@@ -88,17 +77,4 @@ fn main() -> anyhow::Result<()> {
     println!("Done.");
 
     Ok(())
-}
-
-fn transaction_type(txn: &Transaction) -> String {
-    match txn {
-        Transaction::Declare(DeclareTransaction::V0(_)) => "          Declare v0".into(),
-        Transaction::Declare(DeclareTransaction::V1(_)) => "          Declare v1".into(),
-        Transaction::Declare(DeclareTransaction::V2(_)) => "       Declare v2".into(),
-        Transaction::Deploy(t) => format!("       Deploy v{}", t.version.0.to_low_u64_be()),
-        Transaction::DeployAccount(_) => "Deploy Account v1".into(),
-        Transaction::Invoke(InvokeTransaction::V0(_)) => "        Invoke v0".into(),
-        Transaction::Invoke(InvokeTransaction::V1(_)) => "        Invoke v1".into(),
-        Transaction::L1Handler(t) => format!("    L1 Handler v{}", t.version.0.to_low_u64_be()),
-    }
 }

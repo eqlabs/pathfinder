@@ -21,6 +21,7 @@ stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = "0.1.37"
 
 [dev-dependencies]
 pathfinder-storage = { path = "../storage" }
