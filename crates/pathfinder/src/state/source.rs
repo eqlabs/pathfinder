@@ -3,116 +3,25 @@ use std::{sync::Arc, time::Duration};
 use futures::Future;
 use pathfinder_ethereum::L1StateUpdate;
 use pathfinder_rpc::v02::types::syncing;
+use starknet_gateway_types::reply::Block;
 use tokio::sync::{mpsc, Mutex, Notify};
 
-use super::l2;
+use pathfinder_common::{BlockId, Chain, StarknetBlockHash, StarknetBlockNumber, StateCommitment};
+use pathfinder_ethereum::{EthereumClientApi, StarknetEthereumClient};
+use pathfinder_rpc::SyncState;
+use pathfinder_storage::{StarknetBlocksTable, Storage};
+use starknet_gateway_client::ClientApi;
+use starknet_gateway_types::error::StarknetErrorCode::BlockNotFound;
+use starknet_gateway_types::{error::SequencerError, reply::MaybePendingBlock};
 
 #[cfg(test)]
-mod ex {
-    use pathfinder_common::{
-        BlockId, Chain, EthereumAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
-    };
-    use pathfinder_ethereum::{
-        core_contract, EthereumClient, EthereumClientApi, StarknetEthereumClient,
-    };
-    use pathfinder_rpc::SyncState;
-    use pathfinder_storage::{StarknetBlocksTable, Storage};
+pub mod ex {
+    use pathfinder_common::EthereumAddress;
+    use pathfinder_ethereum::{core_contract, EthereumClient};
     use primitive_types::H160;
-    use starknet_gateway_client::{Client, ClientApi};
-    use starknet_gateway_types::reply::MaybePendingBlock;
+    use starknet_gateway_client::Client;
 
     use super::*;
-
-    pub struct SyncContext<ETH, SEQ>
-    where
-        ETH: EthereumClientApi + Send + Sync + 'static,
-        SEQ: ClientApi + Send + Sync + 'static,
-    {
-        eth: ETH,
-        seq: SEQ,
-        head: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
-        sync: Arc<SyncState>,
-        chain: Chain,
-        storage: Storage,
-    }
-
-    impl<ETH, SEQ> SyncContext<ETH, SEQ>
-    where
-        ETH: EthereumClientApi + Send + Sync + 'static,
-        SEQ: ClientApi + Send + Sync + 'static,
-    {
-        pub fn new(
-            eth: ETH,
-            seq: SEQ,
-            chain: Chain,
-            sync: Arc<SyncState>,
-            storage: Storage,
-        ) -> Self {
-            Self {
-                eth,
-                seq,
-                sync,
-                head: None,
-                chain,
-                storage,
-            }
-        }
-    }
-
-    async fn poll_l1(
-        ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
-    ) -> anyhow::Result<Option<Event>> {
-        let state = {
-            let eth = &ctx.lock().await.eth;
-            eth.get_starknet_state().await?
-        };
-        Ok(Some(Event::L1(state)))
-    }
-
-    async fn poll_l2(
-        _ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
-    ) -> anyhow::Result<Option<Event>> {
-        // TODO(SM): impl L2
-        Ok(None)
-    }
-
-    async fn poll_status(
-        ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
-    ) -> anyhow::Result<Option<Event>> {
-        let latest = {
-            let seq = &ctx.lock().await.seq;
-            seq.block(BlockId::Latest).await?
-        };
-        let latest = match latest {
-            MaybePendingBlock::Block(block) => {
-                syncing::NumberedBlock::from((block.block_hash, block.block_number))
-            }
-            _ => return Ok(None),
-        };
-
-        let current = {
-            let db = &mut ctx.lock().await.storage.connection()?;
-            let tx = db.transaction()?;
-            StarknetBlocksTable::get_latest_hash_and_number(&tx)?
-                .map(|(hash, num)| syncing::NumberedBlock::from((hash, num)))
-        };
-        let current = match current {
-            Some(block) => block,
-            // _ => return Ok(None), // TODO(SM): restore
-            _ => syncing::NumberedBlock::from((
-                StarknetBlockHash(stark_hash::Felt::ZERO),
-                StarknetBlockNumber(42),
-            )),
-        };
-
-        Ok(Some(Event::Sync(syncing::Syncing::Status(
-            syncing::Status {
-                starting: current,
-                current,
-                highest: latest,
-            },
-        ))))
-    }
 
     const ETH_URL: &str = "https://eth.llamarpc.com";
     const SEQ_URL: &str = "https://alpha-mainnet.starknet.io/gateway";
@@ -137,8 +46,9 @@ mod ex {
         let poll = Duration::from_secs(30) / 10;
         let src = Source::new(ctx);
         src.add("L1", poll_l1, poll).await;
-        //src.add("L2", poll_l2, poll).await;
+        src.add("L2", poll_l2, poll).await;
         src.add("sync", poll_status, poll).await;
+        // TODO(SM): add "pending"
         let mut src = src.run();
 
         while let Some(event) = src.get().await {
@@ -149,14 +59,141 @@ mod ex {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Head {
+    pub block_number: StarknetBlockNumber,
+    pub block_hash: StarknetBlockHash,
+    pub state_commitment: StateCommitment,
+}
+
+pub struct SyncContext<ETH, SEQ>
+where
+    ETH: EthereumClientApi + Send + Sync + 'static,
+    SEQ: ClientApi + Send + Sync + 'static,
+{
+    eth: ETH,
+    seq: SEQ,
+    head: Option<Head>,
+    sync: Arc<SyncState>,
+    chain: Chain,
+    storage: Storage,
+}
+
+impl<ETH, SEQ> SyncContext<ETH, SEQ>
+where
+    ETH: EthereumClientApi + Send + Sync + 'static,
+    SEQ: ClientApi + Send + Sync + 'static,
+{
+    pub fn new(eth: ETH, seq: SEQ, chain: Chain, sync: Arc<SyncState>, storage: Storage) -> Self {
+        Self {
+            eth,
+            seq,
+            sync,
+            head: None,
+            chain,
+            storage,
+        }
+    }
+}
+
+async fn poll_l1(
+    ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
+) -> anyhow::Result<Option<Event>> {
+    let state = {
+        let eth = &ctx.lock().await.eth;
+        eth.get_starknet_state().await?
+    };
+    Ok(Some(Event::L1(state)))
+}
+
+async fn poll_l2(
+    ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
+) -> anyhow::Result<Option<Event>> {
+    let head = ctx.lock().await.head;
+    let next = head
+        .map(|head| head.block_number + 1)
+        .unwrap_or(StarknetBlockNumber::GENESIS);
+
+    let block_result = {
+        let seq = &ctx.lock().await.seq;
+        seq.block(BlockId::Number(next)).await
+    };
+
+    let block = match block_result {
+        Ok(MaybePendingBlock::Block(block)) => block,
+        Ok(MaybePendingBlock::Pending(_)) => {
+            anyhow::bail!("Received 'pending' block");
+        }
+        Err(SequencerError::StarknetError(e)) if e.code == BlockNotFound => {
+            return Ok(head.map(|head| Event::L2(l2::Event::Head(head))))
+        }
+        Err(e) => {
+            tracing::warn!(error=?e, "Sequencer request failed");
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(Event::L2(l2::Event::Block(block))))
+}
+
+async fn poll_status(
+    ctx: Arc<Mutex<SyncContext<StarknetEthereumClient, starknet_gateway_client::Client>>>,
+) -> anyhow::Result<Option<Event>> {
+    let latest = {
+        let seq = &ctx.lock().await.seq;
+        seq.block(BlockId::Latest).await?
+    };
+    let latest = match latest {
+        MaybePendingBlock::Block(block) => {
+            syncing::NumberedBlock::from((block.block_hash, block.block_number))
+        }
+        _ => return Ok(None),
+    };
+
+    let current = {
+        let db = &mut ctx.lock().await.storage.connection()?;
+        let tx = db.transaction()?;
+        StarknetBlocksTable::get_latest_hash_and_number(&tx)?
+            .map(|(hash, num)| syncing::NumberedBlock::from((hash, num)))
+    };
+    let current = match current {
+        Some(block) => block,
+        // _ => return Ok(None), // TODO(SM): restore
+        _ => syncing::NumberedBlock::from((
+            StarknetBlockHash(stark_hash::Felt::ZERO),
+            StarknetBlockNumber(42),
+        )),
+    };
+
+    Ok(Some(Event::Sync(syncing::Syncing::Status(
+        syncing::Status {
+            starting: current,
+            current,
+            highest: latest,
+        },
+    ))))
+}
+
 // TODO(SM): split `sync` into event producer (stream?) and consumer (.reduce on stream?)
+
+mod l2 {
+
+    #[derive(Debug)]
+    pub enum Event {
+        // handle: check commitments, resolve state, download classes, etc
+        Block(super::Block),
+
+        // handle: check if 'latest' matches current head, do a reorg if not
+        Head(super::Head),
+    }
+}
 
 #[derive(Debug)]
 enum Event {
+    Sync(syncing::Syncing),
     L1(L1StateUpdate),
     L2(l2::Event),
-    Sync(syncing::Syncing),
-    // P2P(...)
+    // Pending(...)
 }
 
 pub struct Source<T, C> {
