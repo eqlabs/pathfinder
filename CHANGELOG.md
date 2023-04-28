@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - CORS support for the RPC server, enabled via the `rpc.cors-domains` command line argument
+- transaction hash verification, excluding older L1 handler transactions, i.e. in blocks older than
+  - 4400 for mainnet
+  - 306008 for testnet
 
 ### Fixed
 
