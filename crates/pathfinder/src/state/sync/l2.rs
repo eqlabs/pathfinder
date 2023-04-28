@@ -1115,7 +1115,6 @@ mod tests {
 
         mod errors {
             use super::*;
-            use pathfinder_common::Chain;
             use starknet_gateway_types::reply::Status;
 
             #[tokio::test]

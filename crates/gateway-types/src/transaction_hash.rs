@@ -557,22 +557,6 @@ mod tests {
         // Block on testnet where starknet version was added (0.9.1)
         // https://alpha4.starknet.io/feeder_gateway/get_block?blockNumber=272881
 
-        // Invoke which is in fact an old L1 Handler
-        // Dunno how to compute the hash
-        let block_854_idx_96 = r#"{"type":"INVOKE_FUNCTION","version":"0x0","calldata":["7184257680882984759486662715103668781242208776","917789154208678215885349831600092172101398039978","2","1957115730347262841245066474128500922180113325335838466518362100423532002451"],"sender_address":"0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3","entry_point_selector":"0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b","entry_point_type":"L1_HANDLER","max_fee":"0x0","signature":[],"transaction_hash":"0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"}"#;
-        let block_854_idx_96 =
-            serde_json::from_str::<crate::reply::transaction::Transaction>(block_854_idx_96)
-                .unwrap();
-
-        assert!(
-            compute_transaction_hash(&block_854_idx_96, ChainId::TESTNET)
-                .unwrap()
-                .hash()
-                .is_none()
-        );
-
-        // let block_854_idx_96 = (block_854_idx_96, line!());
-
         let testnet2_with_wrong_chain_id = r#"{"type":"DEPLOY","contract_address":"0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7","contract_address_salt":
         "0x322c2610264639f6b2cee681ac53fa65c37e187ea24292d1b21d859c55e1a78","class_hash":"0xd0e183745e9dae3e4e78a8ffedcce0903fc4900beace4e0abf192d4c202da3","constructor_calldata":[
         "0"],"transaction_hash":"0x356893f6716b2817ebb7b817ef8d5d6bfa0e10b14ad1bac654119f09f5b892c","version":"0x1"}"#;
@@ -590,7 +574,6 @@ mod tests {
         );
 
         [
-            // block_854_idx_96, // <-- unsupported
             // Declare
             case!(v0_9_0::transaction::DECLARE), // v0
             case!(v0_11_0::transaction::declare::v1::BLOCK_463319),
@@ -623,24 +606,81 @@ mod tests {
     }
 
     mod verification {
-        use super::super::verify;
+        use crate::transaction_hash::verify;
         use pathfinder_common::{ChainId, StarknetBlockNumber};
 
-        #[test]
-        fn skipped() {
-            // Invoke which is in fact an old L1 Handler
-            // Dunno how to compute the hash
-            let block_854_idx_96 = r#"{"type":"INVOKE_FUNCTION","version":"0x0","calldata":["7184257680882984759486662715103668781242208776","917789154208678215885349831600092172101398039978","2","1957115730347262841245066474128500922180113325335838466518362100423532002451"],"sender_address":"0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3","entry_point_selector":"0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b","entry_point_type":"L1_HANDLER","max_fee":"0x0","signature":[],"transaction_hash":"0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"}"#;
-            let block_854_idx_96 =
-                serde_json::from_str::<crate::reply::transaction::Transaction>(block_854_idx_96)
+        mod skipped {
+            use crate::transaction_hash::verify;
+            use pathfinder_common::{ChainId, StarknetBlockNumber};
+
+            #[test]
+            fn new_version() {
+                // Invoke which is in fact an old L1 Handler
+                // Dunno how to compute the hash
+                let block_854_idx_96 = r#"
+                {
+                    "transaction_hash": "0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54",
+                    "version": "0x0",
+                    "contract_address": "0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3",
+                    "entry_point_selector": "0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b",
+                    "nonce": "0x0",
+                    "calldata": [
+                      "0x142273bcbfca76512b2a05aed21f134c4495208",
+                      "0xa0c316cb0bb0c9632315ddc8f49c7921f2c80daa",
+                      "0x2",
+                      "0x453b0310bcdfa50d3c2e7f757e284ac6cd4171933a4e67d1bdcfdbc7f3cbc93"
+                    ],
+                    "type": "L1_HANDLER"
+                }"#;
+                let block_854_idx_96 =
+                    serde_json::from_str::<crate::reply::transaction::Transaction>(
+                        block_854_idx_96,
+                    )
                     .unwrap();
 
-            assert!(verify(
-                &block_854_idx_96,
-                ChainId::TESTNET,
-                StarknetBlockNumber::new_or_panic(854),
-            )
-            .unwrap());
+                assert!(verify(
+                    &block_854_idx_96,
+                    ChainId::TESTNET,
+                    StarknetBlockNumber::new_or_panic(854),
+                )
+                .unwrap());
+            }
+
+            #[test]
+            fn old_version() {
+                // Invoke which is in fact an old L1 Handler
+                // Dunno how to compute the hash
+                let block_854_idx_96 = r#"
+            {
+                "type": "INVOKE_FUNCTION",
+                "version": "0x0",
+                "calldata": [
+                  "7184257680882984759486662715103668781242208776",
+                  "917789154208678215885349831600092172101398039978",
+                  "2",
+                  "1957115730347262841245066474128500922180113325335838466518362100423532002451"
+                ],
+                "sender_address": "0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3",
+                "entry_point_selector": "0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b",
+                "entry_point_type": "L1_HANDLER",
+                "max_fee": "0x0",
+                "signature": [
+                ],
+                "transaction_hash": "0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"
+            }"#;
+                let block_854_idx_96 =
+                    serde_json::from_str::<crate::reply::transaction::Transaction>(
+                        block_854_idx_96,
+                    )
+                    .unwrap();
+
+                assert!(verify(
+                    &block_854_idx_96,
+                    ChainId::TESTNET,
+                    StarknetBlockNumber::new_or_panic(854),
+                )
+                .unwrap());
+            }
         }
 
         #[test]
