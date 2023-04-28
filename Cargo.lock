@@ -7317,7 +7317,6 @@ dependencies = [
  "lazy_static",
  "pathfinder-common",
  "pathfinder-serde",
- "pathfinder-storage",
  "reqwest",
  "serde",
  "serde_json",

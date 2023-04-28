@@ -11,7 +11,7 @@ use starknet_gateway_types::transaction_hash::verify;
 /// values we store for the block.
 ///
 /// Usage:
-/// `cargo run --release -p starknet-gateway-types --example verify_transaction_hashes mainnet ./mainnet.sqlite 100`
+/// `cargo run --release -p pathfinder --example verify_transaction_hashes mainnet ./mainnet.sqlite 100`
 fn main() -> anyhow::Result<()> {
     let chain_name = std::env::args().nth(1).unwrap();
     let chain_id = match chain_name.as_str() {
