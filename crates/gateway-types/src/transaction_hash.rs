@@ -316,14 +316,6 @@ fn compute_invoke_v0_hash(
     txn: &InvokeTransactionV0,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    // // Some old L1 Handler txns can be marked by the entry point type, but we've no idea
-    // // how to calculate their hashes properly, so let's just ignore them
-    // if let Some(entry_point_type) = txn.entry_point_type {
-    //     if entry_point_type == EntryPointType::L1Handler {
-    //         return Ok(ComputedTransactionHash::InvokeV0(None));
-    //     }
-    // }
-
     let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
@@ -598,7 +590,7 @@ mod tests {
             use starknet_gateway_test_fixtures::v0_11_0;
 
             #[test]
-            fn new_version() {
+            fn rewritten_old_l1_handler() {
                 let block_854_idx_96 =
                     serde_json::from_str(v0_11_0::transaction::l1_handler::v0::BLOCK_854_IDX_96)
                         .unwrap();
@@ -612,7 +604,7 @@ mod tests {
             }
 
             #[test]
-            fn old_version() {
+            fn old_l1_handler_in_invoke_v0() {
                 let block_854_idx_96 =
                     serde_json::from_str(v0_11_0::transaction::invoke::v0::BLOCK_854_IDX_96)
                         .unwrap();

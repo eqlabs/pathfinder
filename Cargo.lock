@@ -7328,7 +7328,6 @@ dependencies = [
  "starknet-gateway-test-fixtures",
  "thiserror",
  "tokio",
- "tracing",
  "zstd",
 ]
 
