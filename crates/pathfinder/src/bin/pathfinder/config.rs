@@ -203,9 +203,7 @@ fn parse_cors(inputs: Vec<String>) -> Result<Option<AllowedOrigins>, RpcCorsDoma
                     return Err(RpcCorsDomainsParseError::InvalidDomain(input));
                 }
 
-                let origin_str = origin.ascii_serialization();
-
-                if origin_str == input {
+                if origin.ascii_serialization() == input {
                     Ok(input)
                 } else {
                     // Valid URL but not a valid origin
