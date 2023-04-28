@@ -52,9 +52,8 @@ pub fn verify(
         _ => chain_id,
     };
 
-    let computed_hash = compute_transaction_hash(txn, chain_id)
-        .context("Compute transaction hash")?
-        .hash();
+    let computed_hash =
+        compute_transaction_hash(txn, chain_id).context("Compute transaction hash")?;
 
     anyhow::ensure!(
         computed_hash == txn.hash(),
@@ -67,33 +66,6 @@ pub fn verify(
     Ok(false)
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ComputedTransactionHash {
-    DeclareV0(StarknetTransactionHash),
-    DeclareV1(StarknetTransactionHash),
-    DeclareV2(StarknetTransactionHash),
-    Deploy(StarknetTransactionHash),
-    DeployAccount(StarknetTransactionHash),
-    InvokeV0(StarknetTransactionHash),
-    InvokeV1(StarknetTransactionHash),
-    L1Handler(StarknetTransactionHash),
-}
-
-impl ComputedTransactionHash {
-    pub fn hash(&self) -> StarknetTransactionHash {
-        match self {
-            ComputedTransactionHash::DeclareV0(h) => *h,
-            ComputedTransactionHash::DeclareV1(h) => *h,
-            ComputedTransactionHash::DeclareV2(h) => *h,
-            ComputedTransactionHash::Deploy(h) => *h,
-            ComputedTransactionHash::DeployAccount(h) => *h,
-            ComputedTransactionHash::InvokeV0(h) => *h,
-            ComputedTransactionHash::InvokeV1(h) => *h,
-            ComputedTransactionHash::L1Handler(h) => *h,
-        }
-    }
-}
-
 /// Computes transaction hash according to the formulas from [starknet docs](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/).
 ///
 /// ## Important
@@ -104,7 +76,7 @@ impl ComputedTransactionHash {
 pub fn compute_transaction_hash(
     txn: &Transaction,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     match txn {
         Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
@@ -129,7 +101,7 @@ pub fn compute_transaction_hash(
 fn compute_declare_v0_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     compute_txn_hash(
         b"declare",
         TransactionVersion::ZERO,
@@ -141,7 +113,6 @@ fn compute_declare_v0_hash(
         txn.class_hash,
         None,
     )
-    .map(ComputedTransactionHash::DeclareV0)
 }
 
 /// Computes declare v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation_2):
@@ -156,7 +127,7 @@ fn compute_declare_v0_hash(
 fn compute_declare_v1_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     compute_txn_hash(
         b"declare",
         TransactionVersion::ONE,
@@ -172,7 +143,6 @@ fn compute_declare_v1_hash(
         txn.nonce,
         None,
     )
-    .map(ComputedTransactionHash::DeclareV1)
 }
 
 /// Computes declare v2 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v2_hash_calculation):
@@ -187,7 +157,7 @@ fn compute_declare_v1_hash(
 fn compute_declare_v2_hash(
     txn: &DeclareTransactionV2,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     compute_txn_hash(
         b"declare",
         TransactionVersion::TWO,
@@ -203,7 +173,6 @@ fn compute_declare_v2_hash(
         txn.nonce,
         Some(txn.compiled_class_hash),
     )
-    .map(ComputedTransactionHash::DeclareV2)
 }
 
 /// Computes deploy transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_transaction):
@@ -217,7 +186,7 @@ fn compute_declare_v2_hash(
 fn compute_deploy_hash(
     txn: &DeployTransaction,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     lazy_static::lazy_static!(
         static ref CONSTRUCTOR: EntryPoint = {
             let mut keccak = Keccak256::default();
@@ -248,8 +217,8 @@ fn compute_deploy_hash(
         None,
     )?;
 
-    let h = if h == txn.transaction_hash {
-        h
+    if h == txn.transaction_hash {
+        Ok(h)
     } else {
         legacy_compute_txn_hash(
             b"deploy",
@@ -257,9 +226,8 @@ fn compute_deploy_hash(
             Some(*CONSTRUCTOR),
             constructor_params_hash,
             chain_id,
-        )?
-    };
-    Ok(ComputedTransactionHash::Deploy(h))
+        )
+    }
 }
 
 /// Computes deploy account transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#deploy_account_hash_calculation):
@@ -276,7 +244,7 @@ fn compute_deploy_hash(
 fn compute_deploy_account_hash(
     txn: &DeployAccountTransaction,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     compute_txn_hash(
         b"deploy_account",
         txn.version,
@@ -300,7 +268,6 @@ fn compute_deploy_account_hash(
         txn.nonce,
         None,
     )
-    .map(ComputedTransactionHash::DeployAccount)
 }
 
 /// Computes invoke v0 account transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v0_hash_calculation):
@@ -315,7 +282,7 @@ fn compute_deploy_account_hash(
 fn compute_invoke_v0_hash(
     txn: &InvokeTransactionV0,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
@@ -337,8 +304,8 @@ fn compute_invoke_v0_hash(
         None,
     )?;
 
-    let h = if h == txn.transaction_hash {
-        h
+    if h == txn.transaction_hash {
+        Ok(h)
     } else {
         legacy_compute_txn_hash(
             b"invoke",
@@ -346,10 +313,8 @@ fn compute_invoke_v0_hash(
             Some(txn.entry_point_selector),
             call_params_hash,
             chain_id,
-        )?
-    };
-
-    Ok(ComputedTransactionHash::InvokeV0(h))
+        )
+    }
 }
 
 /// Computes invoke v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation):
@@ -362,7 +327,7 @@ fn compute_invoke_v0_hash(
 fn compute_invoke_v1_hash(
     txn: &InvokeTransactionV1,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     compute_txn_hash(
         b"invoke",
         TransactionVersion::ONE,
@@ -381,7 +346,6 @@ fn compute_invoke_v1_hash(
         txn.nonce,
         None,
     )
-    .map(ComputedTransactionHash::InvokeV1)
 }
 
 /// Computes l1 handler transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/L1-L2_Communication/messaging-mechanism/#structure_and_hashing_l1-l2):
@@ -400,7 +364,7 @@ fn compute_invoke_v1_hash(
 fn compute_l1_handler_hash(
     txn: &L1HandlerTransaction,
     chain_id: ChainId,
-) -> Result<ComputedTransactionHash> {
+) -> Result<StarknetTransactionHash> {
     let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
@@ -422,8 +386,8 @@ fn compute_l1_handler_hash(
         None,
     )?;
 
-    let h = if h == txn.transaction_hash {
-        h
+    if h == txn.transaction_hash {
+        Ok(h)
     } else {
         legacy_compute_txn_hash(
             // Oldest L1 Handler transactions were actually Invokes
@@ -434,9 +398,8 @@ fn compute_l1_handler_hash(
             Some(txn.entry_point_selector),
             call_params_hash,
             chain_id,
-        )?
-    };
-    Ok(ComputedTransactionHash::L1Handler(h))
+        )
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -543,9 +506,7 @@ mod tests {
         let testnet2_with_wrong_chain_id =
             serde_json::from_str(v0_11_0::transaction::deploy::v1::GENESIS_TESTNET2).unwrap();
         assert_eq!(
-            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::TESTNET)
-                .unwrap()
-                .hash(),
+            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::TESTNET).unwrap(),
             testnet2_with_wrong_chain_id.hash()
         );
 
@@ -577,7 +538,7 @@ mod tests {
         .for_each(|(txn, line)| {
             let actual_hash = compute_transaction_hash(txn, ChainId::TESTNET)
                 .unwrap_or_else(|_| panic!("line: {line}"));
-            assert_eq!(actual_hash.hash(), txn.hash(), "line: {line}");
+            assert_eq!(actual_hash, txn.hash(), "line: {line}");
         });
     }
 
