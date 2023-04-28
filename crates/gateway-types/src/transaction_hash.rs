@@ -483,6 +483,7 @@ fn legacy_compute_txn_hash(
 }
 
 /// _Generic_ compute transaction hash for transactions
+#[allow(clippy::too_many_arguments)]
 fn compute_txn_hash(
     prefix: &[u8],
     version: TransactionVersion,
@@ -574,8 +575,8 @@ mod tests {
         ]
         .iter()
         .for_each(|(txn, line)| {
-            let actual_hash =
-                compute_transaction_hash(txn, ChainId::TESTNET).expect(&format!("line: {line}"));
+            let actual_hash = compute_transaction_hash(txn, ChainId::TESTNET)
+                .unwrap_or_else(|_| panic!("line: {line}"));
             assert_eq!(actual_hash.hash(), txn.hash(), "line: {line}");
         });
     }
