@@ -18,7 +18,7 @@ mod ex {
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{StarknetBlocksTable, Storage};
     use primitive_types::H160;
-    use starknet_gateway_client::ClientApi;
+    use starknet_gateway_client::{Client, ClientApi};
     use starknet_gateway_types::reply::MaybePendingBlock;
 
     use super::*;
@@ -126,7 +126,7 @@ mod ex {
             EthereumAddress(H160::from_slice(&core_contract::MAINNET)),
         );
 
-        let seq = starknet_gateway_client::Client::with_base_url(SEQ_URL.parse().expect("url"))?;
+        let seq = Client::with_base_url(SEQ_URL.parse().expect("url"))?;
 
         let sync = Arc::new(SyncState::default());
         let chain = Chain::Mainnet;
