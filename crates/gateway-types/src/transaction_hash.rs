@@ -2,7 +2,7 @@
 
 use crate::reply::transaction::{
     DeclareTransaction, DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
-    DeployTransaction, EntryPointType, InvokeTransaction, InvokeTransactionV0, InvokeTransactionV1,
+    DeployTransaction, InvokeTransaction, InvokeTransactionV0, InvokeTransactionV1,
     L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::{
@@ -21,54 +21,50 @@ pub fn verify(
     chain_id: ChainId,
     block_number: StarknetBlockNumber,
 ) -> Result<bool> {
-    // Earlier blocks on testnet2 used the same chain id as testnet (ie. goerli)
-    let chain_id = if chain_id == ChainId::TESTNET2 && block_number.get() <= 21086 {
-        ChainId::TESTNET
-    } else {
-        chain_id
+    let chain_id = match chain_id {
+        // We don't know how to properly compute hashes of some old L1 Handler transactions
+        // Worse still those are invokes in old snapshots but currently are served as
+        // L1 handler txns.
+        ChainId::MAINNET => {
+            if block_number.get() <= 4399 && txn.is_l1_handler_or_legacy_l1_handler() {
+                // Unable to compute, skipping
+                return Ok(true);
+            } else {
+                chain_id
+            }
+        }
+        ChainId::TESTNET => {
+            if block_number.get() <= 306007 && txn.is_l1_handler_or_legacy_l1_handler() {
+                // Unable to compute, skipping
+                return Ok(true);
+            } else {
+                chain_id
+            }
+        }
+        // Earlier blocks on testnet2 used the same chain id as testnet (ie. goerli)
+        ChainId::TESTNET2 => {
+            if block_number.get() <= 21086 {
+                ChainId::TESTNET
+            } else {
+                chain_id
+            }
+        }
+        _ => chain_id,
     };
 
-    let computed_hash =
-        compute_transaction_hash(txn, chain_id).context("Compute transaction hash")?;
-    match computed_hash.hash() {
-        Some(computed_hash) if computed_hash != txn.hash() => Err(anyhow::anyhow!(
-            "Transaction hash mismatch: expected {} computed {}",
-            txn.hash(),
-            computed_hash,
-        )),
-        Some(_) => Ok(false),
-        None => Ok(true), // Unable to compute, skipping
-    }
-}
+    let computed_hash = compute_transaction_hash(txn, chain_id)
+        .context("Compute transaction hash")?
+        .hash();
 
-pub fn verify2(
-    txn: &Transaction,
-    chain_id: ChainId,
-    block_number: StarknetBlockNumber,
-    txn_idx: usize,
-) -> Result<bool> {
-    // Earlier blocks on testnet2 used the same chain id as testnet (ie. goerli)
-    let chain_id = if chain_id == ChainId::TESTNET2 && block_number.get() <= 21086 {
-        ChainId::TESTNET
-    } else {
-        chain_id
-    };
+    anyhow::ensure!(
+        computed_hash == txn.hash(),
+        "Transaction hash mismatch: expected {} computed {}",
+        txn.hash(),
+        computed_hash
+    );
 
-    let computed_hash = compute_transaction_hash(txn, chain_id).with_context(|| {
-        format!(
-            "Compute hash for transaction: block {block_number} idx {txn_idx} hash {}",
-            txn.hash()
-        )
-    })?;
-    match computed_hash.hash() {
-        Some(computed_hash) if computed_hash == txn.hash() => Err(anyhow::anyhow!(
-            "Transaction hash mismatch: block {block_number} idx {txn_idx} expected {} computed {}",
-            txn.hash(),
-            computed_hash,
-        )),
-        Some(_) => Ok(false),
-        None => Ok(true), // Unable to compute, skipping
-    }
+    // Computation matches
+    Ok(false)
 }
 
 #[derive(Debug, PartialEq)]
@@ -78,27 +74,23 @@ pub enum ComputedTransactionHash {
     DeclareV2(StarknetTransactionHash),
     Deploy(StarknetTransactionHash),
     DeployAccount(StarknetTransactionHash),
-    InvokeV0(Option<StarknetTransactionHash>),
+    InvokeV0(StarknetTransactionHash),
     InvokeV1(StarknetTransactionHash),
     L1Handler(StarknetTransactionHash),
 }
 
 impl ComputedTransactionHash {
-    pub fn hash(&self) -> Option<StarknetTransactionHash> {
-        if let ComputedTransactionHash::InvokeV0(h) = self {
-            return *h;
-        }
-
-        Some(match self {
+    pub fn hash(&self) -> StarknetTransactionHash {
+        match self {
             ComputedTransactionHash::DeclareV0(h) => *h,
             ComputedTransactionHash::DeclareV1(h) => *h,
             ComputedTransactionHash::DeclareV2(h) => *h,
             ComputedTransactionHash::Deploy(h) => *h,
             ComputedTransactionHash::DeployAccount(h) => *h,
-            ComputedTransactionHash::InvokeV0(_) => unreachable!("already handled"),
+            ComputedTransactionHash::InvokeV0(h) => *h,
             ComputedTransactionHash::InvokeV1(h) => *h,
             ComputedTransactionHash::L1Handler(h) => *h,
-        })
+        }
     }
 }
 
@@ -324,13 +316,13 @@ fn compute_invoke_v0_hash(
     txn: &InvokeTransactionV0,
     chain_id: ChainId,
 ) -> Result<ComputedTransactionHash> {
-    // Some old L1 Handler txns can be marked by the entry point type, but we've no idea
-    // how to calculate their hashes properly, so let's just ignore them
-    if let Some(entry_point_type) = txn.entry_point_type {
-        if entry_point_type == EntryPointType::L1Handler {
-            return Ok(ComputedTransactionHash::InvokeV0(None));
-        }
-    }
+    // // Some old L1 Handler txns can be marked by the entry point type, but we've no idea
+    // // how to calculate their hashes properly, so let's just ignore them
+    // if let Some(entry_point_type) = txn.entry_point_type {
+    //     if entry_point_type == EntryPointType::L1Handler {
+    //         return Ok(ComputedTransactionHash::InvokeV0(None));
+    //     }
+    // }
 
     let call_params_hash = {
         let mut hh = HashChain::default();
@@ -365,7 +357,7 @@ fn compute_invoke_v0_hash(
         )?
     };
 
-    Ok(ComputedTransactionHash::InvokeV0(Some(h)))
+    Ok(ComputedTransactionHash::InvokeV0(h))
 }
 
 /// Computes invoke v1 transaction hash based on [this formula](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/#v1_hash_calculation):
@@ -568,8 +560,7 @@ mod tests {
         assert_eq!(
             compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::TESTNET)
                 .unwrap()
-                .hash()
-                .unwrap(),
+                .hash(),
             testnet2_with_wrong_chain_id.hash()
         );
 
@@ -601,7 +592,7 @@ mod tests {
         .for_each(|(txn, line)| {
             let actual_hash =
                 compute_transaction_hash(txn, ChainId::TESTNET).expect(&format!("line: {line}"));
-            assert_eq!(actual_hash.hash().unwrap(), txn.hash(), "line: {line}");
+            assert_eq!(actual_hash.hash(), txn.hash(), "line: {line}");
         });
     }
 
@@ -651,23 +642,23 @@ mod tests {
                 // Invoke which is in fact an old L1 Handler
                 // Dunno how to compute the hash
                 let block_854_idx_96 = r#"
-            {
-                "type": "INVOKE_FUNCTION",
-                "version": "0x0",
-                "calldata": [
-                  "7184257680882984759486662715103668781242208776",
-                  "917789154208678215885349831600092172101398039978",
-                  "2",
-                  "1957115730347262841245066474128500922180113325335838466518362100423532002451"
-                ],
-                "sender_address": "0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3",
-                "entry_point_selector": "0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b",
-                "entry_point_type": "L1_HANDLER",
-                "max_fee": "0x0",
-                "signature": [
-                ],
-                "transaction_hash": "0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"
-            }"#;
+                {
+                    "type": "INVOKE_FUNCTION",
+                    "version": "0x0",
+                    "calldata": [
+                    "7184257680882984759486662715103668781242208776",
+                    "917789154208678215885349831600092172101398039978",
+                    "2",
+                    "1957115730347262841245066474128500922180113325335838466518362100423532002451"
+                    ],
+                    "sender_address": "0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3",
+                    "entry_point_selector": "0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b",
+                    "entry_point_type": "L1_HANDLER",
+                    "max_fee": "0x0",
+                    "signature": [
+                    ],
+                    "transaction_hash": "0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"
+                }"#;
                 let block_854_idx_96 =
                     serde_json::from_str::<crate::reply::transaction::Transaction>(
                         block_854_idx_96,
