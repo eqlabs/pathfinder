@@ -22,7 +22,7 @@ pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest,
     StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter, StarknetEventsTable,
-    StarknetStateUpdatesTable, StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
+    StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
 };
 pub use state_update::insert_canonical_state_diff;
 

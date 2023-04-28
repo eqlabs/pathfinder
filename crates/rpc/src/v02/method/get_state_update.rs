@@ -78,10 +78,10 @@ pub(crate) fn block_info(
                 let previous_block_number =
                     StarknetBlockNumber::new_or_panic(block.number.get() - 1);
                 StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
-                    .map(|b| b.root)
+                    .map(|b| b.state_commmitment)
             };
 
-            old_root.map(|old_root| (block.number, block.hash, block.root, old_root))
+            old_root.map(|old_root| (block.number, block.hash, block.state_commmitment, old_root))
         }
     })
 }

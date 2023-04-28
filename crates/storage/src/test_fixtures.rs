@@ -33,7 +33,6 @@ pub mod init {
     use crate::{
         state_update::insert_canonical_state_diff, types::CompressedCasmClass,
         CanonicalBlocksTable, CasmClassTable, ContractCodeTable, StarknetBlocksTable,
-        StarknetStateUpdatesTable,
     };
     use pathfinder_common::{ClassCommitment, StarknetVersion, StorageCommitment};
 
@@ -85,7 +84,6 @@ pub mod init {
                     .unwrap();
                 }
 
-                StarknetStateUpdatesTable::insert(tx, update.block_hash.unwrap(), &update).unwrap();
                 update
             })
             .collect()
