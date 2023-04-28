@@ -200,7 +200,7 @@ impl<T: Send + 'static, C: Send + 'static> Source<T, C> {
                         }
                     }
                     Err(e) => {
-                        tracing::warn!(job=name, reason=?e, "Failure detected");
+                        tracing::warn!(name=name, reason=?e, "Poll failed");
                     }
                     _ => (),
                 }
