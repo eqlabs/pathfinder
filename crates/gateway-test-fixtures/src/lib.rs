@@ -86,6 +86,10 @@ pub mod v0_11_0 {
             }
 
             pub mod v1 {
+                /// First deploy on testnet2, hash was calculated using chain id of testnet (goerli)
+                pub const GENESIS_TESTNET2: &str =
+                    str_fixture!("0.11.0/transaction/deploy_v1_genesis_testnet2.json");
+
                 /// Last deploy on testnet
                 pub const BLOCK_485004: &str =
                     str_fixture!("0.11.0/transaction/deploy_v1_block_485004.json");
@@ -104,6 +108,10 @@ pub mod v0_11_0 {
         pub mod invoke {
             pub mod v0 {
                 pub const GENESIS: &str = str_fixture!("0.11.0/transaction/invoke_v0_genesis.json");
+                // Invoke v0 with entry point type L1 handler later served
+                // as an L1 handler transaction
+                pub const BLOCK_854_IDX_96: &str =
+                    str_fixture!("0.11.0/transaction/invoke_v0_block_854_idx_96.json");
             }
             pub mod v1 {
                 pub const BLOCK_420K: &str =
@@ -115,6 +123,10 @@ pub mod v0_11_0 {
 
         pub mod l1_handler {
             pub mod v0 {
+                // Former Invoke v0 with entry point type L1 handler later served
+                // as an L1 handler transaction
+                pub const BLOCK_854_IDX_96: &str =
+                    str_fixture!("0.11.0/transaction/l1_handler_v0_block_854_idx_96.json");
                 pub const BLOCK_1564: &str =
                     str_fixture!("0.11.0/transaction/l1_handler_v0_block_1564.json");
                 pub const BLOCK_272866: &str =

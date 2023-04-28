@@ -1,0 +1,11 @@
+{
+    "type": "DEPLOY",
+    "contract_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+    "contract_address_salt": "0x322c2610264639f6b2cee681ac53fa65c37e187ea24292d1b21d859c55e1a78",
+    "class_hash": "0xd0e183745e9dae3e4e78a8ffedcce0903fc4900beace4e0abf192d4c202da3",
+    "constructor_calldata": [
+        "0"
+    ],
+    "transaction_hash": "0x356893f6716b2817ebb7b817ef8d5d6bfa0e10b14ad1bac654119f09f5b892c",
+    "version": "0x1"
+}
