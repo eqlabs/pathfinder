@@ -104,8 +104,8 @@ CREATE TABLE storage_updates (
     )
     .context("Creating indexes")?;
 
-    // tx.execute("DROP TABLE starknet_state_updates", [])
-    //     .context("Dropping starknet_state_updates")?;
+    tx.execute("DROP TABLE starknet_state_updates", [])
+        .context("Dropping starknet_state_updates")?;
 
     Ok(())
 }
