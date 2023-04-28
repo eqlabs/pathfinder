@@ -439,7 +439,9 @@ async fn download_block(
     match result {
         Ok(DownloadBlock::Block(block, commitments)) => {
             for (i, txn) in block.transactions.iter().enumerate() {
-                let skipped = verify(txn, chain_id, block_number)?;
+                let skipped = verify(txn, chain_id, block_number).with_context(|| {
+                    format!("Transaction verification failed: block {block_number} idx {i}")
+                })?;
                 if skipped {
                     tracing::trace!(
                         "Skipping transaction verification: block {block_number} idx {i} hash {}",
