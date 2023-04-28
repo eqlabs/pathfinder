@@ -19,10 +19,11 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{
+    insert_canonical_state_diff,
     types::{CompressedCasmClass, CompressedContract},
     CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable,
     L1StateTable, L1TableBlockId, RefsTable, StarknetBlock, StarknetBlocksBlockId,
-    StarknetBlocksTable, StarknetStateUpdatesTable, StarknetTransactionsTable, Storage,
+    StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
@@ -567,12 +568,10 @@ async fn l2_update(
         )
         .context("Insert block into database")?;
 
-        let rpc_state_update = state_update.into();
-        StarknetStateUpdatesTable::insert(&transaction, block.block_hash, &rpc_state_update)
-            .context("Insert state update into database")?;
-
         CanonicalBlocksTable::insert(&transaction, block.block_number, block.block_hash)
             .context("Inserting canonical block into database")?;
+
+        let rpc_state_update: pathfinder_storage::types::StateUpdate = state_update.into();
 
         let declared_sierra_class_hashes = rpc_state_update
             .state_diff
@@ -620,6 +619,14 @@ async fn l2_update(
             &transaction_data,
         )
         .context("Insert transaction data into database")?;
+
+        // Insert state updates
+        insert_canonical_state_diff(
+            &transaction,
+            block.block_number,
+            &rpc_state_update.state_diff,
+        )
+        .context("Insert state update into database")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
