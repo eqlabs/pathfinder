@@ -130,7 +130,13 @@ async fn main() -> anyhow::Result<()> {
         false => context,
     };
 
-    let (rpc_handle, local_addr) = pathfinder_rpc::RpcServer::new(config.rpc_address, context)
+    let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context);
+    let rpc_server = match config.rpc_cors_domains {
+        Some(allowed_origins) => rpc_server.with_cors(allowed_origins),
+        None => rpc_server,
+    };
+
+    let (rpc_handle, local_addr) = rpc_server
         .with_logger(RpcMetricsLogger)
         .with_max_connections(config.max_rpc_connections.get())
         .run()

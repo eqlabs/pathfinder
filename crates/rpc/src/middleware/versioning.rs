@@ -175,6 +175,7 @@ mod response {
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     pub mod method_names {
         pub const COMMON_FOR_V02_V03: [&str; 23] = [
@@ -219,15 +220,16 @@ pub mod test_utils {
 mod tests {
 
     use super::test_utils::{method_names, paths};
+    use crate::test_client::TestClientBuilder;
+    use crate::{RpcContext, RpcServer};
+    use jsonrpsee::core::error::Error;
+    use jsonrpsee::types::error::{CallError, METHOD_NOT_FOUND_CODE};
+    use serde_json::json;
 
     // In an unintentional way OFC: if a method is INTENDED to be available
     // on many paths then this is absolutely allowed.
     #[tokio::test]
     async fn api_versions_dont_leak_between_each_other() {
-        use crate::test_client::TestClientBuilder;
-        use crate::{RpcContext, RpcServer};
-        use serde_json::json;
-
         let context = RpcContext::for_tests();
         let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
             .run()
@@ -265,9 +267,9 @@ mod tests {
                     let res = client.request::<serde_json::Value>(method, json!([])).await;
 
                     match res {
-                        Err(jsonrpsee::core::Error::Call(
-                            jsonrpsee::types::error::CallError::Custom(e),
-                        )) if e.code() == jsonrpsee::types::error::METHOD_NOT_FOUND_CODE => {
+                        Err(Error::Call(CallError::Custom(e)))
+                            if e.code() == METHOD_NOT_FOUND_CODE =>
+                        {
                             // Hurray, this method is not supposed to be available on this path
                         }
                         Ok(_) | Err(_) => {
@@ -281,8 +283,6 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_path() {
-        use crate::{RpcContext, RpcServer};
-
         let context = RpcContext::for_tests();
         let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
             .run()

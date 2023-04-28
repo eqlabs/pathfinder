@@ -29,8 +29,14 @@ pub mod logger {
             _kind: jsonrpsee::server::logger::MethodKind,
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
-            let (version, method_name) = split_version_prefix(method_name);
-            metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version);
+            match split_version_prefix(method_name) {
+                Some((version, method_name)) => {
+                    metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version)
+                }
+                None => {
+                    metrics::increment_counter!("rpc_method_calls_total", "method" => method_name.to_owned())
+                }
+            }
         }
 
         fn on_result(
@@ -41,8 +47,14 @@ pub mod logger {
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
             if !success {
-                let (version, method_name) = split_version_prefix(method_name);
-                metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => version);
+                match split_version_prefix(method_name) {
+                    Some((version, method_name)) => {
+                        metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => version)
+                    }
+                    None => {
+                        metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name.to_owned())
+                    }
+                }
             }
         }
 
@@ -126,6 +138,38 @@ pub mod logger {
             _remote_addr: std::net::SocketAddr,
             _transport: jsonrpsee::server::logger::TransportProtocol,
         ) {
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use crate::{context::RpcContext, test_client::TestClientBuilder, RpcServer};
+        use jsonrpsee::core::Error;
+        use jsonrpsee::types::error::{CallError, METHOD_NOT_FOUND_CODE};
+        use serde_json::json;
+
+        #[tokio::test]
+        async fn invalid_method_name_without_underscore_doesnt_crash_the_server() {
+            let context = RpcContext::for_tests();
+            let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
+                .with_logger(crate::metrics::logger::RpcMetricsLogger)
+                .run()
+                .await
+                .unwrap();
+
+            let client = TestClientBuilder::default()
+                .address(address)
+                .build()
+                .unwrap();
+
+            let error = client
+                .request::<serde_json::Value>("invalidmethodnamewithoutunderscore", json!([]))
+                .await
+                .unwrap_err();
+
+            assert!(
+                matches!(error, Error::Call(CallError::Custom(e)) if e.code() == METHOD_NOT_FOUND_CODE)
+            );
         }
     }
 }

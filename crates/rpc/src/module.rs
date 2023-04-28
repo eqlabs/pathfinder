@@ -14,11 +14,10 @@ pub struct Module(jsonrpsee::RpcModule<RpcContext>);
 /// - `proper_methodName`, which is the proper name of the RPC method,
 /// including the namespace (`starknet` or `pathfinder`), as described
 /// in the spec for that particular API version
-pub(crate) fn split_version_prefix(method: &str) -> (String, String) {
-    let (version, method) = method
+pub(crate) fn split_version_prefix(method: &str) -> Option<(String, String)> {
+    method
         .split_once('_')
-        .expect("API version prefix is separated by underscore from the method name");
-    (version.to_owned(), method.to_owned())
+        .map(|(a, b)| (a.to_owned(), b.to_owned()))
 }
 
 impl Module {
@@ -52,7 +51,8 @@ impl Module {
         use jsonrpsee::types::Params;
         use tracing::Instrument;
 
-        let (version, metric_method_name) = split_version_prefix(method_name);
+        let (version, metric_method_name) = split_version_prefix(method_name)
+            .with_context(|| format!("Cannot register unprefixed method name: {method_name}"))?;
         metrics::register_counter!("rpc_method_calls_total", "method" => metric_method_name.clone(), "version" => version.clone());
         metrics::register_counter!("rpc_method_calls_failed_total", "method" => metric_method_name, "version" => version);
 
@@ -96,7 +96,8 @@ impl Module {
         use anyhow::Context;
         use tracing::Instrument;
 
-        let (version, metric_method_name) = split_version_prefix(method_name);
+        let (version, metric_method_name) = split_version_prefix(method_name)
+            .with_context(|| format!("Cannot register unprefixed method name: {method_name}"))?;
         metrics::register_counter!("rpc_method_calls_total", "method" => metric_method_name.clone(), "version" => version.clone());
         metrics::register_counter!("rpc_method_calls_failed_total", "method" => metric_method_name, "version" => version);
 
@@ -136,6 +137,11 @@ mod tests {
         async fn say_hello(_: RpcContext) -> Result<String, RpcError> {
             Ok("hello".to_string())
         }
+
+        // At least one prefix is required, as it'll be used for determining api version
+        assert!(super::Module::new(ctx.clone())
+            .register_method_with_no_input("noprefix", say_hello)
+            .is_err());
 
         let methods = super::Module::new(ctx)
             .register_method_with_no_input("say_hello", say_hello)
@@ -178,6 +184,11 @@ mod tests {
         async fn echo(_: RpcContext, input: EchoInput) -> Result<String, RpcError> {
             Ok(input.inner)
         }
+
+        // At least one prefix is required, as it'll be used for determining api version
+        assert!(super::Module::new(ctx.clone())
+            .register_method("noprefix", echo)
+            .is_err());
 
         let methods = super::Module::new(ctx)
             .register_method("an_echo", echo)

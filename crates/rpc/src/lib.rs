@@ -5,20 +5,22 @@ mod error;
 mod felt;
 pub mod gas_price;
 pub mod metrics;
+pub mod middleware;
 mod module;
 mod pathfinder;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_client;
 pub mod v02;
 pub mod v03;
-pub mod versioning;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use context::RpcContext;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
+use pathfinder_common::AllowedOrigins;
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
+use tower_http::cors::CorsLayer;
 
 const DEFAULT_MAX_CONNECTIONS: u32 = 1024;
 
@@ -27,6 +29,7 @@ pub struct RpcServer {
     context: RpcContext,
     logger: MaybeRpcMetricsLogger,
     max_connections: u32,
+    cors: Option<CorsLayer>,
 }
 
 impl RpcServer {
@@ -36,6 +39,7 @@ impl RpcServer {
             context,
             logger: MaybeRpcMetricsLogger::NoOp,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            cors: None,
         }
     }
 
@@ -51,6 +55,13 @@ impl RpcServer {
         self
     }
 
+    pub fn with_cors(self, allowed_origins: AllowedOrigins) -> Self {
+        Self {
+            cors: Some(middleware::cors::with_allowed_origins(allowed_origins)),
+            ..self
+        }
+    }
+
     /// Starts the HTTP-RPC server.
     pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
         const TEN_MB: u32 = 10 * 1024 * 1024;
@@ -60,10 +71,12 @@ impl RpcServer {
             .max_request_body_size(TEN_MB)
             .set_logger(self.logger)
             .set_middleware(tower::ServiceBuilder::new()
-                .map_result(versioning::try_map_errors_to_responses)
+                .option_layer(self.cors)
+                .map_result(middleware::versioning::try_map_errors_to_responses)
                 .filter_async(|result| async move {
-                    versioning::prefix_rpc_method_names_with_version(result, TEN_MB).await
-                }))
+                    middleware::versioning::prefix_rpc_method_names_with_version(result, TEN_MB).await
+                })
+            )
             .build(self.addr)
             .await
             .map_err(|e| match e {
