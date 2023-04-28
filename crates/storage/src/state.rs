@@ -1,4 +1,3 @@
-use crate::types::StateUpdate;
 use anyhow::Context;
 use ethers::types::H256;
 use pathfinder_common::{
@@ -1413,60 +1412,6 @@ impl ContractsStateTable {
             )
             .optional()
             .map_err(|e| e.into())
-    }
-}
-
-/// Stores all known [Starknet state updates][starknet_gateway_types::reply::StateUpdate].
-pub struct StarknetStateUpdatesTable {}
-
-impl StarknetStateUpdatesTable {
-    /// Inserts a StarkNet state update accociated with a particular block into the [StarknetStateUpdatesTable].
-    ///
-    /// Overwrites existing data if the block hash already exists.
-    pub fn insert(
-        tx: &Transaction<'_>,
-        block_hash: StarknetBlockHash,
-        state_update: &StateUpdate,
-    ) -> anyhow::Result<()> {
-        let serialized =
-            serde_json::to_vec(&state_update).context("Serialize Starknet state update")?;
-
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-        let compressed = compressor
-            .compress(&serialized)
-            .context("Compress Starknet state update")?;
-
-        tx.execute(
-            r"INSERT INTO starknet_state_updates (block_hash, data) VALUES (:block_hash, :data)",
-            named_params![":block_hash": block_hash, ":data": &compressed,],
-        )
-        .context("Insert state update data into state updates table")?;
-
-        Ok(())
-    }
-
-    /// Gets a StarkNet state update for block.
-    pub fn get(
-        tx: &Transaction<'_>,
-        block_hash: StarknetBlockHash,
-    ) -> anyhow::Result<Option<StateUpdate>> {
-        let mut stmt = tx
-            .prepare("SELECT data FROM starknet_state_updates WHERE block_hash = ?1")
-            .context("Preparing statement")?;
-
-        let mut rows = stmt.query([block_hash]).context("Executing query")?;
-
-        let row = match rows.next()? {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let state_update = row.get_ref_unwrap(0).as_blob()?;
-        let state_update = zstd::decode_all(state_update).context("Decompressing state update")?;
-        let state_update =
-            serde_json::from_slice(&state_update).context("Deserializing state update")?;
-
-        Ok(Some(state_update))
     }
 }
 
@@ -3080,38 +3025,6 @@ mod tests {
                      where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression) })}
                 ),
                 None => assert_eq!(result, None),
-            }
-        }
-    }
-
-    mod starknet_updates {
-        use super::*;
-        use crate::test_fixtures::with_n_state_updates;
-
-        mod get {
-            use super::*;
-
-            #[test]
-            fn some() {
-                with_n_state_updates(1, |_, tx, state_updates| {
-                    for expected in state_updates {
-                        let actual =
-                            StarknetStateUpdatesTable::get(tx, expected.block_hash.unwrap())
-                                .unwrap()
-                                .unwrap();
-                        assert_eq!(actual, expected);
-                    }
-                })
-            }
-
-            #[test]
-            fn none() {
-                use pathfinder_common::felt;
-                with_n_state_updates(1, |_, tx, _| {
-                    let non_existent = StarknetBlockHash(felt!("0xff"));
-                    let actual = StarknetStateUpdatesTable::get(tx, non_existent).unwrap();
-                    assert!(actual.is_none());
-                })
             }
         }
     }

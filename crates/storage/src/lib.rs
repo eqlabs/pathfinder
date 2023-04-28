@@ -21,8 +21,8 @@ use rusqlite::functions::FunctionFlags;
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, StarknetEmittedEvent,
-    StarknetEventFilter, StarknetEventsTable, StarknetStateUpdatesTable, StarknetTransactionsTable,
-    V02KeyFilter, V03KeyFilter,
+    StarknetEventFilter, StarknetEventsTable, StarknetTransactionsTable, V02KeyFilter,
+    V03KeyFilter,
 };
 pub use state_update::insert_canonical_state_diff;
 
