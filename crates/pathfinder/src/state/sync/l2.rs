@@ -439,14 +439,21 @@ async fn download_block(
     match result {
         Ok(DownloadBlock::Block(block, commitments)) => {
             for (i, txn) in block.transactions.iter().enumerate() {
-                let skipped = verify(txn, chain_id, block_number).with_context(|| {
+                let verify_result = verify(txn, chain_id, block_number).with_context(|| {
                     format!("Transaction verification failed: block {block_number} idx {i}")
                 })?;
-                if skipped {
-                    tracing::trace!(
-                        "Skipping transaction verification: block {block_number} idx {i} hash {}",
-                        txn.hash()
-                    )
+                match verify_result {
+                    starknet_gateway_types::transaction_hash::VerifyResult::Match => {}
+                    starknet_gateway_types::transaction_hash::VerifyResult::Mismatch(actual) =>
+                        anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i} expected {} calculated {}",
+                            txn.hash(),
+                            actual),
+                    starknet_gateway_types::transaction_hash::VerifyResult::NotVerifiable => {
+                        tracing::trace!(
+                            "Skipping transaction verification: block {block_number} idx {i} hash {}",
+                            txn.hash()
+                        )
+                    }
                 }
             }
 

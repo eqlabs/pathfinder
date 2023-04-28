@@ -3,7 +3,7 @@ use pathfinder_common::{ChainId, StarknetBlockNumber};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
-use starknet_gateway_types::transaction_hash::verify;
+use starknet_gateway_types::transaction_hash::{verify, VerifyResult};
 
 /// Verify transaction hashes in a pathfinder database.
 ///
@@ -60,12 +60,18 @@ fn main() -> anyhow::Result<()> {
                 chain_id,
                 StarknetBlockNumber::new_or_panic(block_number),
             ) {
-                Ok(skipped) if skipped => println!(
+                Ok(VerifyResult::Match) => {}
+                Ok(VerifyResult::Mismatch(calculated)) => println!(
+                    "Mismatch: block {block_number} idx {i} expected {} calculated {} full_txn\n{}",
+                    txn.hash(),
+                    calculated,
+                    serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
+                ),
+                Ok(VerifyResult::NotVerifiable) => println!(
                     "Skipped: block {block_number} idx {i} hash {} full_txn\n{}",
                     txn.hash(),
                     serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
                 ),
-                Ok(_) => { /* Verification passed */ }
                 Err(e) => println!(
                     "{e}, block {block_number} idx {i} full_txn {}",
                     serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
