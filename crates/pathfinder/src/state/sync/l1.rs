@@ -7,7 +7,7 @@ pub async fn sync(
     ethereum_client: impl EthereumClientApi,
     poll_interval: std::time::Duration,
 ) {
-    let mut backoff = RetryBackoff::new(std::time::Duration::from_secs(1), poll_interval);
+    let mut backoff = ExpBackoffDelay::new(std::time::Duration::from_secs(1), poll_interval);
     loop {
         tokio::time::sleep(backoff.delay()).await;
 
@@ -26,42 +26,50 @@ pub async fn sync(
     }
 }
 
-struct RetryBackoff {
+pub struct ExpBackoffDelay {
     ok: bool,
-    min_millis: u32,
-    max_millis: u32,
-    delay_millis: u32,
+    min: std::time::Duration,
+    max: std::time::Duration,
+    delay: std::time::Duration,
 }
 
-impl RetryBackoff {
-    fn new(min: std::time::Duration, max: std::time::Duration) -> Self {
+impl ExpBackoffDelay {
+    pub fn new(min: std::time::Duration, max: std::time::Duration) -> Self {
         Self {
             ok: true,
-            min_millis: min.as_millis() as u32,
-            max_millis: max.as_millis() as u32,
-            delay_millis: max.as_millis() as u32,
+            min,
+            max,
+            delay: max,
         }
     }
 
-    fn success(&mut self) {
-        self.delay_millis = self.max_millis;
+    pub fn success(&mut self) {
+        self.delay = self.max;
         self.ok = true;
     }
 
-    fn failure(&mut self) {
+    pub fn failure(&mut self) {
         if self.ok {
-            self.delay_millis = self.min_millis;
+            self.delay = self.min;
         } else {
-            self.delay_millis *= 2;
+            self.delay *= 2;
         }
-        if self.delay_millis > self.max_millis {
-            self.delay_millis = self.max_millis;
+        if self.delay > self.max {
+            self.delay = self.max;
         }
         self.ok = false;
     }
 
-    fn delay(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.delay_millis as u64)
+    pub fn delay(&self) -> std::time::Duration {
+        self.delay
+    }
+
+    pub fn min(&self) -> std::time::Duration {
+        self.min
+    }
+
+    pub fn max(&self) -> std::time::Duration {
+        self.max
     }
 }
 
@@ -74,7 +82,7 @@ mod tests {
         let min = std::time::Duration::from_secs(1);
         let max = std::time::Duration::from_secs(10);
 
-        let mut backoff = RetryBackoff::new(min, max);
+        let mut backoff = ExpBackoffDelay::new(min, max);
         assert_eq!(backoff.delay(), max);
 
         backoff.success();
