@@ -2,10 +2,11 @@ use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use pathfinder_storage::{
-    EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable, V02KeyFilter,
+    EventFilterError, StarknetBlocksNumberOrLatest, StarknetBlocksTable, StarknetEventFilter,
+    StarknetEventsTable, V02KeyFilter,
 };
 use serde::Deserialize;
-use starknet_gateway_types::pending::PendingData;
+use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 crate::error::generate_rpc_error_subset!(
@@ -76,6 +77,14 @@ pub async fn get_events(
         None => None,
     };
 
+    // Grab the pending block so that we can check its validity.
+    //
+    // This is an async operation, so separating it from the sync database portion is sensible.
+    let pending_block = match context.pending_data.as_ref() {
+        Some(data) => data.block().await,
+        None => None,
+    };
+
     // Handle the trivial (1) and (2) cases.
     match (request.from_block, request.to_block) {
         (Some(Pending), non_pending) if non_pending != Some(Pending) => {
@@ -88,15 +97,20 @@ pub async fn get_events(
             let skip = requested_offset.unwrap_or_default();
 
             let mut events = Vec::new();
-            let is_last_page = append_pending_events(
-                &context.pending_data,
-                &mut events,
-                skip,
-                request.chunk_size,
-                request.address,
-                request.keys.into_iter().collect(),
-            )
-            .await;
+            let is_last_page = match pending_block {
+                None => true,
+                Some(pending_block) => {
+                    append_pending_events(
+                        &pending_block,
+                        &mut events,
+                        skip,
+                        request.chunk_size,
+                        request.address,
+                        request.keys.into_iter().collect(),
+                    )
+                    .await
+                }
+            };
 
             check_continuation_token_validity(requested_offset, &events)?;
 
@@ -116,6 +130,7 @@ pub async fn get_events(
 
     // blocking task to perform database event query and optionally, the event count
     // required for (4d).
+
     let span = tracing::Span::current();
     let db_events: JoinHandle<Result<_, GetEventsError>> = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
@@ -169,21 +184,44 @@ pub async fn get_events(
         let continuation_token =
             next_continuation_token(filter.offset, filter.page_size, page.is_last_page);
 
+        // Check pending block validity if it is required -- this means checking it's parent is
+        // indeed the latest block in storage. Replace pending data if it is invalid, or not required.
+        let pending_block = match (request.to_block, pending_block) {
+            (Some(Pending), Some(pending_block)) => {
+                let latest = StarknetBlocksTable::get_hash(
+                    &transaction,
+                    StarknetBlocksNumberOrLatest::Latest,
+                )
+                .context("Querying latest block hash")?
+                .context("Latest block hash is missing")?;
+
+                (pending_block.parent_hash == latest).then_some(pending_block)
+            }
+            (_, original) => original,
+        };
+
         Ok((
             types::GetEventsResult {
                 events: page.events.into_iter().map(|e| e.into()).collect(),
                 continuation_token,
             },
             event_count,
+            pending_block,
         ))
     });
 
-    let (mut events, count) = db_events
+    let (mut events, count, pending_block) = db_events
         .await
         .context("Database read panic or shutting down")??;
 
     // Append pending data if required.
-    if matches!(request.to_block, Some(Pending)) && events.events.len() < request.chunk_size {
+    if matches!(request.to_block, Some(Pending))
+        && events.events.len() < request.chunk_size
+        && pending_block.is_some()
+    {
+        // This is safe as we just check pending_block.is_some() above.
+        let pending_block = pending_block.unwrap();
+
         let keys = request
             .keys
             .into_iter()
@@ -202,7 +240,7 @@ pub async fn get_events(
         };
 
         let is_last_page = append_pending_events(
-            &context.pending_data,
+            &pending_block,
             &mut events.events,
             skip,
             amount,
@@ -275,21 +313,13 @@ fn map_from_block_to_number(
 /// Append's pending events to `dst` based on the filter requirements and returns
 /// true if this was the last pending data i.e. `is_last_page`.
 async fn append_pending_events(
-    pending_data: &Option<PendingData>,
+    pending_block: &PendingBlock,
     dst: &mut Vec<types::EmittedEvent>,
     skip: usize,
     amount: usize,
     address: Option<ContractAddress>,
     keys: std::collections::HashSet<EventKey>,
 ) -> bool {
-    let pending_block = match pending_data.as_ref() {
-        Some(data) => match data.block().await {
-            Some(block) => block,
-            None => return true,
-        },
-        None => return true,
-    };
-
     let original_len = dst.len();
 
     let pending_events = pending_block
@@ -712,6 +742,7 @@ mod tests {
     mod pending {
         use super::*;
         use pretty_assertions::assert_eq;
+        use starknet_gateway_types::pending::PendingData;
 
         #[tokio::test]
         async fn backward_range() {
@@ -812,6 +843,43 @@ mod tests {
             input.filter.continuation_token = Some(4.to_string()); // Points to after the last event
             let error = get_events(context.clone(), input).await.unwrap_err();
             assert_eq!(error, GetEventsError::InvalidContinuationToken);
+        }
+
+        #[tokio::test]
+        async fn invalid_pending() {
+            use std::sync::Arc;
+            // Invalidate the pending block data by changing its parent hash.
+            let mut context = RpcContext::for_tests_with_pending().await;
+            let pending = context.pending_data.as_ref().unwrap();
+            let mut block = pending.block().await.unwrap().as_ref().clone();
+            let state_update = pending.state_update().await.unwrap();
+            block.parent_hash.0 = block.parent_hash.0 + felt!("0x1");
+
+            let pending = PendingData::default();
+            pending.set(Arc::new(block), state_update).await;
+            context.pending_data = Some(pending);
+
+            let all_non_pending_filter = GetEventsInput {
+                filter: EventFilter {
+                    from_block: None,
+                    to_block: Some(BlockId::Latest),
+                    address: None,
+                    keys: vec![],
+                    chunk_size: 1024,
+                    continuation_token: None,
+                },
+            };
+
+            let mut all_filter = all_non_pending_filter.clone();
+            all_filter.filter.to_block = Some(BlockId::Pending);
+
+            let expected = get_events(context.clone(), all_non_pending_filter)
+                .await
+                .unwrap();
+
+            let all_events = get_events(context.clone(), all_filter).await.unwrap();
+
+            assert_eq!(all_events, expected);
         }
     }
 }
