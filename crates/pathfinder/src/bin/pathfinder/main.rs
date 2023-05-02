@@ -100,33 +100,18 @@ async fn main() -> anyhow::Result<()> {
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
-    let sync_handle = tokio::spawn(state::sync(
-        storage.clone(),
-        ethereum.transport.clone(),
-        pathfinder_context.network,
-        pathfinder_context.network_id,
-        pathfinder_context.l1_core_address.0,
-        pathfinder_context.gateway.clone(),
-        sync_state.clone(),
-        state::l1::sync,
-        state::l2::sync,
-        pending_state.clone(),
-        pending_interval,
-        state::l2::BlockValidationMode::Strict,
-    ));
-
     let shared = pathfinder_rpc::gas_price::Cached::new(pathfinder_context.gateway.clone());
 
     let context = pathfinder_rpc::context::RpcContext::new(
         storage.clone(),
         sync_state.clone(),
         pathfinder_context.network_id,
-        pathfinder_context.gateway,
+        pathfinder_context.gateway.clone(),
     )
     .with_call_handling(call_handle)
     .with_eth_gas_price(shared);
     let context = match config.poll_pending {
-        true => context.with_pending_data(pending_state),
+        true => context.with_pending_data(pending_state.clone()),
         false => context,
     };
 
@@ -135,6 +120,22 @@ async fn main() -> anyhow::Result<()> {
         Some(allowed_origins) => rpc_server.with_cors(allowed_origins),
         None => rpc_server,
     };
+
+    let sync_handle = tokio::spawn(state::sync(
+        storage.clone(),
+        ethereum.transport,
+        pathfinder_context.network,
+        pathfinder_context.network_id,
+        pathfinder_context.l1_core_address.0,
+        pathfinder_context.gateway,
+        sync_state.clone(),
+        state::l1::sync,
+        state::l2::sync,
+        pending_state,
+        pending_interval,
+        state::l2::BlockValidationMode::Strict,
+        rpc_server.get_websocket_txs(),
+    ));
 
     let (rpc_handle, local_addr) = rpc_server
         .with_logger(RpcMetricsLogger)

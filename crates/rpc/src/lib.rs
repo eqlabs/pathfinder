@@ -18,6 +18,8 @@ pub mod websocket;
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use context::RpcContext;
+use http::Request;
+use hyper::Body;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use pathfinder_common::AllowedOrigins;
 use starknet_gateway_types::websocket::WebsocketSenders;
@@ -33,6 +35,7 @@ pub struct RpcServer {
     logger: MaybeRpcMetricsLogger,
     max_connections: u32,
     cors: Option<CorsLayer>,
+    websocket_txs: WebsocketSenders,
 }
 
 impl RpcServer {
@@ -43,6 +46,7 @@ impl RpcServer {
             logger: MaybeRpcMetricsLogger::NoOp,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             cors: None,
+            websocket_txs: WebsocketSenders::new(),
         }
     }
 
@@ -76,7 +80,11 @@ impl RpcServer {
             .set_middleware(tower::ServiceBuilder::new()
                 .option_layer(self.cors)
                 .map_result(middleware::versioning::try_map_errors_to_responses)
-                .filter_async(|result| async move {
+                .filter_async(|result: Request<Body>| async move {
+					// skip method_name checks for websocket handshake
+					if result.headers().get("sec-websocket-key").is_some() {
+						return Ok(result);
+					}
                     middleware::versioning::prefix_rpc_method_names_with_version(result, TEN_MB).await
                 })
             )
@@ -107,9 +115,14 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         let module = v02::register_methods(module)?;
         let module = v03::register_methods(module)?;
         let module = pathfinder::register_methods(module)?;
+        let module = websocket::register_subscriptions(module, self.websocket_txs.clone())?;
         let methods = module.build();
 
         Ok(server.start(methods).map(|handle| (handle, local_addr))?)
+    }
+
+    pub fn get_websocket_txs(&self) -> WebsocketSenders {
+        self.websocket_txs.clone()
     }
 }
 

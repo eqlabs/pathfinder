@@ -22,7 +22,7 @@ mod metrics;
 #[allow(unused_variables)]
 #[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
-pub trait GatewayApi: Sync {
+pub trait GatewayApi: Send + Sync {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         unimplemented!();
     }
