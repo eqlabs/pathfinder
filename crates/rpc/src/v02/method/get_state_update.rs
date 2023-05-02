@@ -156,8 +156,8 @@ fn get_state_update_from_storage(
     let mut stmt = tx
         .prepare_cached(
             r"SELECT
-                cu1.contract_address AS contract_address,
-                cu1.class_hash AS class_hash
+                cu1.contract_address,
+                cu1.class_hash
             FROM
                 contract_updates cu1
             LEFT OUTER JOIN
