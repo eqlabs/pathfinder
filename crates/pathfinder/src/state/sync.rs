@@ -601,7 +601,7 @@ async fn l2_update(
                 class_hash,
                 block.block_number,
             )
-            .with_context(|| format!("Setting declared_on for class={:?}", class_hash))?;
+            .with_context(|| format!("Setting declared_on for class={class_hash:?}"))?;
         }
 
         // Insert the transactions.

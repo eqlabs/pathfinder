@@ -363,7 +363,7 @@ mod tests {
         let not_url = "not_url".to_string();
         let with_path = "http://a.com/path".to_string();
         let with_query = "http://a.com/?query=x".to_string();
-        let with_trailing_slash = format!("{}/", valid);
+        let with_trailing_slash = format!("{valid}/");
 
         [
             (

@@ -15,6 +15,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         starknet_gateway_types::class_hash::ComputedClassHash::Cairo(h) => h.0,
         starknet_gateway_types::class_hash::ComputedClassHash::Sierra(h) => h.0,
     };
-    println!("{:x}", class_hash);
+    println!("{class_hash:x}");
     Ok(())
 }
