@@ -2,7 +2,6 @@ import asyncio
 import dataclasses
 import json
 import os
-import pkg_resources
 import re
 import sqlite3
 import sys
@@ -13,10 +12,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import ClassVar, Dict, List, Optional, Tuple, Type
 
+import pkg_resources
+
 try:
     import starknet_pathfinder_crypto
-    import starkware.crypto.signature.fast_pedersen_hash
     import starkware.cairo.common.poseidon_hash
+    import starkware.crypto.signature.fast_pedersen_hash
 
     starkware.crypto.signature.fast_pedersen_hash.pedersen_hash_func = (
         starknet_pathfinder_crypto.pedersen_hash_func
@@ -46,7 +47,6 @@ try:
     import marshmallow.exceptions
     import marshmallow_dataclass
     import marshmallow_oneofschema
-    import zstandard
     from cachetools import LRUCache
     from marshmallow import Schema
     from marshmallow import fields as mfields
@@ -58,23 +58,34 @@ try:
         ExecutionResourcesManager,
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
-    from starkware.starknet.definitions import fields, constants
+    from starkware.starknet.core.os.contract_class.utils import (
+        ClassHashType,
+        class_hash_cache_ctx_var,
+        set_class_hash_cache,
+    )
+    from starkware.starknet.definitions import constants, fields
     from starkware.starknet.definitions.constants import GasCost
     from starkware.starknet.definitions.error_codes import StarknetErrorCode
     from starkware.starknet.definitions.general_config import (
-        DEFAULT_MAX_STEPS,
         DEFAULT_GAS_PRICE,
+        DEFAULT_MAX_STEPS,
         DEFAULT_SEQUENCER_ADDRESS,
         DEFAULT_VALIDATE_MAX_STEPS,
         StarknetChainId,
         StarknetGeneralConfig,
         build_general_config,
     )
+    from starkware.starknet.public.abi import starknet_keccak
     from starkware.starknet.services.api.contract_class.contract_class import (
         EntryPointType,
     )
     from starkware.starknet.services.api.contract_class.contract_class_utils import (
         compile_contract_class,
+    )
+    from starkware.starknet.services.api.feeder_gateway.response_objects import (
+        BaseResponseObject,
+        FunctionInvocation,
+        TransactionTrace,
     )
     from starkware.starknet.services.api.gateway.transaction import (
         AccountTransaction,
@@ -85,18 +96,6 @@ try:
         InternalAccountTransactionForSimulate,
     )
     from starkware.starkware_utils.error_handling import StarkException
-    from starkware.starknet.core.os.contract_class.utils import (
-        ClassHashType,
-        class_hash_cache_ctx_var,
-        set_class_hash_cache,
-    )
-    from starkware.starknet.public.abi import starknet_keccak
-
-    from starkware.starknet.services.api.feeder_gateway.response_objects import (
-        BaseResponseObject,
-        FunctionInvocation,
-        TransactionTrace,
-    )
 
     from .storage import SqliteStateReader
 
