@@ -50,7 +50,7 @@ use crate::Hash;
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use stark_hash::Felt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::{cell::RefCell, rc::Rc};
 
@@ -59,15 +59,17 @@ use std::{cell::RefCell, rc::Rc};
 pub struct MerkleTree<H: Hash, const HEIGHT: usize> {
     root: Rc<RefCell<InternalNode>>,
     _hasher: std::marker::PhantomData<H>,
+    removed: HashSet<Felt>,
 }
 
 /// The result of committing a [MerkleTree]. Contains the new root and any
 /// new nodes added in this update.
 pub struct Update {
     pub root: Felt,
-    /// New nodes added. Note that these may contain false positives if the
-    /// mutations resulted in removing and then re-adding the same nodes within the tree.
+    /// New nodes added.
     pub added: HashMap<Felt, crate::Node>,
+    /// Nodes which were removed.
+    pub removed: HashSet<Felt>,
 }
 
 impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
@@ -76,6 +78,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Self {
             root: root_node,
             _hasher: std::marker::PhantomData,
+            removed: HashSet::new(),
         }
     }
 
@@ -84,18 +87,33 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     }
 
     /// Commits all tree mutations and returns the [changes](Update) to the tree.
-    pub fn commit(mut self) -> anyhow::Result<Update> {
-        self.commit_mut()
-    }
-
-    pub fn commit_mut(&mut self) -> anyhow::Result<Update> {
+    pub fn commit(self) -> anyhow::Result<Update> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = HashMap::new();
         Self::commit_subtree(&mut self.root.borrow_mut(), &mut added)?;
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
+        let mut removed = self.removed;
 
-        Ok(Update { root, added })
+        // Don't advertise nodes which were removed and then re-added. A trivial example of where this
+        // might occur is if we mutate a key's value and then reset it again. The 1st set would mark
+        // the nodes enroute as removed and the reset would add them back as new nodes. More complex examples
+        // involving only subtree's re-appearing are also possible.
+        let mut to_delete = HashSet::new();
+        for r in &removed {
+            if added.remove(r).is_some() {
+                to_delete.insert(*r);
+            }
+        }
+        for d in to_delete {
+            removed.remove(&d);
+        }
+
+        Ok(Update {
+            root,
+            added,
+            removed,
+        })
     }
 
     /// Persists any changes in this subtree to storage.
@@ -148,6 +166,17 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(())
     }
 
+    /// Marks the node as [dirty](InternalNode::mark_dirty) and adds it to the list of
+    /// removed nodes.
+    fn mark_node_as_dirty(&mut self, node: &Rc<RefCell<InternalNode>>) {
+        let mut node = node.borrow_mut();
+        node.mark_dirty();
+
+        if let InternalNode::Unresolved(node) = &*node {
+            self.removed.insert(*node);
+        }
+    }
+
     /// Sets the value of a key. To delete a key, set the value to [Felt::ZERO].
     pub fn set(
         &mut self,
@@ -163,7 +192,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         // of all nodes along the path to the leaf.
         let path = self.traverse(storage, key)?;
         for node in &path {
-            node.borrow_mut().mark_dirty();
+            self.mark_node_as_dirty(node);
         }
 
         // There are three possibilities.
@@ -317,7 +346,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         // All hashes along the path will become invalid (if they aren't deleted).
         for node in &path {
-            node.borrow_mut().mark_dirty();
+            self.mark_node_as_dirty(node);
         }
 
         // Go backwards until we hit a branch node.
