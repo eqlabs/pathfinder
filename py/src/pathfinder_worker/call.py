@@ -1,6 +1,5 @@
 import asyncio
 import dataclasses
-import itertools
 import json
 import os
 import pkg_resources
@@ -52,15 +51,11 @@ try:
     from marshmallow import Schema
     from marshmallow import fields as mfields
     from services.everest.definitions import fields as everest_fields
-    from starkware.cairo.lang.vm.crypto import pedersen_hash_func
     from starkware.starknet.business_logic.execution.execute_entry_point import (
         ExecuteEntryPoint,
     )
     from starkware.starknet.business_logic.execution.objects import (
         ExecutionResourcesManager,
-    )
-    from starkware.starknet.business_logic.fact_state.patricia_state import (
-        PatriciaStateReader,
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.definitions import fields, constants
@@ -76,7 +71,6 @@ try:
         build_general_config,
     )
     from starkware.starknet.services.api.contract_class.contract_class import (
-        CompiledClass,
         EntryPointType,
     )
     from starkware.starknet.services.api.contract_class.contract_class_utils import (
@@ -90,11 +84,7 @@ try:
     from starkware.starknet.services.utils.sequencer_api_utils import (
         InternalAccountTransactionForSimulate,
     )
-    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
-        PatriciaTree,
-    )
     from starkware.starkware_utils.error_handling import StarkException
-    from starkware.storage.storage import FactFetchingContext, Storage
     from starkware.starknet.core.os.contract_class.utils import (
         ClassHashType,
         class_hash_cache_ctx_var,
@@ -108,6 +98,8 @@ try:
         TransactionTrace,
     )
 
+    from .storage import SqliteStateReader
+
 except ModuleNotFoundError:
     print(
         "missing cairo-lang module: please reinstall dependencies to upgrade.",
@@ -118,9 +110,6 @@ except ModuleNotFoundError:
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 33
 EXPECTED_CAIRO_VERSION = "0.11.0.2"
-
-# used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
-NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
 DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
@@ -482,19 +471,7 @@ def loop_inner(
 
     general_config = create_general_config(command.chain.value)
 
-    if class_commitment == 0:
-        class_commitment = None
-
-    adapter = SqliteAdapter(connection)
-    # hook up the sqlite adapter
-    ffc = FactFetchingContext(storage=adapter, hash_func=pedersen_hash_func)
-    global_state_root = PatriciaTree(storage_commitment, 251)
-    contract_class_root = (
-        PatriciaTree(class_commitment, 251) if class_commitment is not None else None
-    )
-    state_reader = PatriciaStateReader(
-        global_state_root, contract_class_root, ffc, contract_class_storage=adapter
-    )
+    state_reader = SqliteStateReader(connection, block_number=block_info.block_number)
     async_state = CachedState(
         block_info=block_info,
         state_reader=state_reader,
@@ -538,11 +515,6 @@ def loop_inner(
     else:
         logger.error(f"Unrecognised command: {command}")
 
-    timings["sql"] = {
-        "timings": adapter.elapsed,
-        "counts": adapter.counts,
-        "cache": adapter.cache,
-    }
     timings["cairo-lang"] = time.time() - started_at
 
     return ret
@@ -702,239 +674,6 @@ class Logger:
 
     def _log(self, level, message):
         print(f"{level}{json.dumps(message)}", file=sys.stderr, flush=True)
-
-
-class SqliteAdapter(Storage):
-    """
-    Reads from pathfinders' database to give cairo-lang call implementation the nodes as needed
-    however using a single transaction.
-    """
-
-    def __init__(self, connection: sqlite3.Connection):
-        assert connection.in_transaction, "first query should had started a transaction"
-        self.connection = connection
-        self.elapsed = {
-            "total": 0,
-            "patricia_node": 0,
-            "contract_state": 0,
-            "contract_definition": 0,
-            "compiled_class": 0,
-        }
-        self.counts = {
-            "total": 0,
-            "patricia_node": 0,
-            "contract_state": 0,
-            "contract_definition": 0,
-            "compiled_class": 0,
-        }
-        self.cache = {"patricia_node": {"hits": 0, "misses": 0}}
-        # json cannot contain bytes, python doesn't have strip string
-        self.prefix_mapping = {
-            b"patricia_node": "patricia_node",
-            b"contract_state": "contract_state",
-            b"contract_definition_fact": "contract_definition",
-            b"compiled_class_fact": "compiled_class",
-            # this is just a string op
-            b"starknet_storage_leaf": None,
-        }
-        self.cached_patricia_nodes = LRUCache(maxsize=512)
-
-    async def set_value(self, key, value):
-        raise NotImplementedError("Readonly storage, this should never happen")
-
-    async def del_value(self, key):
-        raise NotImplementedError("Readonly storage, this should never happen")
-
-    async def get_value(self, key):
-        started_at = time.time()
-
-        # all keys have this structure
-        [prefix, suffix] = key.split(b":", maxsplit=1)
-
-        ret = self.get_value0(prefix, suffix)
-
-        elapsed = time.time() - started_at
-
-        self.elapsed["total"] += elapsed
-        self.counts["total"] += 1
-        # bytes are not permitted in json
-        prefix = self.prefix_mapping.get(prefix, None)
-        if prefix is not None:
-            self.elapsed[prefix] += elapsed
-            self.counts[prefix] += 1
-        return ret
-
-    def get_value0(self, prefix, suffix):
-        """
-        Get value invoked by some storage thing from cairo-lang. The caller
-        will assert that the values returned are not None, which sometimes
-        bubbles up, or gets wrapped in a StarkException.
-        """
-
-        # cases handled in the order of appereance
-        if prefix == b"patricia_node":
-            return self.fetch_patricia_node(suffix)
-
-        if prefix == b"contract_state":
-            return self.fetch_contract_state(suffix)
-
-        if prefix == b"contract_definition_fact":
-            return self.fetch_contract_definition(suffix)
-
-        if prefix == b"compiled_class_fact":
-            return self.fetch_compiled_class(suffix)
-
-        if prefix == b"starknet_storage_leaf":
-            return self.fetch_storage_leaf(suffix)
-
-        if prefix == b"contract_class_leaf":
-            return self.fetch_contract_class_leaf(suffix)
-
-        assert False, f"unknown prefix: {prefix}"
-
-    def fetch_patricia_node(self, suffix):
-        cached = self.cached_patricia_nodes.get(suffix, None)
-        if cached is not None:
-            self.cache["patricia_node"]["hits"] += 1
-            return cached
-
-        # tree_global is much smaller table than tree_contracts
-        cursor = self.connection.execute(
-            "select data from tree_class where hash = ?1 union select data from tree_global where hash = ?1 union select data from tree_contracts where hash = ?1",
-            [suffix],
-        )
-
-        [only] = next(cursor, [None])
-
-        self.cached_patricia_nodes[suffix] = only
-        self.cache["patricia_node"]["misses"] += 1
-
-        return only
-
-    def fetch_contract_state(self, suffix):
-        cursor = self.connection.execute(
-            "select hash, root, nonce from contract_states where state_hash = ?",
-            [suffix],
-        )
-
-        only = next(cursor, [None, None, None])
-
-        [h, root, nonce] = only
-
-        if h is None or root is None:
-            # finding contract_states is a special quest.
-            #
-            # we must return this because None is not handled by caller. for
-            # some reason there is opposition to stopping cairo-lang's search
-            # when they don't find a key in the patricia tree, so it ends up
-            # making what seems like full height queries and then reads
-            # "contract_state:00..00" key, for which it hopes to find this to
-            # know that the leaf and the contract state did not exist.
-            return NOT_FOUND_CONTRACT_STATE
-
-        # Nonces are stored with leading zeros stripped for compression.
-        # This means 0x0 is stored as an empty array but cairo-lang expects
-        # '0x0' and not '0x' so we assign at least one byte here.
-        if len(nonce) == 0:
-            nonce = bytearray(1)
-
-        return (
-            b'{"storage_commitment_tree": {"root": "'
-            + root.hex().encode("utf-8")
-            + b'", "height": 251}, "contract_hash": "'
-            + h.hex().encode("utf-8")
-            + b'", "nonce": "0x'
-            + nonce.hex().encode("utf-8")
-            + b'"}'
-        )
-
-    def fetch_contract_definition(self, suffix):
-        """
-        Fetches a Cairo 0.x class (DeprecatedCompiledClassFact).
-
-        It's important that we return None for Sierra classes here since that's
-        what triggers falling back to fetching the CASM via fetch_compiled_class()
-        """
-        cursor = self.connection.execute(
-            """
-            select
-                class_definitions.definition
-            from
-                class_definitions
-            left outer join casm_definitions on
-                casm_definitions.hash = class_definitions.hash
-            where
-                class_definitions.hash = ?
-                and
-                casm_definitions.compiled_class_hash is null""",
-            [suffix],
-        )
-        [only] = next(cursor, [None])
-
-        if only is None:
-            return None
-
-        # pathfinder stores zstd compressed json blobs
-        decompressor = zstandard.ZstdDecompressor()
-        only = decompressor.decompress(only)
-
-        # cairo-lang expects a ContractDefinitionFact, however we store just
-        # the contract definition over at pathfinder (from full_contract)
-        # so we need to wrap it up here. itertools is suggested by the manuals,
-        # so lets hope it's the most efficient thing.
-        #
-        # there might be a better way to do this, since cairo-lang seems to
-        # expect the returned value to have method called decode, but it's not
-        # like we could fake streaming decompression
-        return bytes(itertools.chain(b'{"contract_definition":', only, b"}"))
-
-    def fetch_compiled_class(self, suffix):
-        """
-        Fetches the CASM class for a Cairo 1.0 contract based on the compiled_class_hash.
-        """
-        cursor = self.connection.cursor()
-        res = cursor.execute(
-            "select definition from casm_definitions where compiled_class_hash = ?",
-            [suffix],
-        )
-        compiled_class = res.fetchone()
-
-        if compiled_class is None:
-            return None
-
-        compiled_class = zstandard.decompress(compiled_class[0])
-        compiled_class = json.loads(compiled_class)
-
-        compiled_class = CompiledClass.load(compiled_class)
-
-        compiled_class_json = compiled_class.dumps().encode("utf-8")
-
-        return bytes(itertools.chain(b'{"compiled_class":', compiled_class_json, b"}"))
-
-    def fetch_contract_class_leaf(self, suffix):
-        cursor = self.connection.cursor()
-        res = cursor.execute(
-            "select compiled_class_hash from class_commitment_leaves where hash = ?",
-            [suffix],
-        )
-        compiled_class_hash = res.fetchone()
-
-        # We should return zero if the commitment leaf is not found
-        if compiled_class_hash is None:
-            compiled_class_hash = [b"\x00" * 32]
-
-        return bytes(
-            itertools.chain(
-                b'{"compiled_class_hash": "0x',
-                compiled_class_hash[0].hex().encode("utf-8"),
-                b'"}',
-            )
-        )
-
-    def fetch_storage_leaf(self, suffix):
-        # these are "stored" under their keys where key == value; this
-        # follows from the inheritance structure inside cairo-lang
-        return suffix
 
 
 async def do_call(
