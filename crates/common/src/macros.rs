@@ -396,7 +396,7 @@ macro_rules! version_check {
     };
     (@compare $left:ident > $right:ident) => {
         match ($left, $right) {
-            (l, r) if l.0 > r.0 => true,F
+            (l, r) if l.0 > r.0 => true,
             (l, r) if l.0 == r.0 && l.1 > r.1 => true,
             (l, r) if l.0 == r.0 && l.1 == r.1 && l.2 > r.2 => true,
             _ => false,
