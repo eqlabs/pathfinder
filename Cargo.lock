@@ -5603,10 +5603,12 @@ dependencies = [
 name = "pathfinder-common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bitvec 0.20.4",
  "ethers",
  "metrics",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
  "sha3",

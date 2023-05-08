@@ -1,6 +1,7 @@
 use crate::types::StateUpdate;
 use anyhow::Context;
 use ethers::types::H256;
+use pathfinder_common::StarknetVersion;
 use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
@@ -224,11 +225,11 @@ impl StarknetBlocksTable {
     pub fn insert(
         tx: &Transaction<'_>,
         block: &StarknetBlock,
-        version: Option<&str>,
+        version: &StarknetVersion,
         storage_commitment: StorageCommitment,
         class_commitment: ClassCommitment,
     ) -> anyhow::Result<()> {
-        let version_id = if let Some(version) = version {
+        let version_id = if let Some(version) = version.as_str() {
             Some(StarknetVersionsTable::intern(tx, version)?)
         } else {
             None
@@ -1817,7 +1818,7 @@ mod tests {
                 StarknetBlocksTable::insert(
                     &tx,
                     &block.block,
-                    None,
+                    &StarknetVersion::default(),
                     block.storage_commitment,
                     block.class_commitment,
                 )
@@ -2147,7 +2148,7 @@ mod tests {
         mod interned_version {
             use super::super::Storage;
             use super::StarknetBlocksTable;
-            use pathfinder_common::{ClassCommitment, StorageCommitment};
+            use pathfinder_common::{ClassCommitment, StorageCommitment, StarknetVersion};
 
             #[test]
             fn duplicate_versions_interned() {
@@ -2156,9 +2157,9 @@ mod tests {
                 let tx = connection.transaction().unwrap();
 
                 let blocks = super::create_blocks();
-                let versions = ["0.9.1", "0.9.1"]
+                let versions = [StarknetVersion::new(0, 9, 1), StarknetVersion::new(0, 9, 1)]
                     .into_iter()
-                    .chain(std::iter::repeat("0.9.2"));
+                    .chain(std::iter::repeat(StarknetVersion::new(0, 9, 2)));
 
                 let mut inserted = 0;
 
@@ -2166,7 +2167,7 @@ mod tests {
                     StarknetBlocksTable::insert(
                         &tx,
                         &block.block,
-                        Some(version),
+                        &version,
                         StorageCommitment::ZERO,
                         ClassCommitment::ZERO,
                     )
@@ -2486,7 +2487,7 @@ mod tests {
             StarknetBlocksTable::insert(
                 &tx,
                 &block,
-                None,
+                &StarknetVersion::default(),
                 StorageCommitment::ZERO,
                 ClassCommitment::ZERO,
             )

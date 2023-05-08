@@ -5,8 +5,9 @@ use pathfinder_common::{
     felt, CallParam, ClassCommitment, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
     SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StarknetTransactionHash, StarknetTransactionIndex, StateCommitment, StorageCommitment,
-    TransactionCommitment, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    StarknetTransactionHash, StarknetTransactionIndex, StarknetVersion, StateCommitment,
+    StorageCommitment, TransactionCommitment, TransactionNonce, TransactionSignatureElem,
+    TransactionVersion,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
@@ -209,7 +210,7 @@ pub fn setup_test_storage() -> (Storage, TestData) {
         StarknetBlocksTable::insert(
             &tx,
             &block.block,
-            None,
+            &StarknetVersion::default(),
             block.storage_commitment,
             block.class_commitment,
         )

@@ -558,7 +558,7 @@ async fn l2_update(
         StarknetBlocksTable::insert(
             &transaction,
             &starknet_block,
-            block.starknet_version.as_deref(),
+            &block.starknet_version,
             new_storage_commitment,
             new_class_commitment,
         )
@@ -1062,7 +1062,7 @@ mod tests {
         SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, StorageAddress,
         StorageCommitment, StorageValue, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
+        TransactionVersion, StarknetVersion,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1287,7 +1287,7 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
             transactions: vec![],
-            starknet_version: None,
+            starknet_version: StarknetVersion::default(),
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: StarknetBlockHash(*B),
@@ -1300,7 +1300,7 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
             transactions: vec![],
-            starknet_version: None,
+            starknet_version: StarknetVersion::default(),
         };
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
@@ -1368,7 +1368,7 @@ mod tests {
                     StarknetBlocksTable::insert(
                         &tx,
                         &block,
-                        None,
+                        &StarknetVersion::default(),
                         storage_commitment,
                         class_commitment,
                     )
@@ -1757,7 +1757,7 @@ mod tests {
                     StarknetBlocksTable::insert(
                         &tx,
                         &block,
-                        None,
+                        &StarknetVersion::default(),
                         storage_commitment,
                         class_commitment,
                     )
@@ -1916,7 +1916,7 @@ mod tests {
         StarknetBlocksTable::insert(
             &tx,
             &STORAGE_BLOCK0,
-            None,
+            &StarknetVersion::default(),
             StorageCommitment::ZERO,
             ClassCommitment::ZERO,
         )

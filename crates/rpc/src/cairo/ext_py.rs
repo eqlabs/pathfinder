@@ -448,8 +448,8 @@ mod tests {
         felt, felt_bytes, CallParam, CallResultValue, Chain, ClassCommitment, ClassHash,
         ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash,
         EntryPoint, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
-        TransactionVersion,
+        StarknetBlockTimestamp, StarknetVersion, StateCommitment, StorageAddress,
+        StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -894,7 +894,7 @@ mod tests {
                 transaction_commitment: None,
                 event_commitment: None,
             },
-            None,
+            &StarknetVersion::default(),
             storage_commitment,
             class_commitment,
         )
@@ -954,7 +954,7 @@ mod tests {
                 transaction_commitment: None,
                 event_commitment: None,
             },
-            None,
+            &StarknetVersion::default(),
             storage_commitment,
             class_commitment,
         )

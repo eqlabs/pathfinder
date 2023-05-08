@@ -31,7 +31,7 @@ pub(crate) use hash;
 pub mod init {
     use super::*;
     use crate::{StarknetBlocksTable, StarknetStateUpdatesTable};
-    use pathfinder_common::{ClassCommitment, StorageCommitment};
+    use pathfinder_common::{ClassCommitment, StorageCommitment, StarknetVersion};
 
     /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
@@ -40,7 +40,7 @@ pub mod init {
                 StarknetBlocksTable::insert(
                     tx,
                     &StarknetBlock::nth(n),
-                    None,
+                    &StarknetVersion::default(),
                     StorageCommitment(hash!(11, n)),
                     ClassCommitment(hash!(12, n)),
                 )

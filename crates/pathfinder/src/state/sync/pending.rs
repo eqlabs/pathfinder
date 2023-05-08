@@ -103,7 +103,7 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::{
         felt, felt_bytes, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StateCommitment,
+        StarknetBlockTimestamp, StarknetVersion, StateCommitment,
     };
     use starknet_gateway_client::MockClientApi;
     use starknet_gateway_types::reply::{
@@ -126,7 +126,7 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
-            starknet_version: None,
+            starknet_version: StarknetVersion::default(),
         };
 
         pub static ref PENDING_DIFF: PendingStateUpdate = PendingStateUpdate {
@@ -149,7 +149,7 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
-            starknet_version: None,
+            starknet_version: StarknetVersion::default(),
         };
     );
 
