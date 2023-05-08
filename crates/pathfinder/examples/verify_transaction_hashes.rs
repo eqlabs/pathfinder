@@ -60,20 +60,16 @@ fn main() -> anyhow::Result<()> {
                 chain_id,
                 StarknetBlockNumber::new_or_panic(block_number),
             ) {
-                Ok(VerifyResult::Match) => {}
-                Ok(VerifyResult::Mismatch(calculated)) => println!(
+                VerifyResult::Match => {}
+                VerifyResult::Mismatch(calculated) => println!(
                     "Mismatch: block {block_number} idx {i} expected {} calculated {} full_txn\n{}",
                     txn.hash(),
                     calculated,
                     serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
                 ),
-                Ok(VerifyResult::NotVerifiable) => println!(
+                VerifyResult::NotVerifiable => println!(
                     "Skipped: block {block_number} idx {i} hash {} full_txn\n{}",
                     txn.hash(),
-                    serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
-                ),
-                Err(e) => println!(
-                    "{e}, block {block_number} idx {i} full_txn {}",
                     serde_json::to_string(&txn).unwrap_or(">Failed to deserialize<".into())
                 ),
             }

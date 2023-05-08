@@ -11,7 +11,6 @@ use pathfinder_common::{
 };
 
 use crate::class_hash::truncated_keccak;
-use anyhow::{Context, Result};
 use pathfinder_common::ChainId;
 use sha3::{Digest, Keccak256};
 use stark_hash::{Felt, HashChain};
@@ -27,7 +26,7 @@ pub fn verify(
     txn: &Transaction,
     chain_id: ChainId,
     block_number: StarknetBlockNumber,
-) -> Result<VerifyResult> {
+) -> VerifyResult {
     let chain_id = match chain_id {
         // We don't know how to properly compute hashes of some old L1 Handler transactions
         // Worse still those are invokes in old snapshots but currently are served as
@@ -35,7 +34,7 @@ pub fn verify(
         ChainId::MAINNET => {
             if block_number.get() <= 4399 && txn.is_l1_handler_or_legacy_l1_handler() {
                 // Unable to compute, skipping
-                return Ok(VerifyResult::NotVerifiable);
+                return VerifyResult::NotVerifiable;
             } else {
                 chain_id
             }
@@ -43,7 +42,7 @@ pub fn verify(
         ChainId::TESTNET => {
             if block_number.get() <= 306007 && txn.is_l1_handler_or_legacy_l1_handler() {
                 // Unable to compute, skipping
-                return Ok(VerifyResult::NotVerifiable);
+                return VerifyResult::NotVerifiable;
             } else {
                 chain_id
             }
@@ -59,14 +58,13 @@ pub fn verify(
         _ => chain_id,
     };
 
-    let computed_hash =
-        compute_transaction_hash(txn, chain_id).context("Compute transaction hash")?;
+    let computed_hash = compute_transaction_hash(txn, chain_id);
 
-    Ok(if computed_hash == txn.hash() {
+    if computed_hash == txn.hash() {
         VerifyResult::Match
     } else {
         VerifyResult::Mismatch(computed_hash)
-    })
+    }
 }
 
 /// Computes transaction hash according to the formulas from [starknet docs](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/transactions/).
@@ -76,10 +74,7 @@ pub fn verify(
 /// For __Invoke v0__, __Deploy__ and __L1 Handler__ there is a fallback hash calculation
 /// algorithm used in case a hash mismatch is encountered and the fallback's result becomes
 /// the ultimate result of the computation.
-pub fn compute_transaction_hash(
-    txn: &Transaction,
-    chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+pub fn compute_transaction_hash(txn: &Transaction, chain_id: ChainId) -> StarknetTransactionHash {
     match txn {
         Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
@@ -104,7 +99,7 @@ pub fn compute_transaction_hash(
 fn compute_declare_v0_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+) -> StarknetTransactionHash {
     compute_txn_hash(
         b"declare",
         TransactionVersion::ZERO,
@@ -130,7 +125,7 @@ fn compute_declare_v0_hash(
 fn compute_declare_v1_hash(
     txn: &DeclareTransactionV0V1,
     chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+) -> StarknetTransactionHash {
     compute_txn_hash(
         b"declare",
         TransactionVersion::ONE,
@@ -160,7 +155,7 @@ fn compute_declare_v1_hash(
 fn compute_declare_v2_hash(
     txn: &DeclareTransactionV2,
     chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+) -> StarknetTransactionHash {
     compute_txn_hash(
         b"declare",
         TransactionVersion::TWO,
@@ -186,10 +181,7 @@ fn compute_declare_v2_hash(
 /// ```
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash), and `sn_keccak` is [Starknet Keccak](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#Starknet-keccak)
-fn compute_deploy_hash(
-    txn: &DeployTransaction,
-    chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> StarknetTransactionHash {
     lazy_static::lazy_static!(
         static ref CONSTRUCTOR: EntryPoint = {
             let mut keccak = Keccak256::default();
@@ -218,10 +210,10 @@ fn compute_deploy_hash(
         chain_id,
         (),
         None,
-    )?;
+    );
 
     if h == txn.transaction_hash {
-        Ok(h)
+        h
     } else {
         legacy_compute_txn_hash(
             b"deploy",
@@ -247,7 +239,7 @@ fn compute_deploy_hash(
 fn compute_deploy_account_hash(
     txn: &DeployAccountTransaction,
     chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+) -> StarknetTransactionHash {
     compute_txn_hash(
         b"deploy_account",
         txn.version,
@@ -282,10 +274,7 @@ fn compute_deploy_account_hash(
 /// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_invoke_v0_hash(
-    txn: &InvokeTransactionV0,
-    chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+fn compute_invoke_v0_hash(txn: &InvokeTransactionV0, chain_id: ChainId) -> StarknetTransactionHash {
     let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
@@ -305,10 +294,10 @@ fn compute_invoke_v0_hash(
         chain_id,
         (),
         None,
-    )?;
+    );
 
     if h == txn.transaction_hash {
-        Ok(h)
+        h
     } else {
         legacy_compute_txn_hash(
             b"invoke",
@@ -327,10 +316,7 @@ fn compute_invoke_v0_hash(
 /// ```
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_invoke_v1_hash(
-    txn: &InvokeTransactionV1,
-    chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+fn compute_invoke_v1_hash(txn: &InvokeTransactionV1, chain_id: ChainId) -> StarknetTransactionHash {
     compute_txn_hash(
         b"invoke",
         TransactionVersion::ONE,
@@ -367,7 +353,7 @@ fn compute_invoke_v1_hash(
 fn compute_l1_handler_hash(
     txn: &L1HandlerTransaction,
     chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+) -> StarknetTransactionHash {
     let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
@@ -387,10 +373,10 @@ fn compute_l1_handler_hash(
         chain_id,
         txn.nonce,
         None,
-    )?;
+    );
 
     if h == txn.transaction_hash {
-        Ok(h)
+        h
     } else {
         legacy_compute_txn_hash(
             // Oldest L1 Handler transactions were actually Invokes
@@ -437,15 +423,15 @@ fn legacy_compute_txn_hash(
     entry_point_selector: Option<EntryPoint>,
     list_hash: Felt,
     chain_id: ChainId,
-) -> Result<StarknetTransactionHash> {
+) -> StarknetTransactionHash {
     let mut h = HashChain::default();
-    h.update(Felt::from_be_slice(prefix).context("Converting prefix into felt")?);
+    h.update(Felt::from_be_slice(prefix).expect("prefix is convertible"));
     h.update(*address.get());
     h.update(entry_point_selector.map(|e| e.0).unwrap_or(Felt::ZERO));
     h.update(list_hash);
     h.update(chain_id.0);
 
-    Ok(StarknetTransactionHash(h.finalize()))
+    StarknetTransactionHash(h.finalize())
 }
 
 /// _Generic_ compute transaction hash for transactions
@@ -460,10 +446,10 @@ fn compute_txn_hash(
     chain_id: ChainId,
     nonce_or_class_hash: impl Into<NonceOrClassHash>,
     compiled_class_hash: Option<CasmHash>,
-) -> Result<StarknetTransactionHash> {
+) -> StarknetTransactionHash {
     let mut h = HashChain::default();
-    h.update(Felt::from_be_slice(prefix).context("Converting prefix into felt")?);
-    h.update(Felt::from_be_slice(version.0.as_bytes()).context("Converting version into felt")?);
+    h.update(Felt::from_be_slice(prefix).expect("prefix is convertible"));
+    h.update(Felt::from_be_slice(version.0.as_bytes()).expect("version is convertible"));
     h.update(*address.get());
     h.update(entry_point_selector.map(|e| e.0).unwrap_or(Felt::ZERO));
     h.update(list_hash);
@@ -480,7 +466,7 @@ fn compute_txn_hash(
         h.update(compiled_class_hash.0);
     }
 
-    Ok(StarknetTransactionHash(h.finalize()))
+    StarknetTransactionHash(h.finalize())
 }
 
 #[cfg(test)]
@@ -509,7 +495,7 @@ mod tests {
         let testnet2_with_wrong_chain_id =
             serde_json::from_str(v0_11_0::transaction::deploy::v1::GENESIS_TESTNET2).unwrap();
         assert_eq!(
-            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::TESTNET).unwrap(),
+            compute_transaction_hash(&testnet2_with_wrong_chain_id, ChainId::TESTNET),
             testnet2_with_wrong_chain_id.hash()
         );
 
@@ -539,8 +525,7 @@ mod tests {
         ]
         .iter()
         .for_each(|(txn, line)| {
-            let actual_hash = compute_transaction_hash(txn, ChainId::TESTNET)
-                .unwrap_or_else(|_| panic!("line: {line}"));
+            let actual_hash = compute_transaction_hash(txn, ChainId::TESTNET);
             assert_eq!(actual_hash, txn.hash(), "line: {line}");
         });
     }
@@ -565,8 +550,7 @@ mod tests {
                         &block_854_idx_96,
                         ChainId::TESTNET,
                         StarknetBlockNumber::new_or_panic(854),
-                    )
-                    .unwrap(),
+                    ),
                     VerifyResult::NotVerifiable
                 );
             }
@@ -582,8 +566,7 @@ mod tests {
                         &block_854_idx_96,
                         ChainId::TESTNET,
                         StarknetBlockNumber::new_or_panic(854),
-                    )
-                    .unwrap(),
+                    ),
                     VerifyResult::NotVerifiable
                 );
             }
@@ -598,8 +581,7 @@ mod tests {
                     &txn,
                     ChainId::TESTNET,
                     StarknetBlockNumber::new_or_panic(797220),
-                )
-                .unwrap(),
+                ),
                 VerifyResult::Match
             );
         }
@@ -613,8 +595,7 @@ mod tests {
                     &txn,
                     ChainId::MAINNET,
                     StarknetBlockNumber::new_or_panic(797220),
-                )
-                .unwrap(),
+                ),
                 VerifyResult::Mismatch(_)
             ))
         }
