@@ -164,22 +164,24 @@ mod tests {
     }
 
     mod post_v0_11_0 {
-        use pathfinder_common::version_check;
+        use super::*;
+        use starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_RC0_SIERRA;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
-            version_check!(
-                Integration == 0 - 11 - 0,
-                "Create test with new compiler class"
-            );
+            let contract_definition = zstd::decode_all(CAIRO_1_0_0_RC0_SIERRA).unwrap();
+
+            let class =
+                serde_json::from_slice::<FeederGatewayContractClass<'_>>(&contract_definition)
+                    .unwrap();
+
+            let _: casm_compiler::contract_class::ContractClass = class.try_into().unwrap();
         }
 
         #[test]
         fn test_compile() {
-            version_check!(
-                Integration == 0 - 11 - 0,
-                "Create test with new compiler class"
-            );
+            let contract_definition = zstd::decode_all(CAIRO_1_0_0_RC0_SIERRA).unwrap();
+            compile_to_casm(&contract_definition, &StarknetVersion::new(0, 11, 1)).unwrap();
         }
     }
 }
