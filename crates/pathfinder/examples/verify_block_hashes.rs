@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber, StarknetVersion};
+use pathfinder_common::{Chain, ChainId, StarknetBlockHash, StarknetBlockNumber, StarknetVersion};
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
@@ -14,14 +14,14 @@ use starknet_gateway_types::reply::{Block, Status};
 ///
 /// Usage:
 /// `cargo run --release -p pathfinder --example verify_block_hashes mainnet ./mainnet.sqlite`
-/// Either mainnet or goerli is accepted as the chain name.
 fn main() -> anyhow::Result<()> {
     let chain_name = std::env::args().nth(1).unwrap();
-    let chain = match chain_name.as_str() {
-        "mainnet" => Chain::Mainnet,
-        "goerli" => Chain::Testnet,
-        "integration" => Chain::Integration,
-        _ => panic!("Expected chain name: mainnet/goerli/integration"),
+    let (chain, chain_id) = match chain_name.as_str() {
+        "mainnet" => (Chain::Mainnet, ChainId::MAINNET),
+        "goerli" => (Chain::Testnet, ChainId::TESTNET),
+        "testnet2" => (Chain::Testnet2, ChainId::TESTNET2),
+        "integration" => (Chain::Integration, ChainId::INTEGRATION),
+        _ => panic!("Expected chain name: mainnet/goerli/testnet2/integration"),
     };
 
     let database_path = std::env::args().nth(2).unwrap();
@@ -65,7 +65,7 @@ fn main() -> anyhow::Result<()> {
         };
         parent_block_hash = block_hash;
 
-        let result = verify_block_hash(&block, chain, block_hash)?;
+        let result = verify_block_hash(&block, chain, chain_id, block_hash)?;
         match result {
             VerifyResult::Match(_) => {}
             VerifyResult::NotVerifiable => println!(

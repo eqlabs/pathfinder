@@ -7314,6 +7314,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ethers",
+ "lazy_static",
  "pathfinder-common",
  "pathfinder-serde",
  "reqwest",

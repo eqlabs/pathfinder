@@ -105,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
         storage.clone(),
         ethereum.transport.clone(),
         pathfinder_context.network,
+        pathfinder_context.network_id,
         pathfinder_context.l1_core_address.0,
         pathfinder_context.gateway.clone(),
         sync_state.clone(),

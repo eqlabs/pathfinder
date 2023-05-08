@@ -1,6 +1,6 @@
 use anyhow::{Context, Error, Result};
 use pathfinder_common::{
-    Chain, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    Chain, ChainId, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
     StarknetBlockTimestamp, StateCommitment, TransactionCommitment,
 };
 use pathfinder_merkle_tree::TransactionOrEventTree;
@@ -32,6 +32,7 @@ pub enum VerifyResult {
 pub fn verify_block_hash(
     block: &Block,
     chain: Chain,
+    chain_id: ChainId,
     expected_block_hash: StarknetBlockHash,
 ) -> Result<VerifyResult> {
     let meta_info = meta::for_chain(chain);
@@ -48,16 +49,10 @@ pub fn verify_block_hash(
     let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
-        use pathfinder_common::ChainId;
-        let chain_id = match chain {
-            Chain::Mainnet => ChainId::MAINNET,
-            Chain::Testnet => ChainId::TESTNET,
-            Chain::Integration => ChainId::INTEGRATION,
-            Chain::Testnet2 => ChainId::TESTNET2,
-            Chain::Custom => {
-                anyhow::bail!("Chain::Custom should not have any pre 0.7 block hashes")
-            }
-        };
+        anyhow::ensure!(
+            chain != Chain::Custom,
+            "Chain::Custom should not have any pre 0.7 block hashes"
+        );
 
         let block_hash = compute_final_hash_pre_0_7(
             block.block_number,
@@ -488,7 +483,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -501,7 +496,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -515,7 +510,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, block.block_hash,).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash,).unwrap(),
             VerifyResult::Match(_)
         );
     }
@@ -528,7 +523,7 @@ mod tests {
         let block: Block = serde_json::from_str(json).unwrap();
 
         assert_matches!(
-            verify_block_hash(&block, Chain::Testnet, block.block_hash).unwrap(),
+            verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash).unwrap(),
             VerifyResult::Match(_)
         );
     }
