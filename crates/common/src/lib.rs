@@ -2,6 +2,7 @@
 //! home of their own.
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
+use anyhow::Context;
 use ethers::types::{H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
@@ -502,6 +503,39 @@ impl std::fmt::Display for Chain {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StarknetVersion(Option<String>);
+
+impl StarknetVersion {
+    pub fn new(major: u64, minor: u64, patch: u64) -> Self {
+        StarknetVersion(Some(format!("{major}.{minor}.{patch}")))
+    }
+
+    /// Parses the version string.
+    ///
+    /// Note: there are known deviations from semver such as version 0.11.0.2, which
+    /// will be truncated to 0.11.0 to still allow for parsing.
+    pub fn parse_as_semver(&self) -> anyhow::Result<Option<semver::Version>> {
+        // Truncate the 4th segment if present. This is a work-around for semver violating
+        // version strings like `0.11.0.2`.
+        let str = match &self.0 {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let truncated = str
+            .match_indices('.')
+            .nth(2)
+            .map(|(index, _)| str.split_at(index).0)
+            .unwrap_or(str);
+
+        Some(semver::Version::parse(truncated).context("Parsing semver string")).transpose()
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
 macros::starkhash::common_newtype_with_compressed_sql!(
     ContractNonce,
     StorageValue,
@@ -590,6 +624,26 @@ pub fn calculate_class_commitment_leaf_hash(
 
 #[cfg(test)]
 mod tests {
+    mod starknet_version {
+        use super::super::StarknetVersion;
+
+        #[test]
+        fn valid_semver() {
+            let version = serde_json::from_str::<StarknetVersion>(r#""0.11.0""#).unwrap();
+            assert_eq!(version, StarknetVersion::new(0, 11, 0));
+        }
+
+        #[test]
+        fn invalid_semver_is_coerced() {
+            let version = serde_json::from_str::<StarknetVersion>(r#""0.11.0.2""#)
+                .unwrap()
+                .parse_as_semver()
+                .unwrap()
+                .unwrap();
+            assert_eq!(version, semver::Version::new(0, 11, 0));
+        }
+    }
+
     mod block_id_serde {
         use super::super::BlockId;
 

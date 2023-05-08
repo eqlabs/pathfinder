@@ -583,7 +583,7 @@ pub mod test_utils {
 mod tests {
     use super::{test_utils::*, *};
     use assert_matches::assert_matches;
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber, StarknetVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
@@ -615,7 +615,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 }))
             },
         );
@@ -762,20 +762,16 @@ mod tests {
                 ),
             ]);
 
-            let expected_version = "0.9.1";
+            let expected_version = StarknetVersion::new(0, 9, 1);
 
-            let block = client
+            let version = client
                 .block(StarknetBlockNumber::new_or_panic(300000).into())
                 .await
-                .unwrap();
-            assert_eq!(
-                block
-                    .as_block()
-                    .expect("should not had been a pending block")
-                    .starknet_version
-                    .as_deref(),
-                Some(expected_version)
-            );
+                .unwrap()
+                .as_block()
+                .expect("should not had been a pending block")
+                .starknet_version;
+            assert_eq!(version, expected_version);
 
             let block = client.block(BlockId::Pending).await.unwrap();
             assert_matches!(block, MaybePendingBlock::Pending(_));
@@ -1747,39 +1743,21 @@ mod tests {
         // Ensures the versions in the pathfinder_common::version_check! macro are kept in sync with reality.
         //
         // The tests are kept here to prevent crate dependency cycles while keeping the macro widely available.
-        use pathfinder_common::version_check;
+        use pathfinder_common::{version_check, StarknetVersion};
 
         use crate::{Client, ClientApi};
         use anyhow::Context;
         use pathfinder_common::BlockId;
 
-        async fn get_latest_version(client: &Client) -> anyhow::Result<(u64, u64, u64)> {
+        async fn get_latest_version(client: &Client) -> anyhow::Result<StarknetVersion> {
             let version = client
                 .block(BlockId::Latest)
                 .await?
                 .as_block()
                 .context("Latest gateway block was of type pending")?
-                .starknet_version
-                .context("Latest gateway block has no version")?;
+                .starknet_version;
 
-            let mut split = version.split('.');
-            let major = split
-                .next()
-                .context("Version string is empty")?
-                .parse::<u64>()
-                .context("Parsing major component")?;
-            let minor = split
-                .next()
-                .context("Version string is missing minor component")?
-                .parse::<u64>()
-                .context("Parsing minor component")?;
-            let patch = split
-                .next()
-                .context("Version string is missing patch component")?
-                .parse::<u64>()
-                .context("Parsing patch component")?;
-
-            Ok((major, minor, patch))
+            Ok(version)
         }
 
         #[tokio::test]
@@ -1787,7 +1765,7 @@ mod tests {
             let actual = get_latest_version(&Client::integration()).await.unwrap();
             assert_eq!(
                 actual,
-                (0, 11, 0),
+                StarknetVersion::new(0, 11, 1),
                 "Integration gateway version has changed, update version_check"
             );
         }
@@ -1795,10 +1773,14 @@ mod tests {
         #[tokio::test]
         async fn mainnet() {
             version_check!(Mainnet == 0 - 11 - 0);
-            let actual = get_latest_version(&Client::mainnet()).await.unwrap();
+            let actual = get_latest_version(&Client::mainnet())
+                .await
+                .unwrap()
+                .parse_as_semver()
+                .unwrap();
             assert_eq!(
                 actual,
-                (0, 11, 0),
+                StarknetVersion::new(0, 11, 0).parse_as_semver().unwrap(),
                 "Mainnet gateway version has changed, update version_check"
             );
         }
@@ -1806,10 +1788,14 @@ mod tests {
         #[tokio::test]
         async fn testnet() {
             version_check!(Testnet == 0 - 11 - 0);
-            let actual = get_latest_version(&Client::testnet()).await.unwrap();
+            let actual = get_latest_version(&Client::testnet())
+                .await
+                .unwrap()
+                .parse_as_semver()
+                .unwrap();
             assert_eq!(
                 actual,
-                (0, 11, 0),
+                StarknetVersion::new(0, 11, 0).parse_as_semver().unwrap(),
                 "Testnet gateway version has changed, update version_check"
             );
         }
@@ -1817,10 +1803,14 @@ mod tests {
         #[tokio::test]
         async fn testnet2() {
             version_check!(Testnet2 == 0 - 11 - 0);
-            let actual = get_latest_version(&Client::testnet2()).await.unwrap();
+            let actual = get_latest_version(&Client::testnet2())
+                .await
+                .unwrap()
+                .parse_as_semver()
+                .unwrap();
             assert_eq!(
                 actual,
-                (0, 11, 0),
+                StarknetVersion::new(0, 11, 0).parse_as_semver().unwrap(),
                 "Testnet gateway version has changed, update version_check"
             );
         }

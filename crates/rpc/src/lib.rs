@@ -129,8 +129,8 @@ pub mod test_utils {
         felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
         EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StateCommitment, StorageAddress, StorageCommitment,
-        TransactionVersion,
+        StarknetTransactionIndex, StarknetVersion, StateCommitment, StorageAddress,
+        StorageCommitment, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -319,7 +319,7 @@ pub mod test_utils {
         StarknetBlocksTable::insert(
             &db_txn,
             &block0,
-            None,
+            &StarknetVersion::default(),
             storage_commitment0,
             class_commitment0,
         )
@@ -327,7 +327,7 @@ pub mod test_utils {
         StarknetBlocksTable::insert(
             &db_txn,
             &block1,
-            None,
+            &StarknetVersion::default(),
             storage_commitment1,
             class_commitment1,
         )
@@ -335,7 +335,7 @@ pub mod test_utils {
         StarknetBlocksTable::insert(
             &db_txn,
             &block2,
-            None,
+            &StarknetVersion::default(),
             storage_commitment2,
             class_commitment2,
         )
@@ -529,7 +529,7 @@ pub mod test_utils {
             timestamp: StarknetBlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
-            starknet_version: Some("pending version".to_owned()),
+            starknet_version: StarknetVersion::new(0, 11, 0),
         };
 
         use starknet_gateway_types::reply as seq_reply;

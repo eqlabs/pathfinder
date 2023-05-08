@@ -84,7 +84,7 @@ async fn get_pending_nonce(
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
     use crate::context::RpcContext;
-    use pathfinder_common::{felt, felt_bytes};
+    use pathfinder_common::{felt, felt_bytes, StarknetVersion};
     use pathfinder_common::{
         BlockId, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
@@ -241,7 +241,7 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(1234),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
-            starknet_version: None,
+            starknet_version: StarknetVersion::default(),
         };
         let block = Arc::new(block);
 

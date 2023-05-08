@@ -3,7 +3,7 @@ use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
     CasmHash, Chain, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber,
-    StateCommitment, TransactionCommitment,
+    StarknetVersion, StateCommitment, TransactionCommitment,
 };
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use starknet_gateway_client::ClientApi;
@@ -184,9 +184,15 @@ pub async fn sync(
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        download_new_classes(&state_update.state_diff, &sequencer, &tx_event, chain)
-            .await
-            .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        download_new_classes(
+            &state_update.state_diff,
+            &sequencer,
+            &tx_event,
+            chain,
+            &block.starknet_version,
+        )
+        .await
+        .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
 
         head = Some((next, block_hash, state_update.new_root));
@@ -226,6 +232,7 @@ async fn download_new_classes(
     sequencer: &impl ClientApi,
     tx_event: &mpsc::Sender<Event>,
     chain: Chain,
+    version: &StarknetVersion,
 ) -> Result<(), anyhow::Error> {
     let deployed_classes = state_diff.deployed_contracts.iter().map(|x| x.class_hash);
     let declared_cairo_classes = state_diff.old_declared_contracts.iter().cloned();
@@ -273,7 +280,7 @@ async fn download_new_classes(
         .collect::<Vec<_>>();
 
     for class_hash in require_downloading {
-        let class = download_and_compress_class(class_hash, sequencer, chain)
+        let class = download_and_compress_class(class_hash, sequencer, chain, version)
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
@@ -496,6 +503,7 @@ async fn download_and_compress_class(
     class_hash: ClassHash,
     sequencer: &impl ClientApi,
     chain: Chain,
+    version: &StarknetVersion,
 ) -> anyhow::Result<DownloadedClass> {
     let definition = sequencer
         .class_by_hash(class_hash)
@@ -540,8 +548,8 @@ async fn download_and_compress_class(
             }))
         }
         starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
-            let casm_definition =
-                crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class");
+            let casm_definition = crate::sierra::compile_to_casm(&definition, version)
+                .context("Compiling Sierra class");
             let casm_definition = match (casm_definition, chain) {
                 (Ok(casm_definition), _) => casm_definition,
                 (Err(_), Chain::Integration) => {
@@ -589,8 +597,8 @@ mod tests {
         use assert_matches::assert_matches;
         use pathfinder_common::{
             BlockId, ClassHash, ContractAddress, GasPrice, SequencerAddress, StarknetBlockHash,
-            StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment, StorageAddress,
-            StorageValue,
+            StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
+            StorageAddress, StorageValue,
         };
         use stark_hash::Felt;
         use starknet_gateway_client::MockClientApi;
@@ -686,7 +694,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 transaction_receipts: vec![],
                 transactions: vec![],
-                starknet_version: None,
+                starknet_version: StarknetVersion::default(),
             };
             static ref BLOCK0_V2: reply::Block = reply::Block {
                 block_hash: *BLOCK0_HASH_V2,
@@ -699,7 +707,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(10),
                 transaction_receipts: vec![],
                 transactions: vec![],
-                starknet_version: Some("0.9.1".into()),
+                starknet_version: StarknetVersion::new(0, 9, 1),
             };
             static ref BLOCK1: reply::Block = reply::Block {
                 block_hash: *BLOCK1_HASH,
@@ -712,7 +720,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 transaction_receipts: vec![],
                 transactions: vec![],
-                starknet_version: Some("0.9.1".into()),
+                starknet_version: StarknetVersion::new(0, 9, 1),
             };
             static ref BLOCK2: reply::Block = reply::Block {
                 block_hash: *BLOCK2_HASH,
@@ -725,7 +733,7 @@ mod tests {
                 timestamp: StarknetBlockTimestamp::new_or_panic(2),
                 transaction_receipts: vec![],
                 transactions: vec![],
-                starknet_version: Some("0.9.2".into()),
+                starknet_version: StarknetVersion::new(0, 9, 2),
             };
 
             static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
@@ -1256,7 +1264,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1489,7 +1497,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 };
                 let block2_v2 = reply::Block {
                     block_hash: *BLOCK2_HASH_V2,
@@ -1504,7 +1512,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 };
                 let block3 = reply::Block {
                     block_hash: *BLOCK3_HASH,
@@ -1519,7 +1527,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(3),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1760,7 +1768,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1945,7 +1953,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 };
                 let block2 = reply::Block {
                     block_hash: *BLOCK2_HASH,
@@ -1960,7 +1968,7 @@ mod tests {
                     timestamp: StarknetBlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
-                    starknet_version: None,
+                    starknet_version: StarknetVersion::default(),
                 };
 
                 // Fetch the genesis block with respective state update and contracts

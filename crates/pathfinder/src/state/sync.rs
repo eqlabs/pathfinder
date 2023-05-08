@@ -6,8 +6,8 @@ use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
     Chain, ClassCommitment, ClassHash, ContractNonce, ContractRoot, EventCommitment, GasPrice,
-    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment, StorageCommitment,
-    TransactionCommitment,
+    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetVersion, StateCommitment,
+    StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
@@ -338,7 +338,7 @@ where
                     tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
-                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain)
+                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain, &block.starknet_version)
                         .await
                         .context("Downloading missing classes for pending block")?;
 
@@ -558,7 +558,7 @@ async fn l2_update(
         StarknetBlocksTable::insert(
             &transaction,
             &starknet_block,
-            block.starknet_version.as_deref(),
+            &block.starknet_version,
             new_storage_commitment,
             new_class_commitment,
         )
@@ -826,6 +826,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
     connection: &mut Connection,
     state_update: &PendingStateUpdate,
     chain: Chain,
+    version: &StarknetVersion,
 ) -> anyhow::Result<()> {
     let deployed_classes = state_update
         .state_diff
@@ -878,7 +879,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
 
     // For each missing, download, verify and insert definition.
     for class_hash in missing {
-        let class = download_class(&sequencer, class_hash, chain).await?;
+        let class = download_class(&sequencer, class_hash, chain, version).await?;
 
         match class {
             DownloadedClass::Cairo(class) => {
@@ -938,6 +939,7 @@ async fn download_class<SequencerClient: ClientApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
     chain: Chain,
+    version: &StarknetVersion,
 ) -> Result<DownloadedClass, anyhow::Error> {
     use starknet_gateway_types::class_hash::compute_class_hash;
 
@@ -989,8 +991,8 @@ async fn download_class<SequencerClient: ClientApi>(
             //
             // The work-around ignores compilation errors on integration, and instead replaces the
             // casm definition with empty bytes.
-            let casm_definition =
-                crate::sierra::compile_to_casm(&definition).context("Compiling Sierra class");
+            let casm_definition = crate::sierra::compile_to_casm(&definition, version)
+                .context("Compiling Sierra class");
             let casm_definition = match (casm_definition, chain) {
                 (Ok(casm_definition), _) => casm_definition,
                 (Err(_), Chain::Integration) => {
@@ -1060,9 +1062,9 @@ mod tests {
         ContractAddressSalt, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
         SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, StorageAddress,
-        StorageCommitment, StorageValue, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetVersion, StateCommitment,
+        StorageAddress, StorageCommitment, StorageValue, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1287,7 +1289,7 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
             transactions: vec![],
-            starknet_version: None,
+            starknet_version: StarknetVersion::default(),
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
             block_hash: StarknetBlockHash(*B),
@@ -1300,7 +1302,7 @@ mod tests {
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
             transactions: vec![],
-            starknet_version: None,
+            starknet_version: StarknetVersion::default(),
         };
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
@@ -1368,7 +1370,7 @@ mod tests {
                     StarknetBlocksTable::insert(
                         &tx,
                         &block,
-                        None,
+                        &StarknetVersion::default(),
                         storage_commitment,
                         class_commitment,
                     )
@@ -1757,7 +1759,7 @@ mod tests {
                     StarknetBlocksTable::insert(
                         &tx,
                         &block,
-                        None,
+                        &StarknetVersion::default(),
                         storage_commitment,
                         class_commitment,
                     )
@@ -1916,7 +1918,7 @@ mod tests {
         StarknetBlocksTable::insert(
             &tx,
             &STORAGE_BLOCK0,
-            None,
+            &StarknetVersion::default(),
             StorageCommitment::ZERO,
             ClassCommitment::ZERO,
         )

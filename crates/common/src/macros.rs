@@ -366,7 +366,7 @@ macro_rules! version_check {
             pathfinder_common::Chain::Mainnet => (0, 11, 0),
             pathfinder_common::Chain::Testnet => (0, 11, 0),
             pathfinder_common::Chain::Testnet2 => (0, 11, 0),
-            pathfinder_common::Chain::Integration => (0, 11, 0),
+            pathfinder_common::Chain::Integration => (0, 11, 1),
             pathfinder_common::Chain::Custom => panic!("Custom networks are not supported"),
         };
         const INPUT: (u64, u64, u64) = ($major, $minor, $patch);
@@ -396,7 +396,7 @@ macro_rules! version_check {
     };
     (@compare $left:ident > $right:ident) => {
         match ($left, $right) {
-            (l, r) if l.0 > r.0 => true,F
+            (l, r) if l.0 > r.0 => true,
             (l, r) if l.0 == r.0 && l.1 > r.1 => true,
             (l, r) if l.0 == r.0 && l.1 == r.1 && l.2 > r.2 => true,
             _ => false,
