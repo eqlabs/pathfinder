@@ -129,8 +129,8 @@ pub mod test_utils {
         felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
         EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StateCommitment, StorageAddress, StorageCommitment,
-        TransactionVersion, StarknetVersion,
+        StarknetTransactionIndex, StarknetVersion, StateCommitment, StorageAddress,
+        StorageCommitment, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{

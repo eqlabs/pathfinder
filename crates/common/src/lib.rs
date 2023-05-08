@@ -526,7 +526,7 @@ impl StarknetVersion {
             .match_indices('.')
             .nth(2)
             .map(|(index, _)| str.split_at(index).0)
-            .unwrap_or(&str);
+            .unwrap_or(str);
 
         Some(semver::Version::parse(truncated).context("Parsing semver string")).transpose()
     }

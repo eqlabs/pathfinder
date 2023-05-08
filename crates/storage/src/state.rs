@@ -2148,7 +2148,7 @@ mod tests {
         mod interned_version {
             use super::super::Storage;
             use super::StarknetBlocksTable;
-            use pathfinder_common::{ClassCommitment, StorageCommitment, StarknetVersion};
+            use pathfinder_common::{ClassCommitment, StarknetVersion, StorageCommitment};
 
             #[test]
             fn duplicate_versions_interned() {

@@ -1062,9 +1062,9 @@ mod tests {
         ContractAddressSalt, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
         SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment, StorageAddress,
-        StorageCommitment, StorageValue, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion, StarknetVersion,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetVersion, StateCommitment,
+        StorageAddress, StorageCommitment, StorageValue, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{

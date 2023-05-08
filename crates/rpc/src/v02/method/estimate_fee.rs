@@ -159,7 +159,8 @@ pub(crate) mod tests {
         use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{
             felt_bytes, CasmHash, ClassCommitment, ContractNonce, ContractRoot, GasPrice,
-            SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment, StarknetVersion,
+            SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
+            StateCommitment,
         };
         use pathfinder_storage::types::CompressedContract;
         use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
