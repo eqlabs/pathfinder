@@ -375,7 +375,7 @@ where
 
                     let (new_tx, new_rx) = mpsc::channel(1);
 
-                    let websocket_txs = WebsocketSenders::new();
+                    let websocket_txs = WebsocketSenders::default();
                     rx_l2 = new_rx;
 
                     let fut = l2_sync(new_tx, websocket_txs, sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode);
@@ -1288,7 +1288,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            let websocket_txs = WebsocketSenders::new();
+            let websocket_txs = WebsocketSenders::default();
 
             state
                 .into_iter()
@@ -1393,7 +1393,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            let websocket_txs = WebsocketSenders::new();
+            let websocket_txs = WebsocketSenders::default();
 
             // A simple L1 sync task
             let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
@@ -1460,7 +1460,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         // This is what we're asking for
         L1StateTable::upsert(&tx, &STATE_UPDATE_LOG0).unwrap();
@@ -1509,7 +1509,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
 
         let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         let l1 = move |_, _, _, _, _| {
             let starts_tx = starts_tx.clone();
@@ -1558,7 +1558,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let sync_state = Arc::new(SyncState::default());
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         // Incoming L2 update
         let block = || BLOCK0.clone();
@@ -1673,7 +1673,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
-            let websocket_txs = WebsocketSenders::new();
+            let websocket_txs = WebsocketSenders::default();
 
             // A simple L2 sync task
             let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
@@ -1747,7 +1747,7 @@ mod tests {
     async fn l2_new_cairo_contract() {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
@@ -1793,7 +1793,7 @@ mod tests {
     async fn l2_new_sierra_contract() {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
@@ -1851,7 +1851,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         // This is what we're asking for
         StarknetBlocksTable::insert(
@@ -1905,7 +1905,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
         let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         // This is what we're asking for
         ContractCodeTable::insert_compressed(
@@ -1957,7 +1957,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
 
         static CNT: AtomicUsize = AtomicUsize::new(0);
-        let websocket_txs = WebsocketSenders::new();
+        let websocket_txs = WebsocketSenders::default();
 
         // A simple L2 sync task
         let l2 = move |_, _, _, _, _, _, _, _| async move {

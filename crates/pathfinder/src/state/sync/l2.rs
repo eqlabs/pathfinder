@@ -219,12 +219,9 @@ pub async fn sync(
             .await
             .context("Event channel closed")?;
 
-        let new_head_channel = &websocket_txs.new_head;
-        if new_head_channel.receiver_count() > 0 {
-            new_head_channel.send(WebsocketEventNewHead {
-                block: block.clone(),
-            })?;
-        }
+        websocket_txs
+            .new_head
+            .send_if_receiving(WebsocketEventNewHead::new(*block.clone()))
     }
 }
 
@@ -677,7 +674,7 @@ mod tests {
         ) -> JoinHandle<anyhow::Result<()>> {
             tokio::spawn(sync(
                 tx_event,
-                WebsocketSenders::new(),
+                WebsocketSenders::default(),
                 sequencer,
                 None,
                 Chain::Testnet,
@@ -1108,7 +1105,7 @@ mod tests {
                 // Let's run the UUT
                 let _jh = tokio::spawn(sync(
                     tx_event,
-                    WebsocketSenders::new(),
+                    WebsocketSenders::default(),
                     mock,
                     Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
                     Chain::Testnet,

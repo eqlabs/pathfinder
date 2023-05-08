@@ -46,7 +46,7 @@ impl RpcServer {
             logger: MaybeRpcMetricsLogger::NoOp,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             cors: None,
-            websocket_txs: WebsocketSenders::new(),
+            websocket_txs: WebsocketSenders::default(),
         }
     }
 
