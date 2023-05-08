@@ -56,6 +56,16 @@ Examples:
     )]
     rpc_address: SocketAddr,
 
+    #[arg(long = "ws", long_help = "Enable WebSocket transport")]
+    ws: bool,
+
+    #[arg(
+        long = "ws.capacity",
+        long_help = "Capacity for WebSocket Senders",
+        default_value = "100"
+    )]
+    ws_capacity: usize,
+
     #[arg(
         long = "rpc.cors-domains",
         long_help = r"Comma separated list of domains from which Cross-Origin requests will be accepted by the RPC server.
@@ -255,12 +265,18 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
+    pub ws: WebSocket,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroU32,
+}
+
+pub struct WebSocket {
+    pub enabled: bool,
+    pub capacity: usize,
 }
 
 pub struct Ethereum {
@@ -337,6 +353,10 @@ impl Config {
             },
             rpc_address: cli.rpc_address,
             rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
+            ws: WebSocket {
+                enabled: cli.ws,
+                capacity: cli.ws_capacity,
+            },
             monitor_address: cli.monitor_address,
             network,
             poll_pending: cli.poll_pending,

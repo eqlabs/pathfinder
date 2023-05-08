@@ -121,6 +121,11 @@ async fn main() -> anyhow::Result<()> {
         None => rpc_server,
     };
 
+    let rpc_server = match config.ws.enabled {
+        true => rpc_server.with_ws(config.ws.capacity),
+        false => rpc_server,
+    };
+
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
         ethereum.transport,
@@ -134,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
         pending_state,
         pending_interval,
         state::l2::BlockValidationMode::Strict,
-        rpc_server.get_websocket_txs(),
+        rpc_server.get_ws_senders(),
     ));
 
     let (rpc_handle, local_addr) = rpc_server

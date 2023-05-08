@@ -35,7 +35,7 @@ pub struct RpcServer {
     logger: MaybeRpcMetricsLogger,
     max_connections: u32,
     cors: Option<CorsLayer>,
-    websocket_txs: WebsocketSenders,
+    ws_senders: Option<WebsocketSenders>,
 }
 
 impl RpcServer {
@@ -46,13 +46,20 @@ impl RpcServer {
             logger: MaybeRpcMetricsLogger::NoOp,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             cors: None,
-            websocket_txs: WebsocketSenders::default(),
+            ws_senders: None,
         }
     }
 
     pub fn with_logger(self, middleware: RpcMetricsLogger) -> Self {
         Self {
             logger: MaybeRpcMetricsLogger::Logger(middleware),
+            ..self
+        }
+    }
+
+    pub fn with_ws(self, capacity: usize) -> Self {
+        Self {
+            ws_senders: Some(WebsocketSenders::with_capacity(capacity)),
             ..self
         }
     }
@@ -73,14 +80,18 @@ impl RpcServer {
     pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
         const TEN_MB: u32 = 10 * 1024 * 1024;
 
-        let server = ServerBuilder::default()
+        let server = match self.ws_senders {
+				Some(_) => ServerBuilder::default(),
+				None => ServerBuilder::default().http_only(),
+			}
             .max_connections(self.max_connections)
             .max_request_body_size(TEN_MB)
             .set_logger(self.logger)
             .set_middleware(tower::ServiceBuilder::new()
                 .option_layer(self.cors)
                 .map_result(middleware::versioning::try_map_errors_to_responses)
-                .filter_async(|result: Request<Body>| async move {
+                .filter_async(
+					|result: Request<Body>| async move {
 					// skip method_name checks for websocket handshake
 					if result.headers().get("sec-websocket-key").is_some() {
 						return Ok(result);
@@ -115,14 +126,21 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         let module = v02::register_methods(module)?;
         let module = v03::register_methods(module)?;
         let module = pathfinder::register_methods(module)?;
-        let module = websocket::register_subscriptions(module, self.websocket_txs.clone())?;
+        let module = match &self.ws_senders {
+            Some(ws_senders) => websocket::register_subscriptions(module, ws_senders.clone())?,
+            None => module,
+        };
+
         let methods = module.build();
 
         Ok(server.start(methods).map(|handle| (handle, local_addr))?)
     }
 
-    pub fn get_websocket_txs(&self) -> WebsocketSenders {
-        self.websocket_txs.clone()
+    pub fn get_ws_senders(&self) -> WebsocketSenders {
+        match &self.ws_senders {
+            Some(txs) => txs.clone(),
+            _ => WebsocketSenders::with_capacity(1),
+        }
     }
 }
 

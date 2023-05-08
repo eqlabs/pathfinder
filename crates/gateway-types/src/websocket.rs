@@ -44,7 +44,7 @@ pub struct WebsocketEventNewHead {
 }
 
 impl WebsocketEventNewHead {
-    pub fn new(mut block: Block) -> WebsocketEventNewHead {
+    pub fn new(block: Block) -> WebsocketEventNewHead {
         let Block {
             block_hash,
             block_number,

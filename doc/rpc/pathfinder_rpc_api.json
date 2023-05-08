@@ -141,6 +141,33 @@
                     "$ref": "#/components/schemas/TX_GATEWAY_STATUS"
                 }
             }
+        },
+        {
+            "name": "pathfinder_subscribe_newHeads",
+            "summary": "Subscribe to new head events on WebSocket",
+            "description": "Fires a notification each time a new header is appended to the chain.",
+            "params": [],
+            "result": {
+                "name": "result",
+                "description": "The status of the transaction.",
+                "schema": {
+                    "type": "number",
+                    "description": "Subscription ID"
+                }
+            }
+        },
+        {
+            "name": "pathfinder_subscription_newHead",
+            "summary": "New header event notification",
+            "description": "Incoming notification from server when new header is appended to the chain.",
+            "params": [],
+            "result": {
+                "name": "result",
+                "description": "Newly added block header.",
+                "schema": {
+                    "$ref": "#/components/schemas/WebsocketEventNewHead"
+                }
+            }
         }
     ],
     "components": {
@@ -295,6 +322,44 @@
                     "ABORTED"
                 ],
                 "description": "The status of a transaction"
+            },
+            "WebsocketEventNewHead": {
+                "type": "object",
+                "properties": {
+                    "block_hash": {
+                        "type": "string"
+                    },
+                    "block_number": {
+                        "type": "number"
+                    },
+                    "gas_price": {
+                        "type": "string"
+                    },
+                    "parent_block_hash": {
+                        "type": "string"
+                    },
+                    "sequencer_address": {
+                        "type": "string"
+                    },
+                    "state_commitment": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "PENDING",
+                            "ACCEPTED_ON_L2",
+                            "ACCEPTED_ON_L1",
+                            "REJECTED"
+                        ]
+                    },
+                    "timestamp": {
+                        "type": "number"
+                    },
+                    "starknet_version": {
+                        "type": "string"
+                    }
+                }
             }
         },
         "errors": {
