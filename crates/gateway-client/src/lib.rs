@@ -1765,7 +1765,7 @@ mod tests {
             let actual = get_latest_version(&Client::integration()).await.unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 0),
+                StarknetVersion::new(0, 11, 1),
                 "Integration gateway version has changed, update version_check"
             );
         }
@@ -1773,10 +1773,14 @@ mod tests {
         #[tokio::test]
         async fn mainnet() {
             version_check!(Mainnet == 0 - 11 - 0);
-            let actual = get_latest_version(&Client::mainnet()).await.unwrap();
+            let actual = get_latest_version(&Client::mainnet())
+                .await
+                .unwrap()
+                .parse_as_semver()
+                .unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 0),
+                StarknetVersion::new(0, 11, 0).parse_as_semver().unwrap(),
                 "Mainnet gateway version has changed, update version_check"
             );
         }
@@ -1784,10 +1788,14 @@ mod tests {
         #[tokio::test]
         async fn testnet() {
             version_check!(Testnet == 0 - 11 - 0);
-            let actual = get_latest_version(&Client::testnet()).await.unwrap();
+            let actual = get_latest_version(&Client::testnet())
+                .await
+                .unwrap()
+                .parse_as_semver()
+                .unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 0),
+                StarknetVersion::new(0, 11, 0).parse_as_semver().unwrap(),
                 "Testnet gateway version has changed, update version_check"
             );
         }
@@ -1795,10 +1803,14 @@ mod tests {
         #[tokio::test]
         async fn testnet2() {
             version_check!(Testnet2 == 0 - 11 - 0);
-            let actual = get_latest_version(&Client::testnet2()).await.unwrap();
+            let actual = get_latest_version(&Client::testnet2())
+                .await
+                .unwrap()
+                .parse_as_semver()
+                .unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 0),
+                StarknetVersion::new(0, 11, 0).parse_as_semver().unwrap(),
                 "Testnet gateway version has changed, update version_check"
             );
         }
