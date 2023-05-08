@@ -112,14 +112,14 @@ fn get_raw_block(
                 .context("Read parent block from database")?
                 .context("Parent block missing")?;
 
-            (parent_block.hash, parent_block.root)
+            (parent_block.hash, parent_block.state_commmitment)
         }
     };
 
     let block = types::RawBlock {
         number: block.number,
         hash: block.hash,
-        root: block.root,
+        root: block.state_commmitment,
         parent_hash,
         parent_root,
         timestamp: block.timestamp,

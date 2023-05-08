@@ -316,7 +316,7 @@ impl StarknetBlocksTable {
                 let block = StarknetBlock {
                     number,
                     hash,
-                    root,
+                    state_commmitment: root,
                     timestamp,
                     gas_price,
                     sequencer_address,
@@ -1270,7 +1270,7 @@ impl StarknetEventsTable {
 pub struct StarknetBlock {
     pub number: StarknetBlockNumber,
     pub hash: StarknetBlockHash,
-    pub root: StateCommitment,
+    pub state_commmitment: StateCommitment,
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
@@ -1973,7 +1973,7 @@ mod tests {
                             assert_eq!(state_commitment.1, block.class_commitment);
                             assert_eq!(
                                 StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                                block.block.root
+                                block.block.state_commmitment
                             );
                         }
                     })
@@ -2022,7 +2022,7 @@ mod tests {
                             assert_eq!(state_commitment.1, block.class_commitment);
                             assert_eq!(
                                 StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                                block.block.root
+                                block.block.state_commmitment
                             );
                         }
                     })
@@ -2073,7 +2073,7 @@ mod tests {
                         assert_eq!(state_commitment.1, expected.class_commitment);
                         assert_eq!(
                             StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                            expected.block.root
+                            expected.block.state_commmitment
                         );
                     })
                 }
@@ -2129,7 +2129,7 @@ mod tests {
                     let expected = StarknetBlock {
                         number: blocks[0].block.number,
                         hash: blocks[0].block.hash,
-                        root: blocks[0].block.root,
+                        state_commmitment: blocks[0].block.state_commmitment,
                         timestamp: blocks[0].block.timestamp,
                         gas_price: blocks[0].block.gas_price,
                         sequencer_address: blocks[0].block.sequencer_address,
@@ -2409,7 +2409,7 @@ mod tests {
             let block = StarknetBlock {
                 number: StarknetBlockNumber::GENESIS,
                 hash: StarknetBlockHash(felt!("0x1234")),
-                root: StateCommitment(felt!("0x1234")),
+                state_commmitment: StateCommitment(felt!("0x1234")),
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(felt!("0x1234")),

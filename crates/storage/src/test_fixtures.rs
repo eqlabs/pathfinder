@@ -96,7 +96,7 @@ impl StarknetBlock {
         Self {
             number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
             hash: StarknetBlockHash(hash!(n)),
-            root: StateCommitment(hash!(1, n)),
+            state_commmitment: StateCommitment(hash!(1, n)),
             timestamp: StarknetBlockTimestamp::new(n as u64 + 1000)
                 .expect("block timestamp out of range"),
             gas_price: GasPrice(n as u128 + 2000),
