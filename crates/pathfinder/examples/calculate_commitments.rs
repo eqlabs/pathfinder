@@ -55,7 +55,10 @@ fn main() -> anyhow::Result<()> {
 
         let now = Instant::now();
         let (transaction_commitment, event_commitment) = (
-            calculate_transaction_commitment(&transactions)?,
+            calculate_transaction_commitment(
+                &transactions,
+                pathfinder_lib::state::block_hash::FinalHashType::Normal,
+            )?,
             calculate_event_commitment(&receipts)?,
         );
         let calc_ms = now.elapsed().as_millis();

@@ -1,7 +1,7 @@
 use anyhow::{Context, Error, Result};
 use pathfinder_common::{
     Chain, ChainId, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp, StateCommitment, TransactionCommitment,
+    StarknetBlockTimestamp, StateCommitment, TransactionCommitment, TransactionSignatureElem,
 };
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use stark_hash::{stark_hash, Felt, HashChain};
@@ -45,7 +45,16 @@ pub fn verify_block_hash(
         .len()
         .try_into()
         .expect("too many transactions in block");
-    let transaction_commitment = calculate_transaction_commitment(&block.transactions)?;
+
+    const V_0_11_1: semver::Version = semver::Version::new(0, 11, 1);
+    let version = block.starknet_version.parse_as_semver()?;
+    let transaction_final_hash_type = match version {
+        None => FinalHashType::SignatureIncludedForInvokeOnly,
+        Some(v) if v < V_0_11_1 => FinalHashType::SignatureIncludedForInvokeOnly,
+        Some(_) => FinalHashType::Normal,
+    };
+    let transaction_commitment =
+        calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
     let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
@@ -283,6 +292,11 @@ fn compute_final_hash(
     StarknetBlockHash(chain.finalize())
 }
 
+pub enum FinalHashType {
+    SignatureIncludedForInvokeOnly,
+    Normal,
+}
+
 /// Calculate transaction commitment hash value.
 ///
 /// The transaction commitment is the root of the Patricia Merkle tree with height 64
@@ -290,6 +304,7 @@ fn compute_final_hash(
 /// key-value pairs to the tree and computing the root hash.
 pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
+    final_hash_type: FinalHashType,
 ) -> Result<TransactionCommitment> {
     let mut tree = TransactionOrEventTree::default();
 
@@ -300,7 +315,12 @@ pub fn calculate_transaction_commitment(
             let idx: u64 = idx
                 .try_into()
                 .expect("too many transactions while calculating commitment");
-            let final_hash = calculate_transaction_hash_with_signature(tx);
+            let final_hash = match final_hash_type {
+                FinalHashType::Normal => calculate_transaction_hash_with_signature(tx),
+                FinalHashType::SignatureIncludedForInvokeOnly => {
+                    calculate_transaction_hash_with_signature_pre_0_11_1(tx)
+                }
+            };
             tree.set(idx, final_hash)?;
             Result::<_, Error>::Ok(())
         })
@@ -318,26 +338,52 @@ pub fn calculate_transaction_commitment(
 /// Note that for non-invoke transactions we don't actually have signatures. The
 /// cairo-lang uses an empty list (whose hash is not the ZERO value!) in that
 /// case.
+fn calculate_transaction_hash_with_signature_pre_0_11_1(tx: &Transaction) -> Felt {
+    lazy_static::lazy_static!(
+        static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
+    );
+
+    let signature_hash = match tx {
+        Transaction::Invoke(tx) => calculate_signature_hash(tx.signature()),
+        Transaction::Deploy(_)
+        | Transaction::DeployAccount(_)
+        | Transaction::Declare(_)
+        | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
+    };
+
+    stark_hash(tx.hash().0, signature_hash)
+}
+
+/// Compute the combined hash of the transaction hash and the signature.
+///
+/// Since the transaction hash doesn't take the signature values as its input
+/// computing the transaction commitent uses a hash value that combines
+/// the transaction hash with the array of signature values.
+///
+/// Note that for non-invoke transactions we don't actually have signatures. The
+/// cairo-lang uses an empty list (whose hash is not the ZERO value!) in that
+/// case.
 fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
     lazy_static::lazy_static!(
         static ref HASH_OF_EMPTY_LIST: Felt = HashChain::default().finalize();
     );
 
     let signature_hash = match tx {
-        Transaction::Invoke(tx) => {
-            let mut hash = HashChain::default();
-            for signature in tx.signature() {
-                hash.update(signature.0);
-            }
-            hash.finalize()
-        }
-        Transaction::Declare(_)
-        | Transaction::Deploy(_)
-        | Transaction::DeployAccount(_)
-        | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
+        Transaction::Invoke(tx) => calculate_signature_hash(tx.signature()),
+        Transaction::Declare(tx) => calculate_signature_hash(tx.signature()),
+        Transaction::DeployAccount(tx) => calculate_signature_hash(&tx.signature),
+        Transaction::Deploy(_) | Transaction::L1Handler(_) => *HASH_OF_EMPTY_LIST,
     };
 
     stark_hash(tx.hash().0, signature_hash)
+}
+
+fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
+    let mut hash = HashChain::default();
+    for s in signature {
+        hash.update(s.0);
+    }
+    hash.finalize()
 }
 
 /// Calculate event commitment hash value.
@@ -511,6 +557,23 @@ mod tests {
 
         assert_matches!(
             verify_block_hash(&block, Chain::Testnet, ChainId::TESTNET, block.block_hash,).unwrap(),
+            VerifyResult::Match(_)
+        );
+    }
+
+    #[test]
+    fn test_block_hash_0_11_1() {
+        let json = starknet_gateway_test_fixtures::integration::block::NUMBER_285915;
+        let block: Block = serde_json::from_str(json).unwrap();
+
+        assert_matches!(
+            verify_block_hash(
+                &block,
+                Chain::Integration,
+                ChainId::INTEGRATION,
+                block.block_hash,
+            )
+            .unwrap(),
             VerifyResult::Match(_)
         );
     }

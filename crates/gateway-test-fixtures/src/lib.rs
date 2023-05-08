@@ -150,6 +150,7 @@ pub mod integration {
         pub const NUMBER_216171: &str = str_fixture!("integration/block/216171.json");
         pub const NUMBER_216591: &str = str_fixture!("integration/block/216591.json");
         pub const NUMBER_228457: &str = str_fixture!("integration/block/228457.json");
+        pub const NUMBER_285915: &str = str_fixture!("integration/block/285915.json");
         pub const PENDING: &str = str_fixture!("integration/block/pending.json");
     }
 
