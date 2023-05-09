@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Starknet v0.11.1 support
+  - Sierra compiler v1.0.0.rc0 (while keeping previous compiler for older contracts)
+  - new block hash calculation
+  - new L1 contract
 - CORS support for the RPC server, enabled via the `rpc.cors-domains` command line argument
 - transaction hash verification, excluding older L1 handler transactions, i.e. in blocks older than
   - 4400 for mainnet
