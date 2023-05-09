@@ -394,6 +394,69 @@ impl StarknetBlocksTable {
         }
     }
 
+    /// Returns the version of the given block.
+    pub fn get_version(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksBlockId,
+    ) -> anyhow::Result<StarknetVersion> {
+        let mut statement = match block {
+            StarknetBlocksBlockId::Number(_) => tx.prepare(
+                r"
+                    SELECT
+                        version
+                    FROM
+                        starknet_versions
+                    JOIN
+                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
+                    WHERE
+                        starknet_blocks.number = ?
+                ",
+            ),
+            StarknetBlocksBlockId::Hash(_) => tx.prepare(
+                r"
+                    SELECT
+                        version
+                    FROM
+                        starknet_versions
+                    JOIN
+                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
+                    WHERE
+                        starknet_blocks.hash = ?
+                ",
+            ),
+            StarknetBlocksBlockId::Latest => tx.prepare(
+                r"
+                    SELECT
+                        version
+                    FROM
+                        starknet_versions
+                    JOIN
+                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
+                    ORDER BY
+                        starknet_blocks.number
+                    DESC
+                    LIMIT 1
+                ",
+            ),
+        }?;
+
+        let mut rows = match block {
+            StarknetBlocksBlockId::Number(number) => statement.query([number]),
+            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
+            StarknetBlocksBlockId::Latest => statement.query([]),
+        }?;
+
+        let row = rows.next().context("Iterate rows")?;
+
+        match row {
+            Some(row) => {
+                let version = row.get_unwrap("version");
+                Ok(StarknetVersion::new_from_string(version))
+            }
+            None => Ok(Default::default()),
+        }
+    }
+
     /// Deletes all rows from __head down-to reorg_tail__
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
     pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
