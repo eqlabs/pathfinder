@@ -47,6 +47,7 @@ RUN TARGETARCH=${TARGETARCH} \
 # Stage 1.5: Build the Python Pedersen hash #
 #############################################
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-python-starkhash-planner
+COPY Cargo.toml Cargo.toml
 COPY crates/stark_curve crates/stark_curve
 COPY crates/stark_hash crates/stark_hash
 COPY crates/stark_poseidon crates/stark_poseidon
@@ -60,6 +61,7 @@ ARG TARGETARCH
 COPY ./build/prepare-stark_hash_python.sh prepare-stark_hash_python.sh
 RUN TARGETARCH=${TARGETARCH} ./prepare-stark_hash_python.sh
 COPY --from=rust-python-starkhash-planner /usr/src/pathfinder/crates/stark_hash_python/recipe.json /usr/src/pathfinder/crates/stark_hash_python/recipe.json
+COPY Cargo.toml Cargo.toml
 COPY crates/stark_curve crates/stark_curve
 COPY crates/stark_hash crates/stark_hash
 COPY crates/stark_poseidon crates/stark_poseidon
