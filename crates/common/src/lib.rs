@@ -536,6 +536,12 @@ impl StarknetVersion {
     }
 }
 
+impl From<Option<String>> for StarknetVersion {
+    fn from(value: Option<String>) -> Self {
+        Self(value)
+    }
+}
+
 macros::starkhash::common_newtype_with_compressed_sql!(
     ContractNonce,
     StorageValue,

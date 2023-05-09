@@ -414,6 +414,16 @@ pub mod transaction {
         }
     }
 
+    impl DeclareTransaction {
+        pub fn signature(&self) -> &[TransactionSignatureElem] {
+            match self {
+                DeclareTransaction::V0(tx) => tx.signature.as_ref(),
+                DeclareTransaction::V1(tx) => tx.signature.as_ref(),
+                DeclareTransaction::V2(tx) => tx.signature.as_ref(),
+            }
+        }
+    }
+
     /// A version 0 or 1 declare transaction.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

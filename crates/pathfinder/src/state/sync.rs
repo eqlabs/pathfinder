@@ -83,7 +83,7 @@ where
             .context("Query L1 head from database")?;
         let l2_head = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
-            .map(|block| (block.number, block.hash, block.root));
+            .map(|block| (block.number, block.hash, block.state_commmitment));
         Ok((l1_head, l2_head))
     })?;
 
@@ -316,7 +316,7 @@ where
                         StarknetBlocksTable::get(&tx, number.into())
                     })
                     .with_context(|| format!("Query L2 block hash for block {number}"))?
-                    .map(|block| (block.hash, block.root));
+                    .map(|block| (block.hash, block.state_commmitment));
                     let _ = tx.send(block);
 
                     tracing::trace!(%number, "Query hash for L2 block");
@@ -365,7 +365,7 @@ where
                         StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
                     })
                     .context("Query L2 head from database")?
-                    .map(|block| (block.number, block.hash, block.root));
+                    .map(|block| (block.number, block.hash, block.state_commmitment));
 
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l2 = new_rx;
@@ -548,7 +548,7 @@ async fn l2_update(
         let starknet_block = StarknetBlock {
             number: block.block_number,
             hash: block.block_hash,
-            root: block.state_commitment,
+            state_commmitment: block.state_commitment,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
             gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
@@ -631,7 +631,7 @@ async fn l2_update(
             let l1_root =
                 L1StateTable::get_state_commitment(&transaction, starknet_block.number.into())
                     .context("Query L1 root")?;
-            if l1_root == Some(starknet_block.root) {
+            if l1_root == Some(starknet_block.state_commmitment) {
                 RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
                     .context("Update L1-L2 head")?;
             }
@@ -1311,7 +1311,7 @@ mod tests {
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: StarknetBlockHash(*A),
-            root: *STATE_COMMITMENT0,
+            state_commmitment: *STATE_COMMITMENT0,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
@@ -1321,7 +1321,7 @@ mod tests {
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: StarknetBlockHash(*B),
-            root: *STATE_COMMITMENT1,
+            state_commmitment: *STATE_COMMITMENT1,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
@@ -1946,7 +1946,10 @@ mod tests {
 
             // Check the result straight away ¯\_(ツ)_/¯
             let result = rx1.await.unwrap().unwrap();
-            assert_eq!(result, (STORAGE_BLOCK0.hash, STORAGE_BLOCK0.root));
+            assert_eq!(
+                result,
+                (STORAGE_BLOCK0.hash, STORAGE_BLOCK0.state_commmitment)
+            );
 
             tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())

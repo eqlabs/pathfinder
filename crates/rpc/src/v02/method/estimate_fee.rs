@@ -368,7 +368,10 @@ pub(crate) mod tests {
             let new_block = StarknetBlock {
                 number: latest_block_number + 1,
                 hash: StarknetBlockHash(felt_bytes!(b"latest block")),
-                root: StateCommitment::calculate(new_storage_commitment, ClassCommitment::ZERO),
+                state_commmitment: StateCommitment::calculate(
+                    new_storage_commitment,
+                    ClassCommitment::ZERO,
+                ),
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice::ZERO,
                 sequencer_address: SequencerAddress(Felt::ZERO),

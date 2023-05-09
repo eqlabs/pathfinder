@@ -38,7 +38,10 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
                 block: StarknetBlock {
                     number: StarknetBlockNumber::GENESIS + i as u64,
                     hash: StarknetBlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
-                    root: StateCommitment::calculate(storage_commitment, class_commitment),
+                    state_commmitment: StateCommitment::calculate(
+                        storage_commitment,
+                        class_commitment,
+                    ),
                     timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
                     gas_price: GasPrice::from(i as u64),
                     sequencer_address: SequencerAddress(index_as_felt),

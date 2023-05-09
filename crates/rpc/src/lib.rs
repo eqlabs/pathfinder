@@ -287,7 +287,7 @@ pub mod test_utils {
         let block0 = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
-            root: StateCommitment::calculate(storage_commitment0, class_commitment0),
+            state_commmitment: StateCommitment::calculate(storage_commitment0, class_commitment0),
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
@@ -298,7 +298,7 @@ pub mod test_utils {
         let block1 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: block1_hash,
-            root: StateCommitment::calculate(storage_commitment1, class_commitment1),
+            state_commmitment: StateCommitment::calculate(storage_commitment1, class_commitment1),
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
@@ -309,7 +309,7 @@ pub mod test_utils {
         let block2 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(2),
             hash: latest_hash,
-            root: StateCommitment::calculate(storage_commitment2, class_commitment2),
+            state_commmitment: StateCommitment::calculate(storage_commitment2, class_commitment2),
             timestamp: StarknetBlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
@@ -596,7 +596,7 @@ pub mod test_utils {
         .unwrap();
 
         let state_update = starknet_gateway_types::reply::PendingStateUpdate {
-            old_root: latest.root,
+            old_root: latest.state_commmitment,
             state_diff,
         };
 

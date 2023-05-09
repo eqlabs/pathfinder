@@ -316,7 +316,7 @@ impl StarknetBlocksTable {
                 let block = StarknetBlock {
                     number,
                     hash,
-                    root,
+                    state_commmitment: root,
                     timestamp,
                     gas_price,
                     sequencer_address,
@@ -391,6 +391,69 @@ impl StarknetBlocksTable {
                 Ok(Some((storage_commitment, class_commitment)))
             }
             None => Ok(None),
+        }
+    }
+
+    /// Returns the version of the given block.
+    pub fn get_version(
+        tx: &Transaction<'_>,
+        block: StarknetBlocksBlockId,
+    ) -> anyhow::Result<StarknetVersion> {
+        let mut statement = match block {
+            StarknetBlocksBlockId::Number(_) => tx.prepare(
+                r"
+                    SELECT
+                        version
+                    FROM
+                        starknet_versions
+                    JOIN
+                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
+                    WHERE
+                        starknet_blocks.number = ?
+                ",
+            ),
+            StarknetBlocksBlockId::Hash(_) => tx.prepare(
+                r"
+                    SELECT
+                        version
+                    FROM
+                        starknet_versions
+                    JOIN
+                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
+                    WHERE
+                        starknet_blocks.hash = ?
+                ",
+            ),
+            StarknetBlocksBlockId::Latest => tx.prepare(
+                r"
+                    SELECT
+                        version
+                    FROM
+                        starknet_versions
+                    JOIN
+                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
+                    ORDER BY
+                        starknet_blocks.number
+                    DESC
+                    LIMIT 1
+                ",
+            ),
+        }?;
+
+        let mut rows = match block {
+            StarknetBlocksBlockId::Number(number) => statement.query([number]),
+            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
+            StarknetBlocksBlockId::Latest => statement.query([]),
+        }?;
+
+        let row = rows.next().context("Iterate rows")?;
+
+        match row {
+            Some(row) => {
+                let version: Option<String> = row.get_unwrap("version");
+                Ok(version.into())
+            }
+            None => Ok(Default::default()),
         }
     }
 
@@ -1270,7 +1333,7 @@ impl StarknetEventsTable {
 pub struct StarknetBlock {
     pub number: StarknetBlockNumber,
     pub hash: StarknetBlockHash,
-    pub root: StateCommitment,
+    pub state_commmitment: StateCommitment,
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
@@ -1973,7 +2036,7 @@ mod tests {
                             assert_eq!(state_commitment.1, block.class_commitment);
                             assert_eq!(
                                 StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                                block.block.root
+                                block.block.state_commmitment
                             );
                         }
                     })
@@ -2022,7 +2085,7 @@ mod tests {
                             assert_eq!(state_commitment.1, block.class_commitment);
                             assert_eq!(
                                 StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                                block.block.root
+                                block.block.state_commmitment
                             );
                         }
                     })
@@ -2073,7 +2136,7 @@ mod tests {
                         assert_eq!(state_commitment.1, expected.class_commitment);
                         assert_eq!(
                             StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                            expected.block.root
+                            expected.block.state_commmitment
                         );
                     })
                 }
@@ -2129,7 +2192,7 @@ mod tests {
                     let expected = StarknetBlock {
                         number: blocks[0].block.number,
                         hash: blocks[0].block.hash,
-                        root: blocks[0].block.root,
+                        state_commmitment: blocks[0].block.state_commmitment,
                         timestamp: blocks[0].block.timestamp,
                         gas_price: blocks[0].block.gas_price,
                         sequencer_address: blocks[0].block.sequencer_address,
@@ -2409,7 +2472,7 @@ mod tests {
             let block = StarknetBlock {
                 number: StarknetBlockNumber::GENESIS,
                 hash: StarknetBlockHash(felt!("0x1234")),
-                root: StateCommitment(felt!("0x1234")),
+                state_commmitment: StateCommitment(felt!("0x1234")),
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(felt!("0x1234")),

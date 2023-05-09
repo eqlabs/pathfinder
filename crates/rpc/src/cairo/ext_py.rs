@@ -887,7 +887,7 @@ mod tests {
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
                 hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
-                root: StateCommitment::calculate(storage_commitment, class_commitment),
+                state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
@@ -947,7 +947,7 @@ mod tests {
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
                 hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
-                root: StateCommitment::calculate(storage_commitment, class_commitment),
+                state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),

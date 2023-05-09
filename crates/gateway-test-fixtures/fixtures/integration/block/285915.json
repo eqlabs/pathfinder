@@ -1,0 +1,52 @@
+{
+    "block_hash": "0x26b5f94cc65f6290d3429fb74aa6d1213a6fc6bc5de879bb7f5929c6e10f65",
+    "parent_block_hash": "0x469c1abdae5a55e6a857cbbcd173be9c79678b5db241c9a2630937d4202570b",
+    "block_number": 285915,
+    "state_root": "03f62e058b75962fc4dc5469e43c210515e04ace567fed4dfa1585e2200b07b5",
+    "status": "ACCEPTED_ON_L2",
+    "gas_price": "0x4095a3c9d94",
+    "transactions": [
+        {
+            "transaction_hash": "0x554a65bb9f00cb95ccb87e1bda805e2722fe997cad3947600eaa46d9d2fce05",
+            "version": "0x1",
+            "max_fee": "0x2386f26fc10000",
+            "signature": [
+                "0x295a4016f3b7a8c2321114d3a4baf76d4189dde0c9741fb47810f1b75741fff",
+                "0x43fc9670848ad76f4d129a1d4fe8d00dc4e6641425ef604ee64965c4f74fe3b"
+            ],
+            "nonce": "0x1685",
+            "class_hash": "0x484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311",
+            "sender_address": "0x733dead6027a46717d7e79be28bf059bb8f5b02db2854c742ff652392d94506",
+            "type": "DECLARE"
+        },
+        {
+            "transaction_hash": "0x6fdbb914cef884eac2d47eeee11b0de823e404ede92b782c14b6c15c3a35bb9",
+            "version": "0x0",
+            "max_fee": "0x0",
+            "signature": [],
+            "nonce": "0x0",
+            "class_hash": "0x5a9941d0cc16b8619a3325055472da709a66113afcc6a8ab86055da7d29c5f8",
+            "sender_address": "0x1",
+            "type": "DECLARE"
+        }
+    ],
+    "timestamp": 1683444772,
+    "sequencer_address": "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
+    "transaction_receipts": [
+        {
+            "transaction_index": 0,
+            "transaction_hash": "0x554a65bb9f00cb95ccb87e1bda805e2722fe997cad3947600eaa46d9d2fce05",
+            "l2_to_l1_messages": [],
+            "events": [],
+            "actual_fee": "0x13c1c6aaaf4564"
+        },
+        {
+            "transaction_index": 1,
+            "transaction_hash": "0x6fdbb914cef884eac2d47eeee11b0de823e404ede92b782c14b6c15c3a35bb9",
+            "l2_to_l1_messages": [],
+            "events": [],
+            "actual_fee": "0x0"
+        }
+    ],
+    "starknet_version": "0.11.1"
+}
