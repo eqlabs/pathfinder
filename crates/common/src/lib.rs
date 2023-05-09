@@ -511,10 +511,6 @@ impl StarknetVersion {
         StarknetVersion(Some(format!("{major}.{minor}.{patch}")))
     }
 
-    pub fn new_from_string(version: Option<String>) -> Self {
-        Self(version)
-    }
-
     /// Parses the version string.
     ///
     /// Note: there are known deviations from semver such as version 0.11.0.2, which
@@ -537,6 +533,12 @@ impl StarknetVersion {
 
     pub fn as_str(&self) -> Option<&str> {
         self.0.as_deref()
+    }
+}
+
+impl From<Option<String>> for StarknetVersion {
+    fn from(value: Option<String>) -> Self {
+        Self(value)
     }
 }
 

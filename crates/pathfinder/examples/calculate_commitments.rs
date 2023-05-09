@@ -4,6 +4,7 @@ use anyhow::Context;
 use pathfinder_common::StarknetBlockNumber;
 use pathfinder_lib::state::block_hash::{
     calculate_event_commitment, calculate_transaction_commitment,
+    TransactionCommitmentFinalHashType,
 };
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
@@ -46,6 +47,7 @@ fn main() -> anyhow::Result<()> {
         let block_id =
             StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(block_number));
         let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
+        let version = StarknetBlocksTable::get_version(&tx, block_id)?;
 
         let transactions_and_receipts =
             StarknetTransactionsTable::get_transaction_data_for_block(&tx, block_id)?;
@@ -53,12 +55,11 @@ fn main() -> anyhow::Result<()> {
             transactions_and_receipts.into_iter().unzip();
         let read_ms = now.elapsed().as_millis();
 
+        let transaction_final_hash_type =
+            TransactionCommitmentFinalHashType::for_version(&version)?;
         let now = Instant::now();
         let (transaction_commitment, event_commitment) = (
-            calculate_transaction_commitment(
-                &transactions,
-                pathfinder_lib::state::block_hash::FinalHashType::Normal,
-            )?,
+            calculate_transaction_commitment(&transactions, transaction_final_hash_type)?,
             calculate_event_commitment(&receipts)?,
         );
         let calc_ms = now.elapsed().as_millis();

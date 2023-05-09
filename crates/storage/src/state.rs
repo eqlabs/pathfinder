@@ -450,8 +450,8 @@ impl StarknetBlocksTable {
 
         match row {
             Some(row) => {
-                let version = row.get_unwrap("version");
-                Ok(StarknetVersion::new_from_string(version))
+                let version: Option<String> = row.get_unwrap("version");
+                Ok(version.into())
             }
             None => Ok(Default::default()),
         }

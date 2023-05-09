@@ -1,7 +1,8 @@
 use anyhow::{Context, Error, Result};
 use pathfinder_common::{
     Chain, ChainId, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp, StateCommitment, TransactionCommitment, TransactionSignatureElem,
+    StarknetBlockTimestamp, StarknetVersion, StateCommitment, TransactionCommitment,
+    TransactionSignatureElem,
 };
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use stark_hash::{stark_hash, Felt, HashChain};
@@ -46,13 +47,8 @@ pub fn verify_block_hash(
         .try_into()
         .expect("too many transactions in block");
 
-    const V_0_11_1: semver::Version = semver::Version::new(0, 11, 1);
-    let version = block.starknet_version.parse_as_semver()?;
-    let transaction_final_hash_type = match version {
-        None => FinalHashType::SignatureIncludedForInvokeOnly,
-        Some(v) if v < V_0_11_1 => FinalHashType::SignatureIncludedForInvokeOnly,
-        Some(_) => FinalHashType::Normal,
-    };
+    let transaction_final_hash_type =
+        TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
     let transaction_commitment =
         calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
     let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
@@ -292,9 +288,21 @@ fn compute_final_hash(
     StarknetBlockHash(chain.finalize())
 }
 
-pub enum FinalHashType {
+pub enum TransactionCommitmentFinalHashType {
     SignatureIncludedForInvokeOnly,
     Normal,
+}
+
+impl TransactionCommitmentFinalHashType {
+    pub fn for_version(version: &StarknetVersion) -> anyhow::Result<Self> {
+        const V_0_11_1: semver::Version = semver::Version::new(0, 11, 1);
+
+        Ok(match version.parse_as_semver()? {
+            None => Self::SignatureIncludedForInvokeOnly,
+            Some(v) if v < V_0_11_1 => Self::SignatureIncludedForInvokeOnly,
+            Some(_) => Self::Normal,
+        })
+    }
 }
 
 /// Calculate transaction commitment hash value.
@@ -304,7 +312,7 @@ pub enum FinalHashType {
 /// key-value pairs to the tree and computing the root hash.
 pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
-    final_hash_type: FinalHashType,
+    final_hash_type: TransactionCommitmentFinalHashType,
 ) -> Result<TransactionCommitment> {
     let mut tree = TransactionOrEventTree::default();
 
@@ -316,8 +324,10 @@ pub fn calculate_transaction_commitment(
                 .try_into()
                 .expect("too many transactions while calculating commitment");
             let final_hash = match final_hash_type {
-                FinalHashType::Normal => calculate_transaction_hash_with_signature(tx),
-                FinalHashType::SignatureIncludedForInvokeOnly => {
+                TransactionCommitmentFinalHashType::Normal => {
+                    calculate_transaction_hash_with_signature(tx)
+                }
+                TransactionCommitmentFinalHashType::SignatureIncludedForInvokeOnly => {
                     calculate_transaction_hash_with_signature_pre_0_11_1(tx)
                 }
             };
