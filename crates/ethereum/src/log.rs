@@ -1,4 +1,4 @@
-use crate::contract::STATE_UPDATE_EVENT_0_11_1;
+use crate::contract::{STATE_UPDATE_EVENT_0_11_1, STATE_UPDATE_SIGNATURE_0_11_1};
 use crate::{contract::STATE_UPDATE_EVENT, EthOrigin};
 use anyhow::Context;
 use ethers::abi::{LogParam, RawLog};
@@ -29,7 +29,7 @@ impl TryFrom<ethers::types::Log> for StateUpdateLog {
 
         // As of starknet v0.11.1 we now have two state update event ABIs on L1.
         let log = match raw_log.topics.first() {
-            Some(topic) if topic == &STATE_UPDATE_EVENT_0_11_1.signature() => {
+            Some(topic) if topic == &*STATE_UPDATE_SIGNATURE_0_11_1 => {
                 STATE_UPDATE_EVENT_0_11_1.parse_log(raw_log)
             }
             _ => STATE_UPDATE_EVENT.parse_log(raw_log),

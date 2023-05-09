@@ -1,7 +1,7 @@
 use ethers::types::{Filter, H160};
 use pathfinder_common::{Chain, EthereumBlockNumber};
 
-use crate::contract::{STATE_UPDATE_EVENT, STATE_UPDATE_EVENT_0_11_1};
+use crate::contract::{STATE_UPDATE_SIGNATURE, STATE_UPDATE_SIGNATURE_0_11_1};
 use crate::log::StateUpdateLog;
 
 use anyhow::Context;
@@ -52,8 +52,8 @@ impl StateRootFetcher {
         let base_filter = Filter::default()
             .address(vec![contract_address])
             .topic0(vec![
-                STATE_UPDATE_EVENT.signature(),
-                STATE_UPDATE_EVENT_0_11_1.signature(),
+                *STATE_UPDATE_SIGNATURE,
+                *STATE_UPDATE_SIGNATURE_0_11_1,
             ]);
 
         Self {
