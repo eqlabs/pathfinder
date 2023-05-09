@@ -1,5 +1,5 @@
 use ethers::abi::{Contract, Event};
-use ethers::types::H160;
+use ethers::types::{H160, H256};
 
 /// Groups the Starknet contract addresses for a specific chain.
 pub struct ContractAddresses {
@@ -70,13 +70,28 @@ const CORE_IMPL_ABI: &[u8] = include_bytes!(concat!(
     "/resources/contracts/core_impl.json"
 ));
 
+const CORE_IMPL_0_11_1_ABI: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/resources/contracts/core_impl_0.11.1.json"
+));
+
 lazy_static::lazy_static!(
     pub static ref STATE_UPDATE_EVENT: Event = core_contract().event("LogStateUpdate")
             .expect("LogStateUpdate event not found in core contract ABI").to_owned();
+
+    pub static ref STATE_UPDATE_EVENT_0_11_1: Event = core_contract_0_11_1().event("LogStateUpdate")
+            .expect("LogStateUpdate event not found in core contract ABI").to_owned();
+
+    pub static ref STATE_UPDATE_SIGNATURE: H256 = STATE_UPDATE_EVENT.signature();
+    pub static ref STATE_UPDATE_SIGNATURE_0_11_1: H256 = STATE_UPDATE_EVENT_0_11_1.signature();
 );
 
 fn core_contract() -> Contract {
     Contract::load(CORE_IMPL_ABI).expect("Core contract ABI is invalid")
+}
+
+fn core_contract_0_11_1() -> Contract {
+    Contract::load(CORE_IMPL_0_11_1_ABI).expect("Core contract ABI is invalid")
 }
 
 #[cfg(test)]

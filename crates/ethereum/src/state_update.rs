@@ -1,6 +1,7 @@
 use ethers::types::{Filter, H160};
 use pathfinder_common::{Chain, EthereumBlockNumber};
 
+use crate::contract::{STATE_UPDATE_SIGNATURE, STATE_UPDATE_SIGNATURE_0_11_1};
 use crate::log::StateUpdateLog;
 
 use anyhow::Context;
@@ -48,12 +49,12 @@ impl StateRootFetcher {
             Chain::Custom => EthereumBlockNumber(0),
         };
 
-        let signature = StateUpdateLog::signature();
-        let signature: ethers::types::H256 = signature.0.into();
-
         let base_filter = Filter::default()
             .address(vec![contract_address])
-            .topic0(signature);
+            .topic0(vec![
+                *STATE_UPDATE_SIGNATURE,
+                *STATE_UPDATE_SIGNATURE_0_11_1,
+            ]);
 
         Self {
             head,
