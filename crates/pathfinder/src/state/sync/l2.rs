@@ -61,6 +61,7 @@ pub enum Event {
     Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     websocket_txs: WebsocketSenders,
@@ -628,11 +629,10 @@ mod tests {
     mod sync {
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
-        use pathfinder_common::Chain;
         use pathfinder_common::{
-            BlockHash, BlockId, BlockNumber, BlockTimestamp, ChainId, ClassHash, ContractAddress,
-            GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageAddress,
-            StorageValue,
+            BlockHash, BlockId, BlockNumber, BlockTimestamp, Chain, ChainId, ClassHash,
+            ContractAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+            StorageAddress, StorageValue,
         };
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;

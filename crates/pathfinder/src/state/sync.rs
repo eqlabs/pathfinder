@@ -1156,6 +1156,7 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
         _: WebsocketSenders,

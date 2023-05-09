@@ -1,7 +1,7 @@
 // Types used for web socket subscription events
 use crate::reply::{Block, Status};
 use pathfinder_common::{
-    GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress, StarknetVersion,
     StateCommitment,
 };
 use pathfinder_serde::GasPriceAsHexStr;
@@ -23,13 +23,13 @@ impl<T> RPCSender<T> {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WebsocketEventNewHead {
-    pub block_hash: StarknetBlockHash,
-    pub block_number: StarknetBlockNumber,
+    pub block_hash: BlockHash,
+    pub block_number: BlockNumber,
 
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
     pub gas_price: Option<GasPrice>,
-    pub parent_block_hash: StarknetBlockHash,
+    pub parent_block_hash: BlockHash,
 
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
@@ -37,10 +37,10 @@ pub struct WebsocketEventNewHead {
     #[serde(alias = "state_root")]
     pub state_commitment: StateCommitment,
     pub status: Status,
-    pub timestamp: StarknetBlockTimestamp,
+    pub timestamp: BlockTimestamp,
 
     #[serde(default)]
-    pub starknet_version: Option<String>,
+    pub starknet_version: StarknetVersion,
 }
 
 impl WebsocketEventNewHead {
