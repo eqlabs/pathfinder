@@ -36,6 +36,8 @@ pub async fn get_class_at(
                         let tx = db.transaction().context("Creating database transaction")?;
 
                         let definition = database::definition_unchecked(&tx, class)?;
+                        let definition = zstd::decode_all(&*definition)
+                            .context("Decompressing class definition")?;
                         let class = ContractClass::from_definition_bytes(&definition)
                             .context("Parsing class definition")?;
 
