@@ -323,7 +323,7 @@
                 ],
                 "description": "The status of a transaction"
             },
-            "WebsocketEventNewHead": {
+            "BLOCK_HEADER": {
                 "type": "object",
                 "properties": {
                     "block_hash": {
