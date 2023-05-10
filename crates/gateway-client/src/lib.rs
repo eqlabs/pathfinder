@@ -1,18 +1,15 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
     BlockId, CallParam, CasmHash, Chain, ClassHash, ContractAddress, ContractAddressSalt, Fee,
-    SierraHash, StarknetBlockNumber, StarknetTransactionHash, StorageAddress, StorageValue,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    StarknetBlockNumber, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+    TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
     error::SequencerError,
     reply,
-    request::{
-        add_transaction::{
-            AddTransaction, ContractDefinition, Declare, DeployAccount, InvokeFunction,
-        },
-        BlockHashOrTag,
+    request::add_transaction::{
+        AddTransaction, ContractDefinition, Declare, DeployAccount, InvokeFunction,
     },
 };
 use std::{fmt::Debug, result::Result, time::Duration};
@@ -31,15 +28,6 @@ pub trait ClientApi {
         &self,
         class_hash: ClassHash,
     ) -> Result<bytes::Bytes, SequencerError>;
-
-    async fn compiled_class(&self, class_hash: SierraHash) -> Result<bytes::Bytes, SequencerError>;
-
-    async fn storage(
-        &self,
-        contract_addr: ContractAddress,
-        key: StorageAddress,
-        block_hash: BlockHashOrTag,
-    ) -> Result<StorageValue, SequencerError>;
 
     async fn transaction(
         &self,
@@ -214,18 +202,6 @@ impl ClientApi for Client {
             .await
     }
 
-    #[tracing::instrument(skip(self))]
-    async fn compiled_class(&self, hash: SierraHash) -> Result<bytes::Bytes, SequencerError> {
-        self.feeder_gateway_request()
-            .get_compiled_class_by_class_hash()
-            // Let's not introduce an equivalent of `with_class_hash` for `SierraHash`
-            // which is conceptually the same thing here
-            .with_class_hash(ClassHash(hash.0))
-            .with_retry(Self::RETRY)
-            .get_as_bytes()
-            .await
-    }
-
     /// Gets class for a particular class hash.
     #[tracing::instrument(skip(self))]
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
@@ -249,24 +225,6 @@ impl ClientApi for Client {
             .with_block(BlockId::Pending)
             .with_retry(Self::RETRY)
             .get_as_bytes()
-            .await
-    }
-
-    /// Gets storage value associated with a `key` for a prticular contract.
-    #[tracing::instrument(skip(self))]
-    async fn storage(
-        &self,
-        contract_addr: ContractAddress,
-        key: StorageAddress,
-        block_hash: BlockHashOrTag,
-    ) -> Result<StorageValue, SequencerError> {
-        self.feeder_gateway_request()
-            .get_storage_at()
-            .with_contract_address(contract_addr)
-            .with_storage_address(key)
-            .with_block(block_hash)
-            .with_retry(Self::RETRY)
-            .get()
             .await
     }
 
@@ -587,7 +545,6 @@ mod tests {
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
-    use starknet_gateway_types::request::Tag;
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
@@ -809,174 +766,6 @@ mod tests {
             )]);
             let bytes = client.class_by_hash(VALID_CLASS_HASH).await.unwrap();
             serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
-        }
-    }
-
-    mod compiled_class {
-        use super::*;
-        use pathfinder_common::felt;
-        use pretty_assertions::assert_eq;
-
-        #[test_log::test(tokio::test)]
-        async fn invalid_hash() {
-            const INVALID_HASH: SierraHash = SierraHash(felt!("0xaaaaa"));
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_compiled_class_by_class_hash?classHash={}",
-                    INVALID_HASH.0.to_hex_str()
-                ),
-                response_from(StarknetErrorCode::UndeclaredClass),
-            )]);
-            let error = client.compiled_class(INVALID_HASH).await.unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UndeclaredClass)
-            );
-        }
-
-        #[tokio::test]
-        async fn success() {
-            const VALID_HASH: SierraHash = SierraHash(felt!(
-                "0x07a4c06a26a85a0935b87e74ae819b02bf4fd68d8fc1c906f046fcdeb94fa8c7"
-            ));
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_compiled_class_by_class_hash?classHash={}",
-                    VALID_HASH.0.to_hex_str()
-                ),
-                (r#"{"fake":"fixture"}"#, 200),
-            )]);
-            let bytes = client.compiled_class(VALID_HASH).await.unwrap();
-            serde_json::from_slice::<serde_json::value::Value>(&bytes).unwrap();
-        }
-    }
-
-    mod storage {
-        use super::*;
-        use pathfinder_common::felt;
-        use pretty_assertions::assert_eq;
-        use starknet_gateway_test_fixtures::testnet::VALID_KEY_DEC;
-
-        #[test_log::test(tokio::test)]
-        async fn invalid_contract_address() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    INVALID_CONTRACT_ADDR.get().to_hex_str(),
-                    VALID_KEY_DEC
-                ),
-                (r#""0x0""#, 200),
-            )]);
-            let result = client
-                .storage(
-                    INVALID_CONTRACT_ADDR,
-                    VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap();
-            assert_eq!(result, StorageValue(Felt::ZERO));
-        }
-
-        #[tokio::test]
-        async fn invalid_key() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key=0&blockNumber=latest",
-                    VALID_CONTRACT_ADDR.get().to_hex_str()
-                ),
-                (r#""0x0""#, 200),
-            )]);
-            let result = client
-                .storage(
-                    VALID_CONTRACT_ADDR,
-                    StorageAddress::new_or_panic(Felt::ZERO),
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap();
-            assert_eq!(result, StorageValue(Felt::ZERO));
-        }
-
-        #[tokio::test]
-        async fn invalid_block_hash() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    VALID_KEY_DEC,
-                    INVALID_BLOCK_HASH
-                ),
-                response_from(StarknetErrorCode::BlockNotFound),
-            )]);
-            let error = client
-                .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVALID_BLOCK_HASH)
-                .await
-                .unwrap_err();
-            assert_matches!(
-                error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
-            );
-        }
-
-        #[tokio::test]
-        async fn latest_invoke_block() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockHash={}",
-                    VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    VALID_KEY_DEC,
-                    INVOKE_CONTRACT_BLOCK_HASH
-                ),
-                (r#""0x1e240""#, 200),
-            )]);
-            let result = client
-                .storage(VALID_CONTRACT_ADDR, VALID_KEY, INVOKE_CONTRACT_BLOCK_HASH)
-                .await
-                .unwrap();
-            assert_eq!(result, StorageValue(felt!("0x1e240")));
-        }
-
-        #[tokio::test]
-        async fn latest_block() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=latest",
-                    VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    VALID_KEY_DEC,
-                ),
-                (r#""0x1e240""#, 200),
-            )]);
-            let result = client
-                .storage(
-                    VALID_CONTRACT_ADDR,
-                    VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Latest),
-                )
-                .await
-                .unwrap();
-            assert_eq!(result, StorageValue(felt!("0x1e240")));
-        }
-
-        #[tokio::test]
-        async fn pending_block() {
-            let (_jh, client) = setup([(
-                format!(
-                    "/feeder_gateway/get_storage_at?contractAddress={}&key={}&blockNumber=pending",
-                    VALID_CONTRACT_ADDR.get().to_hex_str(),
-                    VALID_KEY_DEC
-                ),
-                (r#""0x1e240""#, 200),
-            )]);
-            let result = client
-                .storage(
-                    VALID_CONTRACT_ADDR,
-                    VALID_KEY,
-                    BlockHashOrTag::Tag(Tag::Pending),
-                )
-                .await
-                .unwrap();
-            assert_eq!(result, StorageValue(felt!("0x1e240")));
         }
     }
 

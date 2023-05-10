@@ -1064,10 +1064,9 @@ mod tests {
         BlockId, CallParam, CasmHash, Chain, ChainId, ClassCommitment, ClassHash, ContractAddress,
         ContractAddressSalt, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
         EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
-        SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetTransactionHash, StarknetVersion, StateCommitment,
-        StorageAddress, StorageCommitment, StorageValue, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+        StarknetTransactionHash, StarknetVersion, StateCommitment, StorageCommitment,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1078,10 +1077,8 @@ mod tests {
     use stark_hash::Felt;
     use starknet_gateway_client::ClientApi;
     use starknet_gateway_types::{
-        error::SequencerError,
-        pending::PendingData,
-        reply,
-        request::{add_transaction::ContractDefinition, BlockHashOrTag},
+        error::SequencerError, pending::PendingData, reply,
+        request::add_transaction::ContractDefinition,
     };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
@@ -1149,19 +1146,6 @@ mod tests {
             &self,
             _: ClassHash,
         ) -> Result<bytes::Bytes, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn compiled_class(&self, _: SierraHash) -> Result<bytes::Bytes, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn storage(
-            &self,
-            _: ContractAddress,
-            _: StorageAddress,
-            _: BlockHashOrTag,
-        ) -> Result<StorageValue, SequencerError> {
             unimplemented!()
         }
 
