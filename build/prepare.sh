@@ -1,7 +1,7 @@
 #!/bin/bash -e
 if [[ "${TARGETARCH}" == "amd64" ]]; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y libssl-dev protobuf-compiler
+    DEBIAN_FRONTEND=noninteractive apt-get install -y pkg-config libssl-dev protobuf-compiler
 elif [[ "${TARGETARCH}" == "arm64" ]]; then
     echo "deb [arch=arm64] http://deb.debian.org/debian bullseye main" >>/etc/apt/sources.list
     apt-get update

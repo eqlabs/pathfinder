@@ -1,10 +1,11 @@
 #!/bin/bash -e
 if [[ "${TARGETARCH}" == "amd64" ]]; then
-    echo "nothing to do"
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 libpython3-dev
 elif [[ "${TARGETARCH}" == "arm64" ]]; then
     echo "deb [arch=arm64] http://deb.debian.org/debian bullseye main" >>/etc/apt/sources.list
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 gcc-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross
     apt-get download libpython3.9-dev:arm64 libpython3.9:arm64 libpython3.9-minimal:arm64 python3.9:arm64 python3-dev:arm64 libpython3.9-stdlib:arm64
     mkdir -p /build/sysroot
     dpkg -x python3.9_*.deb /build/sysroot/
