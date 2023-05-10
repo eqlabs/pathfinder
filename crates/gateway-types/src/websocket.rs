@@ -12,7 +12,7 @@ use tokio::sync::broadcast::{self};
 #[derive(Debug, Clone)]
 pub struct RPCSender<T>(pub broadcast::Sender<T>);
 
-impl<T> RPCSender<T> {
+impl<T> SubscriptionBroadcaster<T> {
     pub fn send_if_receiving(&self, value: T) {
         if self.0.receiver_count() > 0 {
             let _ = self.0.send(value);
