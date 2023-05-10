@@ -1061,12 +1061,11 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CallParam, CasmHash, Chain, ChainId, ClassCommitment, ClassHash, ContractAddress,
-        ContractAddressSalt, EthereumBlockHash, EthereumBlockNumber, EthereumChain,
-        EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, Fee, GasPrice,
-        SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StarknetVersion, StateCommitment, StorageCommitment,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        BlockId, CasmHash, Chain, ChainId, ClassCommitment, ClassHash, EthereumBlockHash,
+        EthereumBlockNumber, EthereumChain, EthereumLogIndex, EthereumTransactionHash,
+        EthereumTransactionIndex, GasPrice, SequencerAddress, StarknetBlockHash,
+        StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
+        StorageCommitment,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1076,10 +1075,7 @@ mod tests {
     };
     use stark_hash::Felt;
     use starknet_gateway_client::ClientApi;
-    use starknet_gateway_types::{
-        error::SequencerError, pending::PendingData, reply,
-        request::add_transaction::ContractDefinition,
-    };
+    use starknet_gateway_types::{error::SequencerError, pending::PendingData, reply};
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
 
@@ -1136,76 +1132,6 @@ mod tests {
                 BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
                 _ => unimplemented!(),
             }
-        }
-
-        async fn class_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn pending_class_by_hash(
-            &self,
-            _: ClassHash,
-        ) -> Result<bytes::Bytes, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn transaction(
-            &self,
-            _: StarknetTransactionHash,
-        ) -> Result<reply::Transaction, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn state_update(
-            &self,
-            _: BlockId,
-        ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn eth_contract_addresses(
-            &self,
-        ) -> Result<reply::EthContractAddresses, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn add_invoke_transaction(
-            &self,
-            _: TransactionVersion,
-            _: Fee,
-            _: Vec<TransactionSignatureElem>,
-            _: TransactionNonce,
-            _: ContractAddress,
-            _: Vec<CallParam>,
-        ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn add_declare_transaction(
-            &self,
-            _: TransactionVersion,
-            _: Fee,
-            _: Vec<TransactionSignatureElem>,
-            _: TransactionNonce,
-            _: ContractDefinition,
-            _: ContractAddress,
-            _: Option<CasmHash>,
-            _: Option<String>,
-        ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
-            unimplemented!()
-        }
-
-        async fn add_deploy_account(
-            &self,
-            _: TransactionVersion,
-            _: Fee,
-            _: Vec<TransactionSignatureElem>,
-            _: TransactionNonce,
-            _: ContractAddressSalt,
-            _: ClassHash,
-            _: Vec<CallParam>,
-        ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
-            unimplemented!()
         }
     }
 

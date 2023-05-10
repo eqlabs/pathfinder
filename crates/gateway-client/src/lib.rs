@@ -17,29 +17,42 @@ use std::{fmt::Debug, result::Result, time::Duration};
 mod builder;
 mod metrics;
 
+#[allow(unused_variables)]
 #[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
-pub trait ClientApi {
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError>;
+pub trait ClientApi: Sync {
+    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
+        unimplemented!();
+    }
 
-    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
+    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+        unimplemented!();
+    }
 
     async fn pending_class_by_hash(
         &self,
         class_hash: ClassHash,
-    ) -> Result<bytes::Bytes, SequencerError>;
+    ) -> Result<bytes::Bytes, SequencerError> {
+        unimplemented!();
+    }
 
     async fn transaction(
         &self,
         transaction_hash: StarknetTransactionHash,
-    ) -> Result<reply::Transaction, SequencerError>;
+    ) -> Result<reply::Transaction, SequencerError> {
+        unimplemented!();
+    }
 
     async fn state_update(
         &self,
         block: BlockId,
-    ) -> Result<reply::MaybePendingStateUpdate, SequencerError>;
+    ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
+        unimplemented!();
+    }
 
-    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
+    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
+        unimplemented!();
+    }
 
     #[allow(clippy::too_many_arguments)]
     async fn add_invoke_transaction(
@@ -50,7 +63,9 @@ pub trait ClientApi {
         nonce: TransactionNonce,
         contract_address: ContractAddress,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError>;
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+        unimplemented!();
+    }
 
     #[allow(clippy::too_many_arguments)]
     async fn add_declare_transaction(
@@ -63,7 +78,9 @@ pub trait ClientApi {
         sender_address: ContractAddress,
         compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
-    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
+    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
+        unimplemented!();
+    }
 
     #[allow(clippy::too_many_arguments)]
     async fn add_deploy_account(
@@ -75,7 +92,9 @@ pub trait ClientApi {
         contract_address_salt: ContractAddressSalt,
         class_hash: ClassHash,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError>;
+    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
+        unimplemented!();
+    }
 }
 
 /// StarkNet sequencer client using REST API.
