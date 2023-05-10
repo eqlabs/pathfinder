@@ -1,6 +1,6 @@
 # Welcome to Pathfinder
 
-A StarkNet full node giving you a safe view into StarkNet.
+A [StarkNet](https://www.starknet.io) full node giving you a safe view into StarkNet.
 
 Pathfinder is currently in alpha so expect some rough edges but it is already usable today!
 
