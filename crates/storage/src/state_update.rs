@@ -58,7 +58,7 @@ pub fn insert_canonical_state_diff(
             .context("Inserting nonce update")?;
     }
 
-    // // Insert storage updates
+    // Insert storage updates
     for StorageDiff {
         address,
         key,

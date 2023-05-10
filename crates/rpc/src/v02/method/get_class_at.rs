@@ -78,14 +78,8 @@ pub async fn get_class_at(
         }?
         .ok_or(GetClassAtError::ContractNotFound)?;
 
-        let definition = zstd::decode_all(&*compressed_definition)
-            .context("Decompressing contract definition")
-            .map_err(|e| {
-                GetClassAtError::Internal(anyhow::anyhow!(
-                    "Decompressing class definition failed: {}",
-                    e
-                ))
-            })?;
+        let definition =
+            zstd::decode_all(&*compressed_definition).context("Decompressing class definition")?;
 
         let class = ContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
