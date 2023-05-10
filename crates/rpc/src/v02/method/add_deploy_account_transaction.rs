@@ -3,7 +3,7 @@ use crate::felt::{RpcFelt, RpcFelt251};
 use crate::v02::types::request::BroadcastedDeployAccountTransaction;
 use anyhow::Context;
 use pathfinder_common::{ContractAddress, StarknetTransactionHash};
-use starknet_gateway_client::ClientApi;
+use starknet_gateway_client::GatewayApi;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]

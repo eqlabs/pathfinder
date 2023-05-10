@@ -3,7 +3,7 @@ use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedInvokeTransaction;
 use anyhow::Context;
 use pathfinder_common::StarknetTransactionHash;
-use starknet_gateway_client::ClientApi;
+use starknet_gateway_client::GatewayApi;
 
 crate::error::generate_rpc_error_subset!(AddInvokeTransactionError);
 

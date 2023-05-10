@@ -13,7 +13,7 @@ use pathfinder_lib::{
 };
 use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::Storage;
-use starknet_gateway_client::ClientApi;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::pending::PendingData;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -401,7 +401,7 @@ mod pathfinder_context {
             data_directory: PathBuf,
         ) -> anyhow::Result<Self> {
             use stark_hash::Felt;
-            use starknet_gateway_client::ClientApi;
+            use starknet_gateway_client::GatewayApi;
 
             let gateway =
                 GatewayClient::with_urls(gateway, feeder).context("Creating gateway client")?;

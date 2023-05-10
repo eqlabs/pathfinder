@@ -11,7 +11,7 @@ use starknet_gateway_types::reply::{Block, StateUpdate};
 /// A full block or full state update can be returned from this function if it is encountered during polling.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
-    sequencer: &impl starknet_gateway_client::ClientApi,
+    sequencer: &impl starknet_gateway_client::GatewayApi,
     head: (
         pathfinder_common::StarknetBlockHash,
         pathfinder_common::StateCommitment,
@@ -105,7 +105,7 @@ mod tests {
         felt, felt_bytes, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
         StarknetBlockTimestamp, StarknetVersion, StateCommitment,
     };
-    use starknet_gateway_client::MockClientApi;
+    use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{
         state_update::StateDiff, Block, MaybePendingBlock, MaybePendingStateUpdate, PendingBlock,
         PendingStateUpdate, StateUpdate, Status,
@@ -160,7 +160,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_full_block() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockClientApi::new();
+        let mut sequencer = MockGatewayApi::new();
 
         // Give a pending state update and full block.
         sequencer
@@ -192,7 +192,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_full_state_diff() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockClientApi::new();
+        let mut sequencer = MockGatewayApi::new();
 
         // Construct some full diff
         let pending_diff = PENDING_DIFF.clone();
@@ -233,7 +233,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_block_discontinuity() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockClientApi::new();
+        let mut sequencer = MockGatewayApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
         pending_block.parent_hash = StarknetBlockHash(felt!("0xFFFFFF"));
@@ -264,7 +264,7 @@ mod tests {
     #[tokio::test]
     async fn exits_on_state_diff_discontinuity() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockClientApi::new();
+        let mut sequencer = MockGatewayApi::new();
 
         sequencer
             .expect_block()
@@ -296,7 +296,7 @@ mod tests {
     #[tokio::test]
     async fn success() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockClientApi::new();
+        let mut sequencer = MockGatewayApi::new();
 
         sequencer
             .expect_block()

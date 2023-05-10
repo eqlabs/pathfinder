@@ -52,7 +52,7 @@ async fn main() {
 
     let downloader = std::thread::spawn(move || {
         use pathfinder_common::BlockId;
-        use starknet_gateway_client::{Client, ClientApi};
+        use starknet_gateway_client::{Client, GatewayApi};
 
         let client = match chain {
             Chain::Mainnet => Client::mainnet(),

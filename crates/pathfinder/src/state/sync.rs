@@ -26,7 +26,7 @@ use pathfinder_storage::{
 };
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
-use starknet_gateway_client::ClientApi;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     pending::PendingData,
     reply::{
@@ -55,7 +55,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
-    SequencerClient: ClientApi + Clone + Send + Sync + 'static,
+    SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
     L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, H160, Option<StateUpdateLog>) -> F1,
@@ -387,7 +387,7 @@ where
 /// Periodically updates sync state with the latest block height.
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
-    sequencer: impl ClientApi,
+    sequencer: impl GatewayApi,
     starting_block_hash: StarknetBlockHash,
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
@@ -824,7 +824,7 @@ fn deploy_contract(
 
 /// Downloads and inserts class definitions for any classes in the
 /// list which are not already present in the database.
-async fn download_verify_and_insert_missing_classes<SequencerClient: ClientApi>(
+async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>(
     sequencer: SequencerClient,
     connection: &mut Connection,
     state_update: &PendingStateUpdate,
@@ -938,7 +938,7 @@ enum DownloadedClass {
     Sierra(CompressedContract, CompressedCasmClass),
 }
 
-async fn download_class<SequencerClient: ClientApi>(
+async fn download_class<SequencerClient: GatewayApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
     chain: Chain,
@@ -1074,7 +1074,7 @@ mod tests {
         StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
     use stark_hash::Felt;
-    use starknet_gateway_client::ClientApi;
+    use starknet_gateway_client::GatewayApi;
     use starknet_gateway_types::{error::SequencerError, pending::PendingData, reply};
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
@@ -1126,7 +1126,7 @@ mod tests {
     struct FakeSequencer;
 
     #[async_trait::async_trait]
-    impl ClientApi for FakeSequencer {
+    impl GatewayApi for FakeSequencer {
         async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
             match block {
                 BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
@@ -1149,7 +1149,7 @@ mod tests {
 
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
-        _: impl ClientApi,
+        _: impl GatewayApi,
         _: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
         _: Chain,
         _: ChainId,

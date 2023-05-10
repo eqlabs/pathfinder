@@ -20,7 +20,7 @@ mod metrics;
 #[allow(unused_variables)]
 #[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
-pub trait ClientApi: Sync {
+pub trait GatewayApi: Sync {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         unimplemented!();
     }
@@ -210,7 +210,7 @@ impl Client {
 }
 
 #[async_trait::async_trait]
-impl ClientApi for Client {
+impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.feeder_gateway_request()
@@ -1553,7 +1553,7 @@ mod tests {
         // The tests are kept here to prevent crate dependency cycles while keeping the macro widely available.
         use pathfinder_common::{version_check, StarknetVersion};
 
-        use crate::{Client, ClientApi};
+        use crate::{Client, GatewayApi};
         use anyhow::Context;
         use pathfinder_common::BlockId;
 
