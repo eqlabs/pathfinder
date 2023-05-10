@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedDeclareTransaction;
 use pathfinder_common::{ClassHash, StarknetTransactionHash};
-use starknet_gateway_client::ClientApi;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::{
     CairoContractDefinition, ContractDefinition, SierraContractDefinition,

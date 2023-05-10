@@ -41,7 +41,7 @@ pub(crate) fn migrate(transaction: &Transaction<'_>) -> anyhow::Result<()> {
 
     let downloader = std::thread::spawn(move || {
         {
-            use starknet_gateway_client::{Client, ClientApi};
+            use starknet_gateway_client::{Client, GatewayApi};
 
             let client = match chain {
                 Chain::Mainnet => Client::mainnet(),

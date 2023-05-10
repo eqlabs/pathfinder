@@ -6,7 +6,7 @@ use pathfinder_common::{
     StarknetVersion, StateCommitment, TransactionCommitment,
 };
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
-use starknet_gateway_client::ClientApi;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     class_hash::compute_class_hash,
     error::SequencerError,
@@ -62,7 +62,7 @@ pub enum Event {
 
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
-    sequencer: impl ClientApi,
+    sequencer: impl GatewayApi,
     mut head: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
     chain: Chain,
     chain_id: ChainId,
@@ -234,7 +234,7 @@ pub async fn sync(
 /// known classes...
 async fn download_new_classes(
     state_diff: &StateDiff,
-    sequencer: &impl ClientApi,
+    sequencer: &impl GatewayApi,
     tx_event: &mpsc::Sender<Event>,
     chain: Chain,
     version: &StarknetVersion,
@@ -355,7 +355,7 @@ async fn download_block(
     chain: Chain,
     chain_id: ChainId,
     prev_block_hash: Option<StarknetBlockHash>,
-    sequencer: &impl ClientApi,
+    sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
     use pathfinder_common::BlockId;
@@ -465,7 +465,7 @@ async fn reorg(
     chain: Chain,
     chain_id: ChainId,
     tx_event: &mpsc::Sender<Event>,
-    sequencer: &impl ClientApi,
+    sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
@@ -530,7 +530,7 @@ enum DownloadedClass {
 
 async fn download_and_compress_class(
     class_hash: ClassHash,
-    sequencer: &impl ClientApi,
+    sequencer: &impl GatewayApi,
     chain: Chain,
     version: &StarknetVersion,
 ) -> anyhow::Result<DownloadedClass> {
@@ -630,7 +630,7 @@ mod tests {
             StateCommitment, StorageAddress, StorageValue,
         };
         use stark_hash::Felt;
-        use starknet_gateway_client::MockClientApi;
+        use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::{
             error::{SequencerError, StarknetError, StarknetErrorCode},
             reply,
@@ -890,7 +890,7 @@ mod tests {
 
         /// Convenience wrapper
         fn expect_block(
-            mock: &mut MockClientApi,
+            mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
             block: BlockId,
             returned_result: Result<reply::MaybePendingBlock, SequencerError>,
@@ -906,7 +906,7 @@ mod tests {
 
         /// Convenience wrapper
         fn expect_state_update(
-            mock: &mut MockClientApi,
+            mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
             block: BlockId,
             returned_result: Result<reply::StateUpdate, SequencerError>,
@@ -922,7 +922,7 @@ mod tests {
 
         /// Convenience wrapper
         fn expect_class_by_hash(
-            mock: &mut MockClientApi,
+            mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
             class_hash: ClassHash,
             returned_result: Result<bytes::Bytes, SequencerError>,
@@ -949,7 +949,7 @@ mod tests {
             #[tokio::test]
             async fn from_genesis() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 // Downlad the genesis block with respective state update and contracts
@@ -1050,7 +1050,7 @@ mod tests {
             #[tokio::test]
             async fn resumed_after_genesis() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 // Start with downloading block #1
@@ -1124,7 +1124,7 @@ mod tests {
             #[tokio::test]
             async fn invalid_block_status() {
                 let (tx_event, _rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 // Block with a non-accepted status
@@ -1165,7 +1165,7 @@ mod tests {
             //
             async fn at_genesis_which_is_head() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 // Fetch the genesis block with respective state update and contracts
@@ -1300,7 +1300,7 @@ mod tests {
             //
             async fn at_genesis_which_is_not_head() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
@@ -1541,7 +1541,7 @@ mod tests {
             //
             async fn after_genesis_and_not_at_head() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
@@ -1820,7 +1820,7 @@ mod tests {
             //
             async fn after_genesis_and_at_head() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 let block2_v2 = reply::Block {
@@ -2013,7 +2013,7 @@ mod tests {
             //
             async fn parent_hash_mismatch() {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 let block1_v2 = reply::Block {
@@ -2209,7 +2209,7 @@ mod tests {
                 // Closing the event's channel should trigger the sync to exit with error after the first send.
                 rx_event.close();
 
-                let mut mock = MockClientApi::new();
+                let mut mock = MockGatewayApi::new();
                 let mut seq = mockall::Sequence::new();
 
                 expect_block(

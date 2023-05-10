@@ -40,7 +40,7 @@ pub async fn get_transaction_status(
     }
 
     // Check gateway for rejected transactions.
-    use starknet_gateway_client::ClientApi;
+    use starknet_gateway_client::GatewayApi;
     context
         .sequencer
         .transaction(input.transaction_hash)
