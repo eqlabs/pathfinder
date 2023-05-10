@@ -22,5 +22,11 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute("ALTER TABLE class_definitions DROP COLUMN declared_on", [])
         .context("Dropping declared_on column from class_definitions table")?;
 
+    tx.execute(
+        "CREATE INDEX class_definitions_block_number ON class_definitions(block_number)",
+        [],
+    )
+    .context("Creating index on class_definitions(block_number)")?;
+
     Ok(())
 }

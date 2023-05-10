@@ -102,7 +102,9 @@ CREATE TABLE storage_updates (
         CREATE INDEX nonce_updates_contract_address_block_number ON nonce_updates(contract_address, block_number);
         CREATE INDEX contract_updates_address_block_number ON contract_updates(contract_address, block_number);
         CREATE INDEX contract_updates_block_number ON contract_updates(block_number);
-        CREATE INDEX storage_updates_contract_address_storage_address_block_number ON storage_updates(contract_address, storage_address, block_number);"
+        CREATE INDEX storage_updates_contract_address_storage_address_block_number ON storage_updates(contract_address, storage_address, block_number);
+        CREATE INDEX storage_updates_block_number ON storage_updates(block_number);
+        CREATE INDEX nonce_updates_block_number ON nonce_updates(block_number);"
     )
     .context("Creating indexes")?;
 
