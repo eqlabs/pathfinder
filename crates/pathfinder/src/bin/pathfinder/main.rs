@@ -28,7 +28,7 @@ mod update;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "info");
+        std::env::set_var("RUST_LOG", "warn, pathfinder=info");
     }
 
     setup_tracing();
