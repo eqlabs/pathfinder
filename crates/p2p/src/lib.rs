@@ -6,13 +6,11 @@ use std::time::Duration;
 
 use delay_map::HashSetDelay;
 use futures::StreamExt;
-use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
+use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identity::Keypair;
 use libp2p::kad::record::Key;
 use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
-use libp2p::request_response::{
-    RequestId, RequestResponseEvent, RequestResponseMessage, ResponseChannel,
-};
+use libp2p::request_response::{self, RequestId, ResponseChannel};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Multiaddr;
 use libp2p::{identify, PeerId};
@@ -464,7 +462,7 @@ impl MainLoop {
             // ===========================
             // Block propagation
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::Gossipsub(GossipsubEvent::Message {
+            SwarmEvent::Behaviour(behaviour::Event::Gossipsub(gossipsub::Event::Message {
                 propagation_source: peer_id,
                 message_id: id,
                 message,
@@ -549,12 +547,11 @@ impl MainLoop {
             // ===========================
             // Block sync
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::BlockSync(RequestResponseEvent::Message {
-                message,
-                peer,
-            })) => {
+            SwarmEvent::Behaviour(behaviour::Event::BlockSync(
+                request_response::Event::Message { message, peer },
+            )) => {
                 match message {
-                    RequestResponseMessage::Request {
+                    request_response::Message::Request {
                         request, channel, ..
                     } => {
                         tracing::debug!(?request, %peer, "Received block sync request");
@@ -578,7 +575,7 @@ impl MainLoop {
                             .expect("Event receiver not to be dropped");
                         Ok(())
                     }
-                    RequestResponseMessage::Response {
+                    request_response::Message::Response {
                         request_id,
                         response,
                     } => {
@@ -606,7 +603,7 @@ impl MainLoop {
                 }
             }
             SwarmEvent::Behaviour(behaviour::Event::BlockSync(
-                RequestResponseEvent::OutboundFailure {
+                request_response::Event::OutboundFailure {
                     request_id, error, ..
                 },
             )) => {

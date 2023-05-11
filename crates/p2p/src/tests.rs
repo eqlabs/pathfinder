@@ -3,7 +3,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use core::panic;
-use libp2p::identity::{ed25519, Keypair};
+use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use std::collections::HashSet;
@@ -28,7 +28,7 @@ struct TestPeer {
 impl TestPeer {
     #[must_use]
     pub fn new(periodic_cfg: PeriodicTaskConfig) -> Self {
-        let keypair = Keypair::Ed25519(ed25519::Keypair::generate());
+        let keypair = Keypair::generate_ed25519();
         let peer_id = keypair.public().to_peer_id();
         let peers: Arc<RwLock<Peers>> = Default::default();
         let (client, event_receiver, main_loop) =

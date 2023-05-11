@@ -1,6 +1,6 @@
 use super::{behaviour, Command, Event, TestCommand, TestEvent};
 use libp2p::{
-    gossipsub::GossipsubEvent,
+    gossipsub,
     kad::{QueryId, QueryResult},
     swarm::SwarmEvent,
     PeerId,
@@ -57,7 +57,7 @@ pub(super) async fn handle_event<E: std::fmt::Debug>(
         SwarmEvent::NewListenAddr { address, .. } => {
             send_event(event_sender, TestEvent::NewListenAddress(address)).await;
         }
-        SwarmEvent::Behaviour(behaviour::Event::Gossipsub(GossipsubEvent::Subscribed {
+        SwarmEvent::Behaviour(behaviour::Event::Gossipsub(gossipsub::Event::Subscribed {
             peer_id,
             topic,
         })) => {

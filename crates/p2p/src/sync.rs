@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed, ProtocolName};
-use libp2p::request_response::RequestResponseCodec;
+use libp2p::request_response::Codec;
 
 #[derive(Debug, Clone)]
 pub struct BlockSyncProtocol();
@@ -18,7 +18,7 @@ impl ProtocolName for BlockSyncProtocol {
 pub struct BlockSyncCodec();
 
 #[async_trait]
-impl RequestResponseCodec for BlockSyncCodec {
+impl Codec for BlockSyncCodec {
     type Protocol = BlockSyncProtocol;
     type Request = p2p_proto::sync::Request;
     type Response = p2p_proto::sync::Response;
