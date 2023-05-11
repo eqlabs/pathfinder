@@ -1,20 +1,20 @@
 # Welcome to Pathfinder
 
-A [StarkNet](https://www.starknet.io) full node giving you a safe view into StarkNet.
+A [Starknet](https://www.starknet.io) full node giving you a safe view into Starknet.
 
 Pathfinder is currently in alpha so expect some rough edges but it is already usable today!
 
 ## Features
 
-- access the full StarkNet state history
+- access the full Starknet state history
   - includes contract code and storage, and transactions
 - verifies state using Ethereum
-  - calculates the StarkNet state's Patricia-Merkle Trie root on a block-by-block basis and confirms it against L1
+  - calculates the Starknet state's Patricia-Merkle Trie root on a block-by-block basis and confirms it against L1
   - this means the contract code and storage are now locally verified
-- implements the [StarkNet JSON-RPC API](#json-rpc-api)
+- implements the [Starknet JSON-RPC API](#json-rpc-api)
   - Starknet APIs like [starknet.js](https://www.starknetjs.com/) or [starknet.py](https://github.com/software-mansion/starknet.py)
     full support using our JSON-RPC API for interacting with Starknet
-- run StarkNet functions without requiring a StarkNet transaction
+- run Starknet functions without requiring a Starknet transaction
   - executed against the local state
 - do fee estimation for transactions
 
@@ -23,7 +23,7 @@ Pathfinder is currently in alpha so expect some rough edges but it is already us
 We appreciate any feedback, especially during this alpha period.
 This includes any documentation issues, feature requests and bugs that you may encounter.
 
-For help or to submit bug reports or feature requests, please open an issue or alternatively visit the StarkNet [discord channel](https://discord.com/invite/QypNMzkHbc).
+For help or to submit bug reports or feature requests, please open an issue or alternatively visit the Starknet [discord channel](https://discord.com/invite/QypNMzkHbc).
 
 ## Running with Docker
 
@@ -143,7 +143,7 @@ sudo docker run --rm eqlabs/pathfinder:latest --help
 
 ### Pending Support
 
-Block times on `mainnet` can be prohibitively long for certain applications. As a workaround, StarkNet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
+Block times on `mainnet` can be prohibitively long for certain applications. As a workaround, Starknet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
 
 Note that `pending` support is disabled by default and must be enabled by setting `poll-pending=true` in the configuration options.
 
@@ -168,32 +168,32 @@ error
 
 ### Network Selection
 
-The StarkNet network can be selected with the `--network` configuration option.
+The Starknet network can be selected with the `--network` configuration option.
 
 If `--network` is not specified, network selection will default to match your Ethereum endpoint:
 
-- StarkNet mainnet for Ethereum mainnet,
-- StarkNet testnet for Ethereum Goerli
+- Starknet mainnet for Ethereum mainnet,
+- Starknet testnet for Ethereum Goerli
 
 #### Custom networks & gateway proxies
 
 You can specify a custom network with `--network custom` and specifying the `--gateway-url`, `feeder-gateway-url` and `chain-id` options. 
 Note that `chain-id` should be specified as text e.g. `SN_GOERLI`.
 
-This can be used to interact with a custom StarkNet gateway, or to use a gateway proxy.
+This can be used to interact with a custom Starknet gateway, or to use a gateway proxy.
 
 ## JSON-RPC API
 
-You can interact with StarkNet using the JSON-RPC API. Pathfinder supports the official StarkNet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
+You can interact with Starknet using the JSON-RPC API. Pathfinder supports the official Starknet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
-Currently pathfinder supports both `v0.2.1` and `v0.3.0` versions of the StarkNet JSON-RPC specification. `v0.1` is not supported anymore.
+Currently pathfinder supports both `v0.2.1` and `v0.3.0` versions of the Starknet JSON-RPC specification. `v0.1` is not supported anymore.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
 - the `v0.2.1` API is exposed on the `/` and `/rpc/v0.2` paths
 - the `v0.3.0` API is exposed on the `/rpc/v0.3` path
 - the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1`
 
-Note that the pathfinder extension is versioned separately from the StarkNet specification itself.
+Note that the pathfinder extension is versioned separately from the Starknet specification itself.
 
 ### API `v0.2.1`
 
