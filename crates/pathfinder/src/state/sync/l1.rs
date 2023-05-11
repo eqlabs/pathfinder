@@ -1,7 +1,7 @@
 use pathfinder_ethereum::{EthereumClientApi, L1StateUpdate};
 use tokio::sync::mpsc::Sender;
 
-use crate::delay::{ExpBackoffDelay, Delay};
+use crate::delay::{Delay, ExpBackoffDelay};
 
 /// Syncs L1 state updates.
 pub async fn sync(

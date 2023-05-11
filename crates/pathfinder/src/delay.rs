@@ -25,7 +25,7 @@ impl ExpBackoffDelay {
                 min,
                 max,
                 current: max,
-            }))
+            })),
         }
     }
 }
