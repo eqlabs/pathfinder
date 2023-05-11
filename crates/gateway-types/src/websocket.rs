@@ -84,8 +84,3 @@ impl WebsocketSenders {
     }
 }
 
-impl Default for WebsocketSenders {
-    fn default() -> Self {
-        Self::with_capacity(100)
-    }
-}

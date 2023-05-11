@@ -149,7 +149,9 @@ impl Module {
         metrics::register_counter!("rpc_subscription_calls_total", "subscription" => subscription_name);
 
         let subscription_callback = move |_params: Params<'_>, sink, context: Arc<RpcContext>| {
-            subscription((*context).clone(), sink, &ws_broadcast_tx.clone())
+            let result = subscription((*context).clone(), sink, &ws_broadcast_tx.clone());
+            metrics::increment_counter!("rpc_subscription_calls_total", "subscription" => subscription_name);
+            result
         };
 
         self.0

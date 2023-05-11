@@ -56,12 +56,12 @@ Examples:
     )]
     rpc_address: SocketAddr,
 
-    #[arg(long = "ws", long_help = "Enable WebSocket transport")]
+    #[arg(long = "rpc.websocket", long_help = "Enable RPC WebSocket transport", default_value = "false", env = "PATHFINDER_RPC_WEBSOCKET")]
     ws: bool,
 
     #[arg(
         long = "ws.capacity",
-        long_help = "Capacity for WebSocket Senders",
+        long_help = "Maximum number of websocket subscriptions per subscription type",
         default_value = "100"
     )]
     ws_capacity: usize,
