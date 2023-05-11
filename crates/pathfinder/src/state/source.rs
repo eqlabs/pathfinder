@@ -13,6 +13,7 @@ use pathfinder_storage::{StarknetBlocksTable, Storage};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::StarknetErrorCode::BlockNotFound;
 use starknet_gateway_types::{error::SequencerError, reply::MaybePendingBlock};
+use tokio::task::spawn_blocking;
 
 #[cfg(test)]
 pub mod ex {
@@ -153,8 +154,8 @@ async fn poll_status(
     let current = {
         let db = &mut ctx.lock().await.storage.connection()?;
         let tx = db.transaction()?;
-        StarknetBlocksTable::get_latest_hash_and_number(&tx)?
-            .map(|(hash, num)| syncing::NumberedBlock::from((hash, num)))
+        // TODO(SM): deal with blocking DB code
+        StarknetBlocksTable::get_latest_hash_and_number(&tx)?.map(syncing::NumberedBlock::from)
     };
     let current = match current {
         Some(block) => block,
