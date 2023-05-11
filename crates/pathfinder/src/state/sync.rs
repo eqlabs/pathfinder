@@ -116,7 +116,11 @@ where
     loop {
         tokio::select! {
             l1_event = rx_l1.recv() => if let Some(update) = l1_event {
-                handle_l1_event(update, &mut db_conn)?;
+                let mut db = storage.connection()?;
+                tokio::task::spawn_blocking(move || {
+                    handle_l1_event(update, &mut db)?;
+                    Ok::<_, anyhow::Error>(())
+                }).await??;
             },
             l2_event = rx_l2.recv() => if let Some(event) = l2_event {
                 handle_l2_event(event, &mut db_conn, &pending_data, &sequencer, chain, state.clone()).await?;
