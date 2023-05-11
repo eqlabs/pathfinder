@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Duration};
 use futures::Future;
 use pathfinder_ethereum::L1StateUpdate;
 use pathfinder_rpc::v02::types::syncing;
+use rusqlite::Transaction;
 use starknet_gateway_types::reply::Block;
 use tokio::sync::{mpsc, Mutex, Notify};
 
@@ -13,7 +14,6 @@ use pathfinder_storage::{StarknetBlocksTable, Storage};
 use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::StarknetErrorCode::BlockNotFound;
 use starknet_gateway_types::{error::SequencerError, reply::MaybePendingBlock};
-use tokio::task::spawn_blocking;
 
 #[cfg(test)]
 pub mod ex {
@@ -95,6 +95,19 @@ where
             storage,
         }
     }
+
+    pub async fn db<R, F>(&self, f: F) -> anyhow::Result<R>
+    where
+        R: Send + 'static,
+        F: (FnOnce(Transaction<'_>) -> anyhow::Result<R>) + Send + 'static,
+    {
+        let mut db = self.storage.connection()?;
+        tokio::task::spawn_blocking(move || {
+            let tx = db.transaction()?;
+            f(tx)
+        })
+        .await?
+    }
 }
 
 async fn poll_l1(
@@ -152,17 +165,19 @@ async fn poll_status(
     };
 
     let current = {
-        let db = &mut ctx.lock().await.storage.connection()?;
-        let tx = db.transaction()?;
-        // TODO(SM): deal with blocking DB code
-        StarknetBlocksTable::get_latest_hash_and_number(&tx)?.map(syncing::NumberedBlock::from)
+        let ctx = ctx.lock().await;
+        ctx.db(|tx| {
+            Ok(StarknetBlocksTable::get_latest_hash_and_number(&tx)?
+                .map(syncing::NumberedBlock::from))
+        })
+        .await?
     };
     let current = match current {
         Some(block) => block,
         // _ => return Ok(None), // TODO(SM): restore
         _ => syncing::NumberedBlock::from((
             StarknetBlockHash(stark_hash::Felt::ZERO),
-            StarknetBlockNumber(42),
+            StarknetBlockNumber::GENESIS,
         )),
     };
 
