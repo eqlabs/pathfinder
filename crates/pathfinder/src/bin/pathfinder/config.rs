@@ -59,6 +59,8 @@ Examples:
     #[arg(
         long = "rpc.cors-domains",
         long_help = r"Comma separated list of domains from which Cross-Origin requests will be accepted by the RPC server.
+
+Use '*' to indicate any domain and an empty list to disable CORS.
         
 Examples:
     single: http://one.io
@@ -66,6 +68,7 @@ Examples:
     any:    *",
         value_name = "DOMAIN-LIST",
         value_delimiter = ',',
+        default_value = "Empty list i.e. CORS disabled",
         env = "PATHFINDER_RPC_CORS_DOMAINS"
     )]
     rpc_cors_domains: Vec<String>,
