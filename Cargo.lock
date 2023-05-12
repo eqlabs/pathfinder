@@ -7784,7 +7784,6 @@ version = "0.1.0"
 dependencies = [
  "pathfinder-common",
  "stark_hash",
- "starknet-gateway-types",
 ]
 
 [[package]]

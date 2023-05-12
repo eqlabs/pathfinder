@@ -9,4 +9,3 @@ rust-version = "1.62"
 [dependencies]
 pathfinder-common = { path = "../common" }
 stark_hash = { path = "../stark_hash" }
-starknet-gateway-types = { path = "../gateway-types" }
