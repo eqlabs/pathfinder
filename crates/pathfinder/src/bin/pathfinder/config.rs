@@ -66,7 +66,7 @@ Examples:
     ws: bool,
 
     #[arg(
-        long = "ws.capacity",
+        long = "rpc.websocket.capacity",
         long_help = "Maximum number of websocket subscriptions per subscription type",
         default_value = "100",
         env = "PATHFINDER_RPC_WEBSOCKET_CAPACITY"
