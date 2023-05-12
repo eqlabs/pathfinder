@@ -67,8 +67,15 @@ impl Storage {
     ///
     /// May be cloned safely.
     pub fn migrate(database_path: PathBuf, journal_mode: JournalMode) -> anyhow::Result<Self> {
-        let manager = SqliteConnectionManager::file(&database_path)
-            .with_init(move |c| setup_connection(c, journal_mode));
+        let mut connection = rusqlite::Connection::open(&database_path)
+            .context("Opening DB for setting journal mode")?;
+        setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
+        connection
+            .close()
+            .map_err(|(_connection, error)| error)
+            .context("Closing DB after setting journal mode")?;
+
+        let manager = SqliteConnectionManager::file(&database_path).with_init(setup_connection);
         let pool = Pool::builder().build(manager)?;
 
         let mut conn = pool.get()?;
@@ -117,13 +124,13 @@ impl Storage {
     }
 }
 
-fn setup_connection(
+fn setup_journal_mode(
     connection: &mut rusqlite::Connection,
     journal_mode: JournalMode,
 ) -> Result<(), rusqlite::Error> {
     // set journal mode related pragmas
     match journal_mode {
-        JournalMode::Rollback => connection.pragma_update(None, "journal_mode", "DELETE")?,
+        JournalMode::Rollback => connection.pragma_update(None, "journal_mode", "DELETE"),
         JournalMode::WAL => {
             connection.pragma_update(None, "journal_mode", "WAL")?;
             // set journal size limit to 1 GB
@@ -133,10 +140,12 @@ fn setup_connection(
                 (1024usize * 1024 * 1024).to_string(),
             )?;
             // According to the documentation NORMAL is a good choice for WAL mode.
-            connection.pragma_update(None, "synchronous", "normal")?;
+            connection.pragma_update(None, "synchronous", "normal")
         }
     }
+}
 
+fn setup_connection(connection: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
     // enable foreign keys
     connection.set_db_config(
         rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY,
@@ -252,7 +261,7 @@ mod tests {
     #[test]
     fn full_migration() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        setup_connection(&mut conn, JournalMode::Rollback).unwrap();
+        setup_connection(&mut conn).unwrap();
         migrate_database(&mut conn).unwrap();
         let version = schema_version(&conn).unwrap();
         let expected = schema::migrations().len();
@@ -262,7 +271,7 @@ mod tests {
     #[test]
     fn migration_fails_if_db_is_newer() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        setup_connection(&mut conn, JournalMode::Rollback).unwrap();
+        setup_connection(&mut conn).unwrap();
 
         // Force the schema to a newer version
         let current_version = schema::migrations().len();
