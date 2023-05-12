@@ -161,8 +161,11 @@ pub(crate) mod tests {
             felt_bytes, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ContractNonce,
             ContractRoot, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
         };
+        use pathfinder_storage::types::state_update::{DeployedContract, StateDiff};
         use pathfinder_storage::types::CompressedContract;
-        use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
+        use pathfinder_storage::{
+            insert_canonical_state_diff, StarknetBlock, StarknetBlocksTable, Storage,
+        };
         use stark_hash::Felt;
 
         // Mainnet block number 5
@@ -384,6 +387,34 @@ pub(crate) mod tests {
                 &StarknetVersion::default(),
                 new_storage_commitment,
                 ClassCommitment::ZERO,
+            )
+            .unwrap();
+
+            pathfinder_storage::CanonicalBlocksTable::insert(
+                &db_txn,
+                new_block.number,
+                new_block.hash,
+            )
+            .unwrap();
+
+            let state_diff = StateDiff {
+                storage_diffs: vec![],
+                declared_contracts: vec![],
+                deployed_contracts: vec![DeployedContract {
+                    address: contract_address,
+                    class_hash,
+                }],
+                nonces: vec![],
+                declared_sierra_classes: vec![],
+                replaced_classes: vec![],
+            };
+
+            insert_canonical_state_diff(&db_txn, new_block.number, &state_diff).unwrap();
+
+            pathfinder_storage::ContractCodeTable::update_block_number_if_null(
+                &db_txn,
+                class_hash,
+                new_block.number,
             )
             .unwrap();
 
