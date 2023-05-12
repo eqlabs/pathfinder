@@ -1,7 +1,7 @@
 use crate::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
 use pathfinder_common::{
-    felt, ContractAddress, EventData, EventKey, StarknetBlockNumber, StarknetTransactionHash,
+    felt, BlockNumber, ContractAddress, EventData, EventKey, StarknetTransactionHash,
 };
 use rusqlite::named_params;
 use stark_hash::Felt;
@@ -81,7 +81,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let t_begin = std::time::Instant::now();
     let mut t_log = t_begin;
     while let Some(row) = rows.next().context("Fetching next transaction hash")? {
-        let block_number: StarknetBlockNumber = row.get_unwrap("block_number");
+        let block_number: BlockNumber = row.get_unwrap("block_number");
         let transaction_hash: StarknetTransactionHash = row.get_unwrap("transaction_hash");
 
         process_transaction(tx, &mut compressor, &transaction_hash, block_number)?;
@@ -114,7 +114,7 @@ fn process_transaction(
     tx: &rusqlite::Transaction<'_>,
     compressor: &mut zstd::bulk::Compressor<'_>,
     transaction_hash: &StarknetTransactionHash,
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
 ) -> anyhow::Result<()> {
     let mut get_transaction_and_receipt = tx
         .prepare_cached(
@@ -202,7 +202,7 @@ fn update_database(
     tx: &rusqlite::Transaction<'_>,
     compressor: &mut zstd::bulk::Compressor<'_>,
     transaction_hash: &StarknetTransactionHash,
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     receipt: types::Receipt,
 ) -> anyhow::Result<()> {
     let mut delete_events =

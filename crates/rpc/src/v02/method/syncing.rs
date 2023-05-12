@@ -1,6 +1,6 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use pathfinder_common::{BlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_serde::StarknetBlockNumberAsHexStr;
 use serde::Serialize;
 
@@ -53,11 +53,11 @@ impl Serialize for SyncingOuput {
 #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
 pub struct SyncingStatus {
     #[serde_as(as = "StarknetBlockNumberAsHexStr")]
-    starting_block_num: StarknetBlockNumber,
+    starting_block_num: BlockNumber,
     #[serde_as(as = "StarknetBlockNumberAsHexStr")]
-    current_block_num: StarknetBlockNumber,
+    current_block_num: BlockNumber,
     #[serde_as(as = "StarknetBlockNumberAsHexStr")]
-    highest_block_num: StarknetBlockNumber,
+    highest_block_num: BlockNumber,
     #[serde_as(as = "RpcFelt")]
     starting_block_hash: BlockHash,
     #[serde_as(as = "RpcFelt")]
@@ -81,12 +81,12 @@ mod tests {
 
         #[test]
         fn syncing() {
-            use pathfinder_common::{felt, BlockHash, StarknetBlockNumber};
+            use pathfinder_common::{felt, BlockHash, BlockNumber};
 
             let status = SyncingStatus {
-                starting_block_num: StarknetBlockNumber::new_or_panic(0x12),
-                current_block_num: StarknetBlockNumber::new_or_panic(0x45),
-                highest_block_num: StarknetBlockNumber::new_or_panic(0x772),
+                starting_block_num: BlockNumber::new_or_panic(0x12),
+                current_block_num: BlockNumber::new_or_panic(0x45),
+                highest_block_num: BlockNumber::new_or_panic(0x772),
                 starting_block_hash: BlockHash(felt!("0xabcdef")),
                 current_block_hash: BlockHash(felt!("0x12345677")),
                 highest_block_hash: BlockHash(felt!("0x1144ffaacc")),
@@ -112,7 +112,7 @@ mod tests {
         use crate::v02::types::syncing::NumberedBlock;
         use crate::v02::types::syncing::Status as V2Status;
         use crate::v02::types::syncing::Syncing as V2Syncing;
-        use pathfinder_common::{BlockHash, StarknetBlockNumber};
+        use pathfinder_common::{BlockHash, BlockNumber};
 
         let status = V2Syncing::Status(V2Status {
             starting: NumberedBlock::from(("aabb", 1)),
@@ -121,9 +121,9 @@ mod tests {
         });
 
         let expected = super::SyncingStatus {
-            starting_block_num: StarknetBlockNumber::new_or_panic(1),
-            current_block_num: StarknetBlockNumber::new_or_panic(2),
-            highest_block_num: StarknetBlockNumber::new_or_panic(3),
+            starting_block_num: BlockNumber::new_or_panic(1),
+            current_block_num: BlockNumber::new_or_panic(2),
+            highest_block_num: BlockNumber::new_or_panic(3),
             starting_block_hash: BlockHash(pathfinder_common::felt!("0xaabb")),
             current_block_hash: BlockHash(pathfinder_common::felt!("0xccddee")),
             highest_block_hash: BlockHash(pathfinder_common::felt!("0xeeffaacc")),

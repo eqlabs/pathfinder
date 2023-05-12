@@ -2,7 +2,7 @@ use crate::contract::{STATE_UPDATE_EVENT_0_11_1, STATE_UPDATE_SIGNATURE_0_11_1};
 use crate::{contract::STATE_UPDATE_EVENT, EthOrigin};
 use anyhow::Context;
 use ethers::abi::{LogParam, RawLog};
-use pathfinder_common::{StarknetBlockNumber, StateCommitment};
+use pathfinder_common::{BlockNumber, StateCommitment};
 use stark_hash::Felt;
 
 /// Describes a state update log event.
@@ -12,7 +12,7 @@ use stark_hash::Felt;
 pub struct StateUpdateLog {
     pub origin: EthOrigin,
     pub global_root: StateCommitment,
-    pub block_number: StarknetBlockNumber,
+    pub block_number: BlockNumber,
 }
 
 impl StateUpdateLog {
@@ -49,7 +49,7 @@ impl TryFrom<ethers::types::Log> for StateUpdateLog {
             .into_int()
             .context("Starknet block number could not be parsed")?
             .as_u64();
-        let block_number = StarknetBlockNumber::new(block_number)
+        let block_number = BlockNumber::new(block_number)
             .ok_or_else(|| anyhow::anyhow!("Starknet block number out of range"))?;
 
         Ok(Self {
@@ -115,7 +115,7 @@ mod tests {
         /// log's StarkNet `global_root` and `block_number`
         ///
         /// Data taken from https://goerli.etherscan.io/tx/0xb6ba98e34c60bb39785df907de3c41c0a9c95302e50f213606772817514714ce#eventlog
-        fn test_data() -> (ethers::types::Log, StateCommitment, StarknetBlockNumber) {
+        fn test_data() -> (ethers::types::Log, StateCommitment, BlockNumber) {
             let data = Vec::from_hex("06bd197ccc199cc3be696635a482ff818a1f166ef91c5fd844aacafb15a12bcd0000000000000000000000000000000000000000000000000000000000003583").unwrap();
             let signature = H256::from_str(
                 "0xe8012213bb931d3efa0a954cfb0d7b75f2a5e2358ba5f7d3edfb0154f6e7a568",
@@ -127,7 +127,7 @@ mod tests {
                 )
                 .unwrap(),
             );
-            let sequence_number = StarknetBlockNumber::new_or_panic(13699);
+            let sequence_number = BlockNumber::new_or_panic(13699);
 
             (
                 create_test_log(signature, data),

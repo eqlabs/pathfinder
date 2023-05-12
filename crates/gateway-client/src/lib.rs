@@ -1,7 +1,7 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, CasmHash, Chain, ClassHash, ContractAddress, ContractAddressSalt, Fee,
-    StarknetBlockNumber, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+    BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
+    ContractAddressSalt, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
     TransactionVersion,
 };
 use reqwest::Url;
@@ -193,7 +193,7 @@ impl Client {
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
-            .block(StarknetBlockNumber::GENESIS.into())
+            .block(BlockNumber::GENESIS.into())
             .await?
             .as_block()
             .expect("Genesis block should not be pending")
@@ -560,7 +560,7 @@ pub mod test_utils {
 mod tests {
     use super::{test_utils::*, *};
     use assert_matches::assert_matches;
-    use pathfinder_common::{BlockHash, StarknetBlockNumber, StarknetVersion};
+    use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
@@ -582,7 +582,7 @@ mod tests {
 
                 Ok::<_, Infallible>(warp::reply::json(&Block {
                     block_hash: BlockHash(Felt::ZERO),
-                    block_number: StarknetBlockNumber::GENESIS,
+                    block_number: BlockNumber::GENESIS,
                     gas_price: None,
                     parent_block_hash: BlockHash(Felt::ZERO),
                     sequencer_address: None,
@@ -661,7 +661,7 @@ mod tests {
                 .await
                 .unwrap();
             let by_number = client
-                .block(StarknetBlockNumber::new_or_panic(231579).into())
+                .block(BlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -741,7 +741,7 @@ mod tests {
             let expected_version = StarknetVersion::new(0, 9, 1);
 
             let version = client
-                .block(StarknetBlockNumber::new_or_panic(300000).into())
+                .block(BlockNumber::new_or_panic(300000).into())
                 .await
                 .unwrap()
                 .as_block()
@@ -952,7 +952,7 @@ mod tests {
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(StarknetBlockNumber::new_or_panic(315700).into())
+                .state_update(BlockNumber::new_or_panic(315700).into())
                 .await
                 .unwrap()
                 .into();

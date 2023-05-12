@@ -99,7 +99,7 @@ pub async fn get_storage_at(
 }
 
 mod database {
-    use pathfinder_common::{BlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, BlockNumber};
     use rusqlite::{params, OptionalExtension, Transaction};
 
     use super::*;
@@ -143,7 +143,7 @@ mod database {
         tx: &Transaction<'_>,
         contract_address: ContractAddress,
         key: StorageAddress,
-        block: StarknetBlockNumber,
+        block: BlockNumber,
     ) -> anyhow::Result<Option<StorageValue>> {
         tx.query_row(
             r"SELECT storage_value FROM storage_updates 

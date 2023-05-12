@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{BlockHash, BlockId, StarknetBlockNumber, StateCommitment};
+use pathfinder_common::{BlockHash, BlockId, BlockNumber, StateCommitment};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -104,7 +104,7 @@ fn get_raw_block(
     let block_status = get_block_status(transaction, block.number)?;
 
     let (parent_hash, parent_root) = match block.number {
-        StarknetBlockNumber::GENESIS => (BlockHash(Felt::ZERO), StateCommitment(Felt::ZERO)),
+        BlockNumber::GENESIS => (BlockHash(Felt::ZERO), StateCommitment(Felt::ZERO)),
         other => {
             let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                 .context("Read parent block from database")?
@@ -132,7 +132,7 @@ fn get_raw_block(
 /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
 fn get_block_transactions(
     db_tx: &rusqlite::Transaction<'_>,
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     scope: types::BlockResponseScope,
 ) -> Result<types::Transactions, GetBlockError> {
     let transactions_receipts =
@@ -160,7 +160,7 @@ mod types {
     use crate::felt::RpcFelt;
     use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
-        BlockHash, GasPrice, SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp,
+        BlockHash, BlockNumber, GasPrice, SequencerAddress, StarknetBlockTimestamp,
         StarknetTransactionHash, StateCommitment,
     };
     use serde::Serialize;
@@ -206,7 +206,7 @@ mod types {
         pub block_hash: Option<BlockHash>,
         #[serde_as(as = "RpcFelt")]
         pub parent_hash: BlockHash,
-        pub block_number: Option<StarknetBlockNumber>,
+        pub block_number: Option<BlockNumber>,
         #[serde_as(as = "Option<RpcFelt>")]
         pub new_root: Option<StateCommitment>,
         pub timestamp: StarknetBlockTimestamp,
@@ -218,7 +218,7 @@ mod types {
     /// Convenience type for DB manipulation.
     #[derive(Debug)]
     pub struct RawBlock {
-        pub number: StarknetBlockNumber,
+        pub number: BlockNumber,
         pub hash: BlockHash,
         pub root: StateCommitment,
         pub parent_hash: BlockHash,
@@ -301,12 +301,12 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, BlockHash, StarknetBlockNumber};
+    use pathfinder_common::{felt, BlockHash, BlockNumber};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
-        let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
+        let number = BlockId::Number(BlockNumber::new_or_panic(123));
         let hash = BlockId::Hash(BlockHash(felt!("0xbeef")));
 
         [
@@ -422,7 +422,7 @@ mod tests {
             (ctx.clone(), BlockId::Latest, assert_hash(b"latest")),
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::GENESIS),
+                BlockId::Number(BlockNumber::GENESIS),
                 assert_hash(b"genesis"),
             ),
             (
@@ -432,7 +432,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::new_or_panic(9999)),
+                BlockId::Number(BlockNumber::new_or_panic(9999)),
                 assert_error(GetBlockError::BlockNotFound),
             ),
             (

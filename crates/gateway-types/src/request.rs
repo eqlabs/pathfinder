@@ -1,6 +1,6 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
 use pathfinder_common::{
-    BlockHash, CallParam, ContractAddress, Fee, StarknetBlockNumber, TransactionSignatureElem,
+    BlockHash, BlockNumber, CallParam, ContractAddress, Fee, TransactionSignatureElem,
 };
 use serde::{Deserialize, Serialize};
 
@@ -79,7 +79,7 @@ impl From<BlockHashOrTag> for pathfinder_common::BlockId {
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
     /// Number (height) of a block
-    Number(StarknetBlockNumber),
+    Number(BlockNumber),
     /// Special [`Tag`] describing a block
     Tag(Tag),
 }
@@ -93,8 +93,8 @@ impl std::fmt::Display for BlockNumberOrTag {
     }
 }
 
-impl From<StarknetBlockNumber> for BlockNumberOrTag {
-    fn from(number: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for BlockNumberOrTag {
+    fn from(number: BlockNumber) -> Self {
         Self::Number(number)
     }
 }

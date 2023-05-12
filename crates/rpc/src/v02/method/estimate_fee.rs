@@ -158,9 +158,8 @@ pub(crate) mod tests {
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{
-            felt_bytes, CasmHash, ClassCommitment, ContractNonce, ContractRoot, GasPrice,
-            SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
-            StateCommitment,
+            felt_bytes, BlockNumber, CasmHash, ClassCommitment, ContractNonce, ContractRoot,
+            GasPrice, SequencerAddress, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
         };
         use pathfinder_storage::types::CompressedContract;
         use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
@@ -243,7 +242,7 @@ pub(crate) mod tests {
             Storage,
             ContractAddress,
             BlockHash,
-            StarknetBlockNumber,
+            BlockNumber,
         ) {
             let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             source_path.push("fixtures/mainnet.sqlite");
@@ -303,7 +302,7 @@ pub(crate) mod tests {
 
         fn add_dummy_account(
             storage: pathfinder_storage::Storage,
-        ) -> (ContractAddress, BlockHash, StarknetBlockNumber) {
+        ) -> (ContractAddress, BlockHash, BlockNumber) {
             let mut db_conn = storage.connection().unwrap();
             let db_txn = db_conn.transaction().unwrap();
 

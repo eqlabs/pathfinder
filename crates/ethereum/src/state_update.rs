@@ -219,7 +219,7 @@ mod tests {
     use assert_matches::assert_matches;
     use pretty_assertions::assert_eq;
 
-    use pathfinder_common::{Chain, StarknetBlockNumber};
+    use pathfinder_common::{BlockNumber, Chain};
 
     use crate::provider::HttpProvider;
 
@@ -236,11 +236,12 @@ mod tests {
         let first_fetch = uut.fetch(transport).await.unwrap();
         let first = first_fetch.first().expect("Should be at least one log");
 
-        assert_eq!(first.block_number, StarknetBlockNumber::GENESIS);
+        assert_eq!(first.block_number, BlockNumber::GENESIS);
     }
 
     mod genesis {
-        use ethers::types::{BlockNumber, Filter};
+        use ethers::types::BlockNumber as EthBlockNumber;
+        use ethers::types::Filter;
         use pretty_assertions::assert_eq;
 
         use crate::provider::EthereumTransport;
@@ -254,7 +255,7 @@ mod tests {
             let chain = Chain::Mainnet;
             let transport = HttpProvider::test_provider(chain);
 
-            let block_number = BlockNumber::Number(MAINNET_GENESIS.0.into());
+            let block_number = EthBlockNumber::Number(MAINNET_GENESIS.0.into());
 
             let filter = Filter::default()
                 .address(MAINNET_ADDRESSES.core)
@@ -269,10 +270,7 @@ mod tests {
                 .collect::<Result<Vec<StateUpdateLog>, _>>()
                 .unwrap();
 
-            assert_eq!(
-                logs.first().unwrap().block_number,
-                StarknetBlockNumber::GENESIS
-            );
+            assert_eq!(logs.first().unwrap().block_number, BlockNumber::GENESIS);
         }
 
         #[tokio::test]
@@ -282,7 +280,7 @@ mod tests {
             let chain = Chain::Testnet;
             let transport = HttpProvider::test_provider(chain);
 
-            let block_number = BlockNumber::Number(TESTNET_GENESIS.0.into());
+            let block_number = EthBlockNumber::Number(TESTNET_GENESIS.0.into());
 
             let filter = Filter::default()
                 .address(TESTNET_ADDRESSES.core)
@@ -297,10 +295,7 @@ mod tests {
                 .collect::<Result<Vec<StateUpdateLog>, _>>()
                 .unwrap();
 
-            assert_eq!(
-                logs.first().unwrap().block_number,
-                StarknetBlockNumber::GENESIS
-            );
+            assert_eq!(logs.first().unwrap().block_number, BlockNumber::GENESIS);
         }
 
         #[tokio::test]
@@ -309,7 +304,7 @@ mod tests {
             let chain = Chain::Integration;
             let transport = HttpProvider::test_provider(chain);
 
-            let block_number = BlockNumber::Number(INTEGRATION_GENESIS.0.into());
+            let block_number = EthBlockNumber::Number(INTEGRATION_GENESIS.0.into());
 
             let filter = Filter::default()
                 .address(INTEGRATION_ADDRESSES.core)
@@ -324,10 +319,7 @@ mod tests {
                 .collect::<Result<Vec<StateUpdateLog>, _>>()
                 .unwrap();
 
-            assert_eq!(
-                logs.first().unwrap().block_number,
-                StarknetBlockNumber::GENESIS
-            );
+            assert_eq!(logs.first().unwrap().block_number, BlockNumber::GENESIS);
         }
     }
 
@@ -370,7 +362,7 @@ mod tests {
                     log_index: EthereumLogIndex(11),
                 },
                 global_root: StateCommitment(felt!("0x12354")),
-                block_number: StarknetBlockNumber::new_or_panic(3),
+                block_number: BlockNumber::new_or_panic(3),
             };
 
             let mut uut = StateRootFetcher::testnet(Some(not_genesis));
@@ -400,7 +392,7 @@ mod tests {
                     log_index: EthereumLogIndex(11),
                 },
                 global_root: StateCommitment(felt!("0x12354")),
-                block_number: StarknetBlockNumber::new_or_panic(3),
+                block_number: BlockNumber::new_or_panic(3),
             };
 
             let mut uut = StateRootFetcher::testnet(Some(not_genesis));

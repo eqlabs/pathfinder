@@ -86,7 +86,7 @@ async fn get_pending_class_hash(
 }
 
 mod database {
-    use pathfinder_common::{BlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, BlockNumber};
     use rusqlite::{OptionalExtension, Transaction};
 
     use super::*;
@@ -108,7 +108,7 @@ mod database {
     pub fn class_hash_at_block_number(
         tx: &Transaction<'_>,
         contract: ContractAddress,
-        block_number: StarknetBlockNumber,
+        block_number: BlockNumber,
     ) -> anyhow::Result<Option<ClassHash>> {
         tx.query_row(
             r"SELECT class_hash FROM contract_updates WHERE contract_address = ? AND
@@ -228,14 +228,14 @@ mod tests {
 
     #[tokio::test]
     async fn at_block() {
-        use pathfinder_common::StarknetBlockNumber;
+        use pathfinder_common::BlockNumber;
         let context = RpcContext::for_tests();
 
         // This contract is deployed in block 1.
         let address = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
 
         let input = GetClassHashAtInput {
-            block_id: StarknetBlockNumber::new_or_panic(0).into(),
+            block_id: BlockNumber::new_or_panic(0).into(),
             contract_address: address,
         };
         let result = get_class_hash_at(context.clone(), input).await;
@@ -243,14 +243,14 @@ mod tests {
 
         let expected = ClassHash(felt_bytes!(b"class 1 hash"));
         let input = GetClassHashAtInput {
-            block_id: StarknetBlockNumber::new_or_panic(1).into(),
+            block_id: BlockNumber::new_or_panic(1).into(),
             contract_address: address,
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
         assert_eq!(result.0, expected);
 
         let input = GetClassHashAtInput {
-            block_id: StarknetBlockNumber::new_or_panic(2).into(),
+            block_id: BlockNumber::new_or_panic(2).into(),
             contract_address: address,
         };
         let result = get_class_hash_at(context, input).await.unwrap();

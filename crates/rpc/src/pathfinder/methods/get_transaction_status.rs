@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{StarknetBlockNumber, StarknetTransactionHash};
+use pathfinder_common::{BlockNumber, StarknetTransactionHash};
 use pathfinder_storage::Storage;
 use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
@@ -77,7 +77,7 @@ fn check_database(
             [transaction_hash],
             |row| {
                 let number = row.get_ref_unwrap(0).as_i64()?;
-                Ok(StarknetBlockNumber::new_or_panic(number as u64))
+                Ok(BlockNumber::new_or_panic(number as u64))
             },
         )
         .optional()

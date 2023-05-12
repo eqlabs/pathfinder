@@ -102,7 +102,7 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, GasPrice, SequencerAddress, StarknetBlockNumber,
+        felt, felt_bytes, BlockHash, BlockNumber, GasPrice, SequencerAddress,
         StarknetBlockTimestamp, StarknetVersion, StateCommitment,
     };
     use starknet_gateway_client::MockGatewayApi;
@@ -117,7 +117,7 @@ mod tests {
 
         pub static ref NEXT_BLOCK: Block = Block{
             block_hash: BlockHash(felt!("0xabcd")),
-            block_number: StarknetBlockNumber::new_or_panic(1),
+            block_number: BlockNumber::new_or_panic(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
             sequencer_address: None,

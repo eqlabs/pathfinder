@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
-use pathfinder_common::{BlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_storage::StarknetBlocksTable;
 
 #[serde_with::serde_as]
@@ -9,7 +9,7 @@ use pathfinder_storage::StarknetBlocksTable;
 pub struct BlockHashAndNumber {
     #[serde_as(as = "RpcFelt")]
     pub block_hash: BlockHash,
-    pub block_number: StarknetBlockNumber,
+    pub block_number: BlockNumber,
 }
 
 crate::error::generate_rpc_error_subset!(BlockNumberError: NoBlocks);
@@ -39,7 +39,7 @@ pub async fn block_hash_and_number(
     jh.await.context("Database read panic or shutting down")?
 }
 
-pub async fn block_number(context: RpcContext) -> Result<StarknetBlockNumber, BlockNumberError> {
+pub async fn block_number(context: RpcContext) -> Result<BlockNumber, BlockNumberError> {
     block_hash_and_number(context)
         .await
         .map(|result| result.block_number)
@@ -54,7 +54,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let result = block_hash_and_number(context).await.unwrap();
 
-        assert_eq!(result.block_number, StarknetBlockNumber::new_or_panic(2));
+        assert_eq!(result.block_number, BlockNumber::new_or_panic(2));
         assert_eq!(
             result.block_hash,
             BlockHash(pathfinder_common::felt_bytes!(b"latest"))

@@ -92,9 +92,7 @@ async fn get_transaction_from_pending(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{
-        felt, felt_bytes, BlockHash, StarknetBlockNumber, StarknetTransactionHash,
-    };
+    use pathfinder_common::{felt, felt_bytes, BlockHash, BlockNumber, StarknetTransactionHash};
     use stark_hash::Felt;
 
     mod parsing {
@@ -183,7 +181,7 @@ mod tests {
     async fn by_block_number() {
         let context = RpcContext::for_tests();
         let input = GetTransactionByBlockIdAndIndexInput {
-            block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(0)),
+            block_id: BlockId::Number(BlockNumber::new_or_panic(0)),
             index: StarknetTransactionIndex::new_or_panic(0),
         };
 

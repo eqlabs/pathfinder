@@ -93,7 +93,7 @@ pub async fn get_class_at(
 }
 
 mod database {
-    use pathfinder_common::{BlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, BlockNumber};
 
     use super::*;
 
@@ -116,7 +116,7 @@ mod database {
     pub fn definition_at_block_number(
         tx: &rusqlite::Transaction<'_>,
         contract: ContractAddress,
-        block_number: StarknetBlockNumber,
+        block_number: BlockNumber,
     ) -> anyhow::Result<Option<Vec<u8>>> {
         tx.query_row(
             r"SELECT definition FROM class_definitions 
@@ -310,7 +310,7 @@ mod tests {
 
     #[tokio::test]
     async fn number() {
-        use pathfinder_common::StarknetBlockNumber;
+        use pathfinder_common::BlockNumber;
 
         let context = RpcContext::for_tests();
 
@@ -320,7 +320,7 @@ mod tests {
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
-                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(1)),
+                block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
                 contract_address: valid_v0,
             },
         )
@@ -333,7 +333,7 @@ mod tests {
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
-                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 contract_address: valid_v1,
             },
         )
@@ -343,7 +343,7 @@ mod tests {
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
-                block_id: BlockId::Number(StarknetBlockNumber::GENESIS),
+                block_id: BlockId::Number(BlockNumber::GENESIS),
                 contract_address: valid_v0,
             },
         )
@@ -355,7 +355,7 @@ mod tests {
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
-                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 contract_address: invalid,
             },
         )
@@ -367,7 +367,7 @@ mod tests {
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
-                block_id: BlockId::Number(StarknetBlockNumber::MAX),
+                block_id: BlockId::Number(BlockNumber::MAX),
                 contract_address: valid_v0,
             },
         )

@@ -2,9 +2,9 @@ use super::{
     StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
 };
 use pathfinder_common::{
-    felt, BlockHash, CallParam, ClassCommitment, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
-    SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
+    felt, BlockHash, BlockNumber, CallParam, ClassCommitment, ClassHash, ConstructorParam,
+    ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee,
+    GasPrice, SequencerAddress, StarknetBlockTimestamp, StarknetTransactionHash,
     StarknetTransactionIndex, StarknetVersion, StateCommitment, StorageCommitment,
     TransactionCommitment, TransactionNonce, TransactionSignatureElem, TransactionVersion,
 };
@@ -35,7 +35,7 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
             let index_as_felt = Felt::from_be_slice(&[i as u8]).unwrap();
             BlockWithCommitment {
                 block: StarknetBlock {
-                    number: StarknetBlockNumber::GENESIS + i as u64,
+                    number: BlockNumber::GENESIS + i as u64,
                     hash: BlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
                     state_commmitment: StateCommitment::calculate(
                         storage_commitment,

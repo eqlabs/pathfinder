@@ -53,7 +53,7 @@ mod tests {
         //         log_index: EthereumLogIndex(0),
         //     },
         //     global_root: expected_global_root,
-        //     block_number: StarknetBlockNumber(0),
+        //     block_number: BlockNumber(0),
         // };
 
         // let (c_tx, mut c_rx) = mpsc::channel(1);
@@ -113,7 +113,7 @@ mod tests {
         //             .unwrap(),
         //         ),
         //         global_root: expected_global_root,
-        //         block_number: StarknetBlockNumber(0),
+        //         block_number: BlockNumber(0),
         //         block_timestamp: StarknetBlockTimestamp::new_or_panic(0),
         //         eth_block_hash: EthereumBlockHash(H256::zero()),
         //         eth_block_number: EthereumBlockNumber(0),
@@ -194,7 +194,7 @@ mod tests {
         //         log_index: EthereumLogIndex(0),
         //     },
         //     global_root: StateCommitment(Felt::ZERO),
-        //     block_number: StarknetBlockNumber(0),
+        //     block_number: BlockNumber(0),
         // };
 
         // let (c_tx, mut c_rx) = mpsc::channel(1);
@@ -249,7 +249,7 @@ mod tests {
         todo!("Update me to new sync process when possible");
         // use pathfinder_common::{
         //     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        //     EthereumTransactionIndex, StateCommitment, BlockHash, StarknetBlockNumber,
+        //     EthereumTransactionIndex, StateCommitment, BlockHash, BlockNumber,
         // };
         // use pathfinder_ethereum::{
         //     log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
@@ -295,7 +295,7 @@ mod tests {
         //         )
         //         .unwrap(),
         //     ),
-        //     block_number: StarknetBlockNumber(0),
+        //     block_number: BlockNumber(0),
         // };
 
         // let chain = crate::core::Chain::Goerli;

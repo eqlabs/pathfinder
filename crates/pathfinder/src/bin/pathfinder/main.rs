@@ -3,9 +3,7 @@
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::EthereumAddress;
-use pathfinder_common::{
-    consts::VERGEN_GIT_DESCRIBE, Chain, ChainId, EthereumChain, StarknetBlockNumber,
-};
+use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
 use pathfinder_lib::{
     monitoring::{self},
@@ -476,7 +474,7 @@ async fn verify_database(
         let mut conn = storage.connection().context("Create database connection")?;
         let tx = conn.transaction().context("Create database transaction")?;
 
-        StarknetBlocksTable::get_hash(&tx, StarknetBlockNumber::GENESIS.into())
+        StarknetBlocksTable::get_hash(&tx, BlockNumber::GENESIS.into())
     })
     .await
     .context("Fetching genesis hash from database")?
@@ -500,7 +498,7 @@ async fn verify_database(
             (Chain::Custom, _) => {
                 // Verify against gateway.
                 let gateway_block = gateway_client
-                    .block(StarknetBlockNumber::GENESIS.into())
+                    .block(BlockNumber::GENESIS.into())
                     .await
                     .context("Downloading genesis block from gateway for database verification")?
                     .as_block()

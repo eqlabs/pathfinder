@@ -6,8 +6,8 @@ use crate::reply::transaction::{
     L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::{
-    CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, StarknetBlockNumber,
-    StarknetTransactionHash, TransactionNonce, TransactionVersion,
+    BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
+    TransactionNonce, TransactionVersion,
 };
 
 use crate::class_hash::truncated_keccak;
@@ -22,11 +22,7 @@ pub enum VerifyResult {
     NotVerifiable,
 }
 
-pub fn verify(
-    txn: &Transaction,
-    chain_id: ChainId,
-    block_number: StarknetBlockNumber,
-) -> VerifyResult {
+pub fn verify(txn: &Transaction, chain_id: ChainId, block_number: BlockNumber) -> VerifyResult {
     let chain_id = match chain_id {
         // We don't know how to properly compute hashes of some old L1 Handler transactions
         // Worse still those are invokes in old snapshots but currently are served as
@@ -532,11 +528,11 @@ mod tests {
 
     mod verification {
         use crate::transaction_hash::{verify, VerifyResult};
-        use pathfinder_common::{ChainId, StarknetBlockNumber};
+        use pathfinder_common::{BlockNumber, ChainId};
 
         mod skipped {
             use crate::transaction_hash::{verify, VerifyResult};
-            use pathfinder_common::{ChainId, StarknetBlockNumber};
+            use pathfinder_common::{BlockNumber, ChainId};
             use starknet_gateway_test_fixtures::v0_11_0;
 
             #[test]
@@ -549,7 +545,7 @@ mod tests {
                     verify(
                         &block_854_idx_96,
                         ChainId::TESTNET,
-                        StarknetBlockNumber::new_or_panic(854),
+                        BlockNumber::new_or_panic(854),
                     ),
                     VerifyResult::NotVerifiable
                 );
@@ -565,7 +561,7 @@ mod tests {
                     verify(
                         &block_854_idx_96,
                         ChainId::TESTNET,
-                        StarknetBlockNumber::new_or_panic(854),
+                        BlockNumber::new_or_panic(854),
                     ),
                     VerifyResult::NotVerifiable
                 );
@@ -577,11 +573,7 @@ mod tests {
             let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
 
             assert_eq!(
-                verify(
-                    &txn,
-                    ChainId::TESTNET,
-                    StarknetBlockNumber::new_or_panic(797220),
-                ),
+                verify(&txn, ChainId::TESTNET, BlockNumber::new_or_panic(797220),),
                 VerifyResult::Match
             );
         }
@@ -591,11 +583,7 @@ mod tests {
             let (txn, _) = case!(super::v0_11_0::transaction::declare::v2::BLOCK_797220);
             // Wrong chain id to force failure
             assert!(matches!(
-                verify(
-                    &txn,
-                    ChainId::MAINNET,
-                    StarknetBlockNumber::new_or_panic(797220),
-                ),
+                verify(&txn, ChainId::MAINNET, BlockNumber::new_or_panic(797220),),
                 VerifyResult::Mismatch(_)
             ))
         }

@@ -622,15 +622,15 @@ mod tests {
     use jsonrpsee::types::Params;
     use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
-        BlockHash, Chain, ClassHash, ContractAddress, StarknetBlockNumber, StateCommitment,
-        StorageAddress, StorageValue,
+        BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
+        StorageValue,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
-        let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
+        let number = BlockId::Number(BlockNumber::new_or_panic(123));
         let hash = BlockId::Hash(BlockHash(felt!("0xbeef")));
 
         [
@@ -731,7 +731,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::GENESIS),
+                BlockId::Number(BlockNumber::GENESIS),
                 assert_ok(in_storage[0].clone()),
             ),
             (
@@ -743,7 +743,7 @@ mod tests {
             // Errors
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::new_or_panic(9999)),
+                BlockId::Number(BlockNumber::new_or_panic(9999)),
                 assert_error(GetStateUpdateError::BlockNotFound),
             ),
             (

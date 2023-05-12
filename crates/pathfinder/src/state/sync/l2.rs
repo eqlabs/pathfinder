@@ -2,8 +2,8 @@ use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    BlockHash, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetBlockNumber,
-    StarknetVersion, StateCommitment, TransactionCommitment,
+    BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
+    StateCommitment, TransactionCommitment,
 };
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use starknet_gateway_client::GatewayApi;
@@ -39,7 +39,7 @@ pub enum Event {
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
-    Reorg(StarknetBlockNumber),
+    Reorg(BlockNumber),
     /// A new unique L2 Cairo 0.x [contract](CompressedContract) was found.
     NewCairoContract(CompressedContract),
     /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
@@ -48,7 +48,7 @@ pub enum Event {
     ///
     /// The receiver should return the data using the [oneshot::channel].
     QueryBlock(
-        StarknetBlockNumber,
+        BlockNumber,
         oneshot::Sender<Option<(BlockHash, StateCommitment)>>,
     ),
     /// Query for the existance of the the given [contracts](ClassHash) in storage.
@@ -63,7 +63,7 @@ pub enum Event {
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: impl GatewayApi,
-    mut head: Option<(StarknetBlockNumber, BlockHash, StateCommitment)>,
+    mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     chain: Chain,
     chain_id: ChainId,
     pending_poll_interval: Option<Duration>,
@@ -75,7 +75,7 @@ pub async fn sync(
         // Get the next block from L2.
         let (next, head_meta) = match head {
             Some(head) => (head.0 + 1, Some(head)),
-            None => (StarknetBlockNumber::GENESIS, None),
+            None => (BlockNumber::GENESIS, None),
         };
         let t_block = std::time::Instant::now();
         // Next block and state update which we can get for free when exiting poll pending mode
@@ -349,7 +349,7 @@ pub enum BlockValidationMode {
 }
 
 async fn download_block(
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     // Poll pending could exit when it encountered a finalized block, so we'd like to reuse it
     next_block: Option<Block>,
     chain: Chain,
@@ -461,19 +461,19 @@ async fn download_block(
 }
 
 async fn reorg(
-    head: (StarknetBlockNumber, BlockHash, StateCommitment),
+    head: (BlockNumber, BlockHash, StateCommitment),
     chain: Chain,
     chain_id: ChainId,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
-) -> anyhow::Result<Option<(StarknetBlockNumber, BlockHash, StateCommitment)>> {
+) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
     let mut reorg_tail = head;
 
     let new_head = loop {
-        if reorg_tail.0 == StarknetBlockNumber::GENESIS {
+        if reorg_tail.0 == BlockNumber::GENESIS {
             break None;
         }
 
@@ -511,9 +511,7 @@ async fn reorg(
         reorg_tail = (previous_block_number, previous.0, previous.1);
     };
 
-    let reorg_tail = new_head
-        .map(|x| x.0 + 1)
-        .unwrap_or(StarknetBlockNumber::GENESIS);
+    let reorg_tail = new_head.map(|x| x.0 + 1).unwrap_or(BlockNumber::GENESIS);
 
     tx_event
         .send(Event::Reorg(reorg_tail))
@@ -625,9 +623,9 @@ mod tests {
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
-            BlockHash, BlockId, Chain, ChainId, ClassHash, ContractAddress, GasPrice,
-            SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
-            StateCommitment, StorageAddress, StorageValue,
+            BlockHash, BlockId, BlockNumber, Chain, ChainId, ClassHash, ContractAddress, GasPrice,
+            SequencerAddress, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
+            StorageAddress, StorageValue,
         };
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;
@@ -655,11 +653,11 @@ mod tests {
             "entry_points_by_type": {}
         }"#;
 
-        const BLOCK0_NUMBER: StarknetBlockNumber = StarknetBlockNumber::GENESIS;
-        const BLOCK1_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(1);
-        const BLOCK2_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(2);
-        const BLOCK3_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(3);
-        const BLOCK4_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(4);
+        const BLOCK0_NUMBER: BlockNumber = BlockNumber::GENESIS;
+        const BLOCK1_NUMBER: BlockNumber = BlockNumber::new_or_panic(1);
+        const BLOCK2_NUMBER: BlockNumber = BlockNumber::new_or_panic(2);
+        const BLOCK3_NUMBER: BlockNumber = BlockNumber::new_or_panic(3);
+        const BLOCK4_NUMBER: BlockNumber = BlockNumber::new_or_panic(4);
 
         lazy_static::lazy_static! {
             static ref BLOCK0_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());

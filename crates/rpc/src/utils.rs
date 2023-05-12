@@ -48,15 +48,15 @@ mod tests {
 
         #[test]
         fn by_number() {
-            use pathfinder_common::StarknetBlockNumber;
+            use pathfinder_common::BlockNumber;
 
             assert!(
-                run_test(StarknetBlockNumber::new_or_panic(2)),
+                run_test(BlockNumber::new_or_panic(2)),
                 "Block two should exist"
             );
 
             assert!(
-                !run_test(StarknetBlockNumber::new_or_panic(50_000)),
+                !run_test(BlockNumber::new_or_panic(50_000)),
                 "Block fifty thousand should not exist"
             );
         }

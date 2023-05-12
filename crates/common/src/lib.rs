@@ -173,14 +173,14 @@ pub struct BlockHash(pub Felt);
 
 /// A StarkNet block number.
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
-pub struct StarknetBlockNumber(u64);
+pub struct BlockNumber(u64);
 
-macros::i64_backed_u64::to_from_sql!(StarknetBlockNumber);
-macros::i64_backed_u64::new_get_partialeq!(StarknetBlockNumber);
-macros::i64_backed_u64::serdes!(StarknetBlockNumber);
+macros::i64_backed_u64::to_from_sql!(BlockNumber);
+macros::i64_backed_u64::new_get_partialeq!(BlockNumber);
+macros::i64_backed_u64::serdes!(BlockNumber);
 
-impl From<StarknetBlockNumber> for Felt {
-    fn from(x: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for Felt {
+    fn from(x: BlockNumber) -> Self {
         Felt::from(x.0)
     }
 }
@@ -322,7 +322,7 @@ pub struct EthereumLogIndex(pub u64);
 #[serde(deny_unknown_fields)]
 pub enum BlockId {
     #[serde(rename = "block_number")]
-    Number(StarknetBlockNumber),
+    Number(BlockNumber),
     #[serde(rename = "block_hash")]
     Hash(BlockHash),
     #[serde(rename = "latest")]
@@ -331,36 +331,36 @@ pub enum BlockId {
     Pending,
 }
 
-impl StarknetBlockNumber {
-    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(0);
-    /// The maximum [StarknetBlockNumber] we can support. Restricted to `u64::MAX/2` to
+impl BlockNumber {
+    pub const GENESIS: BlockNumber = BlockNumber::new_or_panic(0);
+    /// The maximum [BlockNumber] we can support. Restricted to `u64::MAX/2` to
     /// match Sqlite's maximum integer value.
-    pub const MAX: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(i64::MAX as u64);
+    pub const MAX: BlockNumber = BlockNumber::new_or_panic(i64::MAX as u64);
 }
 
-impl std::ops::Add<u64> for StarknetBlockNumber {
-    type Output = StarknetBlockNumber;
+impl std::ops::Add<u64> for BlockNumber {
+    type Output = BlockNumber;
 
     fn add(self, rhs: u64) -> Self::Output {
         Self(self.0 + rhs)
     }
 }
 
-impl std::ops::AddAssign<u64> for StarknetBlockNumber {
+impl std::ops::AddAssign<u64> for BlockNumber {
     fn add_assign(&mut self, rhs: u64) {
         self.0 += rhs;
     }
 }
 
-impl std::ops::Sub<u64> for StarknetBlockNumber {
-    type Output = StarknetBlockNumber;
+impl std::ops::Sub<u64> for BlockNumber {
+    type Output = BlockNumber;
 
     fn sub(self, rhs: u64) -> Self::Output {
         Self(self.0 - rhs)
     }
 }
 
-impl std::ops::SubAssign<u64> for StarknetBlockNumber {
+impl std::ops::SubAssign<u64> for BlockNumber {
     fn sub_assign(&mut self, rhs: u64) {
         self.0 -= rhs;
     }
@@ -408,8 +408,8 @@ impl From<u64> for GasPrice {
     }
 }
 
-impl From<StarknetBlockNumber> for BlockId {
-    fn from(number: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for BlockId {
+    fn from(number: BlockNumber) -> Self {
         Self::Number(number)
     }
 }
@@ -549,7 +549,7 @@ macros::starkhash::common_newtype!(
     TransactionSignatureElem,
 );
 
-macros::fmt::thin_display!(StarknetBlockNumber);
+macros::fmt::thin_display!(BlockNumber);
 macros::fmt::thin_display!(StarknetBlockTimestamp);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -637,9 +637,9 @@ mod tests {
 
         #[test]
         fn number() {
-            use crate::StarknetBlockNumber;
+            use crate::BlockNumber;
             let result = serde_json::from_str::<BlockId>(r#"{"block_number": 123456}"#).unwrap();
-            assert_eq!(result, BlockId::Number(StarknetBlockNumber(123456)));
+            assert_eq!(result, BlockId::Number(BlockNumber(123456)));
         }
 
         #[test]

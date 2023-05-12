@@ -11,8 +11,8 @@ use crate::{
     {StarknetBlock, Storage},
 };
 use pathfinder_common::{
-    BlockHash, CasmHash, ClassCommitment, ClassHash, ContractAddress, ContractNonce, GasPrice,
-    SequencerAddress, SierraHash, StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
+    BlockHash, BlockNumber, CasmHash, ClassCommitment, ClassHash, ContractAddress, ContractNonce,
+    GasPrice, SequencerAddress, SierraHash, StarknetBlockTimestamp, StateCommitment,
     StorageAddress, StorageCommitment, StorageValue,
 };
 use rusqlite::Transaction;
@@ -40,7 +40,7 @@ pub mod init {
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
         (0..n)
             .map(|n| {
-                let block_number = StarknetBlockNumber::new_or_panic(n as u64);
+                let block_number = BlockNumber::new_or_panic(n as u64);
                 StarknetBlocksTable::insert(
                     tx,
                     &StarknetBlock::nth(n),
@@ -147,7 +147,7 @@ impl StarknetBlock {
     /// Creates a [`StarknetBlock`] with number `n` and hash `0xh` filled with arbitrary data useful for testing.
     pub fn nth(n: u8) -> Self {
         Self {
-            number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
+            number: BlockNumber::new(n as u64).expect("block number out of range"),
             hash: BlockHash(hash!(n)),
             state_commmitment: StateCommitment::calculate(
                 StorageCommitment(hash!(11, n)),

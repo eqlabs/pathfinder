@@ -1,4 +1,4 @@
-use pathfinder_common::{BlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_serde::StarknetBlockNumberAsHexStr;
 use serde::Serialize;
 use serde_with::serde_as;
@@ -58,7 +58,7 @@ pub struct NumberedBlock {
     pub hash: BlockHash,
     #[serde_as(as = "StarknetBlockNumberAsHexStr")]
     #[serde(rename = "block_num")]
-    pub number: StarknetBlockNumber,
+    pub number: BlockNumber,
 }
 
 impl std::fmt::Debug for NumberedBlock {
@@ -67,8 +67,8 @@ impl std::fmt::Debug for NumberedBlock {
     }
 }
 
-impl From<(BlockHash, StarknetBlockNumber)> for NumberedBlock {
-    fn from((hash, number): (BlockHash, StarknetBlockNumber)) -> Self {
+impl From<(BlockHash, BlockNumber)> for NumberedBlock {
+    fn from((hash, number): (BlockHash, BlockNumber)) -> Self {
         NumberedBlock { hash, number }
     }
 }
@@ -80,7 +80,7 @@ impl<'a> From<(&'a str, u64)> for NumberedBlock {
         use stark_hash::Felt;
         NumberedBlock {
             hash: BlockHash(Felt::from_hex_str(h).unwrap()),
-            number: StarknetBlockNumber::new_or_panic(n),
+            number: BlockNumber::new_or_panic(n),
         }
     }
 }

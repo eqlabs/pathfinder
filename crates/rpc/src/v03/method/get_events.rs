@@ -1,6 +1,6 @@
 use crate::context::RpcContext;
 use anyhow::Context;
-use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
+use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
 use pathfinder_storage::{
     EventFilterError, StarknetBlocksNumberOrLatest, StarknetBlocksTable, StarknetEventFilter,
     StarknetEventsTable, V03KeyFilter,
@@ -304,7 +304,7 @@ pub async fn get_events(
 fn map_to_block_to_number(
     tx: &rusqlite::Transaction<'_>,
     block: Option<BlockId>,
-) -> Result<Option<StarknetBlockNumber>, GetEventsError> {
+) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;
 
     match block {
@@ -326,7 +326,7 @@ fn map_to_block_to_number(
 fn map_from_block_to_number(
     tx: &rusqlite::Transaction<'_>,
     block: Option<BlockId>,
-) -> Result<Option<StarknetBlockNumber>, GetEventsError> {
+) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;
 
     match block {
@@ -440,8 +440,7 @@ fn next_continuation_token(
 
 mod types {
     use pathfinder_common::{
-        BlockHash, ContractAddress, EventData, EventKey, StarknetBlockNumber,
-        StarknetTransactionHash,
+        BlockHash, BlockNumber, ContractAddress, EventData, EventKey, StarknetTransactionHash,
     };
     use pathfinder_storage::StarknetEmittedEvent;
     use serde::Serialize;
@@ -456,7 +455,7 @@ mod types {
         /// [None] for pending events.
         pub block_hash: Option<BlockHash>,
         /// [None] for pending events.
-        pub block_number: Option<StarknetBlockNumber>,
+        pub block_number: Option<BlockNumber>,
         pub transaction_hash: StarknetTransactionHash,
     }
 
@@ -498,7 +497,7 @@ mod tests {
     #[test]
     fn parsing() {
         let optional_present = EventFilter {
-            from_block: Some(BlockId::Number(StarknetBlockNumber::new_or_panic(0))),
+            from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
             to_block: Some(BlockId::Latest),
             address: Some(ContractAddress::new_or_panic(felt!("0x1"))),
             keys: vec![vec![EventKey(felt!("0x2"))], vec![]],
@@ -622,8 +621,8 @@ mod tests {
         const BLOCK_NUMBER: usize = 2;
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
-                to_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
+                from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
+                to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
                 address: None,
                 keys: vec![],
                 chunk_size: test_utils::NUM_EVENTS,

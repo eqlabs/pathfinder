@@ -445,11 +445,11 @@ mod tests {
         v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
     };
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, CallParam, CallResultValue, Chain, ClassCommitment, ClassHash,
-        ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash,
-        EntryPoint, GasPrice, SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
-        TransactionVersion,
+        felt, felt_bytes, BlockHash, BlockNumber, CallParam, CallResultValue, Chain,
+        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, ContractNonce,
+        ContractRoot, ContractStateHash, EntryPoint, GasPrice, SequencerAddress,
+        StarknetBlockTimestamp, StarknetVersion, StateCommitment, StorageAddress,
+        StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -681,7 +681,7 @@ mod tests {
         let at_block_fee = handle
             .estimate_fee(
                 transactions.clone(),
-                StarknetBlockNumber::new_or_panic(1).into(),
+                BlockNumber::new_or_panic(1).into(),
                 super::GasPriceSource::PastBlock,
                 None,
                 None,
@@ -884,7 +884,7 @@ mod tests {
         StarknetBlocksTable::insert(
             tx,
             &StarknetBlock {
-                number: StarknetBlockNumber::new_or_panic(1),
+                number: BlockNumber::new_or_panic(1),
                 hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
                 state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
@@ -944,7 +944,7 @@ mod tests {
         StarknetBlocksTable::insert(
             tx,
             &StarknetBlock {
-                number: StarknetBlockNumber::new_or_panic(1),
+                number: BlockNumber::new_or_panic(1),
                 hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
                 state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),

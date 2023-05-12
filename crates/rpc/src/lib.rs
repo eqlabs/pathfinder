@@ -127,11 +127,10 @@ impl Default for SyncState {
 pub mod test_utils {
     use ethers::types::H256;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, ClassCommitment, ClassHash, ContractAddress,
+        felt, felt_bytes, BlockHash, BlockNumber, ClassCommitment, ClassHash, ContractAddress,
         ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice, SequencerAddress,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StarknetVersion, StateCommitment, StorageAddress,
-        StorageCommitment, TransactionVersion,
+        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StarknetVersion,
+        StateCommitment, StorageAddress, StorageCommitment, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -312,7 +311,7 @@ pub mod test_utils {
 
         let genesis_hash = BlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {
-            number: StarknetBlockNumber::GENESIS,
+            number: BlockNumber::GENESIS,
             hash: genesis_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment0, class_commitment0),
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
@@ -323,7 +322,7 @@ pub mod test_utils {
         };
         let block1_hash = BlockHash(felt_bytes!(b"block 1"));
         let block1 = StarknetBlock {
-            number: StarknetBlockNumber::new_or_panic(1),
+            number: BlockNumber::new_or_panic(1),
             hash: block1_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment1, class_commitment1),
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
@@ -334,7 +333,7 @@ pub mod test_utils {
         };
         let latest_hash = BlockHash(felt_bytes!(b"latest"));
         let block2 = StarknetBlock {
-            number: StarknetBlockNumber::new_or_panic(2),
+            number: BlockNumber::new_or_panic(2),
             hash: latest_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment2, class_commitment2),
             timestamp: StarknetBlockTimestamp::new_or_panic(2),

@@ -1,8 +1,7 @@
 //! The json serializable types
 
 use pathfinder_common::{
-    BlockHash, BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint,
-    StarknetBlockNumber,
+    BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint,
 };
 use starknet_gateway_types::{
     reply::{
@@ -230,7 +229,7 @@ impl<'a> serde::Serialize for NoncesWrapper<'a> {
 #[derive(Copy, Clone, Debug)]
 pub enum BlockHashNumberOrLatest {
     Hash(BlockHash),
-    Number(StarknetBlockNumber),
+    Number(BlockNumber),
     Latest,
 }
 
@@ -267,8 +266,8 @@ impl From<BlockHash> for BlockHashNumberOrLatest {
     }
 }
 
-impl From<StarknetBlockNumber> for BlockHashNumberOrLatest {
-    fn from(n: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for BlockHashNumberOrLatest {
+    fn from(n: BlockNumber) -> Self {
         BlockHashNumberOrLatest::Number(n)
     }
 }
@@ -405,12 +404,12 @@ mod tests {
     #[test]
     fn serialize_block_hash_num_latest() {
         use super::BlockHashNumberOrLatest;
-        use pathfinder_common::{BlockHash, StarknetBlockNumber};
+        use pathfinder_common::{BlockHash, BlockNumber};
         use stark_hash::Felt;
 
         let data = &[
             (BlockHash(Felt::ZERO).into(), "\"0x0\""),
-            (StarknetBlockNumber::GENESIS.into(), "\"0\""),
+            (BlockNumber::GENESIS.into(), "\"0\""),
             (BlockHashNumberOrLatest::Latest, "\"latest\""),
         ];
 

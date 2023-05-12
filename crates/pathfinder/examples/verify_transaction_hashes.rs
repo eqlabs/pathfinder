@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{ChainId, StarknetBlockNumber};
+use pathfinder_common::{BlockNumber, ChainId};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
@@ -48,18 +48,13 @@ fn main() -> anyhow::Result<()> {
         }
 
         let tx = db.transaction().unwrap();
-        let block_id =
-            StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(block_number));
+        let block_id = StarknetBlocksBlockId::Number(BlockNumber::new_or_panic(block_number));
         let transactions =
             StarknetTransactionsTable::get_transaction_data_for_block(&tx, block_id)?;
         drop(tx);
 
         for (i, (txn, _)) in transactions.iter().enumerate() {
-            match verify(
-                txn,
-                chain_id,
-                StarknetBlockNumber::new_or_panic(block_number),
-            ) {
+            match verify(txn, chain_id, BlockNumber::new_or_panic(block_number)) {
                 VerifyResult::Match => {}
                 VerifyResult::Mismatch(calculated) => println!(
                     "Mismatch: block {block_number} idx {i} expected {} calculated {} full_txn\n{}",

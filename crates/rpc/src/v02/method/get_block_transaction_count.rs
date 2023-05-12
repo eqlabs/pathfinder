@@ -65,7 +65,7 @@ pub async fn get_block_transaction_count(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{BlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, BlockNumber};
     use stark_hash::Felt;
 
     mod json {
@@ -92,7 +92,7 @@ mod tests {
         fn test_block_number() {
             check(
                 "{ \"block_number\": 42 }",
-                BlockId::Number(StarknetBlockNumber::new_or_panic(42)),
+                BlockId::Number(BlockNumber::new_or_panic(42)),
             );
         }
 
@@ -160,7 +160,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_number() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
+        let block_id = BlockId::Number(BlockNumber::new_or_panic(123));
         check_error(context, block_id).await;
     }
 }

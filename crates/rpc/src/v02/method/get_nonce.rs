@@ -98,7 +98,7 @@ pub async fn get_nonce(
 }
 
 mod database {
-    use pathfinder_common::StarknetBlockNumber;
+    use pathfinder_common::BlockNumber;
     use rusqlite::{params, OptionalExtension, Transaction};
 
     use super::*;
@@ -121,7 +121,7 @@ mod database {
     pub fn get_nonce_at_block(
         tx: &Transaction<'_>,
         contract_address: ContractAddress,
-        block_number: StarknetBlockNumber,
+        block_number: BlockNumber,
     ) -> anyhow::Result<Option<ContractNonce>> {
         tx.query_row(
             r"SELECT nonce FROM nonce_updates 
@@ -152,7 +152,7 @@ mod database {
     pub fn contract_exists_at_block(
         tx: &Transaction<'_>,
         contract_address: ContractAddress,
-        block_number: StarknetBlockNumber,
+        block_number: BlockNumber,
     ) -> anyhow::Result<bool> {
         let tf = tx.query_row(
             r"SELECT EXISTS(
@@ -188,8 +188,8 @@ mod tests {
     use crate::context::RpcContext;
     use pathfinder_common::{felt, felt_bytes, StarknetVersion};
     use pathfinder_common::{
-        BlockHash, BlockId, ContractAddress, ContractNonce, GasPrice, SequencerAddress,
-        StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
+        BlockHash, BlockId, BlockNumber, ContractAddress, ContractNonce, GasPrice,
+        SequencerAddress, StarknetBlockTimestamp, StateCommitment,
     };
 
     mod parsing {
@@ -287,7 +287,7 @@ mod tests {
         // This contract is created in `setup_storage` at block 1,
         // but only gets nonce=0x10 explicitly set in block 2.
         let input = GetNonceInput {
-            block_id: StarknetBlockNumber::new_or_panic(2).into(),
+            block_id: BlockNumber::new_or_panic(2).into(),
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
@@ -315,7 +315,7 @@ mod tests {
         // This contract is created in `setup_storage` at block 1,
         // but only gets a nonce explicitly set in block 2.
         let input = GetNonceInput {
-            block_id: StarknetBlockNumber::new_or_panic(1).into(),
+            block_id: BlockNumber::new_or_panic(1).into(),
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
         };
         let nonce = get_nonce(context, input).await.unwrap();

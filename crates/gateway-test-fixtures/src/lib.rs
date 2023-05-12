@@ -209,16 +209,15 @@ pub mod zstd_compressed_contracts {
 
 pub mod testnet {
     use pathfinder_common::{
-        felt, BlockHash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockNumber,
+        felt, BlockHash, BlockNumber, CallParam, ClassHash, ContractAddress, EntryPoint,
         StarknetTransactionHash, StorageAddress,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
 
     pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
-        BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
-    pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag =
-        BlockNumberOrTag::Number(StarknetBlockNumber::MAX);
+        BlockNumberOrTag::Number(BlockNumber::GENESIS);
+    pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(BlockNumber::MAX);
     pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
         "07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
     )));

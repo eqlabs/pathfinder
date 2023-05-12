@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::StarknetBlockNumber;
+use pathfinder_common::BlockNumber;
 use rusqlite::params;
 
 use crate::types::state_update::{DeployedContract, Nonce, ReplacedClass, StateDiff, StorageDiff};
@@ -7,7 +7,7 @@ use crate::types::state_update::{DeployedContract, Nonce, ReplacedClass, StateDi
 /// Inserts a canonical [StateDiff] into storage.
 pub fn insert_canonical_state_diff(
     tx: &rusqlite::Transaction<'_>,
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     state_diff: &StateDiff,
 ) -> anyhow::Result<()> {
     let mut insert_nonce = tx
