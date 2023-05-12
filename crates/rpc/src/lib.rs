@@ -127,9 +127,9 @@ impl Default for SyncState {
 pub mod test_utils {
     use ethers::types::H256;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, ClassCommitment, ClassHash, ContractAddress,
-        ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice, SequencerAddress,
-        StarknetBlockTimestamp, StarknetTransactionHash, StarknetTransactionIndex, StarknetVersion,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
+        ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
+        SequencerAddress, StarknetTransactionHash, StarknetTransactionIndex, StarknetVersion,
         StateCommitment, StorageAddress, StorageCommitment, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
@@ -314,7 +314,7 @@ pub mod test_utils {
             number: BlockNumber::GENESIS,
             hash: genesis_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment0, class_commitment0),
-            timestamp: StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: BlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
             transaction_commitment: None,
@@ -325,7 +325,7 @@ pub mod test_utils {
             number: BlockNumber::new_or_panic(1),
             hash: block1_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment1, class_commitment1),
-            timestamp: StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
             transaction_commitment: None,
@@ -336,7 +336,7 @@ pub mod test_utils {
             number: BlockNumber::new_or_panic(2),
             hash: latest_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment2, class_commitment2),
-            timestamp: StarknetBlockTimestamp::new_or_panic(2),
+            timestamp: BlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
             transaction_commitment: None,
@@ -558,7 +558,7 @@ pub mod test_utils {
             parent_hash: latest.hash,
             sequencer_address: SequencerAddress(felt_bytes!(b"pending sequencer address")),
             status: starknet_gateway_types::reply::Status::Pending,
-            timestamp: StarknetBlockTimestamp::new_or_panic(1234567),
+            timestamp: BlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
             starknet_version: StarknetVersion::new(0, 11, 0),

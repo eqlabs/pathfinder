@@ -188,8 +188,8 @@ mod tests {
     use crate::context::RpcContext;
     use pathfinder_common::{felt, felt_bytes, StarknetVersion};
     use pathfinder_common::{
-        BlockHash, BlockId, BlockNumber, ContractAddress, ContractNonce, GasPrice,
-        SequencerAddress, StarknetBlockTimestamp, StateCommitment,
+        BlockHash, BlockId, BlockNumber, BlockTimestamp, ContractAddress, ContractNonce, GasPrice,
+        SequencerAddress, StateCommitment,
     };
 
     mod parsing {
@@ -341,7 +341,7 @@ mod tests {
             parent_hash: BlockHash(felt_bytes!(b"dont care")),
             sequencer_address: SequencerAddress(felt_bytes!(b"dont care")),
             status: starknet_gateway_types::reply::Status::Pending,
-            timestamp: StarknetBlockTimestamp::new_or_panic(1234),
+            timestamp: BlockTimestamp::new_or_panic(1234),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),

@@ -187,11 +187,11 @@ impl From<BlockNumber> for Felt {
 
 /// The timestamp of a Starknet block.
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
-pub struct StarknetBlockTimestamp(u64);
+pub struct BlockTimestamp(u64);
 
-macros::i64_backed_u64::to_from_sql!(StarknetBlockTimestamp);
-macros::i64_backed_u64::new_get_partialeq!(StarknetBlockTimestamp);
-macros::i64_backed_u64::serdes!(StarknetBlockTimestamp);
+macros::i64_backed_u64::to_from_sql!(BlockTimestamp);
+macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
+macros::i64_backed_u64::serdes!(BlockTimestamp);
 
 /// A StarkNet events commitment of a block.
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -550,7 +550,7 @@ macros::starkhash::common_newtype!(
 );
 
 macros::fmt::thin_display!(BlockNumber);
-macros::fmt::thin_display!(StarknetBlockTimestamp);
+macros::fmt::thin_display!(BlockTimestamp);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AllowedOrigins {

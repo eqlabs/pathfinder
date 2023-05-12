@@ -102,8 +102,8 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, GasPrice, SequencerAddress,
-        StarknetBlockTimestamp, StarknetVersion, StateCommitment,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress,
+        StarknetVersion, StateCommitment,
     };
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{
@@ -123,7 +123,7 @@ mod tests {
             sequencer_address: None,
             state_commitment: *PARENT_ROOT,
             status: Status::AcceptedOnL2,
-            timestamp: StarknetBlockTimestamp::new_or_panic(10),
+            timestamp: BlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),
@@ -146,7 +146,7 @@ mod tests {
             parent_hash: NEXT_BLOCK.parent_block_hash,
             sequencer_address: SequencerAddress(felt_bytes!(b"seqeunecer address")),
             status: Status::Pending,
-            timestamp: StarknetBlockTimestamp::new_or_panic(20),
+            timestamp: BlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),

@@ -567,7 +567,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, StarknetBlockTimestamp};
+        use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockTimestamp};
         use starknet_gateway_types::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
@@ -588,7 +588,7 @@ mod tests {
                     sequencer_address: None,
                     state_commitment: pathfinder_common::StateCommitment(Felt::ZERO),
                     status: Status::NotReceived,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                    timestamp: BlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),

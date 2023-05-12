@@ -1,8 +1,7 @@
 use anyhow::{Context, Error, Result};
 use pathfinder_common::{
-    BlockHash, BlockNumber, Chain, ChainId, EventCommitment, SequencerAddress,
-    StarknetBlockTimestamp, StarknetVersion, StateCommitment, TransactionCommitment,
-    TransactionSignatureElem,
+    BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
+    StarknetVersion, StateCommitment, TransactionCommitment, TransactionSignatureElem,
 };
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use stark_hash::{stark_hash, Felt, HashChain};
@@ -251,7 +250,7 @@ fn compute_final_hash(
     block_number: BlockNumber,
     state_root: StateCommitment,
     sequencer_address: &SequencerAddress,
-    timestamp: StarknetBlockTimestamp,
+    timestamp: BlockTimestamp,
     num_transactions: u64,
     transaction_commitment: Felt,
     num_events: u64,

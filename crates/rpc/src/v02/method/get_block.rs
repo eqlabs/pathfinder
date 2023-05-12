@@ -160,7 +160,7 @@ mod types {
     use crate::felt::RpcFelt;
     use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
-        BlockHash, BlockNumber, GasPrice, SequencerAddress, StarknetBlockTimestamp,
+        BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress,
         StarknetTransactionHash, StateCommitment,
     };
     use serde::Serialize;
@@ -209,7 +209,7 @@ mod types {
         pub block_number: Option<BlockNumber>,
         #[serde_as(as = "Option<RpcFelt>")]
         pub new_root: Option<StateCommitment>,
-        pub timestamp: StarknetBlockTimestamp,
+        pub timestamp: BlockTimestamp,
         #[serde_as(as = "RpcFelt")]
         pub sequencer_address: SequencerAddress,
         pub transactions: Transactions,
@@ -223,7 +223,7 @@ mod types {
         pub root: StateCommitment,
         pub parent_hash: BlockHash,
         pub parent_root: StateCommitment,
-        pub timestamp: StarknetBlockTimestamp,
+        pub timestamp: BlockTimestamp,
         pub status: BlockStatus,
         pub sequencer: SequencerAddress,
         pub gas_price: GasPrice,

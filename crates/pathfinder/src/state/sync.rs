@@ -1062,10 +1062,10 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockHash, BlockId, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-        EthereumBlockHash, EthereumBlockNumber, EthereumChain, EthereumLogIndex,
+        BlockHash, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain, ChainId, ClassCommitment,
+        ClassHash, EthereumBlockHash, EthereumBlockNumber, EthereumChain, EthereumLogIndex,
         EthereumTransactionHash, EthereumTransactionIndex, GasPrice, SequencerAddress,
-        StarknetBlockTimestamp, StarknetVersion, StateCommitment, StorageCommitment,
+        StarknetVersion, StateCommitment, StorageCommitment,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1200,7 +1200,7 @@ mod tests {
             sequencer_address: Some(SequencerAddress(Felt::ZERO)),
             state_commitment: *STATE_COMMITMENT0,
             status: reply::Status::AcceptedOnL1,
-            timestamp: StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: BlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: StarknetVersion::default(),
@@ -1213,7 +1213,7 @@ mod tests {
             sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
             state_commitment: *STATE_COMMITMENT1,
             status: reply::Status::AcceptedOnL2,
-            timestamp: StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: StarknetVersion::default(),
@@ -1222,7 +1222,7 @@ mod tests {
             number: BlockNumber::GENESIS,
             hash: BlockHash(*A),
             state_commmitment: *STATE_COMMITMENT0,
-            timestamp: StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: BlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
             transaction_commitment: None,
@@ -1232,7 +1232,7 @@ mod tests {
             number: BlockNumber::new_or_panic(1),
             hash: BlockHash(*B),
             state_commmitment: *STATE_COMMITMENT1,
-            timestamp: StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
             transaction_commitment: None,

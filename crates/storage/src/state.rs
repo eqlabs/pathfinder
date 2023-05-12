@@ -5,10 +5,10 @@ use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     },
-    BlockHash, BlockNumber, Chain, ClassCommitment, ClassHash, ContractAddress, ContractNonce,
-    ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-    EthereumTransactionHash, EthereumTransactionIndex, EventCommitment, EventData, EventKey,
-    GasPrice, SequencerAddress, StarknetBlockTimestamp, StarknetTransactionHash, StateCommitment,
+    BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ClassHash, ContractAddress,
+    ContractNonce, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
+    EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, EventCommitment,
+    EventData, EventKey, GasPrice, SequencerAddress, StarknetTransactionHash, StateCommitment,
     StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
@@ -1324,7 +1324,7 @@ pub struct StarknetBlock {
     pub number: BlockNumber,
     pub hash: BlockHash,
     pub state_commmitment: StateCommitment,
-    pub timestamp: StarknetBlockTimestamp,
+    pub timestamp: BlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub transaction_commitment: Option<TransactionCommitment>,
@@ -2406,7 +2406,7 @@ mod tests {
                 number: BlockNumber::GENESIS,
                 hash: BlockHash(felt!("0x1234")),
                 state_commmitment: StateCommitment(felt!("0x1234")),
-                timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                timestamp: BlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(felt!("0x1234")),
                 transaction_commitment: None,

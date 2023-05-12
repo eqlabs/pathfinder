@@ -158,8 +158,8 @@ pub(crate) mod tests {
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{
-            felt_bytes, BlockNumber, CasmHash, ClassCommitment, ContractNonce, ContractRoot,
-            GasPrice, SequencerAddress, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
+            felt_bytes, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ContractNonce,
+            ContractRoot, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
         };
         use pathfinder_storage::types::CompressedContract;
         use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
@@ -371,7 +371,7 @@ pub(crate) mod tests {
                     new_storage_commitment,
                     ClassCommitment::ZERO,
                 ),
-                timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                timestamp: BlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice::ZERO,
                 sequencer_address: SequencerAddress(Felt::ZERO),
                 transaction_commitment: None,

@@ -19,7 +19,7 @@ use crate::v02::types::reply::FeeEstimate;
 use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
-use pathfinder_common::{CallResultValue, ClassHash, StarknetBlockTimestamp};
+use pathfinder_common::{BlockTimestamp, CallResultValue, ClassHash};
 use starknet_gateway_types::{reply::PendingStateUpdate, request::add_transaction};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -57,7 +57,7 @@ impl Handle {
         call: Call,
         at_block: BlockHashNumberOrLatest,
         diffs: Option<Arc<PendingStateUpdate>>,
-        block_timestamp: Option<StarknetBlockTimestamp>,
+        block_timestamp: Option<BlockTimestamp>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -94,7 +94,7 @@ impl Handle {
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         diffs: Option<Arc<PendingStateUpdate>>,
-        block_timestamp: Option<StarknetBlockTimestamp>,
+        block_timestamp: Option<BlockTimestamp>,
     ) -> Result<Vec<FeeEstimate>, CallFailure> {
         use tracing::field::Empty;
         let (response, rx) = oneshot::channel();
@@ -133,7 +133,7 @@ impl Handle {
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         diffs: Option<Arc<PendingStateUpdate>>,
-        block_timestamp: Option<StarknetBlockTimestamp>,
+        block_timestamp: Option<BlockTimestamp>,
         transactions: Vec<BroadcastedTransaction>,
         skip_validate: bool,
     ) -> Result<Vec<TransactionSimulation>, CallFailure> {
@@ -319,7 +319,7 @@ enum Command {
         at_block: BlockHashNumberOrLatest,
         chain: UsedChain,
         diffs: Option<Arc<PendingStateUpdate>>,
-        block_timestamp: Option<StarknetBlockTimestamp>,
+        block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
     EstimateFee {
@@ -329,7 +329,7 @@ enum Command {
         gas_price: GasPriceSource,
         chain: UsedChain,
         diffs: Option<Arc<PendingStateUpdate>>,
-        block_timestamp: Option<StarknetBlockTimestamp>,
+        block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<Vec<FeeEstimate>, CallFailure>>,
     },
     SimulateTransaction {
@@ -340,7 +340,7 @@ enum Command {
         gas_price: GasPriceSource,
         chain: UsedChain,
         diffs: Option<Arc<PendingStateUpdate>>,
-        block_timestamp: Option<StarknetBlockTimestamp>,
+        block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<Vec<TransactionSimulation>, CallFailure>>,
     },
 }
@@ -445,11 +445,10 @@ mod tests {
         v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
     };
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, CallParam, CallResultValue, Chain,
-        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, ContractNonce,
-        ContractRoot, ContractStateHash, EntryPoint, GasPrice, SequencerAddress,
-        StarknetBlockTimestamp, StarknetVersion, StateCommitment, StorageAddress,
-        StorageCommitment, StorageValue, TransactionVersion,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, CallParam, CallResultValue,
+        Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, ContractNonce,
+        ContractRoot, ContractStateHash, EntryPoint, GasPrice, SequencerAddress, StarknetVersion,
+        StateCommitment, StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -887,7 +886,7 @@ mod tests {
                 number: BlockNumber::new_or_panic(1),
                 hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
                 state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-                timestamp: StarknetBlockTimestamp::new_or_panic(1),
+                timestamp: BlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
                 transaction_commitment: None,
@@ -947,7 +946,7 @@ mod tests {
                 number: BlockNumber::new_or_panic(1),
                 hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
                 state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-                timestamp: StarknetBlockTimestamp::new_or_panic(1),
+                timestamp: BlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
                 sequencer_address: SequencerAddress(Felt::ZERO),
                 transaction_commitment: None,

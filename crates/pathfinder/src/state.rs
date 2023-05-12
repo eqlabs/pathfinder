@@ -12,7 +12,7 @@ mod tests {
         // This is a regression test for a bug that we encountered at block 47047 on alpha4/goerli.
         // It resulted in a global root mismatch due to the fact that we did not initialize
         // the contract root to zero when a contract was deployed.
-        // use pathfinder_common::StarknetBlockTimestamp;
+        // use pathfinder_common::BlockTimestamp;
 
         // let s = crate::storage::Storage::in_memory().unwrap();
 
@@ -114,7 +114,7 @@ mod tests {
         //         ),
         //         global_root: expected_global_root,
         //         block_number: BlockNumber(0),
-        //         block_timestamp: StarknetBlockTimestamp::new_or_panic(0),
+        //         block_timestamp: BlockTimestamp::new_or_panic(0),
         //         eth_block_hash: EthereumBlockHash(H256::zero()),
         //         eth_block_number: EthereumBlockNumber(0),
         //         eth_log_index: EthereumLogIndex(0),

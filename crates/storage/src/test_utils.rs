@@ -2,11 +2,11 @@ use super::{
     StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
 };
 use pathfinder_common::{
-    felt, BlockHash, BlockNumber, CallParam, ClassCommitment, ClassHash, ConstructorParam,
-    ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee,
-    GasPrice, SequencerAddress, StarknetBlockTimestamp, StarknetTransactionHash,
-    StarknetTransactionIndex, StarknetVersion, StateCommitment, StorageCommitment,
-    TransactionCommitment, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
+    ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
+    EventKey, Fee, GasPrice, SequencerAddress, StarknetTransactionHash, StarknetTransactionIndex,
+    StarknetVersion, StateCommitment, StorageCommitment, TransactionCommitment, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
@@ -41,7 +41,7 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
                         storage_commitment,
                         class_commitment,
                     ),
-                    timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
+                    timestamp: BlockTimestamp::new_or_panic(i as u64 + 500),
                     gas_price: GasPrice::from(i as u64),
                     sequencer_address: SequencerAddress(index_as_felt),
                     transaction_commitment: Some(TransactionCommitment(index_as_felt)),

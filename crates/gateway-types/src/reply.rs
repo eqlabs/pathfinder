@@ -1,6 +1,6 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
-    BlockHash, BlockNumber, EthereumAddress, GasPrice, SequencerAddress, StarknetBlockTimestamp,
+    BlockHash, BlockNumber, BlockTimestamp, EthereumAddress, GasPrice, SequencerAddress,
     StarknetVersion, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
@@ -26,7 +26,7 @@ pub struct Block {
     #[serde(alias = "state_root")]
     pub state_commitment: StateCommitment,
     pub status: Status,
-    pub timestamp: StarknetBlockTimestamp,
+    pub timestamp: BlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
@@ -44,7 +44,7 @@ pub struct PendingBlock {
     pub parent_hash: BlockHash,
     pub sequencer_address: SequencerAddress,
     pub status: Status,
-    pub timestamp: StarknetBlockTimestamp,
+    pub timestamp: BlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
