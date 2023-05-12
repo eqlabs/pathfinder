@@ -47,8 +47,8 @@ stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 tempfile = "3.4"
-time = { version = "0.3.20", features = ["macros"] }
 thiserror = "1.0.40"
+time = { version = "0.3.20", features = ["macros"] }
 tokio = { workspace = true, features = ["process"] }
 toml = "0.5.9"
 tracing = "0.1.37"

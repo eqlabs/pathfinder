@@ -2,7 +2,8 @@ use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, EventKey, StarknetBlockNumber};
 use pathfinder_storage::{
-    EventFilterError, StarknetBlocksTable, StarknetEventFilter, StarknetEventsTable, V02KeyFilter, StarknetBlocksNumberOrLatest,
+    EventFilterError, StarknetBlocksNumberOrLatest, StarknetBlocksTable, StarknetEventFilter,
+    StarknetEventsTable, V02KeyFilter,
 };
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
