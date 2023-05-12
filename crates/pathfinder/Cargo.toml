@@ -23,7 +23,6 @@ casm-compiler = { package = "cairo-lang-starknet", git = "https://github.com/sta
 casm-compiler-historic = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
-enum-iterator = "1.2.0"
 ethers = "1.0.2"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
@@ -71,7 +70,6 @@ rand = "0.8"
 serde_with = "2.1.0"
 starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-test-log = { version = "0.2.11", default-features = false, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util"] }
 
 [[bench]]

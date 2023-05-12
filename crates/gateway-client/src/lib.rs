@@ -560,10 +560,21 @@ pub mod test_utils {
 mod tests {
     use super::{test_utils::*, *};
     use assert_matches::assert_matches;
-    use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
+    use pathfinder_common::{felt, BlockHash, BlockNumber, StarknetVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
+
+    pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
+        BlockNumberOrTag::Number(BlockNumber::GENESIS);
+    pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(BlockNumber::MAX);
+    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
+        "07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+    )));
+    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
+        "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
+    )));
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {

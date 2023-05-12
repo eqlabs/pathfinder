@@ -20,7 +20,6 @@ stark_hash = { path = "../stark_hash" }
 
 [dev-dependencies]
 criterion = "0.4"
-hex = "0.4.3"
 rand = "0.8"
 
 [[bench]]
