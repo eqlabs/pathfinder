@@ -9,8 +9,7 @@ use rusqlite::{named_params, Transaction as RusqliteTransaction};
 mod transaction {
     use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
-        Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
+        Fee, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, TransactionSignatureElemAsDecimalStr,
@@ -35,7 +34,7 @@ mod transaction {
     impl Transaction {
         /// Returns hash of the transaction
         #[cfg(test)]
-        pub fn hash(&self) -> StarknetTransactionHash {
+        pub fn hash(&self) -> TransactionHash {
             match self {
                 Transaction::Declare(t) => t.transaction_hash,
                 Transaction::Deploy(t) => t.transaction_hash,
@@ -55,7 +54,7 @@ mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
     }
@@ -71,7 +70,7 @@ mod transaction {
         pub class_hash: Option<ClassHash>,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     /// Represents deserialized L2 invoke transaction data.
@@ -88,7 +87,7 @@ mod transaction {
         pub max_fee: Option<Fee>,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 }
 
@@ -224,7 +223,7 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
 mod tests {
     use super::transaction;
     use crate::schema;
-    use pathfinder_common::{felt, Fee, StarknetTransactionHash};
+    use pathfinder_common::{felt, Fee, TransactionHash};
     use rusqlite::{named_params, Connection};
 
     #[test]
@@ -385,7 +384,7 @@ mod tests {
 
         let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
             &transaction,
-            StarknetTransactionHash(transaction_hash),
+            TransactionHash(transaction_hash),
         )
         .unwrap()
         .unwrap();
@@ -428,7 +427,7 @@ mod tests {
 
         let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
             &transaction,
-            StarknetTransactionHash(transaction_hash),
+            TransactionHash(transaction_hash),
         )
         .unwrap()
         .unwrap();

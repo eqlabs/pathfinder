@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedDeclareTransaction;
-use pathfinder_common::{ClassHash, StarknetTransactionHash};
+use pathfinder_common::{ClassHash, TransactionHash};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::{
@@ -42,7 +42,7 @@ pub struct AddDeclareTransactionInput {
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddDeclareTransactionOutput {
     #[serde_as(as = "RpcFelt")]
-    transaction_hash: StarknetTransactionHash,
+    transaction_hash: TransactionHash,
     #[serde_as(as = "RpcFelt")]
     class_hash: ClassHash,
 }
@@ -394,7 +394,7 @@ mod tests {
         assert_eq!(
             result,
             AddDeclareTransactionOutput {
-                transaction_hash: StarknetTransactionHash(felt!(
+                transaction_hash: TransactionHash(felt!(
                     "0xE32B5DC53B104DCC8487F8721A9AE26D038C5C667F83A15FD00E4BB87C4A6E"
                 )),
                 class_hash: ClassHash(felt!(
@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(
             result,
             AddDeclareTransactionOutput {
-                transaction_hash: StarknetTransactionHash(felt!(
+                transaction_hash: TransactionHash(felt!(
                     "0x069B1F490F1E28458E7A22DBA1DE950F060036FAAE533592E2D5546A6347C892"
                 )),
                 class_hash: ClassHash(felt!(

@@ -493,9 +493,7 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use pathfinder_common::{
-            ContractAddress, StarknetTransactionHash, TransactionSignatureElem,
-        };
+        use pathfinder_common::{ContractAddress, TransactionHash, TransactionSignatureElem};
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
@@ -507,7 +505,7 @@ mod tests {
                 TransactionSignatureElem(felt!("0x2")),
                 TransactionSignatureElem(felt!("0x3")),
             ],
-            transaction_hash: StarknetTransactionHash(felt!("0x1")),
+            transaction_hash: TransactionHash(felt!("0x1")),
         }));
 
         // produced by the cairo-lang Python implementation:

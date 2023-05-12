@@ -203,7 +203,7 @@ pub struct TransactionCommitment(pub Felt);
 
 /// A StarkNet transaction hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetTransactionHash(pub Felt);
+pub struct TransactionHash(pub Felt);
 
 /// A StarkNet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -541,7 +541,7 @@ macros::starkhash::common_newtype!(
     SequencerAddress,
     SierraHash,
     BlockHash,
-    StarknetTransactionHash,
+    TransactionHash,
     StateCommitment,
     StorageAddress,
     StorageCommitment,

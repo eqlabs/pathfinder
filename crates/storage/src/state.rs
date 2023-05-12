@@ -8,8 +8,8 @@ use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ClassHash, ContractAddress,
     ContractNonce, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
     EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, EventCommitment,
-    EventData, EventKey, GasPrice, SequencerAddress, StarknetTransactionHash, StateCommitment,
-    StorageCommitment, TransactionCommitment,
+    EventData, EventKey, GasPrice, SequencerAddress, StateCommitment, StorageCommitment,
+    TransactionCommitment, TransactionHash,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
@@ -809,7 +809,7 @@ impl StarknetTransactionsTable {
 
     pub fn get_transaction(
         tx: &Transaction<'_>,
-        transaction: StarknetTransactionHash,
+        transaction: TransactionHash,
     ) -> anyhow::Result<Option<transaction::Transaction>> {
         let mut stmt = tx
             .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?1")
@@ -832,7 +832,7 @@ impl StarknetTransactionsTable {
 
     pub fn get_transaction_with_receipt(
         tx: &Transaction<'_>,
-        txn_hash: StarknetTransactionHash,
+        txn_hash: TransactionHash,
     ) -> anyhow::Result<Option<(transaction::Transaction, transaction::Receipt, BlockHash)>> {
         let mut stmt = tx
             .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
@@ -912,7 +912,7 @@ pub struct StarknetEmittedEvent {
     pub keys: Vec<EventKey>,
     pub block_hash: BlockHash,
     pub block_number: BlockNumber,
-    pub transaction_hash: StarknetTransactionHash,
+    pub transaction_hash: TransactionHash,
 }
 
 #[derive(Copy, Clone, Debug, thiserror::Error, PartialEq, Eq)]
@@ -1074,7 +1074,7 @@ impl StarknetEventsTable {
     pub fn insert_events(
         tx: &Transaction<'_>,
         block_number: BlockNumber,
-        transaction_hash: StarknetTransactionHash,
+        transaction_hash: TransactionHash,
         events: &[transaction::Event],
     ) -> anyhow::Result<()> {
         let mut stmt = tx.prepare(
@@ -2389,7 +2389,7 @@ mod tests {
             // instead of transaction index.
             //
             // Events should be ordered by block number, transaction index, event index.
-            use pathfinder_common::StarknetTransactionHash;
+            use pathfinder_common::TransactionHash;
 
             // All events we are storing, arbitrarily use from_address to distinguish them.
             let expected_events = (0u8..5)
@@ -2424,7 +2424,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee::ZERO,
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("0xF")),
+                        transaction_hash: TransactionHash(felt!("0xF")),
                     },
                 )),
                 transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
@@ -2436,7 +2436,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee::ZERO,
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("0x1")),
+                        transaction_hash: TransactionHash(felt!("0x1")),
                     },
                 )),
             ];

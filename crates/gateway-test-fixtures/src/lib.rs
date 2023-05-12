@@ -210,7 +210,7 @@ pub mod zstd_compressed_contracts {
 pub mod testnet {
     use pathfinder_common::{
         felt, BlockHash, BlockNumber, CallParam, ClassHash, ContractAddress, EntryPoint,
-        StarknetTransactionHash, StorageAddress,
+        StorageAddress, TransactionHash,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
@@ -230,10 +230,10 @@ pub mod testnet {
     pub const INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
         "0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"
     )));
-    pub const VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(felt!(
+    pub const VALID_TX_HASH: TransactionHash = TransactionHash(felt!(
         "0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
     ));
-    pub const INVALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(felt!(
+    pub const INVALID_TX_HASH: TransactionHash = TransactionHash(felt!(
         "0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
     ));
     pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(felt!(

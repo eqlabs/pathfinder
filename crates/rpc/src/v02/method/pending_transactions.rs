@@ -23,8 +23,8 @@ mod tests {
         InvokeTransactionV0,
     };
     use pathfinder_common::{
-        felt_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
-        StarknetTransactionHash, TransactionNonce, TransactionVersion,
+        felt_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, TransactionHash,
+        TransactionNonce, TransactionVersion,
     };
 
     #[tokio::test]
@@ -32,7 +32,7 @@ mod tests {
         // Transcribed from the `RpcContext::for_tests_with_pending` transactions.
         let tx0 = InvokeTransactionV0 {
             common: CommonDeclareInvokeTransactionProperties {
-                hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
+                hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
                 max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 nonce: TransactionNonce::ZERO,
@@ -45,7 +45,7 @@ mod tests {
         };
 
         let tx1 = DeployTransaction {
-            hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 1")),
+            hash: TransactionHash(felt_bytes!(b"pending tx hash 1")),
             class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
             version: TransactionVersion::ZERO,
             contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),

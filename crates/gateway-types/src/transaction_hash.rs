@@ -6,7 +6,7 @@ use crate::reply::transaction::{
     L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::{
-    BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
+    BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, TransactionHash,
     TransactionNonce, TransactionVersion,
 };
 
@@ -18,7 +18,7 @@ use stark_hash::{Felt, HashChain};
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum VerifyResult {
     Match,
-    Mismatch(StarknetTransactionHash),
+    Mismatch(TransactionHash),
     NotVerifiable,
 }
 
@@ -70,7 +70,7 @@ pub fn verify(txn: &Transaction, chain_id: ChainId, block_number: BlockNumber) -
 /// For __Invoke v0__, __Deploy__ and __L1 Handler__ there is a fallback hash calculation
 /// algorithm used in case a hash mismatch is encountered and the fallback's result becomes
 /// the ultimate result of the computation.
-pub fn compute_transaction_hash(txn: &Transaction, chain_id: ChainId) -> StarknetTransactionHash {
+pub fn compute_transaction_hash(txn: &Transaction, chain_id: ChainId) -> TransactionHash {
     match txn {
         Transaction::Declare(DeclareTransaction::V0(txn)) => compute_declare_v0_hash(txn, chain_id),
         Transaction::Declare(DeclareTransaction::V1(txn)) => compute_declare_v1_hash(txn, chain_id),
@@ -92,10 +92,7 @@ pub fn compute_transaction_hash(txn: &Transaction, chain_id: ChainId) -> Starkne
 /// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_declare_v0_hash(
-    txn: &DeclareTransactionV0V1,
-    chain_id: ChainId,
-) -> StarknetTransactionHash {
+fn compute_declare_v0_hash(txn: &DeclareTransactionV0V1, chain_id: ChainId) -> TransactionHash {
     compute_txn_hash(
         b"declare",
         TransactionVersion::ZERO,
@@ -118,10 +115,7 @@ fn compute_declare_v0_hash(
 /// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_declare_v1_hash(
-    txn: &DeclareTransactionV0V1,
-    chain_id: ChainId,
-) -> StarknetTransactionHash {
+fn compute_declare_v1_hash(txn: &DeclareTransactionV0V1, chain_id: ChainId) -> TransactionHash {
     compute_txn_hash(
         b"declare",
         TransactionVersion::ONE,
@@ -148,10 +142,7 @@ fn compute_declare_v1_hash(
 /// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_declare_v2_hash(
-    txn: &DeclareTransactionV2,
-    chain_id: ChainId,
-) -> StarknetTransactionHash {
+fn compute_declare_v2_hash(txn: &DeclareTransactionV2, chain_id: ChainId) -> TransactionHash {
     compute_txn_hash(
         b"declare",
         TransactionVersion::TWO,
@@ -177,7 +168,7 @@ fn compute_declare_v2_hash(
 /// ```
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash), and `sn_keccak` is [Starknet Keccak](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#Starknet-keccak)
-fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> StarknetTransactionHash {
+fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> TransactionHash {
     lazy_static::lazy_static!(
         static ref CONSTRUCTOR: EntryPoint = {
             let mut keccak = Keccak256::default();
@@ -235,7 +226,7 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> StarknetTr
 fn compute_deploy_account_hash(
     txn: &DeployAccountTransaction,
     chain_id: ChainId,
-) -> StarknetTransactionHash {
+) -> TransactionHash {
     compute_txn_hash(
         b"deploy_account",
         txn.version,
@@ -270,7 +261,7 @@ fn compute_deploy_account_hash(
 /// FIXME: SW should fix the formula in the docs
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_invoke_v0_hash(txn: &InvokeTransactionV0, chain_id: ChainId) -> StarknetTransactionHash {
+fn compute_invoke_v0_hash(txn: &InvokeTransactionV0, chain_id: ChainId) -> TransactionHash {
     let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
@@ -312,7 +303,7 @@ fn compute_invoke_v0_hash(txn: &InvokeTransactionV0, chain_id: ChainId) -> Stark
 /// ```
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash)
-fn compute_invoke_v1_hash(txn: &InvokeTransactionV1, chain_id: ChainId) -> StarknetTransactionHash {
+fn compute_invoke_v1_hash(txn: &InvokeTransactionV1, chain_id: ChainId) -> TransactionHash {
     compute_txn_hash(
         b"invoke",
         TransactionVersion::ONE,
@@ -346,10 +337,7 @@ fn compute_invoke_v1_hash(txn: &InvokeTransactionV1, chain_id: ChainId) -> Stark
 /// ## Important
 ///
 /// Guarantees correct computation for Starknet **0.9.1** transactions onwards
-fn compute_l1_handler_hash(
-    txn: &L1HandlerTransaction,
-    chain_id: ChainId,
-) -> StarknetTransactionHash {
+fn compute_l1_handler_hash(txn: &L1HandlerTransaction, chain_id: ChainId) -> TransactionHash {
     let call_params_hash = {
         let mut hh = HashChain::default();
         hh = txn.calldata.iter().fold(hh, |mut hh, call_param| {
@@ -419,7 +407,7 @@ fn legacy_compute_txn_hash(
     entry_point_selector: Option<EntryPoint>,
     list_hash: Felt,
     chain_id: ChainId,
-) -> StarknetTransactionHash {
+) -> TransactionHash {
     let mut h = HashChain::default();
     h.update(Felt::from_be_slice(prefix).expect("prefix is convertible"));
     h.update(*address.get());
@@ -427,7 +415,7 @@ fn legacy_compute_txn_hash(
     h.update(list_hash);
     h.update(chain_id.0);
 
-    StarknetTransactionHash(h.finalize())
+    TransactionHash(h.finalize())
 }
 
 /// _Generic_ compute transaction hash for transactions
@@ -442,7 +430,7 @@ fn compute_txn_hash(
     chain_id: ChainId,
     nonce_or_class_hash: impl Into<NonceOrClassHash>,
     compiled_class_hash: Option<CasmHash>,
-) -> StarknetTransactionHash {
+) -> TransactionHash {
     let mut h = HashChain::default();
     h.update(Felt::from_be_slice(prefix).expect("prefix is convertible"));
     h.update(Felt::from_be_slice(version.0.as_bytes()).expect("version is convertible"));
@@ -462,7 +450,7 @@ fn compute_txn_hash(
         h.update(compiled_class_hash.0);
     }
 
-    StarknetTransactionHash(h.finalize())
+    TransactionHash(h.finalize())
 }
 
 #[cfg(test)]

@@ -160,8 +160,8 @@ mod types {
     use crate::felt::RpcFelt;
     use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
-        BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress,
-        StarknetTransactionHash, StateCommitment,
+        BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress, StateCommitment,
+        TransactionHash,
     };
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -187,10 +187,10 @@ mod types {
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct TransactionHashes(#[serde_as(as = "Vec<RpcFelt>")] Vec<StarknetTransactionHash>);
+    pub struct TransactionHashes(#[serde_as(as = "Vec<RpcFelt>")] Vec<TransactionHash>);
 
-    impl From<Vec<StarknetTransactionHash>> for TransactionHashes {
-        fn from(value: Vec<StarknetTransactionHash>) -> Self {
+    impl From<Vec<TransactionHash>> for TransactionHashes {
+        fn from(value: Vec<TransactionHash>) -> Self {
             Self(value)
         }
     }

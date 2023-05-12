@@ -4,8 +4,8 @@ use super::{
 use pathfinder_common::{
     felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
     ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
-    EventKey, Fee, GasPrice, SequencerAddress, StarknetTransactionHash, StarknetTransactionIndex,
-    StarknetVersion, StateCommitment, StorageCommitment, TransactionCommitment, TransactionNonce,
+    EventKey, Fee, GasPrice, SequencerAddress, StarknetTransactionIndex, StarknetVersion,
+    StateCommitment, StorageCommitment, TransactionCommitment, TransactionHash, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
@@ -76,9 +76,7 @@ pub(crate) fn create_transactions_and_receipts(
                 signature: vec![TransactionSignatureElem(
                     Felt::from_hex_str(&"3".repeat(i + 3)).unwrap(),
                 )],
-                transaction_hash: StarknetTransactionHash(
-                    Felt::from_hex_str(&"4".repeat(i + 3)).unwrap(),
-                ),
+                transaction_hash: TransactionHash(Felt::from_hex_str(&"4".repeat(i + 3)).unwrap()),
             }))
         }
         x if (INVOKE_TRANSACTIONS_PER_BLOCK
@@ -96,9 +94,7 @@ pub(crate) fn create_transactions_and_receipts(
                 constructor_calldata: vec![ConstructorParam(
                     Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
                 )],
-                transaction_hash: StarknetTransactionHash(
-                    Felt::from_hex_str(&"9".repeat(i + 3)).unwrap(),
-                ),
+                transaction_hash: TransactionHash(Felt::from_hex_str(&"9".repeat(i + 3)).unwrap()),
                 version: TransactionVersion(ethers::types::H256::zero()),
             })
         }
@@ -112,9 +108,7 @@ pub(crate) fn create_transactions_and_receipts(
             signature: vec![TransactionSignatureElem(
                 Felt::from_hex_str(&"d".repeat(i + 3)).unwrap(),
             )],
-            transaction_hash: StarknetTransactionHash(
-                Felt::from_hex_str(&"e".repeat(i + 3)).unwrap(),
-            ),
+            transaction_hash: TransactionHash(Felt::from_hex_str(&"e".repeat(i + 3)).unwrap()),
         })),
     });
 

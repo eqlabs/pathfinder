@@ -440,7 +440,7 @@ fn next_continuation_token(
 
 mod types {
     use pathfinder_common::{
-        BlockHash, BlockNumber, ContractAddress, EventData, EventKey, StarknetTransactionHash,
+        BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
     };
     use pathfinder_storage::StarknetEmittedEvent;
     use serde::Serialize;
@@ -456,7 +456,7 @@ mod types {
         pub block_hash: Option<BlockHash>,
         /// [None] for pending events.
         pub block_number: Option<BlockNumber>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     impl From<StarknetEmittedEvent> for EmittedEvent {

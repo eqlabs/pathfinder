@@ -401,7 +401,7 @@ fn next_continuation_token(
 mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
-        BlockHash, BlockNumber, ContractAddress, EventData, EventKey, StarknetTransactionHash,
+        BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
     };
     use pathfinder_storage::StarknetEmittedEvent;
     use serde::Serialize;
@@ -423,7 +423,7 @@ mod types {
         /// [None] for pending events.
         pub block_number: Option<BlockNumber>,
         #[serde_as(as = "RpcFelt")]
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     impl From<StarknetEmittedEvent> for EmittedEvent {

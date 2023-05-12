@@ -92,7 +92,7 @@ async fn get_transaction_from_pending(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{felt, felt_bytes, BlockHash, BlockNumber, StarknetTransactionHash};
+    use pathfinder_common::{felt, felt_bytes, BlockHash, BlockNumber, TransactionHash};
     use stark_hash::Felt;
 
     mod parsing {
@@ -188,10 +188,7 @@ mod tests {
         let result = get_transaction_by_block_id_and_index(context, input)
             .await
             .unwrap();
-        assert_eq!(
-            result.hash(),
-            StarknetTransactionHash(felt_bytes!(b"txn 0"))
-        );
+        assert_eq!(result.hash(), TransactionHash(felt_bytes!(b"txn 0")));
     }
 
     #[tokio::test]
@@ -205,10 +202,7 @@ mod tests {
         let result = get_transaction_by_block_id_and_index(context, input)
             .await
             .unwrap();
-        assert_eq!(
-            result.hash(),
-            StarknetTransactionHash(felt_bytes!(b"txn 0"))
-        );
+        assert_eq!(result.hash(), TransactionHash(felt_bytes!(b"txn 0")));
     }
 
     #[tokio::test]
@@ -222,10 +216,7 @@ mod tests {
         let result = get_transaction_by_block_id_and_index(context, input)
             .await
             .unwrap();
-        assert_eq!(
-            result.hash(),
-            StarknetTransactionHash(felt_bytes!(b"txn 3"))
-        );
+        assert_eq!(result.hash(), TransactionHash(felt_bytes!(b"txn 3")));
     }
 
     #[tokio::test]

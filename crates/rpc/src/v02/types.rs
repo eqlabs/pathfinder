@@ -372,7 +372,7 @@ pub mod reply {
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-        EntryPoint, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+        EntryPoint, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
         TransactionVersion,
     };
     use pathfinder_serde::TransactionVersionAsHexStr;
@@ -402,7 +402,7 @@ pub mod reply {
     }
 
     impl Transaction {
-        pub fn hash(&self) -> StarknetTransactionHash {
+        pub fn hash(&self) -> TransactionHash {
             match self {
                 Transaction::Declare(DeclareTransaction::V0(declare)) => declare.common.hash,
                 Transaction::Declare(DeclareTransaction::V1(declare)) => declare.common.hash,
@@ -422,7 +422,7 @@ pub mod reply {
     pub struct CommonTransactionProperties {
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
-        pub hash: StarknetTransactionHash,
+        pub hash: TransactionHash,
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -620,7 +620,7 @@ pub mod reply {
     pub struct CommonDeclareInvokeTransactionProperties {
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
-        pub hash: StarknetTransactionHash,
+        pub hash: TransactionHash,
         pub max_fee: Fee,
         #[serde_as(as = "Vec<RpcFelt>")]
         pub signature: Vec<TransactionSignatureElem>,
@@ -635,7 +635,7 @@ pub mod reply {
         // DEPLOY_TXN
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
-        pub hash: StarknetTransactionHash,
+        pub hash: TransactionHash,
         #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
 
@@ -655,7 +655,7 @@ pub mod reply {
         // This part is a subset of CommonTransactionProperties
         #[serde(rename = "transaction_hash")]
         #[serde_as(as = "RpcFelt")]
-        pub hash: StarknetTransactionHash,
+        pub hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
         #[serde_as(as = "RpcFelt")]
@@ -869,7 +869,7 @@ pub mod reply {
                 let transactions = vec![
                     Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: StarknetTransactionHash(felt!("0x4")),
+                            hash: TransactionHash(felt!("0x4")),
                             max_fee: Fee(felt!("0x5")),
                             signature: vec![TransactionSignatureElem(felt!("0x7"))],
                             nonce: TransactionNonce(felt!("0x8")),
@@ -879,7 +879,7 @@ pub mod reply {
                     })),
                     Transaction::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: StarknetTransactionHash(felt!("0x44")),
+                            hash: TransactionHash(felt!("0x44")),
                             max_fee: Fee(felt!("0x55")),
                             signature: vec![TransactionSignatureElem(felt!("0x77"))],
                             nonce: TransactionNonce(felt!("0x88")),
@@ -890,7 +890,7 @@ pub mod reply {
                     })),
                     Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: StarknetTransactionHash(felt!("0xb")),
+                            hash: TransactionHash(felt!("0xb")),
                             max_fee: Fee(felt!("0x999")),
                             signature: vec![TransactionSignatureElem(felt!("0x777"))],
                             nonce: TransactionNonce(felt!("0xdd")),
@@ -901,7 +901,7 @@ pub mod reply {
                     })),
                     Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: StarknetTransactionHash(felt!("0xbbb")),
+                            hash: TransactionHash(felt!("0xbbb")),
                             max_fee: Fee(felt!("0x9999")),
                             signature: vec![TransactionSignatureElem(felt!("0xeee"))],
                             nonce: TransactionNonce(felt!("0xde")),
@@ -910,14 +910,14 @@ pub mod reply {
                         calldata: vec![CallParam(felt!("0xddd"))],
                     })),
                     Transaction::Deploy(DeployTransaction {
-                        hash: StarknetTransactionHash(felt!("0xe")),
+                        hash: TransactionHash(felt!("0xe")),
                         class_hash: ClassHash(felt!("0x10")),
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
                         contract_address_salt: ContractAddressSalt(felt!("0xee")),
                         constructor_calldata: vec![ConstructorParam(felt!("0x11"))],
                     }),
                     Transaction::L1Handler(L1HandlerTransaction {
-                        hash: StarknetTransactionHash(felt!("0xf")),
+                        hash: TransactionHash(felt!("0xf")),
                         version: TransactionVersion(ethers::types::H256::from_low_u64_be(1)),
                         nonce: TransactionNonce(felt!("0x8")),
                         contract_address: ContractAddress::new_or_panic(felt!("0xfff")),

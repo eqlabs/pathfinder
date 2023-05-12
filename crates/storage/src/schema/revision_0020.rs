@@ -1,8 +1,6 @@
 use crate::{StarknetBlocksTable, StarknetEventsTable};
 use anyhow::Context;
-use pathfinder_common::{
-    felt, BlockNumber, ContractAddress, EventData, EventKey, StarknetTransactionHash,
-};
+use pathfinder_common::{felt, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash};
 use rusqlite::named_params;
 use stark_hash::Felt;
 
@@ -82,7 +80,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut t_log = t_begin;
     while let Some(row) = rows.next().context("Fetching next transaction hash")? {
         let block_number: BlockNumber = row.get_unwrap("block_number");
-        let transaction_hash: StarknetTransactionHash = row.get_unwrap("transaction_hash");
+        let transaction_hash: TransactionHash = row.get_unwrap("transaction_hash");
 
         process_transaction(tx, &mut compressor, &transaction_hash, block_number)?;
 
@@ -113,7 +111,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 fn process_transaction(
     tx: &rusqlite::Transaction<'_>,
     compressor: &mut zstd::bulk::Compressor<'_>,
-    transaction_hash: &StarknetTransactionHash,
+    transaction_hash: &TransactionHash,
     block_number: BlockNumber,
 ) -> anyhow::Result<()> {
     let mut get_transaction_and_receipt = tx
@@ -201,7 +199,7 @@ fn is_transfer_event(contract_address: Felt, e: &types::Event) -> bool {
 fn update_database(
     tx: &rusqlite::Transaction<'_>,
     compressor: &mut zstd::bulk::Compressor<'_>,
-    transaction_hash: &StarknetTransactionHash,
+    transaction_hash: &TransactionHash,
     block_number: BlockNumber,
     receipt: types::Receipt,
 ) -> anyhow::Result<()> {
@@ -270,8 +268,8 @@ mod types {
     use pathfinder_common::{
         CallParam, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        L2ToL1MessagePayloadElem, StarknetTransactionIndex, TransactionHash, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -294,7 +292,7 @@ mod types {
         pub execution_resources: Option<ExecutionResources>,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub transaction_index: StarknetTransactionIndex,
     }
 
@@ -415,7 +413,7 @@ mod types {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
     }
@@ -434,7 +432,7 @@ mod types {
         pub class_hash: ClassHash,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         #[serde(default = "transaction_version_zero")]
         pub version: TransactionVersion,
@@ -506,7 +504,7 @@ mod types {
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     /// Represents deserialized L2 invoke transaction v1 data.
@@ -521,7 +519,7 @@ mod types {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     /// Represents deserialized L2 "L1 handler" transaction data.
@@ -533,7 +531,7 @@ mod types {
         pub entry_point_selector: EntryPoint,
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
     }

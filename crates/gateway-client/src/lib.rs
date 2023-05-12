@@ -1,7 +1,7 @@
 //! StarkNet L2 sequencer client.
 use pathfinder_common::{
     BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
-    ContractAddressSalt, Fee, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+    ContractAddressSalt, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
     TransactionVersion,
 };
 use reqwest::Url;
@@ -38,7 +38,7 @@ pub trait GatewayApi: Sync {
 
     async fn transaction(
         &self,
-        transaction_hash: StarknetTransactionHash,
+        transaction_hash: TransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
         unimplemented!();
     }
@@ -251,7 +251,7 @@ impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn transaction(
         &self,
-        transaction_hash: StarknetTransactionHash,
+        transaction_hash: TransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction()
@@ -801,7 +801,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(felt!(
+                    .transaction(TransactionHash(felt!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
                     )))
                     .await
@@ -819,7 +819,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(felt!(
+                    .transaction(TransactionHash(felt!(
                         "03d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
                     )))
                     .await
@@ -837,7 +837,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(felt!(
+                    .transaction(TransactionHash(felt!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
                     )))
                     .await
@@ -1297,7 +1297,7 @@ mod tests {
 
             let expected = reply::add_transaction::DeployAccountResponse {
                 code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: StarknetTransactionHash(pathfinder_common::felt!(
+                transaction_hash: TransactionHash(pathfinder_common::felt!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
                 )),
                 address: ContractAddress::new_or_panic(pathfinder_common::felt!(

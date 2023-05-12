@@ -129,8 +129,8 @@ pub mod test_utils {
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
         ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
-        SequencerAddress, StarknetTransactionHash, StarknetTransactionIndex, StarknetVersion,
-        StateCommitment, StorageAddress, StorageCommitment, TransactionVersion,
+        SequencerAddress, StarknetTransactionIndex, StarknetVersion, StateCommitment,
+        StorageAddress, StorageCommitment, TransactionHash, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -376,7 +376,7 @@ pub mod test_utils {
         ContractCodeTable::update_block_number_if_null(&db_txn, class2_hash, block2.number)
             .unwrap();
 
-        let txn0_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
+        let txn0_hash = TransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
         let txn0 = InvokeTransactionV0 {
             calldata: vec![],
@@ -402,11 +402,11 @@ pub mod test_utils {
             transaction_hash: txn0_hash,
             transaction_index: StarknetTransactionIndex::new_or_panic(0),
         };
-        let txn1_hash = StarknetTransactionHash(felt_bytes!(b"txn 1"));
-        let txn2_hash = StarknetTransactionHash(felt_bytes!(b"txn 2"));
-        let txn3_hash = StarknetTransactionHash(felt_bytes!(b"txn 3"));
-        let txn4_hash = StarknetTransactionHash(felt_bytes!(b"txn 4 "));
-        let txn5_hash = StarknetTransactionHash(felt_bytes!(b"txn 5"));
+        let txn1_hash = TransactionHash(felt_bytes!(b"txn 1"));
+        let txn2_hash = TransactionHash(felt_bytes!(b"txn 2"));
+        let txn3_hash = TransactionHash(felt_bytes!(b"txn 3"));
+        let txn4_hash = TransactionHash(felt_bytes!(b"txn 4 "));
+        let txn5_hash = TransactionHash(felt_bytes!(b"txn 5"));
         let mut txn1 = txn0.clone();
         let mut txn2 = txn0.clone();
         let mut txn3 = txn0.clone();
@@ -490,7 +490,7 @@ pub mod test_utils {
                 entry_point_type: Some(EntryPointType::External),
                 max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
-                transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
+                transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
             })
             .into(),
             DeployTransaction {
@@ -498,7 +498,7 @@ pub mod test_utils {
                 contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),
                 class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
                 constructor_calldata: vec![],
-                transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 1")),
+                transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 1")),
                 version: TransactionVersion(H256::zero()),
             }
             .into(),
