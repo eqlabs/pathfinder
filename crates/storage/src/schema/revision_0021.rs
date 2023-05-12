@@ -47,7 +47,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         // We need to consider declared classes as well as deployed contracts.
         // The latter is required because originally starknet had deploy == declare & deploy.
         //
-        // Note that in addition, StarkNet does not disallow declaring already declared classes.
+        // Note that in addition, Starknet does not disallow declaring already declared classes.
         let declared = state_update
             .state_diff
             .declared_contracts

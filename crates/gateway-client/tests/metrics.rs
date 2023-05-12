@@ -48,7 +48,7 @@ where
     let responses = [
         // Any valid fixture
         response,
-        // 1 StarkNet error
+        // 1 Starknet error
         response_from(StarknetErrorCode::BlockNotFound),
         // 2 decode errors
         (r#"{"not":"valid"}"#.to_owned(), 200),

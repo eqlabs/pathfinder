@@ -7,19 +7,19 @@ use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
 use serde_with::serde_as;
 
-/// Used to deserialize replies to StarkNet block requests.
+/// Used to deserialize replies to Starknet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     pub block_hash: BlockHash,
     pub block_number: BlockNumber,
-    /// Excluded in blocks prior to StarkNet 0.9
+    /// Excluded in blocks prior to Starknet 0.9
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
     pub gas_price: Option<GasPrice>,
     pub parent_block_hash: BlockHash,
-    /// Excluded in blocks prior to StarkNet 0.8
+    /// Excluded in blocks prior to Starknet 0.8
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
     // Historical blocks (pre v0.11) still use `state_root`.
@@ -154,7 +154,7 @@ pub mod call {
     }
 }
 
-/// Used to deserialize replies to StarkNet transaction requests.
+/// Used to deserialize replies to Starknet transaction requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -172,7 +172,7 @@ pub struct Transaction {
     pub transaction_failure_reason: Option<transaction::Failure>,
 }
 
-/// Used to deserialize replies to StarkNet transaction status requests.
+/// Used to deserialize replies to Starknet transaction status requests.
 #[serde_as]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -662,7 +662,7 @@ pub enum MaybePendingStateUpdate {
     Pending(PendingStateUpdate),
 }
 
-/// Used to deserialize replies to StarkNet state update requests except for the pending one.
+/// Used to deserialize replies to Starknet state update requests except for the pending one.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
@@ -672,7 +672,7 @@ pub struct StateUpdate {
     pub state_diff: state_update::StateDiff,
 }
 
-/// Used to deserialize replies to StarkNet pending state update requests.
+/// Used to deserialize replies to Starknet pending state update requests.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingStateUpdate {
     pub old_root: StateCommitment,
@@ -794,7 +794,7 @@ pub mod state_update {
     }
 }
 
-/// Used to deserialize replies to StarkNet Ethereum contract requests.
+/// Used to deserialize replies to Starknet Ethereum contract requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -254,10 +254,10 @@ where
                     match tracing::level_filters::LevelFilter::current().into_level() {
                         None => {}
                         Some(level) if level <= tracing::Level::INFO => {
-                            tracing::info!("Updated StarkNet state with block {}", block_number)
+                            tracing::info!("Updated Starknet state with block {}", block_number)
                         }
                         Some(_) => {
-                            tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                            tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
                                 block_number,
                                 block_time.as_secs_f32(),
                                 block_time_avg.as_secs_f32(),

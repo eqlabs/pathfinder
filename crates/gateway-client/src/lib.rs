@@ -1,4 +1,4 @@
-//! StarkNet L2 sequencer client.
+//! Starknet L2 sequencer client.
 use pathfinder_common::{
     BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
     ContractAddressSalt, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
@@ -97,10 +97,10 @@ pub trait GatewayApi: Sync {
     }
 }
 
-/// StarkNet sequencer client using REST API.
+/// Starknet sequencer client using REST API.
 ///
 /// Retry is performed on __all__ types of errors __except for__
-/// [StarkNet specific errors](starknet_gateway_types::error::StarknetError).
+/// [Starknet specific errors](starknet_gateway_types::error::StarknetError).
 ///
 /// Initial backoff time is 30 seconds and saturates at 10 minutes:
 ///
@@ -111,9 +111,9 @@ pub trait GatewayApi: Sync {
 pub struct Client {
     /// This client is internally refcounted
     inner: reqwest::Client,
-    /// StarkNet gateway URL.
+    /// Starknet gateway URL.
     gateway: Url,
-    /// StarkNet feeder gateway URL.
+    /// Starknet feeder gateway URL.
     feeder_gateway: Url,
 }
 

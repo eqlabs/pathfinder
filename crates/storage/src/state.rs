@@ -1470,7 +1470,7 @@ impl ContractsStateTable {
     }
 }
 
-/// Stores the canonical StarkNet block chain.
+/// Stores the canonical Starknet block chain.
 pub struct CanonicalBlocksTable {}
 
 impl CanonicalBlocksTable {

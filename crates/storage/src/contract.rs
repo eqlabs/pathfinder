@@ -5,7 +5,7 @@ use pathfinder_common::{BlockNumber, CasmHash, ClassCommitmentLeafHash, ClassHas
 use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 
-/// Stores StarkNet contract information, specifically a contract's
+/// Stores Starknet contract information, specifically a contract's
 ///
 /// - [hash](ClassHash)
 /// - definition

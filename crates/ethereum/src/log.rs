@@ -112,7 +112,7 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         /// Creates a valid web3 log containing a [StateUpdateLog]. Also returns the
-        /// log's StarkNet `global_root` and `block_number`
+        /// log's Starknet `global_root` and `block_number`
         ///
         /// Data taken from https://goerli.etherscan.io/tx/0xb6ba98e34c60bb39785df907de3c41c0a9c95302e50f213606772817514714ce#eventlog
         fn test_data() -> (ethers::types::Log, StateCommitment, BlockNumber) {

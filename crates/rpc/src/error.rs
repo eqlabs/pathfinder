@@ -1,10 +1,10 @@
-//! Defines [RpcError], the StarkNet JSON-RPC specification's error variants.
+//! Defines [RpcError], the Starknet JSON-RPC specification's error variants.
 //!
 //! In addition, it supplies the [generate_rpc_error_subset!] macro which should be used
 //! by each JSON-RPC method to trivially create its subset of [RpcError] along with the boilerplate involved.
 #![macro_use]
 
-/// The StarkNet JSON-RPC error variants.
+/// The Starknet JSON-RPC error variants.
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {
     #[error("Failed to write transaction")]

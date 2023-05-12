@@ -3,7 +3,7 @@
 ## Prerequisites
 
 Currently only supports Linux. Windows and MacOS support is planned.
-We need access to a full Ethereum node operating on the network matching the StarkNet network you wish to run. Currently this is either Goerli or Mainnet.
+We need access to a full Ethereum node operating on the network matching the Starknet network you wish to run. Currently this is either Goerli or Mainnet.
 
 | :warning: | If using Infura as an L1 provider, you will need access to their archive node facilities. This is because `pathfinder` requires access to the full log history. |
 | --------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |

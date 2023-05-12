@@ -313,7 +313,7 @@ Hint: Make sure the provided ethereum.url and ethereum.password are good.",
                 anyhow::bail!(
                     r"Implicit Starknet networks are only available for Ethereum mainnet and Goerli, but the provided Ethereum network has chain ID = {id}.
 
-If you are trying to connect to a custom StarkNet on another Ethereum network, please use '--network custom'"
+If you are trying to connect to a custom Starknet on another Ethereum network, please use '--network custom'"
                 )
             }
         }
