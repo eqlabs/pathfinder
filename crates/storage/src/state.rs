@@ -5,11 +5,11 @@ use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     },
-    Chain, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
-    ContractStateHash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
-    EthereumTransactionHash, EthereumTransactionIndex, EventCommitment, EventData, EventKey,
-    GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StarknetTransactionHash, StateCommitment, StorageCommitment, TransactionCommitment,
+    BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ClassHash, ContractAddress,
+    ContractNonce, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
+    EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, EventCommitment,
+    EventData, EventKey, GasPrice, SequencerAddress, StateCommitment, StorageCommitment,
+    TransactionCommitment, TransactionHash,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
@@ -21,12 +21,12 @@ pub struct L1StateTable {}
 
 /// Identifies block in some [L1StateTable] queries.
 pub enum L1TableBlockId {
-    Number(StarknetBlockNumber),
+    Number(BlockNumber),
     Latest,
 }
 
-impl From<StarknetBlockNumber> for L1TableBlockId {
-    fn from(number: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for L1TableBlockId {
+    fn from(number: BlockNumber) -> Self {
         L1TableBlockId::Number(number)
     }
 }
@@ -68,7 +68,7 @@ impl L1StateTable {
 
     /// Deletes all rows from __head down-to reorg_tail__
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
-    pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+    pub fn reorg(tx: &Transaction<'_>, reorg_tail: BlockNumber) -> anyhow::Result<()> {
         tx.execute(
             "DELETE FROM l1_state WHERE starknet_block_number >= ?",
             [reorg_tail],
@@ -195,7 +195,7 @@ pub struct RefsTable {}
 
 impl RefsTable {
     /// Returns the current L1-L2 head. This indicates the latest block for which L1 and L2 agree.
-    pub fn get_l1_l2_head(tx: &Transaction<'_>) -> anyhow::Result<Option<StarknetBlockNumber>> {
+    pub fn get_l1_l2_head(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
         // This table always contains exactly one row.
         tx.query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
             row.get::<_, Option<_>>(0)
@@ -204,10 +204,7 @@ impl RefsTable {
     }
 
     /// Sets the current L1-L2 head. This should indicate the latest block for which L1 and L2 agree.
-    pub fn set_l1_l2_head(
-        tx: &Transaction<'_>,
-        head: Option<StarknetBlockNumber>,
-    ) -> anyhow::Result<()> {
+    pub fn set_l1_l2_head(tx: &Transaction<'_>, head: Option<BlockNumber>) -> anyhow::Result<()> {
         tx.execute("UPDATE refs SET l1_l2_head = ? WHERE idx = 1", [head])?;
 
         Ok(())
@@ -458,7 +455,7 @@ impl StarknetBlocksTable {
 
     /// Deletes all rows from __head down-to reorg_tail__
     /// i.e. it deletes all rows where `block number >= reorg_tail`.
-    pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+    pub fn reorg(tx: &Transaction<'_>, reorg_tail: BlockNumber) -> anyhow::Result<()> {
         tx.execute(
             "DELETE FROM starknet_blocks WHERE number >= ?",
             [reorg_tail],
@@ -466,8 +463,8 @@ impl StarknetBlocksTable {
         Ok(())
     }
 
-    /// Returns the [number](StarknetBlockNumber) of the latest block.
-    pub fn get_latest_number(tx: &Transaction<'_>) -> anyhow::Result<Option<StarknetBlockNumber>> {
+    /// Returns the [number](BlockNumber) of the latest block.
+    pub fn get_latest_number(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
         let maybe = tx
             .query_row(
                 "SELECT number FROM starknet_blocks ORDER BY number DESC LIMIT 1",
@@ -478,10 +475,10 @@ impl StarknetBlocksTable {
         Ok(maybe)
     }
 
-    /// Returns the [hash](StarknetBlockHash) and [number](StarknetBlockNumber) of the latest block.
+    /// Returns the [hash](BlockHash) and [number](BlockNumber) of the latest block.
     pub fn get_latest_hash_and_number(
         tx: &Transaction<'_>,
-    ) -> anyhow::Result<Option<(StarknetBlockHash, StarknetBlockNumber)>> {
+    ) -> anyhow::Result<Option<(BlockHash, BlockNumber)>> {
         let maybe = tx
             .query_row(
                 "SELECT hash, number FROM starknet_blocks ORDER BY number DESC LIMIT 1",
@@ -498,8 +495,8 @@ impl StarknetBlocksTable {
 
     pub fn get_number(
         tx: &Transaction<'_>,
-        hash: StarknetBlockHash,
-    ) -> anyhow::Result<Option<StarknetBlockNumber>> {
+        hash: BlockHash,
+    ) -> anyhow::Result<Option<BlockNumber>> {
         tx.query_row(
             "SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1",
             [hash],
@@ -511,7 +508,7 @@ impl StarknetBlocksTable {
 
     /// Returns the [chain](pathfinder_common::Chain) based on genesis block hash stored in the DB.
     pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
-        let genesis = Self::get_hash(tx, StarknetBlockNumber::GENESIS.into())
+        let genesis = Self::get_hash(tx, BlockNumber::GENESIS.into())
             .context("Read genesis block from database")?;
 
         match genesis {
@@ -528,7 +525,7 @@ impl StarknetBlocksTable {
     pub fn get_hash(
         tx: &Transaction<'_>,
         block: StarknetBlocksNumberOrLatest,
-    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+    ) -> anyhow::Result<Option<BlockHash>> {
         match block {
             StarknetBlocksNumberOrLatest::Number(n) => tx.query_row(
                 "SELECT hash FROM starknet_blocks WHERE number = ?",
@@ -549,19 +546,19 @@ impl StarknetBlocksTable {
 /// Identifies block in some [StarknetBlocksTable] queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StarknetBlocksBlockId {
-    Number(StarknetBlockNumber),
-    Hash(StarknetBlockHash),
+    Number(BlockNumber),
+    Hash(BlockHash),
     Latest,
 }
 
-impl From<StarknetBlockNumber> for StarknetBlocksBlockId {
-    fn from(number: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for StarknetBlocksBlockId {
+    fn from(number: BlockNumber) -> Self {
         StarknetBlocksBlockId::Number(number)
     }
 }
 
-impl From<StarknetBlockHash> for StarknetBlocksBlockId {
-    fn from(hash: StarknetBlockHash) -> Self {
+impl From<BlockHash> for StarknetBlocksBlockId {
+    fn from(hash: BlockHash) -> Self {
         StarknetBlocksBlockId::Hash(hash)
     }
 }
@@ -569,19 +566,19 @@ impl From<StarknetBlockHash> for StarknetBlocksBlockId {
 /// Identifies block in some [StarknetBlocksTable] queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StarknetBlocksNumberOrLatest {
-    Number(StarknetBlockNumber),
+    Number(BlockNumber),
     Latest,
 }
 
-impl From<StarknetBlockNumber> for StarknetBlocksNumberOrLatest {
-    fn from(number: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for StarknetBlocksNumberOrLatest {
+    fn from(number: BlockNumber) -> Self {
         Self::Number(number)
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("expected starknet block number or `latest`, got starknet block hash {0}")]
-pub struct FromStarknetBlocksBlockIdError(StarknetBlockHash);
+pub struct FromStarknetBlocksBlockIdError(BlockHash);
 
 impl TryFrom<StarknetBlocksBlockId> for StarknetBlocksNumberOrLatest {
     type Error = FromStarknetBlocksBlockIdError;
@@ -604,8 +601,8 @@ impl StarknetTransactionsTable {
     /// overwrites existing data if the transaction hash already exists.
     pub fn upsert(
         tx: &Transaction<'_>,
-        block_hash: StarknetBlockHash,
-        block_number: StarknetBlockNumber,
+        block_hash: BlockHash,
+        block_number: BlockNumber,
         transaction_data: &[(transaction::Transaction, transaction::Receipt)],
     ) -> anyhow::Result<()> {
         if transaction_data.is_empty() {
@@ -680,7 +677,7 @@ impl StarknetTransactionsTable {
     fn get_block_hash(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+    ) -> anyhow::Result<Option<BlockHash>> {
         Ok(match block {
             StarknetBlocksBlockId::Hash(hash) => Some(hash),
             StarknetBlocksBlockId::Number(number) => {
@@ -812,7 +809,7 @@ impl StarknetTransactionsTable {
 
     pub fn get_transaction(
         tx: &Transaction<'_>,
-        transaction: StarknetTransactionHash,
+        transaction: TransactionHash,
     ) -> anyhow::Result<Option<transaction::Transaction>> {
         let mut stmt = tx
             .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?1")
@@ -835,14 +832,8 @@ impl StarknetTransactionsTable {
 
     pub fn get_transaction_with_receipt(
         tx: &Transaction<'_>,
-        txn_hash: StarknetTransactionHash,
-    ) -> anyhow::Result<
-        Option<(
-            transaction::Transaction,
-            transaction::Receipt,
-            StarknetBlockHash,
-        )>,
-    > {
+        txn_hash: TransactionHash,
+    ) -> anyhow::Result<Option<(transaction::Transaction, transaction::Receipt, BlockHash)>> {
         let mut stmt = tx
             .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
             .context("Preparing statement")?;
@@ -906,8 +897,8 @@ impl StarknetTransactionsTable {
 }
 
 pub struct StarknetEventFilter<K: KeyFilter> {
-    pub from_block: Option<StarknetBlockNumber>,
-    pub to_block: Option<StarknetBlockNumber>,
+    pub from_block: Option<BlockNumber>,
+    pub to_block: Option<BlockNumber>,
     pub contract_address: Option<ContractAddress>,
     pub keys: K,
     pub page_size: usize,
@@ -919,9 +910,9 @@ pub struct StarknetEmittedEvent {
     pub from_address: ContractAddress,
     pub data: Vec<EventData>,
     pub keys: Vec<EventKey>,
-    pub block_hash: StarknetBlockHash,
-    pub block_number: StarknetBlockNumber,
-    pub transaction_hash: StarknetTransactionHash,
+    pub block_hash: BlockHash,
+    pub block_number: BlockNumber,
+    pub transaction_hash: TransactionHash,
 }
 
 #[derive(Copy, Clone, Debug, thiserror::Error, PartialEq, Eq)]
@@ -1082,8 +1073,8 @@ impl StarknetEventsTable {
 
     pub fn insert_events(
         tx: &Transaction<'_>,
-        block_number: StarknetBlockNumber,
-        transaction_hash: StarknetTransactionHash,
+        block_number: BlockNumber,
+        transaction_hash: TransactionHash,
         events: &[transaction::Event],
     ) -> anyhow::Result<()> {
         let mut stmt = tx.prepare(
@@ -1119,8 +1110,8 @@ impl StarknetEventsTable {
 
     fn event_query<'query, 'arg>(
         base: &'query str,
-        from_block: Option<&'arg StarknetBlockNumber>,
-        to_block: Option<&'arg StarknetBlockNumber>,
+        from_block: Option<&'arg BlockNumber>,
+        to_block: Option<&'arg BlockNumber>,
         contract_address: Option<&'arg ContractAddress>,
         keys: &dyn KeyFilter,
         key_fts_expression: &'arg mut String,
@@ -1200,8 +1191,8 @@ impl StarknetEventsTable {
 
     pub fn event_count(
         tx: &Transaction<'_>,
-        from_block: Option<StarknetBlockNumber>,
-        to_block: Option<StarknetBlockNumber>,
+        from_block: Option<BlockNumber>,
+        to_block: Option<BlockNumber>,
         contract_address: Option<ContractAddress>,
         keys: &dyn KeyFilter,
     ) -> anyhow::Result<usize> {
@@ -1330,10 +1321,10 @@ impl StarknetEventsTable {
 /// not yet read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StarknetBlock {
-    pub number: StarknetBlockNumber,
-    pub hash: StarknetBlockHash,
+    pub number: BlockNumber,
+    pub hash: BlockHash,
     pub state_commmitment: StateCommitment,
-    pub timestamp: StarknetBlockTimestamp,
+    pub timestamp: BlockTimestamp,
     pub gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub transaction_commitment: Option<TransactionCommitment>,
@@ -1479,14 +1470,14 @@ impl ContractsStateTable {
     }
 }
 
-/// Stores the canonical StarkNet block chain.
+/// Stores the canonical Starknet block chain.
 pub struct CanonicalBlocksTable {}
 
 impl CanonicalBlocksTable {
     pub fn insert(
         tx: &Transaction<'_>,
-        number: StarknetBlockNumber,
-        hash: StarknetBlockHash,
+        number: BlockNumber,
+        hash: BlockHash,
     ) -> anyhow::Result<()> {
         let rows_changed = tx.execute(
             "INSERT INTO canonical_blocks(number, hash) values(?,?)",
@@ -1498,7 +1489,7 @@ impl CanonicalBlocksTable {
     }
 
     /// Removes all rows where `number >= reorg_tail`.
-    pub fn reorg(tx: &Transaction<'_>, reorg_tail: StarknetBlockNumber) -> anyhow::Result<()> {
+    pub fn reorg(tx: &Transaction<'_>, reorg_tail: BlockNumber) -> anyhow::Result<()> {
         tx.execute(
             "DELETE FROM canonical_blocks WHERE number >= ?",
             [reorg_tail],
@@ -1564,11 +1555,11 @@ mod tests {
                 let mut connection = storage.connection().unwrap();
                 let tx = connection.transaction().unwrap();
 
-                let expected = Some(StarknetBlockNumber::new_or_panic(22));
+                let expected = Some(BlockNumber::new_or_panic(22));
                 RefsTable::set_l1_l2_head(&tx, expected).unwrap();
                 assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
 
-                let expected = Some(StarknetBlockNumber::new_or_panic(25));
+                let expected = Some(BlockNumber::new_or_panic(25));
                 RefsTable::set_l1_l2_head(&tx, expected).unwrap();
                 assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
 
@@ -1600,7 +1591,7 @@ mod tests {
                     global_root: StateCommitment(
                         Felt::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
                     ),
-                    block_number: StarknetBlockNumber::GENESIS + i,
+                    block_number: BlockNumber::GENESIS + i,
                 })
                 .collect::<Vec<_>>()
                 .try_into()
@@ -1773,7 +1764,7 @@ mod tests {
                     L1StateTable::upsert(&tx, update).unwrap();
                 }
 
-                L1StateTable::reorg(&tx, StarknetBlockNumber::GENESIS).unwrap();
+                L1StateTable::reorg(&tx, BlockNumber::GENESIS).unwrap();
 
                 assert_eq!(
                     L1StateTable::get(&tx, L1TableBlockId::Latest).unwrap(),
@@ -1886,8 +1877,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
-                        let non_existent =
-                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
                             None
@@ -1942,8 +1932,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
-                        let non_existent =
-                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
                             None
@@ -2039,8 +2028,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
-                        let non_existent =
-                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
                                 .unwrap(),
@@ -2119,7 +2107,7 @@ mod tests {
             fn full() {
                 with_default_blocks(|tx, _blocks| {
                     // reorg to genesis expected to wipe the blocks
-                    StarknetBlocksTable::reorg(tx, StarknetBlockNumber::GENESIS).unwrap();
+                    StarknetBlocksTable::reorg(tx, BlockNumber::GENESIS).unwrap();
 
                     assert_eq!(
                         StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest).unwrap(),
@@ -2401,7 +2389,7 @@ mod tests {
             // instead of transaction index.
             //
             // Events should be ordered by block number, transaction index, event index.
-            use pathfinder_common::StarknetTransactionHash;
+            use pathfinder_common::TransactionHash;
 
             // All events we are storing, arbitrarily use from_address to distinguish them.
             let expected_events = (0u8..5)
@@ -2415,10 +2403,10 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let block = StarknetBlock {
-                number: StarknetBlockNumber::GENESIS,
-                hash: StarknetBlockHash(felt!("0x1234")),
+                number: BlockNumber::GENESIS,
+                hash: BlockHash(felt!("0x1234")),
                 state_commmitment: StateCommitment(felt!("0x1234")),
-                timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                timestamp: BlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),
                 sequencer_address: SequencerAddress(felt!("0x1234")),
                 transaction_commitment: None,
@@ -2436,7 +2424,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee::ZERO,
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("0xF")),
+                        transaction_hash: TransactionHash(felt!("0xF")),
                     },
                 )),
                 transaction::Transaction::Invoke(transaction::InvokeTransaction::V0(
@@ -2448,7 +2436,7 @@ mod tests {
                         entry_point_selector: EntryPoint(Felt::ZERO),
                         max_fee: Fee::ZERO,
                         signature: vec![],
-                        transaction_hash: StarknetTransactionHash(felt!("0x1")),
+                        transaction_hash: TransactionHash(felt!("0x1")),
                     },
                 )),
             ];
@@ -2468,7 +2456,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[0].hash(),
-                    transaction_index: pathfinder_common::StarknetTransactionIndex::new_or_panic(0),
+                    transaction_index: pathfinder_common::TransactionIndex::new_or_panic(0),
                 },
                 transaction::Receipt {
                     actual_fee: None,
@@ -2484,7 +2472,7 @@ mod tests {
                     l1_to_l2_consumed_message: None,
                     l2_to_l1_messages: Vec::new(),
                     transaction_hash: transactions[1].hash(),
-                    transaction_index: pathfinder_common::StarknetTransactionIndex::new_or_panic(1),
+                    transaction_index: pathfinder_common::TransactionIndex::new_or_panic(1),
                 },
             ];
 
@@ -2546,8 +2534,8 @@ mod tests {
 
             const BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
-                from_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
-                to_block: Some(StarknetBlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
+                from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
+                to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: V02KeyFilter(vec![]),
                 page_size: test_utils::NUM_EVENTS,
@@ -2576,7 +2564,7 @@ mod tests {
             const UNTIL_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
                 from_block: None,
-                to_block: Some(StarknetBlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
+                to_block: Some(BlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
                 contract_address: None,
                 keys: V02KeyFilter(vec![]),
                 page_size: test_utils::NUM_EVENTS,
@@ -2604,7 +2592,7 @@ mod tests {
 
             const FROM_BLOCK_NUMBER: usize = 2;
             let filter = StarknetEventFilter {
-                from_block: Some(StarknetBlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
+                from_block: Some(BlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
                 to_block: None,
                 contract_address: None,
                 keys: V02KeyFilter(vec![]),
@@ -3005,7 +2993,7 @@ mod tests {
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
 
-            let block = Some(StarknetBlockNumber::new_or_panic(2));
+            let block = Some(BlockNumber::new_or_panic(2));
 
             let count =
                 StarknetEventsTable::event_count(&tx, block, block, None, &V02KeyFilter(vec![]))
@@ -3028,8 +3016,8 @@ mod tests {
 
             let count = StarknetEventsTable::event_count(
                 &tx,
-                Some(StarknetBlockNumber::GENESIS),
-                Some(StarknetBlockNumber::MAX),
+                Some(BlockNumber::GENESIS),
+                Some(BlockNumber::MAX),
                 Some(addr),
                 &V02KeyFilter(vec![]),
             )
@@ -3052,8 +3040,8 @@ mod tests {
 
             let count = StarknetEventsTable::event_count(
                 &tx,
-                Some(StarknetBlockNumber::GENESIS),
-                Some(StarknetBlockNumber::MAX),
+                Some(BlockNumber::GENESIS),
+                Some(BlockNumber::MAX),
                 None,
                 &V02KeyFilter(vec![key]),
             )

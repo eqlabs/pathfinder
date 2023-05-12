@@ -68,7 +68,7 @@ fn main() -> Result<(), anyhow::Error> {
 #[derive(Debug)]
 struct Work {
     transaction: pathfinder_rpc::v02::types::request::BroadcastedTransaction,
-    at_block: pathfinder_common::StarknetBlockHash,
+    at_block: pathfinder_common::BlockHash,
     gas_price: pathfinder_rpc::cairo::ext_py::GasPriceSource,
     actual_fee: ethers::types::H256,
     span: tracing::Span,
@@ -207,7 +207,7 @@ fn feed_work(
         sender
             .blocking_send(Work {
                 transaction,
-                at_block: pathfinder_common::StarknetBlockHash(target_hash),
+                at_block: pathfinder_common::BlockHash(target_hash),
                 // use the b.gas_price to get as close as possible
                 gas_price: pathfinder_rpc::cairo::ext_py::GasPriceSource::Current(
                     gas_price_at_block,

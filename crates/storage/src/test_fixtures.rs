@@ -11,9 +11,9 @@ use crate::{
     {StarknetBlock, Storage},
 };
 use pathfinder_common::{
-    CasmHash, ClassCommitment, ClassHash, ContractAddress, ContractNonce, GasPrice,
-    SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StateCommitment, StorageAddress, StorageCommitment, StorageValue,
+    BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ClassHash, ContractAddress,
+    ContractNonce, GasPrice, SequencerAddress, SierraHash, StateCommitment, StorageAddress,
+    StorageCommitment, StorageValue,
 };
 use rusqlite::Transaction;
 use stark_hash::Felt;
@@ -40,7 +40,7 @@ pub mod init {
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
         (0..n)
             .map(|n| {
-                let block_number = StarknetBlockNumber::new_or_panic(n as u64);
+                let block_number = BlockNumber::new_or_panic(n as u64);
                 StarknetBlocksTable::insert(
                     tx,
                     &StarknetBlock::nth(n),
@@ -49,8 +49,7 @@ pub mod init {
                     ClassCommitment(hash!(12, n)),
                 )
                 .unwrap();
-                CanonicalBlocksTable::insert(tx, block_number, StarknetBlockHash(hash!(n)))
-                    .unwrap();
+                CanonicalBlocksTable::insert(tx, block_number, BlockHash(hash!(n))).unwrap();
 
                 let update = StateUpdate::with_block_hash(n);
 
@@ -111,7 +110,7 @@ impl StateUpdate {
             vec![]
         };
         Self {
-            block_hash: Some(StarknetBlockHash(hash!(h))),
+            block_hash: Some(BlockHash(hash!(h))),
             new_root: StateCommitment::calculate(
                 StorageCommitment(hash!(11, h)),
                 ClassCommitment(hash!(12, h)),
@@ -148,14 +147,13 @@ impl StarknetBlock {
     /// Creates a [`StarknetBlock`] with number `n` and hash `0xh` filled with arbitrary data useful for testing.
     pub fn nth(n: u8) -> Self {
         Self {
-            number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
-            hash: StarknetBlockHash(hash!(n)),
+            number: BlockNumber::new(n as u64).expect("block number out of range"),
+            hash: BlockHash(hash!(n)),
             state_commmitment: StateCommitment::calculate(
                 StorageCommitment(hash!(11, n)),
                 ClassCommitment(hash!(12, n)),
             ),
-            timestamp: StarknetBlockTimestamp::new(n as u64 + 1000)
-                .expect("block timestamp out of range"),
+            timestamp: BlockTimestamp::new(n as u64 + 1000).expect("block timestamp out of range"),
             gas_price: GasPrice(n as u128 + 2000),
             sequencer_address: SequencerAddress(hash!(2, n)),
             transaction_commitment: None,

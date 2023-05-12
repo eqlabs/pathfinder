@@ -10,7 +10,7 @@
 //!   3. [Params](stage::Params) where you select the retry behavior.
 //!   4. [Final](stage::Final) where you select the REST operation type, which is then executed.
 use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
-use pathfinder_common::{BlockId, ClassHash, StarknetTransactionHash};
+use pathfinder_common::{BlockId, ClassHash, TransactionHash};
 use starknet_gateway_types::error::SequencerError;
 
 /// A Sequencer Request builder.
@@ -185,7 +185,7 @@ impl<'a> Request<'a, stage::Params> {
         }
     }
 
-    pub fn with_transaction_hash(self, hash: StarknetTransactionHash) -> Self {
+    pub fn with_transaction_hash(self, hash: TransactionHash) -> Self {
         self.add_param("transactionHash", &hash.0.to_hex_str())
     }
 

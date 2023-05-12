@@ -1,7 +1,7 @@
 use anyhow::Context;
 use ethers::types::H160;
 use futures::Future;
-use pathfinder_common::{Chain, EthereumBlockHash, EthereumBlockNumber, StarknetBlockNumber};
+use pathfinder_common::{BlockNumber, Chain, EthereumBlockHash, EthereumBlockNumber};
 use pathfinder_ethereum::{
     log::StateUpdateLog,
     provider::EthereumTransport,
@@ -19,12 +19,12 @@ pub enum Event {
     /// An L1 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
-    Reorg(StarknetBlockNumber),
+    Reorg(BlockNumber),
     /// Query for the [update log](StateUpdateLog) of the given block.
     ///
     /// The receiver should return the [update log](StateUpdateLog) using the
     /// [oneshot::channel].
-    QueryUpdate(StarknetBlockNumber, oneshot::Sender<Option<StateUpdateLog>>),
+    QueryUpdate(BlockNumber, oneshot::Sender<Option<StateUpdateLog>>),
 }
 
 /// Syncs L1 state update logs. Emits [sync events](Event) which should be handled
@@ -144,7 +144,7 @@ impl EventSender {
     /// Sends [Event::QueryUpdate] on its channel and returns the result.
     async fn get_update(
         &self,
-        block: StarknetBlockNumber,
+        block: BlockNumber,
     ) -> Result<Option<StateUpdateLog>, ChannelClosedError> {
         let (tx, rx) = oneshot::channel();
         self.0
@@ -164,7 +164,7 @@ impl EventSender {
     }
 
     /// Sends [Event::Reorg] on its channel.
-    async fn reorg(&self, block: StarknetBlockNumber) -> Result<(), ChannelClosedError> {
+    async fn reorg(&self, block: BlockNumber) -> Result<(), ChannelClosedError> {
         self.0
             .send(Event::Reorg(block))
             .await
@@ -206,7 +206,7 @@ async fn sync_impl(
                 // valid block. This becomes the new head of our L1 state.
                 let new_head = loop {
                     // We have reached Starknet genesis, no older blocks to check.
-                    if reorg_tail.block_number == StarknetBlockNumber::GENESIS {
+                    if reorg_tail.block_number == BlockNumber::GENESIS {
                         break None;
                     }
 
@@ -247,7 +247,7 @@ async fn sync_impl(
                 let reorg_tail_number = new_head
                     .as_ref()
                     .map(|log| log.block_number + 1)
-                    .unwrap_or(StarknetBlockNumber::GENESIS);
+                    .unwrap_or(BlockNumber::GENESIS);
 
                 // Send Reorg event, with the oldest Starknet block which was invalidated by this L1 reorg.
                 if let Err(_exit) = event_sender.reorg(reorg_tail_number).await {
@@ -304,7 +304,7 @@ mod tests {
                     log_index: EthereumLogIndex(10),
                 },
                 global_root: StateCommitment(felt!("0x123")),
-                block_number: StarknetBlockNumber::GENESIS,
+                block_number: BlockNumber::GENESIS,
             }];
 
             let logs2 = vec![StateUpdateLog {
@@ -320,7 +320,7 @@ mod tests {
                     log_index: EthereumLogIndex(2),
                 },
                 global_root: StateCommitment(felt!("0x456abc")),
-                block_number: StarknetBlockNumber::new_or_panic(1),
+                block_number: BlockNumber::new_or_panic(1),
             }];
 
             // Create a mocker which expects
@@ -378,7 +378,7 @@ mod tests {
                     log_index: EthereumLogIndex(10),
                 },
                 global_root: StateCommitment(felt!("0x123")),
-                block_number: StarknetBlockNumber::GENESIS,
+                block_number: BlockNumber::GENESIS,
             }];
 
             // Closing the event's channel should trigger the sync to exit after the first send.
@@ -422,7 +422,7 @@ mod tests {
                         global_root: StateCommitment(
                             Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
-                        block_number: StarknetBlockNumber::new_or_panic(i),
+                        block_number: BlockNumber::new_or_panic(i),
                     })
                     .collect::<Vec<_>>();
 
@@ -521,7 +521,7 @@ mod tests {
                         global_root: StateCommitment(
                             Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
-                        block_number: StarknetBlockNumber::new_or_panic(i),
+                        block_number: BlockNumber::new_or_panic(i),
                     })
                     .collect::<Vec<_>>();
 
@@ -580,7 +580,7 @@ mod tests {
                 // We now expect a reorg event to be emitted.
                 match rx_event.recv().await.unwrap() {
                     Event::Reorg(recv_tail) => {
-                        assert_eq!(recv_tail, StarknetBlockNumber::GENESIS)
+                        assert_eq!(recv_tail, BlockNumber::GENESIS)
                     }
                     _other => panic!("Expected Reorg event"),
                 }
@@ -609,7 +609,7 @@ mod tests {
                         global_root: StateCommitment(
                             Felt::from_hex_str(&i.to_string().repeat(i as usize)).unwrap(),
                         ),
-                        block_number: StarknetBlockNumber::new_or_panic(i),
+                        block_number: BlockNumber::new_or_panic(i),
                     })
                     .collect::<Vec<_>>();
 
@@ -670,7 +670,7 @@ mod tests {
                 // We expect a reorg event up to genesis.
                 match rx_event.recv().await.unwrap() {
                     Event::Reorg(recv_tail) => {
-                        assert_eq!(recv_tail, StarknetBlockNumber::GENESIS)
+                        assert_eq!(recv_tail, BlockNumber::GENESIS)
                     }
                     _other => panic!("Expected Reorg event, got {_other:?}"),
                 }

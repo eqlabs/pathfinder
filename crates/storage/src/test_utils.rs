@@ -2,12 +2,11 @@ use super::{
     StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
 };
 use pathfinder_common::{
-    felt, CallParam, ClassCommitment, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, EntryPoint, EventCommitment, EventData, EventKey, Fee, GasPrice,
-    SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StarknetTransactionHash, StarknetTransactionIndex, StarknetVersion, StateCommitment,
-    StorageCommitment, TransactionCommitment, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+    felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
+    ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
+    EventKey, Fee, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
+    TransactionCommitment, TransactionHash, TransactionIndex, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction::{
@@ -36,13 +35,13 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
             let index_as_felt = Felt::from_be_slice(&[i as u8]).unwrap();
             BlockWithCommitment {
                 block: StarknetBlock {
-                    number: StarknetBlockNumber::GENESIS + i as u64,
-                    hash: StarknetBlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
+                    number: BlockNumber::GENESIS + i as u64,
+                    hash: BlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
                     state_commmitment: StateCommitment::calculate(
                         storage_commitment,
                         class_commitment,
                     ),
-                    timestamp: StarknetBlockTimestamp::new_or_panic(i as u64 + 500),
+                    timestamp: BlockTimestamp::new_or_panic(i as u64 + 500),
                     gas_price: GasPrice::from(i as u64),
                     sequencer_address: SequencerAddress(index_as_felt),
                     transaction_commitment: Some(TransactionCommitment(index_as_felt)),
@@ -77,9 +76,7 @@ pub(crate) fn create_transactions_and_receipts(
                 signature: vec![TransactionSignatureElem(
                     Felt::from_hex_str(&"3".repeat(i + 3)).unwrap(),
                 )],
-                transaction_hash: StarknetTransactionHash(
-                    Felt::from_hex_str(&"4".repeat(i + 3)).unwrap(),
-                ),
+                transaction_hash: TransactionHash(Felt::from_hex_str(&"4".repeat(i + 3)).unwrap()),
             }))
         }
         x if (INVOKE_TRANSACTIONS_PER_BLOCK
@@ -97,9 +94,7 @@ pub(crate) fn create_transactions_and_receipts(
                 constructor_calldata: vec![ConstructorParam(
                     Felt::from_hex_str(&"8".repeat(i + 3)).unwrap(),
                 )],
-                transaction_hash: StarknetTransactionHash(
-                    Felt::from_hex_str(&"9".repeat(i + 3)).unwrap(),
-                ),
+                transaction_hash: TransactionHash(Felt::from_hex_str(&"9".repeat(i + 3)).unwrap()),
                 version: TransactionVersion(ethers::types::H256::zero()),
             })
         }
@@ -113,9 +108,7 @@ pub(crate) fn create_transactions_and_receipts(
             signature: vec![TransactionSignatureElem(
                 Felt::from_hex_str(&"d".repeat(i + 3)).unwrap(),
             )],
-            transaction_hash: StarknetTransactionHash(
-                Felt::from_hex_str(&"e".repeat(i + 3)).unwrap(),
-            ),
+            transaction_hash: TransactionHash(Felt::from_hex_str(&"e".repeat(i + 3)).unwrap()),
         })),
     });
 
@@ -147,7 +140,7 @@ pub(crate) fn create_transactions_and_receipts(
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: Vec::new(),
             transaction_hash: tx.hash(),
-            transaction_index: StarknetTransactionIndex::new_or_panic(i as u64 + 2311),
+            transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
         };
 
         (tx, receipt)

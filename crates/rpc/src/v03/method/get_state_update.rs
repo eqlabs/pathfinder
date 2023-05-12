@@ -247,7 +247,7 @@ fn get_state_update_from_storage(
 mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
-        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StarknetBlockHash,
+        BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
         StateCommitment, StorageAddress, StorageValue,
     };
     use serde::Serialize;
@@ -263,7 +263,7 @@ mod types {
         /// None for `pending`
         #[serde(default)]
         #[serde_as(as = "Option<RpcFelt>")]
-        pub block_hash: Option<StarknetBlockHash>,
+        pub block_hash: Option<BlockHash>,
         /// None for `pending`
         #[serde(default)]
         #[serde_as(as = "Option<RpcFelt>")]
@@ -559,7 +559,7 @@ mod types {
         #[test]
         fn receipt() {
             let state_update = StateUpdate {
-                block_hash: Some(StarknetBlockHash(felt!("0xdeadbeef"))),
+                block_hash: Some(BlockHash(felt!("0xdeadbeef"))),
                 new_root: Some(StateCommitment(felt!("0x1"))),
                 old_root: StateCommitment(felt!("0x2")),
                 state_diff: StateDiff {
@@ -622,16 +622,16 @@ mod tests {
     use jsonrpsee::types::Params;
     use pathfinder_common::{felt, felt_bytes};
     use pathfinder_common::{
-        Chain, ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
-        StorageAddress, StorageValue,
+        BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
+        StorageValue,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
-        let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(StarknetBlockHash(felt!("0xbeef")));
+        let number = BlockId::Number(BlockNumber::new_or_panic(123));
+        let hash = BlockId::Hash(BlockHash(felt!("0xbeef")));
 
         [
             (r#"["pending"]"#, BlockId::Pending),
@@ -731,26 +731,24 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::GENESIS),
+                BlockId::Number(BlockNumber::GENESIS),
                 assert_ok(in_storage[0].clone()),
             ),
             (
                 ctx.clone(),
                 // The fixture happens to init this to zero for genesis block
-                BlockId::Hash(StarknetBlockHash(Felt::ZERO)),
+                BlockId::Hash(BlockHash(Felt::ZERO)),
                 assert_ok(in_storage[0].clone()),
             ),
             // Errors
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::new_or_panic(9999)),
+                BlockId::Number(BlockNumber::new_or_panic(9999)),
                 assert_error(GetStateUpdateError::BlockNotFound),
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(pathfinder_common::felt_bytes!(
-                    b"non-existent"
-                ))),
+                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"non-existent"))),
                 assert_error(GetStateUpdateError::BlockNotFound),
             ),
             (

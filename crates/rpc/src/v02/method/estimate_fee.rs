@@ -64,7 +64,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
-        felt, CallParam, Chain, ContractAddress, Fee, StarknetBlockHash, TransactionNonce,
+        felt, BlockHash, CallParam, Chain, ContractAddress, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_storage::JournalMode;
@@ -111,7 +111,7 @@ pub(crate) mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
         }
@@ -141,7 +141,7 @@ pub(crate) mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
         }
@@ -158,16 +158,15 @@ pub(crate) mod tests {
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{
-            felt_bytes, CasmHash, ClassCommitment, ContractNonce, ContractRoot, GasPrice,
-            SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
-            StateCommitment,
+            felt_bytes, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ContractNonce,
+            ContractRoot, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
         };
         use pathfinder_storage::types::CompressedContract;
         use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
         use stark_hash::Felt;
 
         // Mainnet block number 5
-        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
+        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(BlockHash(felt!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         )));
 
@@ -242,8 +241,8 @@ pub(crate) mod tests {
             tempfile::TempDir,
             Storage,
             ContractAddress,
-            StarknetBlockHash,
-            StarknetBlockNumber,
+            BlockHash,
+            BlockNumber,
         ) {
             let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             source_path.push("fixtures/mainnet.sqlite");
@@ -273,7 +272,7 @@ pub(crate) mod tests {
             RpcContext,
             tokio::task::JoinHandle<()>,
             ContractAddress,
-            StarknetBlockHash,
+            BlockHash,
         ) {
             use pathfinder_common::ChainId;
 
@@ -303,7 +302,7 @@ pub(crate) mod tests {
 
         fn add_dummy_account(
             storage: pathfinder_storage::Storage,
-        ) -> (ContractAddress, StarknetBlockHash, StarknetBlockNumber) {
+        ) -> (ContractAddress, BlockHash, BlockNumber) {
             let mut db_conn = storage.connection().unwrap();
             let db_txn = db_conn.transaction().unwrap();
 
@@ -367,12 +366,12 @@ pub(crate) mod tests {
 
             let new_block = StarknetBlock {
                 number: latest_block_number + 1,
-                hash: StarknetBlockHash(felt_bytes!(b"latest block")),
+                hash: BlockHash(felt_bytes!(b"latest block")),
                 state_commmitment: StateCommitment::calculate(
                     new_storage_commitment,
                     ClassCommitment::ZERO,
                 ),
-                timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                timestamp: BlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice::ZERO,
                 sequencer_address: SequencerAddress(Felt::ZERO),
                 transaction_commitment: None,
@@ -401,7 +400,7 @@ pub(crate) mod tests {
 
             let input = EstimateFeeInput {
                 request: valid_invoke_v1(account_address),
-                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));

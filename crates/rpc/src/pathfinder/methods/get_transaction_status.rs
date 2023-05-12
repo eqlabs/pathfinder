@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{StarknetBlockNumber, StarknetTransactionHash};
+use pathfinder_common::{BlockNumber, TransactionHash};
 use pathfinder_storage::Storage;
 use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
@@ -9,7 +9,7 @@ use crate::v02::common::get_block_status;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetGatewayTransactionInput {
-    transaction_hash: StarknetTransactionHash,
+    transaction_hash: TransactionHash,
 }
 
 crate::error::generate_rpc_error_subset!(GetGatewayTransactionError:);
@@ -50,7 +50,7 @@ pub async fn get_transaction_status(
         .map_err(GetGatewayTransactionError::Internal)
 }
 
-async fn is_pending_tx(pending: &PendingData, tx_hash: &StarknetTransactionHash) -> bool {
+async fn is_pending_tx(pending: &PendingData, tx_hash: &TransactionHash) -> bool {
     pending
         .block()
         .await
@@ -60,7 +60,7 @@ async fn is_pending_tx(pending: &PendingData, tx_hash: &StarknetTransactionHash)
 
 fn check_database(
     storage: &Storage,
-    transaction_hash: &StarknetTransactionHash,
+    transaction_hash: &TransactionHash,
 ) -> anyhow::Result<Option<GatewayStatus>> {
     let mut db = storage
         .connection()
@@ -77,7 +77,7 @@ fn check_database(
             [transaction_hash],
             |row| {
                 let number = row.get_ref_unwrap(0).as_i64()?;
-                Ok(StarknetBlockNumber::new_or_panic(number as u64))
+                Ok(BlockNumber::new_or_panic(number as u64))
             },
         )
         .optional()
@@ -148,12 +148,9 @@ mod tests {
     fn database() {
         let context = RpcContext::for_tests();
 
-        let status = check_database(
-            &context.storage,
-            &StarknetTransactionHash(felt_bytes!(b"txn 0")),
-        )
-        .unwrap()
-        .unwrap();
+        let status = check_database(&context.storage, &TransactionHash(felt_bytes!(b"txn 0")))
+            .unwrap()
+            .unwrap();
 
         assert_eq!(status, GatewayStatus::AcceptedOnL2);
     }
@@ -161,14 +158,14 @@ mod tests {
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
-        let tx_hash = StarknetTransactionHash(felt_bytes!(b"pending tx hash 0"));
+        let tx_hash = TransactionHash(felt_bytes!(b"pending tx hash 0"));
         assert!(is_pending_tx(&context.pending_data.unwrap(), &tx_hash).await);
     }
 
     #[tokio::test]
     async fn rejected() {
         let input = GetGatewayTransactionInput {
-            transaction_hash: StarknetTransactionHash(felt!(
+            transaction_hash: TransactionHash(felt!(
                 // Transaction hash known to be rejected by the testnet gateway.
                 "0x07c64b747bdb0831e7045925625bfa6309c422fded9527bacca91199a1c8d212"
             )),

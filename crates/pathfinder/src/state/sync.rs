@@ -5,9 +5,9 @@ mod pending;
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
-    Chain, ChainId, ClassCommitment, ClassHash, ContractNonce, ContractRoot, EventCommitment,
-    GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetVersion,
-    StateCommitment, StorageCommitment, TransactionCommitment,
+    BlockHash, BlockNumber, Chain, ChainId, ClassCommitment, ClassHash, ContractNonce,
+    ContractRoot, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+    StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
 use pathfinder_merkle_tree::{
@@ -63,7 +63,7 @@ where
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
-            Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
+            Option<(BlockNumber, BlockHash, StateCommitment)>,
             Chain,
             ChainId,
             Option<std::time::Duration>,
@@ -91,8 +91,8 @@ where
     // Start update sync-status process.
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
-        StarknetBlockNumber::MAX,
-        StarknetBlockHash(Felt::ZERO),
+        BlockNumber::MAX,
+        BlockHash(Felt::ZERO),
         StateCommitment(Felt::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
@@ -162,7 +162,7 @@ where
                         .with_context(|| format!("Reorg L1 state to block {reorg_tail}"))?;
 
                     let new_head = match reorg_tail {
-                        StarknetBlockNumber::GENESIS => None,
+                        BlockNumber::GENESIS => None,
                         other => Some(other - 1),
                     };
 
@@ -254,10 +254,10 @@ where
                     match tracing::level_filters::LevelFilter::current().into_level() {
                         None => {}
                         Some(level) if level <= tracing::Level::INFO => {
-                            tracing::info!("Updated StarkNet state with block {}", block_number)
+                            tracing::info!("Updated Starknet state with block {}", block_number)
                         }
                         Some(_) => {
-                            tracing::debug!("Updated StarkNet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                            tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
                                 block_number,
                                 block_time.as_secs_f32(),
                                 block_time_avg.as_secs_f32(),
@@ -280,7 +280,7 @@ where
                         .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
                     let new_head = match reorg_tail {
-                        StarknetBlockNumber::GENESIS => None,
+                        BlockNumber::GENESIS => None,
                         other => Some(other - 1),
                     };
                     match new_head {
@@ -389,8 +389,8 @@ where
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
     sequencer: impl GatewayApi,
-    starting_block_hash: StarknetBlockHash,
-    starting_block_num: StarknetBlockNumber,
+    starting_block_hash: BlockHash,
+    starting_block_num: BlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
     use pathfinder_common::BlockId;
@@ -459,7 +459,7 @@ async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> a
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
         let expected_next = l1_l2_head
             .map(|head| head + 1)
-            .unwrap_or(StarknetBlockNumber::GENESIS);
+            .unwrap_or(BlockNumber::GENESIS);
 
         match updates.first() {
             Some(update) if update.block_number == expected_next => {
@@ -492,10 +492,7 @@ async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> a
     })
 }
 
-async fn l1_reorg(
-    connection: &mut Connection,
-    reorg_tail: StarknetBlockNumber,
-) -> anyhow::Result<()> {
+async fn l1_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -508,7 +505,7 @@ async fn l1_reorg(
         match l1_l2_head {
             Some(head) if head >= reorg_tail => {
                 let new_head = match reorg_tail {
-                    StarknetBlockNumber::GENESIS => None,
+                    BlockNumber::GENESIS => None,
                     other => Some(other - 1),
                 };
                 RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
@@ -632,7 +629,7 @@ async fn l2_update(
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
         let expected_next = l1_l2_head
             .map(|head| head + 1)
-            .unwrap_or(StarknetBlockNumber::GENESIS);
+            .unwrap_or(BlockNumber::GENESIS);
 
         if expected_next == starknet_block.number {
             let l1_root =
@@ -648,10 +645,7 @@ async fn l2_update(
     })
 }
 
-async fn l2_reorg(
-    connection: &mut Connection,
-    reorg_tail: StarknetBlockNumber,
-) -> anyhow::Result<()> {
+async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
     use pathfinder_storage::CanonicalBlocksTable;
 
     tokio::task::block_in_place(move || {
@@ -670,7 +664,7 @@ async fn l2_reorg(
         match l1_l2_head {
             Some(head) if head >= reorg_tail => {
                 let new_head = match reorg_tail {
-                    StarknetBlockNumber::GENESIS => None,
+                    BlockNumber::GENESIS => None,
                     other => Some(other - 1),
                 };
                 RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
@@ -1068,11 +1062,10 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CasmHash, Chain, ChainId, ClassCommitment, ClassHash, EthereumBlockHash,
-        EthereumBlockNumber, EthereumChain, EthereumLogIndex, EthereumTransactionHash,
-        EthereumTransactionIndex, GasPrice, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
-        StorageCommitment,
+        BlockHash, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain, ChainId, ClassCommitment,
+        ClassHash, EthereumBlockHash, EthereumBlockNumber, EthereumChain, EthereumLogIndex,
+        EthereumTransactionHash, EthereumTransactionIndex, GasPrice, SequencerAddress,
+        StarknetVersion, StateCommitment, StorageCommitment,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::{
@@ -1157,7 +1150,7 @@ mod tests {
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
         _: impl GatewayApi,
-        _: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
+        _: Option<(BlockNumber, BlockHash, StateCommitment)>,
         _: Chain,
         _: ChainId,
         _: Option<std::time::Duration>,
@@ -1190,56 +1183,56 @@ mod tests {
             },
         };
         pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
-            block_number: StarknetBlockNumber::GENESIS,
+            block_number: BlockNumber::GENESIS,
             global_root: *STATE_COMMITMENT0,
             origin: ETH_ORIG.clone(),
         };
         pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
-            block_number: StarknetBlockNumber::new_or_panic(1),
+            block_number: BlockNumber::new_or_panic(1),
             global_root: *STATE_COMMITMENT1,
             origin: ETH_ORIG.clone(),
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
-            block_hash: StarknetBlockHash(*A),
-            block_number: StarknetBlockNumber::GENESIS,
+            block_hash: BlockHash(*A),
+            block_number: BlockNumber::GENESIS,
             gas_price: Some(GasPrice::ZERO),
-            parent_block_hash: StarknetBlockHash(Felt::ZERO),
+            parent_block_hash: BlockHash(Felt::ZERO),
             sequencer_address: Some(SequencerAddress(Felt::ZERO)),
             state_commitment: *STATE_COMMITMENT0,
             status: reply::Status::AcceptedOnL1,
-            timestamp: StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: BlockTimestamp::new_or_panic(0),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: StarknetVersion::default(),
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
-            block_hash: StarknetBlockHash(*B),
-            block_number: StarknetBlockNumber::new_or_panic(1),
+            block_hash: BlockHash(*B),
+            block_number: BlockNumber::new_or_panic(1),
             gas_price: Some(GasPrice::from(1)),
-            parent_block_hash: StarknetBlockHash(*A),
+            parent_block_hash: BlockHash(*A),
             sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
             state_commitment: *STATE_COMMITMENT1,
             status: reply::Status::AcceptedOnL2,
-            timestamp: StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1),
             transaction_receipts: vec![],
             transactions: vec![],
             starknet_version: StarknetVersion::default(),
         };
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
-            number: StarknetBlockNumber::GENESIS,
-            hash: StarknetBlockHash(*A),
+            number: BlockNumber::GENESIS,
+            hash: BlockHash(*A),
             state_commmitment: *STATE_COMMITMENT0,
-            timestamp: StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: BlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
             transaction_commitment: None,
             event_commitment: None,
         };
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
-            number: StarknetBlockNumber::new_or_panic(1),
-            hash: StarknetBlockHash(*B),
+            number: BlockNumber::new_or_panic(1),
+            hash: BlockHash(*B),
             state_commmitment: *STATE_COMMITMENT1,
-            timestamp: StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
             transaction_commitment: None,
@@ -1247,7 +1240,7 @@ mod tests {
         };
         // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-            block_hash: StarknetBlockHash(*A),
+            block_hash: BlockHash(*A),
             new_root: *STATE_COMMITMENT0,
             old_root: *STATE_COMMITMENT0,
             state_diff: reply::state_update::StateDiff{
@@ -1267,7 +1260,7 @@ mod tests {
         async fn with_state(
             state: Vec<(StarknetBlock, StorageCommitment, ClassCommitment)>,
             update: Vec<pathfinder_ethereum::log::StateUpdateLog>,
-        ) -> Option<StarknetBlockNumber> {
+        ) -> Option<BlockNumber> {
             let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| {
                 let u = update.clone();
                 async move {
@@ -1344,7 +1337,7 @@ mod tests {
                     vec![STATE_UPDATE_LOG0.clone()]
                 )
                 .await,
-                Some(StarknetBlockNumber::GENESIS),
+                Some(BlockNumber::GENESIS),
             );
         }
 
@@ -1367,7 +1360,7 @@ mod tests {
                     vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()]
                 )
                 .await,
-                Some(StarknetBlockNumber::new_or_panic(1)),
+                Some(BlockNumber::new_or_panic(1)),
             );
         }
     }
@@ -1391,16 +1384,14 @@ mod tests {
 
             // A simple L1 sync task
             let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
-                tx.send(l1::Event::Reorg(StarknetBlockNumber::new_or_panic(
-                    reorg_on_block,
-                )))
-                .await
-                .unwrap();
+                tx.send(l1::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
+                    .await
+                    .unwrap();
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(())
             };
 
-            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber::new_or_panic(reorg_on_block)))
+            RefsTable::set_l1_l2_head(&tx, Some(BlockNumber::new_or_panic(reorg_on_block)))
                 .unwrap();
             updates
                 .into_iter()
@@ -1445,10 +1436,7 @@ mod tests {
                 // Case 0: no L1-L2 head expected, as we start from genesis
                 (None, None),
                 // Case 1: some L1-L2 head expected, block #1 removed
-                (
-                    Some(StarknetBlockNumber::GENESIS),
-                    Some(StarknetBlockNumber::GENESIS)
-                ),
+                (Some(BlockNumber::GENESIS), Some(BlockNumber::GENESIS)),
             ]
         );
     }
@@ -1469,7 +1457,7 @@ mod tests {
             let (tx1, rx1) =
                 tokio::sync::oneshot::channel::<Option<pathfinder_ethereum::log::StateUpdateLog>>();
 
-            tx.send(l1::Event::QueryUpdate(StarknetBlockNumber::GENESIS, tx1))
+            tx.send(l1::Event::QueryUpdate(BlockNumber::GENESIS, tx1))
                 .await
                 .unwrap();
 
@@ -1626,7 +1614,7 @@ mod tests {
                 // Case 0: no L1-L2 head expected
                 None,
                 // Case 1: some L1-L2 head expected
-                Some(StarknetBlockNumber::GENESIS),
+                Some(BlockNumber::GENESIS),
             ]
         );
     }
@@ -1668,16 +1656,14 @@ mod tests {
 
             // A simple L2 sync task
             let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
-                tx.send(l2::Event::Reorg(StarknetBlockNumber::new_or_panic(
-                    reorg_on_block,
-                )))
-                .await
-                .unwrap();
+                tx.send(l2::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
+                    .await
+                    .unwrap();
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(())
             };
 
-            RefsTable::set_l1_l2_head(&tx, Some(StarknetBlockNumber::new_or_panic(reorg_on_block)))
+            RefsTable::set_l1_l2_head(&tx, Some(BlockNumber::new_or_panic(reorg_on_block)))
                 .unwrap();
             updates
                 .into_iter()
@@ -1730,10 +1716,7 @@ mod tests {
                 // Case 0: no L1-L2 head expected, as we start from genesis
                 (None, None),
                 // Case 1: some L1-L2 head expected, block #1 removed
-                (
-                    Some(StarknetBlockNumber::GENESIS),
-                    Some(StarknetBlockNumber::GENESIS)
-                ),
+                (Some(BlockNumber::GENESIS), Some(BlockNumber::GENESIS)),
             ]
         );
     }
@@ -1857,7 +1840,7 @@ mod tests {
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel();
 
-            tx.send(l2::Event::QueryBlock(StarknetBlockNumber::GENESIS, tx1))
+            tx.send(l2::Event::QueryBlock(BlockNumber::GENESIS, tx1))
                 .await
                 .unwrap();
 

@@ -1,4 +1,4 @@
-use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_serde::StarknetBlockNumberAsHexStr;
 use serde::Serialize;
 use serde_with::serde_as;
@@ -55,10 +55,10 @@ impl std::fmt::Display for Status {
 #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
 pub struct NumberedBlock {
     #[serde(rename = "block_hash")]
-    pub hash: StarknetBlockHash,
+    pub hash: BlockHash,
     #[serde_as(as = "StarknetBlockNumberAsHexStr")]
     #[serde(rename = "block_num")]
-    pub number: StarknetBlockNumber,
+    pub number: BlockNumber,
 }
 
 impl std::fmt::Debug for NumberedBlock {
@@ -67,8 +67,8 @@ impl std::fmt::Debug for NumberedBlock {
     }
 }
 
-impl From<(StarknetBlockHash, StarknetBlockNumber)> for NumberedBlock {
-    fn from((hash, number): (StarknetBlockHash, StarknetBlockNumber)) -> Self {
+impl From<(BlockHash, BlockNumber)> for NumberedBlock {
+    fn from((hash, number): (BlockHash, BlockNumber)) -> Self {
         NumberedBlock { hash, number }
     }
 }
@@ -79,8 +79,8 @@ impl<'a> From<(&'a str, u64)> for NumberedBlock {
     fn from((h, n): (&'a str, u64)) -> Self {
         use stark_hash::Felt;
         NumberedBlock {
-            hash: StarknetBlockHash(Felt::from_hex_str(h).unwrap()),
-            number: StarknetBlockNumber::new_or_panic(n),
+            hash: BlockHash(Felt::from_hex_str(h).unwrap()),
+            number: BlockNumber::new_or_panic(n),
         }
     }
 }

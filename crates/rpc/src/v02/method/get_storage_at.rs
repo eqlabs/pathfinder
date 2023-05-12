@@ -99,7 +99,7 @@ pub async fn get_storage_at(
 }
 
 mod database {
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, BlockNumber};
     use rusqlite::{params, OptionalExtension, Transaction};
 
     use super::*;
@@ -124,7 +124,7 @@ mod database {
         tx: &Transaction<'_>,
         contract_address: ContractAddress,
         key: StorageAddress,
-        block: StarknetBlockHash,
+        block: BlockHash,
     ) -> anyhow::Result<Option<StorageValue>> {
         tx.query_row(
             r"SELECT storage_value FROM storage_updates 
@@ -143,7 +143,7 @@ mod database {
         tx: &Transaction<'_>,
         contract_address: ContractAddress,
         key: StorageAddress,
-        block: StarknetBlockNumber,
+        block: BlockNumber,
     ) -> anyhow::Result<Option<StorageValue>> {
         tx.query_row(
             r"SELECT storage_value FROM storage_updates 
@@ -191,7 +191,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, felt_bytes, ContractAddress, StarknetBlockHash, StorageAddress};
+    use pathfinder_common::{felt, felt_bytes, BlockHash, ContractAddress, StorageAddress};
 
     /// # Important
     ///
@@ -285,12 +285,12 @@ mod tests {
         let pending_key0 = StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 0"));
         let contract1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
         let key0 = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
-        let deployment_block = BlockId::Hash(StarknetBlockHash(felt_bytes!(b"block 1")));
+        let deployment_block = BlockId::Hash(BlockHash(felt_bytes!(b"block 1")));
         let non_existent_key = StorageAddress::new_or_panic(felt_bytes!(b"non-existent"));
 
         let non_existent_contract = ContractAddress::new_or_panic(felt_bytes!(b"non-existent"));
-        let pre_deploy_block = BlockId::Hash(StarknetBlockHash(felt_bytes!(b"genesis")));
-        let non_existent_block = BlockId::Hash(StarknetBlockHash(felt_bytes!(b"non-existent")));
+        let pre_deploy_block = BlockId::Hash(BlockHash(felt_bytes!(b"genesis")));
+        let non_existent_block = BlockId::Hash(BlockHash(felt_bytes!(b"non-existent")));
 
         let cases: &[(
             RpcContext,

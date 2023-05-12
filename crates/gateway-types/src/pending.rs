@@ -1,5 +1,5 @@
 use crate::reply::{PendingBlock, PendingStateUpdate};
-use pathfinder_common::{StarknetBlockHash, StarknetBlockTimestamp};
+use pathfinder_common::{BlockHash, BlockTimestamp};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -43,11 +43,7 @@ impl PendingData {
 
     pub async fn state_update_on_parent_block(
         &self,
-    ) -> Option<(
-        StarknetBlockHash,
-        StarknetBlockTimestamp,
-        Arc<PendingStateUpdate>,
-    )> {
+    ) -> Option<(BlockHash, BlockTimestamp, Arc<PendingStateUpdate>)> {
         let g = self.inner.read().await;
         let inner = g.as_ref()?;
 

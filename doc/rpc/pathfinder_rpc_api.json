@@ -3,7 +3,7 @@
     "info": {
         "title": "Pathfinder RPC API",
         "version": "0.1",
-        "description": "Provides additional (pathfinder specific) methods over and above the StarkNet RPC API"
+        "description": "Provides additional (pathfinder specific) methods over and above the Starknet RPC API"
     },
     "methods": [
         {
@@ -22,7 +22,7 @@
         {
             "name": "pathfinder_getProof",
             "summary": "Returns merkle proofs of a contract's storage state",
-            "description": "This method returns merkle proofs for a contract's storage. This allows you to verify a contract's state for a specific StarkNet block.",
+            "description": "This method returns merkle proofs for a contract's storage. This allows you to verify a contract's state for a specific Starknet block.",
             "params": [
                 {
                     "name": "block_id",
@@ -61,8 +61,8 @@
                     "description": "Contains the requested contract's state proofs",
                     "properties": {
                         "state_commitment": {
-                            "title": "StarkNet state commitment",
-                            "description": "The commitment for the state of a StarkNet block. Before StarkNet v0.11.0 this was equivalent to storage commitment, which is the hash of the first node in the contract proof",
+                            "title": "Starknet state commitment",
+                            "description": "The commitment for the state of a Starknet block. Before Starknet v0.11.0 this was equivalent to storage commitment, which is the hash of the first node in the contract proof",
                             "$ref": "#/components/schemas/FELT"
                         },
                         "class_commitment": {
@@ -279,7 +279,7 @@
             },
             "TXN_HASH": {
                 "$ref": "#/components/schemas/FELT",
-                "description": "The transaction hash, as assigned in StarkNet",
+                "description": "The transaction hash, as assigned in Starknet",
                 "title": "A transaction's hash"
             },
             "TX_GATEWAY_STATUS": {

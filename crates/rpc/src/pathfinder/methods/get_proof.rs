@@ -128,11 +128,11 @@ pub struct ContractData {
 #[derive(Debug, Serialize)]
 #[skip_serializing_none]
 pub struct GetProofOutput {
-    /// The global state commitment for StarkNet 0.11.0 blocks onwards, if absent the hash
+    /// The global state commitment for Starknet 0.11.0 blocks onwards, if absent the hash
     /// of the first node in the [contract_proof](GetProofOutput#contract_proof) is the global state commitment.
     state_commitment: Option<StateCommitment>,
     /// Required to verify that the hash of the class commitment and the root of the [contract_proof](GetProofOutput::contract_proof)
-    /// matches the [state_commitment](Self#state_commitment). Present only for StarkNet blocks 0.11.0 onwards.
+    /// matches the [state_commitment](Self#state_commitment). Present only for Starknet blocks 0.11.0 onwards.
     class_commitment: Option<ClassCommitment>,
 
     /// Membership / Non-membership proof for the queried contract

@@ -13,7 +13,7 @@ use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 #[command(author = "Equilibrium Labs")]
 #[command(version = VERGEN_GIT_DESCRIBE)]
 #[command(
-    about = "A StarkNet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
+    about = "A Starknet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
 )]
 struct Cli {
     #[arg(
@@ -122,7 +122,7 @@ Examples:
 struct NetworkCli {
     #[arg(
         long = "network",
-        long_help = r"Specify the StarkNet network for pathfinder to operate on.
+        long_help = r"Specify the Starknet network for pathfinder to operate on.
 
 Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-url options.",
         value_enum,
@@ -132,7 +132,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
 
     #[arg(
         long,
-        long_help = "Set a custom StarkNet chain ID (e.g. SN_GOERLI)",
+        long_help = "Set a custom Starknet chain ID (e.g. SN_GOERLI)",
         value_name = "CHAIN ID",
         env = "PATHFINDER_CHAIN_ID",
         required_if_eq("network", Network::Custom)
@@ -142,7 +142,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         long = "feeder-gateway-url",
         value_name = "URL",
         value_hint = clap::ValueHint::Url,
-        long_help = "Specify a custom StarkNet feeder gateway url. Can be used to run pathfinder on a custom StarkNet network, or to use a gateway proxy. Requires '--network custom'.",
+        long_help = "Specify a custom Starknet feeder gateway url. Can be used to run pathfinder on a custom Starknet network, or to use a gateway proxy. Requires '--network custom'.",
         env = "PATHFINDER_FEEDER_GATEWAY_URL", 
         required_if_eq("network", Network::Custom),
     )]
@@ -152,7 +152,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         long = "gateway-url",
         value_name = "URL",
         value_hint = clap::ValueHint::Url,
-        long_help = "Specify a custom StarkNet gateway url. Can be used to run pathfinder on a custom StarkNet network, or to use a gateway proxy. Requires '--network custom'.",
+        long_help = "Specify a custom Starknet gateway url. Can be used to run pathfinder on a custom Starknet network, or to use a gateway proxy. Requires '--network custom'.",
         env = "PATHFINDER_GATEWAY_URL",
         required_if_eq("network", Network::Custom),
     )]

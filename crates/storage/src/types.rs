@@ -1,4 +1,4 @@
-use pathfinder_common::{ClassHash, StarknetBlockHash, StateCommitment};
+use pathfinder_common::{BlockHash, ClassHash, StateCommitment};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -45,7 +45,7 @@ pub struct StateUpdate {
     /// Keeping optional because not sure if all serialized state updates contain this field
     // FIXME regenesis: remove Option<> around block_hash
     #[serde(default)]
-    pub block_hash: Option<StarknetBlockHash>,
+    pub block_hash: Option<BlockHash>,
     pub new_root: StateCommitment,
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,

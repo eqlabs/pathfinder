@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedInvokeTransaction;
 use anyhow::Context;
-use pathfinder_common::StarknetTransactionHash;
+use pathfinder_common::TransactionHash;
 use starknet_gateway_client::GatewayApi;
 
 crate::error::generate_rpc_error_subset!(AddInvokeTransactionError);
@@ -23,7 +23,7 @@ pub struct AddInvokeTransactionInput {
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddInvokeTransactionOutput {
     #[serde_as(as = "RpcFelt")]
-    transaction_hash: StarknetTransactionHash,
+    transaction_hash: TransactionHash,
 }
 
 pub async fn add_invoke_transaction(
@@ -211,7 +211,7 @@ mod tests {
             invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V1(input)),
         };
         let expected = AddInvokeTransactionOutput {
-            transaction_hash: StarknetTransactionHash(felt!(
+            transaction_hash: TransactionHash(felt!(
                 "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
             )),
         };

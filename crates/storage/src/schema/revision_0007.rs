@@ -8,8 +8,7 @@ mod transaction {
     use pathfinder_common::{
         CallParam, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem, StarknetTransactionHash, StarknetTransactionIndex,
-        TransactionSignatureElem,
+        L2ToL1MessagePayloadElem, TransactionHash, TransactionIndex, TransactionSignatureElem,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -102,8 +101,8 @@ mod transaction {
         pub execution_resources: ExecutionResources,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
-        pub transaction_hash: StarknetTransactionHash,
-        pub transaction_index: StarknetTransactionIndex,
+        pub transaction_hash: TransactionHash,
+        pub transaction_index: TransactionIndex,
     }
 
     /// Represents deserialized L2 transaction event data.
@@ -150,7 +149,7 @@ mod transaction {
         #[serde_as(as = "Option<Vec<TransactionSignatureElemAsDecimalStr>>")]
         #[serde(default)]
         pub signature: Option<Vec<TransactionSignatureElem>>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub r#type: Type,
     }
 

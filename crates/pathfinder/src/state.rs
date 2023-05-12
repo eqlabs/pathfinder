@@ -12,7 +12,7 @@ mod tests {
         // This is a regression test for a bug that we encountered at block 47047 on alpha4/goerli.
         // It resulted in a global root mismatch due to the fact that we did not initialize
         // the contract root to zero when a contract was deployed.
-        // use pathfinder_common::StarknetBlockTimestamp;
+        // use pathfinder_common::BlockTimestamp;
 
         // let s = crate::storage::Storage::in_memory().unwrap();
 
@@ -53,7 +53,7 @@ mod tests {
         //         log_index: EthereumLogIndex(0),
         //     },
         //     global_root: expected_global_root,
-        //     block_number: StarknetBlockNumber(0),
+        //     block_number: BlockNumber(0),
         // };
 
         // let (c_tx, mut c_rx) = mpsc::channel(1);
@@ -106,15 +106,15 @@ mod tests {
 
         // let expected_block_updated = BlockUpdated {
         //     record: GlobalStateRecord {
-        //         block_hash: StarknetBlockHash(
+        //         block_hash: BlockHash(
         //             StarkHash::from_hex_str(
         //                 "0x00275921A89D44EF9D4EE74BFFF189D6F995DD07CFF9D0B8637B5C4619E9A05D",
         //             )
         //             .unwrap(),
         //         ),
         //         global_root: expected_global_root,
-        //         block_number: StarknetBlockNumber(0),
-        //         block_timestamp: StarknetBlockTimestamp::new_or_panic(0),
+        //         block_number: BlockNumber(0),
+        //         block_timestamp: BlockTimestamp::new_or_panic(0),
         //         eth_block_hash: EthereumBlockHash(H256::zero()),
         //         eth_block_number: EthereumBlockNumber(0),
         //         eth_log_index: EthereumLogIndex(0),
@@ -194,7 +194,7 @@ mod tests {
         //         log_index: EthereumLogIndex(0),
         //     },
         //     global_root: StateCommitment(Felt::ZERO),
-        //     block_number: StarknetBlockNumber(0),
+        //     block_number: BlockNumber(0),
         // };
 
         // let (c_tx, mut c_rx) = mpsc::channel(1);
@@ -249,7 +249,7 @@ mod tests {
         todo!("Update me to new sync process when possible");
         // use pathfinder_common::{
         //     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        //     EthereumTransactionIndex, StateCommitment, StarknetBlockHash, StarknetBlockNumber,
+        //     EthereumTransactionIndex, StateCommitment, BlockHash, BlockNumber,
         // };
         // use pathfinder_ethereum::{
         //     log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
@@ -260,7 +260,7 @@ mod tests {
         // // Georli genesis block values from Alpha taken from Voyager block explorer.
         // // https://goerli.voyager.online/block/0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b
 
-        // let starknet_block_hash = StarknetBlockHash(
+        // let starknet_block_hash = BlockHash(
         //     StarkHash::from_hex_str(
         //         "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
         //     )
@@ -295,7 +295,7 @@ mod tests {
         //         )
         //         .unwrap(),
         //     ),
-        //     block_number: StarknetBlockNumber(0),
+        //     block_number: BlockNumber(0),
         // };
 
         // let chain = crate::core::Chain::Goerli;

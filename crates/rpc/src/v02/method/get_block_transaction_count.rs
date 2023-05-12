@@ -65,7 +65,7 @@ pub async fn get_block_transaction_count(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, BlockNumber};
     use stark_hash::Felt;
 
     mod json {
@@ -92,7 +92,7 @@ mod tests {
         fn test_block_number() {
             check(
                 "{ \"block_number\": 42 }",
-                BlockId::Number(StarknetBlockNumber::new_or_panic(42)),
+                BlockId::Number(BlockNumber::new_or_panic(42)),
             );
         }
 
@@ -100,7 +100,7 @@ mod tests {
         fn test_block_hash() {
             check(
                 "{ \"block_hash\": \"0xFACE\" }",
-                BlockId::Hash(StarknetBlockHash(pathfinder_common::felt!("0xface"))),
+                BlockId::Hash(BlockHash(pathfinder_common::felt!("0xface"))),
             );
         }
     }
@@ -131,9 +131,7 @@ mod tests {
     #[tokio::test]
     async fn test_genesis() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Hash(StarknetBlockHash(pathfinder_common::felt_bytes!(
-            b"genesis"
-        )));
+        let block_id = BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"genesis")));
         check_count(context, block_id, 1).await;
     }
 
@@ -155,14 +153,14 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_hash() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Hash(StarknetBlockHash(Felt::ZERO));
+        let block_id = BlockId::Hash(BlockHash(Felt::ZERO));
         check_error(context, block_id).await;
     }
 
     #[tokio::test]
     async fn test_invalid_number() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
+        let block_id = BlockId::Number(BlockNumber::new_or_panic(123));
         check_error(context, block_id).await;
     }
 }

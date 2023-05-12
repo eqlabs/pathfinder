@@ -86,7 +86,7 @@ async fn get_pending_class_hash(
 }
 
 mod database {
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, BlockNumber};
     use rusqlite::{OptionalExtension, Transaction};
 
     use super::*;
@@ -108,7 +108,7 @@ mod database {
     pub fn class_hash_at_block_number(
         tx: &Transaction<'_>,
         contract: ContractAddress,
-        block_number: StarknetBlockNumber,
+        block_number: BlockNumber,
     ) -> anyhow::Result<Option<ClassHash>> {
         tx.query_row(
             r"SELECT class_hash FROM contract_updates WHERE contract_address = ? AND
@@ -123,7 +123,7 @@ mod database {
     pub fn class_hash_at_block_hash(
         tx: &Transaction<'_>,
         contract: ContractAddress,
-        block_hash: StarknetBlockHash,
+        block_hash: BlockHash,
     ) -> anyhow::Result<Option<ClassHash>> {
         tx.query_row(
             r"SELECT class_hash FROM contract_updates JOIN canonical_blocks ON (contract_updates.block_number = canonical_blocks.number)
@@ -147,7 +147,7 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::StarknetBlockHash;
+        use pathfinder_common::BlockHash;
 
         #[test]
         fn positional_args() {
@@ -159,7 +159,7 @@ mod tests {
 
             let input = positional.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -175,7 +175,7 @@ mod tests {
 
             let input = named.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -199,12 +199,12 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use pathfinder_common::StarknetBlockHash;
+            use pathfinder_common::BlockHash;
 
             let context = RpcContext::for_tests();
 
             let input = GetClassHashAtInput {
-                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"invalid"))),
+                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"invalid"))),
                 // This contract does exist and is added in block 0.
                 contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
             };
@@ -228,14 +228,14 @@ mod tests {
 
     #[tokio::test]
     async fn at_block() {
-        use pathfinder_common::StarknetBlockNumber;
+        use pathfinder_common::BlockNumber;
         let context = RpcContext::for_tests();
 
         // This contract is deployed in block 1.
         let address = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
 
         let input = GetClassHashAtInput {
-            block_id: StarknetBlockNumber::new_or_panic(0).into(),
+            block_id: BlockNumber::new_or_panic(0).into(),
             contract_address: address,
         };
         let result = get_class_hash_at(context.clone(), input).await;
@@ -243,14 +243,14 @@ mod tests {
 
         let expected = ClassHash(felt_bytes!(b"class 1 hash"));
         let input = GetClassHashAtInput {
-            block_id: StarknetBlockNumber::new_or_panic(1).into(),
+            block_id: BlockNumber::new_or_panic(1).into(),
             contract_address: address,
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
         assert_eq!(result.0, expected);
 
         let input = GetClassHashAtInput {
-            block_id: StarknetBlockNumber::new_or_panic(2).into(),
+            block_id: BlockNumber::new_or_panic(2).into(),
             contract_address: address,
         };
         let result = get_class_hash_at(context, input).await.unwrap();

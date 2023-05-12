@@ -105,7 +105,7 @@ fn read_latest(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> Result<Vec<u
 fn read_at_hash(
     tx: &rusqlite::Transaction<'_>,
     class: ClassHash,
-    block: pathfinder_common::StarknetBlockHash,
+    block: pathfinder_common::BlockHash,
 ) -> Result<Vec<u8>, GetClassError> {
     tx.query_row(
         r"SELECT definition FROM class_definitions
@@ -122,7 +122,7 @@ fn read_at_hash(
 fn read_at_number(
     tx: &rusqlite::Transaction<'_>,
     class: ClassHash,
-    block: pathfinder_common::StarknetBlockNumber,
+    block: pathfinder_common::BlockNumber,
 ) -> Result<Vec<u8>, GetClassError> {
     tx.query_row(
         r"SELECT definition FROM class_definitions WHERE hash=? AND block_number <= ?",
@@ -164,7 +164,7 @@ mod tests {
         use super::*;
         use jsonrpsee::types::Params;
         use pathfinder_common::felt;
-        use pathfinder_common::StarknetBlockHash;
+        use pathfinder_common::BlockHash;
 
         #[test]
         fn positional_args() {
@@ -176,7 +176,7 @@ mod tests {
 
             let input = positional.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 class_hash: ClassHash(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -192,7 +192,7 @@ mod tests {
 
             let input = named.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 class_hash: ClassHash(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -296,7 +296,7 @@ mod tests {
 
     #[tokio::test]
     async fn at_number() {
-        use pathfinder_common::StarknetBlockNumber;
+        use pathfinder_common::BlockNumber;
 
         let context = RpcContext::for_tests();
 
@@ -306,7 +306,7 @@ mod tests {
         super::get_class(
             context.clone(),
             GetClassInput {
-                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(1)),
+                block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
                 class_hash: valid_v0,
             },
         )
@@ -319,7 +319,7 @@ mod tests {
         super::get_class(
             context.clone(),
             GetClassInput {
-                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 class_hash: valid_v1,
             },
         )
@@ -329,7 +329,7 @@ mod tests {
         let error = super::get_class(
             context.clone(),
             GetClassInput {
-                block_id: BlockId::Number(StarknetBlockNumber::GENESIS),
+                block_id: BlockId::Number(BlockNumber::GENESIS),
                 class_hash: valid_v0,
             },
         )
@@ -341,7 +341,7 @@ mod tests {
         let error = super::get_class(
             context.clone(),
             GetClassInput {
-                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 class_hash: invalid,
             },
         )
@@ -354,7 +354,7 @@ mod tests {
         let error = super::get_class(
             context.clone(),
             GetClassInput {
-                block_id: BlockId::Number(StarknetBlockNumber::new_or_panic(2)),
+                block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 class_hash: invalid,
             },
         )
@@ -367,7 +367,7 @@ mod tests {
         let error = super::get_class(
             context.clone(),
             GetClassInput {
-                block_id: BlockId::Number(StarknetBlockNumber::MAX),
+                block_id: BlockId::Number(BlockNumber::MAX),
                 class_hash: valid,
             },
         )
@@ -378,14 +378,14 @@ mod tests {
 
     #[tokio::test]
     async fn read_at_hash() {
-        use pathfinder_common::StarknetBlockHash;
+        use pathfinder_common::BlockHash;
 
         let context = RpcContext::for_tests();
 
         // Cairo v0.x class
         // This class is declared in block 1.
         let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
-        let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
+        let block1_hash = BlockHash(felt_bytes!(b"block 1"));
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -399,7 +399,7 @@ mod tests {
         // Cairo v1.x class
         // This class is declared in block 2.
         let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
-        let block2_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        let block2_hash = BlockHash(felt_bytes!(b"latest"));
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -410,7 +410,7 @@ mod tests {
         .await
         .unwrap();
 
-        let block0_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
+        let block0_hash = BlockHash(felt_bytes!(b"genesis"));
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -423,7 +423,7 @@ mod tests {
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         let invalid = ClassHash(felt_bytes!(b"invalid"));
-        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        let latest_hash = BlockHash(felt_bytes!(b"latest"));
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -437,7 +437,7 @@ mod tests {
 
         // This class is defined, but is not declared in any canonical block.
         let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
-        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        let latest_hash = BlockHash(felt_bytes!(b"latest"));
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -451,7 +451,7 @@ mod tests {
 
         // Class exists, but block hash does not.
         let valid = ClassHash(felt_bytes!(b"class 0 hash"));
-        let invalid_block = StarknetBlockHash(felt_bytes!(b"invalid"));
+        let invalid_block = BlockHash(felt_bytes!(b"invalid"));
         let error = super::get_class(
             context.clone(),
             GetClassInput {

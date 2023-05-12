@@ -11,7 +11,7 @@ pub(crate) use simulate_transaction::simulate_transaction;
 pub(crate) mod common {
     use std::sync::Arc;
 
-    use pathfinder_common::{BlockId, StarknetBlockTimestamp};
+    use pathfinder_common::{BlockId, BlockTimestamp};
     use starknet_gateway_types::{pending::PendingData, reply::PendingStateUpdate};
 
     use crate::{
@@ -27,7 +27,7 @@ pub(crate) mod common {
             &Handle,
             GasPriceSource,
             BlockHashNumberOrLatest,
-            Option<StarknetBlockTimestamp>,
+            Option<BlockTimestamp>,
             Option<Arc<PendingStateUpdate>>,
         ),
         anyhow::Error,
@@ -72,7 +72,7 @@ pub(crate) mod common {
     ) -> Result<
         (
             BlockHashNumberOrLatest,
-            Option<StarknetBlockTimestamp>,
+            Option<BlockTimestamp>,
             Option<Arc<starknet_gateway_types::reply::PendingStateUpdate>>,
         ),
         anyhow::Error,

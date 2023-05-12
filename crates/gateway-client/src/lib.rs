@@ -1,7 +1,7 @@
-//! StarkNet L2 sequencer client.
+//! Starknet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, CallParam, CasmHash, Chain, ClassHash, ContractAddress, ContractAddressSalt, Fee,
-    StarknetBlockNumber, StarknetTransactionHash, TransactionNonce, TransactionSignatureElem,
+    BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
+    ContractAddressSalt, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
     TransactionVersion,
 };
 use reqwest::Url;
@@ -38,7 +38,7 @@ pub trait GatewayApi: Sync {
 
     async fn transaction(
         &self,
-        transaction_hash: StarknetTransactionHash,
+        transaction_hash: TransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
         unimplemented!();
     }
@@ -97,10 +97,10 @@ pub trait GatewayApi: Sync {
     }
 }
 
-/// StarkNet sequencer client using REST API.
+/// Starknet sequencer client using REST API.
 ///
 /// Retry is performed on __all__ types of errors __except for__
-/// [StarkNet specific errors](starknet_gateway_types::error::StarknetError).
+/// [Starknet specific errors](starknet_gateway_types::error::StarknetError).
 ///
 /// Initial backoff time is 30 seconds and saturates at 10 minutes:
 ///
@@ -111,9 +111,9 @@ pub trait GatewayApi: Sync {
 pub struct Client {
     /// This client is internally refcounted
     inner: reqwest::Client,
-    /// StarkNet gateway URL.
+    /// Starknet gateway URL.
     gateway: Url,
-    /// StarkNet feeder gateway URL.
+    /// Starknet feeder gateway URL.
     feeder_gateway: Url,
 }
 
@@ -193,7 +193,7 @@ impl Client {
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
-            .block(StarknetBlockNumber::GENESIS.into())
+            .block(BlockNumber::GENESIS.into())
             .await?
             .as_block()
             .expect("Genesis block should not be pending")
@@ -251,7 +251,7 @@ impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn transaction(
         &self,
-        transaction_hash: StarknetTransactionHash,
+        transaction_hash: TransactionHash,
     ) -> Result<reply::Transaction, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction()
@@ -560,14 +560,14 @@ pub mod test_utils {
 mod tests {
     use super::{test_utils::*, *};
     use assert_matches::assert_matches;
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber, StarknetVersion};
+    use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
-        use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, StarknetBlockTimestamp};
+        use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockTimestamp};
         use starknet_gateway_types::reply::{Block, Status};
         use std::convert::Infallible;
         use warp::Filter;
@@ -581,14 +581,14 @@ mod tests {
                 assert_eq!(version, VERGEN_GIT_DESCRIBE);
 
                 Ok::<_, Infallible>(warp::reply::json(&Block {
-                    block_hash: StarknetBlockHash(Felt::ZERO),
-                    block_number: StarknetBlockNumber::GENESIS,
+                    block_hash: BlockHash(Felt::ZERO),
+                    block_number: BlockNumber::GENESIS,
                     gas_price: None,
-                    parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                    parent_block_hash: BlockHash(Felt::ZERO),
                     sequencer_address: None,
                     state_commitment: pathfinder_common::StateCommitment(Felt::ZERO),
                     status: Status::NotReceived,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                    timestamp: BlockTimestamp::new_or_panic(0),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
@@ -653,7 +653,7 @@ mod tests {
             ]);
             let by_hash = client
                 .block(
-                    StarknetBlockHash(felt!(
+                    BlockHash(felt!(
                         "040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
                     ))
                     .into(),
@@ -661,7 +661,7 @@ mod tests {
                 .await
                 .unwrap();
             let by_number = client
-                .block(StarknetBlockNumber::new_or_panic(231579).into())
+                .block(BlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -741,7 +741,7 @@ mod tests {
             let expected_version = StarknetVersion::new(0, 9, 1);
 
             let version = client
-                .block(StarknetBlockNumber::new_or_panic(300000).into())
+                .block(BlockNumber::new_or_panic(300000).into())
                 .await
                 .unwrap()
                 .as_block()
@@ -801,7 +801,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(felt!(
+                    .transaction(TransactionHash(felt!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
                     )))
                     .await
@@ -819,7 +819,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(felt!(
+                    .transaction(TransactionHash(felt!(
                         "03d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
                     )))
                     .await
@@ -837,7 +837,7 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(StarknetTransactionHash(felt!(
+                    .transaction(TransactionHash(felt!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
                     )))
                     .await
@@ -881,7 +881,7 @@ mod tests {
 
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct OrderedStateUpdate {
-            pub block_hash: StarknetBlockHash,
+            pub block_hash: BlockHash,
             pub new_root: StateCommitment,
             pub old_root: StateCommitment,
             pub state_diff: OrderedStateDiff,
@@ -952,13 +952,13 @@ mod tests {
                 ),
             ]);
             let by_number: OrderedStateUpdate = client
-                .state_update(StarknetBlockNumber::new_or_panic(315700).into())
+                .state_update(BlockNumber::new_or_panic(315700).into())
                 .await
                 .unwrap()
                 .into();
             let by_hash: OrderedStateUpdate = client
                 .state_update(
-                    StarknetBlockHash(felt!(
+                    BlockHash(felt!(
                         "017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03"
                     ))
                     .into(),
@@ -1297,7 +1297,7 @@ mod tests {
 
             let expected = reply::add_transaction::DeployAccountResponse {
                 code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: StarknetTransactionHash(pathfinder_common::felt!(
+                transaction_hash: TransactionHash(pathfinder_common::felt!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
                 )),
                 address: ContractAddress::new_or_panic(pathfinder_common::felt!(

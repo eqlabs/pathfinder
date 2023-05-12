@@ -10,21 +10,21 @@
 //! #[derive(serde::Serialize)]
 //! struct Example {
 //!     #[serde_as(as = "RpcFelt")]
-//!     hash: StarknetTransactionHash,
+//!     hash: TransactionHash,
 //!
 //!     #[serde_as(as = "Option<RpcFelt>")]
-//!     maybe_hash: Option<StarknetTransactionHash>,
+//!     maybe_hash: Option<TransactionHash>,
 //!
 //!     #[serde_as(as = "Vec<RpcFelt>")]
-//!     many_hashes: Vec<StarknetTransactionHash>,
+//!     many_hashes: Vec<TransactionHash>,
 //! }
 //! ```
 
 use pathfinder_common::{
-    CallParam, CallResultValue, CasmHash, ChainId, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, SequencerAddress, SierraHash, StarknetBlockHash,
-    StarknetTransactionHash, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
+    BlockHash, CallParam, CallResultValue, CasmHash, ChainId, ClassHash, ConstructorParam,
+    ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey,
+    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress, SierraHash,
+    StateCommitment, StorageAddress, StorageValue, TransactionHash, TransactionNonce,
     TransactionSignatureElem,
 };
 use stark_hash::Felt;
@@ -181,8 +181,8 @@ rpc_felt_serde!(
     L2ToL1MessagePayloadElem,
     SequencerAddress,
     SierraHash,
-    StarknetBlockHash,
-    StarknetTransactionHash,
+    BlockHash,
+    TransactionHash,
     StateCommitment,
     StorageValue,
     TransactionNonce,

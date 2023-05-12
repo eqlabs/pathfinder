@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{BlockId, StarknetBlockHash, StarknetBlockNumber, StateCommitment};
+use pathfinder_common::{BlockHash, BlockId, BlockNumber, StateCommitment};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -104,9 +104,7 @@ fn get_raw_block(
     let block_status = get_block_status(transaction, block.number)?;
 
     let (parent_hash, parent_root) = match block.number {
-        StarknetBlockNumber::GENESIS => {
-            (StarknetBlockHash(Felt::ZERO), StateCommitment(Felt::ZERO))
-        }
+        BlockNumber::GENESIS => (BlockHash(Felt::ZERO), StateCommitment(Felt::ZERO)),
         other => {
             let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
                 .context("Read parent block from database")?
@@ -134,7 +132,7 @@ fn get_raw_block(
 /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
 fn get_block_transactions(
     db_tx: &rusqlite::Transaction<'_>,
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     scope: types::BlockResponseScope,
 ) -> Result<types::Transactions, GetBlockError> {
     let transactions_receipts =
@@ -162,8 +160,8 @@ mod types {
     use crate::felt::RpcFelt;
     use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
-        GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-        StarknetTransactionHash, StateCommitment,
+        BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress, StateCommitment,
+        TransactionHash,
     };
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
@@ -189,10 +187,10 @@ mod types {
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct TransactionHashes(#[serde_as(as = "Vec<RpcFelt>")] Vec<StarknetTransactionHash>);
+    pub struct TransactionHashes(#[serde_as(as = "Vec<RpcFelt>")] Vec<TransactionHash>);
 
-    impl From<Vec<StarknetTransactionHash>> for TransactionHashes {
-        fn from(value: Vec<StarknetTransactionHash>) -> Self {
+    impl From<Vec<TransactionHash>> for TransactionHashes {
+        fn from(value: Vec<TransactionHash>) -> Self {
             Self(value)
         }
     }
@@ -205,13 +203,13 @@ mod types {
     pub struct Block {
         pub status: BlockStatus,
         #[serde_as(as = "Option<RpcFelt>")]
-        pub block_hash: Option<StarknetBlockHash>,
+        pub block_hash: Option<BlockHash>,
         #[serde_as(as = "RpcFelt")]
-        pub parent_hash: StarknetBlockHash,
-        pub block_number: Option<StarknetBlockNumber>,
+        pub parent_hash: BlockHash,
+        pub block_number: Option<BlockNumber>,
         #[serde_as(as = "Option<RpcFelt>")]
         pub new_root: Option<StateCommitment>,
-        pub timestamp: StarknetBlockTimestamp,
+        pub timestamp: BlockTimestamp,
         #[serde_as(as = "RpcFelt")]
         pub sequencer_address: SequencerAddress,
         pub transactions: Transactions,
@@ -220,12 +218,12 @@ mod types {
     /// Convenience type for DB manipulation.
     #[derive(Debug)]
     pub struct RawBlock {
-        pub number: StarknetBlockNumber,
-        pub hash: StarknetBlockHash,
+        pub number: BlockNumber,
+        pub hash: BlockHash,
         pub root: StateCommitment,
-        pub parent_hash: StarknetBlockHash,
+        pub parent_hash: BlockHash,
         pub parent_root: StateCommitment,
-        pub timestamp: StarknetBlockTimestamp,
+        pub timestamp: BlockTimestamp,
         pub status: BlockStatus,
         pub sequencer: SequencerAddress,
         pub gas_price: GasPrice,
@@ -303,13 +301,13 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{felt, BlockHash, BlockNumber};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
-        let number = BlockId::Number(StarknetBlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(StarknetBlockHash(felt!("0xbeef")));
+        let number = BlockId::Number(BlockNumber::new_or_panic(123));
+        let hash = BlockId::Hash(BlockHash(felt!("0xbeef")));
 
         [
             (r#"["pending"]"#, BlockId::Pending),
@@ -366,7 +364,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(block) => assert_eq!(
                 block.block_hash,
-                Some(StarknetBlockHash(pathfinder_common::felt_bytes!(expected))),
+                Some(BlockHash(pathfinder_common::felt_bytes!(expected))),
                 "test case {i}"
             ));
         })
@@ -403,7 +401,7 @@ mod tests {
                 Box::new(|i, result| {
                     assert_matches!(result, Ok(block) => assert_eq!(
                         block.parent_hash,
-                        StarknetBlockHash(pathfinder_common::felt_bytes!(b"latest")),
+                        BlockHash(pathfinder_common::felt_bytes!(b"latest")),
                         "test case {i}"
                     ), "test case {i}")
                 }),
@@ -424,26 +422,22 @@ mod tests {
             (ctx.clone(), BlockId::Latest, assert_hash(b"latest")),
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::GENESIS),
+                BlockId::Number(BlockNumber::GENESIS),
                 assert_hash(b"genesis"),
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(StarknetBlockHash(pathfinder_common::felt_bytes!(
-                    b"genesis"
-                ))),
+                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"genesis"))),
                 assert_hash(b"genesis"),
             ),
             (
                 ctx.clone(),
-                BlockId::Number(StarknetBlockNumber::new_or_panic(9999)),
+                BlockId::Number(BlockNumber::new_or_panic(9999)),
                 assert_error(GetBlockError::BlockNotFound),
             ),
             (
                 ctx,
-                BlockId::Hash(StarknetBlockHash(pathfinder_common::felt_bytes!(
-                    b"non-existent"
-                ))),
+                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"non-existent"))),
                 assert_error(GetBlockError::BlockNotFound),
             ),
         ];

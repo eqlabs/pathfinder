@@ -12,35 +12,35 @@ mod macros;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 
-/// The address of a StarkNet contract.
+/// The address of a Starknet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 pub struct ContractAddress(Felt);
 
 macros::starkhash251::newtype!(ContractAddress);
 macros::starkhash251::deserialization!(ContractAddress);
 
-/// A nonce that is associated with a particular deployed StarkNet contract
+/// A nonce that is associated with a particular deployed Starknet contract
 /// distinguishing it from other contracts that use the same contract class.
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ContractNonce(pub Felt);
 
-/// The salt of a StarkNet contract address.
+/// The salt of a Starknet contract address.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct ContractAddressSalt(pub Felt);
 
-/// The hash of a StarkNet contract. This is a hash over a class'
+/// The hash of a Starknet contract. This is a hash over a class'
 /// deployment properties e.g. code and ABI.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ClassHash(pub Felt);
 
-/// The hash of a StarkNet Sierra class.
+/// The hash of a Starknet Sierra class.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 pub struct SierraHash(pub Felt);
 
 macros::starkhash251::newtype!(SierraHash);
 macros::starkhash251::deserialization!(SierraHash);
 
-/// The hash of a StarkNet Cairo assembly class.
+/// The hash of a Starknet Cairo assembly class.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 pub struct CasmHash(pub Felt);
 
@@ -59,12 +59,12 @@ macros::starkhash251::deserialization!(ClassCommitment);
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ClassCommitmentLeafHash(pub Felt);
 
-/// A StarkNet contract's state hash. This is the value stored
+/// A Starknet contract's state hash. This is the value stored
 /// in the global state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractStateHash(pub Felt);
 
-/// A commitment root of a StarkNet contract. This is the entry-point
+/// A commitment root of a Starknet contract. This is the entry-point
 /// for a contract's state at a specific point in time via the contract
 /// state tree.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,7 +82,7 @@ pub struct ContractClass {
     pub entry_points_by_type: serde_json::Value,
 }
 
-/// Entry point of a StarkNet `call`.
+/// Entry point of a Starknet `call`.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EntryPoint(pub Felt);
 
@@ -98,39 +98,39 @@ impl EntryPoint {
     }
 }
 
-/// Offset of an entry point into the bytecode of a StarkNet contract.
+/// Offset of an entry point into the bytecode of a Starknet contract.
 ///
 /// This is a StarkHash because we use it directly for computing the
 /// class hashes.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ByteCodeOffset(pub Felt);
 
-/// A single parameter passed to a StarkNet `call`.
+/// A single parameter passed to a Starknet `call`.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CallParam(pub Felt);
 
-/// A single parameter passed to a StarkNet contract constructor.
+/// A single parameter passed to a Starknet contract constructor.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ConstructorParam(pub Felt);
 
-/// A single result value of a StarkNet `call`.
+/// A single result value of a Starknet `call`.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CallResultValue(pub Felt);
 
-/// The address of a storage element for a StarkNet contract.
+/// The address of a storage element for a Starknet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord)]
 pub struct StorageAddress(Felt);
 
 macros::starkhash251::newtype!(StorageAddress);
 macros::starkhash251::deserialization!(StorageAddress);
 
-/// The value of a storage element for a StarkNet contract.
+/// The value of a storage element for a Starknet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct StorageValue(pub Felt);
 
-/// The commitment for the state of a StarkNet block.
+/// The commitment for the state of a Starknet block.
 ///
-/// Before StarkNet v0.11.0 this was equivalent to [StorageCommitment].
+/// Before Starknet v0.11.0 this was equivalent to [StorageCommitment].
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StateCommitment(pub Felt);
 
@@ -161,91 +161,91 @@ impl StateCommitment {
     }
 }
 
-/// The commitment for all contracts' storage of a StarkNet block.
+/// The commitment for all contracts' storage of a Starknet block.
 ///
-/// Before StarkNet v0.11.0 this was equivalent to [StateCommitment].
+/// Before Starknet v0.11.0 this was equivalent to [StateCommitment].
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct StorageCommitment(pub Felt);
 
-/// A StarkNet block hash.
+/// A Starknet block hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetBlockHash(pub Felt);
+pub struct BlockHash(pub Felt);
 
-/// A StarkNet block number.
+/// A Starknet block number.
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
-pub struct StarknetBlockNumber(u64);
+pub struct BlockNumber(u64);
 
-macros::i64_backed_u64::to_from_sql!(StarknetBlockNumber);
-macros::i64_backed_u64::new_get_partialeq!(StarknetBlockNumber);
-macros::i64_backed_u64::serdes!(StarknetBlockNumber);
+macros::i64_backed_u64::to_from_sql!(BlockNumber);
+macros::i64_backed_u64::new_get_partialeq!(BlockNumber);
+macros::i64_backed_u64::serdes!(BlockNumber);
 
-impl From<StarknetBlockNumber> for Felt {
-    fn from(x: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for Felt {
+    fn from(x: BlockNumber) -> Self {
         Felt::from(x.0)
     }
 }
 
 /// The timestamp of a Starknet block.
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
-pub struct StarknetBlockTimestamp(u64);
+pub struct BlockTimestamp(u64);
 
-macros::i64_backed_u64::to_from_sql!(StarknetBlockTimestamp);
-macros::i64_backed_u64::new_get_partialeq!(StarknetBlockTimestamp);
-macros::i64_backed_u64::serdes!(StarknetBlockTimestamp);
+macros::i64_backed_u64::to_from_sql!(BlockTimestamp);
+macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
+macros::i64_backed_u64::serdes!(BlockTimestamp);
 
-/// A StarkNet events commitment of a block.
+/// A Starknet events commitment of a block.
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EventCommitment(pub Felt);
 
-/// A StarkNet transactions commitment of a block.
+/// A Starknet transactions commitment of a block.
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionCommitment(pub Felt);
 
-/// A StarkNet transaction hash.
+/// A Starknet transaction hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetTransactionHash(pub Felt);
+pub struct TransactionHash(pub Felt);
 
-/// A StarkNet transaction index.
+/// A Starknet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct StarknetTransactionIndex(u64);
+pub struct TransactionIndex(u64);
 
-macros::i64_backed_u64::to_from_sql!(StarknetTransactionIndex);
-macros::i64_backed_u64::new_get_partialeq!(StarknetTransactionIndex);
-macros::i64_backed_u64::serdes!(StarknetTransactionIndex);
+macros::i64_backed_u64::to_from_sql!(TransactionIndex);
+macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
+macros::i64_backed_u64::serdes!(TransactionIndex);
 
-/// A single element of a signature used to secure a StarkNet transaction.
+/// A single element of a signature used to secure a Starknet transaction.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionSignatureElem(pub Felt);
 
-/// A nonce that is added to an L1 to L2 message in a StarkNet transaction.
+/// A nonce that is added to an L1 to L2 message in a Starknet transaction.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct L1ToL2MessageNonce(pub Felt);
 
-/// A single element of the payload of an L1 to L2 message in a StarkNet transaction.
+/// A single element of the payload of an L1 to L2 message in a Starknet transaction.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct L1ToL2MessagePayloadElem(pub Felt);
 
-/// A single element of the payload of an L2 to L1 message in a StarkNet transaction.
+/// A single element of the payload of an L2 to L1 message in a Starknet transaction.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct L2ToL1MessagePayloadElem(pub Felt);
 
-/// StarkNet transaction event data.
+/// Starknet transaction event data.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EventData(pub Felt);
 
-/// StarkNet transaction event key.
+/// Starknet transaction event key.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash)]
 pub struct EventKey(pub Felt);
 
-/// StarkNet sequencer address.
+/// Starknet sequencer address.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SequencerAddress(pub Felt);
 
-/// StarkNet fee value.
+/// Starknet fee value.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Fee(pub Felt);
 
-/// StarkNet gas price.
+/// Starknet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct GasPrice(pub u128);
 
@@ -253,7 +253,7 @@ pub struct GasPrice(pub u128);
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionNonce(pub Felt);
 
-/// StarkNet transaction version.
+/// Starknet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionVersion(pub H256);
 
@@ -322,45 +322,45 @@ pub struct EthereumLogIndex(pub u64);
 #[serde(deny_unknown_fields)]
 pub enum BlockId {
     #[serde(rename = "block_number")]
-    Number(StarknetBlockNumber),
+    Number(BlockNumber),
     #[serde(rename = "block_hash")]
-    Hash(StarknetBlockHash),
+    Hash(BlockHash),
     #[serde(rename = "latest")]
     Latest,
     #[serde(rename = "pending")]
     Pending,
 }
 
-impl StarknetBlockNumber {
-    pub const GENESIS: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(0);
-    /// The maximum [StarknetBlockNumber] we can support. Restricted to `u64::MAX/2` to
+impl BlockNumber {
+    pub const GENESIS: BlockNumber = BlockNumber::new_or_panic(0);
+    /// The maximum [BlockNumber] we can support. Restricted to `u64::MAX/2` to
     /// match Sqlite's maximum integer value.
-    pub const MAX: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(i64::MAX as u64);
+    pub const MAX: BlockNumber = BlockNumber::new_or_panic(i64::MAX as u64);
 }
 
-impl std::ops::Add<u64> for StarknetBlockNumber {
-    type Output = StarknetBlockNumber;
+impl std::ops::Add<u64> for BlockNumber {
+    type Output = BlockNumber;
 
     fn add(self, rhs: u64) -> Self::Output {
         Self(self.0 + rhs)
     }
 }
 
-impl std::ops::AddAssign<u64> for StarknetBlockNumber {
+impl std::ops::AddAssign<u64> for BlockNumber {
     fn add_assign(&mut self, rhs: u64) {
         self.0 += rhs;
     }
 }
 
-impl std::ops::Sub<u64> for StarknetBlockNumber {
-    type Output = StarknetBlockNumber;
+impl std::ops::Sub<u64> for BlockNumber {
+    type Output = BlockNumber;
 
     fn sub(self, rhs: u64) -> Self::Output {
         Self(self.0 - rhs)
     }
 }
 
-impl std::ops::SubAssign<u64> for StarknetBlockNumber {
+impl std::ops::SubAssign<u64> for BlockNumber {
     fn sub_assign(&mut self, rhs: u64) {
         self.0 -= rhs;
     }
@@ -408,14 +408,14 @@ impl From<u64> for GasPrice {
     }
 }
 
-impl From<StarknetBlockNumber> for BlockId {
-    fn from(number: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for BlockId {
+    fn from(number: BlockNumber) -> Self {
         Self::Number(number)
     }
 }
 
-impl From<StarknetBlockHash> for BlockId {
-    fn from(hash: StarknetBlockHash) -> Self {
+impl From<BlockHash> for BlockId {
+    fn from(hash: BlockHash) -> Self {
         Self::Hash(hash)
     }
 }
@@ -540,8 +540,8 @@ macros::starkhash::common_newtype!(
     L2ToL1MessagePayloadElem,
     SequencerAddress,
     SierraHash,
-    StarknetBlockHash,
-    StarknetTransactionHash,
+    BlockHash,
+    TransactionHash,
     StateCommitment,
     StorageAddress,
     StorageCommitment,
@@ -549,8 +549,8 @@ macros::starkhash::common_newtype!(
     TransactionSignatureElem,
 );
 
-macros::fmt::thin_display!(StarknetBlockNumber);
-macros::fmt::thin_display!(StarknetBlockTimestamp);
+macros::fmt::thin_display!(BlockNumber);
+macros::fmt::thin_display!(BlockTimestamp);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AllowedOrigins {
@@ -637,21 +637,18 @@ mod tests {
 
         #[test]
         fn number() {
-            use crate::StarknetBlockNumber;
+            use crate::BlockNumber;
             let result = serde_json::from_str::<BlockId>(r#"{"block_number": 123456}"#).unwrap();
-            assert_eq!(result, BlockId::Number(StarknetBlockNumber(123456)));
+            assert_eq!(result, BlockId::Number(BlockNumber(123456)));
         }
 
         #[test]
         fn hash() {
             use crate::felt;
-            use crate::StarknetBlockHash;
+            use crate::BlockHash;
             let result =
                 serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
-            assert_eq!(
-                result,
-                BlockId::Hash(StarknetBlockHash(felt!("0xdeadbeef")))
-            );
+            assert_eq!(result, BlockId::Hash(BlockHash(felt!("0xdeadbeef"))));
         }
     }
 }

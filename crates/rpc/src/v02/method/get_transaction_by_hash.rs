@@ -1,12 +1,12 @@
 use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
-use pathfinder_common::StarknetTransactionHash;
+use pathfinder_common::TransactionHash;
 use pathfinder_storage::StarknetTransactionsTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByHashInput {
-    transaction_hash: StarknetTransactionHash,
+    transaction_hash: TransactionHash,
 }
 
 crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
@@ -54,8 +54,7 @@ pub async fn get_transaction_by_hash(
 mod tests {
     use super::*;
     use pathfinder_common::{
-        felt, felt_bytes, ContractAddress, EntryPoint, Fee, StarknetTransactionHash,
-        TransactionNonce,
+        felt, felt_bytes, ContractAddress, EntryPoint, Fee, TransactionHash, TransactionNonce,
     };
     use stark_hash::Felt;
 
@@ -75,7 +74,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByHashInput {
-                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
@@ -91,7 +90,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByHashInput {
-                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
@@ -104,7 +103,7 @@ mod tests {
         async fn hash_not_found() {
             let context = RpcContext::for_tests();
             let input = GetTransactionByHashInput {
-                transaction_hash: StarknetTransactionHash(felt_bytes!(b"non_existent")),
+                transaction_hash: TransactionHash(felt_bytes!(b"non_existent")),
             };
 
             let result = get_transaction_by_hash(context, input).await;
@@ -120,7 +119,7 @@ mod tests {
     async fn success() {
         let context = RpcContext::for_tests();
         let input = GetTransactionByHashInput {
-            transaction_hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
+            transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
         };
 
         let result = get_transaction_by_hash(context, input).await.unwrap();
@@ -129,7 +128,7 @@ mod tests {
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonDeclareInvokeTransactionProperties {
-                    hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
+                    hash: TransactionHash(felt_bytes!(b"txn 0")),
                     max_fee: Fee::ZERO,
                     signature: vec![],
                     nonce: TransactionNonce(Felt::ZERO),
@@ -146,7 +145,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
 
         let input = GetTransactionByHashInput {
-            transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
+            transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
         };
 
         let result = get_transaction_by_hash(context, input).await.unwrap();
@@ -155,7 +154,7 @@ mod tests {
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonDeclareInvokeTransactionProperties {
-                    hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
+                    hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
                     max_fee: Fee::ZERO,
                     signature: vec![],
                     nonce: TransactionNonce(Felt::ZERO),

@@ -4,7 +4,7 @@ use pathfinder_common::{
 use rusqlite::{named_params, Transaction};
 
 /// Stores basic information about an Ethereum block, enough to descibe it as a unique point
-/// of origin. This lets us link StarkNet information to a point in Ethereum's history.
+/// of origin. This lets us link Starknet information to a point in Ethereum's history.
 ///
 /// Specifically, this stores an Ethereum block's
 /// - [block hash](EthereumBlockHash)
@@ -32,7 +32,7 @@ impl EthereumBlocksTable {
 }
 
 /// Stores basic information about an Ethereum transaction, enough to descibe it as a unique point
-/// of origin. This lets us link StarkNet information to a point in Ethereum's history.
+/// of origin. This lets us link Starknet information to a point in Ethereum's history.
 ///
 /// Specifically, this stores an Ethereum transactions
 /// - [transaction hash](EthereumTransactionHash)

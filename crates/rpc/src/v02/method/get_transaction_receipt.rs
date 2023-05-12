@@ -1,12 +1,12 @@
 use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
 use anyhow::Context;
-use pathfinder_common::StarknetTransactionHash;
+use pathfinder_common::TransactionHash;
 use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionReceiptInput {
-    transaction_hash: StarknetTransactionHash,
+    transaction_hash: TransactionHash,
 }
 
 crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
@@ -80,8 +80,8 @@ mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
-        ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+        BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash,
     };
     use pathfinder_serde::EthereumAddressAsHexStr;
     use serde::Serialize;
@@ -129,12 +129,12 @@ mod types {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonTransactionReceiptProperties {
         #[serde_as(as = "RpcFelt")]
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub actual_fee: Fee,
         pub status: TransactionStatus,
         #[serde_as(as = "RpcFelt")]
-        pub block_hash: StarknetBlockHash,
-        pub block_number: StarknetBlockNumber,
+        pub block_hash: BlockHash,
+        pub block_number: BlockNumber,
         pub messages_sent: Vec<MessageToL1>,
         pub events: Vec<Event>,
     }
@@ -177,8 +177,8 @@ mod types {
         pub fn with_block_data(
             receipt: starknet_gateway_types::reply::transaction::Receipt,
             status: BlockStatus,
-            block_hash: StarknetBlockHash,
-            block_number: StarknetBlockNumber,
+            block_hash: BlockHash,
+            block_number: BlockNumber,
             transaction: starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
             let common = CommonTransactionReceiptProperties {
@@ -244,7 +244,7 @@ mod types {
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub struct CommonPendingTransactionReceiptProperties {
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub actual_fee: Fee,
         pub messages_sent: Vec<MessageToL1>,
         pub events: Vec<Event>,
@@ -421,11 +421,11 @@ mod types {
             impl CommonTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef")),
+                        transaction_hash: TransactionHash(felt!("0xdeadbeef")),
                         actual_fee: Fee(felt!("0x1")),
                         status: TransactionStatus::AcceptedOnL1,
-                        block_hash: StarknetBlockHash(felt!("0xaaa")),
-                        block_number: StarknetBlockNumber::new_or_panic(3),
+                        block_hash: BlockHash(felt!("0xaaa")),
+                        block_number: BlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x55)),
                             payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
@@ -442,7 +442,7 @@ mod types {
             impl CommonPendingTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: StarknetTransactionHash(felt!("0xfeedfeed")),
+                        transaction_hash: TransactionHash(felt!("0xfeedfeed")),
                         actual_fee: Fee(felt!("0x2")),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x5)),
@@ -474,19 +474,19 @@ mod types {
                 // Somewhat redundant, but want to exhaust the variants
                 Normal(TransactionReceipt::Declare(DeclareTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(felt!("0xdeaf01")),
+                        transaction_hash: TransactionHash(felt!("0xdeaf01")),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::L1Handler(L1HandlerTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(felt!("0xdeaf02")),
+                        transaction_hash: TransactionHash(felt!("0xdeaf02")),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::Deploy(DeployTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(felt!("0xdeaf03")),
+                        transaction_hash: TransactionHash(felt!("0xdeaf03")),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                     contract_address: ContractAddress::new_or_panic(felt!("0xcc")),
@@ -494,7 +494,7 @@ mod types {
                 Pending(PendingTransactionReceipt::Invoke(
                     PendingInvokeTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf11")),
+                            transaction_hash: TransactionHash(felt!("0xdeaf11")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -502,7 +502,7 @@ mod types {
                 Pending(PendingTransactionReceipt::Declare(
                     PendingDeclareTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf12")),
+                            transaction_hash: TransactionHash(felt!("0xdeaf12")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -510,7 +510,7 @@ mod types {
                 Pending(PendingTransactionReceipt::L1Handler(
                     PendingL1HandlerTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf13")),
+                            transaction_hash: TransactionHash(felt!("0xdeaf13")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -518,7 +518,7 @@ mod types {
                 Pending(PendingTransactionReceipt::Deploy(
                     PendingDeployTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: StarknetTransactionHash(felt!("0xdeaf14")),
+                            transaction_hash: TransactionHash(felt!("0xdeaf14")),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                         contract_address: ContractAddress::new_or_panic(felt!("0xdd")),
@@ -542,8 +542,8 @@ mod types {
 mod tests {
     use super::*;
     use pathfinder_common::{
-        felt, felt_bytes, ContractAddress, EventData, EventKey, Fee, StarknetBlockHash,
-        StarknetBlockNumber, StarknetTransactionHash,
+        felt, felt_bytes, BlockHash, BlockNumber, ContractAddress, EventData, EventKey, Fee,
+        TransactionHash,
     };
 
     mod parsing {
@@ -562,7 +562,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
@@ -578,7 +578,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
                 }
             )
         }
@@ -591,7 +591,7 @@ mod tests {
         async fn hash_not_found() {
             let context = RpcContext::for_tests();
             let input = GetTransactionReceiptInput {
-                transaction_hash: StarknetTransactionHash(felt_bytes!(b"non_existent")),
+                transaction_hash: TransactionHash(felt_bytes!(b"non_existent")),
             };
 
             let result = get_transaction_receipt(context, input).await;
@@ -607,7 +607,7 @@ mod tests {
     async fn success() {
         let context = RpcContext::for_tests();
         let input = GetTransactionReceiptInput {
-            transaction_hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
+            transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
         };
 
         let result = get_transaction_receipt(context, input).await.unwrap();
@@ -617,11 +617,11 @@ mod tests {
             MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
+                        transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
                         actual_fee: Fee::ZERO,
                         status: TransactionStatus::AcceptedOnL2,
-                        block_hash: StarknetBlockHash(felt_bytes!(b"genesis")),
-                        block_number: StarknetBlockNumber::new_or_panic(0),
+                        block_hash: BlockHash(felt_bytes!(b"genesis")),
+                        block_number: BlockNumber::new_or_panic(0),
                         messages_sent: vec![],
                         events: vec![Event {
                             data: vec![EventData(felt_bytes!(b"event 0 data"))],
@@ -639,7 +639,7 @@ mod tests {
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
-        let transaction_hash = StarknetTransactionHash(felt_bytes!(b"pending tx hash 0"));
+        let transaction_hash = TransactionHash(felt_bytes!(b"pending tx hash 0"));
         let input = GetTransactionReceiptInput { transaction_hash };
 
         let result = get_transaction_receipt(context, input).await.unwrap();

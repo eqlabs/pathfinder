@@ -1,7 +1,6 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
 use pathfinder_common::{
-    CallParam, ContractAddress, Fee, StarknetBlockHash, StarknetBlockNumber,
-    TransactionSignatureElem,
+    BlockHash, BlockNumber, CallParam, ContractAddress, Fee, TransactionSignatureElem,
 };
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +43,7 @@ pub enum BlockHashOrTag {
     /// Represented as a `0x`-prefixed hex JSON string of length from 1 up to 64 characters
     /// when passed as an RPC method argument, for example:
     /// `{"jsonrpc":"2.0","id":"0","method":"starknet_getBlockWithTxsByHash","params":["0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"]}`
-    Hash(StarknetBlockHash),
+    Hash(BlockHash),
     /// Special [`Tag`] describing a block
     Tag(Tag),
 }
@@ -52,14 +51,14 @@ pub enum BlockHashOrTag {
 impl std::fmt::Display for BlockHashOrTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Hash(StarknetBlockHash(h)) => f.write_str(&h.to_hex_str()),
+            Self::Hash(BlockHash(h)) => f.write_str(&h.to_hex_str()),
             Self::Tag(t) => std::fmt::Display::fmt(t, f),
         }
     }
 }
 
-impl From<StarknetBlockHash> for BlockHashOrTag {
-    fn from(hash: StarknetBlockHash) -> Self {
+impl From<BlockHash> for BlockHashOrTag {
+    fn from(hash: BlockHash) -> Self {
         Self::Hash(hash)
     }
 }
@@ -80,7 +79,7 @@ impl From<BlockHashOrTag> for pathfinder_common::BlockId {
 #[serde(deny_unknown_fields)]
 pub enum BlockNumberOrTag {
     /// Number (height) of a block
-    Number(StarknetBlockNumber),
+    Number(BlockNumber),
     /// Special [`Tag`] describing a block
     Tag(Tag),
 }
@@ -94,8 +93,8 @@ impl std::fmt::Display for BlockNumberOrTag {
     }
 }
 
-impl From<StarknetBlockNumber> for BlockNumberOrTag {
-    fn from(number: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for BlockNumberOrTag {
+    fn from(number: BlockNumber) -> Self {
         Self::Number(number)
     }
 }

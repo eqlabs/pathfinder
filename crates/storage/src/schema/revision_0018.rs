@@ -1,7 +1,7 @@
 use anyhow::Context;
 use rusqlite::Transaction;
 
-/// Primary goal of this migration is to allow for StarkNet block forks.
+/// Primary goal of this migration is to allow for Starknet block forks.
 ///
 /// This is achieved by:
 /// - switching `starknet_blocks` table PK from block number to hash
@@ -27,7 +27,7 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
 
 fn migrate_blocks(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
-        r"-- Stores StarkNet block headers.
+        r"-- Stores Starknet block headers.
 CREATE TABLE starknet_blocks_new (
     hash      BLOB    PRIMARY KEY NOT NULL,
     number    INTEGER NOT NULL,
@@ -180,10 +180,10 @@ fn migrate_events(tx: &Transaction<'_>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Creates a new `canonical_blocks` table which holds the canonical StarkNet block chain.
+/// Creates a new `canonical_blocks` table which holds the canonical Starknet block chain.
 fn create_canonical_chain(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
-        r"-- Holds StarkNet's current canonical chain of blocks.
+        r"-- Holds Starknet's current canonical chain of blocks.
 CREATE TABLE canonical_blocks (
     number INTEGER PRIMARY KEY NOT NULL,
     hash   BLOB    NOT NULL,

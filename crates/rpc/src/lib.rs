@@ -1,4 +1,4 @@
-//! StarkNet node JSON-RPC related modules.
+//! Starknet node JSON-RPC related modules.
 pub mod cairo;
 pub mod context;
 mod error;
@@ -127,11 +127,10 @@ impl Default for SyncState {
 pub mod test_utils {
     use ethers::types::H256;
     use pathfinder_common::{
-        felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
-        EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
-        StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
-        StarknetTransactionIndex, StarknetVersion, StateCommitment, StorageAddress,
-        StorageCommitment, TransactionVersion,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
+        ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
+        SequencerAddress, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment,
+        TransactionHash, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -310,34 +309,34 @@ pub mod test_utils {
             .commit_and_persist_changes()
             .unwrap();
 
-        let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
+        let genesis_hash = BlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {
-            number: StarknetBlockNumber::GENESIS,
+            number: BlockNumber::GENESIS,
             hash: genesis_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment0, class_commitment0),
-            timestamp: StarknetBlockTimestamp::new_or_panic(0),
+            timestamp: BlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
             sequencer_address: SequencerAddress(Felt::ZERO),
             transaction_commitment: None,
             event_commitment: None,
         };
-        let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
+        let block1_hash = BlockHash(felt_bytes!(b"block 1"));
         let block1 = StarknetBlock {
-            number: StarknetBlockNumber::new_or_panic(1),
+            number: BlockNumber::new_or_panic(1),
             hash: block1_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment1, class_commitment1),
-            timestamp: StarknetBlockTimestamp::new_or_panic(1),
+            timestamp: BlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
             transaction_commitment: None,
             event_commitment: None,
         };
-        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        let latest_hash = BlockHash(felt_bytes!(b"latest"));
         let block2 = StarknetBlock {
-            number: StarknetBlockNumber::new_or_panic(2),
+            number: BlockNumber::new_or_panic(2),
             hash: latest_hash,
             state_commmitment: StateCommitment::calculate(storage_commitment2, class_commitment2),
-            timestamp: StarknetBlockTimestamp::new_or_panic(2),
+            timestamp: BlockTimestamp::new_or_panic(2),
             gas_price: GasPrice::from(2),
             sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
             transaction_commitment: None,
@@ -377,7 +376,7 @@ pub mod test_utils {
         ContractCodeTable::update_block_number_if_null(&db_txn, class2_hash, block2.number)
             .unwrap();
 
-        let txn0_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
+        let txn0_hash = TransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
         let txn0 = InvokeTransactionV0 {
             calldata: vec![],
@@ -401,13 +400,13 @@ pub mod test_utils {
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: vec![],
             transaction_hash: txn0_hash,
-            transaction_index: StarknetTransactionIndex::new_or_panic(0),
+            transaction_index: TransactionIndex::new_or_panic(0),
         };
-        let txn1_hash = StarknetTransactionHash(felt_bytes!(b"txn 1"));
-        let txn2_hash = StarknetTransactionHash(felt_bytes!(b"txn 2"));
-        let txn3_hash = StarknetTransactionHash(felt_bytes!(b"txn 3"));
-        let txn4_hash = StarknetTransactionHash(felt_bytes!(b"txn 4 "));
-        let txn5_hash = StarknetTransactionHash(felt_bytes!(b"txn 5"));
+        let txn1_hash = TransactionHash(felt_bytes!(b"txn 1"));
+        let txn2_hash = TransactionHash(felt_bytes!(b"txn 2"));
+        let txn3_hash = TransactionHash(felt_bytes!(b"txn 3"));
+        let txn4_hash = TransactionHash(felt_bytes!(b"txn 4 "));
+        let txn5_hash = TransactionHash(felt_bytes!(b"txn 5"));
         let mut txn1 = txn0.clone();
         let mut txn2 = txn0.clone();
         let mut txn3 = txn0.clone();
@@ -491,7 +490,7 @@ pub mod test_utils {
                 entry_point_type: Some(EntryPointType::External),
                 max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
-                transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 0")),
+                transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
             })
             .into(),
             DeployTransaction {
@@ -499,7 +498,7 @@ pub mod test_utils {
                 contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),
                 class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
                 constructor_calldata: vec![],
-                transaction_hash: StarknetTransactionHash(felt_bytes!(b"pending tx hash 1")),
+                transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 1")),
                 version: TransactionVersion(H256::zero()),
             }
             .into(),
@@ -535,7 +534,7 @@ pub mod test_utils {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[0].hash(),
-                transaction_index: StarknetTransactionIndex::new_or_panic(0),
+                transaction_index: TransactionIndex::new_or_panic(0),
             },
             Receipt {
                 actual_fee: None,
@@ -550,7 +549,7 @@ pub mod test_utils {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[1].hash(),
-                transaction_index: StarknetTransactionIndex::new_or_panic(1),
+                transaction_index: TransactionIndex::new_or_panic(1),
             },
         ];
 
@@ -559,7 +558,7 @@ pub mod test_utils {
             parent_hash: latest.hash,
             sequencer_address: SequencerAddress(felt_bytes!(b"pending sequencer address")),
             status: starknet_gateway_types::reply::Status::Pending,
-            timestamp: StarknetBlockTimestamp::new_or_panic(1234567),
+            timestamp: BlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
             transactions,
             starknet_version: StarknetVersion::new(0, 11, 0),

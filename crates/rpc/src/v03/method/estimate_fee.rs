@@ -59,7 +59,7 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::{
-        felt, CallParam, ContractAddress, Fee, StarknetBlockHash, TransactionNonce,
+        felt, BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
 
@@ -106,7 +106,7 @@ mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
-                block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
         }
@@ -138,7 +138,7 @@ mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
-                block_id: BlockId::Hash(StarknetBlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
             };
             assert_eq!(input, expected);
         }
@@ -164,7 +164,7 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: vec![valid_invoke_v1(account_address)],
-                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));

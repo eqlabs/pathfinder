@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use p2p_proto as proto;
-use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetTransactionsTable, Storage};
 use stark_hash::Felt;
 
@@ -41,7 +41,7 @@ fn fetch_block_headers(
     let mut headers = Vec::new();
 
     let mut next_block_number =
-        StarknetBlocksTable::get_number(&tx, StarknetBlockHash(request.start_block))?;
+        StarknetBlocksTable::get_number(&tx, BlockHash(request.start_block))?;
 
     while let Some(block_number) = next_block_number {
         if count == 0 {
@@ -56,10 +56,7 @@ fn fetch_block_headers(
             break;
         };
 
-        let parent_block_number = block_number
-            .get()
-            .checked_sub(1)
-            .and_then(StarknetBlockNumber::new);
+        let parent_block_number = block_number.get().checked_sub(1).and_then(BlockNumber::new);
         let parent_block_hash = match parent_block_number {
             Some(number) => StarknetBlocksTable::get_hash(&tx, number.into())?,
             None => None,
@@ -71,7 +68,7 @@ fn fetch_block_headers(
         )?;
 
         headers.push(p2p_proto::common::BlockHeader {
-            parent_block_hash: parent_block_hash.unwrap_or(StarknetBlockHash(Felt::ZERO)).0,
+            parent_block_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
             block_number: block.number.get(),
             global_state_root: block.root.0,
             sequencer_address: block.sequencer_address.0,
@@ -103,18 +100,12 @@ fn fetch_block_headers(
 ///
 /// None is returned if we're out-of-bounds.
 fn get_next_block_number(
-    current: StarknetBlockNumber,
+    current: BlockNumber,
     direction: proto::sync::Direction,
-) -> Option<StarknetBlockNumber> {
+) -> Option<BlockNumber> {
     match direction {
-        proto::sync::Direction::Forward => current
-            .get()
-            .checked_add(1)
-            .and_then(StarknetBlockNumber::new),
-        proto::sync::Direction::Backward => current
-            .get()
-            .checked_sub(1)
-            .and_then(StarknetBlockNumber::new),
+        proto::sync::Direction::Forward => current.get().checked_add(1).and_then(BlockNumber::new),
+        proto::sync::Direction::Backward => current.get().checked_sub(1).and_then(BlockNumber::new),
     }
 }
 
@@ -122,26 +113,26 @@ fn get_next_block_number(
 mod tests {
     use super::proto::sync::Direction;
     use p2p_proto::sync::GetBlockHeaders;
-    use pathfinder_common::StarknetBlockNumber;
+    use pathfinder_common::BlockNumber;
 
     use super::{fetch_block_headers, get_next_block_number};
 
     #[test]
     fn test_get_next_block_number() {
-        let genesis = StarknetBlockNumber::new_or_panic(0);
+        let genesis = BlockNumber::new_or_panic(0);
         assert_eq!(get_next_block_number(genesis, Direction::Backward), None);
         assert_eq!(
             get_next_block_number(genesis, Direction::Forward),
-            Some(StarknetBlockNumber::new_or_panic(1))
+            Some(BlockNumber::new_or_panic(1))
         );
 
         assert_eq!(
-            get_next_block_number(StarknetBlockNumber::new_or_panic(1), Direction::Backward),
+            get_next_block_number(BlockNumber::new_or_panic(1), Direction::Backward),
             Some(genesis)
         );
         assert_eq!(
-            get_next_block_number(StarknetBlockNumber::new_or_panic(1), Direction::Forward),
-            Some(StarknetBlockNumber::new_or_panic(2))
+            get_next_block_number(BlockNumber::new_or_panic(1), Direction::Forward),
+            Some(BlockNumber::new_or_panic(2))
         );
     }
 

@@ -1,8 +1,7 @@
 //! The json serializable types
 
 use pathfinder_common::{
-    BlockId, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, StarknetBlockHash,
-    StarknetBlockNumber,
+    BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint,
 };
 use starknet_gateway_types::{
     reply::{
@@ -229,8 +228,8 @@ impl<'a> serde::Serialize for NoncesWrapper<'a> {
 /// Custom "when" without the Pending tag, which has no meaning crossing process boundaries.
 #[derive(Copy, Clone, Debug)]
 pub enum BlockHashNumberOrLatest {
-    Hash(StarknetBlockHash),
-    Number(StarknetBlockNumber),
+    Hash(BlockHash),
+    Number(BlockNumber),
     Latest,
 }
 
@@ -261,14 +260,14 @@ impl serde::Serialize for BlockHashNumberOrLatest {
     }
 }
 
-impl From<StarknetBlockHash> for BlockHashNumberOrLatest {
-    fn from(h: StarknetBlockHash) -> Self {
+impl From<BlockHash> for BlockHashNumberOrLatest {
+    fn from(h: BlockHash) -> Self {
         BlockHashNumberOrLatest::Hash(h)
     }
 }
 
-impl From<StarknetBlockNumber> for BlockHashNumberOrLatest {
-    fn from(n: StarknetBlockNumber) -> Self {
+impl From<BlockNumber> for BlockHashNumberOrLatest {
+    fn from(n: BlockNumber) -> Self {
         BlockHashNumberOrLatest::Number(n)
     }
 }
@@ -405,12 +404,12 @@ mod tests {
     #[test]
     fn serialize_block_hash_num_latest() {
         use super::BlockHashNumberOrLatest;
-        use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+        use pathfinder_common::{BlockHash, BlockNumber};
         use stark_hash::Felt;
 
         let data = &[
-            (StarknetBlockHash(Felt::ZERO).into(), "\"0x0\""),
-            (StarknetBlockNumber::GENESIS.into(), "\"0\""),
+            (BlockHash(Felt::ZERO).into(), "\"0x0\""),
+            (BlockNumber::GENESIS.into(), "\"0\""),
             (BlockHashNumberOrLatest::Latest, "\"latest\""),
         ];
 

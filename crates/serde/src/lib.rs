@@ -3,9 +3,9 @@
 use ethers::types::{H160, H256};
 use num_bigint::BigUint;
 use pathfinder_common::{
-    CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, GasPrice,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
-    TransactionSignatureElem, TransactionVersion,
+    BlockNumber, CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, GasPrice,
+    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionSignatureElem,
+    TransactionVersion,
 };
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
@@ -191,28 +191,28 @@ impl<'de> DeserializeAs<'de, GasPrice> for GasPriceAsHexStr {
 
 pub struct StarknetBlockNumberAsHexStr;
 
-impl SerializeAs<StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
-    fn serialize_as<S>(source: &StarknetBlockNumber, serializer: S) -> Result<S::Ok, S::Error>
+impl SerializeAs<BlockNumber> for StarknetBlockNumberAsHexStr {
+    fn serialize_as<S>(source: &BlockNumber, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         let bytes = source.get().to_be_bytes();
-        // StarknetBlockNumber is "0x" + 16 digits at most
+        // BlockNumber is "0x" + 16 digits at most
         let mut buf = [0u8; 2 + 16];
         let s = bytes_as_hex_str(&bytes, &mut buf);
         serializer.serialize_str(s)
     }
 }
 
-impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexStr {
-    fn deserialize_as<D>(deserializer: D) -> Result<StarknetBlockNumber, D::Error>
+impl<'de> DeserializeAs<'de, BlockNumber> for StarknetBlockNumberAsHexStr {
+    fn deserialize_as<D>(deserializer: D) -> Result<BlockNumber, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         struct StarknetBlockNumberVisitor;
 
         impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
-            type Value = StarknetBlockNumber;
+            type Value = BlockNumber;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a hex string of up to 16 digits with an optional '0x' prefix")
@@ -224,7 +224,7 @@ impl<'de> DeserializeAs<'de, StarknetBlockNumber> for StarknetBlockNumberAsHexSt
             {
                 let stripped = v.strip_prefix("0x").unwrap_or(v);
                 let raw = u64::from_str_radix(stripped, 16).map_err(serde::de::Error::custom)?;
-                StarknetBlockNumber::deserialize_value::<E>(raw)
+                BlockNumber::deserialize_value::<E>(raw)
             }
         }
 
@@ -621,13 +621,12 @@ mod tests {
         #[serde_with::serde_as]
         #[derive(Debug, Copy, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
         struct BlockNum(
-            #[serde_as(as = "super::StarknetBlockNumberAsHexStr")]
-            pathfinder_common::StarknetBlockNumber,
+            #[serde_as(as = "super::StarknetBlockNumberAsHexStr")] pathfinder_common::BlockNumber,
         );
 
         impl BlockNum {
             pub const fn new_or_panic(v: u64) -> Self {
-                Self(pathfinder_common::StarknetBlockNumber::new_or_panic(v))
+                Self(pathfinder_common::BlockNumber::new_or_panic(v))
             }
         }
 

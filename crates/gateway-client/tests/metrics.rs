@@ -4,7 +4,7 @@
 //! have caused those failures in the first place.
 
 use futures::stream::StreamExt;
-use pathfinder_common::{BlockId, StarknetBlockNumber};
+use pathfinder_common::{BlockId, BlockNumber};
 use pretty_assertions::assert_eq;
 use starknet_gateway_client::test_utils::{response_from, setup_with_varied_responses};
 use starknet_gateway_client::{Client, GatewayApi};
@@ -48,7 +48,7 @@ where
     let responses = [
         // Any valid fixture
         response,
-        // 1 StarkNet error
+        // 1 Starknet error
         response_from(StarknetErrorCode::BlockNotFound),
         // 2 decode errors
         (r#"{"not":"valid"}"#.to_owned(), 200),
@@ -74,7 +74,7 @@ where
         ),
     ]);
 
-    [BlockId::Number(StarknetBlockNumber::new_or_panic(123)); 7]
+    [BlockId::Number(BlockNumber::new_or_panic(123)); 7]
         .into_iter()
         .chain([BlockId::Latest; 7].into_iter())
         .chain([BlockId::Pending; 7].into_iter())

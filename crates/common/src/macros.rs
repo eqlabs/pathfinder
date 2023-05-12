@@ -343,9 +343,9 @@ macro_rules! felt_bytes {
     }};
 }
 
-/// Asserts a condition against the StarkNet version on a given network. This is intended to let you mark code which may need refactoring
-/// once a certain StarkNet version condition comes false. For example, you can remind yourself that a field alias may be safely removed once
-/// v0.11.0 of StarkNet is released on mainnet.
+/// Asserts a condition against the Starknet version on a given network. This is intended to let you mark code which may need refactoring
+/// once a certain Starknet version condition comes false. For example, you can remind yourself that a field alias may be safely removed once
+/// v0.11.0 of Starknet is released on mainnet.
 ///
 /// Note that the assertion only occurs for `#[cfg(test)]`.
 ///

@@ -1,8 +1,7 @@
 use anyhow::{Context, Error, Result};
 use pathfinder_common::{
-    Chain, ChainId, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp, StarknetVersion, StateCommitment, TransactionCommitment,
-    TransactionSignatureElem,
+    BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
+    StarknetVersion, StateCommitment, TransactionCommitment, TransactionSignatureElem,
 };
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use stark_hash::{stark_hash, Felt, HashChain};
@@ -34,7 +33,7 @@ pub fn verify_block_hash(
     block: &Block,
     chain: Chain,
     chain_id: ChainId,
-    expected_block_hash: StarknetBlockHash,
+    expected_block_hash: BlockHash,
 ) -> Result<VerifyResult> {
     let meta_info = meta::for_chain(chain);
     if !meta_info.can_verify(block.block_number) {
@@ -101,7 +100,7 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use pathfinder_common::{felt, Chain, SequencerAddress, StarknetBlockNumber};
+    use pathfinder_common::{felt, BlockNumber, Chain, SequencerAddress};
     use std::ops::Range;
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -127,30 +126,30 @@ mod meta {
     #[derive(Clone)]
     pub struct BlockHashMetaInfo {
         /// The number of the first block that was hashed with the Starknet 0.7 hash algorithm.
-        pub first_0_7_block: StarknetBlockNumber,
+        pub first_0_7_block: BlockNumber,
         /// The range of block numbers that can't be verified because of an unknown sequencer address.
-        pub not_verifiable_range: Option<Range<StarknetBlockNumber>>,
+        pub not_verifiable_range: Option<Range<BlockNumber>>,
         /// Fallback sequencer address to use for blocks that don't include the address.
         pub fallback_sequencer_address: Option<SequencerAddress>,
     }
 
     impl BlockHashMetaInfo {
-        pub fn can_verify(&self, block_number: StarknetBlockNumber) -> bool {
+        pub fn can_verify(&self, block_number: BlockNumber) -> bool {
             match &self.not_verifiable_range {
                 Some(range) => !range.contains(&block_number),
                 None => true,
             }
         }
 
-        pub fn uses_pre_0_7_hash_algorithm(&self, block_number: StarknetBlockNumber) -> bool {
+        pub fn uses_pre_0_7_hash_algorithm(&self, block_number: BlockNumber) -> bool {
             block_number < self.first_0_7_block
         }
     }
 
     const TESTNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber::new_or_panic(47028),
+        first_0_7_block: BlockNumber::new_or_panic(47028),
         not_verifiable_range: Some(
-            StarknetBlockNumber::new_or_panic(119802)..StarknetBlockNumber::new_or_panic(148428),
+            BlockNumber::new_or_panic(119802)..BlockNumber::new_or_panic(148428),
         ),
         fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
@@ -158,7 +157,7 @@ mod meta {
     };
 
     const TESTNET2_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber::new_or_panic(0),
+        first_0_7_block: BlockNumber::new_or_panic(0),
         not_verifiable_range: None,
         fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
@@ -166,7 +165,7 @@ mod meta {
     };
 
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber::new_or_panic(833),
+        first_0_7_block: BlockNumber::new_or_panic(833),
         not_verifiable_range: None,
         fallback_sequencer_address: Some(SequencerAddress(felt!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
@@ -174,17 +173,15 @@ mod meta {
     };
 
     const INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber::new_or_panic(110511),
-        not_verifiable_range: Some(
-            StarknetBlockNumber::new_or_panic(0)..StarknetBlockNumber::new_or_panic(110511),
-        ),
+        first_0_7_block: BlockNumber::new_or_panic(110511),
+        not_verifiable_range: Some(BlockNumber::new_or_panic(0)..BlockNumber::new_or_panic(110511)),
         fallback_sequencer_address: Some(SequencerAddress(felt!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
         ))),
     };
 
     const CUSTOM_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
-        first_0_7_block: StarknetBlockNumber::new_or_panic(0),
+        first_0_7_block: BlockNumber::new_or_panic(0),
         not_verifiable_range: None,
         fallback_sequencer_address: None,
     };
@@ -210,13 +207,13 @@ mod meta {
 ///   * sequencer addresses
 ///   * event number and event commitment
 fn compute_final_hash_pre_0_7(
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     state_root: StateCommitment,
     num_transactions: u64,
     transaction_commitment: Felt,
-    parent_block_hash: StarknetBlockHash,
+    parent_block_hash: BlockHash,
     chain_id: pathfinder_common::ChainId,
-) -> StarknetBlockHash {
+) -> BlockHash {
     let mut chain = HashChain::default();
 
     // block number
@@ -244,22 +241,22 @@ fn compute_final_hash_pre_0_7(
     // parent block hash
     chain.update(parent_block_hash.0);
 
-    StarknetBlockHash(chain.finalize())
+    BlockHash(chain.finalize())
 }
 
 /// This implements the final hashing step for post-0.7 blocks.
 #[allow(clippy::too_many_arguments)]
 fn compute_final_hash(
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     state_root: StateCommitment,
     sequencer_address: &SequencerAddress,
-    timestamp: StarknetBlockTimestamp,
+    timestamp: BlockTimestamp,
     num_transactions: u64,
     transaction_commitment: Felt,
     num_events: u64,
     event_commitment: Felt,
-    parent_block_hash: StarknetBlockHash,
-) -> StarknetBlockHash {
+    parent_block_hash: BlockHash,
+) -> BlockHash {
     let mut chain = HashChain::default();
 
     // block number
@@ -285,7 +282,7 @@ fn compute_final_hash(
     // parent block hash
     chain.update(parent_block_hash.0);
 
-    StarknetBlockHash(chain.finalize())
+    BlockHash(chain.finalize())
 }
 
 pub enum TransactionCommitmentFinalHashType {
@@ -496,9 +493,7 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use pathfinder_common::{
-            ContractAddress, StarknetTransactionHash, TransactionSignatureElem,
-        };
+        use pathfinder_common::{ContractAddress, TransactionHash, TransactionSignatureElem};
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
@@ -510,7 +505,7 @@ mod tests {
                 TransactionSignatureElem(felt!("0x2")),
                 TransactionSignatureElem(felt!("0x3")),
             ],
-            transaction_hash: StarknetTransactionHash(felt!("0x1")),
+            transaction_hash: TransactionHash(felt!("0x1")),
         }));
 
         // produced by the cairo-lang Python implementation:

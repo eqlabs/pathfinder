@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use anyhow::Context;
-use pathfinder_common::StarknetBlockNumber;
+use pathfinder_common::BlockNumber;
 use pathfinder_lib::state::block_hash::{
     calculate_event_commitment, calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
@@ -44,8 +44,7 @@ fn main() -> anyhow::Result<()> {
         let tx = db.transaction().unwrap();
 
         let now = Instant::now();
-        let block_id =
-            StarknetBlocksBlockId::Number(StarknetBlockNumber::new_or_panic(block_number));
+        let block_id = StarknetBlocksBlockId::Number(BlockNumber::new_or_panic(block_number));
         let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
         let version = StarknetBlocksTable::get_version(&tx, block_id)?;
 

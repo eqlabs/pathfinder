@@ -13,7 +13,7 @@ pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
     sequencer: &impl starknet_gateway_client::GatewayApi,
     head: (
-        pathfinder_common::StarknetBlockHash,
+        pathfinder_common::BlockHash,
         pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
@@ -102,8 +102,8 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        felt, felt_bytes, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetVersion, StateCommitment,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress,
+        StarknetVersion, StateCommitment,
     };
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{
@@ -112,18 +112,18 @@ mod tests {
     };
 
     lazy_static::lazy_static!(
-        pub static ref PARENT_HASH: StarknetBlockHash =  StarknetBlockHash(felt!("0x1234"));
+        pub static ref PARENT_HASH: BlockHash =  BlockHash(felt!("0x1234"));
         pub static ref PARENT_ROOT: StateCommitment = StateCommitment(felt_bytes!(b"parent root"));
 
         pub static ref NEXT_BLOCK: Block = Block{
-            block_hash: StarknetBlockHash(felt!("0xabcd")),
-            block_number: StarknetBlockNumber::new_or_panic(1),
+            block_hash: BlockHash(felt!("0xabcd")),
+            block_number: BlockNumber::new_or_panic(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
             sequencer_address: None,
             state_commitment: *PARENT_ROOT,
             status: Status::AcceptedOnL2,
-            timestamp: StarknetBlockTimestamp::new_or_panic(10),
+            timestamp: BlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),
@@ -146,7 +146,7 @@ mod tests {
             parent_hash: NEXT_BLOCK.parent_block_hash,
             sequencer_address: SequencerAddress(felt_bytes!(b"seqeunecer address")),
             status: Status::Pending,
-            timestamp: StarknetBlockTimestamp::new_or_panic(20),
+            timestamp: BlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
             transactions: Vec::new(),
             starknet_version: StarknetVersion::default(),
@@ -236,7 +236,7 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
-        pending_block.parent_hash = StarknetBlockHash(felt!("0xFFFFFF"));
+        pending_block.parent_hash = BlockHash(felt!("0xFFFFFF"));
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));

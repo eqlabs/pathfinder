@@ -1,32 +1,32 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
-    EthereumAddress, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-    StarknetBlockTimestamp, StarknetVersion, StateCommitment,
+    BlockHash, BlockNumber, BlockTimestamp, EthereumAddress, GasPrice, SequencerAddress,
+    StarknetVersion, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::Deserialize;
 use serde_with::serde_as;
 
-/// Used to deserialize replies to StarkNet block requests.
+/// Used to deserialize replies to Starknet block requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
-    pub block_hash: StarknetBlockHash,
-    pub block_number: StarknetBlockNumber,
-    /// Excluded in blocks prior to StarkNet 0.9
+    pub block_hash: BlockHash,
+    pub block_number: BlockNumber,
+    /// Excluded in blocks prior to Starknet 0.9
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
     pub gas_price: Option<GasPrice>,
-    pub parent_block_hash: StarknetBlockHash,
-    /// Excluded in blocks prior to StarkNet 0.8
+    pub parent_block_hash: BlockHash,
+    /// Excluded in blocks prior to Starknet 0.8
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
     // Historical blocks (pre v0.11) still use `state_root`.
     #[serde(alias = "state_root")]
     pub state_commitment: StateCommitment,
     pub status: Status,
-    pub timestamp: StarknetBlockTimestamp,
+    pub timestamp: BlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
@@ -41,10 +41,10 @@ pub struct PendingBlock {
     #[serde_as(as = "GasPriceAsHexStr")]
     pub gas_price: GasPrice,
     #[serde(rename = "parent_block_hash")]
-    pub parent_hash: StarknetBlockHash,
+    pub parent_hash: BlockHash,
     pub sequencer_address: SequencerAddress,
     pub status: Status,
-    pub timestamp: StarknetBlockTimestamp,
+    pub timestamp: BlockTimestamp,
     pub transaction_receipts: Vec<transaction::Receipt>,
     pub transactions: Vec<transaction::Transaction>,
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
@@ -154,15 +154,15 @@ pub mod call {
     }
 }
 
-/// Used to deserialize replies to StarkNet transaction requests.
+/// Used to deserialize replies to Starknet transaction requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
     #[serde(default)]
-    pub block_hash: Option<StarknetBlockHash>,
+    pub block_hash: Option<BlockHash>,
     #[serde(default)]
-    pub block_number: Option<StarknetBlockNumber>,
+    pub block_number: Option<BlockNumber>,
     pub status: Status,
     #[serde(default)]
     pub transaction: Option<transaction::Transaction>,
@@ -172,13 +172,13 @@ pub struct Transaction {
     pub transaction_failure_reason: Option<transaction::Failure>,
 }
 
-/// Used to deserialize replies to StarkNet transaction status requests.
+/// Used to deserialize replies to Starknet transaction status requests.
 #[serde_as]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
     #[serde(default)]
-    pub block_hash: Option<StarknetBlockHash>,
+    pub block_hash: Option<BlockHash>,
     pub tx_status: Status,
 }
 
@@ -187,8 +187,8 @@ pub mod transaction {
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
         EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
-        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetTransactionHash,
-        StarknetTransactionIndex, TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash, TransactionIndex,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
@@ -284,8 +284,8 @@ pub mod transaction {
         pub execution_resources: Option<ExecutionResources>,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
-        pub transaction_hash: StarknetTransactionHash,
-        pub transaction_index: StarknetTransactionIndex,
+        pub transaction_hash: TransactionHash,
+        pub transaction_index: TransactionIndex,
     }
 
     /// Represents deserialized L2 transaction event data.
@@ -322,7 +322,7 @@ pub mod transaction {
 
     impl Transaction {
         /// Returns hash of the transaction
-        pub fn hash(&self) -> StarknetTransactionHash {
+        pub fn hash(&self) -> TransactionHash {
             match self {
                 Transaction::Declare(t) => match t {
                     DeclareTransaction::V0(t) => t.transaction_hash,
@@ -436,7 +436,7 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     /// A version 2 declare transaction.
@@ -451,7 +451,7 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         #[serde(default)]
         pub signature: Vec<TransactionSignatureElem>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub compiled_class_hash: CasmHash,
     }
 
@@ -469,7 +469,7 @@ pub mod transaction {
         pub class_hash: ClassHash,
         #[serde_as(as = "Vec<ConstructorParamAsDecimalStr>")]
         pub constructor_calldata: Vec<ConstructorParam>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         #[serde(default = "transaction_version_zero")]
         pub version: TransactionVersion,
@@ -481,7 +481,7 @@ pub mod transaction {
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountTransaction {
         pub contract_address: ContractAddress,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub max_fee: Fee,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
@@ -565,7 +565,7 @@ pub mod transaction {
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     /// Represents deserialized L2 invoke transaction v1 data.
@@ -585,7 +585,7 @@ pub mod transaction {
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     /// Represents deserialized L2 "L1 handler" transaction data.
@@ -599,7 +599,7 @@ pub mod transaction {
         #[serde(default = "l1_handler_default_nonce")]
         pub nonce: TransactionNonce,
         pub calldata: Vec<CallParam>,
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         #[serde_as(as = "TransactionVersionAsHexStr")]
         pub version: TransactionVersion,
     }
@@ -662,17 +662,17 @@ pub enum MaybePendingStateUpdate {
     Pending(PendingStateUpdate),
 }
 
-/// Used to deserialize replies to StarkNet state update requests except for the pending one.
+/// Used to deserialize replies to Starknet state update requests except for the pending one.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
-    pub block_hash: StarknetBlockHash,
+    pub block_hash: BlockHash,
     pub new_root: StateCommitment,
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }
 
-/// Used to deserialize replies to StarkNet pending state update requests.
+/// Used to deserialize replies to Starknet pending state update requests.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingStateUpdate {
     pub old_root: StateCommitment,
@@ -794,7 +794,7 @@ pub mod state_update {
     }
 }
 
-/// Used to deserialize replies to StarkNet Ethereum contract requests.
+/// Used to deserialize replies to Starknet Ethereum contract requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -808,14 +808,14 @@ pub struct EthContractAddresses {
 }
 
 pub mod add_transaction {
-    use pathfinder_common::{ClassHash, ContractAddress, StarknetTransactionHash};
+    use pathfinder_common::{ClassHash, ContractAddress, TransactionHash};
 
     /// API response for an INVOKE_FUNCTION transaction
     #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeResponse {
         pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
     }
 
     /// API response for a DECLARE transaction
@@ -823,7 +823,7 @@ pub mod add_transaction {
     #[serde(deny_unknown_fields)]
     pub struct DeclareResponse {
         pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub class_hash: ClassHash,
     }
 
@@ -832,7 +832,7 @@ pub mod add_transaction {
     #[serde(deny_unknown_fields)]
     pub struct DeployResponse {
         pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub address: ContractAddress,
     }
 
@@ -841,7 +841,7 @@ pub mod add_transaction {
     #[serde(deny_unknown_fields)]
     pub struct DeployAccountResponse {
         pub code: String, // TRANSACTION_RECEIVED
-        pub transaction_hash: StarknetTransactionHash,
+        pub transaction_hash: TransactionHash,
         pub address: ContractAddress,
     }
 
@@ -855,7 +855,7 @@ pub mod add_transaction {
             let result = serde_json::from_str::<InvokeResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"}"#).unwrap();
             let expected = InvokeResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: StarknetTransactionHash(felt!(
+                transaction_hash: TransactionHash(felt!(
                     "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
                 )),
             };
@@ -867,7 +867,7 @@ pub mod add_transaction {
             let result = serde_json::from_str::<DeployResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f", "address": "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"}"#).unwrap();
             let expected = DeployResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: StarknetTransactionHash(felt!(
+                transaction_hash: TransactionHash(felt!(
                     "0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
                 )),
                 address: ContractAddress::new_or_panic(felt!(

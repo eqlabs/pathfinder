@@ -1,5 +1,5 @@
 //! Contains the [StorageCommitmentTree] and [ContractsStorageTree] trees, which combined
-//! store the total StarkNet storage state.
+//! store the total Starknet storage state.
 //!
 //! These are abstractions built-on the [Binary Merkle-Patricia Tree](MerkleTree).
 

@@ -7,7 +7,7 @@ pub trait Hash {
     fn hash(a: Felt, b: Felt) -> Felt;
 }
 
-/// Implements [Hash] for the [StarkNet Pedersen hash](stark_hash::stark_hash).
+/// Implements [Hash] for the [Starknet Pedersen hash](stark_hash::stark_hash).
 #[derive(Debug, Clone, Copy)]
 pub struct PedersenHash {}
 
@@ -17,7 +17,7 @@ impl Hash for PedersenHash {
     }
 }
 
-/// Implements [Hash] for the [StarkNet Poseidon hash](stark_poseidon::poseidon_hash).
+/// Implements [Hash] for the [Starknet Poseidon hash](stark_poseidon::poseidon_hash).
 #[derive(Debug, Clone, Copy)]
 pub struct PoseidonHash;
 impl crate::Hash for PoseidonHash {

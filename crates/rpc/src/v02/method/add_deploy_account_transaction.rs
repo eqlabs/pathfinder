@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
 use crate::v02::types::request::BroadcastedDeployAccountTransaction;
 use anyhow::Context;
-use pathfinder_common::{ContractAddress, StarknetTransactionHash};
+use pathfinder_common::{ContractAddress, TransactionHash};
 use starknet_gateway_client::GatewayApi;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -21,7 +21,7 @@ pub struct AddDeployAccountTransactionInput {
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddDeployAccountTransactionOutput {
     #[serde_as(as = "RpcFelt")]
-    transaction_hash: StarknetTransactionHash,
+    transaction_hash: TransactionHash,
     #[serde_as(as = "RpcFelt251")]
     contract_address: ContractAddress,
 }
@@ -133,7 +133,7 @@ mod tests {
         let input = get_input();
 
         let expected = AddDeployAccountTransactionOutput {
-            transaction_hash: StarknetTransactionHash(felt!(
+            transaction_hash: TransactionHash(felt!(
                 "0273FB3C38B20037839D6BAD8811CD0AFD82F2BC3C95C061EB8F30CE5CEDC377"
             )),
             contract_address: ContractAddress::new_or_panic(felt!(

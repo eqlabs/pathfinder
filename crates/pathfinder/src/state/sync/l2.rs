@@ -2,8 +2,8 @@ use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber,
-    StarknetVersion, StateCommitment, TransactionCommitment,
+    BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
+    StateCommitment, TransactionCommitment,
 };
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use starknet_gateway_client::GatewayApi;
@@ -39,17 +39,17 @@ pub enum Event {
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
-    Reorg(StarknetBlockNumber),
+    Reorg(BlockNumber),
     /// A new unique L2 Cairo 0.x [contract](CompressedContract) was found.
     NewCairoContract(CompressedContract),
     /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
     NewSierraContract(CompressedContract, CompressedCasmClass, CasmHash),
-    /// Query for the [block hash](StarknetBlockHash) and [root](StateCommitment) of the given block.
+    /// Query for the [block hash](BlockHash) and [root](StateCommitment) of the given block.
     ///
     /// The receiver should return the data using the [oneshot::channel].
     QueryBlock(
-        StarknetBlockNumber,
-        oneshot::Sender<Option<(StarknetBlockHash, StateCommitment)>>,
+        BlockNumber,
+        oneshot::Sender<Option<(BlockHash, StateCommitment)>>,
     ),
     /// Query for the existance of the the given [contracts](ClassHash) in storage.
     ///
@@ -63,7 +63,7 @@ pub enum Event {
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: impl GatewayApi,
-    mut head: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
+    mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     chain: Chain,
     chain_id: ChainId,
     pending_poll_interval: Option<Duration>,
@@ -75,7 +75,7 @@ pub async fn sync(
         // Get the next block from L2.
         let (next, head_meta) = match head {
             Some(head) => (head.0 + 1, Some(head)),
-            None => (StarknetBlockNumber::GENESIS, None),
+            None => (BlockNumber::GENESIS, None),
         };
         let t_block = std::time::Instant::now();
         // Next block and state update which we can get for free when exiting poll pending mode
@@ -349,12 +349,12 @@ pub enum BlockValidationMode {
 }
 
 async fn download_block(
-    block_number: StarknetBlockNumber,
+    block_number: BlockNumber,
     // Poll pending could exit when it encountered a finalized block, so we'd like to reuse it
     next_block: Option<Block>,
     chain: Chain,
     chain_id: ChainId,
-    prev_block_hash: Option<StarknetBlockHash>,
+    prev_block_hash: Option<BlockHash>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
@@ -461,19 +461,19 @@ async fn download_block(
 }
 
 async fn reorg(
-    head: (StarknetBlockNumber, StarknetBlockHash, StateCommitment),
+    head: (BlockNumber, BlockHash, StateCommitment),
     chain: Chain,
     chain_id: ChainId,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
-) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>> {
+) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
     let mut reorg_tail = head;
 
     let new_head = loop {
-        if reorg_tail.0 == StarknetBlockNumber::GENESIS {
+        if reorg_tail.0 == BlockNumber::GENESIS {
             break None;
         }
 
@@ -511,9 +511,7 @@ async fn reorg(
         reorg_tail = (previous_block_number, previous.0, previous.1);
     };
 
-    let reorg_tail = new_head
-        .map(|x| x.0 + 1)
-        .unwrap_or(StarknetBlockNumber::GENESIS);
+    let reorg_tail = new_head.map(|x| x.0 + 1).unwrap_or(BlockNumber::GENESIS);
 
     tx_event
         .send(Event::Reorg(reorg_tail))
@@ -625,9 +623,9 @@ mod tests {
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
-            BlockId, Chain, ChainId, ClassHash, ContractAddress, GasPrice, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
-            StateCommitment, StorageAddress, StorageValue,
+            BlockHash, BlockId, BlockNumber, BlockTimestamp, Chain, ChainId, ClassHash,
+            ContractAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+            StorageAddress, StorageValue,
         };
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;
@@ -655,20 +653,20 @@ mod tests {
             "entry_points_by_type": {}
         }"#;
 
-        const BLOCK0_NUMBER: StarknetBlockNumber = StarknetBlockNumber::GENESIS;
-        const BLOCK1_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(1);
-        const BLOCK2_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(2);
-        const BLOCK3_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(3);
-        const BLOCK4_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(4);
+        const BLOCK0_NUMBER: BlockNumber = BlockNumber::GENESIS;
+        const BLOCK1_NUMBER: BlockNumber = BlockNumber::new_or_panic(1);
+        const BLOCK2_NUMBER: BlockNumber = BlockNumber::new_or_panic(2);
+        const BLOCK3_NUMBER: BlockNumber = BlockNumber::new_or_panic(3);
+        const BLOCK4_NUMBER: BlockNumber = BlockNumber::new_or_panic(4);
 
         lazy_static::lazy_static! {
-            static ref BLOCK0_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());
-            static ref BLOCK0_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 0 hash v2").unwrap());
-            static ref BLOCK1_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 1 hash").unwrap());
-            static ref BLOCK1_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 1 hash v2").unwrap());
-            static ref BLOCK2_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 2 hash").unwrap());
-            static ref BLOCK2_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
-            static ref BLOCK3_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
+            static ref BLOCK0_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());
+            static ref BLOCK0_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash v2").unwrap());
+            static ref BLOCK1_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash").unwrap());
+            static ref BLOCK1_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash v2").unwrap());
+            static ref BLOCK2_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash").unwrap());
+            static ref BLOCK2_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
+            static ref BLOCK3_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
 
             static ref GLOBAL_ROOT0: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0").unwrap());
             static ref GLOBAL_ROOT0_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0 v2").unwrap());
@@ -716,11 +714,11 @@ mod tests {
                 block_hash: *BLOCK0_HASH,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::ZERO),
-                parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::ZERO)),
                 state_commitment: *GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
-                timestamp: StarknetBlockTimestamp::new_or_panic(0),
+                timestamp: BlockTimestamp::new_or_panic(0),
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::default(),
@@ -729,11 +727,11 @@ mod tests {
                 block_hash: *BLOCK0_HASH_V2,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
-                parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_commitment: *GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,
-                timestamp: StarknetBlockTimestamp::new_or_panic(10),
+                timestamp: BlockTimestamp::new_or_panic(10),
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 1),
@@ -746,7 +744,7 @@ mod tests {
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 1").unwrap())),
                 state_commitment: *GLOBAL_ROOT1,
                 status: reply::Status::AcceptedOnL1,
-                timestamp: StarknetBlockTimestamp::new_or_panic(1),
+                timestamp: BlockTimestamp::new_or_panic(1),
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 1),
@@ -759,7 +757,7 @@ mod tests {
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer address 2").unwrap())),
                 state_commitment: *GLOBAL_ROOT2,
                 status: reply::Status::AcceptedOnL1,
-                timestamp: StarknetBlockTimestamp::new_or_panic(2),
+                timestamp: BlockTimestamp::new_or_panic(2),
                 transaction_receipts: vec![],
                 transactions: vec![],
                 starknet_version: StarknetVersion::new(0, 9, 2),
@@ -1313,7 +1311,7 @@ mod tests {
                     )),
                     state_commitment: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(4),
+                    timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
@@ -1554,7 +1552,7 @@ mod tests {
                     )),
                     state_commitment: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(4),
+                    timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
@@ -1569,7 +1567,7 @@ mod tests {
                     )),
                     state_commitment: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(5),
+                    timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
@@ -1584,7 +1582,7 @@ mod tests {
                     )),
                     state_commitment: *GLOBAL_ROOT3,
                     status: reply::Status::AcceptedOnL1,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(3),
+                    timestamp: BlockTimestamp::new_or_panic(3),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
@@ -1833,7 +1831,7 @@ mod tests {
                     )),
                     state_commitment: *GLOBAL_ROOT2_V2,
                     status: reply::Status::AcceptedOnL2,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(5),
+                    timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
@@ -2026,7 +2024,7 @@ mod tests {
                     )),
                     state_commitment: *GLOBAL_ROOT1_V2,
                     status: reply::Status::AcceptedOnL2,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(4),
+                    timestamp: BlockTimestamp::new_or_panic(4),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
@@ -2041,7 +2039,7 @@ mod tests {
                     )),
                     state_commitment: *GLOBAL_ROOT2,
                     status: reply::Status::AcceptedOnL1,
-                    timestamp: StarknetBlockTimestamp::new_or_panic(5),
+                    timestamp: BlockTimestamp::new_or_panic(5),
                     transaction_receipts: vec![],
                     transactions: vec![],
                     starknet_version: StarknetVersion::default(),
