@@ -705,9 +705,7 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn invalid_hash() {
             let (_jh, client) = setup([(
-                dbg!(format!(
-                    "/feeder_gateway/get_block?blockHash={INVALID_BLOCK_HASH}"
-                )),
+                format!("/feeder_gateway/get_block?blockHash={INVALID_BLOCK_HASH}"),
                 response_from(StarknetErrorCode::BlockNotFound),
             )]);
             let error = client
