@@ -68,7 +68,6 @@ Examples:
     any:    *",
         value_name = "DOMAIN-LIST",
         value_delimiter = ',',
-        default_value = "Empty list i.e. CORS disabled",
         env = "PATHFINDER_RPC_CORS_DOMAINS"
     )]
     rpc_cors_domains: Vec<String>,
