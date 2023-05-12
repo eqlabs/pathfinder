@@ -1,14 +1,14 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
-use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockHash, StarknetBlockNumber};
 use pathfinder_storage::StarknetBlocksTable;
 
 #[serde_with::serde_as]
 #[derive(serde::Serialize)]
 pub struct BlockHashAndNumber {
     #[serde_as(as = "RpcFelt")]
-    pub block_hash: StarknetBlockHash,
+    pub block_hash: BlockHash,
     pub block_number: StarknetBlockNumber,
 }
 
@@ -57,7 +57,7 @@ mod tests {
         assert_eq!(result.block_number, StarknetBlockNumber::new_or_panic(2));
         assert_eq!(
             result.block_hash,
-            StarknetBlockHash(pathfinder_common::felt_bytes!(b"latest"))
+            BlockHash(pathfinder_common::felt_bytes!(b"latest"))
         );
     }
 }

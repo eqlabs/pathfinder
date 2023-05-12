@@ -5,10 +5,10 @@ use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     },
-    Chain, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
+    BlockHash, Chain, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
     ContractStateHash, EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex,
     EthereumTransactionHash, EthereumTransactionIndex, EventCommitment, EventData, EventKey,
-    GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
+    GasPrice, SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp,
     StarknetTransactionHash, StateCommitment, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
@@ -478,10 +478,10 @@ impl StarknetBlocksTable {
         Ok(maybe)
     }
 
-    /// Returns the [hash](StarknetBlockHash) and [number](StarknetBlockNumber) of the latest block.
+    /// Returns the [hash](BlockHash) and [number](StarknetBlockNumber) of the latest block.
     pub fn get_latest_hash_and_number(
         tx: &Transaction<'_>,
-    ) -> anyhow::Result<Option<(StarknetBlockHash, StarknetBlockNumber)>> {
+    ) -> anyhow::Result<Option<(BlockHash, StarknetBlockNumber)>> {
         let maybe = tx
             .query_row(
                 "SELECT hash, number FROM starknet_blocks ORDER BY number DESC LIMIT 1",
@@ -498,7 +498,7 @@ impl StarknetBlocksTable {
 
     pub fn get_number(
         tx: &Transaction<'_>,
-        hash: StarknetBlockHash,
+        hash: BlockHash,
     ) -> anyhow::Result<Option<StarknetBlockNumber>> {
         tx.query_row(
             "SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1",
@@ -528,7 +528,7 @@ impl StarknetBlocksTable {
     pub fn get_hash(
         tx: &Transaction<'_>,
         block: StarknetBlocksNumberOrLatest,
-    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+    ) -> anyhow::Result<Option<BlockHash>> {
         match block {
             StarknetBlocksNumberOrLatest::Number(n) => tx.query_row(
                 "SELECT hash FROM starknet_blocks WHERE number = ?",
@@ -550,7 +550,7 @@ impl StarknetBlocksTable {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StarknetBlocksBlockId {
     Number(StarknetBlockNumber),
-    Hash(StarknetBlockHash),
+    Hash(BlockHash),
     Latest,
 }
 
@@ -560,8 +560,8 @@ impl From<StarknetBlockNumber> for StarknetBlocksBlockId {
     }
 }
 
-impl From<StarknetBlockHash> for StarknetBlocksBlockId {
-    fn from(hash: StarknetBlockHash) -> Self {
+impl From<BlockHash> for StarknetBlocksBlockId {
+    fn from(hash: BlockHash) -> Self {
         StarknetBlocksBlockId::Hash(hash)
     }
 }
@@ -581,7 +581,7 @@ impl From<StarknetBlockNumber> for StarknetBlocksNumberOrLatest {
 
 #[derive(Debug, thiserror::Error)]
 #[error("expected starknet block number or `latest`, got starknet block hash {0}")]
-pub struct FromStarknetBlocksBlockIdError(StarknetBlockHash);
+pub struct FromStarknetBlocksBlockIdError(BlockHash);
 
 impl TryFrom<StarknetBlocksBlockId> for StarknetBlocksNumberOrLatest {
     type Error = FromStarknetBlocksBlockIdError;
@@ -604,7 +604,7 @@ impl StarknetTransactionsTable {
     /// overwrites existing data if the transaction hash already exists.
     pub fn upsert(
         tx: &Transaction<'_>,
-        block_hash: StarknetBlockHash,
+        block_hash: BlockHash,
         block_number: StarknetBlockNumber,
         transaction_data: &[(transaction::Transaction, transaction::Receipt)],
     ) -> anyhow::Result<()> {
@@ -680,7 +680,7 @@ impl StarknetTransactionsTable {
     fn get_block_hash(
         tx: &Transaction<'_>,
         block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<Option<StarknetBlockHash>> {
+    ) -> anyhow::Result<Option<BlockHash>> {
         Ok(match block {
             StarknetBlocksBlockId::Hash(hash) => Some(hash),
             StarknetBlocksBlockId::Number(number) => {
@@ -836,13 +836,7 @@ impl StarknetTransactionsTable {
     pub fn get_transaction_with_receipt(
         tx: &Transaction<'_>,
         txn_hash: StarknetTransactionHash,
-    ) -> anyhow::Result<
-        Option<(
-            transaction::Transaction,
-            transaction::Receipt,
-            StarknetBlockHash,
-        )>,
-    > {
+    ) -> anyhow::Result<Option<(transaction::Transaction, transaction::Receipt, BlockHash)>> {
         let mut stmt = tx
             .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
             .context("Preparing statement")?;
@@ -919,7 +913,7 @@ pub struct StarknetEmittedEvent {
     pub from_address: ContractAddress,
     pub data: Vec<EventData>,
     pub keys: Vec<EventKey>,
-    pub block_hash: StarknetBlockHash,
+    pub block_hash: BlockHash,
     pub block_number: StarknetBlockNumber,
     pub transaction_hash: StarknetTransactionHash,
 }
@@ -1331,7 +1325,7 @@ impl StarknetEventsTable {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StarknetBlock {
     pub number: StarknetBlockNumber,
-    pub hash: StarknetBlockHash,
+    pub hash: BlockHash,
     pub state_commmitment: StateCommitment,
     pub timestamp: StarknetBlockTimestamp,
     pub gas_price: GasPrice,
@@ -1486,7 +1480,7 @@ impl CanonicalBlocksTable {
     pub fn insert(
         tx: &Transaction<'_>,
         number: StarknetBlockNumber,
-        hash: StarknetBlockHash,
+        hash: BlockHash,
     ) -> anyhow::Result<()> {
         let rows_changed = tx.execute(
             "INSERT INTO canonical_blocks(number, hash) values(?,?)",
@@ -1886,8 +1880,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
-                        let non_existent =
-                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
                             None
@@ -1942,8 +1935,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
-                        let non_existent =
-                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
                             None
@@ -2039,8 +2031,7 @@ mod tests {
                 #[test]
                 fn none() {
                     with_default_blocks(|tx, _blocks| {
-                        let non_existent =
-                            StarknetBlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
                         assert_eq!(
                             StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
                                 .unwrap(),
@@ -2416,7 +2407,7 @@ mod tests {
 
             let block = StarknetBlock {
                 number: StarknetBlockNumber::GENESIS,
-                hash: StarknetBlockHash(felt!("0x1234")),
+                hash: BlockHash(felt!("0x1234")),
                 state_commmitment: StateCommitment(felt!("0x1234")),
                 timestamp: StarknetBlockTimestamp::new_or_panic(0),
                 gas_price: GasPrice(0),

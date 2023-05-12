@@ -2,7 +2,7 @@ use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetBlockHash, StarknetBlockNumber,
+    BlockHash, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetBlockNumber,
     StarknetVersion, StateCommitment, TransactionCommitment,
 };
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
@@ -44,12 +44,12 @@ pub enum Event {
     NewCairoContract(CompressedContract),
     /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
     NewSierraContract(CompressedContract, CompressedCasmClass, CasmHash),
-    /// Query for the [block hash](StarknetBlockHash) and [root](StateCommitment) of the given block.
+    /// Query for the [block hash](BlockHash) and [root](StateCommitment) of the given block.
     ///
     /// The receiver should return the data using the [oneshot::channel].
     QueryBlock(
         StarknetBlockNumber,
-        oneshot::Sender<Option<(StarknetBlockHash, StateCommitment)>>,
+        oneshot::Sender<Option<(BlockHash, StateCommitment)>>,
     ),
     /// Query for the existance of the the given [contracts](ClassHash) in storage.
     ///
@@ -63,7 +63,7 @@ pub enum Event {
 pub async fn sync(
     tx_event: mpsc::Sender<Event>,
     sequencer: impl GatewayApi,
-    mut head: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
+    mut head: Option<(StarknetBlockNumber, BlockHash, StateCommitment)>,
     chain: Chain,
     chain_id: ChainId,
     pending_poll_interval: Option<Duration>,
@@ -354,7 +354,7 @@ async fn download_block(
     next_block: Option<Block>,
     chain: Chain,
     chain_id: ChainId,
-    prev_block_hash: Option<StarknetBlockHash>,
+    prev_block_hash: Option<BlockHash>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
@@ -461,13 +461,13 @@ async fn download_block(
 }
 
 async fn reorg(
-    head: (StarknetBlockNumber, StarknetBlockHash, StateCommitment),
+    head: (StarknetBlockNumber, BlockHash, StateCommitment),
     chain: Chain,
     chain_id: ChainId,
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
-) -> anyhow::Result<Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>> {
+) -> anyhow::Result<Option<(StarknetBlockNumber, BlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
     let mut reorg_tail = head;
@@ -625,8 +625,8 @@ mod tests {
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
-            BlockId, Chain, ChainId, ClassHash, ContractAddress, GasPrice, SequencerAddress,
-            StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
+            BlockHash, BlockId, Chain, ChainId, ClassHash, ContractAddress, GasPrice,
+            SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion,
             StateCommitment, StorageAddress, StorageValue,
         };
         use stark_hash::Felt;
@@ -662,13 +662,13 @@ mod tests {
         const BLOCK4_NUMBER: StarknetBlockNumber = StarknetBlockNumber::new_or_panic(4);
 
         lazy_static::lazy_static! {
-            static ref BLOCK0_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());
-            static ref BLOCK0_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 0 hash v2").unwrap());
-            static ref BLOCK1_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 1 hash").unwrap());
-            static ref BLOCK1_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 1 hash v2").unwrap());
-            static ref BLOCK2_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 2 hash").unwrap());
-            static ref BLOCK2_HASH_V2: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
-            static ref BLOCK3_HASH: StarknetBlockHash = StarknetBlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
+            static ref BLOCK0_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash").unwrap());
+            static ref BLOCK0_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 0 hash v2").unwrap());
+            static ref BLOCK1_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash").unwrap());
+            static ref BLOCK1_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 1 hash v2").unwrap());
+            static ref BLOCK2_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash").unwrap());
+            static ref BLOCK2_HASH_V2: BlockHash = BlockHash(Felt::from_be_slice(b"block 2 hash v2").unwrap());
+            static ref BLOCK3_HASH: BlockHash = BlockHash(Felt::from_be_slice(b"block 3 hash").unwrap());
 
             static ref GLOBAL_ROOT0: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0").unwrap());
             static ref GLOBAL_ROOT0_V2: StateCommitment = StateCommitment(Felt::from_be_slice(b"global root 0 v2").unwrap());
@@ -716,7 +716,7 @@ mod tests {
                 block_hash: *BLOCK0_HASH,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::ZERO),
-                parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::ZERO)),
                 state_commitment: *GLOBAL_ROOT0,
                 status: reply::Status::AcceptedOnL1,
@@ -729,7 +729,7 @@ mod tests {
                 block_hash: *BLOCK0_HASH_V2,
                 block_number: BLOCK0_NUMBER,
                 gas_price: Some(GasPrice::from_be_slice(b"gas price 0 v2").unwrap()),
-                parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                parent_block_hash: BlockHash(Felt::ZERO),
                 sequencer_address: Some(SequencerAddress(Felt::from_be_slice(b"sequencer addr. 0 v2").unwrap())),
                 state_commitment: *GLOBAL_ROOT0_V2,
                 status: reply::Status::AcceptedOnL2,

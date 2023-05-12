@@ -401,7 +401,7 @@ fn next_continuation_token(
 mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use pathfinder_common::{
-        ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
+        BlockHash, ContractAddress, EventData, EventKey, StarknetBlockNumber,
         StarknetTransactionHash,
     };
     use pathfinder_storage::StarknetEmittedEvent;
@@ -420,7 +420,7 @@ mod types {
         pub from_address: ContractAddress,
         /// [None] for pending events.
         #[serde_as(as = "Option<RpcFelt>")]
-        pub block_hash: Option<StarknetBlockHash>,
+        pub block_hash: Option<BlockHash>,
         /// [None] for pending events.
         pub block_number: Option<StarknetBlockNumber>,
         #[serde_as(as = "RpcFelt")]

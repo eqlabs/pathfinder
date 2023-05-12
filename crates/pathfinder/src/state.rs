@@ -106,7 +106,7 @@ mod tests {
 
         // let expected_block_updated = BlockUpdated {
         //     record: GlobalStateRecord {
-        //         block_hash: StarknetBlockHash(
+        //         block_hash: BlockHash(
         //             StarkHash::from_hex_str(
         //                 "0x00275921A89D44EF9D4EE74BFFF189D6F995DD07CFF9D0B8637B5C4619E9A05D",
         //             )
@@ -249,7 +249,7 @@ mod tests {
         todo!("Update me to new sync process when possible");
         // use pathfinder_common::{
         //     EthereumBlockHash, EthereumBlockNumber, EthereumLogIndex, EthereumTransactionHash,
-        //     EthereumTransactionIndex, StateCommitment, StarknetBlockHash, StarknetBlockNumber,
+        //     EthereumTransactionIndex, StateCommitment, BlockHash, StarknetBlockNumber,
         // };
         // use pathfinder_ethereum::{
         //     log::StateUpdateLog, test::create_test_transport, BlockOrigin, EthOrigin,
@@ -260,7 +260,7 @@ mod tests {
         // // Georli genesis block values from Alpha taken from Voyager block explorer.
         // // https://goerli.voyager.online/block/0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b
 
-        // let starknet_block_hash = StarknetBlockHash(
+        // let starknet_block_hash = BlockHash(
         //     StarkHash::from_hex_str(
         //         "0x7d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b",
         //     )

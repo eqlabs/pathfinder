@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{Chain, ChainId, StarknetBlockHash, StarknetBlockNumber, StarknetVersion};
+use pathfinder_common::{BlockHash, Chain, ChainId, StarknetBlockNumber, StarknetVersion};
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
         .connection()
         .context("Opening database connection")?;
 
-    let mut parent_block_hash = StarknetBlockHash(Felt::ZERO);
+    let mut parent_block_hash = BlockHash(Felt::ZERO);
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();

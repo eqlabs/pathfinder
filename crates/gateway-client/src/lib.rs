@@ -560,7 +560,7 @@ pub mod test_utils {
 mod tests {
     use super::{test_utils::*, *};
     use assert_matches::assert_matches;
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber, StarknetVersion};
+    use pathfinder_common::{BlockHash, StarknetBlockNumber, StarknetVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::StarknetErrorCode;
@@ -581,10 +581,10 @@ mod tests {
                 assert_eq!(version, VERGEN_GIT_DESCRIBE);
 
                 Ok::<_, Infallible>(warp::reply::json(&Block {
-                    block_hash: StarknetBlockHash(Felt::ZERO),
+                    block_hash: BlockHash(Felt::ZERO),
                     block_number: StarknetBlockNumber::GENESIS,
                     gas_price: None,
-                    parent_block_hash: StarknetBlockHash(Felt::ZERO),
+                    parent_block_hash: BlockHash(Felt::ZERO),
                     sequencer_address: None,
                     state_commitment: pathfinder_common::StateCommitment(Felt::ZERO),
                     status: Status::NotReceived,
@@ -653,7 +653,7 @@ mod tests {
             ]);
             let by_hash = client
                 .block(
-                    StarknetBlockHash(felt!(
+                    BlockHash(felt!(
                         "040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
                     ))
                     .into(),
@@ -881,7 +881,7 @@ mod tests {
 
         #[derive(Clone, Debug, PartialEq, Eq)]
         pub struct OrderedStateUpdate {
-            pub block_hash: StarknetBlockHash,
+            pub block_hash: BlockHash,
             pub new_root: StateCommitment,
             pub old_root: StateCommitment,
             pub state_diff: OrderedStateDiff,
@@ -958,7 +958,7 @@ mod tests {
                 .into();
             let by_hash: OrderedStateUpdate = client
                 .state_update(
-                    StarknetBlockHash(felt!(
+                    BlockHash(felt!(
                         "017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03"
                     ))
                     .into(),

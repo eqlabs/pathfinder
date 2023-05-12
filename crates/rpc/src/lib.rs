@@ -127,8 +127,8 @@ impl Default for SyncState {
 pub mod test_utils {
     use ethers::types::H256;
     use pathfinder_common::{
-        felt, felt_bytes, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
-        EntryPoint, EventData, EventKey, GasPrice, SequencerAddress, StarknetBlockHash,
+        felt, felt_bytes, BlockHash, ClassCommitment, ClassHash, ContractAddress,
+        ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice, SequencerAddress,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetTransactionHash,
         StarknetTransactionIndex, StarknetVersion, StateCommitment, StorageAddress,
         StorageCommitment, TransactionVersion,
@@ -310,7 +310,7 @@ pub mod test_utils {
             .commit_and_persist_changes()
             .unwrap();
 
-        let genesis_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
+        let genesis_hash = BlockHash(felt_bytes!(b"genesis"));
         let block0 = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
             hash: genesis_hash,
@@ -321,7 +321,7 @@ pub mod test_utils {
             transaction_commitment: None,
             event_commitment: None,
         };
-        let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
+        let block1_hash = BlockHash(felt_bytes!(b"block 1"));
         let block1 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
             hash: block1_hash,
@@ -332,7 +332,7 @@ pub mod test_utils {
             transaction_commitment: None,
             event_commitment: None,
         };
-        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        let latest_hash = BlockHash(felt_bytes!(b"latest"));
         let block2 = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(2),
             hash: latest_hash,

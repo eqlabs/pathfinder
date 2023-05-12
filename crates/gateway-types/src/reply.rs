@@ -1,6 +1,6 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
-    EthereumAddress, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    BlockHash, EthereumAddress, GasPrice, SequencerAddress, StarknetBlockNumber,
     StarknetBlockTimestamp, StarknetVersion, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
@@ -12,13 +12,13 @@ use serde_with::serde_as;
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
-    pub block_hash: StarknetBlockHash,
+    pub block_hash: BlockHash,
     pub block_number: StarknetBlockNumber,
     /// Excluded in blocks prior to StarkNet 0.9
     #[serde_as(as = "Option<GasPriceAsHexStr>")]
     #[serde(default)]
     pub gas_price: Option<GasPrice>,
-    pub parent_block_hash: StarknetBlockHash,
+    pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to StarkNet 0.8
     #[serde(default)]
     pub sequencer_address: Option<SequencerAddress>,
@@ -41,7 +41,7 @@ pub struct PendingBlock {
     #[serde_as(as = "GasPriceAsHexStr")]
     pub gas_price: GasPrice,
     #[serde(rename = "parent_block_hash")]
-    pub parent_hash: StarknetBlockHash,
+    pub parent_hash: BlockHash,
     pub sequencer_address: SequencerAddress,
     pub status: Status,
     pub timestamp: StarknetBlockTimestamp,
@@ -160,7 +160,7 @@ pub mod call {
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
     #[serde(default)]
-    pub block_hash: Option<StarknetBlockHash>,
+    pub block_hash: Option<BlockHash>,
     #[serde(default)]
     pub block_number: Option<StarknetBlockNumber>,
     pub status: Status,
@@ -178,7 +178,7 @@ pub struct Transaction {
 #[serde(deny_unknown_fields)]
 pub struct TransactionStatus {
     #[serde(default)]
-    pub block_hash: Option<StarknetBlockHash>,
+    pub block_hash: Option<BlockHash>,
     pub tx_status: Status,
 }
 
@@ -666,7 +666,7 @@ pub enum MaybePendingStateUpdate {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
-    pub block_hash: StarknetBlockHash,
+    pub block_hash: BlockHash,
     pub new_root: StateCommitment,
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,

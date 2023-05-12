@@ -169,7 +169,7 @@ pub struct StorageCommitment(pub Felt);
 
 /// A StarkNet block hash.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct StarknetBlockHash(pub Felt);
+pub struct BlockHash(pub Felt);
 
 /// A StarkNet block number.
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
@@ -324,7 +324,7 @@ pub enum BlockId {
     #[serde(rename = "block_number")]
     Number(StarknetBlockNumber),
     #[serde(rename = "block_hash")]
-    Hash(StarknetBlockHash),
+    Hash(BlockHash),
     #[serde(rename = "latest")]
     Latest,
     #[serde(rename = "pending")]
@@ -414,8 +414,8 @@ impl From<StarknetBlockNumber> for BlockId {
     }
 }
 
-impl From<StarknetBlockHash> for BlockId {
-    fn from(hash: StarknetBlockHash) -> Self {
+impl From<BlockHash> for BlockId {
+    fn from(hash: BlockHash) -> Self {
         Self::Hash(hash)
     }
 }
@@ -540,7 +540,7 @@ macros::starkhash::common_newtype!(
     L2ToL1MessagePayloadElem,
     SequencerAddress,
     SierraHash,
-    StarknetBlockHash,
+    BlockHash,
     StarknetTransactionHash,
     StateCommitment,
     StorageAddress,
@@ -645,13 +645,10 @@ mod tests {
         #[test]
         fn hash() {
             use crate::felt;
-            use crate::StarknetBlockHash;
+            use crate::BlockHash;
             let result =
                 serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
-            assert_eq!(
-                result,
-                BlockId::Hash(StarknetBlockHash(felt!("0xdeadbeef")))
-            );
+            assert_eq!(result, BlockId::Hash(BlockHash(felt!("0xdeadbeef"))));
         }
     }
 }

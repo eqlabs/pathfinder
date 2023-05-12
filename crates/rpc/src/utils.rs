@@ -63,15 +63,15 @@ mod tests {
 
         #[test]
         fn by_hash() {
-            use pathfinder_common::{felt_bytes, StarknetBlockHash};
+            use pathfinder_common::{felt_bytes, BlockHash};
 
             assert!(
-                run_test(StarknetBlockHash(felt_bytes!(b"latest"))),
+                run_test(BlockHash(felt_bytes!(b"latest"))),
                 "Block two should exist"
             );
 
             assert!(
-                !run_test(StarknetBlockHash(felt_bytes!(b"invalid"))),
+                !run_test(BlockHash(felt_bytes!(b"invalid"))),
                 "Invalid block hash should not exist"
             );
         }

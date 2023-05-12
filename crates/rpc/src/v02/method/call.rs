@@ -87,7 +87,7 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::StarknetBlockHash;
+        use pathfinder_common::BlockHash;
 
         #[test]
         fn positional_args() {
@@ -104,7 +104,7 @@ mod tests {
                     entry_point_selector: EntryPoint(felt!("0xee")),
                     calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },
-                block_id: StarknetBlockHash(felt!("0xbbbbbbbb")).into(),
+                block_id: BlockHash(felt!("0xbbbbbbbb")).into(),
             };
             assert_eq!(input, expected);
         }
@@ -124,7 +124,7 @@ mod tests {
                     entry_point_selector: EntryPoint(felt!("0xee")),
                     calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },
-                block_id: StarknetBlockHash(felt!("0xbbbbbbbb")).into(),
+                block_id: BlockHash(felt!("0xbbbbbbbb")).into(),
             };
             assert_eq!(input, expected);
         }
@@ -132,13 +132,13 @@ mod tests {
 
     mod ext_py {
         use super::*;
-        use pathfinder_common::{felt_bytes, Chain, StarknetBlockHash};
+        use pathfinder_common::{felt_bytes, BlockHash, Chain};
         use pathfinder_storage::JournalMode;
         use std::path::PathBuf;
         use std::sync::Arc;
 
         // Mainnet block number 5
-        const BLOCK_5: BlockId = BlockId::Hash(StarknetBlockHash(felt!(
+        const BLOCK_5: BlockId = BlockId::Hash(BlockHash(felt!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
         )));
 
@@ -192,7 +192,7 @@ mod tests {
 
             let input = CallInput {
                 request: valid_mainnet_call(),
-                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
             };
             let error = call(context, input).await;
             assert_matches::assert_matches!(error, Err(CallError::BlockNotFound));

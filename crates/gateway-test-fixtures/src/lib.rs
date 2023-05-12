@@ -209,8 +209,8 @@ pub mod zstd_compressed_contracts {
 
 pub mod testnet {
     use pathfinder_common::{
-        felt, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockHash,
-        StarknetBlockNumber, StarknetTransactionHash, StorageAddress,
+        felt, BlockHash, CallParam, ClassHash, ContractAddress, EntryPoint, StarknetBlockNumber,
+        StarknetTransactionHash, StorageAddress,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
@@ -219,19 +219,18 @@ pub mod testnet {
         BlockNumberOrTag::Number(StarknetBlockNumber::GENESIS);
     pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag =
         BlockNumberOrTag::Number(StarknetBlockNumber::MAX);
-    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(felt!(
+    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
         "07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
     )));
-    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(felt!(
+    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
         "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
     )));
-    pub const PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag =
-        BlockHashOrTag::Hash(StarknetBlockHash(felt!(
-            "05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"
-        )));
-    pub const INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(StarknetBlockHash(
-        felt!("0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"),
+    pub const PRE_DEPLOY_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(
+        felt!("05ef884a311df4339c8df791ce19bf305d7cf299416666b167bc56dd2d1f435f"),
     ));
+    pub const INVOKE_CONTRACT_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
+        "0x3871c8a0c3555687515a07f365f6f5b1d8c2ae953f7844575b8bde2b2efed27"
+    )));
     pub const VALID_TX_HASH: StarknetTransactionHash = StarknetTransactionHash(felt!(
         "0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
     ));

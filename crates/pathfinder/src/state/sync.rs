@@ -5,8 +5,8 @@ mod pending;
 use anyhow::Context;
 use ethers::types::H160;
 use pathfinder_common::{
-    Chain, ChainId, ClassCommitment, ClassHash, ContractNonce, ContractRoot, EventCommitment,
-    GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber, StarknetVersion,
+    BlockHash, Chain, ChainId, ClassCommitment, ClassHash, ContractNonce, ContractRoot,
+    EventCommitment, GasPrice, SequencerAddress, StarknetBlockNumber, StarknetVersion,
     StateCommitment, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
@@ -63,7 +63,7 @@ where
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             SequencerClient,
-            Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
+            Option<(StarknetBlockNumber, BlockHash, StateCommitment)>,
             Chain,
             ChainId,
             Option<std::time::Duration>,
@@ -92,7 +92,7 @@ where
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
         StarknetBlockNumber::MAX,
-        StarknetBlockHash(Felt::ZERO),
+        BlockHash(Felt::ZERO),
         StateCommitment(Felt::ZERO),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
@@ -389,7 +389,7 @@ where
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
     sequencer: impl GatewayApi,
-    starting_block_hash: StarknetBlockHash,
+    starting_block_hash: BlockHash,
     starting_block_num: StarknetBlockNumber,
     chain: Chain,
 ) -> anyhow::Result<()> {
@@ -1068,9 +1068,9 @@ mod tests {
     use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockId, CasmHash, Chain, ChainId, ClassCommitment, ClassHash, EthereumBlockHash,
-        EthereumBlockNumber, EthereumChain, EthereumLogIndex, EthereumTransactionHash,
-        EthereumTransactionIndex, GasPrice, SequencerAddress, StarknetBlockHash,
+        BlockHash, BlockId, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
+        EthereumBlockHash, EthereumBlockNumber, EthereumChain, EthereumLogIndex,
+        EthereumTransactionHash, EthereumTransactionIndex, GasPrice, SequencerAddress,
         StarknetBlockNumber, StarknetBlockTimestamp, StarknetVersion, StateCommitment,
         StorageCommitment,
     };
@@ -1157,7 +1157,7 @@ mod tests {
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
         _: impl GatewayApi,
-        _: Option<(StarknetBlockNumber, StarknetBlockHash, StateCommitment)>,
+        _: Option<(StarknetBlockNumber, BlockHash, StateCommitment)>,
         _: Chain,
         _: ChainId,
         _: Option<std::time::Duration>,
@@ -1200,10 +1200,10 @@ mod tests {
             origin: ETH_ORIG.clone(),
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
-            block_hash: StarknetBlockHash(*A),
+            block_hash: BlockHash(*A),
             block_number: StarknetBlockNumber::GENESIS,
             gas_price: Some(GasPrice::ZERO),
-            parent_block_hash: StarknetBlockHash(Felt::ZERO),
+            parent_block_hash: BlockHash(Felt::ZERO),
             sequencer_address: Some(SequencerAddress(Felt::ZERO)),
             state_commitment: *STATE_COMMITMENT0,
             status: reply::Status::AcceptedOnL1,
@@ -1213,10 +1213,10 @@ mod tests {
             starknet_version: StarknetVersion::default(),
         };
         pub static ref BLOCK1: reply::Block = reply::Block {
-            block_hash: StarknetBlockHash(*B),
+            block_hash: BlockHash(*B),
             block_number: StarknetBlockNumber::new_or_panic(1),
             gas_price: Some(GasPrice::from(1)),
-            parent_block_hash: StarknetBlockHash(*A),
+            parent_block_hash: BlockHash(*A),
             sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
             state_commitment: *STATE_COMMITMENT1,
             status: reply::Status::AcceptedOnL2,
@@ -1227,7 +1227,7 @@ mod tests {
         };
         pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::GENESIS,
-            hash: StarknetBlockHash(*A),
+            hash: BlockHash(*A),
             state_commmitment: *STATE_COMMITMENT0,
             timestamp: StarknetBlockTimestamp::new_or_panic(0),
             gas_price: GasPrice::ZERO,
@@ -1237,7 +1237,7 @@ mod tests {
         };
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
-            hash: StarknetBlockHash(*B),
+            hash: BlockHash(*B),
             state_commmitment: *STATE_COMMITMENT1,
             timestamp: StarknetBlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
@@ -1247,7 +1247,7 @@ mod tests {
         };
         // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-            block_hash: StarknetBlockHash(*A),
+            block_hash: BlockHash(*A),
             new_root: *STATE_COMMITMENT0,
             old_root: *STATE_COMMITMENT0,
             state_diff: reply::state_update::StateDiff{

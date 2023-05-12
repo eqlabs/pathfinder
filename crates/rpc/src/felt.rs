@@ -21,9 +21,9 @@
 //! ```
 
 use pathfinder_common::{
-    CallParam, CallResultValue, CasmHash, ChainId, ClassHash, ConstructorParam, ContractAddress,
-    ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, SequencerAddress, SierraHash, StarknetBlockHash,
+    BlockHash, CallParam, CallResultValue, CasmHash, ChainId, ClassHash, ConstructorParam,
+    ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EventData, EventKey,
+    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress, SierraHash,
     StarknetTransactionHash, StateCommitment, StorageAddress, StorageValue, TransactionNonce,
     TransactionSignatureElem,
 };
@@ -181,7 +181,7 @@ rpc_felt_serde!(
     L2ToL1MessagePayloadElem,
     SequencerAddress,
     SierraHash,
-    StarknetBlockHash,
+    BlockHash,
     StarknetTransactionHash,
     StateCommitment,
     StorageValue,

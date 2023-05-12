@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use p2p_proto as proto;
-use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{BlockHash, StarknetBlockNumber};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetTransactionsTable, Storage};
 use stark_hash::Felt;
 
@@ -41,7 +41,7 @@ fn fetch_block_headers(
     let mut headers = Vec::new();
 
     let mut next_block_number =
-        StarknetBlocksTable::get_number(&tx, StarknetBlockHash(request.start_block))?;
+        StarknetBlocksTable::get_number(&tx, BlockHash(request.start_block))?;
 
     while let Some(block_number) = next_block_number {
         if count == 0 {
@@ -71,7 +71,7 @@ fn fetch_block_headers(
         )?;
 
         headers.push(p2p_proto::common::BlockHeader {
-            parent_block_hash: parent_block_hash.unwrap_or(StarknetBlockHash(Felt::ZERO)).0,
+            parent_block_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
             block_number: block.number.get(),
             global_state_root: block.root.0,
             sequencer_address: block.sequencer_address.0,

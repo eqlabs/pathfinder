@@ -445,11 +445,11 @@ mod tests {
         v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
     };
     use pathfinder_common::{
-        felt, felt_bytes, CallParam, CallResultValue, Chain, ClassCommitment, ClassHash,
+        felt, felt_bytes, BlockHash, CallParam, CallResultValue, Chain, ClassCommitment, ClassHash,
         ContractAddress, ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash,
-        EntryPoint, GasPrice, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
-        StarknetBlockTimestamp, StarknetVersion, StateCommitment, StorageAddress,
-        StorageCommitment, StorageValue, TransactionVersion,
+        EntryPoint, GasPrice, SequencerAddress, StarknetBlockNumber, StarknetBlockTimestamp,
+        StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
+        TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -541,7 +541,7 @@ mod tests {
                                 version: super::Call::DEFAULT_VERSION,
                                 nonce: super::Call::DEFAULT_NONCE,
                             },
-                            StarknetBlockHash(
+                            BlockHash(
                                 Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap(),
                             ).into(),
                             None,
@@ -749,8 +749,7 @@ mod tests {
         let result = handle
             .call(
                 call,
-                StarknetBlockHash(Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap())
-                    .into(),
+                BlockHash(Felt::from_be_slice(&b"some blockhash somewhere"[..]).unwrap()).into(),
                 None,
                 None,
             )
@@ -886,7 +885,7 @@ mod tests {
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
-                hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
+                hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
                 state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),
@@ -946,7 +945,7 @@ mod tests {
             tx,
             &StarknetBlock {
                 number: StarknetBlockNumber::new_or_panic(1),
-                hash: StarknetBlockHash(felt_bytes!(b"some blockhash somewhere")),
+                hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
                 state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
                 timestamp: StarknetBlockTimestamp::new_or_panic(1),
                 gas_price: GasPrice(1),

@@ -188,7 +188,7 @@ mod tests {
     use crate::context::RpcContext;
     use pathfinder_common::{felt, felt_bytes, StarknetVersion};
     use pathfinder_common::{
-        BlockId, ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetBlockHash,
+        BlockHash, BlockId, ContractAddress, ContractNonce, GasPrice, SequencerAddress,
         StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
     };
 
@@ -207,7 +207,7 @@ mod tests {
 
             let input = positional.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -225,7 +225,7 @@ mod tests {
 
             let input = named.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -251,12 +251,12 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use pathfinder_common::StarknetBlockHash;
+            use pathfinder_common::BlockHash;
 
             let context = RpcContext::for_tests();
 
             let input = GetNonceInput {
-                block_id: BlockId::Hash(StarknetBlockHash(felt_bytes!(b"invalid"))),
+                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"invalid"))),
                 // This contract does exist and is added in block 0.
                 contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
             };
@@ -338,7 +338,7 @@ mod tests {
         // We don't care about this data, but it is required for setting up pending data.
         let block = starknet_gateway_types::reply::PendingBlock {
             gas_price: GasPrice(0),
-            parent_hash: StarknetBlockHash(felt_bytes!(b"dont care")),
+            parent_hash: BlockHash(felt_bytes!(b"dont care")),
             sequencer_address: SequencerAddress(felt_bytes!(b"dont care")),
             status: starknet_gateway_types::reply::Status::Pending,
             timestamp: StarknetBlockTimestamp::new_or_panic(1234),

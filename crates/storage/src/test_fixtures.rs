@@ -11,9 +11,9 @@ use crate::{
     {StarknetBlock, Storage},
 };
 use pathfinder_common::{
-    CasmHash, ClassCommitment, ClassHash, ContractAddress, ContractNonce, GasPrice,
-    SequencerAddress, SierraHash, StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp,
-    StateCommitment, StorageAddress, StorageCommitment, StorageValue,
+    BlockHash, CasmHash, ClassCommitment, ClassHash, ContractAddress, ContractNonce, GasPrice,
+    SequencerAddress, SierraHash, StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
+    StorageAddress, StorageCommitment, StorageValue,
 };
 use rusqlite::Transaction;
 use stark_hash::Felt;
@@ -49,8 +49,7 @@ pub mod init {
                     ClassCommitment(hash!(12, n)),
                 )
                 .unwrap();
-                CanonicalBlocksTable::insert(tx, block_number, StarknetBlockHash(hash!(n)))
-                    .unwrap();
+                CanonicalBlocksTable::insert(tx, block_number, BlockHash(hash!(n))).unwrap();
 
                 let update = StateUpdate::with_block_hash(n);
 
@@ -111,7 +110,7 @@ impl StateUpdate {
             vec![]
         };
         Self {
-            block_hash: Some(StarknetBlockHash(hash!(h))),
+            block_hash: Some(BlockHash(hash!(h))),
             new_root: StateCommitment::calculate(
                 StorageCommitment(hash!(11, h)),
                 ClassCommitment(hash!(12, h)),
@@ -149,7 +148,7 @@ impl StarknetBlock {
     pub fn nth(n: u8) -> Self {
         Self {
             number: StarknetBlockNumber::new(n as u64).expect("block number out of range"),
-            hash: StarknetBlockHash(hash!(n)),
+            hash: BlockHash(hash!(n)),
             state_commmitment: StateCommitment::calculate(
                 StorageCommitment(hash!(11, n)),
                 ClassCommitment(hash!(12, n)),

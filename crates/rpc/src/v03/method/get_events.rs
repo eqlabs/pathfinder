@@ -440,7 +440,7 @@ fn next_continuation_token(
 
 mod types {
     use pathfinder_common::{
-        ContractAddress, EventData, EventKey, StarknetBlockHash, StarknetBlockNumber,
+        BlockHash, ContractAddress, EventData, EventKey, StarknetBlockNumber,
         StarknetTransactionHash,
     };
     use pathfinder_storage::StarknetEmittedEvent;
@@ -454,7 +454,7 @@ mod types {
         pub keys: Vec<EventKey>,
         pub from_address: ContractAddress,
         /// [None] for pending events.
-        pub block_hash: Option<StarknetBlockHash>,
+        pub block_hash: Option<BlockHash>,
         /// [None] for pending events.
         pub block_number: Option<StarknetBlockNumber>,
         pub transaction_hash: StarknetTransactionHash,

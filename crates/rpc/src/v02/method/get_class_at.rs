@@ -93,7 +93,7 @@ pub async fn get_class_at(
 }
 
 mod database {
-    use pathfinder_common::{StarknetBlockHash, StarknetBlockNumber};
+    use pathfinder_common::{BlockHash, StarknetBlockNumber};
 
     use super::*;
 
@@ -134,7 +134,7 @@ mod database {
     pub fn definition_at_block_hash(
         tx: &rusqlite::Transaction<'_>,
         contract: ContractAddress,
-        block_hash: StarknetBlockHash,
+        block_hash: BlockHash,
     ) -> anyhow::Result<Option<Vec<u8>>> {
         tx.query_row(
             r"SELECT definition FROM class_definitions 
@@ -191,7 +191,7 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::StarknetBlockHash;
+        use pathfinder_common::BlockHash;
 
         #[test]
         fn positional_args() {
@@ -203,7 +203,7 @@ mod tests {
 
             let input = positional.parse::<GetClassAtInput>().unwrap();
             let expected = GetClassAtInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -219,7 +219,7 @@ mod tests {
 
             let input = named.parse::<GetClassAtInput>().unwrap();
             let expected = GetClassAtInput {
-                block_id: StarknetBlockHash(felt!("0xabcde")).into(),
+                block_id: BlockHash(felt!("0xabcde")).into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -378,14 +378,14 @@ mod tests {
 
     #[tokio::test]
     async fn hash() {
-        use pathfinder_common::StarknetBlockHash;
+        use pathfinder_common::BlockHash;
 
         let context = RpcContext::for_tests();
 
         // Cairo v0.x class
         // This class is declared in block 1.
         let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
-        let block1_hash = StarknetBlockHash(felt_bytes!(b"block 1"));
+        let block1_hash = BlockHash(felt_bytes!(b"block 1"));
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -399,7 +399,7 @@ mod tests {
         // Cairo v1.x class (sierra)
         // This class is declared in block 2.
         let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
-        let block2_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        let block2_hash = BlockHash(felt_bytes!(b"latest"));
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -410,7 +410,7 @@ mod tests {
         .await
         .unwrap();
 
-        let block0_hash = StarknetBlockHash(felt_bytes!(b"genesis"));
+        let block0_hash = BlockHash(felt_bytes!(b"genesis"));
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -423,7 +423,7 @@ mod tests {
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
-        let latest_hash = StarknetBlockHash(felt_bytes!(b"latest"));
+        let latest_hash = BlockHash(felt_bytes!(b"latest"));
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -436,7 +436,7 @@ mod tests {
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         // Class exists, but block hash does not.
-        let invalid_block = StarknetBlockHash(felt_bytes!(b"invalid"));
+        let invalid_block = BlockHash(felt_bytes!(b"invalid"));
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {

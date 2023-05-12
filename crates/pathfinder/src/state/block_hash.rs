@@ -1,6 +1,6 @@
 use anyhow::{Context, Error, Result};
 use pathfinder_common::{
-    Chain, ChainId, EventCommitment, SequencerAddress, StarknetBlockHash, StarknetBlockNumber,
+    BlockHash, Chain, ChainId, EventCommitment, SequencerAddress, StarknetBlockNumber,
     StarknetBlockTimestamp, StarknetVersion, StateCommitment, TransactionCommitment,
     TransactionSignatureElem,
 };
@@ -34,7 +34,7 @@ pub fn verify_block_hash(
     block: &Block,
     chain: Chain,
     chain_id: ChainId,
-    expected_block_hash: StarknetBlockHash,
+    expected_block_hash: BlockHash,
 ) -> Result<VerifyResult> {
     let meta_info = meta::for_chain(chain);
     if !meta_info.can_verify(block.block_number) {
@@ -214,9 +214,9 @@ fn compute_final_hash_pre_0_7(
     state_root: StateCommitment,
     num_transactions: u64,
     transaction_commitment: Felt,
-    parent_block_hash: StarknetBlockHash,
+    parent_block_hash: BlockHash,
     chain_id: pathfinder_common::ChainId,
-) -> StarknetBlockHash {
+) -> BlockHash {
     let mut chain = HashChain::default();
 
     // block number
@@ -244,7 +244,7 @@ fn compute_final_hash_pre_0_7(
     // parent block hash
     chain.update(parent_block_hash.0);
 
-    StarknetBlockHash(chain.finalize())
+    BlockHash(chain.finalize())
 }
 
 /// This implements the final hashing step for post-0.7 blocks.
@@ -258,8 +258,8 @@ fn compute_final_hash(
     transaction_commitment: Felt,
     num_events: u64,
     event_commitment: Felt,
-    parent_block_hash: StarknetBlockHash,
-) -> StarknetBlockHash {
+    parent_block_hash: BlockHash,
+) -> BlockHash {
     let mut chain = HashChain::default();
 
     // block number
@@ -285,7 +285,7 @@ fn compute_final_hash(
     // parent block hash
     chain.update(parent_block_hash.0);
 
-    StarknetBlockHash(chain.finalize())
+    BlockHash(chain.finalize())
 }
 
 pub enum TransactionCommitmentFinalHashType {

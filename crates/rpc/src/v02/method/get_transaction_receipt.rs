@@ -80,8 +80,9 @@ mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
-        ContractAddress, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem, StarknetBlockHash, StarknetBlockNumber, StarknetTransactionHash,
+        BlockHash, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, StarknetBlockNumber,
+        StarknetTransactionHash,
     };
     use pathfinder_serde::EthereumAddressAsHexStr;
     use serde::Serialize;
@@ -133,7 +134,7 @@ mod types {
         pub actual_fee: Fee,
         pub status: TransactionStatus,
         #[serde_as(as = "RpcFelt")]
-        pub block_hash: StarknetBlockHash,
+        pub block_hash: BlockHash,
         pub block_number: StarknetBlockNumber,
         pub messages_sent: Vec<MessageToL1>,
         pub events: Vec<Event>,
@@ -177,7 +178,7 @@ mod types {
         pub fn with_block_data(
             receipt: starknet_gateway_types::reply::transaction::Receipt,
             status: BlockStatus,
-            block_hash: StarknetBlockHash,
+            block_hash: BlockHash,
             block_number: StarknetBlockNumber,
             transaction: starknet_gateway_types::reply::transaction::Transaction,
         ) -> Self {
@@ -424,7 +425,7 @@ mod types {
                         transaction_hash: StarknetTransactionHash(felt!("0xdeadbeef")),
                         actual_fee: Fee(felt!("0x1")),
                         status: TransactionStatus::AcceptedOnL1,
-                        block_hash: StarknetBlockHash(felt!("0xaaa")),
+                        block_hash: BlockHash(felt!("0xaaa")),
                         block_number: StarknetBlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
                             to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x55)),
@@ -542,7 +543,7 @@ mod types {
 mod tests {
     use super::*;
     use pathfinder_common::{
-        felt, felt_bytes, ContractAddress, EventData, EventKey, Fee, StarknetBlockHash,
+        felt, felt_bytes, BlockHash, ContractAddress, EventData, EventKey, Fee,
         StarknetBlockNumber, StarknetTransactionHash,
     };
 
@@ -620,7 +621,7 @@ mod tests {
                         transaction_hash: StarknetTransactionHash(felt_bytes!(b"txn 0")),
                         actual_fee: Fee::ZERO,
                         status: TransactionStatus::AcceptedOnL2,
-                        block_hash: StarknetBlockHash(felt_bytes!(b"genesis")),
+                        block_hash: BlockHash(felt_bytes!(b"genesis")),
                         block_number: StarknetBlockNumber::new_or_panic(0),
                         messages_sent: vec![],
                         events: vec![Event {
