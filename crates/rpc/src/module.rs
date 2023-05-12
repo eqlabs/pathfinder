@@ -4,7 +4,7 @@ use jsonrpsee::core::server::rpc_module::Methods;
 use jsonrpsee::types::SubscriptionResult;
 use jsonrpsee::SubscriptionSink;
 
-use starknet_gateway_types::websocket::RPCSender;
+use starknet_gateway_types::websocket::SubscriptionBroadcaster;
 
 use crate::context::RpcContext;
 use crate::error::RpcError;
@@ -130,13 +130,13 @@ impl Module {
         subscription_answer_name: &'static str,
         unsubscription_name: &'static str,
         subscription: Subscription,
-        ws_broadcast_tx: RPCSender<WSAnySubscriptionEvent>,
+        ws_broadcast_tx: SubscriptionBroadcaster<WSAnySubscriptionEvent>,
     ) -> anyhow::Result<Self>
     where
         Subscription: (Fn(
                 RpcContext,
                 SubscriptionSink,
-                &RPCSender<WSAnySubscriptionEvent>,
+                &SubscriptionBroadcaster<WSAnySubscriptionEvent>,
             ) -> SubscriptionResult)
             + Copy
             + Send

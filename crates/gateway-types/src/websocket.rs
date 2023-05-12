@@ -7,10 +7,10 @@ use pathfinder_common::{
 use pathfinder_serde::GasPriceAsHexStr;
 use serde::Deserialize;
 use serde_with::serde_as;
-use tokio::sync::broadcast::{self};
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone)]
-pub struct RPCSender<T>(pub broadcast::Sender<T>);
+pub struct SubscriptionBroadcaster<T>(pub broadcast::Sender<T>);
 
 impl<T> SubscriptionBroadcaster<T> {
     pub fn send_if_receiving(&self, value: T) {
@@ -22,7 +22,7 @@ impl<T> SubscriptionBroadcaster<T> {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WebsocketEventNewHead {
+pub struct BlockHeader {
     pub block_hash: BlockHash,
     pub block_number: BlockNumber,
 
@@ -43,8 +43,8 @@ pub struct WebsocketEventNewHead {
     pub starknet_version: StarknetVersion,
 }
 
-impl WebsocketEventNewHead {
-    pub fn new(block: Block) -> WebsocketEventNewHead {
+impl BlockHeader {
+    pub fn new(block: Block) -> BlockHeader {
         let Block {
             block_hash,
             block_number,
@@ -57,7 +57,7 @@ impl WebsocketEventNewHead {
             starknet_version,
             ..
         } = block;
-        WebsocketEventNewHead {
+        BlockHeader {
             block_hash,
             block_number,
             gas_price,
@@ -73,14 +73,20 @@ impl WebsocketEventNewHead {
 
 #[derive(Debug, Clone)]
 pub struct WebsocketSenders {
-    pub new_head: RPCSender<WebsocketEventNewHead>,
+    pub new_head: SubscriptionBroadcaster<BlockHeader>,
 }
 
 impl WebsocketSenders {
     pub fn with_capacity(capacity: usize) -> WebsocketSenders {
         WebsocketSenders {
-            new_head: RPCSender(broadcast::channel(capacity).0),
+            new_head: SubscriptionBroadcaster(broadcast::channel(capacity).0),
         }
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+impl WebsocketSenders {
+    pub fn for_test() -> Self {
+        Self::with_capacity(100)
+    }
+}

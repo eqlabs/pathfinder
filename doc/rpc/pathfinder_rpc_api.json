@@ -332,10 +332,7 @@
                     "block_number": {
                         "type": "number"
                     },
-                    "gas_price": {
-                        "type": "string"
-                    },
-                    "parent_block_hash": {
+                    "parent_hash": {
                         "type": "string"
                     },
                     "sequencer_address": {
@@ -344,22 +341,18 @@
                     "state_commitment": {
                         "type": "string"
                     },
-                    "status": {
-                        "type": "string",
-                        "enum": [
-                            "PENDING",
-                            "ACCEPTED_ON_L2",
-                            "ACCEPTED_ON_L1",
-                            "REJECTED"
-                        ]
-                    },
                     "timestamp": {
                         "type": "number"
-                    },
-                    "starknet_version": {
-                        "type": "string"
                     }
-                }
+                },
+                "required": [
+                    "block_hash",
+                    "block_number",
+                    "parent_hash",
+                    "sequencer_address",
+                    "state_commitment",
+                    "timestamp"
+                ]
             }
         },
         "errors": {

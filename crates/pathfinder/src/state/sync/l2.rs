@@ -15,7 +15,7 @@ use starknet_gateway_types::{
         StateUpdate, Status,
     },
     transaction_hash::verify,
-    websocket::{WebsocketEventNewHead, WebsocketSenders},
+    websocket::{BlockHeader, WebsocketSenders},
 };
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
@@ -222,7 +222,7 @@ pub async fn sync(
 
         websocket_txs
             .new_head
-            .send_if_receiving(WebsocketEventNewHead::new(*block.clone()))
+            .send_if_receiving(BlockHeader::new(*block.clone()))
     }
 }
 
@@ -674,7 +674,7 @@ mod tests {
         ) -> JoinHandle<anyhow::Result<()>> {
             tokio::spawn(sync(
                 tx_event,
-                WebsocketSenders::default(),
+                WebsocketSenders::for_test(),
                 sequencer,
                 None,
                 Chain::Testnet,
