@@ -121,9 +121,9 @@ async fn main() -> anyhow::Result<()> {
         None => rpc_server,
     };
 
-    let rpc_server = match config.ws.enabled {
-        true => rpc_server.with_ws(config.ws.capacity),
-        false => rpc_server,
+    let rpc_server = match config.ws {
+        Some(ws) => rpc_server.with_ws(ws.capacity),
+        None => rpc_server,
     };
 
     let sync_handle = tokio::spawn(state::sync(

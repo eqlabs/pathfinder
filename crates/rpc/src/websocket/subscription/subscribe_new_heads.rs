@@ -17,9 +17,12 @@ pub fn subscribe_new_heads(
             SubscriptionClosed::Success => {
                 sink.close(SubscriptionClosed::Success);
             }
-            SubscriptionClosed::RemotePeerAborted => (),
-            SubscriptionClosed::Failed(err) => {
-                sink.close(err);
+            SubscriptionClosed::RemotePeerAborted => {
+                tracing::trace!("WS: newHeads subscription peer aborted");
+            }
+            SubscriptionClosed::Failed(error) => {
+                tracing::trace!("WS: newHeads subscription failed {error:?}");
+                sink.close(error);
             }
         };
     });

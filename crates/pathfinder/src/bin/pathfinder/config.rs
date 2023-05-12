@@ -4,6 +4,7 @@ use pathfinder_storage::JournalMode;
 use reqwest::Url;
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
@@ -56,15 +57,21 @@ Examples:
     )]
     rpc_address: SocketAddr,
 
-    #[arg(long = "rpc.websocket", long_help = "Enable RPC WebSocket transport", default_value = "false", env = "PATHFINDER_RPC_WEBSOCKET")]
+    #[arg(
+        long = "rpc.websocket",
+        long_help = "Enable RPC WebSocket transport",
+        default_value = "false",
+        env = "PATHFINDER_RPC_WEBSOCKET"
+    )]
     ws: bool,
 
     #[arg(
         long = "ws.capacity",
         long_help = "Maximum number of websocket subscriptions per subscription type",
-        default_value = "100"
+        default_value = "100",
+        env = "PATHFINDER_RPC_WEBSOCKET_CAPACITY"
     )]
-    ws_capacity: usize,
+    ws_capacity: NonZeroUsize,
 
     #[arg(
         long = "rpc.cors-domains",
@@ -265,7 +272,7 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
-    pub ws: WebSocket,
+    pub ws: Option<WebSocket>,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
@@ -275,8 +282,7 @@ pub struct Config {
 }
 
 pub struct WebSocket {
-    pub enabled: bool,
-    pub capacity: usize,
+    pub capacity: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -353,9 +359,12 @@ impl Config {
             },
             rpc_address: cli.rpc_address,
             rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
-            ws: WebSocket {
-                enabled: cli.ws,
-                capacity: cli.ws_capacity,
+            ws: if cli.ws {
+                Some(WebSocket {
+                    capacity: cli.ws_capacity,
+                })
+            } else {
+                None
             },
             monitor_address: cli.monitor_address,
             network,

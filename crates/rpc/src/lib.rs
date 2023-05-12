@@ -23,6 +23,7 @@ use hyper::Body;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use pathfinder_common::AllowedOrigins;
 use starknet_gateway_types::websocket::WebsocketSenders;
+use std::num::NonZeroUsize;
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -57,9 +58,9 @@ impl RpcServer {
         }
     }
 
-    pub fn with_ws(self, capacity: usize) -> Self {
+    pub fn with_ws(self, capacity: NonZeroUsize) -> Self {
         Self {
-            ws_senders: Some(WebsocketSenders::with_capacity(capacity)),
+            ws_senders: Some(WebsocketSenders::with_capacity(capacity.get())),
             ..self
         }
     }

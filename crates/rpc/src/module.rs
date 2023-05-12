@@ -124,6 +124,7 @@ impl Module {
         Ok(self)
     }
 
+    /// Registers all methods for the RPC Websocket subscription API
     pub fn register_subscription<Subscription, WSAnySubscriptionEvent: 'static + Send + Clone>(
         mut self,
         subscription_name: &'static str,
