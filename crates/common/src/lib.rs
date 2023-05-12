@@ -207,11 +207,11 @@ pub struct TransactionHash(pub Felt);
 
 /// A StarkNet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct StarknetTransactionIndex(u64);
+pub struct TransactionIndex(u64);
 
-macros::i64_backed_u64::to_from_sql!(StarknetTransactionIndex);
-macros::i64_backed_u64::new_get_partialeq!(StarknetTransactionIndex);
-macros::i64_backed_u64::serdes!(StarknetTransactionIndex);
+macros::i64_backed_u64::to_from_sql!(TransactionIndex);
+macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
+macros::i64_backed_u64::serdes!(TransactionIndex);
 
 /// A single element of a signature used to secure a StarkNet transaction.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]

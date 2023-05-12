@@ -129,8 +129,8 @@ pub mod test_utils {
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
         ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
-        SequencerAddress, StarknetTransactionIndex, StarknetVersion, StateCommitment,
-        StorageAddress, StorageCommitment, TransactionHash, TransactionVersion,
+        SequencerAddress, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment,
+        TransactionHash, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -400,7 +400,7 @@ pub mod test_utils {
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: vec![],
             transaction_hash: txn0_hash,
-            transaction_index: StarknetTransactionIndex::new_or_panic(0),
+            transaction_index: TransactionIndex::new_or_panic(0),
         };
         let txn1_hash = TransactionHash(felt_bytes!(b"txn 1"));
         let txn2_hash = TransactionHash(felt_bytes!(b"txn 2"));
@@ -534,7 +534,7 @@ pub mod test_utils {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[0].hash(),
-                transaction_index: StarknetTransactionIndex::new_or_panic(0),
+                transaction_index: TransactionIndex::new_or_panic(0),
             },
             Receipt {
                 actual_fee: None,
@@ -549,7 +549,7 @@ pub mod test_utils {
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[1].hash(),
-                transaction_index: StarknetTransactionIndex::new_or_panic(1),
+                transaction_index: TransactionIndex::new_or_panic(1),
             },
         ];
 

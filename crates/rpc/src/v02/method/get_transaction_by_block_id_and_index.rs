@@ -1,13 +1,13 @@
 use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
-use pathfinder_common::{BlockId, StarknetTransactionIndex};
+use pathfinder_common::{BlockId, TransactionIndex};
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByBlockIdAndIndexInput {
     block_id: BlockId,
-    index: StarknetTransactionIndex,
+    index: TransactionIndex,
 }
 
 crate::error::generate_rpc_error_subset!(
@@ -115,7 +115,7 @@ mod tests {
                 input,
                 GetTransactionByBlockIdAndIndexInput {
                     block_id: BlockId::Hash(BlockHash(felt!("0xdeadbeef"))),
-                    index: StarknetTransactionIndex::new_or_panic(1),
+                    index: TransactionIndex::new_or_panic(1),
                 }
             )
         }
@@ -135,7 +135,7 @@ mod tests {
                 input,
                 GetTransactionByBlockIdAndIndexInput {
                     block_id: BlockId::Hash(BlockHash(felt!("0xdeadbeef"))),
-                    index: StarknetTransactionIndex::new_or_panic(1),
+                    index: TransactionIndex::new_or_panic(1),
                 }
             )
         }
@@ -149,7 +149,7 @@ mod tests {
             let context = RpcContext::for_tests();
             let input = GetTransactionByBlockIdAndIndexInput {
                 block_id: BlockId::Hash(BlockHash(Felt::ZERO)),
-                index: StarknetTransactionIndex::new_or_panic(0),
+                index: TransactionIndex::new_or_panic(0),
             };
 
             let result = get_transaction_by_block_id_and_index(context, input).await;
@@ -165,7 +165,7 @@ mod tests {
             let context = RpcContext::for_tests();
             let input = GetTransactionByBlockIdAndIndexInput {
                 block_id: BlockId::Hash(BlockHash(felt_bytes!(b"genesis"))),
-                index: StarknetTransactionIndex::new_or_panic(123),
+                index: TransactionIndex::new_or_panic(123),
             };
 
             let result = get_transaction_by_block_id_and_index(context, input).await;
@@ -182,7 +182,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let input = GetTransactionByBlockIdAndIndexInput {
             block_id: BlockId::Number(BlockNumber::new_or_panic(0)),
-            index: StarknetTransactionIndex::new_or_panic(0),
+            index: TransactionIndex::new_or_panic(0),
         };
 
         let result = get_transaction_by_block_id_and_index(context, input)
@@ -196,7 +196,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let input = GetTransactionByBlockIdAndIndexInput {
             block_id: BlockId::Hash(BlockHash(felt_bytes!(b"genesis"))),
-            index: StarknetTransactionIndex::new_or_panic(0),
+            index: TransactionIndex::new_or_panic(0),
         };
 
         let result = get_transaction_by_block_id_and_index(context, input)
@@ -210,7 +210,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let input = GetTransactionByBlockIdAndIndexInput {
             block_id: BlockId::Latest,
-            index: StarknetTransactionIndex::new_or_panic(0),
+            index: TransactionIndex::new_or_panic(0),
         };
 
         let result = get_transaction_by_block_id_and_index(context, input)
@@ -236,7 +236,7 @@ mod tests {
 
         let input = GetTransactionByBlockIdAndIndexInput {
             block_id: BlockId::Pending,
-            index: StarknetTransactionIndex::new_or_panic(TX_IDX.try_into().unwrap()),
+            index: TransactionIndex::new_or_panic(TX_IDX.try_into().unwrap()),
         };
 
         let result = get_transaction_by_block_id_and_index(context, input)

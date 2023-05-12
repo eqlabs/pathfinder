@@ -4,8 +4,8 @@ use super::{
 use pathfinder_common::{
     felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
     ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
-    EventKey, Fee, GasPrice, SequencerAddress, StarknetTransactionIndex, StarknetVersion,
-    StateCommitment, StorageCommitment, TransactionCommitment, TransactionHash, TransactionNonce,
+    EventKey, Fee, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
+    TransactionCommitment, TransactionHash, TransactionIndex, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
 use stark_hash::Felt;
@@ -140,7 +140,7 @@ pub(crate) fn create_transactions_and_receipts(
             l1_to_l2_consumed_message: None,
             l2_to_l1_messages: Vec::new(),
             transaction_hash: tx.hash(),
-            transaction_index: StarknetTransactionIndex::new_or_panic(i as u64 + 2311),
+            transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
         };
 
         (tx, receipt)
