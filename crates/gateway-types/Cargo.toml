@@ -6,6 +6,9 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+test-utils = []
+
 [dependencies]
 anyhow = { workspace = true }
 ethers = "1.0.2"
