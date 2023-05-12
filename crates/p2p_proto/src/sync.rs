@@ -1,5 +1,5 @@
 #[cfg(feature = "test-utils")]
-use fake::{Dummy, Fake};
+use fake::Dummy;
 use stark_hash::Felt;
 
 use crate::{ToProtobuf, TryFromProtobuf};

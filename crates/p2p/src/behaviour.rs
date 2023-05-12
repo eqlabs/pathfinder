@@ -4,28 +4,26 @@ use std::time::Duration;
 
 use libp2p::autonat;
 use libp2p::dcutr;
-use libp2p::gossipsub::{
-    Gossipsub, GossipsubEvent, GossipsubMessage, IdentTopic, MessageAuthenticity, MessageId,
-};
+use libp2p::gossipsub::{self, IdentTopic, MessageAuthenticity, MessageId};
 use libp2p::identify;
 use libp2p::kad::{record::store::MemoryStore, Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping;
-use libp2p::relay::v2::client as relay_client;
-use libp2p::request_response::{ProtocolSupport, RequestResponse, RequestResponseEvent};
+use libp2p::relay::client as relay_client;
+use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identity, kad};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event", event_process = false)]
 pub struct Behaviour {
-    relay: relay_client::Client,
+    relay: relay_client::Behaviour,
     autonat: autonat::Behaviour,
-    dcutr: dcutr::behaviour::Behaviour,
+    dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
     pub kademlia: Kademlia<MemoryStore>,
-    pub gossipsub: Gossipsub,
-    pub block_sync: RequestResponse<super::sync::BlockSyncCodec>,
+    pub gossipsub: gossipsub::Behaviour,
+    pub block_sync: request_response::Behaviour<super::sync::BlockSyncCodec>,
 }
 
 pub const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
@@ -34,7 +32,7 @@ pub const KADEMLIA_PROTOCOL_NAME: &[u8] = b"/pathfinder/kad/1.0.0";
 const PROTOCOL_VERSION: &str = "starknet/0.9.1";
 
 impl Behaviour {
-    pub fn new(identity: &identity::Keypair) -> (Self, relay_client::transport::ClientTransport) {
+    pub fn new(identity: &identity::Keypair) -> (Self, relay_client::Transport) {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
 
         let mut kademlia_config = KademliaConfig::default();
@@ -51,35 +49,35 @@ impl Behaviour {
         let kademlia = Kademlia::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
 
         // FIXME: find out how we should derive message id
-        let message_id_fn = |message: &GossipsubMessage| {
+        let message_id_fn = |message: &gossipsub::Message| {
             let mut s = DefaultHasher::new();
             message.data.hash(&mut s);
             MessageId::from(s.finish().to_string())
         };
-        let gossipsub_config = libp2p::gossipsub::GossipsubConfigBuilder::default()
+        let gossipsub_config = libp2p::gossipsub::ConfigBuilder::default()
             .message_id_fn(message_id_fn)
             .build()
             .expect("valid gossipsub config");
 
-        let gossipsub = Gossipsub::new(
+        let gossipsub = gossipsub::Behaviour::new(
             MessageAuthenticity::Signed(identity.clone()),
             gossipsub_config,
         )
         .expect("valid gossipsub params");
 
-        let block_sync = RequestResponse::new(
+        let block_sync = request_response::Behaviour::new(
             super::sync::BlockSyncCodec(),
             std::iter::once((super::sync::BlockSyncProtocol(), ProtocolSupport::Full)),
             Default::default(),
         );
 
-        let (relay_transport, relay) = relay_client::Client::new_transport_and_behaviour(peer_id);
+        let (relay_transport, relay) = relay_client::new(peer_id);
 
         (
             Self {
                 relay,
                 autonat: autonat::Behaviour::new(peer_id, Default::default()),
-                dcutr: dcutr::behaviour::Behaviour::new(),
+                dcutr: dcutr::Behaviour::new(peer_id),
                 ping: ping::Behaviour::new(ping::Config::new()),
                 identify: identify::Behaviour::new(
                     identify::Config::new(PROTOCOL_VERSION.to_string(), identity.public())
@@ -109,12 +107,12 @@ impl Behaviour {
 pub enum Event {
     Relay(relay_client::Event),
     Autonat(autonat::Event),
-    Dcutr(dcutr::behaviour::Event),
+    Dcutr(dcutr::Event),
     Ping(ping::Event),
     Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
-    Gossipsub(GossipsubEvent),
-    BlockSync(RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>),
+    Gossipsub(gossipsub::Event),
+    BlockSync(request_response::Event<p2p_proto::sync::Request, p2p_proto::sync::Response>),
 }
 
 impl From<relay_client::Event> for Event {
@@ -129,8 +127,8 @@ impl From<autonat::Event> for Event {
     }
 }
 
-impl From<dcutr::behaviour::Event> for Event {
-    fn from(event: dcutr::behaviour::Event) -> Self {
+impl From<dcutr::Event> for Event {
+    fn from(event: dcutr::Event) -> Self {
         Event::Dcutr(event)
     }
 }
@@ -153,15 +151,15 @@ impl From<KademliaEvent> for Event {
     }
 }
 
-impl From<GossipsubEvent> for Event {
-    fn from(event: GossipsubEvent) -> Self {
+impl From<gossipsub::Event> for Event {
+    fn from(event: gossipsub::Event) -> Self {
         Event::Gossipsub(event)
     }
 }
 
-impl From<RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>> for Event {
+impl From<request_response::Event<p2p_proto::sync::Request, p2p_proto::sync::Response>> for Event {
     fn from(
-        event: RequestResponseEvent<p2p_proto::sync::Request, p2p_proto::sync::Response>,
+        event: request_response::Event<p2p_proto::sync::Request, p2p_proto::sync::Response>,
     ) -> Self {
         Event::BlockSync(event)
     }

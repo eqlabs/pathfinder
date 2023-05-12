@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             tracing::info!("No private key configured, generating a new one");
-            Keypair::Ed25519(libp2p::identity::ed25519::Keypair::generate())
+            Keypair::generate_ed25519()
         }
     };
 
