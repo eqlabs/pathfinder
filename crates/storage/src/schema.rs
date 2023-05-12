@@ -29,6 +29,8 @@ mod revision_0028;
 mod revision_0029;
 mod revision_0030;
 mod revision_0031;
+mod revision_0032;
+mod revision_0033;
 
 type MigrationFn = fn(&rusqlite::Transaction<'_>) -> anyhow::Result<()>;
 
@@ -67,5 +69,7 @@ pub fn migrations() -> &'static [MigrationFn] {
         revision_0029::migrate,
         revision_0030::migrate,
         revision_0031::migrate,
+        revision_0032::migrate,
+        revision_0033::migrate,
     ]
 }

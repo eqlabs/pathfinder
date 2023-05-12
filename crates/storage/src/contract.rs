@@ -2,7 +2,7 @@ use crate::types::{CompressedCasmClass, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
 use pathfinder_common::{
-    CasmHash, ClassCommitmentLeafHash, ClassHash, ContractClass, StarknetBlockHash,
+    CasmHash, ClassCommitmentLeafHash, ClassHash, ContractClass, StarknetBlockNumber,
 };
 use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
@@ -52,13 +52,13 @@ impl ContractCodeTable {
         Ok(())
     }
 
-    pub fn update_declared_on_if_null(
+    pub fn update_block_number_if_null(
         transaction: &Transaction<'_>,
         class: ClassHash,
-        block: StarknetBlockHash,
+        block: StarknetBlockNumber,
     ) -> anyhow::Result<bool> {
         let rows_changed = transaction.execute(
-            "UPDATE class_definitions SET declared_on=? WHERE hash=? AND declared_on IS NULL",
+            "UPDATE class_definitions SET block_number=? WHERE hash=? AND block_number IS NULL",
             rusqlite::params![block, class],
         )?;
 

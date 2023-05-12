@@ -77,7 +77,7 @@ pub mod state_update {
     use serde::{Deserialize, Serialize};
 
     /// L2 state diff.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
@@ -92,6 +92,46 @@ pub mod state_update {
         /// Replaced classes, introduced in Starknet 0.11.0
         #[serde(default)]
         pub replaced_classes: Vec<ReplacedClass>,
+    }
+
+    impl StateDiff {
+        pub fn add_deployed_contract(
+            mut self,
+            address: ContractAddress,
+            class_hash: ClassHash,
+        ) -> Self {
+            self.deployed_contracts.push(DeployedContract {
+                address,
+                class_hash,
+            });
+            self
+        }
+
+        pub fn add_nonce_update(
+            mut self,
+            contract_address: ContractAddress,
+            nonce: ContractNonce,
+        ) -> Self {
+            self.nonces.push(Nonce {
+                contract_address,
+                nonce,
+            });
+            self
+        }
+
+        pub fn add_storage_update(
+            mut self,
+            contract_address: ContractAddress,
+            key: StorageAddress,
+            value: StorageValue,
+        ) -> Self {
+            self.storage_diffs.push(StorageDiff {
+                address: contract_address,
+                key,
+                value,
+            });
+            self
+        }
     }
 
     impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {

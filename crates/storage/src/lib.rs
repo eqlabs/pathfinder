@@ -6,6 +6,7 @@ mod contract;
 mod ethereum;
 mod schema;
 mod state;
+mod state_update;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
@@ -21,8 +22,9 @@ pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
     RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest,
     StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter, StarknetEventsTable,
-    StarknetStateUpdatesTable, StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
+    StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
 };
+pub use state_update::insert_canonical_state_diff;
 
 use anyhow::Context;
 use r2d2::Pool;
@@ -191,22 +193,34 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
 fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
-    let version = schema_version(connection)?;
+    let current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
     // Check that the database is not newer than this application knows of.
     anyhow::ensure!(
-        version <= migrations.len(),
+        current_revision <= migrations.len(),
         "Database version is newer than this application ({} > {})",
-        version,
+        current_revision,
         migrations.len()
     );
 
+    // Early exit to prevent logging
+    if current_revision == migrations.len() {
+        tracing::info!(%current_revision, "No database migrations required");
+        return Ok(());
+    }
+
+    let latest_revision = migrations.len();
+    let amount = latest_revision - current_revision;
+    tracing::info!(%current_revision, %latest_revision, migrations=%amount, "Performing database migrations");
+
+    let span = tracing::info_span!("db migration", revision = tracing::field::Empty);
+    let _enter = span.enter();
     // Sequentially apply each missing migration.
     migrations
         .iter()
         .enumerate()
-        .skip(version)
+        .skip(current_revision)
         .try_for_each(|(from, migration)| {
             let mut do_migration = || -> anyhow::Result<()> {
                 let transaction = connection
@@ -222,6 +236,8 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
 
                 Ok(())
             };
+
+            span.record("revision", from + 1);
 
             do_migration().with_context(|| format!("Migrating from {from}"))
         })?;
@@ -344,5 +360,20 @@ mod tests {
         let output = super::base64_felts_to_index_prefixed_base32_felts(&input);
 
         assert_eq!(output.split(' ').count(), 256);
+    }
+
+    #[test]
+    fn rpc_test_db_is_migrated() {
+        let database = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..") // puts us in crates folder.
+            .join("rpc")
+            .join("fixtures")
+            .join("mainnet.sqlite");
+
+        let database = rusqlite::Connection::open(database).unwrap();
+        let version = schema_version(&database).unwrap();
+        let expected = schema::migrations().len();
+
+        assert_eq!(version, expected, "RPC database fixture needs migrating");
     }
 }

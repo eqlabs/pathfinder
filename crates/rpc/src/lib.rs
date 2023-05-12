@@ -10,6 +10,7 @@ mod module;
 mod pathfinder;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_client;
+mod utils;
 pub mod v02;
 pub mod v03;
 
@@ -134,8 +135,9 @@ pub mod test_utils {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        types::CompressedContract, CanonicalBlocksTable, ContractCodeTable, StarknetBlock,
-        StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
+        insert_canonical_state_diff, types::CompressedContract, CanonicalBlocksTable,
+        ContractCodeTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+        StarknetTransactionsTable, Storage,
     };
     use stark_hash::Felt;
     use starknet_gateway_types::{
@@ -155,6 +157,7 @@ pub mod test_utils {
     pub fn setup_storage() -> Storage {
         use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
+        use pathfinder_storage::types::state_update::StateDiff;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
@@ -171,6 +174,30 @@ pub mod test_utils {
         let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
         let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
         let class2_hash = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
+
+        let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
+
+        let state_diff0 = StateDiff::default()
+            .add_deployed_contract(contract0_addr, class0_hash)
+            .add_nonce_update(contract0_addr, ContractNonce(felt!("0x1")));
+
+        let state_diff1 = StateDiff::default()
+            .add_deployed_contract(contract1_addr, class1_hash)
+            .add_storage_update(
+                contract1_addr,
+                storage_addr,
+                StorageValue(felt_bytes!(b"storage value 1")),
+            );
+
+        let state_diff2 = StateDiff::default()
+            .add_deployed_contract(contract2_addr, class2_hash)
+            .add_nonce_update(contract1_addr, ContractNonce(felt!("0x10")))
+            .add_nonce_update(contract2_addr, ContractNonce(felt!("0xfeed")))
+            .add_storage_update(
+                contract1_addr,
+                storage_addr,
+                StorageValue(felt_bytes!(b"storage value 2")),
+            );
 
         let contract0_update = vec![];
 
@@ -345,8 +372,10 @@ pub mod test_utils {
         CanonicalBlocksTable::insert(&db_txn, block1.number, block1.hash).unwrap();
         CanonicalBlocksTable::insert(&db_txn, block2.number, block2.hash).unwrap();
 
-        ContractCodeTable::update_declared_on_if_null(&db_txn, class0_hash, block1.hash).unwrap();
-        ContractCodeTable::update_declared_on_if_null(&db_txn, class2_hash, block2.hash).unwrap();
+        ContractCodeTable::update_block_number_if_null(&db_txn, class0_hash, block1.number)
+            .unwrap();
+        ContractCodeTable::update_block_number_if_null(&db_txn, class2_hash, block2.number)
+            .unwrap();
 
         let txn0_hash = StarknetTransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
@@ -424,6 +453,10 @@ pub mod test_utils {
             .unwrap();
         StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
             .unwrap();
+
+        insert_canonical_state_diff(&db_txn, block0.number, &state_diff0).unwrap();
+        insert_canonical_state_diff(&db_txn, block1.number, &state_diff1).unwrap();
+        insert_canonical_state_diff(&db_txn, block2.number, &state_diff2).unwrap();
 
         db_txn.commit().unwrap();
         storage

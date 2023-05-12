@@ -1,7 +1,13 @@
+use std::collections::HashMap;
+
 use crate::context::RpcContext;
 use anyhow::{anyhow, Context};
-use pathfinder_common::BlockId;
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetStateUpdatesTable};
+use pathfinder_common::{
+    BlockId, ClassHash, ContractAddress, StarknetBlockHash, StarknetBlockNumber, StateCommitment,
+    StorageAddress, StorageValue,
+};
+use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use stark_hash::Felt;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -45,26 +51,149 @@ pub async fn get_state_update(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let block_hash = match block_id {
-            StarknetBlocksBlockId::Hash(h) => h,
-            StarknetBlocksBlockId::Number(_) | StarknetBlocksBlockId::Latest => {
-                StarknetBlocksTable::get_hash(
-                    &tx,
-                    block_id.try_into().expect("block_id is not a hash"),
-                )
-                .context("Read block from database")?
-                .ok_or(GetStateUpdateError::BlockNotFound)?
-            }
-        };
-
-        let state_update = StarknetStateUpdatesTable::get(&tx, block_hash)
-            .context("Read state update from database")?
-            .ok_or(GetStateUpdateError::BlockNotFound)?;
-
-        Ok(state_update.into())
+        get_state_update_from_storage(&tx, block_id)
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+pub(crate) fn block_info(
+    tx: &rusqlite::Transaction<'_>,
+    block: StarknetBlocksBlockId,
+) -> anyhow::Result<
+    Option<(
+        StarknetBlockNumber,
+        StarknetBlockHash,
+        StateCommitment,
+        StateCommitment,
+    )>,
+> {
+    let block = StarknetBlocksTable::get(tx, block)?;
+    Ok(match block {
+        None => None,
+        Some(block) => {
+            let old_root = if block.number == StarknetBlockNumber::GENESIS {
+                Some(StateCommitment(Felt::ZERO))
+            } else {
+                let previous_block_number =
+                    StarknetBlockNumber::new_or_panic(block.number.get() - 1);
+                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
+                    .map(|b| b.state_commmitment)
+            };
+
+            old_root.map(|old_root| (block.number, block.hash, block.state_commmitment, old_root))
+        }
+    })
+}
+
+fn get_state_update_from_storage(
+    tx: &rusqlite::Transaction<'_>,
+    block: StarknetBlocksBlockId,
+) -> Result<types::StateUpdate, GetStateUpdateError> {
+    let (number, block_hash, new_root, old_root) =
+        block_info(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;
+
+    let mut stmt = tx
+        .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
+        .context("Preparing nonce update query statement")?;
+    let nonces = stmt
+        .query_map([number], |row| {
+            let contract_address = row.get(0)?;
+            let nonce = row.get(1)?;
+
+            Ok(types::Nonce {
+                contract_address,
+                nonce,
+            })
+        })
+        .context("Querying nonce updates")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over nonce query rows")?;
+
+    let mut stmt = tx
+        .prepare_cached(
+            "SELECT contract_address, storage_address, storage_value FROM storage_updates WHERE block_number = ?"
+        )
+        .context("Preparing storage update query statement")?;
+    let storage_tuples = stmt
+        .query_map([number], |row| {
+            let contract_address: ContractAddress = row.get(0)?;
+            let storage_address: StorageAddress = row.get(1)?;
+            let storage_value: StorageValue = row.get(2)?;
+
+            Ok((contract_address, storage_address, storage_value))
+        })
+        .context("Querying storage updates")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over storage query rows")?;
+    // Convert storage tuples to contract based mapping.
+    let mut storage_updates: HashMap<ContractAddress, Vec<types::StorageEntry>> = HashMap::new();
+    for (addr, key, value) in storage_tuples {
+        storage_updates
+            .entry(addr)
+            .or_default()
+            .push(types::StorageEntry { key, value });
+    }
+    let storage_diffs = storage_updates
+        .into_iter()
+        .map(|(address, storage_entries)| types::StorageDiff {
+            address,
+            storage_entries,
+        })
+        .collect();
+
+    let mut stmt = tx
+        .prepare_cached("SELECT hash FROM class_definitions WHERE block_number = ?")
+        .context("Preparing class declaration query statement")?;
+    // This is a change from previous implementation as this also includes sierra hashes..
+    // which is probably more correct?
+    let declared_contract_hashes = stmt
+        .query_map([number], |row| row.get(0))
+        .context("Querying class declarations")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over class declaration query rows")?;
+
+    let mut stmt = tx
+        .prepare_cached(
+            r"SELECT
+                cu1.contract_address,
+                cu1.class_hash
+            FROM
+                contract_updates cu1
+            LEFT OUTER JOIN
+                contract_updates cu2 ON cu1.contract_address = cu2.contract_address AND cu2.block_number < cu1.block_number
+            WHERE
+                cu1.block_number = ? AND
+                cu2.block_number IS NULL",
+        )
+        .context("Preparing contract update query statement")?;
+    let deployed_contracts = stmt
+        .query_map([number], |row| {
+            let address: ContractAddress = row.get(0)?;
+            let class_hash: ClassHash = row.get(1)?;
+
+            Ok(types::DeployedContract {
+                address,
+                class_hash,
+            })
+        })
+        .context("Querying contract deployments")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over contract deployment query rows")?;
+
+    let state_update = types::StateUpdate {
+        block_hash: Some(block_hash),
+        new_root: Some(new_root),
+        old_root,
+        state_diff: types::StateDiff {
+            storage_diffs,
+            declared_contract_hashes,
+            deployed_contracts,
+            nonces,
+        },
+    };
+
+    Ok(state_update)
 }
 
 mod types {
@@ -143,7 +272,17 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
-                declared_contract_hashes: state_diff.old_declared_contracts,
+                // For the v02 API we're returning  Cairo _and_ Sierra class hashes here
+                declared_contract_hashes: state_diff
+                    .old_declared_contracts
+                    .into_iter()
+                    .chain(
+                        state_diff
+                            .declared_classes
+                            .into_iter()
+                            .map(|d| ClassHash(d.class_hash.0)),
+                    )
+                    .collect(),
                 deployed_contracts: state_diff
                     .deployed_contracts
                     .into_iter()
@@ -196,10 +335,16 @@ mod types {
                 .collect();
             Self {
                 storage_diffs,
+                // For the v02 API we're returning  Cairo _and_ Sierra class hashes here
                 declared_contract_hashes: diff
                     .declared_contracts
                     .into_iter()
                     .map(|d| d.class_hash)
+                    .chain(
+                        diff.declared_sierra_classes
+                            .into_iter()
+                            .map(|d| ClassHash(d.class_hash.0)),
+                    )
                     .collect(),
                 deployed_contracts: diff
                     .deployed_contracts
@@ -425,6 +570,7 @@ mod tests {
 
     /// Common assertion type for most of the test cases
     fn assert_ok(expected: types::StateUpdate) -> TestCaseHandler {
+        use pretty_assertions::assert_eq;
         Box::new(move |i: usize, result| {
             assert_matches!(result, Ok(actual) => assert_eq!(
                 *actual,
