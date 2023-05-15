@@ -117,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
         state::l2::BlockValidationMode::Strict,
     ));
 
-    let shared = pathfinder_rpc::gas_price::Cached::new(Arc::new(ethereum.transport));
+    let shared = pathfinder_rpc::gas_price::Cached::new(pathfinder_context.gateway.clone());
 
     let context = pathfinder_rpc::context::RpcContext::new(
         storage.clone(),

@@ -1,25 +1,25 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Caching of `eth_gasPrice` with single request at a time refreshing.
+use starknet_gateway_client::GatewayApi;
+
+/// Caching of starknet's gas price with single request at a time refreshing.
 ///
 /// The `gasPrice` is used for `estimate_fee` when user
 /// requests for [`pathfinder_common::BlockId::Latest`] or  [`pathfinder_common::BlockId::Pending`].
 #[derive(Clone)]
 pub struct Cached {
     inner: Arc<std::sync::Mutex<Inner>>,
-    eth: Arc<dyn pathfinder_ethereum::provider::EthereumTransport + Send + Sync + 'static>,
+    gateway: starknet_gateway_client::Client,
     stale_limit: Duration,
 }
 
 impl Cached {
-    pub fn new(
-        eth: Arc<dyn pathfinder_ethereum::provider::EthereumTransport + Send + Sync + 'static>,
-    ) -> Self {
+    pub fn new(gateway: starknet_gateway_client::Client) -> Self {
         Cached {
             inner: Default::default(),
-            eth,
-            stale_limit: Duration::from_secs(10),
+            gateway,
+            stale_limit: Duration::from_secs(60),
         }
     }
 
@@ -54,20 +54,25 @@ impl Cached {
                 let tx = Arc::new(tx);
 
                 let inner = self.inner.clone();
-                let eth = self.eth.clone();
+                let gateway = self.gateway.clone();
 
                 g.next = Arc::downgrade(&tx);
 
-                // in general, asking eth_gasPrice seems to be fast enough especially as we already
-                // have a connection open because the EthereumTransport impl is being used for sync
-                // as well.
-                //
-                // it being fast enough, allows us to just coalesce the requests, but also not poll
-                // for fun while no one is using the gas estimation.
+                // Update the gas price from the starknet pending block.
                 tokio::spawn(async move {
-                    let price = match eth.gas_price().await {
-                        Ok(price) => price,
-                        Err(_e) => {
+                    use starknet_gateway_types::reply::MaybePendingBlock;
+                    let gas_price = match gateway.block(pathfinder_common::BlockId::Pending).await {
+                        Ok(b) => match b {
+                            MaybePendingBlock::Pending(b) => b.gas_price,
+                            MaybePendingBlock::Block(b) => match b.gas_price {
+                                Some(g) => g,
+                                None => {
+                                    let _ = tx.send(None);
+                                    return;
+                                }
+                            },
+                        },
+                        Err(_) => {
                             let _ = tx.send(None);
                             return;
                         }
@@ -75,9 +80,7 @@ impl Cached {
 
                     let now = std::time::Instant::now();
 
-                    let mut out = [0u8; 32];
-                    price.to_big_endian(&mut out[..]);
-                    let gas_price = ethers::types::H256::from(out);
+                    let gas_price = ethers::types::H256::from_slice(&gas_price.0.to_be_bytes());
 
                     let mut g = inner.lock().unwrap_or_else(|e| e.into_inner());
                     g.latest.replace((now, gas_price));
