@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use starknet_gateway_client::GatewayApi;
+use starknet_gateway_client::{GatewayApi, Retry};
 
 /// Caching of starknet's gas price with single request at a time refreshing.
 ///
@@ -61,18 +61,24 @@ impl Cached {
                 // Update the gas price from the starknet pending block.
                 tokio::spawn(async move {
                     use starknet_gateway_types::reply::MaybePendingBlock;
-                    let gas_price = match gateway.block(pathfinder_common::BlockId::Pending).await {
+                    let gas_price = match gateway
+                        // Don't indefinitely retry as this could block the RPC request.
+                        .block_with_retry(pathfinder_common::BlockId::Pending, Retry::Disabled)
+                        .await
+                    {
                         Ok(b) => match b {
                             MaybePendingBlock::Pending(b) => b.gas_price,
                             MaybePendingBlock::Block(b) => match b.gas_price {
                                 Some(g) => g,
                                 None => {
+                                    tracing::debug!("Gas price missing in block");
                                     let _ = tx.send(None);
                                     return;
                                 }
                             },
                         },
-                        Err(_) => {
+                        Err(reason) => {
+                            tracing::debug!(%reason, "Failed to fetch gas price");
                             let _ = tx.send(None);
                             return;
                         }
