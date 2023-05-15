@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use starknet_gateway_client::{GatewayApi, Retry};
+use starknet_gateway_client::GatewayApi;
 
 /// Caching of starknet's gas price with single request at a time refreshing.
 ///
@@ -63,7 +63,7 @@ impl Cached {
                     use starknet_gateway_types::reply::MaybePendingBlock;
                     let gas_price = match gateway
                         // Don't indefinitely retry as this could block the RPC request.
-                        .block_with_retry(pathfinder_common::BlockId::Pending, Retry::Disabled)
+                        .block_without_retry(pathfinder_common::BlockId::Pending)
                         .await
                     {
                         Ok(b) => match b {
