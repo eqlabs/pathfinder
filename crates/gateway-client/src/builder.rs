@@ -20,7 +20,7 @@ pub struct Request<'a, S: RequestState> {
     client: &'a reqwest::Client,
 }
 
-/// Describes the retry behavior of a [Request] and is specified using
+/// Describes the retry behavior of a [Request].
 #[allow(dead_code)]
 pub enum Retry {
     Enabled,

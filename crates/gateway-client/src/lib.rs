@@ -14,6 +14,8 @@ use starknet_gateway_types::{
 };
 use std::{fmt::Debug, result::Result, time::Duration};
 
+use crate::builder::Retry;
+
 mod builder;
 mod metrics;
 
@@ -23,6 +25,13 @@ mod metrics;
 pub trait GatewayApi: Sync {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         unimplemented!();
+    }
+
+    async fn block_without_retry(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        unimplemented!()
     }
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
@@ -185,6 +194,19 @@ impl Client {
         builder::Request::builder(&self.inner, self.feeder_gateway.clone())
     }
 
+    async fn block_with_retry_behaviour(
+        &self,
+        block: BlockId,
+        retry: Retry,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        self.feeder_gateway_request()
+            .get_block()
+            .with_block(block)
+            .with_retry(retry)
+            .get()
+            .await
+    }
+
     /// Returns the [network chain](Chain) this client is operating on.
     pub async fn chain(&self) -> anyhow::Result<Chain> {
         use pathfinder_common::consts::{
@@ -213,11 +235,15 @@ impl Client {
 impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.feeder_gateway_request()
-            .get_block()
-            .with_block(block)
-            .with_retry(Self::RETRY)
-            .get()
+        self.block_with_retry_behaviour(block, Self::RETRY).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn block_without_retry(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        self.block_with_retry_behaviour(block, Retry::Disabled)
             .await
     }
 
