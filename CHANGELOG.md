@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - RPC emits connection logs and warnings
+- Fee estimate mismatch between gateway and pathfinder
+  - Gateway uses a new gas price sampling algorithm which was incompatible with pathfinders.
 
 ## [0.5.4] - 2023-05-09
 
