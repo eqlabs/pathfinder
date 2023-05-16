@@ -9,11 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `cairo-lang` upgraded to 0.11.1.1
+
 ### Fixed
 
 - RPC emits connection logs and warnings
 - Fee estimate mismatch between gateway and pathfinder
   - Gateway uses a new gas price sampling algorithm which was incompatible with pathfinders.
+- Fee estimate returns error when submitting Cairo 1.0.0-rc0 classes.
 
 ## [0.5.4] - 2023-05-09
 
