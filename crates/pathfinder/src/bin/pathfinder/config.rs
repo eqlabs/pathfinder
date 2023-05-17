@@ -359,13 +359,9 @@ impl Config {
             },
             rpc_address: cli.rpc_address,
             rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
-            ws: if cli.ws {
-                Some(WebSocket {
-                    capacity: cli.ws_capacity,
-                })
-            } else {
-                None
-            },
+            ws: cli.ws.then_some(WebSocket {
+                capacity: cli.ws_capacity,
+            }),
             monitor_address: cli.monitor_address,
             network,
             poll_pending: cli.poll_pending,
