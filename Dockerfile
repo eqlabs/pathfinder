@@ -89,6 +89,11 @@ RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
     && find ${PY_PATH} -type f -a -name '*.pyc' -exec rm -rf '{}' + \
     && find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
 
+###############################
+# Stage 3: Cairo 1.0 compiler #
+###############################
+FROM starknet/cairo:1.0.0-rc0 AS cairo-compiler
+
 #######################
 # Final Stage: Runner #
 #######################
@@ -102,6 +107,7 @@ RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pat
 
 COPY --from=rust-builder /usr/src/pathfinder/pathfinder-${TARGETARCH} /usr/local/bin/pathfinder
 COPY --from=python-builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=cairo-compiler /usr/bin/starknet-compile /usr/bin/starknet-sierra-compile /usr/local/lib/python3.9/site-packages/starkware/starknet/compiler/v1/bin/
 COPY --from=python-builder /usr/local/bin/pathfinder_python_worker /usr/local/bin
 
 # Create directory and volume for persistent data
