@@ -482,7 +482,7 @@ pub(crate) mod tests {
                 test_context_with_call_handling().await;
 
             let contract_class: SierraContractClass = {
-                let definition = starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA;
+                let definition = starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_RC0_SIERRA;
                 let definition = zstd::decode_all(definition).unwrap();
                 ContractClass::from_definition_bytes(&definition)
                     .unwrap()
@@ -499,9 +499,9 @@ pub(crate) mod tests {
                     contract_class,
                     sender_address: account_address,
                     // Taken from
-                    // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=284544
+                    // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=284917
                     compiled_class_hash: CasmHash::new_or_panic(felt!(
-                        "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
+                        "0x53777791b77f8bc9587a1b02211efac8ec21e2e6359e81c633df39a115eaf5b"
                     )),
                 }),
             );

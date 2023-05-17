@@ -117,7 +117,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 31
-EXPECTED_CAIRO_VERSION = "0.11.0.2"
+EXPECTED_CAIRO_VERSION = "0.11.1.1"
 
 # used by the sqlite adapter to communicate "contract state not found, nor was the patricia tree key"
 NOT_FOUND_CONTRACT_STATE = b'{"contract_hash": "0000000000000000000000000000000000000000000000000000000000000000", "nonce": "0x0", "storage_commitment_tree": {"height": 251, "root": "0000000000000000000000000000000000000000000000000000000000000000"}}'
@@ -235,7 +235,7 @@ class Call(Command):
     verb: ClassVar[Verb] = Verb.CALL
 
     contract_address: int = field(metadata=fields.contract_address_metadata)
-    calldata: List[int] = field(metadata=fields.call_data_as_hex_metadata)
+    calldata: List[int] = field(metadata=fields.calldata_as_hex_metadata)
     entry_point_selector: Optional[int] = field(
         default=None, metadata=fields.optional_entry_point_selector_metadata
     )
@@ -342,7 +342,7 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
             "dev mode enabled, expect long tracebacks; do not use in production!"
         )
 
-    contract_class_cache = LRUCache(maxsize=128)
+    compiled_class_cache = LRUCache(maxsize=128)
 
     for line in input_gen:
         if line == "" or line.startswith("#"):
@@ -364,7 +364,7 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
             connection.execute("BEGIN")
 
             [verb, output, inner_timings] = loop_inner(
-                connection, command, contract_class_cache
+                connection, command, compiled_class_cache
             )
 
             # this is more backwards compatible dictionary union
@@ -429,7 +429,7 @@ def report_failed(logger, command, e):
 
 
 def loop_inner(
-    connection: sqlite3.Connection, command: Command, contract_class_cache=None
+    connection: sqlite3.Connection, command: Command, compiled_class_cache=None
 ):
     logger = Logger()
 
@@ -437,8 +437,8 @@ def loop_inner(
         raise UnexpectedSchemaVersion
 
     # for easier test setup we default to no cross-command caching
-    if contract_class_cache is None:
-        contract_class_cache = {}
+    if compiled_class_cache is None:
+        compiled_class_cache = {}
 
     at_block = int_hash_or_latest(command.at_block)
 
@@ -498,7 +498,7 @@ def loop_inner(
     async_state = CachedState(
         block_info=block_info,
         state_reader=state_reader,
-        contract_class_cache=contract_class_cache,
+        compiled_class_cache=compiled_class_cache,
     )
 
     apply_pending(async_state, pending_updates, pending_deployed, pending_nonces)
@@ -1021,9 +1021,9 @@ async def simulate_account_tx(
             transaction.contract_class,
             allowed_libfuncs_list_name="experimental_v0.1.0",
         )
-        state.contract_classes[transaction.compiled_class_hash] = compiled_class
+        state.compiled_classes[transaction.compiled_class_hash] = compiled_class
     elif isinstance(transaction, DeprecatedDeclare):
-        state.contract_classes[
+        state.compiled_classes[
             internal_transaction.class_hash
         ] = transaction.contract_class
 
@@ -1156,7 +1156,6 @@ def create_general_config(chain_id: StarknetChainId) -> StarknetGeneralConfig:
                 "chain_id": chain_id.value,
                 "fee_token_address": ETHER_L2_TOKEN_ADDRESS,
             },
-            "tx_version": constants.TRANSACTION_VERSION,
             "tx_commitment_tree_height": constants.TRANSACTION_COMMITMENT_TREE_HEIGHT,
             "validate_max_n_steps": DEFAULT_VALIDATE_MAX_STEPS,
         }
