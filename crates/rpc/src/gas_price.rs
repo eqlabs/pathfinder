@@ -86,7 +86,11 @@ impl Cached {
 
                     let now = std::time::Instant::now();
 
-                    let gas_price = ethers::types::H256::from_slice(&gas_price.0.to_be_bytes());
+                    let gas_price = {
+                        let mut g = [0u8; 32];
+                        g[16..].copy_from_slice(&gas_price.0.to_be_bytes());
+                        ethers::types::H256::from_slice(&g)
+                    };
 
                     let mut g = inner.lock().unwrap_or_else(|e| e.into_inner());
                     g.latest.replace((now, gas_price));
