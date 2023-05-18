@@ -412,17 +412,6 @@ pub mod transaction {
                 Transaction::L1Handler(t) => t.contract_address,
             }
         }
-
-        pub fn is_l1_handler_or_legacy_l1_handler(&self) -> bool {
-            match self {
-                Self::Invoke(InvokeTransaction::V0(i)) => match i.entry_point_type {
-                    Some(entry_point_type) if entry_point_type == EntryPointType::L1Handler => true,
-                    Some(_) | None => false,
-                },
-                Self::L1Handler(_) => true,
-                _ => false,
-            }
-        }
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
