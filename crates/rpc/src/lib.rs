@@ -138,8 +138,11 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
     }
 
     pub fn get_ws_senders(&self) -> WebsocketSenders {
+        // For parts in code that require WebsocketSenders
         match &self.ws_senders {
             Some(txs) => txs.clone(),
+            // Returns WebsocketSenders instance for code to work as is.
+            // Nothing is actually done coz no one can subscribe.
             _ => WebsocketSenders::with_capacity(1),
         }
     }
