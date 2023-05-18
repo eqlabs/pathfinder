@@ -32,7 +32,7 @@ pub fn verify(
         // Worse still those are invokes in old snapshots but currently are served as
         // L1 handler txns.
         ChainId::MAINNET => {
-            if block_number.get() <= 4399 && txn.is_l1_handler_or_legacy_l1_handler() {
+            if block_number.get() <= 4399 && matches!(txn, Transaction::L1Handler(_)) {
                 // Unable to compute, skipping
                 return VerifyResult::NotVerifiable;
             } else {
@@ -40,7 +40,7 @@ pub fn verify(
             }
         }
         ChainId::TESTNET => {
-            if block_number.get() <= 306007 && txn.is_l1_handler_or_legacy_l1_handler() {
+            if block_number.get() <= 306007 && matches!(txn, Transaction::L1Handler(_)) {
                 // Unable to compute, skipping
                 return VerifyResult::NotVerifiable;
             } else {
