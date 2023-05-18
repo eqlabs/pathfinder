@@ -7,6 +7,16 @@ pub struct Felt(stark_hash::Felt);
 impl rusqlite::ToSql for Felt {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
         use rusqlite::types::{ToSqlOutput, ValueRef};
+        Ok(ToSqlOutput::Borrowed(ValueRef::Blob(self.0.as_be_bytes())))
+    }
+}
+
+#[derive(Copy, Clone, serde::Deserialize)]
+pub struct CompressedFelt(stark_hash::Felt);
+
+impl rusqlite::ToSql for CompressedFelt {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        use rusqlite::types::{ToSqlOutput, ValueRef};
         let bytes = self.0.as_be_bytes();
         let num_zeroes = bytes.iter().take_while(|v| **v == 0).count();
         Ok(ToSqlOutput::Borrowed(ValueRef::Blob(&bytes[num_zeroes..])))
@@ -250,7 +260,7 @@ mod types {
     //! Copy of state update types for deserialization so that this migration is
     //! not coupled to any external type changes.
 
-    use super::Felt;
+    use super::{CompressedFelt, Felt};
     use serde::Deserialize;
 
     #[derive(Deserialize)]
@@ -286,7 +296,7 @@ mod types {
     pub struct StorageDiff {
         pub address: Felt,
         pub key: Felt,
-        pub value: Felt,
+        pub value: CompressedFelt,
     }
 
     #[derive(Deserialize)]
@@ -313,7 +323,7 @@ mod types {
     #[serde(deny_unknown_fields)]
     pub struct NonceUpdate {
         pub contract_address: Felt,
-        pub nonce: Felt,
+        pub nonce: CompressedFelt,
     }
 
     #[derive(Deserialize)]
