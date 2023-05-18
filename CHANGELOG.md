@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RPC emits connection logs and warnings
 - Fee estimate mismatch between gateway and pathfinder
   - Gateway uses a new gas price sampling algorithm which was incompatible with pathfinders.
+- Historic L1 handler transactions are served as Invoke V0
+  - Older databases contain L1 handler transactions from before L1 handler was a specific transaction type. These were
+    stored as Invoke V0. These are now correctly identified as being L1 Handler transactions.
 
 ## [0.5.4] - 2023-05-09
 

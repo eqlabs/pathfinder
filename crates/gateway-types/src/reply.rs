@@ -301,7 +301,7 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
@@ -318,6 +318,65 @@ pub mod transaction {
         Invoke(InvokeTransaction),
         #[serde(rename = "L1_HANDLER")]
         L1Handler(L1HandlerTransaction),
+    }
+
+    // This manual deserializtion is a work-around for L1 handler transactions
+    // historically being served as Invoke V0. However, the gateway has retroactively
+    // changed these to L1 handlers. This means older databases will have these as Invoke
+    // but modern one's as L1 handler. This causes confusion, so we convert these old Invoke
+    // to L1 handler manually.
+    //
+    // The alternative is to do a costly database migration which involves opening every tx.
+    //
+    // This work-around may be removed once we are certain all databases no longer contain these
+    // transactions, which will likely only occur after either a migration, or regenesis.
+    impl<'de> Deserialize<'de> for Transaction {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            /// Copy of [Transaction] to deserialize into, before converting to [Transaction]
+            /// with the potential Invoke V0 -> L1 handler cast.
+            #[derive(Deserialize)]
+            #[serde(tag = "type", deny_unknown_fields)]
+            pub enum InnerTransaction {
+                #[serde(rename = "DECLARE")]
+                Declare(DeclareTransaction),
+                #[serde(rename = "DEPLOY")]
+                Deploy(DeployTransaction),
+                #[serde(rename = "DEPLOY_ACCOUNT")]
+                DeployAccount(DeployAccountTransaction),
+                #[serde(rename = "INVOKE_FUNCTION")]
+                Invoke(InvokeTransaction),
+                #[serde(rename = "L1_HANDLER")]
+                L1Handler(L1HandlerTransaction),
+            }
+
+            let tx = InnerTransaction::deserialize(deserializer)?;
+            let tx = match tx {
+                InnerTransaction::Declare(x) => Transaction::Declare(x),
+                InnerTransaction::Deploy(x) => Transaction::Deploy(x),
+                InnerTransaction::DeployAccount(x) => Transaction::DeployAccount(x),
+                InnerTransaction::Invoke(InvokeTransaction::V0(i))
+                    if i.entry_point_type == Some(EntryPointType::L1Handler) =>
+                {
+                    let l1_handler = L1HandlerTransaction {
+                        contract_address: i.sender_address,
+                        entry_point_selector: i.entry_point_selector,
+                        nonce: TransactionNonce::ZERO,
+                        calldata: i.calldata,
+                        transaction_hash: i.transaction_hash,
+                        version: TransactionVersion::ZERO,
+                    };
+
+                    Transaction::L1Handler(l1_handler)
+                }
+                InnerTransaction::Invoke(x) => Transaction::Invoke(x),
+                InnerTransaction::L1Handler(x) => Transaction::L1Handler(x),
+            };
+
+            Ok(tx)
+        }
     }
 
     impl Transaction {
@@ -351,17 +410,6 @@ pub mod transaction {
                     InvokeTransaction::V1(t) => t.sender_address,
                 },
                 Transaction::L1Handler(t) => t.contract_address,
-            }
-        }
-
-        pub fn is_l1_handler_or_legacy_l1_handler(&self) -> bool {
-            match self {
-                Self::Invoke(InvokeTransaction::V0(i)) => match i.entry_point_type {
-                    Some(entry_point_type) if entry_point_type == EntryPointType::L1Handler => true,
-                    Some(_) | None => false,
-                },
-                Self::L1Handler(_) => true,
-                _ => false,
             }
         }
     }
@@ -923,6 +971,35 @@ mod tests {
         #[test]
         fn transaction() {
             serde_json::from_str::<Transaction>(v0_8_2::transaction::INVOKE).unwrap();
+        }
+
+        #[test]
+        fn legacy_l1_handler_is_invoke() {
+            // In the times before L1 Handler became an official tx variant,
+            // these were instead served as Invoke V0 txs. This test ensures
+            // that we correctly map these historic txs to L1 Handler.
+            use super::super::transaction::Transaction as TransactionVariant;
+
+            let json = serde_json::json!({
+                "type":"INVOKE_FUNCTION",
+                "calldata":[
+                    "580042449035822898911647251144793933582335302582",
+                    "3241583063705060367416058138609427972824194056099997457116843686898315086623",
+                    "2000000000000000000",
+                    "0",
+                    "725188533692944996190142472767755401716439215485"
+                ],
+                "contract_address":"0x1108cdbe5d82737b9057590adaf97d34e74b5452f0628161d237746b6fe69e",
+                "entry_point_selector":"0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5",
+                "entry_point_type":"L1_HANDLER",
+                "max_fee":"0x0",
+                "signature":[],
+                "transaction_hash":"0x70cad5b0d09ff2b252d3bf040708a89e6f175715f5f550e8d8161fabef01261"
+            });
+
+            let tx: TransactionVariant = serde_json::from_value(json).unwrap();
+
+            assert_matches::assert_matches!(tx, TransactionVariant::L1Handler(_));
         }
     }
 }
