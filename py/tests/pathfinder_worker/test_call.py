@@ -27,7 +27,6 @@ from starkware.starkware_utils.error_handling import StarkException
 
 from pathfinder_worker.call import (
     EXPECTED_SCHEMA_REVISION,
-    NOT_FOUND_CONTRACT_STATE,
     Call,
     Command,
     EstimateFee,
@@ -197,7 +196,8 @@ def inmemory_with_tables():
 
         CREATE TABLE class_definitions (
             hash       BLOB PRIMARY KEY,
-            definition BLOB
+            definition BLOB,
+            block_number INTEGER REFERENCES starknet_blocks(number) NOT NULL
         );
 
         -- This is missing the foreign key definition
@@ -245,6 +245,27 @@ def inmemory_with_tables():
         CREATE TABLE class_commitment_leaves (
             hash                BLOB    PRIMARY KEY NOT NULL,
             compiled_class_hash BLOB    NOT NULL
+        );
+
+        -- Contains all canonical deployed contracts and replaced class information
+        CREATE TABLE contract_updates (
+            block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+            contract_address BLOB NOT NULL,
+            class_hash BLOB NOT NULL
+        );
+
+        -- Contains the nonce updates of all canonical blocks
+        CREATE TABLE nonce_updates (
+            block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+            contract_address BLOB NOT NULL,
+            nonce BLOB NOT NULL
+        );
+
+        CREATE TABLE storage_updates (
+            block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+            contract_address BLOB NOT NULL,
+            storage_address BLOB NOT NULL,
+            storage_value BLOB NOT NULL
         );
         """
     )
@@ -372,7 +393,12 @@ def populate_test_contract_with_132_on_3(con):
     path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
     )
-    declare_class(cur, class_hash, path)
+    declare_class(cur, class_hash, path, 1)
+
+    cur.execute(
+        "insert into contract_updates (contract_address, block_number, class_hash) values (?, ?, ?)",
+        [felt_to_bytes(contract_address), 1, felt_to_bytes(class_hash)],
+    )
 
     # contract storage
     root_node = EdgeNode(path=132, path_length=251, child=LeafNode(value=3))
@@ -394,6 +420,11 @@ def populate_test_contract_with_132_on_3(con):
             felt_to_bytes(class_hash),
             felt_to_bytes(contract_root),
         ],
+    )
+
+    cur.execute(
+        "insert into storage_updates (contract_address, storage_address, block_number, storage_value) values (?, ?, ?, ?)",
+        [felt_to_bytes(contract_address), felt_to_bytes(132), 1, felt_to_bytes(3)],
     )
 
     # global state tree
@@ -1003,24 +1034,6 @@ def test_call_on_reorgged_pending_block():
             assert expected == str(e.code), f"{nth + 1}th example"
 
 
-def test_static_returned_not_found_contract_state():
-    # this is quite silly that we need to communicate serialized default values instead of None for not found values
-    from starkware.starknet.business_logic.fact_state.contract_state_objects import (
-        ContractState,
-    )
-    from starkware.starkware_utils.commitment_tree.patricia_tree.patricia_tree import (
-        PatriciaTree,
-    )
-
-    dumped = (
-        ContractState(b"\x00" * 32, PatriciaTree(b"\x00" * 32, 251), 0)
-        .dumps(sort_keys=True)
-        .encode("utf-8")
-    )
-    # test is to make sure the static value is up to date between versions
-    assert dumped == NOT_FOUND_CONTRACT_STATE
-
-
 def test_nonce_with_dummy():
     con = inmemory_with_tables()
     (
@@ -1035,7 +1048,20 @@ def test_nonce_with_dummy():
     cur = con.execute("BEGIN")
 
     class_hash = 0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
-    declare_class(cur, class_hash, path)
+    declare_class(cur, class_hash, path, 1)
+
+    account_contract_address = 0x123
+
+    # deploy account contract
+    cur.execute(
+        "insert into contract_updates (contract_address, block_number, class_hash) values (?, ?, ?)",
+        [felt_to_bytes(account_contract_address), 2, felt_to_bytes(class_hash)],
+    )
+    # nonce is updated to 1 on block 3
+    cur.execute(
+        "insert into nonce_updates (contract_address, block_number, nonce) values (?, ?, ?)",
+        [felt_to_bytes(account_contract_address), 3, felt_to_bytes(1)],
+    )
 
     # contract states (storage is empty for account contract)
     account_contract_state_hash_with_nonce_0 = calculate_contract_state_hash(
@@ -1079,12 +1105,12 @@ def test_nonce_with_dummy():
 
     # global tree
     account_contract_node_with_nonce_0 = EdgeNode(
-        path=0x123,
+        path=account_contract_address,
         path_length=250,
         child=LeafNode(value=account_contract_state_hash_with_nonce_0),
     )
     account_contract_node_with_nonce_1 = EdgeNode(
-        path=0x123,
+        path=account_contract_address,
         path_length=250,
         child=LeafNode(value=account_contract_state_hash_with_nonce_1),
     )
@@ -1294,7 +1320,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
     sierra_class_hash = (
         0x4E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C
     )
-    declare_class(cur, sierra_class_hash, sierra_class_path)
+    declare_class(cur, sierra_class_hash, sierra_class_path, 1)
 
     dummy_account_contract_path = test_relative_path(
         "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
@@ -1302,7 +1328,9 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
     dummy_account_contract_class_hash = (
         0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
     )
-    declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
+    declare_class(
+        cur, dummy_account_contract_class_hash, dummy_account_contract_path, 1
+    )
 
     # CASM class
     compiled_class_path = test_relative_path(
@@ -1391,6 +1419,23 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
                 sierra_contract_node.serialize(),
             ),
             (felt_to_bytes(storage_root_node.hash()), storage_root_node.serialize()),
+        ],
+    )
+
+    # Deploy contracts
+    cur.executemany(
+        "insert into contract_updates (contract_address, block_number, class_hash) values (?, ?, ?)",
+        [
+            (
+                felt_to_bytes(dummy_account_contract_address),
+                1,
+                felt_to_bytes(dummy_account_contract_class_hash),
+            ),
+            (
+                felt_to_bytes(sierra_contract_address),
+                1,
+                felt_to_bytes(sierra_class_hash),
+            ),
         ],
     )
 
@@ -1827,16 +1872,15 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
     ]
 
 
-def declare_class(cur: sqlite3.Cursor, class_hash: int, class_definition_path: str):
+def declare_class(
+    cur: sqlite3.Cursor, class_hash: int, class_definition_path: str, block_number: int
+):
     with open(class_definition_path, "rb") as f:
         contract_definition = f.read()
 
         cur.execute(
-            "insert into class_definitions (hash, definition) values (?, ?)",
-            [
-                felt_to_bytes(class_hash),
-                contract_definition,
-            ],
+            "insert into class_definitions (hash, definition, block_number) values (?, ?, ?)",
+            [felt_to_bytes(class_hash), contract_definition, block_number],
         )
 
 
@@ -2133,7 +2177,9 @@ def test_simulate_transaction_succeeds():
         0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
     )
     cur = con.execute("BEGIN")
-    declare_class(cur, dummy_account_contract_class_hash, dummy_account_contract_path)
+    declare_class(
+        cur, dummy_account_contract_class_hash, dummy_account_contract_path, 1
+    )
 
     con.execute(
         """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",

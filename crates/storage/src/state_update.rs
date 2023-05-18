@@ -11,17 +11,17 @@ pub fn insert_canonical_state_diff(
     state_diff: &StateDiff,
 ) -> anyhow::Result<()> {
     let mut insert_nonce = tx
-        .prepare(
+        .prepare_cached(
             "INSERT INTO nonce_updates (block_number, contract_address, nonce) VALUES (?, ?, ?)",
         )
         .context("Preparing nonce insert statement")?;
 
     let mut insert_storage = tx
-        .prepare("INSERT INTO storage_updates (block_number, contract_address, storage_address, storage_value) VALUES (?, ?, ?, ?)")
+        .prepare_cached("INSERT INTO storage_updates (block_number, contract_address, storage_address, storage_value) VALUES (?, ?, ?, ?)")
         .context("Preparing nonce insert statement")?;
 
     let mut insert_contract = tx
-        .prepare("INSERT INTO contract_updates (block_number, contract_address, class_hash) VALUES (?, ?, ?)")
+        .prepare_cached("INSERT INTO contract_updates (block_number, contract_address, class_hash) VALUES (?, ?, ?)")
         .context("Preparing contract insert statement")?;
 
     // Insert contract deployments. Doing this first ensures that subsequent sections will be

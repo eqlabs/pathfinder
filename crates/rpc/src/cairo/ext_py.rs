@@ -452,8 +452,10 @@ mod tests {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        ContractCodeTable, ContractsStateTable, JournalMode, StarknetBlock, StarknetBlocksTable,
-        Storage,
+        insert_canonical_state_diff,
+        types::state_update::{DeployedContract, StateDiff, StorageDiff},
+        CanonicalBlocksTable, ContractCodeTable, ContractsStateTable, JournalMode, StarknetBlock,
+        StarknetBlocksTable, Storage,
     };
     use rusqlite::params;
     use stark_hash::Felt;
@@ -496,7 +498,6 @@ mod tests {
         let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
 
         let tx = conn.transaction().unwrap();
 
@@ -596,7 +597,7 @@ mod tests {
 
         use ethers::types::H256;
 
-        const EXPECTED_GAS_CONSUMED: u64 = 1_266;
+        const EXPECTED_GAS_CONSUMED: u64 = 0xe82;
 
         for (gas_price_u64, block, use_past_block) in [
             (1, latest_block_number.into(), true),
@@ -643,7 +644,6 @@ mod tests {
         let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
 
         let tx = conn.transaction().unwrap();
 
@@ -711,7 +711,6 @@ mod tests {
         let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
 
         let tx = conn.transaction().unwrap();
 
@@ -770,7 +769,6 @@ mod tests {
         let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         let mut conn = s.connection().unwrap();
-        conn.execute("PRAGMA foreign_keys = off", []).unwrap();
 
         let tx = conn.transaction().unwrap();
 
@@ -858,14 +856,13 @@ mod tests {
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
 
-        let (test_contract_state_hash, test_contract_class_hash) = deploy_contract(
-            tx,
-            &test_contract_definition,
-            &[(
-                StorageAddress::new_or_panic(felt!("0x84")),
-                StorageValue(felt!("0x3")),
-            )],
-        );
+        let storage_updates = [(
+            StorageAddress::new_or_panic(felt!("0x84")),
+            StorageValue(felt!("0x3")),
+        )];
+
+        let (test_contract_state_hash, test_contract_class_hash) =
+            deploy_contract(tx, &test_contract_definition, &storage_updates);
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
@@ -879,39 +876,49 @@ mod tests {
             .unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
+        let block = StarknetBlock {
+            number: BlockNumber::new_or_panic(1),
+            hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
+            state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
+            timestamp: BlockTimestamp::new_or_panic(1),
+            gas_price: GasPrice(1),
+            sequencer_address: SequencerAddress(Felt::ZERO),
+            transaction_commitment: None,
+            event_commitment: None,
+        };
+
         // create a block with the global root
         StarknetBlocksTable::insert(
             tx,
-            &StarknetBlock {
-                number: BlockNumber::new_or_panic(1),
-                hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
-                state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-                timestamp: BlockTimestamp::new_or_panic(1),
-                gas_price: GasPrice(1),
-                sequencer_address: SequencerAddress(Felt::ZERO),
-                transaction_commitment: None,
-                event_commitment: None,
-            },
+            &block,
             &StarknetVersion::default(),
             storage_commitment,
             class_commitment,
         )
         .unwrap();
 
-        if false {
-            let mut stmt = tx
-                .prepare("select starknet_block_hash from global_state")
-                .unwrap();
-            let mut rows = stmt.query([]).unwrap();
-            while let Some(row) = rows.next().unwrap() {
-                let first = row.get_ref(0).expect("get column");
+        CanonicalBlocksTable::insert(tx, block.number, block.hash).unwrap();
 
-                println!("{first:?}");
+        let state_diff = StateDiff {
+            storage_diffs: storage_updates
+                .iter()
+                .map(|(storage_address, value)| StorageDiff {
+                    address: test_contract_address,
+                    key: *storage_address,
+                    value: *value,
+                })
+                .collect(),
+            declared_contracts: vec![],
+            deployed_contracts: vec![DeployedContract {
+                address: test_contract_address,
+                class_hash: test_contract_class_hash,
+            }],
+            nonces: vec![],
+            declared_sierra_classes: vec![],
+            replaced_classes: vec![],
+        };
 
-                let first = first.as_blob().expect("cannot read it as a blob");
-                println!("{}", hex::encode(first));
-            }
-        }
+        insert_canonical_state_diff(tx, block.number, &state_diff).unwrap();
 
         test_contract_class_hash
     }
@@ -939,39 +946,42 @@ mod tests {
             .unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
+        let block = StarknetBlock {
+            number: BlockNumber::new_or_panic(1),
+            hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
+            state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
+            timestamp: BlockTimestamp::new_or_panic(1),
+            gas_price: GasPrice(1),
+            sequencer_address: SequencerAddress(Felt::ZERO),
+            transaction_commitment: None,
+            event_commitment: None,
+        };
+
         // create a block with the global root
         StarknetBlocksTable::insert(
             tx,
-            &StarknetBlock {
-                number: BlockNumber::new_or_panic(1),
-                hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
-                state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-                timestamp: BlockTimestamp::new_or_panic(1),
-                gas_price: GasPrice(1),
-                sequencer_address: SequencerAddress(Felt::ZERO),
-                transaction_commitment: None,
-                event_commitment: None,
-            },
+            &block,
             &StarknetVersion::default(),
             storage_commitment,
             class_commitment,
         )
         .unwrap();
 
-        if false {
-            let mut stmt = tx
-                .prepare("select starknet_block_hash from global_state")
-                .unwrap();
-            let mut rows = stmt.query([]).unwrap();
-            while let Some(row) = rows.next().unwrap() {
-                let first = row.get_ref(0).expect("get column");
+        CanonicalBlocksTable::insert(tx, block.number, block.hash).unwrap();
 
-                println!("{first:?}");
+        let state_diff = StateDiff {
+            storage_diffs: vec![],
+            declared_contracts: vec![],
+            deployed_contracts: vec![DeployedContract {
+                address: account_contract_address,
+                class_hash: account_contract_class_hash,
+            }],
+            nonces: vec![],
+            declared_sierra_classes: vec![],
+            replaced_classes: vec![],
+        };
 
-                let first = first.as_blob().expect("cannot read it as a blob");
-                println!("{}", hex::encode(first));
-            }
-        }
+        insert_canonical_state_diff(tx, block.number, &state_diff).unwrap();
 
         account_contract_class_hash
     }
