@@ -70,7 +70,7 @@ fn fetch_block_headers(
         headers.push(p2p_proto::common::BlockHeader {
             parent_block_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
             block_number: block.number.get(),
-            global_state_root: block.root.0,
+            global_state_root: block.state_commmitment.0,
             sequencer_address: block.sequencer_address.0,
             block_timestamp: block.timestamp.get(),
             transaction_count: transaction_count

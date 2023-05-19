@@ -22,7 +22,7 @@ pub async fn start(
     listen_on: Multiaddr,
     bootstrap_addresses: &[Multiaddr],
 ) -> anyhow::Result<(Arc<RwLock<Peers>>, p2p::Client, tokio::task::JoinHandle<()>)> {
-    let keypair = Keypair::Ed25519(p2p::libp2p::identity::ed25519::Keypair::generate());
+    let keypair = Keypair::generate_ed25519();
 
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "Starting P2P");
