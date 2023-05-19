@@ -211,18 +211,18 @@ pub async fn sync(
             class_declaration: t_declare,
         };
 
+        let block_header = BlockHeader::from(block.as_ref());
+
         tx_event
             .send(Event::Update(
-                (block.clone(), commitments),
+                (block, commitments),
                 Box::new(state_update),
                 timings,
             ))
             .await
             .context("Event channel closed")?;
 
-        websocket_txs
-            .new_head
-            .send_if_receiving(BlockHeader::new(*block.clone()))
+        websocket_txs.new_head.send_if_receiving(block_header)
     }
 }
 
