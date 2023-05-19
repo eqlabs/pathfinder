@@ -17,12 +17,12 @@ pub mod websocket;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
+use crate::websocket::types::WebsocketSenders;
 use context::RpcContext;
 use http::Request;
 use hyper::Body;
 use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use pathfinder_common::AllowedOrigins;
-use starknet_gateway_types::websocket::WebsocketSenders;
 use std::num::NonZeroUsize;
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;

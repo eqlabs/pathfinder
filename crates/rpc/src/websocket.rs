@@ -1,12 +1,11 @@
 use crate::module::Module;
 
-use starknet_gateway_types::websocket::WebsocketSenders;
-
 pub mod subscription;
+pub mod types;
 
 pub fn register_subscriptions(
     module: Module,
-    ws_broadcast_txs: WebsocketSenders,
+    ws_broadcast_txs: types::WebsocketSenders,
 ) -> anyhow::Result<Module> {
     let module = module.register_subscription(
         "pathfinder_subscribe_newHeads",

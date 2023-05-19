@@ -4,10 +4,9 @@ use jsonrpsee::core::server::rpc_module::Methods;
 use jsonrpsee::types::SubscriptionResult;
 use jsonrpsee::SubscriptionSink;
 
-use starknet_gateway_types::websocket::SubscriptionBroadcaster;
-
 use crate::context::RpcContext;
 use crate::error::RpcError;
+use crate::websocket::types::SubscriptionBroadcaster;
 
 /// A builder for registering a set of JSON-RPC methods.
 pub struct Module(jsonrpsee::RpcModule<RpcContext>);

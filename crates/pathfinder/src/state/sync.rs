@@ -16,6 +16,7 @@ use pathfinder_merkle_tree::{
 };
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
+    websocket::types::WebsocketSenders,
     SyncState,
 };
 use pathfinder_storage::{
@@ -33,7 +34,6 @@ use starknet_gateway_types::{
     reply::{
         state_update::DeployedContract, Block, MaybePendingBlock, PendingStateUpdate, StateUpdate,
     },
-    websocket::WebsocketSenders,
 };
 
 use std::sync::Arc;
@@ -1073,7 +1073,7 @@ mod tests {
         EthereumTransactionHash, EthereumTransactionIndex, GasPrice, SequencerAddress,
         StarknetVersion, StateCommitment, StorageCommitment,
     };
-    use pathfinder_rpc::SyncState;
+    use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::{
         types::{CompressedCasmClass, CompressedContract},
         CasmClassTable, ContractCodeTable, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
@@ -1081,9 +1081,7 @@ mod tests {
     };
     use stark_hash::Felt;
     use starknet_gateway_client::GatewayApi;
-    use starknet_gateway_types::{
-        error::SequencerError, pending::PendingData, reply, websocket::WebsocketSenders,
-    };
+    use starknet_gateway_types::{error::SequencerError, pending::PendingData, reply};
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
 

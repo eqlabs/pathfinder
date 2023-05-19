@@ -1,8 +1,8 @@
 use crate::context::RpcContext;
+use crate::websocket::types::{BlockHeader, SubscriptionBroadcaster};
 use jsonrpsee::core::error::SubscriptionClosed;
 use jsonrpsee::types::error::SubscriptionEmptyError;
 use jsonrpsee::SubscriptionSink;
-use starknet_gateway_types::websocket::{BlockHeader, SubscriptionBroadcaster};
 use tokio_stream::wrappers::BroadcastStream;
 
 pub fn subscribe_new_heads(

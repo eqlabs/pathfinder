@@ -1,5 +1,4 @@
 // Types used for web socket subscription events
-use crate::reply::{Block, Status};
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress, StarknetVersion,
     StateCommitment,
@@ -7,6 +6,7 @@ use pathfinder_common::{
 use pathfinder_serde::GasPriceAsHexStr;
 use serde::Deserialize;
 use serde_with::serde_as;
+use starknet_gateway_types::reply::{Block, Status};
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone)]
@@ -43,30 +43,18 @@ pub struct BlockHeader {
     pub starknet_version: StarknetVersion,
 }
 
-impl BlockHeader {
-    pub fn new(block: Block) -> BlockHeader {
-        let Block {
-            block_hash,
-            block_number,
-            gas_price,
-            parent_block_hash,
-            sequencer_address,
-            state_commitment,
-            status,
-            timestamp,
-            starknet_version,
-            ..
-        } = block;
-        BlockHeader {
-            block_hash,
-            block_number,
-            gas_price,
-            parent_block_hash,
-            sequencer_address,
-            state_commitment,
-            status,
-            timestamp,
-            starknet_version,
+impl From<&Block> for BlockHeader {
+    fn from(b: &Block) -> Self {
+        Self {
+            block_hash: b.block_hash,
+            block_number: b.block_number,
+            gas_price: b.gas_price,
+            parent_block_hash: b.parent_block_hash,
+            sequencer_address: b.sequencer_address,
+            state_commitment: b.state_commitment,
+            status: b.status,
+            timestamp: b.timestamp,
+            starknet_version: b.starknet_version.clone(),
         }
     }
 }
