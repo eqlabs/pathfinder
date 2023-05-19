@@ -132,7 +132,7 @@ jobs:
       # Integration tests have to be called explicitly
       - name: Execute tests
         run: |
-          timeout 25m cargo test --all-targets --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
+          timeout 25m cargo test --all-targets --all-features --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
           timeout 3m cargo test --test integration* --features test-utils --locked --profile stripdebuginfo
 
   clippy:
@@ -146,7 +146,7 @@ jobs:
       - name: Install protoc
         run: |
           sudo apt-get install -y protobuf-compiler
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
 
   rustfmt:
     runs-on: ubuntu-latest
