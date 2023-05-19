@@ -1555,9 +1555,9 @@ def test_estimate_fee_for_sierra_invoke_function_through_account():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=3715,
+            gas_consumed=3716,
             gas_price=1,
-            overall_fee=3715,
+            overall_fee=3716,
         )
     ]
 
@@ -1691,9 +1691,9 @@ def test_estimate_fee_for_deploy_account():
         ),
         # INVOKE_FUNCTION through deployed account
         FeeEstimation(
-            gas_consumed=3715,
+            gas_consumed=3716,
             gas_price=1,
-            overall_fee=3715,
+            overall_fee=3716,
         ),
     ]
 
@@ -1868,7 +1868,7 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
         # DECLARE an account contract class
         FeeEstimation(overall_fee=1251, gas_price=1, gas_consumed=1251),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        FeeEstimation(overall_fee=3098, gas_price=1, gas_consumed=3098),
+        FeeEstimation(overall_fee=3099, gas_price=1, gas_consumed=3099),
     ]
 
 
