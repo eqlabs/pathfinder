@@ -4,7 +4,7 @@ use pathfinder_common::{
     StarknetVersion, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 /// Used to deserialize replies to Starknet block requests.
@@ -710,8 +710,8 @@ pub enum MaybePendingStateUpdate {
     Pending(PendingStateUpdate),
 }
 
-/// Used to deserialize replies to Starknet state update requests except for the pending one.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+/// Used to deserialize replies to StarkNet state update requests except for the pending one.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
     pub block_hash: BlockHash,
@@ -757,13 +757,13 @@ pub mod state_update {
         CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
         StorageValue,
     };
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
     use std::collections::HashMap;
 
     /// L2 state diff.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
@@ -776,7 +776,7 @@ pub mod state_update {
     }
 
     /// L2 storage diff.
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct StorageDiff {
         pub key: StorageAddress,
@@ -784,7 +784,7 @@ pub mod state_update {
     }
 
     /// L2 contract data within state diff.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct DeployedContract {
         pub address: ContractAddress,
@@ -795,7 +795,7 @@ pub mod state_update {
     }
 
     /// Describes a newly declared class. Maps Sierra class hash to a Casm hash.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct DeclaredSierraClass {
         pub class_hash: SierraHash,
@@ -803,7 +803,7 @@ pub mod state_update {
     }
 
     /// Describes a newly replaced class. Maps contract address to a new class.
-    #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     pub struct ReplacedClass {
         pub address: ContractAddress,
