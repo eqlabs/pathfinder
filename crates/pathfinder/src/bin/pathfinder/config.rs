@@ -4,6 +4,7 @@ use pathfinder_storage::JournalMode;
 use reqwest::Url;
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
@@ -55,6 +56,22 @@ Examples:
         env = "PATHFINDER_HTTP_RPC_ADDRESS"
     )]
     rpc_address: SocketAddr,
+
+    #[arg(
+        long = "rpc.websocket",
+        long_help = "Enable RPC WebSocket transport",
+        default_value = "false",
+        env = "PATHFINDER_RPC_WEBSOCKET"
+    )]
+    ws: bool,
+
+    #[arg(
+        long = "rpc.websocket.capacity",
+        long_help = "Maximum number of websocket subscriptions per subscription type",
+        default_value = "100",
+        env = "PATHFINDER_RPC_WEBSOCKET_CAPACITY"
+    )]
+    ws_capacity: NonZeroUsize,
 
     #[arg(
         long = "rpc.cors-domains",
@@ -255,12 +272,17 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
+    pub ws: Option<WebSocket>,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroU32,
+}
+
+pub struct WebSocket {
+    pub capacity: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -337,6 +359,9 @@ impl Config {
             },
             rpc_address: cli.rpc_address,
             rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
+            ws: cli.ws.then_some(WebSocket {
+                capacity: cli.ws_capacity,
+            }),
             monitor_address: cli.monitor_address,
             network,
             poll_pending: cli.poll_pending,
@@ -363,7 +388,7 @@ mod tests {
         let not_url = "not_url".to_string();
         let with_path = "http://a.com/path".to_string();
         let with_query = "http://a.com/?query=x".to_string();
-        let with_trailing_slash = format!("{}/", valid);
+        let with_trailing_slash = format!("{valid}/");
 
         [
             (

@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
 use jsonrpsee::core::server::rpc_module::Methods;
+use jsonrpsee::types::SubscriptionResult;
+use jsonrpsee::SubscriptionSink;
+
+use starknet_gateway_types::websocket::SubscriptionBroadcaster;
 
 use crate::context::RpcContext;
 use crate::error::RpcError;
@@ -116,6 +120,49 @@ impl Module {
         self.0
             .register_async_method(method_name, method_callback)
             .with_context(|| format!("Registering {method_name}"))?;
+
+        Ok(self)
+    }
+
+    /// Registers RPC Websocket subscription endpoints
+    pub fn register_subscription<Subscription, WSAnySubscriptionEvent: 'static + Send + Clone>(
+        mut self,
+        subscription_name: &'static str,
+        subscription_answer_name: &'static str,
+        unsubscription_name: &'static str,
+        subscription: Subscription,
+        ws_broadcast_tx: SubscriptionBroadcaster<WSAnySubscriptionEvent>,
+    ) -> anyhow::Result<Self>
+    where
+        Subscription: (Fn(
+                RpcContext,
+                SubscriptionSink,
+                &SubscriptionBroadcaster<WSAnySubscriptionEvent>,
+            ) -> SubscriptionResult)
+            + Copy
+            + Send
+            + Sync
+            + 'static,
+    {
+        use anyhow::Context;
+        use jsonrpsee::types::Params;
+
+        metrics::register_counter!("rpc_subscription_calls_total", "subscription" => subscription_name);
+
+        let subscription_callback = move |_params: Params<'_>, sink, context: Arc<RpcContext>| {
+            let result = subscription((*context).clone(), sink, &ws_broadcast_tx.clone());
+            metrics::increment_counter!("rpc_subscription_calls_total", "subscription" => subscription_name);
+            result
+        };
+
+        self.0
+            .register_subscription(
+                subscription_name,
+                subscription_answer_name,
+                unsubscription_name,
+                subscription_callback,
+            )
+            .with_context(|| format!("Registering subscription {subscription_name}"))?;
 
         Ok(self)
     }

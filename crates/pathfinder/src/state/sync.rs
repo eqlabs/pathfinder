@@ -33,7 +33,9 @@ use starknet_gateway_types::{
     reply::{
         state_update::DeployedContract, Block, MaybePendingBlock, PendingStateUpdate, StateUpdate,
     },
+    websocket::WebsocketSenders,
 };
+
 use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
@@ -53,6 +55,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     pending_data: PendingData,
     pending_poll_interval: Option<std::time::Duration>,
     block_validation_mode: l2::BlockValidationMode,
+    websocket_txs: WebsocketSenders,
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
@@ -62,6 +65,7 @@ where
     L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, H160, Option<StateUpdateLog>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
+            WebsocketSenders,
             SequencerClient,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
             Chain,
@@ -113,6 +117,7 @@ where
     ));
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
+        websocket_txs.clone(),
         sequencer.clone(),
         l2_head,
         chain,
@@ -369,9 +374,10 @@ where
                     .map(|block| (block.number, block.hash, block.state_commmitment));
 
                     let (new_tx, new_rx) = mpsc::channel(1);
+
                     rx_l2 = new_rx;
 
-                    let fut = l2_sync(new_tx, sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode);
+                    let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode);
 
                     l2_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
@@ -380,7 +386,7 @@ where
                     });
                     tracing::info!("L2 sync process restarted.");
                 }
-            }
+            },
         }
     }
 }
@@ -594,7 +600,7 @@ async fn l2_update(
                 class_hash,
                 block.block_number,
             )
-            .with_context(|| format!("Setting declared_on for class={:?}", class_hash))?;
+            .with_context(|| format!("Setting declared_on for class={class_hash:?}"))?;
         }
 
         // Insert the transactions.
@@ -1075,7 +1081,9 @@ mod tests {
     };
     use stark_hash::Felt;
     use starknet_gateway_client::GatewayApi;
-    use starknet_gateway_types::{error::SequencerError, pending::PendingData, reply};
+    use starknet_gateway_types::{
+        error::SequencerError, pending::PendingData, reply, websocket::WebsocketSenders,
+    };
     use std::{sync::Arc, time::Duration};
     use tokio::sync::mpsc;
 
@@ -1147,8 +1155,10 @@ mod tests {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
+        _: WebsocketSenders,
         _: impl GatewayApi,
         _: Option<(BlockNumber, BlockHash, StateCommitment)>,
         _: Chain,
@@ -1278,6 +1288,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
+            let websocket_txs = WebsocketSenders::for_test();
 
             state
                 .into_iter()
@@ -1308,6 +1319,7 @@ mod tests {
                 PendingData::default(),
                 None,
                 l2::BlockValidationMode::Strict,
+                websocket_txs.clone(),
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1381,6 +1393,7 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
+            let websocket_txs = WebsocketSenders::for_test();
 
             // A simple L1 sync task
             let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
@@ -1413,6 +1426,7 @@ mod tests {
                 PendingData::default(),
                 None,
                 l2::BlockValidationMode::Strict,
+                websocket_txs,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1446,6 +1460,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
+        let websocket_txs = WebsocketSenders::for_test();
 
         // This is what we're asking for
         L1StateTable::upsert(&tx, &STATE_UPDATE_LOG0).unwrap();
@@ -1482,6 +1497,7 @@ mod tests {
             PendingData::default(),
             None,
             l2::BlockValidationMode::Strict,
+            websocket_txs,
         ));
 
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1493,6 +1509,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
 
         let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
+        let websocket_txs = WebsocketSenders::for_test();
 
         let l1 = move |_, _, _, _, _| {
             let starts_tx = starts_tx.clone();
@@ -1520,6 +1537,7 @@ mod tests {
             PendingData::default(),
             None,
             l2::BlockValidationMode::Strict,
+            websocket_txs,
         ));
 
         let timeout = std::time::Duration::from_secs(1);
@@ -1540,6 +1558,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let sync_state = Arc::new(SyncState::default());
+        let websocket_txs = WebsocketSenders::for_test();
 
         // Incoming L2 update
         let block = || BLOCK0.clone();
@@ -1551,7 +1570,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 (Box::new(block()), Default::default()),
                 Box::new(state_update()),
@@ -1595,6 +1614,7 @@ mod tests {
                 PendingData::default(),
                 None,
                 l2::BlockValidationMode::Strict,
+                websocket_txs.clone(),
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1653,9 +1673,10 @@ mod tests {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
+            let websocket_txs = WebsocketSenders::for_test();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
                     .await
                     .unwrap();
@@ -1694,6 +1715,7 @@ mod tests {
                 PendingData::default(),
                 None,
                 l2::BlockValidationMode::Strict,
+                websocket_txs,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1725,9 +1747,10 @@ mod tests {
     async fn l2_new_cairo_contract() {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
+        let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewCairoContract(CompressedContract {
                 definition: zstd_magic,
@@ -1754,6 +1777,7 @@ mod tests {
             PendingData::default(),
             None,
             l2::BlockValidationMode::Strict,
+            websocket_txs,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1769,9 +1793,10 @@ mod tests {
     async fn l2_new_sierra_contract() {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
+        let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewSierraContract(
                 CompressedContract {
@@ -1805,6 +1830,7 @@ mod tests {
             PendingData::default(),
             None,
             l2::BlockValidationMode::Strict,
+            websocket_txs,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1825,6 +1851,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
+        let websocket_txs = WebsocketSenders::for_test();
 
         // This is what we're asking for
         StarknetBlocksTable::insert(
@@ -1837,7 +1864,7 @@ mod tests {
         .unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel();
 
             tx.send(l2::Event::QueryBlock(BlockNumber::GENESIS, tx1))
@@ -1869,6 +1896,7 @@ mod tests {
             PendingData::default(),
             None,
             l2::BlockValidationMode::Strict,
+            websocket_txs,
         ));
     }
 
@@ -1877,6 +1905,7 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
         let connection = storage.connection().unwrap();
         let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
+        let websocket_txs = WebsocketSenders::for_test();
 
         // This is what we're asking for
         ContractCodeTable::insert_compressed(
@@ -1889,7 +1918,7 @@ mod tests {
         .unwrap();
 
         // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
             let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
 
             tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
@@ -1917,6 +1946,7 @@ mod tests {
             PendingData::default(),
             None,
             l2::BlockValidationMode::Strict,
+            websocket_txs,
         ));
     }
 
@@ -1927,9 +1957,10 @@ mod tests {
         let storage = Storage::in_memory().unwrap();
 
         static CNT: AtomicUsize = AtomicUsize::new(0);
+        let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _, _, _, _| async move {
+        let l2 = move |_, _, _, _, _, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };
@@ -1948,6 +1979,7 @@ mod tests {
             PendingData::default(),
             None,
             l2::BlockValidationMode::Strict,
+            websocket_txs,
         ));
 
         tokio::time::sleep(Duration::from_millis(5)).await;
