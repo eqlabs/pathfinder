@@ -149,11 +149,8 @@
             "params": [],
             "result": {
                 "name": "result",
-                "description": "The status of the transaction.",
-                "schema": {
-                    "type": "number",
-                    "description": "Subscription ID"
-                }
+                "description": "Subscription ID",
+                "type": "number"
             }
         },
         {
@@ -167,6 +164,24 @@
                 "schema": {
                     "$ref": "#/components/schemas/WebsocketEventNewHead"
                 }
+            }
+        },
+        {
+            "name": "pathfinder_unsubscribe_newHeads",
+            "summary": "Unsubscribe from new head events on WebSocket",
+            "description": "Terminates new head notifications.",
+            "params": [
+                {
+                    "description": "ID of the subscription that should be terminated",
+                    "required": true,
+                    "type": "bool"
+                }
+            ],
+            "paramStructure": "by-position",
+            "result": {
+                "name": "result",
+                "description": "Flag indicating if subscription was terminated successfully",
+                "type": "bool"
             }
         }
     ],

@@ -4,4 +4,3 @@ pub mod pending;
 pub mod reply;
 pub mod request;
 pub mod transaction_hash;
-pub mod websocket;

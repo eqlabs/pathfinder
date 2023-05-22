@@ -5,6 +5,7 @@ use pathfinder_common::{
     BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, TransactionCommitment,
 };
+use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
@@ -15,7 +16,6 @@ use starknet_gateway_types::{
         StateUpdate, Status,
     },
     transaction_hash::verify,
-    websocket::{BlockHeader, WebsocketSenders},
 };
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
@@ -211,18 +211,18 @@ pub async fn sync(
             class_declaration: t_declare,
         };
 
+        let block_header = BlockHeader::from(block.as_ref());
+
         tx_event
             .send(Event::Update(
-                (block.clone(), commitments),
+                (block, commitments),
                 Box::new(state_update),
                 timings,
             ))
             .await
             .context("Event channel closed")?;
 
-        websocket_txs
-            .new_head
-            .send_if_receiving(BlockHeader::new(*block.clone()))
+        websocket_txs.new_head.send_if_receiving(block_header)
     }
 }
 
@@ -634,12 +634,12 @@ mod tests {
             ContractAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
             StorageAddress, StorageValue,
         };
+        use pathfinder_rpc::websocket::types::WebsocketSenders;
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::{
             error::{SequencerError, StarknetError, StarknetErrorCode},
             reply,
-            websocket::WebsocketSenders,
         };
         use std::collections::HashMap;
         use tokio::{sync::mpsc, task::JoinHandle};
