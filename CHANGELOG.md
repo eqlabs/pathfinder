@@ -7,6 +7,17 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Subscription to `newHead` events via websocket using the method `starknet_subscribe_newHeads`, which can
+  be managed by the following command line options
+  - `rpc.websocket`, which enables websocket transport
+  - `rpc.websocket.capacity`, which sets the maximum number of websocket subscriptions per subscription type
+
+  Authors: [Shramee Srivastav](https://github.com/shramee) and [Matthieu Auger](https://github.com/matthieuauger)
+
 ## [0.5.5] - 2023-05-18
 
 ### Added
