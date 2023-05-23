@@ -30,11 +30,11 @@ pub fn compile_to_casm(
 
 mod pre_0_11_1 {
     use anyhow::Context;
-    use casm_compiler_historic::allowed_libfuncs::{
+    use casm_compiler_v1_0_0_alpha6::allowed_libfuncs::{
         validate_compatible_sierra_version, ListSelector,
     };
-    use casm_compiler_historic::casm_contract_class::CasmContractClass;
-    use casm_compiler_historic::contract_class::ContractClass;
+    use casm_compiler_v1_0_0_alpha6::casm_contract_class::CasmContractClass;
+    use casm_compiler_v1_0_0_alpha6::contract_class::ContractClass;
 
     use crate::sierra::FeederGatewayContractClass;
 
@@ -60,7 +60,7 @@ mod pre_0_11_1 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
-                casm_compiler_historic::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
+                casm_compiler_v1_0_0_alpha6::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
         )
@@ -76,9 +76,11 @@ mod pre_0_11_1 {
 
 mod post_0_11_1 {
     use anyhow::Context;
-    use casm_compiler::allowed_libfuncs::{validate_compatible_sierra_version, ListSelector};
-    use casm_compiler::casm_contract_class::CasmContractClass;
-    use casm_compiler::contract_class::ContractClass;
+    use casm_compiler_v1_0_0_rc0::allowed_libfuncs::{
+        validate_compatible_sierra_version, ListSelector,
+    };
+    use casm_compiler_v1_0_0_rc0::casm_contract_class::CasmContractClass;
+    use casm_compiler_v1_0_0_rc0::contract_class::ContractClass;
 
     use crate::sierra::FeederGatewayContractClass;
 
@@ -104,7 +106,7 @@ mod post_0_11_1 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
-                casm_compiler_historic::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
+                casm_compiler_v1_0_0_rc0::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
         )
@@ -152,7 +154,7 @@ mod tests {
                 serde_json::from_slice::<FeederGatewayContractClass<'_>>(&contract_definition)
                     .unwrap();
 
-            let _: casm_compiler_historic::contract_class::ContractClass =
+            let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
                 class.try_into().unwrap();
         }
 
@@ -175,7 +177,8 @@ mod tests {
                 serde_json::from_slice::<FeederGatewayContractClass<'_>>(&contract_definition)
                     .unwrap();
 
-            let _: casm_compiler::contract_class::ContractClass = class.try_into().unwrap();
+            let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
+                class.try_into().unwrap();
         }
 
         #[test]
