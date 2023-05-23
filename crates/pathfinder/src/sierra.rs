@@ -23,12 +23,12 @@ pub fn compile_to_casm(
         .parse_as_semver()
         .context("Deciding on compiler version")?
     {
-        Some(v) if v > V_0_11_0 => post_0_11_1::compile(definition),
-        _ => pre_0_11_1::compile(definition),
+        Some(v) if v > V_0_11_0 => v1_0_0_rc0::compile(definition),
+        _ => v1_0_0_alpha6::compile(definition),
     }
 }
 
-mod pre_0_11_1 {
+mod v1_0_0_alpha6 {
     use anyhow::Context;
     use casm_compiler_v1_0_0_alpha6::allowed_libfuncs::{
         validate_compatible_sierra_version, ListSelector,
@@ -74,7 +74,7 @@ mod pre_0_11_1 {
     }
 }
 
-mod post_0_11_1 {
+mod v1_0_0_rc0 {
     use anyhow::Context;
     use casm_compiler_v1_0_0_rc0::allowed_libfuncs::{
         validate_compatible_sierra_version, ListSelector,
