@@ -205,6 +205,10 @@ pub mod zstd_compressed_contracts {
     // A Sierra class with the program compression introduced in v0.11.1.
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x05bb6c878494878bda6c2f0d7605f66559f9ffd6ae69ff529f8ca5f7a587a2bb
     pub const CAIRO_1_0_0_RC0_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-1.0.0.rc0.json.zst");
+
+    // A Sierra class for compiler v1.1.0-rc0 introduced in v0.11.2.
+    // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x1338d85d3e579f6944ba06c005238d145920afeb32f94e3a1e234d21e1e9292
+    pub const CAIRO_1_1_0_RC0_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-1.1.0.rc0.json.zst");
 }
 
 pub mod testnet {
