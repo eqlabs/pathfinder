@@ -214,8 +214,6 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
     let amount = latest_revision - current_revision;
     tracing::info!(%current_revision, %latest_revision, migrations=%amount, "Performing database migrations");
 
-    let span = tracing::info_span!("db migration", revision = tracing::field::Empty);
-    let _enter = span.enter();
     // Sequentially apply each missing migration.
     migrations
         .iter()
@@ -223,6 +221,9 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
         .skip(current_revision)
         .try_for_each(|(from, migration)| {
             let mut do_migration = || -> anyhow::Result<()> {
+                let span = tracing::info_span!("db_migration", revision = from + 1);
+                let _enter = span.enter();
+
                 let transaction = connection
                     .transaction()
                     .context("Create database transaction")?;
@@ -236,8 +237,6 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
 
                 Ok(())
             };
-
-            span.record("revision", from + 1);
 
             do_migration().with_context(|| format!("Migrating from {from}"))
         })?;
