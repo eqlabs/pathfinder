@@ -1610,14 +1610,14 @@ mod tests {
             let actual = get_latest_version(&Client::integration()).await.unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 1),
+                StarknetVersion::new(0, 11, 2),
                 "Integration gateway version has changed, update version_check"
             );
         }
 
         #[tokio::test]
         async fn mainnet() {
-            version_check!(Mainnet == 0 - 11 - 0);
+            version_check!(Mainnet == 0 - 11 - 1);
             let actual = get_latest_version(&Client::mainnet())
                 .await
                 .unwrap()
@@ -1625,7 +1625,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 0).parse_as_semver().unwrap(),
+                StarknetVersion::new(0, 11, 1).parse_as_semver().unwrap(),
                 "Mainnet gateway version has changed, update version_check"
             );
         }
