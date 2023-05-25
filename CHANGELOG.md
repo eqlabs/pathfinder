@@ -9,8 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.5.6] - 2023-05-25
+
 ### Added
 
+- Starknet v0.11.2 support
+  - Sierra compiler v1.1.0-rc0
 - Subscription to `newHead` events via websocket using the method `starknet_subscribe_newHeads`, which can
   be managed by the following command line options
   - `rpc.websocket`, which enables websocket transport
