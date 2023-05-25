@@ -1797,7 +1797,9 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
 
     con.commit()
 
-    sierra_class_definition_path = test_relative_path("./sierra_account.json.zst")
+    sierra_class_definition_path = test_relative_path(
+        "./sierra_account_starknet_format.json.zst"
+    )
 
     with zstandard.open(sierra_class_definition_path, "rb") as file:
         # class_definition = file.read()
