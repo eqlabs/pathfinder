@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Pathfinder Python worker subprocess"
 readme = "README.md"
 dependencies = [
-    "cairo-lang == 0.11.1.1",
+    "cairo-lang == 0.11.2a0",
     "zstandard == 0.20.0",
     "cachetools == 5.3.0",
     # required so that pip-compile can properly resolve dependencies

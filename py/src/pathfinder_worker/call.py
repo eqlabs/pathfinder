@@ -108,7 +108,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 33
-EXPECTED_CAIRO_VERSION = "0.11.1.1"
+EXPECTED_CAIRO_VERSION = "0.11.2a0"
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
 DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
