@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 /// Events and queries emitted by L1 sync process.
 #[derive(Debug)]
 pub enum Event {
-    /// New L1 [update](StateUpdate).
+    /// New L1 [update](EthereumStateUpdate).
     Update(EthereumStateUpdate),
 }
 
