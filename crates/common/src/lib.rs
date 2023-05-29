@@ -172,7 +172,7 @@ pub struct StorageCommitment(pub Felt);
 pub struct BlockHash(pub Felt);
 
 /// A Starknet block number.
-#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
 pub struct BlockNumber(u64);
 
 macros::i64_backed_u64::to_from_sql!(BlockNumber);
@@ -182,6 +182,14 @@ macros::i64_backed_u64::serdes!(BlockNumber);
 impl From<BlockNumber> for Felt {
     fn from(x: BlockNumber) -> Self {
         Felt::from(x.0)
+    }
+}
+
+impl std::iter::Iterator for BlockNumber {
+    type Item = BlockNumber;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(*self + 1)
     }
 }
 

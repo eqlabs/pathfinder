@@ -18,9 +18,10 @@ use starknet_gateway_types::{
     },
     transaction_hash::verify,
 };
+use std::collections::HashMap;
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timings {
@@ -29,10 +30,64 @@ pub struct Timings {
     pub class_declaration: Duration,
 }
 
-// A hashset cache containing the last N downloaded classes, meant to minimize
-// the re-downloading of class definitions in cases where a block might be re-processed
-// e.g. after a reorg, or when a pending block becomes the new latest block.
+/// A cache containing the last `N` downloaded class hashes, meant to minimize the
+/// re-downloading of class definitions in cases where a block might be re-processed
+/// e.g. after a reorg, or when a pending block becomes the new latest block.
 type ClassCache = LruCache<ClassHash, ()>;
+
+/// A cache containing the last `N` blocks in the chain. Used to determine reorg extents
+/// and ensure the integrity of new blocks.
+pub struct BlockChain {
+    head: BlockNumber,
+    tail: BlockNumber,
+
+    map: HashMap<BlockNumber, (BlockHash, StateCommitment)>,
+}
+
+impl BlockChain {
+    pub fn reset_to_genesis(&mut self) {
+        self.map.drain();
+        self.head = BlockNumber::default();
+        self.tail = BlockNumber::default();
+    }
+
+    pub fn with_capacity(
+        capacity: usize,
+        blocks: Vec<(BlockNumber, BlockHash, StateCommitment)>,
+    ) -> Self {
+        let skip = blocks.len().saturating_sub(capacity);
+        let blocks = &blocks[skip..];
+
+        let head = blocks.first().map(|b| b.0).unwrap_or_default();
+        let tail = blocks.last().map(|b| b.0).unwrap_or_default();
+
+        let mut map = HashMap::with_capacity(capacity);
+        map.extend(blocks.iter().cloned().map(|(a, b, c)| (a, (b, c))));
+
+        Self { head, tail, map }
+    }
+
+    pub fn block_hash<'a>(
+        &'a self,
+        block: &BlockNumber,
+    ) -> Option<&'a (BlockHash, StateCommitment)> {
+        self.map.get(block)
+    }
+
+    pub fn push(&mut self, number: BlockNumber, hash: BlockHash, commitment: StateCommitment) {
+        for i in number.get()..=self.head.get() {
+            self.map.remove(&BlockNumber::new_or_panic(i));
+        }
+
+        if self.map.capacity() == self.map.len() {
+            self.map.remove(&self.tail);
+            self.tail += 1;
+        }
+        self.map.insert(number, (hash, commitment));
+
+        self.head = number;
+    }
+}
 
 /// Events and queries emitted by L2 sync process.
 #[derive(Debug)]
@@ -51,13 +106,6 @@ pub enum Event {
     NewCairoContract(CompressedContract),
     /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
     NewSierraContract(CompressedContract, CompressedCasmClass, CasmHash),
-    /// Query for the [block hash](BlockHash) and [root](StateCommitment) of the given block.
-    ///
-    /// The receiver should return the data using the [oneshot::channel].
-    QueryBlock(
-        BlockNumber,
-        oneshot::Sender<Option<(BlockHash, StateCommitment)>>,
-    ),
     /// A new L2 pending update was polled.
     Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
 }
@@ -72,6 +120,7 @@ pub async fn sync(
     chain_id: ChainId,
     pending_poll_interval: Option<Duration>,
     block_validation_mode: BlockValidationMode,
+    mut blocks: BlockChain,
 ) -> anyhow::Result<()> {
     use crate::state::sync::head_poll_interval;
 
@@ -134,9 +183,15 @@ pub async fn sync(
                         &tx_event,
                         &sequencer,
                         block_validation_mode,
+                        &blocks,
                     )
                     .await
                     .context("L2 reorg")?;
+
+                    match head {
+                        Some((number, hash, commitment)) => blocks.push(number, hash, commitment),
+                        None => blocks.reset_to_genesis(),
+                    }
 
                     continue 'outer;
                 }
@@ -153,9 +208,15 @@ pub async fn sync(
                     &tx_event,
                     &sequencer,
                     block_validation_mode,
+                    &blocks,
                 )
                 .await
                 .context("L2 reorg")?;
+
+                match head {
+                    Some((number, hash, commitment)) => blocks.push(number, hash, commitment),
+                    None => blocks.reset_to_genesis(),
+                }
 
                 continue 'outer;
             }
@@ -208,6 +269,7 @@ pub async fn sync(
         let t_declare = t_declare.elapsed();
 
         head = Some((next, block_hash, state_update.new_root));
+        blocks.push(next, block_hash, state_update.new_root);
 
         let timings = Timings {
             block_download: t_block,
@@ -462,6 +524,7 @@ async fn reorg(
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
+    blocks: &BlockChain,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
@@ -473,17 +536,9 @@ async fn reorg(
         }
 
         let previous_block_number = reorg_tail.0 - 1;
-
-        let (tx, rx) = oneshot::channel();
-        tx_event
-            .send(Event::QueryBlock(previous_block_number, tx))
-            .await
-            .context("Event channel closed")?;
-
-        let previous = match rx.await.context("Oneshot channel closed")? {
-            Some(hash) => hash,
-            None => break None,
-        };
+        let previous = blocks
+            .block_hash(&previous_block_number)
+            .context("Reorg exceeded local blockchain cache")?;
 
         match download_block(
             previous_block_number,
@@ -615,6 +670,8 @@ async fn download_and_compress_class(
 #[cfg(test)]
 mod tests {
     mod sync {
+        use crate::state::l2::BlockChain;
+
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
@@ -669,6 +726,7 @@ mod tests {
                 ChainId::TESTNET,
                 None,
                 MODE,
+                BlockChain::with_capacity(100, vec![]),
             ))
         }
 
@@ -1090,6 +1148,10 @@ mod tests {
                     ChainId::TESTNET,
                     None,
                     MODE,
+                    BlockChain::with_capacity(
+                        100,
+                        vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
+                    ),
                 ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
@@ -1440,14 +1502,6 @@ mod tests {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
-                });
                 // Reorg started at the genesis block
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK0_NUMBER);
@@ -1703,18 +1757,6 @@ mod tests {
                     assert_eq!(*block, block3);
                     assert_eq!(*state_update, *STATE_UPDATE3);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK2_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT2))).unwrap();
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
-                });
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
@@ -1892,10 +1934,6 @@ mod tests {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
-                });
                 // Reorg started from block #2
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK2_NUMBER);
@@ -2069,10 +2107,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
                 });
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
