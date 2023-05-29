@@ -1,17 +1,14 @@
 use anyhow::Context;
-use ethers::types::H256;
 use pathfinder_common::StarknetVersion;
 use pathfinder_common::{
     consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     },
     BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ClassHash, ContractAddress,
-    ContractNonce, ContractRoot, ContractStateHash, EthereumBlockHash, EthereumBlockNumber,
-    EthereumLogIndex, EthereumTransactionHash, EthereumTransactionIndex, EventCommitment,
-    EventData, EventKey, GasPrice, SequencerAddress, StateCommitment, StorageCommitment,
-    TransactionCommitment, TransactionHash,
+    ContractNonce, ContractRoot, ContractStateHash, EventCommitment, EventData, EventKey, GasPrice,
+    SequencerAddress, StateCommitment, StorageCommitment, TransactionCommitment, TransactionHash,
 };
-use pathfinder_ethereum::{log::StateUpdateLog, BlockOrigin, EthOrigin, TransactionOrigin};
+use pathfinder_ethereum::EthereumStateUpdate;
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
@@ -33,33 +30,21 @@ impl From<BlockNumber> for L1TableBlockId {
 
 impl L1StateTable {
     /// Inserts a new [update](StateUpdateLog), replaces if it already exists.
-    pub fn upsert(tx: &Transaction<'_>, update: &StateUpdateLog) -> anyhow::Result<()> {
+    pub fn upsert(tx: &Transaction<'_>, update: &EthereumStateUpdate) -> anyhow::Result<()> {
         tx.execute(
             r"INSERT OR REPLACE INTO l1_state (
                         starknet_block_number,
+                        starknet_block_hash,
                         starknet_global_root,
-                        ethereum_block_hash,
-                        ethereum_block_number,
-                        ethereum_transaction_hash,
-                        ethereum_transaction_index,
-                        ethereum_log_index
                     ) VALUES (
                         :starknet_block_number,
-                        :starknet_global_root,
-                        :ethereum_block_hash,
-                        :ethereum_block_number,
-                        :ethereum_transaction_hash,
-                        :ethereum_transaction_index,
-                        :ethereum_log_index
+                        :starknet_block_hash,
+                        :starknet_global_root
                     )",
             named_params! {
                 ":starknet_block_number": update.block_number,
+                ":starknet_block_hash": update.block_hash,
                 ":starknet_global_root": &update.global_root,
-                ":ethereum_block_hash": &update.origin.block.hash.0[..],
-                ":ethereum_block_number": update.origin.block.number.0,
-                ":ethereum_transaction_hash": &update.origin.transaction.hash.0[..],
-                ":ethereum_transaction_index": update.origin.transaction.index.0,
-                ":ethereum_log_index": update.origin.log_index.0,
             },
         )?;
 
@@ -105,30 +90,26 @@ impl L1StateTable {
             .map_err(|e| e.into())
     }
 
-    /// Returns the [update](StateUpdateLog) of the given block.
+    /// Returns the [update](StateUpdate) of the given block.
     pub fn get(
         tx: &Transaction<'_>,
         block: L1TableBlockId,
-    ) -> anyhow::Result<Option<StateUpdateLog>> {
+    ) -> anyhow::Result<Option<EthereumStateUpdate>> {
+        // TODO(SM): add necessary migration
         let mut statement = match block {
-            L1TableBlockId::Number(_) => tx.prepare(
-                r"SELECT starknet_block_number,
-                    starknet_global_root,
-                    ethereum_block_hash,
-                    ethereum_block_number,
-                    ethereum_transaction_hash,
-                    ethereum_transaction_index,
-                    ethereum_log_index
-                FROM l1_state WHERE starknet_block_number = ?",
-            ),
+            // L1TableBlockId::Number(_) => tx.prepare(
+            //     r"SELECT starknet_block_number,
+            //         starknet_block_hash,
+            //         starknet_global_root
+            //     FROM l1_state WHERE starknet_block_number >= ?",
+            // ),
+            L1TableBlockId::Number(_) => {
+                return Ok(None);
+            }
             L1TableBlockId::Latest => tx.prepare(
                 r"SELECT starknet_block_number,
-                    starknet_global_root,
-                    ethereum_block_hash,
-                    ethereum_block_number,
-                    ethereum_transaction_hash,
-                    ethereum_transaction_index,
-                    ethereum_log_index
+                    starknet_block_hash,
+                    starknet_global_root
                 FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1",
             ),
         }?;
@@ -145,48 +126,13 @@ impl L1StateTable {
         };
 
         let starknet_block_number = row.get_unwrap("starknet_block_number");
-
+        let starknet_block_hash = row.get_unwrap("starknet_block_hash");
         let starknet_global_root = row.get_unwrap("starknet_global_root");
 
-        let ethereum_block_hash = row.get_ref_unwrap("ethereum_block_hash").as_blob().unwrap();
-        let ethereum_block_hash = EthereumBlockHash(H256(ethereum_block_hash.try_into().unwrap()));
-
-        let ethereum_block_number = row
-            .get_ref_unwrap("ethereum_block_number")
-            .as_i64()
-            .unwrap() as u64;
-        let ethereum_block_number = EthereumBlockNumber(ethereum_block_number);
-
-        let ethereum_transaction_hash = row
-            .get_ref_unwrap("ethereum_transaction_hash")
-            .as_blob()
-            .unwrap();
-        let ethereum_transaction_hash =
-            EthereumTransactionHash(H256(ethereum_transaction_hash.try_into().unwrap()));
-
-        let ethereum_transaction_index = row
-            .get_ref_unwrap("ethereum_transaction_index")
-            .as_i64()
-            .unwrap() as u64;
-        let ethereum_transaction_index = EthereumTransactionIndex(ethereum_transaction_index);
-
-        let ethereum_log_index = row.get_ref_unwrap("ethereum_log_index").as_i64().unwrap() as u64;
-        let ethereum_log_index = EthereumLogIndex(ethereum_log_index);
-
-        Ok(Some(StateUpdateLog {
-            origin: EthOrigin {
-                block: BlockOrigin {
-                    hash: ethereum_block_hash,
-                    number: ethereum_block_number,
-                },
-                transaction: TransactionOrigin {
-                    hash: ethereum_transaction_hash,
-                    index: ethereum_transaction_index,
-                },
-                log_index: ethereum_log_index,
-            },
+        Ok(Some(EthereumStateUpdate {
             global_root: starknet_global_root,
             block_number: starknet_block_number,
+            block_hash: starknet_block_hash,
         }))
     }
 }
@@ -1574,24 +1520,12 @@ mod tests {
 
         /// Creates a set of consecutive [StateUpdateLog]s starting from L2 genesis,
         /// with arbitrary other values.
-        fn create_updates() -> [StateUpdateLog; 3] {
-            (0..3)
-                .map(|i| StateUpdateLog {
-                    origin: EthOrigin {
-                        block: BlockOrigin {
-                            hash: EthereumBlockHash(H256::from_low_u64_le(i + 33)),
-                            number: EthereumBlockNumber(i + 12_000),
-                        },
-                        transaction: TransactionOrigin {
-                            hash: EthereumTransactionHash(H256::from_low_u64_le(i + 999)),
-                            index: EthereumTransactionIndex(i + 20_000),
-                        },
-                        log_index: EthereumLogIndex(i + 500),
-                    },
-                    global_root: StateCommitment(
-                        Felt::from_hex_str(&"3".repeat(i as usize + 1)).unwrap(),
-                    ),
-                    block_number: BlockNumber::GENESIS + i,
+        fn create_updates() -> [EthereumStateUpdate; 3] {
+            (0..3usize)
+                .map(|i| EthereumStateUpdate {
+                    global_root: StateCommitment(Felt::from_hex_str(&"3".repeat(i + 1)).unwrap()),
+                    block_number: BlockNumber::GENESIS + i as u64,
+                    block_hash: BlockHash(Felt::from_hex_str(&"F".repeat(i + 1)).unwrap()),
                 })
                 .collect::<Vec<_>>()
                 .try_into()

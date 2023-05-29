@@ -14,7 +14,7 @@ anyhow = { workspace = true }
 base64 = "0.13.1"
 bitvec = "0.20.4"
 data-encoding = "2.3.3"
-ethers = "1.0.2"
+primitive-types = "0.12.1"
 flate2 = "1.0.25"
 hex = "0.4.3"
 lazy_static = "1.4.0"

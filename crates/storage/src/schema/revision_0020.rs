@@ -277,6 +277,7 @@ mod types {
         L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
         TransactionVersionAsHexStr,
     };
+    use primitive_types::H256;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
 
@@ -419,7 +420,7 @@ mod types {
     }
 
     fn transaction_version_zero() -> TransactionVersion {
-        TransactionVersion(ethers::types::H256::zero())
+        TransactionVersion(H256::zero())
     }
 
     /// Represents deserialized L2 deploy transaction data.
@@ -452,7 +453,6 @@ mod types {
         where
             D: serde::Deserializer<'de>,
         {
-            use ethers::types::H256;
             use serde::de;
 
             #[serde_as]
