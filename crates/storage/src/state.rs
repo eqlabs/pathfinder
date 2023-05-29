@@ -13,7 +13,7 @@ use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
 
-/// Contains the [L1 Starknet update logs](StateUpdateLog).
+/// Contains the [L1 Starknet update logs](EthereumStateUpdate).
 pub struct L1StateTable {}
 
 /// Identifies block in some [L1StateTable] queries.
@@ -29,7 +29,7 @@ impl From<BlockNumber> for L1TableBlockId {
 }
 
 impl L1StateTable {
-    /// Inserts a new [update](StateUpdateLog), replaces if it already exists.
+    /// Inserts a new [update](EthereumStateUpdate), replaces if it already exists.
     pub fn upsert(tx: &Transaction<'_>, update: &EthereumStateUpdate) -> anyhow::Result<()> {
         tx.execute(
             r"INSERT OR REPLACE INTO l1_state (
@@ -90,7 +90,7 @@ impl L1StateTable {
             .map_err(|e| e.into())
     }
 
-    /// Returns the [update](StateUpdate) of the given block.
+    /// Returns the [update](EthereumStateUpdate) of the given block.
     pub fn get(
         tx: &Transaction<'_>,
         block: L1TableBlockId,
