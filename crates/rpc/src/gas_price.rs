@@ -25,7 +25,7 @@ impl Cached {
 
     /// Returns either a fast fresh value, slower a periodically polled value or fails because
     /// polling has stopped.
-    pub async fn get(&self) -> Option<ethers::types::H256> {
+    pub async fn get(&self) -> Option<primitive_types::H256> {
         let mut rx = {
             let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -89,7 +89,7 @@ impl Cached {
                     let gas_price = {
                         let mut g = [0u8; 32];
                         g[16..].copy_from_slice(&gas_price.0.to_be_bytes());
-                        ethers::types::H256::from_slice(&g)
+                        primitive_types::H256::from_slice(&g)
                     };
 
                     let mut g = inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -111,6 +111,6 @@ impl Cached {
 
 #[derive(Default)]
 struct Inner {
-    latest: Option<(std::time::Instant, ethers::types::H256)>,
-    next: std::sync::Weak<tokio::sync::broadcast::Sender<Option<ethers::types::H256>>>,
+    latest: Option<(std::time::Instant, primitive_types::H256)>,
+    next: std::sync::Weak<tokio::sync::broadcast::Sender<Option<primitive_types::H256>>>,
 }

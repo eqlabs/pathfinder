@@ -8,7 +8,7 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-ethers = "1.0.2"
+primitive-types = { version = "0.12.1", features = ["serde"] }
 num-bigint = { version = "0.4.3", features = ["serde"] }
 pathfinder-common = { path = "../common" }
 serde = { workspace = true, features = ["derive"] }

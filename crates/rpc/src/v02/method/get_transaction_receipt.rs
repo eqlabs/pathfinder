@@ -427,7 +427,9 @@ mod types {
                         block_hash: BlockHash(felt!("0xaaa")),
                         block_number: BlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
-                            to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x55)),
+                            to_address: EthereumAddress(primitive_types::H160::from_low_u64_be(
+                                0x55,
+                            )),
                             payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
                         }],
                         events: vec![Event {
@@ -445,7 +447,9 @@ mod types {
                         transaction_hash: TransactionHash(felt!("0xfeedfeed")),
                         actual_fee: Fee(felt!("0x2")),
                         messages_sent: vec![MessageToL1 {
-                            to_address: EthereumAddress(ethers::types::H160::from_low_u64_be(0x5)),
+                            to_address: EthereumAddress(primitive_types::H160::from_low_u64_be(
+                                0x5,
+                            )),
                             payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
                         }],
                         events: vec![Event {

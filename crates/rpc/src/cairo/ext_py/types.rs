@@ -68,9 +68,9 @@ pub struct FunctionInvocation {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FeeEstimate {
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_consumed: ethers::types::H256,
+    pub gas_consumed: primitive_types::H256,
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_price: ethers::types::H256,
+    pub gas_price: primitive_types::H256,
     #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub overall_fee: ethers::types::H256,
+    pub overall_fee: primitive_types::H256,
 }

@@ -12,7 +12,7 @@ test-utils = ["dep:reqwest", "dep:starknet-gateway-test-fixtures", "tokio/test-u
 [dependencies]
 anyhow = { workspace = true }
 base64 = "0.13.1"
-ethers = "1.0.2"
+primitive-types = { version = "0.12.1", features = ["serde"] }
 flate2 = "1.0.25"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 http = "0.2.9"
