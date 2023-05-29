@@ -38,7 +38,9 @@ type ClassCache = LruCache<ClassHash, ()>;
 /// A cache containing the last `N` blocks in the chain. Used to determine reorg extents
 /// and ensure the integrity of new blocks.
 pub struct BlockChain {
+    /// The latest block in the chain.
     head: BlockNumber,
+    /// The earliest block in the chain.
     tail: BlockNumber,
 
     map: HashMap<BlockNumber, (BlockHash, StateCommitment)>,
@@ -58,8 +60,8 @@ impl BlockChain {
         let skip = blocks.len().saturating_sub(capacity);
         let blocks = &blocks[skip..];
 
-        let head = blocks.first().map(|b| b.0).unwrap_or_default();
-        let tail = blocks.last().map(|b| b.0).unwrap_or_default();
+        let head = blocks.last().map(|b| b.0).unwrap_or_default();
+        let tail = blocks.first().map(|b| b.0).unwrap_or_default();
 
         let mut map = HashMap::with_capacity(capacity);
         map.extend(blocks.iter().cloned().map(|(a, b, c)| (a, (b, c))));
@@ -67,10 +69,7 @@ impl BlockChain {
         Self { head, tail, map }
     }
 
-    pub fn block_hash<'a>(
-        &'a self,
-        block: &BlockNumber,
-    ) -> Option<&'a (BlockHash, StateCommitment)> {
+    pub fn get<'a>(&'a self, block: &BlockNumber) -> Option<&'a (BlockHash, StateCommitment)> {
         self.map.get(block)
     }
 
@@ -537,7 +536,7 @@ async fn reorg(
 
         let previous_block_number = reorg_tail.0 - 1;
         let previous = blocks
-            .block_hash(&previous_block_number)
+            .get(&previous_block_number)
             .context("Reorg exceeded local blockchain cache")?;
 
         match download_block(
@@ -2161,6 +2160,84 @@ mod tests {
                     .unwrap()
                     .unwrap_err();
             }
+        }
+    }
+
+    mod block_chain {
+        use pathfinder_common::{felt, BlockHash, BlockNumber, StateCommitment};
+
+        use crate::state::l2::BlockChain;
+
+        #[test]
+        fn circular_buffer_integrity() {
+            let mut uut = BlockChain::with_capacity(
+                3,
+                vec![
+                    (
+                        BlockNumber::new_or_panic(1),
+                        BlockHash(felt!("0x11")),
+                        StateCommitment(felt!("0x21")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(2),
+                        BlockHash(felt!("0x13")),
+                        StateCommitment(felt!("0x41")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(3),
+                        BlockHash(felt!("0x15")),
+                        StateCommitment(felt!("0x61")),
+                    ),
+                ],
+            );
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
+            uut.push(
+                BlockNumber::new_or_panic(4),
+                BlockHash(felt!("0x17")),
+                StateCommitment(felt!("0x81")),
+            );
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_none());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(4)).is_some());
+        }
+
+        #[test]
+        fn reset() {
+            let mut uut = BlockChain::with_capacity(
+                3,
+                vec![
+                    (
+                        BlockNumber::new_or_panic(1),
+                        BlockHash(felt!("0x11")),
+                        StateCommitment(felt!("0x21")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(2),
+                        BlockHash(felt!("0x13")),
+                        StateCommitment(felt!("0x41")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(3),
+                        BlockHash(felt!("0x15")),
+                        StateCommitment(felt!("0x61")),
+                    ),
+                ],
+            );
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
+
+            uut.reset_to_genesis();
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_none());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_none());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_none());
         }
     }
 }

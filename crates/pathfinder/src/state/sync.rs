@@ -58,6 +58,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     pending_poll_interval: Option<std::time::Duration>,
     block_validation_mode: l2::BlockValidationMode,
     websocket_txs: WebsocketSenders,
+    block_cache_size: usize,
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
@@ -119,7 +120,7 @@ where
         l1_head,
     ));
 
-    let latest_blocks = latest_n_blocks(storage.clone(), 1_000)
+    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
@@ -353,7 +354,7 @@ where
                     rx_l2 = new_rx;
 
 
-                    let latest_blocks = latest_n_blocks(storage.clone(), 1_000).await.context("Fetching latest blocks from storage")?;
+                    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size).await.context("Fetching latest blocks from storage")?;
                     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                     let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain);
 
@@ -400,6 +401,8 @@ async fn latest_n_blocks(
         for row in rows {
             blocks.push(row.context("Reading row from database")?);
         }
+        // We need to reverse the order here because we want the last `N` blocks in chronological order.
+        // Our sql query gives us the last `N` blocks but in reverse order (ORDER BY DESC), so we undo that here.
         blocks.reverse();
 
         Ok(blocks)
@@ -1337,6 +1340,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs.clone(),
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1444,6 +1448,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs,
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1515,6 +1520,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1559,6 +1565,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         let timeout = std::time::Duration::from_secs(1);
@@ -1636,6 +1643,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs.clone(),
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1737,6 +1745,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs,
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1799,6 +1808,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1852,6 +1862,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1897,6 +1908,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         tokio::time::sleep(Duration::from_millis(5)).await;
