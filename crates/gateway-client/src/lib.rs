@@ -1607,6 +1607,7 @@ mod tests {
 
         #[tokio::test]
         async fn integration() {
+            version_check!(Integration == 0 - 11 - 2);
             let actual = get_latest_version(&Client::integration()).await.unwrap();
             assert_eq!(
                 actual,
@@ -1632,7 +1633,7 @@ mod tests {
 
         #[tokio::test]
         async fn testnet() {
-            version_check!(Testnet == 0 - 11 - 1);
+            version_check!(Testnet == 0 - 11 - 2);
             let actual = get_latest_version(&Client::testnet())
                 .await
                 .unwrap()
@@ -1640,14 +1641,14 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 1).parse_as_semver().unwrap(),
+                StarknetVersion::new(0, 11, 2).parse_as_semver().unwrap(),
                 "Testnet gateway version has changed, update version_check"
             );
         }
 
         #[tokio::test]
         async fn testnet2() {
-            version_check!(Testnet2 == 0 - 11 - 1);
+            version_check!(Testnet2 == 0 - 11 - 2);
             let actual = get_latest_version(&Client::testnet2())
                 .await
                 .unwrap()
@@ -1655,7 +1656,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 1).parse_as_semver().unwrap(),
+                StarknetVersion::new(0, 11, 2).parse_as_semver().unwrap(),
                 "Testnet gateway version has changed, update version_check"
             );
         }
