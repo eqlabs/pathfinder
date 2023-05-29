@@ -12,7 +12,6 @@ test-utils = ["dep:reqwest", "dep:starknet-gateway-test-fixtures", "tokio/test-u
 [dependencies]
 anyhow = { workspace = true }
 base64 = "0.13.1"
-primitive-types = { version = "0.12.1", features = ["serde"] }
 flate2 = "1.0.25"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 http = "0.2.9"
@@ -24,6 +23,7 @@ pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
+primitive-types = { version = "0.12.1", features = ["serde"] }
 reqwest = { version = "0.11.13", features = ["json"], optional = true }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }

@@ -9,11 +9,11 @@ rust-version = "1.62"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = "0.1.59"
-primitive-types = "0.12.1"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
 pathfinder-retry = { path = "../retry" }
+primitive-types = "0.12.1"
 reqwest = { version = "0.11.13", features = ["json"] }
 stark_hash = { path = "../stark_hash" }
 thiserror = { workspace = true }
