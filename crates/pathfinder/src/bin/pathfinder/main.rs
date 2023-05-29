@@ -4,7 +4,7 @@ use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::EthereumAddress;
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
-use pathfinder_ethereum::provider::{EthereumTransport, HttpProvider};
+use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::{
     monitoring::{self},
     state,
@@ -128,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
 
     let sync_handle = tokio::spawn(state::sync(
         storage.clone(),
-        ethereum.transport,
+        ethereum.client,
         pathfinder_context.network,
         pathfinder_context.network_id,
         pathfinder_context.l1_core_address.0,
@@ -292,22 +292,22 @@ async fn spawn_monitoring(
 
 /// Convenience bundle for an Ethereum transport and chain.
 struct EthereumContext {
-    transport: HttpProvider,
+    client: EthereumClient,
     chain: EthereumChain,
 }
 
 impl EthereumContext {
     /// Configure an [EthereumContext]'s transport and read the chain ID using it.
     async fn setup(url: reqwest::Url, password: Option<String>) -> anyhow::Result<Self> {
-        let transport = HttpProvider::from_config(url, password).context("Creating transport")?;
+        let client = EthereumClient::from_config(url, password).context("Creating transport")?;
 
-        let chain = transport.chain().await.context(
+        let chain = client.get_chain().await.context(
             r"Determining Ethereum chain.
                             
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         )?;
 
-        Ok(Self { transport, chain })
+        Ok(Self { client, chain })
     }
 
     /// Maps the Ethereum network to its default Starknet network:
@@ -345,18 +345,15 @@ mod pathfinder_context {
 
     use anyhow::Context;
     use pathfinder_common::{Chain, ChainId, EthereumAddress};
+    use primitive_types::H160;
     use reqwest::Url;
     use starknet_gateway_client::Client as GatewayClient;
 
-    use pathfinder_ethereum::contract::{
-        INTEGRATION_ADDRESSES, MAINNET_ADDRESSES, TESTNET2_ADDRESSES, TESTNET_ADDRESSES,
-    };
-
     impl PathfinderContext {
-        const MAINNET_CORE: EthereumAddress = EthereumAddress(MAINNET_ADDRESSES.core);
-        const TESTNET_CORE: EthereumAddress = EthereumAddress(TESTNET_ADDRESSES.core);
-        const TESTNET2_CORE: EthereumAddress = EthereumAddress(TESTNET2_ADDRESSES.core);
-        const INTEGRATION_CORE: EthereumAddress = EthereumAddress(INTEGRATION_ADDRESSES.core);
+        const MAINNET_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
+        const TESTNET_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
+        const TESTNET2_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
+        const INTEGRATION_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
 
         pub async fn configure_and_proxy_check(
             cfg: NetworkConfig,

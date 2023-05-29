@@ -3,13 +3,12 @@ pub mod l2;
 mod pending;
 
 use anyhow::Context;
-use ethers::types::H160;
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ChainId, ClassCommitment, ClassHash, ContractNonce,
     ContractRoot, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
     StorageCommitment, TransactionCommitment,
 };
-use pathfinder_ethereum::{log::StateUpdateLog, provider::EthereumTransport};
+use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::{
     contract_state::{calculate_contract_state_hash, update_contract_state},
     ClassCommitmentTree, StorageCommitmentTree,
@@ -23,9 +22,10 @@ use pathfinder_storage::{
     insert_canonical_state_diff,
     types::{CompressedCasmClass, CompressedContract},
     CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable, ContractsStateTable,
-    L1StateTable, L1TableBlockId, RefsTable, StarknetBlock, StarknetBlocksBlockId,
-    StarknetBlocksTable, StarknetTransactionsTable, Storage,
+    L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+    StarknetTransactionsTable, Storage,
 };
+use primitive_types::H160;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use stark_hash::Felt;
 use starknet_gateway_client::GatewayApi;
@@ -61,11 +61,11 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     block_cache_size: usize,
 ) -> anyhow::Result<()>
 where
-    Transport: EthereumTransport + Clone,
+    Transport: EthereumApi + Clone,
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, H160, Option<StateUpdateLog>) -> F1,
+    L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, H160) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             WebsocketSenders,
@@ -87,14 +87,12 @@ where
     let (tx_l1, mut rx_l1) = mpsc::channel(1);
     let (tx_l2, mut rx_l2) = mpsc::channel(1);
 
-    let (l1_head, l2_head) = tokio::task::block_in_place(|| -> anyhow::Result<_> {
+    let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
-        let l1_head = L1StateTable::get(&tx, L1TableBlockId::Latest)
-            .context("Query L1 head from database")?;
         let l2_head = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
             .context("Query L2 head from database")?
             .map(|block| (block.number, block.hash, block.state_commmitment));
-        Ok((l1_head, l2_head))
+        Ok(l2_head)
     })?;
 
     // Start update sync-status process.
@@ -118,7 +116,6 @@ where
         transport.clone(),
         chain,
         core_address,
-        l1_head,
     ));
 
     let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
@@ -149,56 +146,9 @@ where
     loop {
         tokio::select! {
             l1_event = rx_l1.recv() => match l1_event {
-                Some(l1::Event::Update(updates)) => {
-                    let first = updates.first().map(|u| u.block_number.get());
-                    let last = updates.last().map(|u| u.block_number.get());
-
-                    l1_update(&mut db_conn, &updates).await.with_context(|| {
-                        format!("Update L1 state with blocks {first:?}-{last:?}")
-                    })?;
-
-                    match updates.as_slice() {
-                        [single] => {
-                            tracing::info!("L1 sync updated to block {}", single.block_number);
-                        }
-                        [first, .., last] => {
-                            tracing::info!(
-                                "L1 sync updated with blocks {} - {}",
-                                first.block_number,
-                                last.block_number
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-                Some(l1::Event::Reorg(reorg_tail)) => {
-                    l1_reorg(&mut db_conn, reorg_tail)
-                        .await
-                        .with_context(|| format!("Reorg L1 state to block {reorg_tail}"))?;
-
-                    let new_head = match reorg_tail {
-                        BlockNumber::GENESIS => None,
-                        other => Some(other - 1),
-                    };
-
-                    match new_head {
-                        Some(head) => {
-                            tracing::info!("L1 reorg occurred, new L1 head is block {}", head)
-                        }
-                        None => tracing::info!("L1 reorg occurred, new L1 head is genesis"),
-                    }
-                }
-                Some(l1::Event::QueryUpdate(block, tx)) => {
-                    let update =
-                        tokio::task::block_in_place(|| {
-                            let tx = db_conn.transaction()?;
-                            L1StateTable::get(&tx, block.into())
-                        })
-                        .with_context(|| format!("Query L1 state table for block {block:?}"))?;
-
-                    let _ = tx.send(update);
-
-                    tracing::trace!("Query for L1 update for block {}", block);
+                Some(l1::Event::Update(update)) => {
+                    l1_update(&mut db_conn, &update).await?;
+                    tracing::info!("L1 sync updated to block {}", update.block_number);
                 }
                 None => {
                     // L1 sync process failed; restart it.
@@ -210,16 +160,11 @@ where
                             tracing::warn!("L1 sync process terminated with: {:?}", e);
                         }
                     }
-                    let l1_head = tokio::task::block_in_place(|| {
-                        let tx = db_conn.transaction()?;
-                        L1StateTable::get(&tx, L1TableBlockId::Latest)
-                    })
-                    .context("Query L1 head from database")?;
 
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    let fut = l1_sync(new_tx, transport.clone(), chain, core_address, l1_head);
+                    let fut = l1_sync(new_tx, transport.clone(), chain, core_address);
 
                     l1_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
@@ -473,72 +418,27 @@ async fn update_sync_status_latest(
     }
 }
 
-async fn l1_update(connection: &mut Connection, updates: &[StateUpdateLog]) -> anyhow::Result<()> {
+async fn l1_update(
+    connection: &mut Connection,
+    update: &EthereumStateUpdate,
+) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        for update in updates {
-            L1StateTable::upsert(&transaction, update).context("Insert update")?;
-        }
+        L1StateTable::upsert(&transaction, update).context("Insert update")?;
 
-        // Track combined L1 and L2 state.
-        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
-        let expected_next = l1_l2_head
-            .map(|head| head + 1)
-            .unwrap_or(BlockNumber::GENESIS);
+        let l2_root =
+            StarknetBlocksTable::get_state_commitment(&transaction, update.block_number.into())
+                .context("Query L2 root")?
+                .map(|(a, b)| StateCommitment::calculate(a, b));
 
-        match updates.first() {
-            Some(update) if update.block_number == expected_next => {
-                let mut next_head = None;
-                for update in updates {
-                    let l2_root = StarknetBlocksTable::get_state_commitment(
-                        &transaction,
-                        update.block_number.into(),
-                    )
-                    .context("Query L2 root")?
-                    .map(|(a, b)| StateCommitment::calculate(a, b));
-
-                    match l2_root {
-                        Some(l2_root) if l2_root == update.global_root => {
-                            next_head = Some(update.block_number);
-                        }
-                        _ => break,
-                    }
-                }
-
-                if let Some(next_head) = next_head {
-                    RefsTable::set_l1_l2_head(&transaction, Some(next_head))
-                        .context("Update L1-L2 head")?;
-                }
+        if let Some(l2_root) = l2_root {
+            if l2_root == update.global_root {
+                RefsTable::set_l1_l2_head(&transaction, Some(update.block_number))
+                    .context("Update L1-L2 head")?;
             }
-            _ => {}
-        }
-
-        transaction.commit().context("Commit database transaction")
-    })
-}
-
-async fn l1_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
-    tokio::task::block_in_place(move || {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("Create database transaction")?;
-
-        L1StateTable::reorg(&transaction, reorg_tail).context("Delete L1 state from database")?;
-
-        // Track combined L1 and L2 state.
-        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
-        match l1_l2_head {
-            Some(head) if head >= reorg_tail => {
-                let new_head = match reorg_tail {
-                    BlockNumber::GENESIS => None,
-                    other => Some(other - 1),
-                };
-                RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
-            }
-            _ => {}
         }
 
         transaction.commit().context("Commit database transaction")
@@ -1069,20 +969,18 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 mod tests {
     use super::{l1, l2};
     use crate::state;
-    use ethers::types::H256;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
         BlockHash, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain, ChainId, ClassCommitment,
-        ClassHash, EthereumBlockHash, EthereumBlockNumber, EthereumChain, EthereumLogIndex,
-        EthereumTransactionHash, EthereumTransactionIndex, GasPrice, SequencerAddress,
-        StarknetVersion, StateCommitment, StorageCommitment,
+        ClassHash, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
     };
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::{
         types::{CompressedCasmClass, CompressedContract},
-        CasmClassTable, ContractCodeTable, L1StateTable, L1TableBlockId, RefsTable, StarknetBlock,
+        CasmClassTable, ContractCodeTable, L1StateTable, RefsTable, StarknetBlock,
         StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
+    use primitive_types::H160;
     use stark_hash::Felt;
     use starknet_gateway_client::GatewayApi;
     use starknet_gateway_types::{error::SequencerError, pending::PendingData, reply};
@@ -1093,38 +991,14 @@ mod tests {
     struct FakeTransport;
 
     #[async_trait::async_trait]
-    impl pathfinder_ethereum::provider::EthereumTransport for FakeTransport {
-        async fn block(
+    impl pathfinder_ethereum::EthereumApi for FakeTransport {
+        async fn get_starknet_state(
             &self,
-            _: ethers::types::BlockId,
-        ) -> anyhow::Result<Option<ethers::types::Block<H256>>> {
+        ) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
             unimplemented!()
         }
 
-        async fn block_number(&self) -> anyhow::Result<u64> {
-            unimplemented!()
-        }
-
-        async fn chain(&self) -> anyhow::Result<EthereumChain> {
-            unimplemented!()
-        }
-
-        async fn logs(
-            &self,
-            _: ethers::types::Filter,
-        ) -> std::result::Result<Vec<ethers::types::Log>, pathfinder_ethereum::provider::LogsError>
-        {
-            unimplemented!()
-        }
-
-        async fn transaction(
-            &self,
-            _: ethers::types::TxHash,
-        ) -> anyhow::Result<Option<ethers::types::Transaction>> {
-            unimplemented!()
-        }
-
-        async fn gas_price(&self) -> anyhow::Result<ethers::types::U256> {
+        async fn get_chain(&self) -> anyhow::Result<pathfinder_common::EthereumChain> {
             unimplemented!()
         }
     }
@@ -1150,8 +1024,7 @@ mod tests {
         _: mpsc::Sender<l1::Event>,
         _: FakeTransport,
         _: Chain,
-        _: ethers::types::H160,
-        _: Option<pathfinder_ethereum::log::StateUpdateLog>,
+        _: H160,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -1186,26 +1059,15 @@ mod tests {
         static ref STATE_COMMITMENT0: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT0, *CLASS_COMMITMENT0);
         static ref STATE_COMMITMENT1: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT1, *CLASS_COMMITMENT1);
 
-        static ref ETH_ORIG: pathfinder_ethereum::EthOrigin = pathfinder_ethereum::EthOrigin {
-            block: pathfinder_ethereum::BlockOrigin {
-                hash: EthereumBlockHash(H256::zero()),
-                number: EthereumBlockNumber(0),
-            },
-            log_index: EthereumLogIndex(0),
-            transaction: pathfinder_ethereum::TransactionOrigin {
-                hash: EthereumTransactionHash(H256::zero()),
-                index: EthereumTransactionIndex(0),
-            },
-        };
-        pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
+        pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::EthereumStateUpdate = pathfinder_ethereum::EthereumStateUpdate {
             block_number: BlockNumber::GENESIS,
+            block_hash: BlockHash(STATE_COMMITMENT0.0.clone()),
             global_root: *STATE_COMMITMENT0,
-            origin: ETH_ORIG.clone(),
         };
-        pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::log::StateUpdateLog = pathfinder_ethereum::log::StateUpdateLog {
+        pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::EthereumStateUpdate = pathfinder_ethereum::EthereumStateUpdate {
             block_number: BlockNumber::new_or_panic(1),
+            block_hash: BlockHash(STATE_COMMITMENT0.0.clone()),
             global_root: *STATE_COMMITMENT1,
-            origin: ETH_ORIG.clone(),
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
             block_hash: BlockHash(*A),
@@ -1270,13 +1132,15 @@ mod tests {
     }
 
     mod l1_update {
+        use primitive_types::H160;
+
         use super::*;
 
         async fn with_state(
             state: Vec<(StarknetBlock, StorageCommitment, ClassCommitment)>,
-            update: Vec<pathfinder_ethereum::log::StateUpdateLog>,
+            update: pathfinder_ethereum::EthereumStateUpdate,
         ) -> Option<BlockNumber> {
-            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| {
+            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| {
                 let u = update.clone();
                 async move {
                     tx.send(l1::Event::Update(u)).await.unwrap();
@@ -1288,7 +1152,7 @@ mod tests {
             let chain = Chain::Testnet;
             let chain_id = ChainId::TESTNET;
             let sync_state = Arc::new(SyncState::default());
-            let core_address = pathfinder_ethereum::contract::TESTNET_ADDRESSES.core;
+            let core_address = H160::zero();
 
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
@@ -1337,10 +1201,7 @@ mod tests {
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
         async fn no_l2_head() {
-            assert_eq!(
-                with_state(vec![], vec![STATE_UPDATE_LOG0.clone()]).await,
-                None
-            );
+            assert_eq!(with_state(vec![], STATE_UPDATE_LOG0.clone()).await, None);
         }
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1352,163 +1213,12 @@ mod tests {
                         *STORAGE_COMMITMENT0,
                         *CLASS_COMMITMENT0,
                     )],
-                    vec![STATE_UPDATE_LOG0.clone()]
+                    STATE_UPDATE_LOG0.clone(),
                 )
                 .await,
                 Some(BlockNumber::GENESIS),
             );
-        }
-
-        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-        async fn l2_head_two_updates() {
-            assert_eq!(
-                with_state(
-                    vec![
-                        (
-                            STORAGE_BLOCK0.clone(),
-                            *STORAGE_COMMITMENT0,
-                            *CLASS_COMMITMENT0,
-                        ),
-                        (
-                            STORAGE_BLOCK1.clone(),
-                            *STORAGE_COMMITMENT1,
-                            *CLASS_COMMITMENT1,
-                        ),
-                    ],
-                    vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()]
-                )
-                .await,
-                Some(BlockNumber::new_or_panic(1)),
-            );
-        }
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_reorg() {
-        let results = [
-            // Case 0: single block in L1, reorg on genesis
-            (vec![STATE_UPDATE_LOG0.clone()], 0),
-            // Case 1: 2 blocks in L1, reorg on block #1
-            (
-                vec![STATE_UPDATE_LOG0.clone(), STATE_UPDATE_LOG1.clone()],
-                1,
-            ),
-        ]
-        .into_iter()
-        .map(|(updates, reorg_on_block)| async move {
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-            let websocket_txs = WebsocketSenders::for_test();
-
-            // A simple L1 sync task
-            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
-                tx.send(l1::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
-                    .await
-                    .unwrap();
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                Ok(())
-            };
-
-            RefsTable::set_l1_l2_head(&tx, Some(BlockNumber::new_or_panic(reorg_on_block)))
-                .unwrap();
-            updates
-                .into_iter()
-                .for_each(|update| L1StateTable::upsert(&tx, &update).unwrap());
-
-            tx.commit().unwrap();
-
-            // UUT
-            let _jh = tokio::spawn(state::sync(
-                storage.clone(),
-                FakeTransport,
-                Chain::Testnet,
-                ChainId::TESTNET,
-                pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-                FakeSequencer,
-                Arc::new(SyncState::default()),
-                l1,
-                l2_noop,
-                PendingData::default(),
-                None,
-                l2::BlockValidationMode::Strict,
-                websocket_txs,
-                100,
-            ));
-
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(10)).await;
-
-            let tx = connection.transaction().unwrap();
-
-            let latest_block_number = L1StateTable::get(&tx, L1TableBlockId::Latest)
-                .unwrap()
-                .map(|s| s.block_number);
-            let head = RefsTable::get_l1_l2_head(&tx).unwrap();
-            (head, latest_block_number)
-        })
-        .collect::<futures::stream::FuturesOrdered<_>>()
-        .collect::<Vec<_>>()
-        .await;
-
-        assert_eq!(
-            results,
-            vec![
-                // Case 0: no L1-L2 head expected, as we start from genesis
-                (None, None),
-                // Case 1: some L1-L2 head expected, block #1 removed
-                (Some(BlockNumber::GENESIS), Some(BlockNumber::GENESIS)),
-            ]
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_query_update() {
-        let storage = Storage::in_memory().unwrap();
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-        let websocket_txs = WebsocketSenders::for_test();
-
-        // This is what we're asking for
-        L1StateTable::upsert(&tx, &STATE_UPDATE_LOG0).unwrap();
-
-        tx.commit().unwrap();
-
-        // A simple L1 sync task which does the request and checks he result
-        let l1 = |tx: mpsc::Sender<l1::Event>, _, _, _, _| async move {
-            let (tx1, rx1) =
-                tokio::sync::oneshot::channel::<Option<pathfinder_ethereum::log::StateUpdateLog>>();
-
-            tx.send(l1::Event::QueryUpdate(BlockNumber::GENESIS, tx1))
-                .await
-                .unwrap();
-
-            // Check the result straight away ¯\_(ツ)_/¯
-            assert_eq!(rx1.await.unwrap().unwrap(), *STATE_UPDATE_LOG0);
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
-        };
-
-        // UUT
-        let _jh = tokio::spawn(state::sync(
-            storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1,
-            l2_noop,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
-            websocket_txs,
-            100,
-        ));
-
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        }        
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1519,7 +1229,7 @@ mod tests {
         let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
         let websocket_txs = WebsocketSenders::for_test();
 
-        let l1 = move |_, _, _, _, _| {
+        let l1 = move |_, _, _, _| {
             let starts_tx = starts_tx.clone();
             async move {
                 // signal we've (re)started
@@ -1541,7 +1251,7 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+            H160::zero(),
             FakeSequencer,
             Arc::new(SyncState::default()),
             l1,
@@ -1619,7 +1329,7 @@ mod tests {
                 FakeTransport,
                 Chain::Testnet,
                 ChainId::TESTNET,
-                pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+                H160::zero(),
                 FakeSequencer,
                 sync_state.clone(),
                 l1_noop,
@@ -1721,7 +1431,7 @@ mod tests {
                 FakeTransport,
                 Chain::Testnet,
                 ChainId::TESTNET,
-                pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+                H160::zero(),
                 FakeSequencer,
                 Arc::new(SyncState::default()),
                 l1_noop,
@@ -1784,7 +1494,7 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+            H160::zero(),
             FakeSequencer,
             Arc::new(SyncState::default()),
             l1_noop,
@@ -1838,7 +1548,7 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+            H160::zero(),
             FakeSequencer,
             Arc::new(SyncState::default()),
             l1_noop,
@@ -1884,7 +1594,7 @@ mod tests {
             FakeTransport,
             Chain::Testnet,
             ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
+            H160::zero(),
             FakeSequencer,
             Arc::new(SyncState::default()),
             l1_noop,

@@ -4,7 +4,7 @@ use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, ContractNonce, StateCommitment,
 };
-use pathfinder_ethereum::contract::ContractAddresses;
+use pathfinder_ethereum::ContractAddresses;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -220,19 +220,9 @@ fn get_chain(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<Chain> {
     Ok(chain)
 }
 
-fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
-    use pathfinder_ethereum::contract::{
-        INTEGRATION_ADDRESSES, MAINNET_ADDRESSES, TESTNET2_ADDRESSES, TESTNET_ADDRESSES,
-    };
-    let addresses = match chain {
-        Chain::Mainnet => MAINNET_ADDRESSES,
-        Chain::Testnet => TESTNET_ADDRESSES,
-        Chain::Integration => INTEGRATION_ADDRESSES,
-        Chain::Testnet2 => TESTNET2_ADDRESSES,
-        Chain::Custom => anyhow::bail!("Unexpected chain"),
-    };
-
-    Ok(addresses)
+fn contract_addresses(_chain: Chain) -> anyhow::Result<ContractAddresses> {
+    // TODO(SM): fix this
+    Ok(ContractAddresses::default())
 }
 
 fn resolve_block(
