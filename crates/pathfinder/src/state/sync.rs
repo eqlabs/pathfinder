@@ -1058,12 +1058,12 @@ mod tests {
 
         pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::EthereumStateUpdate = pathfinder_ethereum::EthereumStateUpdate {
             block_number: BlockNumber::GENESIS,
-            block_hash: BlockHash(STATE_COMMITMENT0.0.clone()),
+            block_hash: BlockHash(STATE_COMMITMENT0.0),
             global_root: *STATE_COMMITMENT0,
         };
         pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::EthereumStateUpdate = pathfinder_ethereum::EthereumStateUpdate {
             block_number: BlockNumber::new_or_panic(1),
-            block_hash: BlockHash(STATE_COMMITMENT0.0.clone()),
+            block_hash: BlockHash(STATE_COMMITMENT0.0),
             global_root: *STATE_COMMITMENT1,
         };
         pub static ref BLOCK0: reply::Block = reply::Block {
