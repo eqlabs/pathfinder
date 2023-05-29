@@ -3,7 +3,7 @@
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
 use anyhow::Context;
-use ethers::types::{H160, H256};
+use primitive_types::{H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
@@ -374,9 +374,9 @@ impl std::ops::SubAssign<u64> for BlockNumber {
     }
 }
 
-impl From<EthereumBlockNumber> for ethers::types::BlockId {
+impl From<EthereumBlockNumber> for BlockId {
     fn from(number: EthereumBlockNumber) -> Self {
-        ethers::types::BlockId::Number(ethers::types::BlockNumber::Number(number.0.into()))
+        BlockId::Number(BlockNumber::new_or_panic(number.0))
     }
 }
 
@@ -433,7 +433,7 @@ impl From<BlockHash> for BlockId {
 pub enum EthereumChain {
     Mainnet,
     Goerli,
-    Other(ethers::types::U256),
+    Other(primitive_types::U256),
 }
 
 /// Starknet chain.
