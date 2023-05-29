@@ -35,7 +35,7 @@ impl L1StateTable {
             r"INSERT OR REPLACE INTO l1_state (
                         starknet_block_number,
                         starknet_block_hash,
-                        starknet_global_root,
+                        starknet_global_root
                     ) VALUES (
                         :starknet_block_number,
                         :starknet_block_hash,
@@ -43,7 +43,7 @@ impl L1StateTable {
                     )",
             named_params! {
                 ":starknet_block_number": update.block_number,
-                ":starknet_block_hash": update.block_hash,
+                ":starknet_block_hash": &update.block_hash,
                 ":starknet_global_root": &update.global_root,
             },
         )?;
