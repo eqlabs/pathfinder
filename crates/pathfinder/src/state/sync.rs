@@ -1218,7 +1218,7 @@ mod tests {
                 .await,
                 Some(BlockNumber::GENESIS),
             );
-        }        
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
