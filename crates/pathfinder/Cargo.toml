@@ -24,7 +24,6 @@ casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://git
 casm-compiler-v1_1_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.1.0-rc0" }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
-primitive-types = "0.12.1"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
 lru = "0.10"
@@ -39,6 +38,7 @@ pathfinder-retry = { path = "../retry" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
+primitive-types = "0.12.1"
 reqwest = { version = "0.11.13", features = ["json"] }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 semver = { workspace = true }
