@@ -126,8 +126,6 @@ where
         block_validation_mode,
     ));
 
-    let mut existed = (0, 0);
-
     let mut last_block_start = std::time::Instant::now();
     let mut block_time_avg = std::time::Duration::ZERO;
     const BLOCK_TIME_WEIGHT: f32 = 0.05;
@@ -262,12 +260,10 @@ where
                             tracing::info!("Updated Starknet state with block {}", block_number)
                         }
                         Some(_) => {
-                            tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                            tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
                                 block_number,
                                 block_time.as_secs_f32(),
                                 block_time_avg.as_secs_f32(),
-                                existed.0,
-                                existed.0 - existed.1,
                                 timings.class_declaration.as_secs_f32(),
                                 storage_updates,
                                 update_t.as_secs_f32(),
@@ -326,25 +322,6 @@ where
                     let _ = tx.send(block);
 
                     tracing::trace!(%number, "Query hash for L2 block");
-                }
-                Some(l2::Event::QueryContractExistance(contracts, tx)) => {
-                    let exists =
-                        tokio::task::block_in_place(|| {
-                            let tx = db_conn.transaction()?;
-                            ContractCodeTable::exists(&tx, &contracts)
-                        })
-                        .with_context(|| {
-                            format!("Query storage for existance of contracts {contracts:?}")
-                        })?;
-                    let count = exists.iter().filter(|b| **b).count();
-
-                    // Fixme: This stat tracking is now incorrect, as these are shared by deploy and declare.
-                    //        Overall, quite nasty as is, so should get a proper refactor instead.
-                    existed = (contracts.len(), count);
-
-                    let _ = tx.send(exists);
-
-                    tracing::trace!("Query for existence of contracts: {:?}", contracts);
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
                     download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain, &block.starknet_version)
@@ -1875,56 +1852,6 @@ mod tests {
                 result,
                 (STORAGE_BLOCK0.hash, STORAGE_BLOCK0.state_commmitment)
             );
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
-        };
-
-        // UUT
-        let _jh = tokio::spawn(state::sync(
-            storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1_noop,
-            l2,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
-            websocket_txs,
-        ));
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_query_contract_existance() {
-        let storage = Storage::in_memory().unwrap();
-        let connection = storage.connection().unwrap();
-        let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-        let websocket_txs = WebsocketSenders::for_test();
-
-        // This is what we're asking for
-        ContractCodeTable::insert_compressed(
-            &connection,
-            &CompressedContract {
-                definition: zstd_magic,
-                hash: ClassHash(*A),
-            },
-        )
-        .unwrap();
-
-        // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
-            let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
-
-            tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
-                .await
-                .unwrap();
-
-            // Check the result straight away ¯\_(ツ)_/¯
-            assert_eq!(rx1.await.unwrap(), vec![true]);
 
             tokio::time::sleep(Duration::from_secs(1)).await;
             Ok(())
