@@ -226,11 +226,29 @@ fn get_chain(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<Chain> {
     Ok(chain)
 }
 
-fn contract_addresses(_chain: Chain) -> anyhow::Result<ContractAddresses> {
-    // TODO(SM): fix this
-    Ok(ContractAddresses {
-        core: H160::zero(),
-        gps: H160::zero(),
+fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
+    fn parse(hex: &str) -> H160 {
+        let slice: [u8; 20] = const_decoder::Decoder::Hex.decode(hex.as_bytes());
+        H160::from(slice)
+    }
+
+    Ok(match chain {
+        Chain::Mainnet => ContractAddresses {
+            core: parse("c662c410C0ECf747543f5bA90660f6ABeBD9C8c4"),
+            gps: parse("47312450B3Ac8b5b8e247a6bB6d523e7605bDb60"),
+        },
+        Chain::Testnet => ContractAddresses {
+            core: parse("de29d060D45901Fb19ED6C6e959EB22d8626708e"),
+            gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
+        },
+        Chain::Testnet2 => ContractAddresses {
+            core: parse("a4eD3aD27c294565cB0DCc993BDdCC75432D498c"),
+            gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
+        },
+        Chain::Integration | Chain::Custom => ContractAddresses {
+            core: parse("d5c325D183C592C94998000C5e0EED9e6655c020"),
+            gps: parse("8f97970aC5a9aa8D130d35146F5b59c4aef57963"),
+        },
     })
 }
 
