@@ -95,17 +95,13 @@ impl L1StateTable {
         tx: &Transaction<'_>,
         block: L1TableBlockId,
     ) -> anyhow::Result<Option<EthereumStateUpdate>> {
-        // TODO(SM): add necessary migration
         let mut statement = match block {
-            // L1TableBlockId::Number(_) => tx.prepare(
-            //     r"SELECT starknet_block_number,
-            //         starknet_block_hash,
-            //         starknet_global_root
-            //     FROM l1_state WHERE starknet_block_number >= ?",
-            // ),
-            L1TableBlockId::Number(_) => {
-                return Ok(None);
-            }
+            L1TableBlockId::Number(_) => tx.prepare(
+                r"SELECT starknet_block_number,
+                    starknet_block_hash,
+                    starknet_global_root
+                FROM l1_state WHERE starknet_block_number >= ?",
+            ),
             L1TableBlockId::Latest => tx.prepare(
                 r"SELECT starknet_block_number,
                     starknet_block_hash,
