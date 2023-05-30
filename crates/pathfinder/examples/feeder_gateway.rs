@@ -4,8 +4,8 @@ use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, ContractNonce, StateCommitment,
 };
-use pathfinder_ethereum::ContractAddresses;
 use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
+use primitive_types::H160;
 use serde::Deserialize;
 use stark_hash::Felt;
 use starknet_gateway_types::reply::{
@@ -14,6 +14,12 @@ use starknet_gateway_types::reply::{
 };
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use warp::Filter;
+
+/// Groups the Starknet contract addresses for a specific chain.
+pub struct ContractAddresses {
+    pub core: H160,
+    pub gps: H160,
+}
 
 /// Serve feeder gateway REST endpoints required for pathfinder to sync.
 ///
@@ -222,7 +228,10 @@ fn get_chain(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<Chain> {
 
 fn contract_addresses(_chain: Chain) -> anyhow::Result<ContractAddresses> {
     // TODO(SM): fix this
-    Ok(ContractAddresses::default())
+    Ok(ContractAddresses {
+        core: H160::zero(),
+        gps: H160::zero(),
+    })
 }
 
 fn resolve_block(

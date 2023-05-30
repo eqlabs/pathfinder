@@ -1,5 +1,4 @@
 use pathfinder_common::{BlockHash, BlockNumber, EthereumChain, StateCommitment};
-use primitive_types::H160;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EthereumStateUpdate {
@@ -32,13 +31,4 @@ impl EthereumApi for EthereumClient {
     async fn get_chain(&self) -> anyhow::Result<EthereumChain> {
         unimplemented!() // TODO(SM):
     }
-}
-
-// TODO(SM): remove this pointless thing
-/// Groups the Starknet contract addresses for a specific chain.
-#[derive(Default)]
-pub struct ContractAddresses {
-    pub core: H160,
-    pub gps: H160,
-    pub mempage: H160,
 }
