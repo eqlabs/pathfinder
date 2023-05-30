@@ -1,5 +1,8 @@
+use std::num::NonZeroU64;
+
 use pathfinder_common::Chain;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
+use pathfinder_retry::Retry;
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
@@ -29,7 +32,15 @@ async fn sync_impl(
     let head_poll_interval = head_poll_interval(chain);
 
     loop {
-        let state_update = ethereum.get_starknet_state(&core_address).await?;
+        let state_update = Retry::exponential(
+            || async { ethereum.get_starknet_state(&core_address).await },
+            NonZeroU64::new(1).unwrap(),
+        )
+        .factor(NonZeroU64::new(2).unwrap())
+        .max_delay(head_poll_interval / 2)
+        .when(|_| true)
+        .await?;
+
         tx_event.send(state_update).await?;
 
         tokio::time::sleep(head_poll_interval).await;
