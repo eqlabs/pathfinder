@@ -1,6 +1,6 @@
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
-use pathfinder_common::{BlockNumber, CasmHash, ClassCommitmentLeafHash, ClassHash, ContractClass};
+use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash, ContractClass};
 use pathfinder_serde::extract_program_and_entry_points_by_type;
 use rusqlite::{named_params, params, OptionalExtension, Transaction};
 
@@ -30,23 +30,6 @@ impl ContractCodeTable {
         )?;
 
         Ok(())
-    }
-
-    pub fn update_block_number_if_null(
-        transaction: &Transaction<'_>,
-        class: ClassHash,
-        block: BlockNumber,
-    ) -> anyhow::Result<bool> {
-        let rows_changed = transaction.execute(
-            "UPDATE class_definitions SET block_number=? WHERE hash=? AND block_number IS NULL",
-            rusqlite::params![block, class],
-        )?;
-
-        match rows_changed {
-            0 => Ok(false),
-            1 => Ok(true),
-            _ => unreachable!("Should modify at most one row"),
-        }
     }
 
     pub fn get_class(

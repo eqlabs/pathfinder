@@ -500,33 +500,6 @@ async fn l2_update(
 
         let rpc_state_update: pathfinder_storage::types::StateUpdate = state_update.into();
 
-        let declared_sierra_class_hashes = rpc_state_update
-            .state_diff
-            .declared_sierra_classes
-            .iter()
-            .map(|c| ClassHash(c.class_hash.0));
-        let declared_cairo_class_hashes = rpc_state_update
-            .state_diff
-            .declared_contracts
-            .iter()
-            .map(|c| c.class_hash);
-        let deployed_class_hashes = rpc_state_update
-            .state_diff
-            .deployed_contracts
-            .iter()
-            .map(|d| d.class_hash);
-        let declared_class_hashes = declared_sierra_class_hashes
-            .chain(declared_cairo_class_hashes)
-            .chain(deployed_class_hashes);
-        for class_hash in declared_class_hashes {
-            ContractCodeTable::update_block_number_if_null(
-                &transaction,
-                class_hash,
-                block.block_number,
-            )
-            .with_context(|| format!("Setting declared_on for class={class_hash:?}"))?;
-        }
-
         // Insert the transactions.
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),

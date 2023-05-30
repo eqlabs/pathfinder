@@ -53,23 +53,13 @@ pub mod init {
 
                 let update = StateUpdate::with_block_hash(n);
 
-                insert_canonical_state_diff(tx, block_number, &update.state_diff).unwrap();
-
                 for declared_class in &update.state_diff.declared_contracts {
                     ContractCodeTable::insert(tx, declared_class.class_hash, b"").unwrap();
-                    ContractCodeTable::update_block_number_if_null(
-                        tx,
-                        declared_class.class_hash,
-                        block_number,
-                    )
-                    .unwrap();
                 }
 
                 for declared_sierra_class in &update.state_diff.declared_sierra_classes {
                     let class_hash = ClassHash(declared_sierra_class.class_hash.0);
                     ContractCodeTable::insert(tx, class_hash, b"").unwrap();
-                    ContractCodeTable::update_block_number_if_null(tx, class_hash, block_number)
-                        .unwrap();
                     CasmClassTable::insert(
                         tx,
                         &vec![],
@@ -79,6 +69,8 @@ pub mod init {
                     )
                     .unwrap();
                 }
+
+                insert_canonical_state_diff(tx, block_number, &update.state_diff).unwrap();
 
                 update
             })

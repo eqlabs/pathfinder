@@ -406,13 +406,6 @@ pub(crate) mod tests {
 
             insert_canonical_state_diff(&db_txn, new_block.number, &state_diff).unwrap();
 
-            pathfinder_storage::ContractCodeTable::update_block_number_if_null(
-                &db_txn,
-                class_hash,
-                new_block.number,
-            )
-            .unwrap();
-
             // Persist
             db_txn.commit().unwrap();
 
