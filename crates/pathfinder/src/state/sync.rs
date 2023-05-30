@@ -111,12 +111,7 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(
-        tx_l1,
-        transport.clone(),
-        chain,
-        core_address,
-    ));
+    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, core_address));
 
     let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
         .await
