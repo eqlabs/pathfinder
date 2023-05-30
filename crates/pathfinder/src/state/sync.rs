@@ -65,7 +65,7 @@ where
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<l1::Event>, Transport, Chain, H160) -> F1,
+    L1Sync: FnMut(mpsc::Sender<EthereumStateUpdate>, Transport, Chain, H160) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             WebsocketSenders,
@@ -141,7 +141,7 @@ where
     loop {
         tokio::select! {
             l1_event = rx_l1.recv() => match l1_event {
-                Some(l1::Event::Update(update)) => {
+                Some(update) => {
                     l1_update(&mut db_conn, &update).await?;
                     tracing::info!("L1 sync updated to block {}", update.block_number);
                 }
@@ -962,13 +962,14 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{l1, l2};
+    use super::l2;
     use crate::state;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
         BlockHash, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain, ChainId, ClassCommitment,
         ClassHash, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
     };
+    use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::{
         types::{CompressedCasmClass, CompressedContract},
@@ -1017,7 +1018,7 @@ mod tests {
     }
 
     async fn l1_noop(
-        _: mpsc::Sender<l1::Event>,
+        _: mpsc::Sender<EthereumStateUpdate>,
         _: FakeTransport,
         _: Chain,
         _: H160,
@@ -1136,10 +1137,10 @@ mod tests {
             state: Vec<(StarknetBlock, StorageCommitment, ClassCommitment)>,
             update: pathfinder_ethereum::EthereumStateUpdate,
         ) -> Option<BlockNumber> {
-            let l1 = move |tx: mpsc::Sender<l1::Event>, _, _, _| {
+            let l1 = move |tx: mpsc::Sender<EthereumStateUpdate>, _, _, _| {
                 let u = update.clone();
                 async move {
-                    tx.send(l1::Event::Update(u)).await.unwrap();
+                    tx.send(u).await.unwrap();
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     Ok(())
                 }
