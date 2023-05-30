@@ -1,9 +1,6 @@
-use futures::Future;
 use pathfinder_common::Chain;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
-use pathfinder_retry::Retry;
 use primitive_types::H160;
-use std::{num::NonZeroU64, time::Duration};
 use tokio::sync::mpsc;
 
 // TODO(SM): remove `Event` wrapper
@@ -27,24 +24,6 @@ where
 {
     // The core sync logic implementation.
     sync_impl(ethereum, tx_event, chain, core_address).await
-}
-
-#[allow(dead_code)] // TODO(SM): remove
-/// A helper function to keep the backoff strategy construction separated.
-async fn retry<T, E, Fut, FutureFactory, RetryCondition>(
-    future_factory: FutureFactory,
-    retry_condition: RetryCondition,
-) -> Result<T, E>
-where
-    Fut: Future<Output = Result<T, E>>,
-    FutureFactory: FnMut() -> Fut,
-    RetryCondition: FnMut(&E) -> bool,
-{
-    Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
-        .factor(NonZeroU64::new(15).unwrap())
-        .max_delay(Duration::from_secs(10 * 60))
-        .when(retry_condition)
-        .await
 }
 
 async fn sync_impl(
