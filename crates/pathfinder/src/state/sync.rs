@@ -909,7 +909,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
 
     // For each missing, download, verify and insert definition.
     for class_hash in missing {
-        let class = download_class(&sequencer, class_hash, chain, version).await?;
+        let class = download_class(&sequencer, class_hash, chain, version.clone()).await?;
 
         match class {
             DownloadedClass::Cairo(class) => {
@@ -969,7 +969,7 @@ async fn download_class<SequencerClient: GatewayApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
     chain: Chain,
-    version: &StarknetVersion,
+    version: StarknetVersion,
 ) -> Result<DownloadedClass, anyhow::Error> {
     use starknet_gateway_types::class_hash::compute_class_hash;
 
@@ -978,89 +978,71 @@ async fn download_class<SequencerClient: GatewayApi>(
         .await
         .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
-    let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let hash = compute_class_hash(&definition)?;
-        Ok((definition, hash))
-    });
-    let (definition, hash) = extract
-        .await
-        .context("Parse class definition and compute hash")??;
+    tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let hash = compute_class_hash(&definition).context("Computing class hash")?;
 
-    anyhow::ensure!(
-        class_hash == hash.hash(),
-        "Class hash mismatch, {} instead of {}",
-        hash.hash(),
-        class_hash.0
-    );
+        anyhow::ensure!(
+            class_hash == hash.hash(),
+            "Class hash mismatch, {} instead of {}",
+            hash.hash(),
+            class_hash.0
+        );
 
-    match hash {
-        starknet_gateway_types::class_hash::ComputedClassHash::Cairo(hash) => {
-            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let mut compressor =
-                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
 
+        use starknet_gateway_types::class_hash::ComputedClassHash;
+        match hash {
+            ComputedClassHash::Cairo(_) => {
                 let definition = compressor
-                    .compress(&definition)
-                    .context("Compress definition")?;
-
-                Ok(definition)
-            });
-            let compressed_definition = compress.await.context("Compress class")??;
-
-            Ok(DownloadedClass::Cairo(
-                pathfinder_storage::types::CompressedContract {
-                    definition: compressed_definition,
-                    hash,
-                },
-            ))
-        }
-        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
-            // FIXME(integration reset): work-around for integration containing Sierra classes
-            // that are incompatible with production compiler. This will get "fixed" in the future
-            // by resetting integration to remove these classes at which point we can revert this.
-            //
-            // The work-around ignores compilation errors on integration, and instead replaces the
-            // casm definition with empty bytes.
-            let casm_definition = crate::sierra::compile_to_casm(&definition, version)
-                .context("Compiling Sierra class");
-            let casm_definition = match (casm_definition, chain) {
-                (Ok(casm_definition), _) => casm_definition,
-                (Err(_), Chain::Integration) => {
-                    tracing::info!(class_hash=%hash, "Ignored CASM compilation failure integration network");
-                    Vec::new()
-                }
-                (Err(e), _) => return Err(e),
+                .compress(&definition)
+                .context("Compressing class definition")?;
+            let compressed_contract = CompressedContract {
+                definition,
+                hash: class_hash,
             };
-
-            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let mut compressor =
-                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
+                Ok(DownloadedClass::Cairo(compressed_contract))
+            }
+            starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
+                // FIXME(integration reset): work-around for integration containing Sierra classes
+                // that are incompatible with production compiler. This will get "fixed" in the future
+                // by resetting integration to remove these classes at which point we can revert this.
+                //
+                // The work-around ignores compilation errors on integration, and instead replaces the
+                // casm definition with empty bytes.
+                let casm_definition = crate::sierra::compile_to_casm(&definition, &version)
+                    .context("Compiling Sierra class");
+                let casm_definition = match (casm_definition, chain) {
+                    (Ok(casm_definition), _) => casm_definition,
+                    (Err(_), Chain::Integration) => {
+                        tracing::info!(class_hash=%hash, "Ignored CASM compilation failure integration network");
+                        Vec::new()
+                    }
+                    (Err(e), _) => return Err(e),
+                };
 
                 let definition = compressor
                     .compress(&definition)
-                    .context("Compress definition")?;
+                    .context("Compressing class definition")?;
+                let compressed_contract = CompressedContract {
+                    definition,
+                    hash: class_hash,
+                };
 
                 let casm_definition = compressor
                     .compress(&casm_definition)
-                    .context("Compress CASM definition")?;
-
-                Ok((definition, casm_definition))
-            });
-            let (compressed_definition, compressed_casm_definition) =
-                compress.await.context("Compress class")??;
-
-            Ok(DownloadedClass::Sierra(
-                pathfinder_storage::types::CompressedContract {
-                    definition: compressed_definition,
+                    .context("Compressing CASM definition")?;
+                let compressed_casm = pathfinder_storage::types::CompressedCasmClass {
+                    definition: casm_definition,
                     hash,
-                },
-                pathfinder_storage::types::CompressedCasmClass {
-                    definition: compressed_casm_definition,
-                    hash,
-                },
-            ))
+                };
+
+                Ok(DownloadedClass::Sierra(
+                    compressed_contract,
+                    compressed_casm,
+                ))
+            }
         }
-    }
+    }).await.context("Joining class processing task")?
 }
 
 /// Interval at which poll for new data when at the head of chain.
