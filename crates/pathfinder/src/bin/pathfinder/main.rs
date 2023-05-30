@@ -345,16 +345,12 @@ mod pathfinder_context {
 
     use anyhow::Context;
     use pathfinder_common::{Chain, ChainId, EthereumAddress};
+    use pathfinder_ethereum::core_addr;
     use primitive_types::H160;
     use reqwest::Url;
     use starknet_gateway_client::Client as GatewayClient;
 
     impl PathfinderContext {
-        const MAINNET_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
-        const TESTNET_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
-        const TESTNET2_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
-        const INTEGRATION_CORE: EthereumAddress = EthereumAddress(H160::zero()); // TODO(SM): add correct address
-
         pub async fn configure_and_proxy_check(
             cfg: NetworkConfig,
             data_directory: PathBuf,
@@ -365,28 +361,28 @@ mod pathfinder_context {
                     network_id: ChainId::MAINNET,
                     gateway: GatewayClient::mainnet(),
                     database: data_directory.join("mainnet.sqlite"),
-                    l1_core_address: Self::MAINNET_CORE,
+                    l1_core_address: EthereumAddress(H160::from(core_addr::MAINNET)),
                 },
                 NetworkConfig::Testnet => Self {
                     network: Chain::Testnet,
                     network_id: ChainId::TESTNET,
                     gateway: GatewayClient::testnet(),
                     database: data_directory.join("goerli.sqlite"),
-                    l1_core_address: Self::TESTNET_CORE,
+                    l1_core_address: EthereumAddress(H160::from(core_addr::TESTNET)),
                 },
                 NetworkConfig::Testnet2 => Self {
                     network: Chain::Testnet2,
                     network_id: ChainId::TESTNET2,
                     gateway: GatewayClient::testnet2(),
                     database: data_directory.join("testnet2.sqlite"),
-                    l1_core_address: Self::TESTNET2_CORE,
+                    l1_core_address: EthereumAddress(H160::from(core_addr::TESTNET2)),
                 },
                 NetworkConfig::Integration => Self {
                     network: Chain::Integration,
                     network_id: ChainId::INTEGRATION,
                     gateway: GatewayClient::integration(),
                     database: data_directory.join("integration.sqlite"),
-                    l1_core_address: Self::INTEGRATION_CORE,
+                    l1_core_address: EthereumAddress(H160::from(core_addr::INTEGRATION)),
                 },
                 NetworkConfig::Custom {
                     gateway,
@@ -425,11 +421,11 @@ mod pathfinder_context {
                 .starknet;
 
             // Check for proxies by comparing the core address against those of the known networks.
-            let network = match l1_core_address {
-                x if x == Self::MAINNET_CORE => Chain::Mainnet,
-                x if x == Self::TESTNET_CORE => Chain::Testnet,
-                x if x == Self::TESTNET2_CORE => Chain::Testnet2,
-                x if x == Self::INTEGRATION_CORE => Chain::Integration,
+            let network = match l1_core_address.0.as_bytes() {
+                x if x == core_addr::MAINNET => Chain::Mainnet,
+                x if x == core_addr::TESTNET => Chain::Testnet,
+                x if x == core_addr::TESTNET2 => Chain::Testnet2,
+                x if x == core_addr::INTEGRATION => Chain::Integration,
                 _ => Chain::Custom,
             };
 

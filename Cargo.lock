@@ -2145,6 +2145,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-decoder"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5241cd7938b1b415942e943ea96f615953d500b50347b505b0b507080bad5a6f"
+
+[[package]]
 name = "const-fnv1a-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5712,6 +5718,7 @@ dependencies = [
  "cairo-lang-starknet 1.1.0-rc0",
  "clap 4.2.7",
  "console-subscriber",
+ "const-decoder",
  "criterion",
  "flate2",
  "futures",
@@ -5781,6 +5788,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
+ "const-decoder",
  "futures",
  "hex",
  "lazy_static",
