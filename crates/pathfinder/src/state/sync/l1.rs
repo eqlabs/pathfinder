@@ -3,8 +3,8 @@ use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
-/// Syncs L1 state update logs. Emits [sync events](Event) which should be handled
-/// to update storage and respond to queries.
+/// Syncs L1 state update logs. Emits [Ethereum state update](EthereumStateUpdate)
+/// which should be handled to update storage and respond to queries.
 pub async fn sync<T>(
     tx_event: mpsc::Sender<EthereumStateUpdate>,
     ethereum: T,
