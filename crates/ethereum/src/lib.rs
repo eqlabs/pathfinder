@@ -34,8 +34,13 @@ pub struct EthereumClient {
 const HTTP_OK: u16 = 200;
 
 impl EthereumClient {
-    pub fn from_config(url: reqwest::Url, _password: Option<String>) -> anyhow::Result<Self> {
-        // TODO(SM): password
+    pub fn with_password(mut url: reqwest::Url, password: &str) -> anyhow::Result<Self> {
+        url.set_password(Some(password))
+            .map_err(|_| anyhow::anyhow!("Setting password failed"))?;
+        Self::new(url)
+    }
+
+    pub fn new(url: reqwest::Url) -> anyhow::Result<Self> {
         Ok(Self {
             http: reqwest::ClientBuilder::new().build()?,
             url,
@@ -181,11 +186,11 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "live ethereum call"]
-    async fn test_get_state_live() -> anyhow::Result<()> {
+    async fn test_live() -> anyhow::Result<()> {
         let address = H160::from(core_addr::MAINNET);
 
-        let client =
-            EthereumClient::from_config(reqwest::Url::parse("https://eth.llamarpc.com")?, None)?;
+        let url = Url::parse("https://eth.llamarpc.com")?;
+        let client = EthereumClient::new(url)?;
 
         let state = client.get_starknet_state(&address).await?;
         println!("{state:#?}");
@@ -210,9 +215,9 @@ mod tests {
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":"0x1"}"#);
         });
 
-        let url = Url::parse(&server.url("/")).expect("url");
-        let eth = EthereumClient::from_config(url, None)?;
-        let chain_id = eth.get_chain().await.expect("chain");
+        let url = Url::parse(&server.url("/"))?;
+        let eth = EthereumClient::new(url)?;
+        let chain_id = eth.get_chain().await?;
 
         mock.assert();
         assert_eq!(chain_id, EthereumChain::Mainnet);
@@ -264,7 +269,7 @@ mod tests {
         });
 
         let url = Url::parse(&server.url("/"))?;
-        let eth = EthereumClient::from_config(url, None)?;
+        let eth = EthereumClient::new(url)?;
 
         let block_number = U256::from_str_radix("0x7eeb", 16)?;
         let block_hash =
@@ -285,7 +290,6 @@ mod tests {
         mock_block_hash.assert();
         mock_state_root.assert();
         assert_eq!(state, expected);
-
         Ok(())
     }
 }

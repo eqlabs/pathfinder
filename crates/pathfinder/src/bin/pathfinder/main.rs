@@ -299,7 +299,11 @@ struct EthereumContext {
 impl EthereumContext {
     /// Configure an [EthereumContext]'s transport and read the chain ID using it.
     async fn setup(url: reqwest::Url, password: Option<String>) -> anyhow::Result<Self> {
-        let client = EthereumClient::from_config(url, password).context("Creating transport")?;
+        let client = if let Some(password) = password.as_ref() {
+            EthereumClient::with_password(url, password).context("Creating Ethereum client")?
+        } else {
+            EthereumClient::new(url).context("Creating Ethereum client")?
+        };
 
         let chain = client.get_chain().await.context(
             r"Determining Ethereum chain.
