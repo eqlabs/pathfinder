@@ -6370,7 +6370,6 @@ dependencies = [
  "futures",
  "http",
  "lazy_static",
- "lru 0.10.0",
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
