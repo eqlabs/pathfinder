@@ -3877,6 +3877,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "keccak-hash"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b286e6b663fb926e1eeb68528e69cb70ed46c6d65871a21b2215ae8154c6d3c"
+dependencies = [
+ "primitive-types",
+ "tiny-keccak",
+]
+
+[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5792,12 +5802,14 @@ dependencies = [
  "const-decoder",
  "futures",
  "hex",
+ "keccak-hash",
  "lazy_static",
  "pathfinder-common",
  "pathfinder-retry",
  "pretty_assertions",
  "primitive-types",
  "reqwest",
+ "serde_json",
  "stark_hash",
  "thiserror",
  "tokio",

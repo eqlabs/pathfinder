@@ -992,6 +992,7 @@ mod tests {
     impl pathfinder_ethereum::EthereumApi for FakeTransport {
         async fn get_starknet_state(
             &self,
+            _: &H160,
         ) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
             unimplemented!()
         }
