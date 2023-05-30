@@ -40,6 +40,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
 
+use crate::state::l2::BlockChain;
+
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
 pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
@@ -56,6 +58,7 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     pending_poll_interval: Option<std::time::Duration>,
     block_validation_mode: l2::BlockValidationMode,
     websocket_txs: WebsocketSenders,
+    block_cache_size: usize,
 ) -> anyhow::Result<()>
 where
     Transport: EthereumTransport + Clone,
@@ -72,6 +75,7 @@ where
             ChainId,
             Option<std::time::Duration>,
             l2::BlockValidationMode,
+            BlockChain,
         ) -> F2
         + Copy,
 {
@@ -115,6 +119,11 @@ where
         core_address,
         l1_head,
     ));
+
+    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
+        .await
+        .context("Fetching latest blocks from storage")?;
+    let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
     let mut l2_handle = tokio::spawn(l2_sync(
         tx_l2,
         websocket_txs.clone(),
@@ -124,9 +133,8 @@ where
         chain_id,
         pending_poll_interval,
         block_validation_mode,
+        block_chain,
     ));
-
-    let mut existed = (0, 0);
 
     let mut last_block_start = std::time::Instant::now();
     let mut block_time_avg = std::time::Duration::ZERO;
@@ -262,12 +270,10 @@ where
                             tracing::info!("Updated Starknet state with block {}", block_number)
                         }
                         Some(_) => {
-                            tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). {} ({} new) contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                            tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
                                 block_number,
                                 block_time.as_secs_f32(),
                                 block_time_avg.as_secs_f32(),
-                                existed.0,
-                                existed.0 - existed.1,
                                 timings.class_declaration.as_secs_f32(),
                                 storage_updates,
                                 update_t.as_secs_f32(),
@@ -316,36 +322,6 @@ where
 
                     tracing::trace!("Inserted new Sierra contract {}", sierra_class.hash.0.to_hex_str());
                 }
-                Some(l2::Event::QueryBlock(number, tx)) => {
-                    let block = tokio::task::block_in_place(|| {
-                        let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, number.into())
-                    })
-                    .with_context(|| format!("Query L2 block hash for block {number}"))?
-                    .map(|block| (block.hash, block.state_commmitment));
-                    let _ = tx.send(block);
-
-                    tracing::trace!(%number, "Query hash for L2 block");
-                }
-                Some(l2::Event::QueryContractExistance(contracts, tx)) => {
-                    let exists =
-                        tokio::task::block_in_place(|| {
-                            let tx = db_conn.transaction()?;
-                            ContractCodeTable::exists(&tx, &contracts)
-                        })
-                        .with_context(|| {
-                            format!("Query storage for existance of contracts {contracts:?}")
-                        })?;
-                    let count = exists.iter().filter(|b| **b).count();
-
-                    // Fixme: This stat tracking is now incorrect, as these are shared by deploy and declare.
-                    //        Overall, quite nasty as is, so should get a proper refactor instead.
-                    existed = (contracts.len(), count);
-
-                    let _ = tx.send(exists);
-
-                    tracing::trace!("Query for existence of contracts: {:?}", contracts);
-                }
                 Some(l2::Event::Pending(block, state_update)) => {
                     download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain, &block.starknet_version)
                         .await
@@ -377,7 +353,10 @@ where
 
                     rx_l2 = new_rx;
 
-                    let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode);
+
+                    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size).await.context("Fetching latest blocks from storage")?;
+                    let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
+                    let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain);
 
                     l2_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
@@ -389,6 +368,47 @@ where
             },
         }
     }
+}
+
+async fn latest_n_blocks(
+    storage: Storage,
+    n: usize,
+) -> anyhow::Result<Vec<(BlockNumber, BlockHash, StateCommitment)>> {
+    tokio::task::spawn_blocking(move || {
+        let mut connection = storage
+            .connection()
+            .context("Creating database connection")?;
+        let tx = connection
+            .transaction()
+            .context("Creating database transaction")?;
+
+        let mut stmt = tx
+            .prepare_cached(
+                "SELECT number, hash, root FROM starknet_blocks ORDER BY number DESC LIMIT ?",
+            )
+            .context("Preparing database statement")?;
+        let rows = stmt
+            .query_map([n], |row| {
+                let number: BlockNumber = row.get(0).unwrap();
+                let hash: BlockHash = row.get(1).unwrap();
+                let commitment: StateCommitment = row.get(2).unwrap();
+
+                Ok((number, hash, commitment))
+            })
+            .context("Querying database")?;
+
+        let mut blocks = Vec::new();
+        for row in rows {
+            blocks.push(row.context("Reading row from database")?);
+        }
+        // We need to reverse the order here because we want the last `N` blocks in chronological order.
+        // Our sql query gives us the last `N` blocks but in reverse order (ORDER BY DESC), so we undo that here.
+        blocks.reverse();
+
+        Ok(blocks)
+    })
+    .await
+    .context("Joining database task")?
 }
 
 /// Periodically updates sync state with the latest block height.
@@ -1135,6 +1155,7 @@ mod tests {
     impl GatewayApi for FakeSequencer {
         async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
             match block {
+                BlockId::Latest => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
                 BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
                 _ => unimplemented!(),
             }
@@ -1163,6 +1184,7 @@ mod tests {
         _: ChainId,
         _: Option<std::time::Duration>,
         _: l2::BlockValidationMode,
+        _: l2::BlockChain,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -1318,6 +1340,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs.clone(),
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1425,6 +1448,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs,
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1496,6 +1520,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1513,6 +1538,10 @@ mod tests {
             let starts_tx = starts_tx.clone();
             async move {
                 // signal we've (re)started
+                // This will panic on the third repeat
+                //  - the main test task will exit
+                //  - this will panic, but test will pass.
+                //  - not great, but will get refactored eventually.
                 starts_tx
                     .send(())
                     .await
@@ -1536,6 +1565,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         let timeout = std::time::Duration::from_secs(1);
@@ -1568,7 +1598,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 (Box::new(block()), Default::default()),
                 Box::new(state_update()),
@@ -1613,6 +1643,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs.clone(),
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1674,7 +1705,7 @@ mod tests {
             let websocket_txs = WebsocketSenders::for_test();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
                     .await
                     .unwrap();
@@ -1714,6 +1745,7 @@ mod tests {
                 None,
                 l2::BlockValidationMode::Strict,
                 websocket_txs,
+                100,
             ));
 
             // TODO Find a better way to figure out that the DB update has already been performed
@@ -1748,7 +1780,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewCairoContract(CompressedContract {
                 definition: zstd_magic,
@@ -1776,6 +1808,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1794,7 +1827,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewSierraContract(
                 CompressedContract {
@@ -1829,6 +1862,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         // TODO Find a better way to figure out that the DB update has already been performed
@@ -1845,110 +1879,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_query_hash() {
-        let storage = Storage::in_memory().unwrap();
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-        let websocket_txs = WebsocketSenders::for_test();
-
-        // This is what we're asking for
-        StarknetBlocksTable::insert(
-            &tx,
-            &STORAGE_BLOCK0,
-            &StarknetVersion::default(),
-            StorageCommitment::ZERO,
-            ClassCommitment::ZERO,
-        )
-        .unwrap();
-
-        // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
-            let (tx1, rx1) = tokio::sync::oneshot::channel();
-
-            tx.send(l2::Event::QueryBlock(BlockNumber::GENESIS, tx1))
-                .await
-                .unwrap();
-
-            // Check the result straight away ¯\_(ツ)_/¯
-            let result = rx1.await.unwrap().unwrap();
-            assert_eq!(
-                result,
-                (STORAGE_BLOCK0.hash, STORAGE_BLOCK0.state_commmitment)
-            );
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
-        };
-
-        // UUT
-        let _jh = tokio::spawn(state::sync(
-            storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1_noop,
-            l2,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
-            websocket_txs,
-        ));
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_query_contract_existance() {
-        let storage = Storage::in_memory().unwrap();
-        let connection = storage.connection().unwrap();
-        let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-        let websocket_txs = WebsocketSenders::for_test();
-
-        // This is what we're asking for
-        ContractCodeTable::insert_compressed(
-            &connection,
-            &CompressedContract {
-                definition: zstd_magic,
-                hash: ClassHash(*A),
-            },
-        )
-        .unwrap();
-
-        // A simple L2 sync task which does the request and checks he result
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _| async move {
-            let (tx1, rx1) = tokio::sync::oneshot::channel::<Vec<bool>>();
-
-            tx.send(l2::Event::QueryContractExistance(vec![ClassHash(*A)], tx1))
-                .await
-                .unwrap();
-
-            // Check the result straight away ¯\_(ツ)_/¯
-            assert_eq!(rx1.await.unwrap(), vec![true]);
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
-        };
-
-        // UUT
-        let _jh = tokio::spawn(state::sync(
-            storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            pathfinder_ethereum::contract::TESTNET_ADDRESSES.core,
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1_noop,
-            l2,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
-            websocket_txs,
-        ));
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_restart() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1958,7 +1888,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _, _, _, _, _| async move {
+        let l2 = move |_, _, _, _, _, _, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };
@@ -1978,6 +1908,7 @@ mod tests {
             None,
             l2::BlockValidationMode::Strict,
             websocket_txs,
+            100,
         ));
 
         tokio::time::sleep(Duration::from_millis(5)).await;

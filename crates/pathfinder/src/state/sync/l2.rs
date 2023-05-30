@@ -1,6 +1,7 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
+use lru::LruCache;
 use pathfinder_common::{
     BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, TransactionCommitment,
@@ -17,15 +18,74 @@ use starknet_gateway_types::{
     },
     transaction_hash::verify,
 };
+use std::collections::HashMap;
 use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timings {
     pub block_download: Duration,
     pub state_diff_download: Duration,
     pub class_declaration: Duration,
+}
+
+/// A cache containing the last `N` downloaded class hashes, meant to minimize the
+/// re-downloading of class definitions in cases where a block might be re-processed
+/// e.g. after a reorg, or when a pending block becomes the new latest block.
+type ClassCache = LruCache<ClassHash, ()>;
+
+/// A cache containing the last `N` blocks in the chain. Used to determine reorg extents
+/// and ensure the integrity of new blocks.
+pub struct BlockChain {
+    /// The latest block in the chain.
+    head: BlockNumber,
+    /// The earliest block in the chain.
+    tail: BlockNumber,
+
+    map: HashMap<BlockNumber, (BlockHash, StateCommitment)>,
+}
+
+impl BlockChain {
+    pub fn reset_to_genesis(&mut self) {
+        self.map.drain();
+        self.head = BlockNumber::default();
+        self.tail = BlockNumber::default();
+    }
+
+    pub fn with_capacity(
+        capacity: usize,
+        blocks: Vec<(BlockNumber, BlockHash, StateCommitment)>,
+    ) -> Self {
+        let skip = blocks.len().saturating_sub(capacity);
+        let blocks = &blocks[skip..];
+
+        let head = blocks.last().map(|b| b.0).unwrap_or_default();
+        let tail = blocks.first().map(|b| b.0).unwrap_or_default();
+
+        let mut map = HashMap::with_capacity(capacity);
+        map.extend(blocks.iter().cloned().map(|(a, b, c)| (a, (b, c))));
+
+        Self { head, tail, map }
+    }
+
+    pub fn get<'a>(&'a self, block: &BlockNumber) -> Option<&'a (BlockHash, StateCommitment)> {
+        self.map.get(block)
+    }
+
+    pub fn push(&mut self, number: BlockNumber, hash: BlockHash, commitment: StateCommitment) {
+        for i in number.get()..=self.head.get() {
+            self.map.remove(&BlockNumber::new_or_panic(i));
+        }
+
+        if self.map.capacity() == self.map.len() {
+            self.map.remove(&self.tail);
+            self.tail += 1;
+        }
+        self.map.insert(number, (hash, commitment));
+
+        self.head = number;
+    }
 }
 
 /// Events and queries emitted by L2 sync process.
@@ -45,18 +105,6 @@ pub enum Event {
     NewCairoContract(CompressedContract),
     /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
     NewSierraContract(CompressedContract, CompressedCasmClass, CasmHash),
-    /// Query for the [block hash](BlockHash) and [root](StateCommitment) of the given block.
-    ///
-    /// The receiver should return the data using the [oneshot::channel].
-    QueryBlock(
-        BlockNumber,
-        oneshot::Sender<Option<(BlockHash, StateCommitment)>>,
-    ),
-    /// Query for the existance of the the given [contracts](ClassHash) in storage.
-    ///
-    /// The receiver should return true (if the contract exists) or false (if it does not exist)
-    /// for each contract using the [oneshot::channel].
-    QueryContractExistance(Vec<ClassHash>, oneshot::Sender<Vec<bool>>),
     /// A new L2 pending update was polled.
     Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
 }
@@ -71,8 +119,11 @@ pub async fn sync(
     chain_id: ChainId,
     pending_poll_interval: Option<Duration>,
     block_validation_mode: BlockValidationMode,
+    mut blocks: BlockChain,
 ) -> anyhow::Result<()> {
     use crate::state::sync::head_poll_interval;
+
+    let mut class_cache = ClassCache::new(100.try_into().unwrap());
 
     'outer: loop {
         // Get the next block from L2.
@@ -131,9 +182,15 @@ pub async fn sync(
                         &tx_event,
                         &sequencer,
                         block_validation_mode,
+                        &blocks,
                     )
                     .await
                     .context("L2 reorg")?;
+
+                    match head {
+                        Some((number, hash, commitment)) => blocks.push(number, hash, commitment),
+                        None => blocks.reset_to_genesis(),
+                    }
 
                     continue 'outer;
                 }
@@ -150,9 +207,15 @@ pub async fn sync(
                     &tx_event,
                     &sequencer,
                     block_validation_mode,
+                    &blocks,
                 )
                 .await
                 .context("L2 reorg")?;
+
+                match head {
+                    Some((number, hash, commitment)) => blocks.push(number, hash, commitment),
+                    None => blocks.reset_to_genesis(),
+                }
 
                 continue 'outer;
             }
@@ -198,12 +261,14 @@ pub async fn sync(
             &tx_event,
             chain,
             &block.starknet_version,
+            &mut class_cache,
         )
         .await
         .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
 
         head = Some((next, block_hash, state_update.new_root));
+        blocks.push(next, block_hash, state_update.new_root);
 
         let timings = Timings {
             block_download: t_block,
@@ -245,6 +310,7 @@ async fn download_new_classes(
     tx_event: &mpsc::Sender<Event>,
     chain: Chain,
     version: &StarknetVersion,
+    class_cache: &mut ClassCache,
 ) -> Result<(), anyhow::Error> {
     let deployed_classes = state_diff.deployed_contracts.iter().map(|x| x.class_hash);
     let declared_cairo_classes = state_diff.old_declared_contracts.iter().cloned();
@@ -267,28 +333,9 @@ async fn download_new_classes(
         return Ok(());
     }
 
-    // It is possible for these classes to already exist in our database, either
-    // due to a reorg or an earlier deploy of this class (which is possible!).
-    let (tx, rx) = oneshot::channel();
-    tx_event
-        .send(Event::QueryContractExistance(new_classes.clone(), tx))
-        .await
-        .context("Querying for class existing")?;
-    let already_downloaded = rx.await.context("Oneshot channel closed")?;
-    anyhow::ensure!(
-        already_downloaded.len() == new_classes.len(),
-        "Query for existance of classes in storage returned {} values instead of the expected {}",
-        already_downloaded.len(),
-        new_classes.len()
-    );
-
     let require_downloading = new_classes
         .into_iter()
-        .zip(already_downloaded.into_iter())
-        .filter_map(|(class, exists)| match exists {
-            false => Some(class),
-            true => None,
-        })
+        .filter(|class| !class_cache.contains(class))
         .collect::<Vec<_>>();
 
     for class_hash in require_downloading {
@@ -335,6 +382,8 @@ async fn download_new_classes(
                     })?
             }
         }
+
+        class_cache.put(class_hash, ());
     }
 
     Ok(())
@@ -474,6 +523,7 @@ async fn reorg(
     tx_event: &mpsc::Sender<Event>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
+    blocks: &BlockChain,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
@@ -485,17 +535,9 @@ async fn reorg(
         }
 
         let previous_block_number = reorg_tail.0 - 1;
-
-        let (tx, rx) = oneshot::channel();
-        tx_event
-            .send(Event::QueryBlock(previous_block_number, tx))
-            .await
-            .context("Event channel closed")?;
-
-        let previous = match rx.await.context("Oneshot channel closed")? {
-            Some(hash) => hash,
-            None => break None,
-        };
+        let previous = blocks
+            .get(&previous_block_number)
+            .context("Reorg exceeded local blockchain cache")?;
 
         match download_block(
             previous_block_number,
@@ -627,6 +669,8 @@ async fn download_and_compress_class(
 #[cfg(test)]
 mod tests {
     mod sync {
+        use crate::state::l2::BlockChain;
+
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
         use pathfinder_common::{
@@ -681,6 +725,7 @@ mod tests {
                 ChainId::TESTNET,
                 None,
                 MODE,
+                BlockChain::with_capacity(100, vec![]),
             ))
         }
 
@@ -1032,11 +1077,6 @@ mod tests {
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
-                    // Contract 0 definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -1045,11 +1085,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
-                    // Contract 1 definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
@@ -1112,15 +1147,14 @@ mod tests {
                     ChainId::TESTNET,
                     None,
                     MODE,
+                    BlockChain::with_capacity(
+                        100,
+                        vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
+                    ),
                 ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
-                    // Contract 1 definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -1254,11 +1288,6 @@ mod tests {
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -1271,11 +1300,6 @@ mod tests {
                 // Reorg started from the genesis block
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK0_NUMBER);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH_V2]);
-                    // Indicate that contract 0 v2 definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
@@ -1455,11 +1479,6 @@ mod tests {
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -1468,11 +1487,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
@@ -1487,22 +1501,9 @@ mod tests {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
-                });
                 // Reorg started at the genesis block
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
                     assert_eq!(tail, BLOCK0_NUMBER);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH_V2]);
-                    // Indicate that contract 0 v2 definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
@@ -1729,11 +1730,6 @@ mod tests {
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -1742,11 +1738,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
@@ -1764,18 +1755,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, block3);
                     assert_eq!(*state_update, *STATE_UPDATE3);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK2_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT2))).unwrap();
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
                 });
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -1932,11 +1911,6 @@ mod tests {
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -1945,11 +1919,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
@@ -1963,10 +1932,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK1_NUMBER);
-                    sender.send(Some((*BLOCK1_HASH, *GLOBAL_ROOT1))).unwrap();
                 });
                 // Reorg started from block #2
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -2124,11 +2089,6 @@ mod tests {
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
 
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT0_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -2138,11 +2098,6 @@ mod tests {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryContractExistance(contract_hashes, sender) => {
-                    assert_eq!(contract_hashes, vec![*CONTRACT1_HASH]);
-                    // Indicate that contract definition is not in the DB yet
-                    sender.send(vec![false]).unwrap();
-                });
                 assert_matches!(rx_event.recv().await.unwrap(),
                     Event::NewCairoContract(compressed_contract) => {
                         assert_eq!(compressed_contract.definition[..4], zstd_magic);
@@ -2151,10 +2106,6 @@ mod tests {
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::QueryBlock(block_number, sender) => {
-                    assert_eq!(block_number, BLOCK0_NUMBER);
-                    sender.send(Some((*BLOCK0_HASH, *GLOBAL_ROOT0))).unwrap();
                 });
                 // Reorg started from block #1
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
@@ -2191,6 +2142,12 @@ mod tests {
                     (*BLOCK0_HASH).into(),
                     Ok(STATE_UPDATE0.clone()),
                 );
+                expect_class_by_hash(
+                    &mut mock,
+                    &mut seq,
+                    *CONTRACT0_HASH,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
 
                 // Run the UUT
                 let jh = spawn_sync_default(tx_event, mock);
@@ -2203,6 +2160,84 @@ mod tests {
                     .unwrap()
                     .unwrap_err();
             }
+        }
+    }
+
+    mod block_chain {
+        use pathfinder_common::{felt, BlockHash, BlockNumber, StateCommitment};
+
+        use crate::state::l2::BlockChain;
+
+        #[test]
+        fn circular_buffer_integrity() {
+            let mut uut = BlockChain::with_capacity(
+                3,
+                vec![
+                    (
+                        BlockNumber::new_or_panic(1),
+                        BlockHash(felt!("0x11")),
+                        StateCommitment(felt!("0x21")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(2),
+                        BlockHash(felt!("0x13")),
+                        StateCommitment(felt!("0x41")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(3),
+                        BlockHash(felt!("0x15")),
+                        StateCommitment(felt!("0x61")),
+                    ),
+                ],
+            );
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
+            uut.push(
+                BlockNumber::new_or_panic(4),
+                BlockHash(felt!("0x17")),
+                StateCommitment(felt!("0x81")),
+            );
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_none());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(4)).is_some());
+        }
+
+        #[test]
+        fn reset() {
+            let mut uut = BlockChain::with_capacity(
+                3,
+                vec![
+                    (
+                        BlockNumber::new_or_panic(1),
+                        BlockHash(felt!("0x11")),
+                        StateCommitment(felt!("0x21")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(2),
+                        BlockHash(felt!("0x13")),
+                        StateCommitment(felt!("0x41")),
+                    ),
+                    (
+                        BlockNumber::new_or_panic(3),
+                        BlockHash(felt!("0x15")),
+                        StateCommitment(felt!("0x61")),
+                    ),
+                ],
+            );
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_some());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
+
+            uut.reset_to_genesis();
+
+            assert!(uut.get(&BlockNumber::new_or_panic(1)).is_none());
+            assert!(uut.get(&BlockNumber::new_or_panic(2)).is_none());
+            assert!(uut.get(&BlockNumber::new_or_panic(3)).is_none());
         }
     }
 }

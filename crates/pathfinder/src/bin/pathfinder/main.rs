@@ -140,6 +140,7 @@ async fn main() -> anyhow::Result<()> {
         pending_interval,
         state::l2::BlockValidationMode::Strict,
         rpc_server.get_ws_senders(),
+        1_000,
     ));
 
     let (rpc_handle, local_addr) = rpc_server
