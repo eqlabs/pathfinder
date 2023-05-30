@@ -183,7 +183,7 @@ mod tests {
             EthereumClient::from_config(reqwest::Url::parse("https://eth.llamarpc.com")?, None)?;
 
         let state = client.get_starknet_state(&address).await?;
-        println!("{state:?}");
+        println!("{state:#?}");
 
         let chain = client.get_chain().await?;
         println!("{chain:?}");
