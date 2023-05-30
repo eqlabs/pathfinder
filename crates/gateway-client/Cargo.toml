@@ -46,7 +46,6 @@ test-log = { version = "0.2.11", default-features = false, features = ["trace"] 
 tokio = { workspace = true, features = ["macros", "test-util"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 warp = { version = "0.3.3" }
-zstd = "0.12"
 
 [[test]]
 name = "integration-metrics"

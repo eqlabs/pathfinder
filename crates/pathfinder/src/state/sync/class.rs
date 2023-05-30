@@ -1,11 +1,17 @@
 use anyhow::Context;
 use pathfinder_common::{Chain, ClassHash, StarknetVersion};
-use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use starknet_gateway_client::GatewayApi;
 
 pub enum DownloadedClass {
-    Cairo(CompressedContract),
-    Sierra(CompressedContract, CompressedCasmClass),
+    Cairo {
+        definition: Vec<u8>,
+        hash: ClassHash,
+    },
+    Sierra {
+        sierra_definition: Vec<u8>,
+        sierra_hash: ClassHash,
+        casm_definition: Vec<u8>,
+    },
 }
 
 pub async fn download_class<SequencerClient: GatewayApi>(
@@ -19,7 +25,8 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     let definition = sequencer
         .pending_class_by_hash(class_hash)
         .await
-        .with_context(|| format!("Downloading class {}", class_hash.0))?;
+        .with_context(|| format!("Downloading class {}", class_hash.0))?
+        .to_vec();
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let hash = compute_class_hash(&definition).context("Computing class hash")?;
@@ -31,19 +38,13 @@ pub async fn download_class<SequencerClient: GatewayApi>(
             class_hash.0
         );
 
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-
         use starknet_gateway_types::class_hash::ComputedClassHash;
         match hash {
-            ComputedClassHash::Cairo(_) => {
-                let definition = compressor
-                .compress(&definition)
-                .context("Compressing class definition")?;
-            let compressed_contract = CompressedContract {
-                definition,
-                hash: class_hash,
-            };
-                Ok(DownloadedClass::Cairo(compressed_contract))
+            ComputedClassHash::Cairo(hash) => {
+                Ok(DownloadedClass::Cairo {
+                    definition,
+                    hash,
+                })
             }
             starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
                 // FIXME(integration reset): work-around for integration containing Sierra classes
@@ -63,26 +64,11 @@ pub async fn download_class<SequencerClient: GatewayApi>(
                     (Err(e), _) => return Err(e),
                 };
 
-                let definition = compressor
-                    .compress(&definition)
-                    .context("Compressing class definition")?;
-                let compressed_contract = CompressedContract {
-                    definition,
-                    hash: class_hash,
-                };
-
-                let casm_definition = compressor
-                    .compress(&casm_definition)
-                    .context("Compressing CASM definition")?;
-                let compressed_casm = pathfinder_storage::types::CompressedCasmClass {
-                    definition: casm_definition,
-                    hash,
-                };
-
-                Ok(DownloadedClass::Sierra(
-                    compressed_contract,
-                    compressed_casm,
-                ))
+                Ok(DownloadedClass::Sierra {
+                    sierra_definition: definition,
+                    sierra_hash: hash,
+                    casm_definition,
+                }                )
             }
         }
     }).await.context("Joining class processing task")?

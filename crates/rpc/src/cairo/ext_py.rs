@@ -847,11 +847,8 @@ mod tests {
     }
 
     fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let test_contract_definition = zstd::decode_all(
-            starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION,
-        )
-        .unwrap();
-
+        let test_contract_definition =
+            starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
         let test_contract_address = ContractAddress::new_or_panic(felt!(
             "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
         ));
@@ -862,7 +859,7 @@ mod tests {
         )];
 
         let (test_contract_state_hash, test_contract_class_hash) =
-            deploy_contract(tx, &test_contract_definition, &storage_updates);
+            deploy_contract(tx, test_contract_definition, &storage_updates);
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
@@ -924,15 +921,13 @@ mod tests {
     }
 
     fn deploy_account_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
-        let account_contract_definition = zstd::decode_all(
-            starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT,
-        )
-        .unwrap();
+        let account_contract_definition =
+            starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
         let account_contract_address = ContractAddress::new_or_panic(felt!("0x123"));
 
         let (account_contract_state_hash, account_contract_class_hash) =
-            deploy_contract(tx, &account_contract_definition, &[]);
+            deploy_contract(tx, account_contract_definition, &[]);
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =

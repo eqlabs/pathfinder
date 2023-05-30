@@ -3,11 +3,10 @@ use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
+    BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, TransactionCommitment,
 };
 use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
-use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use pathfinder_storage::{ContractCodeTable, Storage};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
@@ -96,10 +95,18 @@ pub enum Event {
     /// indicates the oldest block which is now invalid
     /// i.e. reorg-tail + 1 should be the new head.
     Reorg(BlockNumber),
-    /// A new unique L2 Cairo 0.x [contract](CompressedContract) was found.
-    NewCairoContract(CompressedContract),
-    /// A new unique L2 Cairo 1.x [contract](CompressedContract) was found.
-    NewSierraContract(CompressedContract, CompressedCasmClass, CasmHash),
+    /// A new unique L2 Cairo 0.x class was found.
+    NewCairoContract {
+        definition: Vec<u8>,
+        hash: ClassHash,
+    },
+    /// A new unique L2 Cairo 1.x class was found.
+    NewSierraContract {
+        sierra_definition: Vec<u8>,
+        sierra_hash: ClassHash,
+        casm_definition: Vec<u8>,
+        casm_hash: ClassHash,
+    },
     /// A new L2 pending update was polled.
     Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
 }
@@ -356,8 +363,8 @@ async fn download_new_classes(
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
         match class {
-            DownloadedClass::Cairo(class) => tx_event
-                .send(Event::NewCairoContract(class))
+            DownloadedClass::Cairo { definition, hash } => tx_event
+                .send(Event::NewCairoContract { definition, hash })
                 .await
                 .with_context(|| {
                     format!(
@@ -365,10 +372,14 @@ async fn download_new_classes(
                         class_hash.0
                     )
                 })?,
-            DownloadedClass::Sierra(sierra_class, casm_class) => {
+            DownloadedClass::Sierra {
+                sierra_definition,
+                sierra_hash,
+                casm_definition,
+            } => {
                 // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
                 // since that's what has been added to the class commitment tree.
-                let compiled_class_hash = state_diff
+                let casm_hash = state_diff
                     .declared_classes
                     .iter()
                     .find_map(|declared_class| {
@@ -379,12 +390,14 @@ async fn download_new_classes(
                         }
                     })
                     .context("Sierra class hash not in declared classes")?;
+                let casm_hash = ClassHash(casm_hash.0);
                 tx_event
-                    .send(Event::NewSierraContract(
-                        sierra_class,
-                        casm_class,
-                        compiled_class_hash,
-                    ))
+                    .send(Event::NewSierraContract {
+                        sierra_definition,
+                        sierra_hash,
+                        casm_definition,
+                        casm_hash,
+                    })
                     .await
                     .with_context(|| {
                         format!(
@@ -912,7 +925,7 @@ mod tests {
             class_hash: ClassHash,
             returned_result: Result<bytes::Bytes, SequencerError>,
         ) {
-            mock.expect_class_by_hash()
+            mock.expect_pending_class_by_hash()
                 .withf(move |x| x == &class_hash)
                 .times(1)
                 .in_sequence(seq)
@@ -992,21 +1005,17 @@ mod tests {
                 // Let's run the UUT
                 let _jh = spawn_sync_default(tx_event, mock);
 
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                    Event::NewCairoContract { hash, .. } => {
+                        assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                Event::NewCairoContract { hash, .. } => {
+                    assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1071,12 +1080,9 @@ mod tests {
                     Storage::in_memory().unwrap(),
                 ));
 
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1204,12 +1210,9 @@ mod tests {
                 // Let's run the UUT
                 let _jh = spawn_sync_default(tx_event, mock);
 
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
@@ -1220,9 +1223,8 @@ mod tests {
                     assert_eq!(tail, BLOCK0_NUMBER);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT0_HASH_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
@@ -1395,21 +1397,17 @@ mod tests {
                 // Run the UUT
                 let _jh = spawn_sync_default(tx_event, mock);
 
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1424,9 +1422,8 @@ mod tests {
                     assert_eq!(tail, BLOCK0_NUMBER);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH_V2);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT0_HASH_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
@@ -1646,21 +1643,17 @@ mod tests {
                 // Run the UUT
                 let _jh = spawn_sync_default(tx_event, mock);
 
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -1827,21 +1820,17 @@ mod tests {
                 // Run the UUT
                 let _jh = spawn_sync_default(tx_event, mock);
 
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
@@ -2005,21 +1994,17 @@ mod tests {
                 // Run the UUT
                 let _jh = spawn_sync_default(tx_event, mock);
 
-                let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT0_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract(compressed_contract) => {
-                        assert_eq!(compressed_contract.definition[..4], zstd_magic);
-                        assert_eq!(compressed_contract.hash, *CONTRACT1_HASH);
+                    Event::NewCairoContract{hash, ..} => {
+                        assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);

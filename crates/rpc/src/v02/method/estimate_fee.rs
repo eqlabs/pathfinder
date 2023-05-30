@@ -162,7 +162,6 @@ pub(crate) mod tests {
             ContractRoot, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
         };
         use pathfinder_storage::types::state_update::{DeployedContract, StateDiff};
-        use pathfinder_storage::types::CompressedContract;
         use pathfinder_storage::{
             insert_canonical_state_diff, StarknetBlock, StarknetBlocksTable, Storage,
         };
@@ -313,15 +312,11 @@ pub(crate) mod tests {
             // "Declare"
             //
             let class_hash =
-                starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT_CLASS_HASH;
-            let class = CompressedContract {
-                definition:
-                    starknet_gateway_test_fixtures::zstd_compressed_contracts::DUMMY_ACCOUNT
-                        .to_vec(),
-                hash: class_hash,
-            };
+                starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
+            let class_definition = starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
-            pathfinder_storage::ContractCodeTable::insert_compressed(&db_txn, &class).unwrap();
+            pathfinder_storage::ContractCodeTable::insert(&db_txn, class_hash, &class_definition)
+                .unwrap();
 
             //
             // "Deploy"
@@ -478,10 +473,8 @@ pub(crate) mod tests {
                 test_context_with_call_handling().await;
 
             let contract_class = {
-                let compressed_json =
-                    starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
-                let json = zstd::decode_all(compressed_json).unwrap();
-                ContractClass::from_definition_bytes(&json)
+                let json = starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
+                ContractClass::from_definition_bytes(json)
                     .unwrap()
                     .as_cairo()
                     .unwrap()
@@ -512,9 +505,9 @@ pub(crate) mod tests {
                 test_context_with_call_handling().await;
 
             let contract_class: SierraContractClass = {
-                let definition = starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_1_0_RC0_SIERRA;
-                let definition = zstd::decode_all(definition).unwrap();
-                ContractClass::from_definition_bytes(&definition)
+                let definition =
+                    starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_RC0_SIERRA;
+                ContractClass::from_definition_bytes(definition)
                     .unwrap()
                     .as_sierra()
                     .unwrap()

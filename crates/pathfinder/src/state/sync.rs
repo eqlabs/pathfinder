@@ -243,26 +243,30 @@ where
                         None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
                 }
-                Some(l2::Event::NewCairoContract(contract)) => {
+                Some(l2::Event::NewCairoContract { definition, hash }) => {
                     tokio::task::block_in_place(|| {
-                        ContractCodeTable::insert_compressed(&db_conn, &contract)
+                        let tx = db_conn.transaction().context("Creating database transaction")?;
+                        ContractCodeTable::insert(&tx, hash, &definition).context("Inserting new cairo class")?;
+                        tx.commit().context("Committing database transaction")
                     })
                     .with_context(|| {
-                        format!("Insert Cairo contract definition with hash: {:?}", contract.hash)
+                        format!("Insert Cairo contract definition with hash: {hash}")
                     })?;
 
-                    tracing::trace!("Inserted new Cairo contract {}", contract.hash.0.to_hex_str());
+                    tracing::debug!(%hash, "Inserted new Cairo class");
                 }
-                Some(l2::Event::NewSierraContract(sierra_class, casm_class, compiled_class_hash)) => {
+                Some(l2::Event::NewSierraContract { sierra_definition, sierra_hash, casm_definition, casm_hash }) => {
                     tokio::task::block_in_place(|| {
-                        ContractCodeTable::insert_compressed(&db_conn, &sierra_class)?;
-                        CasmClassTable::upsert_compressed(&db_conn, &casm_class, &compiled_class_hash, crate::sierra::COMPILER_VERSION)
+                        let tx = db_conn.transaction().context("Creating database transaction")?;
+                        ContractCodeTable::insert(&tx, sierra_hash, &sierra_definition).context("Inserting sierra class")?;
+                        CasmClassTable::insert(&tx, &casm_definition, sierra_hash, casm_hash, crate::sierra::COMPILER_VERSION).context("Inserting casm definition")?;
+                        tx.commit().context("Committing database transaction")
                     })
                     .with_context(|| {
-                        format!("Insert Sierra contract definition with hash: {:?}", sierra_class.hash)
+                        format!("Insert Sierra contract definition with hash: {sierra_hash}")
                     })?;
 
-                    tracing::trace!("Inserted new Sierra contract {}", sierra_class.hash.0.to_hex_str());
+                    tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
                     download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain, &block.starknet_version)
@@ -812,20 +816,25 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
         let class = download_class(&sequencer, class_hash, chain, version.clone()).await?;
 
         match class {
-            DownloadedClass::Cairo(class) => {
+            DownloadedClass::Cairo { definition, hash } => {
                 tokio::task::block_in_place(|| {
                     let transaction =
                         connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ContractCodeTable::insert_compressed(&transaction, &class)?;
+                    ContractCodeTable::insert(&transaction, hash, &definition)
+                        .context("Inserting new cairo class")?;
                     transaction.commit()?;
                     anyhow::Result::<()>::Ok(())
                 })
-                .with_context(|| format!("Insert class definition with hash: {:?}", class.hash))?;
+                .with_context(|| format!("Insert class definition with hash: {hash}"))?;
             }
-            DownloadedClass::Sierra(sierra, casm) => {
+            DownloadedClass::Sierra {
+                sierra_definition,
+                sierra_hash,
+                casm_definition,
+            } => {
                 // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
                 // since that's what has been added to the class commitment tree.
-                let compiled_class_hash = state_update
+                let casm_hash = state_update
                     .state_diff
                     .declared_classes
                     .iter()
@@ -837,20 +846,24 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
                         }
                     })
                     .context("Sierra class hash not in declared classes")?;
+                let casm_hash = ClassHash(casm_hash.0);
                 tokio::task::block_in_place(|| {
                     let transaction =
                         connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ContractCodeTable::insert_compressed(&transaction, &sierra)?;
-                    CasmClassTable::upsert_compressed(
+                    ContractCodeTable::insert(&transaction, sierra_hash, &sierra_definition)
+                        .context("Inserting sierra class")?;
+                    CasmClassTable::insert(
                         &transaction,
-                        &casm,
-                        &compiled_class_hash,
+                        &casm_definition,
+                        sierra_hash,
+                        casm_hash,
                         crate::sierra::COMPILER_VERSION,
-                    )?;
+                    )
+                    .context("Inserting casm definition")?;
                     transaction.commit()?;
                     anyhow::Result::<()>::Ok(())
                 })
-                .with_context(|| format!("Insert class definition with hash: {:?}", sierra.hash))?;
+                .with_context(|| format!("Insert class definition with hash: {sierra_hash}"))?;
             }
         }
 
@@ -884,13 +897,12 @@ mod tests {
     use crate::state;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockHash, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain, ChainId, ClassCommitment,
+        BlockHash, BlockId, BlockNumber, BlockTimestamp, Chain, ChainId, ClassCommitment,
         ClassHash, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
     };
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::{
-        types::{CompressedCasmClass, CompressedContract},
         CasmClassTable, ContractCodeTable, L1StateTable, RefsTable, StarknetBlock,
         StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
@@ -1386,16 +1398,16 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_new_cairo_contract() {
         let storage = Storage::in_memory().unwrap();
-        let connection = storage.connection().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
-            let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-            tx.send(l2::Event::NewCairoContract(CompressedContract {
-                definition: zstd_magic,
+            tx.send(l2::Event::NewCairoContract {
+                definition: vec![],
                 hash: ClassHash(*A),
-            }))
+            })
             .await
             .unwrap();
 
@@ -1425,7 +1437,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert_eq!(
-            ContractCodeTable::exists(&connection, &[ClassHash(*A)]).unwrap(),
+            ContractCodeTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
     }
@@ -1433,23 +1445,18 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_new_sierra_contract() {
         let storage = Storage::in_memory().unwrap();
-        let connection = storage.connection().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
-            let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
-            tx.send(l2::Event::NewSierraContract(
-                CompressedContract {
-                    definition: zstd_magic.clone(),
-                    hash: ClassHash(*A),
-                },
-                CompressedCasmClass {
-                    hash: ClassHash(*A),
-                    definition: zstd_magic,
-                },
-                CasmHash(*A),
-            ))
+            tx.send(l2::Event::NewSierraContract {
+                sierra_definition: vec![],
+                sierra_hash: ClassHash(*A),
+                casm_definition: vec![],
+                casm_hash: ClassHash(*A),
+            })
             .await
             .unwrap();
 
@@ -1479,11 +1486,11 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert_eq!(
-            ContractCodeTable::exists(&connection, &[ClassHash(*A)]).unwrap(),
+            ContractCodeTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
         assert_eq!(
-            CasmClassTable::exists(&connection, &[ClassHash(*A)]).unwrap(),
+            CasmClassTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
     }

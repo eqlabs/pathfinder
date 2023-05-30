@@ -30,4 +30,3 @@ assert_matches = { workspace = true }
 # Due to pathfinder_common::starkhash!() usage
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
-zstd = "0.12"

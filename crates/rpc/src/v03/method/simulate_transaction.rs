@@ -315,7 +315,7 @@ pub mod dto {
 mod tests {
     use pathfinder_common::{felt, Chain, ContractAddress, TransactionVersion};
     use pathfinder_storage::{JournalMode, Storage};
-    use starknet_gateway_test_fixtures::zstd_compressed_contracts::{
+    use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
     };
     use tempfile::tempdir;

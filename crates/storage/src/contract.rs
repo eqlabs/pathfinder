@@ -1,9 +1,8 @@
-use crate::types::{CompressedCasmClass, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
 use pathfinder_common::{BlockNumber, CasmHash, ClassCommitmentLeafHash, ClassHash, ContractClass};
 use pathfinder_serde::extract_program_and_entry_points_by_type;
-use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
+use rusqlite::{named_params, params, OptionalExtension, Transaction};
 
 /// Stores Starknet contract information, specifically a contract's
 ///
@@ -25,28 +24,11 @@ impl ContractCodeTable {
         let definition = compressor
             .compress(definition)
             .context("Failed to compress definition")?;
-
-        let contract = CompressedContract { definition, hash };
-
-        Self::insert_compressed(transaction, &contract)
-    }
-
-    pub fn insert_compressed(
-        connection: &Connection,
-        contract: &CompressedContract,
-    ) -> anyhow::Result<()> {
-        // check magics to verify these are zstd compressed files
-        let magic = &[0x28, 0xb5, 0x2f, 0xfd];
-        assert_eq!(&contract.definition[..4], magic);
-
-        connection.execute(
-            r"INSERT OR IGNORE INTO class_definitions (hash, definition)
-                             VALUES (:hash, :definition)",
-            named_params! {
-                ":hash": &contract.hash.0.to_be_bytes()[..],
-                ":definition": &contract.definition[..],
-            },
+        transaction.execute(
+            r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
+            params![hash, definition],
         )?;
+
         Ok(())
     }
 
@@ -114,8 +96,8 @@ impl ContractCodeTable {
     }
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = connection.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+    pub fn exists(transaction: &Transaction, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+        let mut stmt = transaction.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
 
         Ok(classes
             .iter()
@@ -138,8 +120,8 @@ impl CasmCompilerVersions {
     ///
     /// These are not deleted automatically nor is a need expected because new versions
     /// are introduced _only_ when we're upgrading the CASM compiler in pathdfinder.
-    pub fn intern(connection: &Connection, version: &str) -> anyhow::Result<i64> {
-        let id: Option<i64> = connection
+    pub fn intern(transaction: &Transaction, version: &str) -> anyhow::Result<i64> {
+        let id: Option<i64> = transaction
             .query_row(
                 "SELECT id FROM casm_compiler_versions WHERE version = ?",
                 [version],
@@ -154,7 +136,7 @@ impl CasmCompilerVersions {
             // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
             // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
             // read back with last_insert_rowid
-            let rows = connection
+            let rows = transaction
                 .execute(
                     "INSERT INTO casm_compiler_versions(version) VALUES (?)",
                     [version],
@@ -163,7 +145,7 @@ impl CasmCompilerVersions {
 
             anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
 
-            connection.last_insert_rowid()
+            transaction.last_insert_rowid()
         };
 
         Ok(id)
@@ -179,23 +161,29 @@ impl CasmClassTable {
     /// Insert a CASM class into the table.
     ///
     /// Note that the class hash must reference a class stored in [ContractCodeTable].
-    pub fn upsert_compressed(
-        connection: &Connection,
-        class: &CompressedCasmClass,
-        compiled_class_hash: &CasmHash,
+    pub fn insert(
+        transaction: &Transaction,
+        definition: &[u8],
+        class_hash: ClassHash,
+        compiled_class_hash: ClassHash,
         casm_compiler_version: &str,
     ) -> anyhow::Result<()> {
-        let version_id = CasmCompilerVersions::intern(connection, casm_compiler_version)
+        let version_id = CasmCompilerVersions::intern(transaction, casm_compiler_version)
             .context("Fetching CASM compiler version id")?;
 
-        connection.execute(
+        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
+        let definition = compressor
+            .compress(definition)
+            .context("Compressing class definition")?;
+
+        transaction.execute(
             r"INSERT OR REPLACE INTO casm_definitions
                 (hash, definition, compiled_class_hash, compiler_version_id)
             VALUES
                 (:hash, :definition, :compiled_class_hash, :compiler_version_id)",
             named_params! {
-                ":hash": class.hash,
-                ":definition": &class.definition[..],
+                ":hash": class_hash,
+                ":definition": &definition,
                 ":compiled_class_hash": compiled_class_hash,
                 ":compiler_version_id": version_id,
             },
@@ -204,8 +192,8 @@ impl CasmClassTable {
     }
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(connection: &Connection, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = connection.prepare("SELECT 1 FROM casm_definitions WHERE hash = ?")?;
+    pub fn exists(transaction: &Transaction, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+        let mut stmt = transaction.prepare("SELECT 1 FROM casm_definitions WHERE hash = ?")?;
 
         Ok(classes
             .iter()
