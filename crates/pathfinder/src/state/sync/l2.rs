@@ -1,4 +1,5 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
+use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
@@ -10,7 +11,6 @@ use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
 use pathfinder_storage::{ContractCodeTable, Storage};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
-    class_hash::compute_class_hash,
     error::SequencerError,
     reply::{
         state_update::StateDiff, Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate,
@@ -351,7 +351,7 @@ async fn download_new_classes(
     .context("Querying database for missing classes")?;
 
     for class_hash in require_downloading {
-        let class = download_and_compress_class(class_hash, sequencer, chain, version)
+        let class = download_class(sequencer, class_hash, chain, version.clone())
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 
@@ -578,102 +578,6 @@ async fn reorg(
         .context("Event channel closed")?;
 
     Ok(new_head)
-}
-
-enum DownloadedClass {
-    Cairo(CompressedContract),
-    Sierra(CompressedContract, CompressedCasmClass),
-}
-
-async fn download_and_compress_class(
-    class_hash: ClassHash,
-    sequencer: &impl GatewayApi,
-    chain: Chain,
-    version: &StarknetVersion,
-) -> anyhow::Result<DownloadedClass> {
-    let definition = sequencer
-        .class_by_hash(class_hash)
-        .await
-        .context("Downloading contract from sequencer")?;
-
-    // Parse the contract definition and calculate the class hash. This can
-    // be expensive, so perform in a blocking task.
-    let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let hash = compute_class_hash(&definition)?;
-        Ok((definition, hash))
-    });
-    let (definition, hash) = extract
-        .await
-        .context("Parse class definition and compute hash")??;
-
-    // Sanity check.
-    anyhow::ensure!(
-        class_hash == hash.hash(),
-        "Class hash mismatch, {} instead of {}",
-        hash.hash(),
-        class_hash.0
-    );
-
-    match hash {
-        starknet_gateway_types::class_hash::ComputedClassHash::Cairo(hash) => {
-            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let mut compressor =
-                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-                let definition = compressor
-                    .compress(&definition)
-                    .context("Compress definition")?;
-
-                Ok(definition)
-            });
-            let compressed_definition = compress.await.context("Compress contract")??;
-
-            Ok(DownloadedClass::Cairo(CompressedContract {
-                definition: compressed_definition,
-                hash,
-            }))
-        }
-        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
-            let casm_definition = crate::sierra::compile_to_casm(&definition, version)
-                .context("Compiling Sierra class");
-            let casm_definition = match (casm_definition, chain) {
-                (Ok(casm_definition), _) => casm_definition,
-                (Err(_), Chain::Integration) => {
-                    tracing::info!(class_hash=%hash, "Ignored CASM compilation failure integration network");
-                    Vec::new()
-                }
-                (Err(e), _) => return Err(e),
-            };
-
-            let compress = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let mut compressor =
-                    zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-
-                let definition = compressor
-                    .compress(&definition)
-                    .context("Compress definition")?;
-
-                let casm_definition = compressor
-                    .compress(&casm_definition)
-                    .context("Compress CASM definition")?;
-
-                Ok((definition, casm_definition))
-            });
-            let (compressed_definition, compressed_casm_definition) =
-                compress.await.context("Compress CASM definition")??;
-
-            Ok(DownloadedClass::Sierra(
-                CompressedContract {
-                    definition: compressed_definition,
-                    hash,
-                },
-                CompressedCasmClass {
-                    definition: compressed_casm_definition,
-                    hash,
-                },
-            ))
-        }
-    }
 }
 
 #[cfg(test)]
