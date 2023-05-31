@@ -40,7 +40,7 @@ impl ContractCodeTable {
         assert_eq!(&contract.definition[..4], magic);
 
         connection.execute(
-            r"INSERT INTO class_definitions (hash, definition)
+            r"INSERT OR IGNORE INTO class_definitions (hash, definition)
                              VALUES (:hash, :definition)",
             named_params! {
                 ":hash": &contract.hash.0.to_be_bytes()[..],

@@ -76,6 +76,7 @@ where
             Option<std::time::Duration>,
             l2::BlockValidationMode,
             BlockChain,
+            Storage,
         ) -> F2
         + Copy,
 {
@@ -134,6 +135,7 @@ where
         pending_poll_interval,
         block_validation_mode,
         block_chain,
+        storage.clone(),
     ));
 
     let mut last_block_start = std::time::Instant::now();
@@ -356,7 +358,7 @@ where
 
                     let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size).await.context("Fetching latest blocks from storage")?;
                     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-                    let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain);
+                    let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain, storage.clone());
 
                     l2_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
@@ -1167,6 +1169,7 @@ mod tests {
         _: Option<std::time::Duration>,
         _: l2::BlockValidationMode,
         _: l2::BlockChain,
+        _: Storage,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -1580,7 +1583,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 (Box::new(block()), Default::default()),
                 Box::new(state_update()),
@@ -1687,7 +1690,7 @@ mod tests {
             let websocket_txs = WebsocketSenders::for_test();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
                     .await
                     .unwrap();
@@ -1762,7 +1765,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewCairoContract(CompressedContract {
                 definition: zstd_magic,
@@ -1809,7 +1812,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
             let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
             tx.send(l2::Event::NewSierraContract(
                 CompressedContract {
@@ -1870,7 +1873,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _, _, _, _, _, _| async move {
+        let l2 = move |_, _, _, _, _, _, _, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };

@@ -1,13 +1,13 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
-use lru::LruCache;
 use pathfinder_common::{
     BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, TransactionCommitment,
 };
 use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
 use pathfinder_storage::types::{CompressedCasmClass, CompressedContract};
+use pathfinder_storage::{ContractCodeTable, Storage};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     class_hash::compute_class_hash,
@@ -29,11 +29,6 @@ pub struct Timings {
     pub state_diff_download: Duration,
     pub class_declaration: Duration,
 }
-
-/// A cache containing the last `N` downloaded class hashes, meant to minimize the
-/// re-downloading of class definitions in cases where a block might be re-processed
-/// e.g. after a reorg, or when a pending block becomes the new latest block.
-type ClassCache = LruCache<ClassHash, ()>;
 
 /// A cache containing the last `N` blocks in the chain. Used to determine reorg extents
 /// and ensure the integrity of new blocks.
@@ -120,10 +115,9 @@ pub async fn sync(
     pending_poll_interval: Option<Duration>,
     block_validation_mode: BlockValidationMode,
     mut blocks: BlockChain,
+    storage: Storage,
 ) -> anyhow::Result<()> {
     use crate::state::sync::head_poll_interval;
-
-    let mut class_cache = ClassCache::new(100.try_into().unwrap());
 
     'outer: loop {
         // Get the next block from L2.
@@ -261,7 +255,7 @@ pub async fn sync(
             &tx_event,
             chain,
             &block.starknet_version,
-            &mut class_cache,
+            storage.clone(),
         )
         .await
         .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
@@ -310,7 +304,7 @@ async fn download_new_classes(
     tx_event: &mpsc::Sender<Event>,
     chain: Chain,
     version: &StarknetVersion,
-    class_cache: &mut ClassCache,
+    storage: Storage,
 ) -> Result<(), anyhow::Error> {
     let deployed_classes = state_diff.deployed_contracts.iter().map(|x| x.class_hash);
     let declared_cairo_classes = state_diff.old_declared_contracts.iter().cloned();
@@ -333,10 +327,28 @@ async fn download_new_classes(
         return Ok(());
     }
 
-    let require_downloading = new_classes
-        .into_iter()
-        .filter(|class| !class_cache.contains(class))
-        .collect::<Vec<_>>();
+    let require_downloading = tokio::task::spawn_blocking(move || {
+        let mut db_conn = storage
+            .connection()
+            .context("Creating database connection")?;
+        let tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
+
+        let exists = ContractCodeTable::exists(&tx, &new_classes)
+            .context("Querying class existence in database")?;
+
+        let missing = new_classes
+            .into_iter()
+            .zip(exists.into_iter())
+            .filter_map(|(class, exist)| (!exist).then_some(class))
+            .collect::<HashSet<_>>();
+
+        anyhow::Ok(missing)
+    })
+    .await
+    .context("Joining database task")?
+    .context("Querying database for missing classes")?;
 
     for class_hash in require_downloading {
         let class = download_and_compress_class(class_hash, sequencer, chain, version)
@@ -382,8 +394,6 @@ async fn download_new_classes(
                     })?
             }
         }
-
-        class_cache.put(class_hash, ());
     }
 
     Ok(())
@@ -679,6 +689,7 @@ mod tests {
             StorageAddress, StorageValue,
         };
         use pathfinder_rpc::websocket::types::WebsocketSenders;
+        use pathfinder_storage::Storage;
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::{
@@ -716,6 +727,7 @@ mod tests {
             tx_event: mpsc::Sender<Event>,
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<()>> {
+            let storage = Storage::in_memory().unwrap();
             tokio::spawn(sync(
                 tx_event,
                 WebsocketSenders::for_test(),
@@ -726,6 +738,7 @@ mod tests {
                 None,
                 MODE,
                 BlockChain::with_capacity(100, vec![]),
+                storage,
             ))
         }
 
@@ -1151,6 +1164,7 @@ mod tests {
                         100,
                         vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
                     ),
+                    Storage::in_memory().unwrap(),
                 ));
 
                 let zstd_magic = vec![0x28, 0xb5, 0x2f, 0xfd];
