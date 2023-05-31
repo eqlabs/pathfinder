@@ -6,6 +6,8 @@ use pathfinder_retry::Retry;
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
+use super::head_poll_interval;
+
 /// Syncs L1 state update logs. Emits [Ethereum state update](EthereumStateUpdate)
 /// which should be handled to update storage and respond to queries.
 pub async fn sync<T>(
@@ -17,18 +19,6 @@ pub async fn sync<T>(
 where
     T: EthereumApi + Send + Sync + Clone,
 {
-    // The core sync logic implementation.
-    sync_impl(ethereum, tx_event, chain, core_address).await
-}
-
-async fn sync_impl(
-    ethereum: impl EthereumApi,
-    tx_event: mpsc::Sender<EthereumStateUpdate>,
-    chain: Chain,
-    core_address: H160,
-) -> anyhow::Result<()> {
-    use crate::state::sync::head_poll_interval;
-
     let head_poll_interval = head_poll_interval(chain);
 
     loop {
