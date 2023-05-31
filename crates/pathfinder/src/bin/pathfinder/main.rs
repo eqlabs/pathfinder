@@ -2,7 +2,6 @@
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_common::EthereumAddress;
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::{
@@ -11,6 +10,7 @@ use pathfinder_lib::{
 };
 use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::Storage;
+use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::pending::PendingData;
 use std::net::SocketAddr;
@@ -131,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
         ethereum.client,
         pathfinder_context.network,
         pathfinder_context.network_id,
-        pathfinder_context.l1_core_address.0,
+        pathfinder_context.l1_core_address,
         pathfinder_context.gateway,
         sync_state.clone(),
         state::l1::sync,
@@ -337,7 +337,7 @@ struct PathfinderContext {
     network_id: ChainId,
     gateway: starknet_gateway_client::Client,
     database: PathBuf,
-    l1_core_address: EthereumAddress,
+    l1_core_address: H160,
 }
 
 /// Used to hide private fn's for [PathfinderContext].
@@ -348,7 +348,7 @@ mod pathfinder_context {
     use std::path::PathBuf;
 
     use anyhow::Context;
-    use pathfinder_common::{Chain, ChainId, EthereumAddress};
+    use pathfinder_common::{Chain, ChainId};
     use pathfinder_ethereum::core_addr;
     use primitive_types::H160;
     use reqwest::Url;
@@ -365,28 +365,28 @@ mod pathfinder_context {
                     network_id: ChainId::MAINNET,
                     gateway: GatewayClient::mainnet(),
                     database: data_directory.join("mainnet.sqlite"),
-                    l1_core_address: EthereumAddress(H160::from(core_addr::MAINNET)),
+                    l1_core_address: H160::from(core_addr::MAINNET),
                 },
                 NetworkConfig::Testnet => Self {
                     network: Chain::Testnet,
                     network_id: ChainId::TESTNET,
                     gateway: GatewayClient::testnet(),
                     database: data_directory.join("goerli.sqlite"),
-                    l1_core_address: EthereumAddress(H160::from(core_addr::TESTNET)),
+                    l1_core_address: H160::from(core_addr::TESTNET),
                 },
                 NetworkConfig::Testnet2 => Self {
                     network: Chain::Testnet2,
                     network_id: ChainId::TESTNET2,
                     gateway: GatewayClient::testnet2(),
                     database: data_directory.join("testnet2.sqlite"),
-                    l1_core_address: EthereumAddress(H160::from(core_addr::TESTNET2)),
+                    l1_core_address: H160::from(core_addr::TESTNET2),
                 },
                 NetworkConfig::Integration => Self {
                     network: Chain::Integration,
                     network_id: ChainId::INTEGRATION,
                     gateway: GatewayClient::integration(),
                     database: data_directory.join("integration.sqlite"),
-                    l1_core_address: EthereumAddress(H160::from(core_addr::INTEGRATION)),
+                    l1_core_address: H160::from(core_addr::INTEGRATION),
                 },
                 NetworkConfig::Custom {
                     gateway,
@@ -422,10 +422,11 @@ mod pathfinder_context {
                 .eth_contract_addresses()
                 .await
                 .context("Downloading starknet L1 address from gateway for proxy check")?
-                .starknet;
+                .starknet
+                .0;
 
             // Check for proxies by comparing the core address against those of the known networks.
-            let network = match l1_core_address.0.as_bytes() {
+            let network = match l1_core_address.as_bytes() {
                 x if x == core_addr::MAINNET => Chain::Mainnet,
                 x if x == core_addr::TESTNET => Chain::Testnet,
                 x if x == core_addr::TESTNET2 => Chain::Testnet2,
