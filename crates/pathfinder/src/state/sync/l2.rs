@@ -96,12 +96,12 @@ pub enum Event {
     /// i.e. reorg-tail + 1 should be the new head.
     Reorg(BlockNumber),
     /// A new unique L2 Cairo 0.x class was found.
-    NewCairoContract {
+    CairoClass {
         definition: Vec<u8>,
         hash: ClassHash,
     },
     /// A new unique L2 Cairo 1.x class was found.
-    NewSierraContract {
+    SierraClass {
         sierra_definition: Vec<u8>,
         sierra_hash: ClassHash,
         casm_definition: Vec<u8>,
@@ -364,7 +364,7 @@ async fn download_new_classes(
 
         match class {
             DownloadedClass::Cairo { definition, hash } => tx_event
-                .send(Event::NewCairoContract { definition, hash })
+                .send(Event::CairoClass { definition, hash })
                 .await
                 .with_context(|| {
                     format!(
@@ -392,7 +392,7 @@ async fn download_new_classes(
                     .context("Sierra class hash not in declared classes")?;
                 let casm_hash = ClassHash(casm_hash.0);
                 tx_event
-                    .send(Event::NewSierraContract {
+                    .send(Event::SierraClass {
                         sierra_definition,
                         sierra_hash,
                         casm_definition,
@@ -1006,7 +1006,7 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract { hash, .. } => {
+                    Event::CairoClass { hash, .. } => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1014,7 +1014,7 @@ mod tests {
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                Event::NewCairoContract { hash, .. } => {
+                Event::CairoClass { hash, .. } => {
                     assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1081,7 +1081,7 @@ mod tests {
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1211,7 +1211,7 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1223,7 +1223,7 @@ mod tests {
                     assert_eq!(tail, BLOCK0_NUMBER);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1398,7 +1398,7 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1406,7 +1406,7 @@ mod tests {
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1422,7 +1422,7 @@ mod tests {
                     assert_eq!(tail, BLOCK0_NUMBER);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH_V2);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1644,7 +1644,7 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1652,7 +1652,7 @@ mod tests {
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1821,7 +1821,7 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1829,7 +1829,7 @@ mod tests {
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -1995,7 +1995,7 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
@@ -2003,7 +2003,7 @@ mod tests {
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::NewCairoContract{hash, ..} => {
+                    Event::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {

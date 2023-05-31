@@ -243,7 +243,7 @@ where
                         None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
                 }
-                Some(l2::Event::NewCairoContract { definition, hash }) => {
+                Some(l2::Event::CairoClass { definition, hash }) => {
                     tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction().context("Creating database transaction")?;
                         ContractCodeTable::insert(&tx, hash, &definition).context("Inserting new cairo class")?;
@@ -255,7 +255,7 @@ where
 
                     tracing::debug!(%hash, "Inserted new Cairo class");
                 }
-                Some(l2::Event::NewSierraContract { sierra_definition, sierra_hash, casm_definition, casm_hash }) => {
+                Some(l2::Event::SierraClass { sierra_definition, sierra_hash, casm_definition, casm_hash }) => {
                     tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction().context("Creating database transaction")?;
                         ContractCodeTable::insert(&tx, sierra_hash, &sierra_definition).context("Inserting sierra class")?;
@@ -1377,7 +1377,7 @@ mod tests {
 
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
-            tx.send(l2::Event::NewCairoContract {
+            tx.send(l2::Event::CairoClass {
                 definition: vec![],
                 hash: ClassHash(*A),
             })
@@ -1424,7 +1424,7 @@ mod tests {
 
         // A simple L2 sync task
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
-            tx.send(l2::Event::NewSierraContract {
+            tx.send(l2::Event::SierraClass {
                 sierra_definition: vec![],
                 sierra_hash: ClassHash(*A),
                 casm_definition: vec![],
