@@ -17,7 +17,7 @@ pub async fn sync<T>(
     core_address: H160,
 ) -> anyhow::Result<()>
 where
-    T: EthereumApi + Send + Sync + Clone,
+    T: EthereumApi + Clone,
 {
     let head_poll_interval = head_poll_interval(chain);
 
