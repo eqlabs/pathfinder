@@ -3,7 +3,6 @@
 //! Currently this consists of a Sqlite backend implementation.
 
 mod contract;
-mod ethereum;
 mod schema;
 mod state;
 mod state_update;
@@ -16,7 +15,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use contract::{CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable};
-pub use ethereum::{EthereumBlocksTable, EthereumTransactionsTable};
 use rusqlite::functions::FunctionFlags;
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
