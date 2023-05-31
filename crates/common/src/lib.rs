@@ -300,30 +300,6 @@ impl TransactionVersion {
     pub const TWO_WITH_QUERY_VERSION: Self = Self::TWO.with_query_version();
 }
 
-/// An Ethereum address.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EthereumAddress(pub H160);
-
-/// An Ethereum block hash.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct EthereumBlockHash(pub H256);
-
-/// An Ethereum block number.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct EthereumBlockNumber(pub u64);
-
-/// An Ethereum transaction hash.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct EthereumTransactionHash(pub H256);
-
-/// An Ethereum transaction's index within a block.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct EthereumTransactionIndex(pub u64);
-
-/// An Ethereum log's index within a block.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct EthereumLogIndex(pub u64);
-
 /// A way of identifying a specific block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
 #[cfg_attr(any(test, feature = "full-serde"), derive(Serialize))]
@@ -374,11 +350,9 @@ impl std::ops::SubAssign<u64> for BlockNumber {
     }
 }
 
-impl From<EthereumBlockNumber> for BlockId {
-    fn from(number: EthereumBlockNumber) -> Self {
-        BlockId::Number(BlockNumber::new_or_panic(number.0))
-    }
-}
+/// An Ethereum address.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct EthereumAddress(pub H160);
 
 #[derive(Debug, thiserror::Error)]
 #[error("expected slice length of 16 or less, got {0}")]
