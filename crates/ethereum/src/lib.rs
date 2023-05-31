@@ -154,14 +154,17 @@ fn get_h256(value: &serde_json::Value) -> anyhow::Result<H256> {
     use std::str::FromStr;
     value
         .as_str()
-        .and_then(|txt| H256::from_str(txt).ok())
+        .map(lpad64)
+        .and_then(|val| H256::from_str(&val).ok())
         .ok_or(anyhow::anyhow!("Failed to fetch H256"))
 }
 
 fn get_u256(value: &serde_json::Value) -> anyhow::Result<U256> {
+    use std::str::FromStr;
     value
         .as_str()
-        .and_then(|txt| U256::from_str_radix(txt, 16).ok())
+        .map(lpad64)
+        .and_then(|val| U256::from_str(&val).ok())
         .ok_or(anyhow::anyhow!("Failed to fetch U256"))
 }
 
@@ -173,6 +176,16 @@ fn get_felt(value: H256) -> anyhow::Result<Felt> {
 fn get_number(value: U256) -> anyhow::Result<BlockNumber> {
     let value = value.as_u64();
     BlockNumber::new(value).ok_or(anyhow::anyhow!("Failed to read u64 from U256"))
+}
+
+fn lpad64(value: &str) -> String {
+    let input = value.strip_prefix("0x").unwrap_or(value);
+    let prefix = if value.starts_with("0x") { "0x" } else { "" };
+    if input.len() == 64 {
+        format!("{prefix}{input}")
+    } else {
+        format!("{prefix}{input:0>64}")
+    }
 }
 
 #[cfg(test)]
@@ -291,5 +304,51 @@ mod tests {
         mock_state_root.assert();
         assert_eq!(state, expected);
         Ok(())
+    }
+
+    #[test]
+    fn test_h256() {
+        assert!(H256::from_str(
+            "0x0000000000000000000000000000000000000000000000000000000000007eeb"
+        )
+        .is_ok());
+        assert!(H256::from_str("0x7eeb").is_err());
+
+        let expected =
+            H256::from_str("0x0000000000000000000000000000000000000000000000000000000000007eeb")
+                .unwrap();
+        assert_eq!(H256::from_str(&lpad64("0x7eeb")).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_lpad64() {
+        for (input, expected) in [
+            (
+                "0x0000000000000000000000000000000000000000000000000000000000007eeb",
+                "0x0000000000000000000000000000000000000000000000000000000000007eeb",
+            ),
+            (
+                "0000000000000000000000000000000000000000000000000000000000007eeb",
+                "0000000000000000000000000000000000000000000000000000000000007eeb",
+            ),
+            (
+                "7eeb",
+                "0000000000000000000000000000000000000000000000000000000000007eeb",
+            ),
+            (
+                "0x7eeb",
+                "0x0000000000000000000000000000000000000000000000000000000000007eeb",
+            ),
+            (
+                "",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            ),
+            (
+                "0x",
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+            ),
+        ] {
+            assert_eq!(lpad64(input), expected, "for input: {}", input);
+        }
     }
 }
