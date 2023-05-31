@@ -424,15 +424,18 @@ async fn l1_update(
 
         L1StateTable::upsert(&transaction, update).context("Insert update")?;
 
-        let l2_root =
-            StarknetBlocksTable::get_state_commitment(&transaction, update.block_number.into())
-                .context("Query L2 root")?
-                .map(|(a, b)| StateCommitment::calculate(a, b));
+        let l2_hash = StarknetBlocksTable::get_hash(&transaction, update.block_number.into())?;
 
-        if let Some(l2_root) = l2_root {
-            if l2_root == update.global_root {
+        if let Some(l2_hash) = l2_hash {
+            if l2_hash == update.block_hash {
                 RefsTable::set_l1_l2_head(&transaction, Some(update.block_number))
                     .context("Update L1-L2 head")?;
+                tracing::info!(block_number=?update.block_number, "L1/L2 block hash match");
+            } else {
+                tracing::warn!(block_number=?update.block_number, L1=?update.block_hash, L2=?l2_hash, "L1/L2 block hash mismatch");
+                if let Some(matching_block_number) = RefsTable::get_l1_l2_head(&transaction)? {
+                    tracing::warn!(block_number=?matching_block_number, "Most recent L1/L2 block hash match")
+                }
             }
         }
 
