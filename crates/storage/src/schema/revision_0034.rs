@@ -8,9 +8,6 @@ use crate::{
 };
 
 pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
-    tx.execute("DROP TABLE ethereum_blocks", [])?;
-    tx.execute("DROP TABLE ethereum_transactions", [])?;
-
     tx.execute("DROP TABLE l1_state", [])?;
     tx.execute(
         r"CREATE TABLE l1_state (
