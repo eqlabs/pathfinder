@@ -14,7 +14,7 @@ pub mod core_addr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EthereumStateUpdate {
-    pub global_root: StateCommitment,
+    pub state_root: StateCommitment,
     pub block_number: BlockNumber,
     pub block_hash: BlockHash,
 }
@@ -106,7 +106,7 @@ impl EthereumApi for EthereumClient {
         let hash = format!("0x{}", hex::encode(hash.as_bytes()));
         let addr = format!("0x{}", hex::encode(address.as_bytes()));
         Ok(EthereumStateUpdate {
-            global_root: self
+            state_root: self
                 .call_starknet_contract(&hash, &addr, "stateRoot()")
                 .await
                 .and_then(|value| get_h256(&value))
@@ -290,7 +290,7 @@ mod tests {
         let global_root =
             H256::from_str("0x02a4651c1ba5151c48ebeb4477216b04d7a65058a5b99e5fbc602507ae933d2f")?;
         let expected = EthereumStateUpdate {
-            global_root: StateCommitment(get_felt(global_root)?),
+            state_root: StateCommitment(get_felt(global_root)?),
             block_number: get_number(block_number)?,
             block_hash: BlockHash(get_felt(block_hash)?),
         };

@@ -35,16 +35,16 @@ impl L1StateTable {
             r"INSERT OR REPLACE INTO l1_state (
                         starknet_block_number,
                         starknet_block_hash,
-                        starknet_global_root
+                        starknet_state_root
                     ) VALUES (
                         :starknet_block_number,
                         :starknet_block_hash,
-                        :starknet_global_root
+                        :starknet_state_root
                     )",
             named_params! {
                 ":starknet_block_number": update.block_number,
                 ":starknet_block_hash": &update.block_hash,
-                ":starknet_global_root": &update.global_root,
+                ":starknet_state_root": &update.state_root,
             },
         )?;
 
@@ -68,10 +68,10 @@ impl L1StateTable {
     ) -> anyhow::Result<Option<StateCommitment>> {
         let mut statement = match block {
             L1TableBlockId::Number(_) => {
-                tx.prepare("SELECT starknet_global_root FROM l1_state WHERE starknet_block_number = ?")
+                tx.prepare("SELECT starknet_state_root FROM l1_state WHERE starknet_block_number = ?")
             }
             L1TableBlockId::Latest => tx
-                .prepare("SELECT starknet_global_root FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1"),
+                .prepare("SELECT starknet_state_root FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1"),
         }?;
 
         let mut rows = match block {
@@ -85,7 +85,7 @@ impl L1StateTable {
             None => return Ok(None),
         };
 
-        row.get("starknet_global_root")
+        row.get("starknet_state_root")
             .map(Some)
             .map_err(|e| e.into())
     }
@@ -99,13 +99,13 @@ impl L1StateTable {
             L1TableBlockId::Number(_) => tx.prepare(
                 r"SELECT starknet_block_number,
                     starknet_block_hash,
-                    starknet_global_root
+                    starknet_state_root
                 FROM l1_state WHERE starknet_block_number >= ?",
             ),
             L1TableBlockId::Latest => tx.prepare(
                 r"SELECT starknet_block_number,
                     starknet_block_hash,
-                    starknet_global_root
+                    starknet_state_root
                 FROM l1_state ORDER BY starknet_block_number DESC LIMIT 1",
             ),
         }?;
@@ -123,10 +123,10 @@ impl L1StateTable {
 
         let starknet_block_number = row.get_unwrap("starknet_block_number");
         let starknet_block_hash = row.get_unwrap("starknet_block_hash");
-        let starknet_global_root = row.get_unwrap("starknet_global_root");
+        let starknet_state_root = row.get_unwrap("starknet_state_root");
 
         Ok(Some(EthereumStateUpdate {
-            global_root: starknet_global_root,
+            state_root: starknet_state_root,
             block_number: starknet_block_number,
             block_hash: starknet_block_hash,
         }))
@@ -1519,7 +1519,7 @@ mod tests {
         fn create_updates() -> [EthereumStateUpdate; 3] {
             (0..3usize)
                 .map(|i| EthereumStateUpdate {
-                    global_root: StateCommitment(Felt::from_hex_str(&"3".repeat(i + 1)).unwrap()),
+                    state_root: StateCommitment(Felt::from_hex_str(&"3".repeat(i + 1)).unwrap()),
                     block_number: BlockNumber::GENESIS + i as u64,
                     block_hash: BlockHash(Felt::from_hex_str(&"F".repeat(i + 1)).unwrap()),
                 })
@@ -1640,7 +1640,7 @@ mod tests {
                     assert_eq!(
                         L1StateTable::get_state_commitment(&tx, update.block_number.into())
                             .unwrap(),
-                        Some(update.global_root),
+                        Some(update.state_root),
                         "Update {idx}"
                     );
                 }
@@ -1674,7 +1674,7 @@ mod tests {
 
                     assert_eq!(
                         L1StateTable::get_state_commitment(&tx, L1TableBlockId::Latest).unwrap(),
-                        Some(updates.last().unwrap().global_root)
+                        Some(updates.last().unwrap().state_root)
                     );
                 }
             }
