@@ -136,7 +136,7 @@ mod tests {
         };
 
         pub static ref SIERRA_CLASS: SierraContractClass = {
-            ContractClass::from_definition_bytes(&CAIRO_1_0_0_ALPHA6_SIERRA).unwrap().as_sierra().unwrap()
+            ContractClass::from_definition_bytes(CAIRO_1_0_0_ALPHA6_SIERRA).unwrap().as_sierra().unwrap()
         };
     }
 

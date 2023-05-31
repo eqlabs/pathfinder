@@ -62,7 +62,7 @@ pub mod init {
                     ContractCodeTable::insert(tx, class_hash, b"").unwrap();
                     CasmClassTable::insert(
                         tx,
-                        &vec![],
+                        &[],
                         class_hash,
                         ClassHash(declared_sierra_class.compiled_class_hash.0),
                         "1.0.alpha6",

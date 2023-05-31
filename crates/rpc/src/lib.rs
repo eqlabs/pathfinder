@@ -635,7 +635,7 @@ pub mod test_utils {
             let class_definition =
                 starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
             for deployed in deployed_contracts {
-                ContractCodeTable::insert(&tx, deployed.class_hash, &class_definition).unwrap();
+                ContractCodeTable::insert(&tx, deployed.class_hash, class_definition).unwrap();
             }
             tx.commit().unwrap();
         })

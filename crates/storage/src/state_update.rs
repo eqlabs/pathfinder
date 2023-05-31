@@ -87,7 +87,7 @@ pub fn insert_canonical_state_diff(
         // Some old state updates did not have declared contracts, but instead any deployed contract could
         // be a new class declaration + deployment.
         .chain(state_diff.deployed_contracts.iter().map(|d| d.class_hash.0))
-        .map(|f| pathfinder_common::ClassHash(f));
+        .map(pathfinder_common::ClassHash);
 
     for class in declared_classes {
         update_class_defs.execute(params![block_number, class])?;

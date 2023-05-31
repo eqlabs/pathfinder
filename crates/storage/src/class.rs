@@ -31,7 +31,10 @@ impl ContractCodeTable {
     }
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(transaction: &Transaction, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+    pub fn exists(
+        transaction: &Transaction<'_>,
+        classes: &[ClassHash],
+    ) -> anyhow::Result<Vec<bool>> {
         let mut stmt = transaction.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
 
         Ok(classes
@@ -55,7 +58,7 @@ impl CasmCompilerVersions {
     ///
     /// These are not deleted automatically nor is a need expected because new versions
     /// are introduced _only_ when we're upgrading the CASM compiler in pathdfinder.
-    pub fn intern(transaction: &Transaction, version: &str) -> anyhow::Result<i64> {
+    pub fn intern(transaction: &Transaction<'_>, version: &str) -> anyhow::Result<i64> {
         let id: Option<i64> = transaction
             .query_row(
                 "SELECT id FROM casm_compiler_versions WHERE version = ?",
@@ -97,7 +100,7 @@ impl CasmClassTable {
     ///
     /// Note that the class hash must reference a class stored in [ContractCodeTable].
     pub fn insert(
-        transaction: &Transaction,
+        transaction: &Transaction<'_>,
         definition: &[u8],
         class_hash: ClassHash,
         compiled_class_hash: ClassHash,
@@ -127,7 +130,10 @@ impl CasmClassTable {
     }
 
     /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(transaction: &Transaction, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+    pub fn exists(
+        transaction: &Transaction<'_>,
+        classes: &[ClassHash],
+    ) -> anyhow::Result<Vec<bool>> {
         let mut stmt = transaction.prepare("SELECT 1 FROM casm_definitions WHERE hash = ?")?;
 
         Ok(classes
