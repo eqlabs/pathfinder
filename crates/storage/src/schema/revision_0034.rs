@@ -2,6 +2,7 @@ use pathfinder_common::{
     BlockHash, BlockNumber, ClassCommitment, StateCommitment, StorageCommitment,
 };
 use rusqlite::{named_params, OptionalExtension, Transaction};
+use stark_hash::Felt;
 
 pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute("DROP TABLE l1_state", [])?;
@@ -25,8 +26,13 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
                 let number: BlockNumber = row.get(0)?;
                 let hash: BlockHash = row.get(1)?;
                 let storage: StorageCommitment = row.get(2)?;
-                let class: ClassCommitment = row.get(3)?;
-                Ok((number, hash, storage, class))
+                let class: Option<ClassCommitment> = row.get(3)?;
+                Ok((
+                    number,
+                    hash,
+                    storage,
+                    class.unwrap_or(ClassCommitment(Felt::ZERO)),
+                ))
             },
         )
         .optional()?;
