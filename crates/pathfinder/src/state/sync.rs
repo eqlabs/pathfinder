@@ -44,9 +44,9 @@ use crate::state::l2::BlockChain;
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
-pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
+pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     storage: Storage,
-    transport: Transport,
+    ethereum: Ethereum,
     chain: Chain,
     chain_id: ChainId,
     core_address: H160,
@@ -61,11 +61,11 @@ pub async fn sync<Transport, SequencerClient, F1, F2, L1Sync, L2Sync>(
     block_cache_size: usize,
 ) -> anyhow::Result<()>
 where
-    Transport: EthereumApi + Clone,
+    Ethereum: EthereumApi + Clone,
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<EthereumStateUpdate>, Transport, Chain, H160) -> F1,
+    L1Sync: FnMut(mpsc::Sender<EthereumStateUpdate>, Ethereum, Chain, H160) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
             WebsocketSenders,
@@ -111,7 +111,7 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, transport.clone(), chain, core_address));
+    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum.clone(), chain, core_address));
 
     let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
         .await
@@ -159,7 +159,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    let fut = l1_sync(new_tx, transport.clone(), chain, core_address);
+                    let fut = l1_sync(new_tx, ethereum.clone(), chain, core_address);
 
                     l1_handle = tokio::spawn(async move {
                         #[cfg(not(test))]
