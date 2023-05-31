@@ -205,7 +205,7 @@ def inmemory_with_tables():
             starknet_block_hash       BLOB PRIMARY KEY,
             starknet_block_number     INTEGER NOT NULL,
             starknet_block_timestamp  INTEGER NOT NULL,
-            starknet_global_root      BLOB NOT NULL,
+            starknet_state_root       BLOB NOT NULL,
             ethereum_transaction_hash BLOB NOT NULL,
             ethereum_log_index        INTEGER NOT NULL
         );

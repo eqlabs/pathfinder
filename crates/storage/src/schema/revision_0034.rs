@@ -9,7 +9,7 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
         r"CREATE TABLE l1_state (
             starknet_block_number      INTEGER PRIMARY KEY,
             starknet_block_hash        BLOB    NOT NULL,
-            starknet_global_root       BLOB    NOT NULL
+            starknet_state_root        BLOB    NOT NULL
         )",
         [],
     )?;
@@ -37,16 +37,16 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
             r"INSERT OR REPLACE INTO l1_state (
                         starknet_block_number,
                         starknet_block_hash,
-                        starknet_global_root
+                        starknet_state_root
                     ) VALUES (
                         :starknet_block_number,
                         :starknet_block_hash,
-                        :starknet_global_root
+                        :starknet_state_root
                     )",
             named_params! {
                 ":starknet_block_number": number,
                 ":starknet_block_hash": &hash,
-                ":starknet_global_root": &root,
+                ":starknet_state_root": &root,
             },
         )?;
     }
