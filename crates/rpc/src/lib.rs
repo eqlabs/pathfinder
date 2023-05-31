@@ -209,6 +209,7 @@ pub mod test_utils {
         let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
         let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
         let class2_hash = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
+        let class_hash_pending = ClassHash(felt_bytes!(b"class pending hash"));
 
         let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
 
@@ -259,6 +260,7 @@ pub mod test_utils {
         ContractCodeTable::insert(&db_txn, class0_hash, &class0_definition).unwrap();
         ContractCodeTable::insert(&db_txn, class1_hash, &class1_definition).unwrap();
         ContractCodeTable::insert(&db_txn, class2_hash, &sierra_class_definition).unwrap();
+        ContractCodeTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
 
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));

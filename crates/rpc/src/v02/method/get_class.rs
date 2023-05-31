@@ -280,13 +280,14 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
-        // This class is defined, but is not declared in any canonical block.
-        let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
+        // This class is defined, but is not declared in any canonical block, such
+        // as what may occur for a pending class declaration.
+        let undeclared = ClassHash(felt_bytes!(b"class pending hash"));
         let error = super::get_class(
             context.clone(),
             GetClassInput {
                 block_id: BlockId::Latest,
-                class_hash: invalid,
+                class_hash: undeclared,
             },
         )
         .await
@@ -301,7 +302,7 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // Cairo v0.x class
-        // This class is declared in block 1.
+        // This class is declared in block 0.
         let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
         super::get_class(
             context.clone(),
@@ -330,7 +331,7 @@ mod tests {
             context.clone(),
             GetClassInput {
                 block_id: BlockId::Number(BlockNumber::GENESIS),
-                class_hash: valid_v0,
+                class_hash: valid_v1,
             },
         )
         .await
@@ -349,13 +350,14 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
-        // This class is defined, but is not declared in any canonical block.
-        let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
+        // This class is defined, but is not declared in any canonical block, such
+        // as what may occur for a pending class declaration.
+        let undeclared = ClassHash(felt_bytes!(b"class pending hash"));
         let error = super::get_class(
             context.clone(),
             GetClassInput {
                 block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
-                class_hash: invalid,
+                class_hash: undeclared,
             },
         )
         .await
@@ -415,7 +417,7 @@ mod tests {
             context.clone(),
             GetClassInput {
                 block_id: BlockId::Hash(block0_hash),
-                class_hash: valid_v0,
+                class_hash: valid_v1,
             },
         )
         .await
@@ -436,13 +438,13 @@ mod tests {
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
-        let invalid = ClassHash(felt_bytes!(b"class 1 hash"));
+        let undeclared = ClassHash(felt_bytes!(b"class pending hash"));
         let latest_hash = BlockHash(felt_bytes!(b"latest"));
         let error = super::get_class(
             context.clone(),
             GetClassInput {
                 block_id: BlockId::Hash(latest_hash),
-                class_hash: invalid,
+                class_hash: undeclared,
             },
         )
         .await

@@ -313,8 +313,14 @@ pub mod dto {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, Chain, ContractAddress, TransactionVersion};
-    use pathfinder_storage::{JournalMode, Storage};
+    use pathfinder_common::{
+        felt, BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ContractAddress,
+        GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
+        TransactionVersion,
+    };
+    use pathfinder_storage::{
+        ContractCodeTable, JournalMode, StarknetBlock, StarknetBlocksTable, Storage,
+    };
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
     };
@@ -335,16 +341,27 @@ mod tests {
         {
             let mut db = storage.connection().expect("db connection");
             let tx = db.transaction().expect("tx");
-            tx.execute(
-                "insert into class_definitions (hash, definition) values (?, ?)",
-                rusqlite::params![&DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT],
+
+            ContractCodeTable::insert(&tx, DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
+                .expect("insert class");
+
+            StarknetBlocksTable::insert(
+                &tx,
+                &StarknetBlock {
+                    number: BlockNumber::new_or_panic(1),
+                    hash: BlockHash::ZERO,
+                    state_commmitment: StateCommitment::ZERO,
+                    timestamp: BlockTimestamp::new_or_panic(1),
+                    gas_price: GasPrice(1),
+                    sequencer_address: SequencerAddress::ZERO,
+                    transaction_commitment: None,
+                    event_commitment: None,
+                },
+                &StarknetVersion::default(),
+                StorageCommitment::ZERO,
+                ClassCommitment::ZERO,
             )
-            .expect("insert class");
-            tx.execute("insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, x'01', ?)", [
-                vec![0u8; 32],
-                vec![0u8; 32],
-                vec![0u8; 32],
-            ]).expect("insert block");
+            .expect("insert block");
             tx.commit().expect("commit");
         }
 
