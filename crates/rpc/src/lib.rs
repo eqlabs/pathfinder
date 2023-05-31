@@ -170,7 +170,7 @@ pub mod test_utils {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        insert_canonical_state_diff, CanonicalBlocksTable, ContractCodeTable, StarknetBlock,
+        insert_canonical_state_diff, CanonicalBlocksTable, ClassDefinitionsTable, StarknetBlock,
         StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use primitive_types::H256;
@@ -257,10 +257,10 @@ pub mod test_utils {
         let sierra_class_definition =
             starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
 
-        ContractCodeTable::insert(&db_txn, class0_hash, &class0_definition).unwrap();
-        ContractCodeTable::insert(&db_txn, class1_hash, &class1_definition).unwrap();
-        ContractCodeTable::insert(&db_txn, class2_hash, &sierra_class_definition).unwrap();
-        ContractCodeTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class0_hash, &class0_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class1_hash, &class1_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class2_hash, &sierra_class_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
 
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
@@ -637,7 +637,7 @@ pub mod test_utils {
             let class_definition =
                 starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
             for deployed in deployed_contracts {
-                ContractCodeTable::insert(&tx, deployed.class_hash, class_definition).unwrap();
+                ClassDefinitionsTable::insert(&tx, deployed.class_hash, class_definition).unwrap();
             }
             tx.commit().unwrap();
         })

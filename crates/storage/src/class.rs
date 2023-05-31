@@ -6,9 +6,9 @@ use rusqlite::{named_params, params, OptionalExtension, Transaction};
 ///
 /// - [hash](ClassHash)
 /// - definition
-pub struct ContractCodeTable {}
+pub struct ClassDefinitionsTable {}
 
-impl ContractCodeTable {
+impl ClassDefinitionsTable {
     /// Insert a class into the table.
     ///
     /// Does nothing if the class [hash](ClassHash) is already populated.
@@ -18,7 +18,7 @@ impl ContractCodeTable {
         definition: &[u8],
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10)
-            .context("Couldn't create zstd compressor for ContractCodeTable")?;
+            .context("Couldn't create zstd compressor for ClassDefinitionsTable")?;
         let definition = compressor
             .compress(definition)
             .context("Failed to compress definition")?;
@@ -98,7 +98,7 @@ pub struct CasmClassTable {}
 impl CasmClassTable {
     /// Insert a CASM class into the table.
     ///
-    /// Note that the class hash must reference a class stored in [ContractCodeTable].
+    /// Note that the class hash must reference a class stored in [ClassDefinitionsTable].
     pub fn insert(
         transaction: &Transaction<'_>,
         definition: &[u8],
@@ -184,7 +184,7 @@ mod tests {
         let hash = ClassHash(felt!("0x123"));
 
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
-        ContractCodeTable::insert(transaction, hash, &definition[..]).unwrap();
+        ClassDefinitionsTable::insert(transaction, hash, &definition[..]).unwrap();
 
         (
             hash,
@@ -202,7 +202,7 @@ mod tests {
         let (hash, _, _) = setup_class(&transaction);
         let non_existent = ClassHash(felt!("0x456"));
 
-        let result = ContractCodeTable::exists(&transaction, &[hash, non_existent]).unwrap();
+        let result = ClassDefinitionsTable::exists(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];
 
         assert_eq!(result, expected);

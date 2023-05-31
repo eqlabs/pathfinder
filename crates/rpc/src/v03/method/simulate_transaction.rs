@@ -319,7 +319,7 @@ mod tests {
         TransactionVersion,
     };
     use pathfinder_storage::{
-        ContractCodeTable, JournalMode, StarknetBlock, StarknetBlocksTable, Storage,
+        ClassDefinitionsTable, JournalMode, StarknetBlock, StarknetBlocksTable, Storage,
     };
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
@@ -342,7 +342,7 @@ mod tests {
             let mut db = storage.connection().expect("db connection");
             let tx = db.transaction().expect("tx");
 
-            ContractCodeTable::insert(&tx, DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
+            ClassDefinitionsTable::insert(&tx, DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
                 .expect("insert class");
 
             StarknetBlocksTable::insert(

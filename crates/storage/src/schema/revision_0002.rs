@@ -185,7 +185,7 @@ mod storage {
         definition: &[u8],
     ) -> anyhow::Result<()> {
         let mut compressor = zstd::bulk::Compressor::new(10)
-            .context("Couldn't create zstd compressor for ContractCodeTable")?;
+            .context("Couldn't create zstd compressor for ClassDefinitionsTable")?;
         let abi = compressor.compress(abi).context("Failed to compress ABI")?;
         let bytecode = compressor
             .compress(bytecode)

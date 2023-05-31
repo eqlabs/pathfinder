@@ -20,7 +20,7 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{
-    insert_canonical_state_diff, CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable,
+    insert_canonical_state_diff, CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable,
     ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId,
     StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
@@ -246,7 +246,7 @@ where
                 Some(l2::Event::CairoClass { definition, hash }) => {
                     tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction().context("Creating database transaction")?;
-                        ContractCodeTable::insert(&tx, hash, &definition).context("Inserting new cairo class")?;
+                        ClassDefinitionsTable::insert(&tx, hash, &definition).context("Inserting new cairo class")?;
                         tx.commit().context("Committing database transaction")
                     })
                     .with_context(|| {
@@ -258,7 +258,7 @@ where
                 Some(l2::Event::SierraClass { sierra_definition, sierra_hash, casm_definition, casm_hash }) => {
                     tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction().context("Creating database transaction")?;
-                        ContractCodeTable::insert(&tx, sierra_hash, &sierra_definition).context("Inserting sierra class")?;
+                        ClassDefinitionsTable::insert(&tx, sierra_hash, &sierra_definition).context("Inserting sierra class")?;
                         CasmClassTable::insert(&tx, &casm_definition, sierra_hash, casm_hash, crate::sierra::COMPILER_VERSION).context("Inserting casm definition")?;
                         tx.commit().context("Committing database transaction")
                     })
@@ -770,7 +770,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
     // Check database to see which are missing.
     let exists = tokio::task::block_in_place(|| {
         let transaction = connection.transaction()?;
-        ContractCodeTable::exists(&transaction, &classes)
+        ClassDefinitionsTable::exists(&transaction, &classes)
     })
     .with_context(|| format!("Query storage for existance of classes {classes:?}"))?;
     anyhow::ensure!(
@@ -793,7 +793,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
                 tokio::task::block_in_place(|| {
                     let transaction =
                         connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ContractCodeTable::insert(&transaction, hash, &definition)
+                    ClassDefinitionsTable::insert(&transaction, hash, &definition)
                         .context("Inserting new cairo class")?;
                     transaction.commit()?;
                     anyhow::Result::<()>::Ok(())
@@ -823,7 +823,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
                 tokio::task::block_in_place(|| {
                     let transaction =
                         connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ContractCodeTable::insert(&transaction, sierra_hash, &sierra_definition)
+                    ClassDefinitionsTable::insert(&transaction, sierra_hash, &sierra_definition)
                         .context("Inserting sierra class")?;
                     CasmClassTable::insert(
                         &transaction,
@@ -876,7 +876,7 @@ mod tests {
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::{
-        CasmClassTable, ContractCodeTable, L1StateTable, RefsTable, StarknetBlock,
+        CasmClassTable, ClassDefinitionsTable, L1StateTable, RefsTable, StarknetBlock,
         StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
     use primitive_types::H160;
@@ -1410,7 +1410,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert_eq!(
-            ContractCodeTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
+            ClassDefinitionsTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
     }
@@ -1459,7 +1459,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert_eq!(
-            ContractCodeTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
+            ClassDefinitionsTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
         assert_eq!(

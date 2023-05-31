@@ -7,7 +7,7 @@ use pathfinder_common::{
     StateCommitment, TransactionCommitment,
 };
 use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
-use pathfinder_storage::{ContractCodeTable, Storage};
+use pathfinder_storage::{ClassDefinitionsTable, Storage};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     error::SequencerError,
@@ -342,7 +342,7 @@ async fn download_new_classes(
             .transaction()
             .context("Creating database transaction")?;
 
-        let exists = ContractCodeTable::exists(&tx, &new_classes)
+        let exists = ClassDefinitionsTable::exists(&tx, &new_classes)
             .context("Querying class existence in database")?;
 
         let missing = new_classes

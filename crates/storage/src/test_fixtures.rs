@@ -32,7 +32,7 @@ pub mod init {
     use super::*;
     use crate::{
         state_update::insert_canonical_state_diff, CanonicalBlocksTable, CasmClassTable,
-        ContractCodeTable, StarknetBlocksTable,
+        ClassDefinitionsTable, StarknetBlocksTable,
     };
     use pathfinder_common::{ClassCommitment, StarknetVersion, StorageCommitment};
 
@@ -54,12 +54,12 @@ pub mod init {
                 let update = StateUpdate::with_block_hash(n);
 
                 for declared_class in &update.state_diff.declared_contracts {
-                    ContractCodeTable::insert(tx, declared_class.class_hash, b"").unwrap();
+                    ClassDefinitionsTable::insert(tx, declared_class.class_hash, b"").unwrap();
                 }
 
                 for declared_sierra_class in &update.state_diff.declared_sierra_classes {
                     let class_hash = ClassHash(declared_sierra_class.class_hash.0);
-                    ContractCodeTable::insert(tx, class_hash, b"").unwrap();
+                    ClassDefinitionsTable::insert(tx, class_hash, b"").unwrap();
                     CasmClassTable::insert(
                         tx,
                         &[],

@@ -14,7 +14,7 @@ pub mod types;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use class::{CasmClassTable, ClassCommitmentLeavesTable, ContractCodeTable};
+pub use class::{CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable};
 use rusqlite::functions::FunctionFlags;
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,

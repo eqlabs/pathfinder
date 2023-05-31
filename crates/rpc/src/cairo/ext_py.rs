@@ -454,8 +454,8 @@ mod tests {
     use pathfinder_storage::{
         insert_canonical_state_diff,
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
-        CanonicalBlocksTable, ContractCodeTable, ContractsStateTable, JournalMode, StarknetBlock,
-        StarknetBlocksTable, Storage,
+        CanonicalBlocksTable, ClassDefinitionsTable, ContractsStateTable, JournalMode,
+        StarknetBlock, StarknetBlocksTable, Storage,
     };
     use rusqlite::params;
     use stark_hash::Felt;
@@ -993,7 +993,7 @@ mod tests {
         let class_hash = class_hash.hash();
 
         // create class
-        ContractCodeTable::insert(tx, class_hash, contract_definition).unwrap();
+        ClassDefinitionsTable::insert(tx, class_hash, contract_definition).unwrap();
 
         // set up contract state tree
         let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO));
