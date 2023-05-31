@@ -4,6 +4,7 @@
 
 mod contract;
 mod ethereum;
+mod read;
 mod schema;
 mod state;
 mod state_update;
@@ -12,6 +13,7 @@ pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 pub mod types;
+mod write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
