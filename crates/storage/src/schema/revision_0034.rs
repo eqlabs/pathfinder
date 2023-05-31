@@ -1,11 +1,7 @@
-use pathfinder_common::StateCommitment;
-use pathfinder_ethereum::EthereumStateUpdate;
-use rusqlite::Transaction;
-
-use crate::{
-    L1StateTable, RefsTable, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest,
-    StarknetBlocksTable,
+use pathfinder_common::{
+    BlockHash, BlockNumber, ClassCommitment, StateCommitment, StorageCommitment,
 };
+use rusqlite::{named_params, OptionalExtension, Transaction};
 
 pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute("DROP TABLE l1_state", [])?;
@@ -18,30 +14,42 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
         [],
     )?;
 
-    if let Some(update) = get_update(tx)? {
-        L1StateTable::upsert(tx, &update)?;
+    let maybe_head = tx
+        .query_row(
+            r"SELECT b.number, b.hash, b.root, b.class_commitment 
+        FROM starknet_blocks b 
+        INNER JOIN refs r ON r.l1_l2_head == b.number 
+        LIMIT 1",
+            [],
+            |row| {
+                let number: BlockNumber = row.get(0)?;
+                let hash: BlockHash = row.get(1)?;
+                let storage: StorageCommitment = row.get(2)?;
+                let class: ClassCommitment = row.get(3)?;
+                Ok((number, hash, storage, class))
+            },
+        )
+        .optional()?;
+
+    if let Some((number, hash, storage, class)) = maybe_head {
+        let root = StateCommitment::calculate(storage, class);
+        tx.execute(
+            r"INSERT OR REPLACE INTO l1_state (
+                        starknet_block_number,
+                        starknet_block_hash,
+                        starknet_global_root
+                    ) VALUES (
+                        :starknet_block_number,
+                        :starknet_block_hash,
+                        :starknet_global_root
+                    )",
+            named_params! {
+                ":starknet_block_number": number,
+                ":starknet_block_hash": &hash,
+                ":starknet_global_root": &root,
+            },
+        )?;
     }
 
     Ok(())
-}
-
-fn get_update(tx: &Transaction<'_>) -> anyhow::Result<Option<EthereumStateUpdate>> {
-    RefsTable::get_l1_l2_head(tx).and_then(|number| {
-        Ok(if let Some(number) = number {
-            let hash =
-                StarknetBlocksTable::get_hash(tx, StarknetBlocksNumberOrLatest::Number(number))?;
-            let state = StarknetBlocksTable::get_state_commitment(
-                tx,
-                StarknetBlocksBlockId::Number(number),
-            )?
-            .map(|(storage, class)| StateCommitment::calculate(storage, class));
-            hash.zip(state).map(|(hash, state)| EthereumStateUpdate {
-                global_root: state,
-                block_number: number,
-                block_hash: hash,
-            })
-        } else {
-            None
-        })
-    })
 }
