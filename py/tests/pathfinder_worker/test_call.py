@@ -1872,7 +1872,7 @@ def declare_class(
 ):
     with open(class_definition_path, "rb") as f:
         class_definition = f.read()
-        class_definition = zstandard.compress(class_definition, 10)
+        class_definition = zstandard.compress(class_definition)
 
         cur.execute(
             "insert into class_definitions (hash, definition, block_number) values (?, ?, ?)",
@@ -1889,7 +1889,7 @@ def add_casm_definition(
 ):
     with open(compiled_class_definition_path, "rb") as f:
         class_definition = f.read()
-        class_definition = zstandard.compress(class_definition, 10)
+        class_definition = zstandard.compress(class_definition)
 
         res = cur.execute(
             "select id from casm_compiler_versions where version = ?",
