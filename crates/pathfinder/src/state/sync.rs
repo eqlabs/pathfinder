@@ -24,8 +24,9 @@ use pathfinder_storage::{
     ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId,
     StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
+use pathfinder_storage::{Connection, Transaction};
 use primitive_types::H160;
-use rusqlite::{Connection, Transaction, TransactionBehavior};
+use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
@@ -1372,7 +1373,6 @@ mod tests {
     async fn l2_new_cairo_contract() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
@@ -1409,6 +1409,7 @@ mod tests {
         // TODO Find a better way to figure out that the DB update has already been performed
         tokio::time::sleep(Duration::from_millis(10)).await;
 
+        let tx = connection.transaction().unwrap();
         assert_eq!(
             ClassDefinitionsTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]
@@ -1419,7 +1420,6 @@ mod tests {
     async fn l2_new_sierra_contract() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
@@ -1458,6 +1458,7 @@ mod tests {
         // TODO Find a better way to figure out that the DB update has already been performed
         tokio::time::sleep(Duration::from_millis(10)).await;
 
+        let tx = connection.transaction().unwrap();
         assert_eq!(
             ClassDefinitionsTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]

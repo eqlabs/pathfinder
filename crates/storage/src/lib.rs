@@ -2,6 +2,7 @@
 //!
 //! Currently this consists of a Sqlite backend implementation.
 
+mod connection;
 mod class;
 mod schema;
 mod state;
@@ -11,9 +12,11 @@ pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 pub mod types;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use connection::*;
 pub use class::{CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable};
 use rusqlite::functions::FunctionFlags;
 pub use state::{
@@ -27,12 +30,9 @@ pub use state_update::insert_canonical_state_diff;
 use anyhow::Context;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
 
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
-
-type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 
 /// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
 /// of the [Storage].
@@ -92,9 +92,9 @@ impl Storage {
     }
 
     /// Returns a new Sqlite [Connection] to the database.
-    pub fn connection(&self) -> anyhow::Result<PooledConnection> {
+    pub fn connection(&self) -> anyhow::Result<Connection> {
         let conn = self.0.pool.get()?;
-        Ok(conn)
+        Ok(Connection::from_inner(conn))
     }
 
     /// Convenience function for tests to create an in-memory database.
@@ -190,7 +190,7 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
 
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
-fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
+fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()> {
     let current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
@@ -244,7 +244,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
 
 /// Returns the current schema version of the existing database,
 /// or `0` if database does not yet exist.
-fn schema_version(connection: &Connection) -> anyhow::Result<usize> {
+fn schema_version(connection: &rusqlite::Connection) -> anyhow::Result<usize> {
     // We store the schema version in the Sqlite provided PRAGMA "user_version",
     // which stores an INTEGER and defaults to 0.
     let version = connection.query_row(

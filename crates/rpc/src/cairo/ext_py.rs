@@ -455,7 +455,7 @@ mod tests {
         insert_canonical_state_diff,
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
         CanonicalBlocksTable, ClassDefinitionsTable, ContractsStateTable, JournalMode,
-        StarknetBlock, StarknetBlocksTable, Storage,
+        StarknetBlock, StarknetBlocksTable, Storage, Transaction,
     };
     use rusqlite::params;
     use stark_hash::Felt;
@@ -469,8 +469,10 @@ mod tests {
         let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
 
         {
-            let conn = s.connection().unwrap();
-            conn.execute("pragma user_version = 0", []).unwrap();
+            let mut conn = s.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+            tx.execute("pragma user_version = 0", []).unwrap();
+            tx.commit().unwrap();
         }
 
         let (_work_tx, work_rx) = tokio::sync::mpsc::channel(1);
@@ -571,8 +573,9 @@ mod tests {
             test_storage_with_account();
         let db_path = storage.path();
 
-        let db_conn = storage.connection().unwrap();
-        db_conn
+        let mut db_conn = storage.connection().unwrap();
+        let db_tx = db_conn.transaction().unwrap();
+        db_tx
             .execute(
                 "UPDATE starknet_blocks SET gas_price = ? where hash = ?",
                 params![1u128.to_be_bytes(), latest_block_hash],
@@ -846,7 +849,7 @@ mod tests {
         jh.await.unwrap();
     }
 
-    fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
+    fn deploy_test_contract_in_block_one(tx: &Transaction<'_>) -> ClassHash {
         let test_contract_definition =
             starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
         let test_contract_address = ContractAddress::new_or_panic(felt!(
@@ -920,7 +923,7 @@ mod tests {
         test_contract_class_hash
     }
 
-    fn deploy_account_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
+    fn deploy_account_contract_in_block_one(tx: &Transaction<'_>) -> ClassHash {
         let account_contract_definition =
             starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
@@ -982,7 +985,7 @@ mod tests {
     }
 
     fn deploy_contract(
-        tx: &rusqlite::Transaction<'_>,
+        tx: &Transaction<'_>,
         contract_definition: &[u8],
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {

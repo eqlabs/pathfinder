@@ -1,5 +1,6 @@
 //! Basic test fixtures for storage.
 
+use crate::Transaction;
 use crate::{
     types::{
         state_update::{
@@ -15,7 +16,6 @@ use pathfinder_common::{
     ContractNonce, GasPrice, SequencerAddress, SierraHash, StateCommitment, StorageAddress,
     StorageCommitment, StorageValue,
 };
-use rusqlite::Transaction;
 use stark_hash::Felt;
 
 /// Generate [`Felt`] from a sequence of bytes.

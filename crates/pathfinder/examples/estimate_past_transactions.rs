@@ -89,7 +89,8 @@ fn feed_work(
     sender: tokio::sync::mpsc::Sender<Work>,
 ) -> Result<(), anyhow::Error> {
     let mut connection = storage.connection()?;
-    let mode = connection.query_row("PRAGMA journal_mode", [], |row| {
+    let tx = connection.transaction()?;
+    let mode = tx.query_row("PRAGMA journal_mode", [], |row| {
         Ok(row.get_ref_unwrap(0).as_str().map(|s| s.to_owned())?)
     })?;
     if mode != "wal" {
@@ -97,7 +98,6 @@ fn feed_work(
         std::thread::sleep(std::time::Duration::from_secs(5));
     }
 
-    let tx = connection.transaction()?;
     let mut prep = tx.prepare(
         "select b2.hash as target_block_hash, tx.hash, tx.tx, tx.receipt, b.gas_price, b2.number, b.number
                from starknet_blocks b

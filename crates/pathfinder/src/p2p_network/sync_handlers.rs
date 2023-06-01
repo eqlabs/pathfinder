@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use p2p_proto as proto;
 use pathfinder_common::{BlockHash, BlockNumber, ClassCommitment, StorageCommitment};
-use pathfinder_storage::{StarknetTransactionsTable, Storage};
+use pathfinder_storage::{StarknetTransactionsTable, Storage, Transaction};
 use stark_hash::Felt;
 
 const MAX_HEADERS_COUNT: u64 = 1000;
@@ -32,7 +32,7 @@ pub async fn get_block_headers(
 }
 
 fn fetch_block_headers(
-    tx: rusqlite::Transaction<'_>,
+    tx: Transaction<'_>,
     request: p2p_proto::sync::GetBlockHeaders,
 ) -> anyhow::Result<Vec<p2p_proto::common::BlockHeader>> {
     use pathfinder_storage::StarknetBlocksTable;

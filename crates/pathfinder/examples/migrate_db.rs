@@ -37,10 +37,12 @@ fn main() {
 
     // in general one does not want to do the full vacuum because it's going to take a long time
     if false {
-        let conn = storage.connection().unwrap();
+        let mut conn = storage.connection().unwrap();
+        let tx = conn.transaction().unwrap();
 
         let vacuum_started = std::time::Instant::now();
-        let vacuum_ret = conn.execute("VACUUM", []).expect("vacuum failed");
+        let vacuum_ret = tx.execute("VACUUM", []).expect("vacuum failed");
+        tx.commit().unwrap();
         drop(conn);
         drop(storage);
 
