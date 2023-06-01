@@ -20,7 +20,7 @@ use super::common::prepare_handle_and_block;
 #[derive(Deserialize, Debug)]
 pub struct SimulateTrasactionInput {
     block_id: BlockId,
-    transactions: Vec<BroadcastedTransaction>,
+    transaction: Vec<BroadcastedTransaction>,
     simulation_flags: dto::SimulationFlags,
 }
 
@@ -65,7 +65,7 @@ pub async fn simulate_transaction(
             gas_price,
             pending_update,
             pending_timestamp,
-            input.transactions,
+            input.transaction,
             skip_validate,
         )
         .await?;
@@ -363,7 +363,7 @@ mod tests {
 
         let input_json = serde_json::json!({
             "block_id": {"block_number": 1},
-            "transactions": [
+            "transaction": [
                 {
                     "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
                     "max_fee": "0x0",
