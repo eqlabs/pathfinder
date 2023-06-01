@@ -55,7 +55,6 @@ tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "time"] }
 url = "2.3.1"
 warp = "0.3.3"
-zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = { workspace = true }
@@ -74,6 +73,7 @@ serde_with = "2.1.0"
 starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["test-util"] }
+zstd = "0.12"
 
 [[bench]]
 name = "merkle_tree"

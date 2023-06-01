@@ -486,26 +486,24 @@ mod tests {
 
     mod declare_class_hash {
         use super::super::ContractClass;
-        use starknet_gateway_test_fixtures::zstd_compressed_contracts::{
+        use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_11_SIERRA, CONTRACT_DEFINITION,
         };
         use starknet_gateway_types::class_hash::compute_class_hash;
 
         #[test]
         fn compute_sierra_class_hash() {
-            let contract_definition = zstd::decode_all(CAIRO_0_11_SIERRA).unwrap();
-            let class_hash = compute_class_hash(&contract_definition).unwrap();
+            let class_hash = compute_class_hash(CAIRO_0_11_SIERRA).unwrap();
 
-            let class = ContractClass::from_definition_bytes(&contract_definition).unwrap();
+            let class = ContractClass::from_definition_bytes(CAIRO_0_11_SIERRA).unwrap();
             assert_eq!(class.class_hash().unwrap(), class_hash);
         }
 
         #[test]
         fn compute_cairo_class_hash() {
-            let contract_definition = zstd::decode_all(CONTRACT_DEFINITION).unwrap();
-            let class_hash = compute_class_hash(&contract_definition).unwrap();
+            let class_hash = compute_class_hash(CONTRACT_DEFINITION).unwrap();
 
-            let class = ContractClass::from_definition_bytes(&contract_definition).unwrap();
+            let class = ContractClass::from_definition_bytes(CONTRACT_DEFINITION).unwrap();
             assert_eq!(class.class_hash().unwrap(), class_hash);
         }
     }

@@ -526,12 +526,11 @@ mod json {
     mod test_vectors {
         use super::super::{compute_class_hash, ComputedClassHash};
         use pathfinder_common::{felt, ClassHash};
-        use starknet_gateway_test_fixtures::zstd_compressed_contracts::*;
+        use starknet_gateway_test_fixtures::class_definitions::*;
 
         #[tokio::test]
         async fn first() {
-            let contract_definition = zstd::decode_all(INTEGRATION_TEST).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(INTEGRATION_TEST).unwrap();
 
             assert_eq!(
                 hash,
@@ -543,8 +542,7 @@ mod json {
 
         #[test]
         fn second() {
-            let contract_definition = zstd::decode_all(CONTRACT_DEFINITION).unwrap();
-            let hash = super::super::compute_class_hash(&contract_definition).unwrap();
+            let hash = super::super::compute_class_hash(CONTRACT_DEFINITION).unwrap();
 
             assert_eq!(
                 hash,
@@ -556,8 +554,7 @@ mod json {
 
         #[tokio::test]
         async fn genesis_contract() {
-            let contract_definition = zstd::decode_all(GOERLI_GENESIS).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(GOERLI_GENESIS).unwrap();
 
             assert_eq!(
                 hash,
@@ -578,10 +575,8 @@ mod json {
             )));
 
             // Known contract which triggered a hash mismatch failure.
-            let contract_definition = zstd::decode_all(CAIRO_0_8_NEW_ATTRIBUTES).unwrap();
-
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let hash = compute_class_hash(&contract_definition)?;
+                let hash = compute_class_hash(CAIRO_0_8_NEW_ATTRIBUTES)?;
                 Ok(hash)
             });
             let calculated_hash = extract.await.unwrap().unwrap();
@@ -592,8 +587,7 @@ mod json {
         #[tokio::test]
         async fn cairo_0_10() {
             // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
-            let contract_definition = zstd::decode_all(CAIRO_0_10_COMPILER_VERSION).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_10_COMPILER_VERSION).unwrap();
 
             assert_eq!(
                 hash,
@@ -607,8 +601,7 @@ mod json {
         async fn cairo_0_10_part_2() {
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
-            let contract_definition = zstd::decode_all(CAIRO_0_10_TUPLES_INTEGRATION).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_10_TUPLES_INTEGRATION).unwrap();
 
             assert_eq!(
                 hash,
@@ -622,8 +615,7 @@ mod json {
         async fn cairo_0_10_part_3() {
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
-            let contract_definition = zstd::decode_all(CAIRO_0_10_TUPLES_GOERLI).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_10_TUPLES_GOERLI).unwrap();
 
             assert_eq!(
                 hash,
@@ -635,8 +627,7 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_11_sierra() {
-            let contract_definition = zstd::decode_all(CAIRO_0_11_SIERRA).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_11_SIERRA).unwrap();
 
             assert_eq!(
                 hash,
@@ -648,9 +639,7 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_11_with_decimal_entry_point_offset() {
-            let contract_definition =
-                zstd::decode_all(CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET).unwrap();
 
             assert_eq!(
                 hash,

@@ -170,9 +170,8 @@ pub mod test_utils {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        insert_canonical_state_diff, types::CompressedContract, CanonicalBlocksTable,
-        ContractCodeTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-        StarknetTransactionsTable, Storage,
+        insert_canonical_state_diff, CanonicalBlocksTable, ClassDefinitionsTable, StarknetBlock,
+        StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use primitive_types::H256;
     use stark_hash::Felt;
@@ -210,6 +209,7 @@ pub mod test_utils {
         let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
         let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
         let class2_hash = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
+        let class_hash_pending = ClassHash(felt_bytes!(b"class pending hash"));
 
         let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
 
@@ -251,24 +251,16 @@ pub mod test_utils {
             value: StorageValue(felt_bytes!(b"storage value 2")),
         }];
 
-        let contract_definition =
-            starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION.to_vec();
-        let contract0_code = CompressedContract {
-            definition: contract_definition,
-            hash: class0_hash,
-        };
-        let mut contract1_code = contract0_code.clone();
-        contract1_code.hash = class1_hash;
+        let class0_definition =
+            starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION.to_vec();
+        let class1_definition = class0_definition.clone();
         let sierra_class_definition =
-            starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_0_11_SIERRA.to_vec();
-        let contract2_code = CompressedContract {
-            definition: sierra_class_definition,
-            hash: class2_hash,
-        };
+            starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
 
-        ContractCodeTable::insert_compressed(&db_txn, &contract0_code).unwrap();
-        ContractCodeTable::insert_compressed(&db_txn, &contract1_code).unwrap();
-        ContractCodeTable::insert_compressed(&db_txn, &contract2_code).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class0_hash, &class0_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class1_hash, &class1_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class2_hash, &sierra_class_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
 
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
@@ -407,11 +399,6 @@ pub mod test_utils {
         CanonicalBlocksTable::insert(&db_txn, block0.number, block0.hash).unwrap();
         CanonicalBlocksTable::insert(&db_txn, block1.number, block1.hash).unwrap();
         CanonicalBlocksTable::insert(&db_txn, block2.number, block2.hash).unwrap();
-
-        ContractCodeTable::update_block_number_if_null(&db_txn, class0_hash, block1.number)
-            .unwrap();
-        ContractCodeTable::update_block_number_if_null(&db_txn, class2_hash, block2.number)
-            .unwrap();
 
         let txn0_hash = TransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
@@ -647,17 +634,10 @@ pub mod test_utils {
         tokio::task::spawn_blocking(move || {
             let mut db = deploy_storage.connection().unwrap();
             let tx = db.transaction().unwrap();
-            let compressed_definition =
-                starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION
-                    .to_vec();
+            let class_definition =
+                starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
             for deployed in deployed_contracts {
-                // The abi, bytecode, definition are expected to be zstd compressed, and are
-                // checked for the magic bytes.
-                let contract = CompressedContract {
-                    definition: compressed_definition.to_vec(),
-                    hash: deployed.class_hash,
-                };
-                ContractCodeTable::insert_compressed(&tx, &contract).unwrap();
+                ClassDefinitionsTable::insert(&tx, deployed.class_hash, class_definition).unwrap();
             }
             tx.commit().unwrap();
         })

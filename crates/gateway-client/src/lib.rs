@@ -1222,12 +1222,10 @@ mod tests {
             }
 
             fn sierra_contract_class_from_fixture() -> SierraContractDefinition {
-                let sierra_class = zstd::decode_all(
-                    starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA,
-                )
-                .unwrap();
+                let sierra_class =
+                    starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_ALPHA6_SIERRA;
                 let mut sierra_class =
-                    serde_json::from_slice::<serde_json::Value>(&sierra_class).unwrap();
+                    serde_json::from_slice::<serde_json::Value>(sierra_class).unwrap();
                 let sierra_program = sierra_class.get_mut("sierra_program").unwrap().take();
                 let sierra_program = serde_json::from_value::<Vec<Felt>>(sierra_program).unwrap();
                 let mut gzip_encoder =
@@ -1349,11 +1347,8 @@ mod tests {
         fn cairo_contract_class_from_fixture() -> CairoContractDefinition {
             use pathfinder_common::EntryPoint;
 
-            let json = zstd::decode_all(
-                starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION,
-            )
-            .unwrap();
-            let json: serde_json::Value = serde_json::from_slice(&json).unwrap();
+            let json = starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
+            let json: serde_json::Value = serde_json::from_slice(json).unwrap();
             let program = &json["program"];
 
             // Program is expected to be a gzip-compressed then base64 encoded representation of the JSON.

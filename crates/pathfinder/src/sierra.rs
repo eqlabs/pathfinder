@@ -192,14 +192,12 @@ mod tests {
 
     mod starknet_v0_11_0 {
         use super::*;
-        use starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA5_SIERRA;
+        use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_ALPHA5_SIERRA;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
-            let contract_definition = zstd::decode_all(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
-
             let class =
-                serde_json::from_slice::<FeederGatewayContractClass<'_>>(&contract_definition)
+                serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_0_0_ALPHA5_SIERRA)
                     .unwrap();
 
             let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
@@ -208,21 +206,18 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            let contract_definition = zstd::decode_all(CAIRO_1_0_0_ALPHA5_SIERRA).unwrap();
-            compile_to_casm(&contract_definition, &StarknetVersion::default()).unwrap();
+            compile_to_casm(CAIRO_1_0_0_ALPHA5_SIERRA, &StarknetVersion::default()).unwrap();
         }
     }
 
     mod starknet_v0_11_1 {
         use super::*;
-        use starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_RC0_SIERRA;
+        use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_0_0_RC0_SIERRA;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
-            let contract_definition = zstd::decode_all(CAIRO_1_0_0_RC0_SIERRA).unwrap();
-
             let class =
-                serde_json::from_slice::<FeederGatewayContractClass<'_>>(&contract_definition)
+                serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_0_0_RC0_SIERRA)
                     .unwrap();
 
             let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
@@ -231,21 +226,18 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            let contract_definition = zstd::decode_all(CAIRO_1_0_0_RC0_SIERRA).unwrap();
-            compile_to_casm(&contract_definition, &StarknetVersion::new(0, 11, 1)).unwrap();
+            compile_to_casm(CAIRO_1_0_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 1)).unwrap();
         }
     }
 
     mod starknet_v0_11_2_onwards {
         use super::*;
-        use starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_1_0_RC0_SIERRA;
+        use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_RC0_SIERRA;
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
-            let contract_definition = zstd::decode_all(CAIRO_1_1_0_RC0_SIERRA).unwrap();
-
             let class =
-                serde_json::from_slice::<FeederGatewayContractClass<'_>>(&contract_definition)
+                serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_1_0_RC0_SIERRA)
                     .unwrap();
 
             let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
@@ -254,8 +246,7 @@ mod tests {
 
         #[test]
         fn test_compile() {
-            let contract_definition = zstd::decode_all(CAIRO_1_1_0_RC0_SIERRA).unwrap();
-            compile_to_casm(&contract_definition, &StarknetVersion::new(0, 11, 2)).unwrap();
+            compile_to_casm(CAIRO_1_1_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 2)).unwrap();
         }
     }
 }

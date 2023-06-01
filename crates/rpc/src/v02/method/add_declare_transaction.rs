@@ -117,23 +117,18 @@ mod tests {
         felt, CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
     };
     use stark_hash::Felt;
+    use starknet_gateway_test_fixtures::class_definitions::{
+        CAIRO_1_0_0_ALPHA6_SIERRA, CONTRACT_DEFINITION,
+    };
     use starknet_gateway_types::error::StarknetErrorCode;
 
     lazy_static::lazy_static! {
-        pub static ref CONTRACT_DEFINITION_JSON: Vec<u8> = {
-            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION).unwrap()
-        };
-
         pub static ref CONTRACT_CLASS: CairoContractClass = {
-            ContractClass::from_definition_bytes(&CONTRACT_DEFINITION_JSON).unwrap().as_cairo().unwrap()
+            ContractClass::from_definition_bytes(CONTRACT_DEFINITION).unwrap().as_cairo().unwrap()
         };
 
         pub static ref CONTRACT_CLASS_JSON: String = {
             serde_json::to_string(&*CONTRACT_CLASS).unwrap()
-        };
-
-        pub static ref SIERRA_CLASS_DEFINITION_JSON: Vec<u8> = {
-            zstd::decode_all(starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA).unwrap()
         };
 
         pub static ref SIERRA_CLASS_JSON: String = {
@@ -141,7 +136,7 @@ mod tests {
         };
 
         pub static ref SIERRA_CLASS: SierraContractClass = {
-            ContractClass::from_definition_bytes(&SIERRA_CLASS_DEFINITION_JSON).unwrap().as_sierra().unwrap()
+            ContractClass::from_definition_bytes(CAIRO_1_0_0_ALPHA6_SIERRA).unwrap().as_sierra().unwrap()
         };
     }
 

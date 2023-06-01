@@ -391,7 +391,7 @@ def populate_test_contract_with_132_on_3(con):
     cur = con.execute("BEGIN")
 
     path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json"
     )
     declare_class(cur, class_hash, path, 1)
 
@@ -689,12 +689,11 @@ def test_estimate_fee_for_declare_transaction_directly():
     (contract_address, _) = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/contract_definition.json"
     )
 
     with open(path, "rb") as file:
         contract_definition = file.read()
-        contract_definition = zstandard.decompress(contract_definition)
         contract_definition = contract_definition.decode("utf-8")
         contract_definition = DeprecatedCompiledClass.Schema().loads(
             contract_definition
@@ -1042,7 +1041,7 @@ def test_nonce_with_dummy():
     ) = populate_test_contract_with_132_on_3(con)
 
     path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json"
     )
 
     cur = con.execute("BEGIN")
@@ -1315,7 +1314,7 @@ def test_nonce_with_dummy():
 def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, int]:
     # declare classes
     sierra_class_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format.json"
     )
     sierra_class_hash = (
         0x4E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C
@@ -1323,7 +1322,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
     declare_class(cur, sierra_class_hash, sierra_class_path, 1)
 
     dummy_account_contract_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json"
     )
     dummy_account_contract_class_hash = (
         0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
@@ -1334,7 +1333,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
 
     # CASM class
     compiled_class_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format-compiled-casm.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format-compiled-casm.json"
     )
     compiled_class_hash = (
         0x00711C0C3E56863E29D3158804AAC47F424241EDA64DB33E2CC2999D60EE5105
@@ -1571,13 +1570,10 @@ def test_estimate_fee_for_sierra_declare_through_account():
     ) = setup_dummy_account_and_sierra_contract(cur)
     con.commit()
 
-    sierra_class_definition_path = test_relative_path(
-        "./sierra_class_definition.json.zst"
-    )
+    sierra_class_definition_path = test_relative_path("./sierra_class_definition.json")
 
     with open(sierra_class_definition_path, "rb") as file:
         class_definition = file.read()
-        class_definition = zstandard.decompress(class_definition).decode("utf-8")
         class_definition = ContractClass.loads(class_definition)
 
     con.execute("BEGIN")
@@ -1718,7 +1714,7 @@ def test_estimate_fee_for_deploy_newly_declared_account():
     con.commit()
 
     dummy_account_contract_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json"
     )
     dummy_account_contract_class_hash = (
         0x0791563DA22895F1E398B689866718346106C0CC71207A4ADA68E6687CE1BADF
@@ -1726,9 +1722,6 @@ def test_estimate_fee_for_deploy_newly_declared_account():
 
     with open(dummy_account_contract_path, "rb") as file:
         dummy_account_contract_definition = file.read()
-        dummy_account_contract_definition = zstandard.decompress(
-            dummy_account_contract_definition
-        )
         dummy_account_contract_definition = dummy_account_contract_definition.decode(
             "utf-8"
         )
@@ -1798,10 +1791,10 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
     con.commit()
 
     sierra_class_definition_path = test_relative_path(
-        "./sierra_account_starknet_format.json.zst"
+        "./sierra_account_starknet_format.json"
     )
 
-    with zstandard.open(sierra_class_definition_path, "rb") as file:
+    with open(sierra_class_definition_path, "rb") as file:
         # class_definition = file.read()
         # class_definition = zstandard.decompress(class_definition).decode("utf-8")
         class_definition = ContractClass.loads(file.read())
@@ -1878,11 +1871,12 @@ def declare_class(
     cur: sqlite3.Cursor, class_hash: int, class_definition_path: str, block_number: int
 ):
     with open(class_definition_path, "rb") as f:
-        contract_definition = f.read()
+        class_definition = f.read()
+        class_definition = zstandard.compress(class_definition)
 
         cur.execute(
             "insert into class_definitions (hash, definition, block_number) values (?, ?, ?)",
-            [felt_to_bytes(class_hash), contract_definition, block_number],
+            [felt_to_bytes(class_hash), class_definition, block_number],
         )
 
 
@@ -1894,7 +1888,8 @@ def add_casm_definition(
     compiled_class_definition_path: str,
 ):
     with open(compiled_class_definition_path, "rb") as f:
-        contract_definition = f.read()
+        class_definition = f.read()
+        class_definition = zstandard.compress(class_definition)
 
         res = cur.execute(
             "select id from casm_compiler_versions where version = ?",
@@ -1915,7 +1910,7 @@ def add_casm_definition(
             [
                 felt_to_bytes(class_hash),
                 felt_to_bytes(compiled_class_hash),
-                contract_definition,
+                class_definition,
                 version_id,
             ],
         )
@@ -2173,7 +2168,7 @@ def test_simulate_transaction_succeeds():
     con = inmemory_with_tables()
 
     dummy_account_contract_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json.zst"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json"
     )
     dummy_account_contract_class_hash = (
         0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8

@@ -224,10 +224,8 @@ mod tests {
                 test_context_with_call_handling().await;
 
             let contract_class = {
-                let compressed_json =
-                    starknet_gateway_test_fixtures::zstd_compressed_contracts::CONTRACT_DEFINITION;
-                let json = zstd::decode_all(compressed_json).unwrap();
-                ContractClass::from_definition_bytes(&json)
+                let json = starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
+                ContractClass::from_definition_bytes(json)
                     .unwrap()
                     .as_cairo()
                     .unwrap()
@@ -259,9 +257,8 @@ mod tests {
 
             let contract_class: SierraContractClass = {
                 let definition =
-                    starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_1_0_RC0_SIERRA;
-                let definition = zstd::decode_all(definition).unwrap();
-                ContractClass::from_definition_bytes(&definition)
+                    starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_RC0_SIERRA;
+                ContractClass::from_definition_bytes(definition)
                     .unwrap()
                     .as_sierra()
                     .unwrap()

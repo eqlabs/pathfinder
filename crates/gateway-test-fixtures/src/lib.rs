@@ -162,53 +162,53 @@ pub mod integration {
     }
 }
 
-pub mod zstd_compressed_contracts {
+pub mod class_definitions {
     use pathfinder_common::{felt, ClassHash};
 
-    pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json.zst");
-    pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json.zst");
+    pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json");
+    pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json");
     pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash = ClassHash(felt!(
         "0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf"
     ));
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc
-    pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json.zst");
+    pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3
-    pub const GOERLI_GENESIS: &[u8] = bytes_fixture!("contracts/goerli-genesis.json.zst");
+    pub const GOERLI_GENESIS: &[u8] = bytes_fixture!("contracts/goerli-genesis.json");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0400D86342F474F14AAE562587F30855E127AD661F31793C49414228B54516EC
     pub const CAIRO_0_8_NEW_ATTRIBUTES: &[u8] =
-        bytes_fixture!("contracts/cairo-0.8-new-attributes.json.zst");
+        bytes_fixture!("contracts/cairo-0.8-new-attributes.json");
     // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x444453070729bf2db6a1f36541483c2952674e5de4bd05fcf538726b286bfa2
     pub const CAIRO_0_10_COMPILER_VERSION: &[u8] =
-        bytes_fixture!("contracts/cairo-0.10-compiler-version.json.zst");
+        bytes_fixture!("contracts/cairo-0.10-compiler-version.json");
     // Contracts whose class contains `compiler_version` property as well as `cairo_type` with tuple values.
     // These tuple values require a space to be injected in order to achieve the correct hash.
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x06f17fb7a052f3d18c1911c9d9c2fb0032bbe1ea57c58b0baca85bda9f3698be
     pub const CAIRO_0_10_TUPLES_INTEGRATION: &[u8] =
-        bytes_fixture!("contracts/cairo-0.10-tuples-integration.json.zst");
+        bytes_fixture!("contracts/cairo-0.10-tuples-integration.json");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x0424e799d610433168a31aab44c0d3e38b45d97387b45de80089f56c184fa315
     pub const CAIRO_0_10_TUPLES_GOERLI: &[u8] =
-        bytes_fixture!("contracts/cairo-0.10-tuples-goerli.json.zst");
+        bytes_fixture!("contracts/cairo-0.10-tuples-goerli.json");
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c
-    pub const CAIRO_0_11_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-0.11.json.zst");
+    pub const CAIRO_0_11_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-0.11.json");
     // https://github.com/starkware-libs/cairo/blob/v1.0.0-alpha.5/crates/cairo-lang-starknet/test_data/test_contract.json, but slightly
     // modified: "abi" has been converted to a string and debug info is removed
     pub const CAIRO_1_0_0_ALPHA5_SIERRA: &[u8] =
-        bytes_fixture!("contracts/sierra-1.0.0.alpha5-starknet-format.json.zst");
+        bytes_fixture!("contracts/sierra-1.0.0.alpha5-starknet-format.json");
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x4d7d2ddf396736d7cdba26e178e30e3388d488984a94e03bc4af4841e222920
     pub const CAIRO_1_0_0_ALPHA6_SIERRA: &[u8] =
-        bytes_fixture!("contracts/sierra-1.0.0.alpha6.json.zst");
+        bytes_fixture!("contracts/sierra-1.0.0.alpha6.json");
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311
     pub const CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET: &[u8] =
-        bytes_fixture!("contracts/cairo-0.11.0-decimal-entry-point-offset.json.zst");
+        bytes_fixture!("contracts/cairo-0.11.0-decimal-entry-point-offset.json");
 
     // A Sierra class with the program compression introduced in v0.11.1.
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x05bb6c878494878bda6c2f0d7605f66559f9ffd6ae69ff529f8ca5f7a587a2bb
-    pub const CAIRO_1_0_0_RC0_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-1.0.0.rc0.json.zst");
+    pub const CAIRO_1_0_0_RC0_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-1.0.0.rc0.json");
 
     // A Sierra class for compiler v1.1.0-rc0 introduced in v0.11.2.
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x1338d85d3e579f6944ba06c005238d145920afeb32f94e3a1e234d21e1e9292
-    pub const CAIRO_1_1_0_RC0_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-1.1.0.rc0.json.zst");
+    pub const CAIRO_1_1_0_RC0_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-1.1.0.rc0.json");
 }
 
 pub mod testnet {
