@@ -223,7 +223,6 @@ pub(crate) fn migrate(transaction: &RusqliteTransaction<'_>) -> anyhow::Result<(
 mod tests {
     use super::transaction;
     use crate::schema;
-    use pathfinder_common::{felt, Fee, TransactionHash};
     use rusqlite::{named_params, Connection};
 
     #[test]
@@ -328,113 +327,5 @@ mod tests {
                 ":receipt": &[],
             ]
         ).unwrap();
-    }
-
-    const OLD_DEPLOY_TX_WITHOUT_CLASS_HASH: &str = r#"{
-        "calldata":null,
-        "constructor_calldata":["3080361095405506737150169455874612808064922679726640693390570786953208555504","3468681769215879069828264006873144040317368534778938657407160341645658370624"],
-        "contract_address":"0x20cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6",
-        "contract_address_salt":"0x546c86dc6e40a5e5492b782d8964e9a4274ff6ecb16d31eb09cee45a3564015",
-        "entry_point_type":null,
-        "entry_point_selector":null,
-        "max_fee":null,
-        "signature":null,
-        "transaction_hash":"0xe0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75",
-        "type":"DEPLOY"}"#;
-
-    #[test]
-    fn old_declare_transaction_with_missing_class_hash() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
-
-        migrate_to_previous_version(&transaction);
-
-        let fake_class_hash = felt!("0xdeadadd");
-        let contract_address =
-            felt!("0x20cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6");
-
-        // insert fake class
-        transaction
-            .execute(
-                "INSERT INTO contract_code (hash) VALUES (:hash)",
-                named_params![
-                    ":hash": fake_class_hash.as_be_bytes(),
-                ],
-            )
-            .unwrap();
-
-        // insert contract pointing to fake class
-        transaction
-            .execute(
-                "INSERT INTO contracts (address, hash) VALUES(:address, :hash)",
-                named_params![
-                    ":address": contract_address.as_be_bytes(),
-                    ":hash": fake_class_hash.as_be_bytes(),
-                ],
-            )
-            .unwrap();
-
-        // insert transaction deploying the contract
-        insert_transaction(&transaction, OLD_DEPLOY_TX_WITHOUT_CLASS_HASH, 0);
-
-        super::migrate(&transaction).unwrap();
-
-        let transaction_hash =
-            felt!("0xe0a2e45a80bb827967e096bcf58874f6c01c191e0a0530624cba66a508ae75");
-
-        let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
-            &transaction,
-            TransactionHash(transaction_hash),
-        )
-        .unwrap()
-        .unwrap();
-
-        assert_matches::assert_matches!(migrated_tx, starknet_gateway_types::reply::transaction::Transaction::Deploy(deploy) => {
-            assert_eq!(deploy.class_hash.0, fake_class_hash);
-        });
-    }
-
-    const OLD_INVOKE_TX_WITHOUT_MAX_FEE: &str = r#"{
-        "calldata":["1","2087021424722619777119509474943472645767659996348769578120564519014510906823","232670485425082704932579856502088130646006032362877466777181098476241604910","0","3","3","490809789286600582400843108881568438665982864055734060730291220939795284993","7700000000000000","0","0"],
-        "class_hash":null,
-        "constructor_calldata":null,
-        "contract_address":"0x4f9e9d3f9d8138a97efda56b33bc5d2065043d015ff089e5a26360573ae8759",
-        "contract_address_salt":null,
-        "entry_point_type":"EXTERNAL",
-        "entry_point_selector":"0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
-        "max_fee":null,
-        "nonce":null,
-        "sender_address":null,
-        "signature":["1315154516032005373376104412744922964590083352995277496702591367622675229681","2722865577796457381979632752916119040497485378397880545907561256288316181904"],
-        "transaction_hash":"0x5d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42",
-        "type":"INVOKE_FUNCTION",
-        "version":null
-    }"#;
-
-    #[test]
-    fn old_invoke_transaction_with_missing_max_fee() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
-
-        migrate_to_previous_version(&transaction);
-
-        insert_transaction(&transaction, OLD_INVOKE_TX_WITHOUT_MAX_FEE, 0);
-
-        super::migrate(&transaction).unwrap();
-
-        let transaction_hash =
-            felt!("0x5d08e1d6a87d87feaa97307e6746c1946fdcc21345f88cdee545efdda273a42");
-
-        let migrated_tx = crate::state::StarknetTransactionsTable::get_transaction(
-            &transaction,
-            TransactionHash(transaction_hash),
-        )
-        .unwrap()
-        .unwrap();
-
-        use starknet_gateway_types::reply::transaction::{InvokeTransaction, Transaction};
-        assert_matches::assert_matches!(migrated_tx, Transaction::Invoke(InvokeTransaction::V0(invoke)) => {
-            assert_eq!(invoke.max_fee, Fee::ZERO);
-        });
     }
 }

@@ -1,4 +1,4 @@
-use crate::{StarknetBlocksTable, StarknetEventsTable};
+use crate::StarknetEventsTable;
 use anyhow::Context;
 use pathfinder_common::{felt, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash};
 use rusqlite::named_params;
@@ -16,11 +16,6 @@ use stark_hash::Felt;
 ///
 /// This migration removes these bogus events from blocks in the affected range.
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
-    match StarknetBlocksTable::get_chain(tx)? {
-        Some(chain) => chain,
-        None => return Ok(()),
-    };
-
     let mut number_of_affected_transactions = tx.prepare(
         r#"SELECT count(DISTINCT transaction_hash)
         FROM starknet_events
