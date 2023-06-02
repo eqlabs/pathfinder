@@ -1,6 +1,7 @@
 use anyhow::Context;
 use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash};
-use rusqlite::{named_params, params, OptionalExtension, Transaction};
+
+use crate::prelude::*;
 
 /// Stores Starknet contract information, specifically a contract's
 ///
@@ -24,7 +25,7 @@ impl ClassDefinitionsTable {
             .context("Failed to compress definition")?;
         transaction.execute(
             r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
-            params![hash, definition],
+            params![&hash, &definition],
         )?;
 
         Ok(())
@@ -120,10 +121,10 @@ impl CasmClassTable {
             VALUES
                 (:hash, :definition, :compiled_class_hash, :compiler_version_id)",
             named_params! {
-                ":hash": class_hash,
+                ":hash": &class_hash,
                 ":definition": &definition,
-                ":compiled_class_hash": compiled_class_hash,
-                ":compiler_version_id": version_id,
+                ":compiled_class_hash": &compiled_class_hash,
+                ":compiler_version_id": &version_id,
             },
         )?;
         Ok(())
@@ -138,7 +139,7 @@ impl CasmClassTable {
 
         Ok(classes
             .iter()
-            .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
+            .map(|hash| stmt.exists([hash]))
             .collect::<Result<Vec<_>, _>>()?)
     }
 }

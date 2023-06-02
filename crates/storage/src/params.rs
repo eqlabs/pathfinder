@@ -10,7 +10,7 @@ use pathfinder_common::{
 use rusqlite::RowIndex;
 use stark_hash::Felt;
 
-pub trait ToSql: Sized {
+pub trait ToSql {
     fn to_sql(&self) -> rusqlite::types::ToSqlOutput<'_>;
 }
 
@@ -67,10 +67,12 @@ to_sql_builtin!(
     &str,
     Vec<u8>,
     &[u8],
+    isize,
     i64,
     i32,
     i16,
     i8,
+    usize,
     u64,
     u32,
     u16,

@@ -1,12 +1,13 @@
 use anyhow::Context;
 use pathfinder_common::BlockNumber;
-use rusqlite::params;
+
+use crate::prelude::*;
 
 use crate::types::state_update::{DeployedContract, Nonce, ReplacedClass, StateDiff, StorageDiff};
 
 /// Inserts a canonical [StateDiff] into storage.
 pub fn insert_canonical_state_diff(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &Transaction<'_>,
     block_number: BlockNumber,
     state_diff: &StateDiff,
 ) -> anyhow::Result<()> {
@@ -38,7 +39,7 @@ pub fn insert_canonical_state_diff(
     } in &state_diff.deployed_contracts
     {
         insert_contract
-            .execute(params![block_number, address, class_hash])
+            .execute(params![&block_number, address, class_hash])
             .context("Inserting deployed contract")?;
     }
 
@@ -49,7 +50,7 @@ pub fn insert_canonical_state_diff(
     } in &state_diff.replaced_classes
     {
         insert_contract
-            .execute(params![block_number, address, class_hash])
+            .execute(params![&block_number, address, class_hash])
             .context("Inserting replaced class")?;
     }
 
@@ -60,7 +61,7 @@ pub fn insert_canonical_state_diff(
     } in &state_diff.nonces
     {
         insert_nonce
-            .execute(params![block_number, contract_address, nonce])
+            .execute(params![&block_number, contract_address, nonce])
             .context("Inserting nonce update")?;
     }
 
@@ -72,7 +73,7 @@ pub fn insert_canonical_state_diff(
     } in &state_diff.storage_diffs
     {
         insert_storage
-            .execute(params![block_number, address, key, value])
+            .execute(params![&block_number, address, key, value])
             .context("Inserting storage update")?;
     }
 
@@ -90,7 +91,7 @@ pub fn insert_canonical_state_diff(
         .map(pathfinder_common::ClassHash);
 
     for class in declared_classes {
-        update_class_defs.execute(params![block_number, class])?;
+        update_class_defs.execute(params![&block_number, &class])?;
     }
 
     Ok(())

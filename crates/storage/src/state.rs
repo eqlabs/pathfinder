@@ -9,9 +9,10 @@ use pathfinder_common::{
     SequencerAddress, StateCommitment, StorageCommitment, TransactionCommitment, TransactionHash,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
-use rusqlite::{named_params, params, OptionalExtension, Transaction};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction;
+
+use crate::prelude::*;
 
 /// Contains the [L1 Starknet update logs](EthereumStateUpdate).
 pub struct L1StateTable {}
@@ -42,7 +43,7 @@ impl L1StateTable {
                         :starknet_state_root
                     )",
             named_params! {
-                ":starknet_block_number": update.block_number,
+                ":starknet_block_number": &update.block_number,
                 ":starknet_block_hash": &update.block_hash,
                 ":starknet_state_root": &update.state_root,
             },
@@ -181,16 +182,16 @@ impl StarknetBlocksTable {
             r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment, class_commitment)
                                    VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
             named_params! {
-                ":number": block.number,
-                ":hash": block.hash,
-                ":root": storage_commitment,
-                ":timestamp": block.timestamp,
-                ":gas_price": &block.gas_price.to_be_bytes(),
-                ":sequencer_address": block.sequencer_address,
-                ":version_id": version_id,
-                ":transaction_commitment": block.transaction_commitment, 
-                ":event_commitment": block.event_commitment,
-                ":class_commitment": class_commitment,
+                ":number": &block.number,
+                ":hash": &block.hash,
+                ":root": &storage_commitment,
+                ":timestamp": &block.timestamp,
+                ":gas_price": &block.gas_price.to_be_bytes().as_slice(),
+                ":sequencer_address": &block.sequencer_address,
+                ":version_id": &version_id,
+                ":transaction_commitment": &block.transaction_commitment, 
+                ":event_commitment": &block.event_commitment,
+                ":class_commitment": &class_commitment,
             },
         )?;
 
@@ -566,9 +567,9 @@ impl StarknetTransactionsTable {
 
             tx.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
                        named_params![
-                    ":hash": transaction.hash(),
-                    ":idx": i,
-                    ":block_hash": block_hash,
+                    ":hash": &transaction.hash(),
+                    ":idx": &i,
+                    ":block_hash": &block_hash,
                     ":tx": &tx_data,
                     ":receipt": &serialized_receipt,
                 ]).context("Insert transaction data into transactions table")?;
@@ -604,9 +605,9 @@ impl StarknetTransactionsTable {
         tx.execute(
             sql,
             named_params![
-                ":transaction_commitment": transaction_commitment,
-                ":event_commitment": event_commitment,
-                ":block_hash": block_hash,
+                ":transaction_commitment": &transaction_commitment,
+                ":event_commitment": &event_commitment,
+                ":block_hash": &block_hash,
             ],
         )
         .context("Update transaction and event commitments")?;
@@ -727,7 +728,7 @@ impl StarknetTransactionsTable {
             .context("Preparing statement")?;
 
         let mut rows = stmt
-            .query(params![block_hash, index])
+            .query(params![&block_hash, &index])
             .context("Executing query")?;
 
         let row = match rows.next()? {
@@ -1033,8 +1034,8 @@ impl StarknetEventsTable {
             Self::encode_event_data_to_bytes(&event.data, &mut buffer);
 
             stmt.execute(named_params![
-                ":block_number": block_number,
-                ":idx": idx,
+                ":block_number": &block_number,
+                ":idx": &idx,
                 ":transaction_hash": &transaction_hash,
                 ":from_address": &event.from_address,
                 ":keys": &keys,
@@ -1340,10 +1341,10 @@ impl ContractsStateTable {
         transaction.execute(
             "INSERT OR IGNORE INTO contract_states (state_hash, hash, root, nonce) VALUES (:state_hash, :hash, :root, :nonce)",
             named_params! {
-                ":state_hash": state_hash,
-                ":hash": hash,
-                ":root": root,
-                ":nonce": nonce,
+                ":state_hash": &state_hash,
+                ":hash": &hash,
+                ":root": &root,
+                ":nonce": &nonce,
             },
         )?;
         Ok(())
@@ -1359,7 +1360,7 @@ impl ContractsStateTable {
             .query_row(
                 "SELECT root FROM contract_states WHERE state_hash = :state_hash",
                 named_params! {
-                    ":state_hash": state_hash
+                    ":state_hash": &state_hash
                 },
                 |row| row.get("root"),
             )
@@ -1377,7 +1378,7 @@ impl ContractsStateTable {
             .query_row(
                 "SELECT nonce FROM contract_states WHERE state_hash = :state_hash",
                 named_params! {
-                    ":state_hash": state_hash
+                    ":state_hash": &state_hash
                 },
                 |row| row.get("nonce"),
             )
@@ -1395,7 +1396,7 @@ impl ContractsStateTable {
             .query_row(
                 "SELECT root, hash, nonce FROM contract_states WHERE state_hash = :state_hash",
                 named_params! {
-                    ":state_hash": state_hash
+                    ":state_hash": &state_hash
                 },
                 |row| {
                     let root = row.get("root")?;
@@ -1421,7 +1422,7 @@ impl CanonicalBlocksTable {
     ) -> anyhow::Result<()> {
         let rows_changed = tx.execute(
             "INSERT INTO canonical_blocks(number, hash) values(?,?)",
-            params![number, hash],
+            params![&number, &hash],
         )?;
         assert_eq!(rows_changed, 1);
 
