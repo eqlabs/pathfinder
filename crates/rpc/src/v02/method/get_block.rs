@@ -94,7 +94,7 @@ async fn get_block(
 
 /// Fetches a [RawBlock](types::RawBlock) from storage.
 fn get_raw_block(
-    transaction: &rusqlite::Transaction<'_>,
+    transaction: &pathfinder_storage::Transaction<'_>,
     block_id: StarknetBlocksBlockId,
 ) -> Result<types::RawBlock, GetBlockError> {
     let block = StarknetBlocksTable::get(transaction, block_id)
@@ -131,7 +131,7 @@ fn get_raw_block(
 
 /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
 fn get_block_transactions(
-    db_tx: &rusqlite::Transaction<'_>,
+    db_tx: &pathfinder_storage::Transaction<'_>,
     block_number: BlockNumber,
     scope: types::BlockResponseScope,
 ) -> Result<types::Transactions, GetBlockError> {

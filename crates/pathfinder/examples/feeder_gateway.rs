@@ -206,7 +206,7 @@ async fn serve() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn get_chain(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<Chain> {
+fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> {
     use pathfinder_common::consts::{
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     };
@@ -253,7 +253,7 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
 }
 
 fn resolve_block(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block_id: StarknetBlocksBlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::Block> {
     let block =
@@ -296,7 +296,7 @@ fn resolve_block(
 }
 
 fn get_block_status(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block_number: BlockNumber,
 ) -> anyhow::Result<Status> {
     // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
@@ -311,7 +311,7 @@ fn get_block_status(
 }
 
 fn resolve_state_update(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: StarknetBlocksBlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
     use pathfinder_common::{CasmHash, SierraHash, StorageAddress, StorageValue};
@@ -492,7 +492,7 @@ fn resolve_state_update(
 }
 
 fn block_info(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: StarknetBlocksBlockId,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
     let block = StarknetBlocksTable::get(tx, block)?;
@@ -512,7 +512,10 @@ fn block_info(
     })
 }
 
-fn resolve_class(tx: &rusqlite::Transaction<'_>, class_hash: ClassHash) -> anyhow::Result<Vec<u8>> {
+fn resolve_class(
+    tx: &pathfinder_storage::Transaction<'_>,
+    class_hash: ClassHash,
+) -> anyhow::Result<Vec<u8>> {
     use rusqlite::OptionalExtension;
 
     tracing::info!(%class_hash, "Resolving class hash");

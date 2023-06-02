@@ -4,7 +4,7 @@ use pathfinder_common::{
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
 };
 use pathfinder_storage::ContractsStateTable;
-use rusqlite::Transaction;
+use pathfinder_storage::Transaction;
 use stark_hash::{stark_hash, Felt};
 use starknet_gateway_types::reply::state_update::StorageDiff;
 

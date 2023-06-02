@@ -302,7 +302,7 @@ pub async fn get_events(
 // This block id specifies the upper end of the range, so pending/latest/None means
 // there's no upper limit.
 fn map_to_block_to_number(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: Option<BlockId>,
 ) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;
@@ -324,7 +324,7 @@ fn map_to_block_to_number(
 // This block id specifies the lower end of the range, so pending/latest means
 // a lower limit here.
 fn map_from_block_to_number(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: Option<BlockId>,
 ) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;

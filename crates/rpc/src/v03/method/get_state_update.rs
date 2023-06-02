@@ -56,7 +56,7 @@ pub async fn get_state_update(
 }
 
 fn get_state_update_from_storage(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: StarknetBlocksBlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
     let (number, block_hash, new_root, old_root) =
