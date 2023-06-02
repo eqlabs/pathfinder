@@ -2,8 +2,12 @@
 //!
 //! Currently this consists of a Sqlite backend implementation.
 
-mod connection;
+// This is intended for internal use only -- do not make public.
+mod prelude;
+
 mod class;
+mod connection;
+mod params;
 mod schema;
 mod state;
 mod state_update;
@@ -16,8 +20,8 @@ pub mod types;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use connection::*;
 pub use class::{CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable};
+pub use connection::*;
 use rusqlite::functions::FunctionFlags;
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,

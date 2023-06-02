@@ -166,6 +166,10 @@ pub(super) mod starkhash {
 
             impl $target {
                 pub const ZERO: Self = Self(Felt::ZERO);
+
+                pub fn as_inner(&self) -> &Felt {
+                    &self.0
+                }
             }
         };
 
