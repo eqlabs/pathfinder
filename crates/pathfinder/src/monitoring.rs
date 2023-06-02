@@ -12,7 +12,7 @@ pub async fn spawn_server(
     let server = warp::serve(routes(readiness, prometheus_handle));
     let server = server.bind(addr);
 
-    tokio::spawn(async move { server.await })
+    tokio::spawn(server)
 }
 
 fn routes(

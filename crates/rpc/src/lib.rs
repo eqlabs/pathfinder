@@ -253,12 +253,11 @@ pub mod test_utils {
 
         let class0_definition =
             starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION.to_vec();
-        let class1_definition = class0_definition.clone();
         let sierra_class_definition =
             starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
 
         ClassDefinitionsTable::insert(&db_txn, class0_hash, &class0_definition).unwrap();
-        ClassDefinitionsTable::insert(&db_txn, class1_hash, &class1_definition).unwrap();
+        ClassDefinitionsTable::insert(&db_txn, class1_hash, &class0_definition).unwrap();
         ClassDefinitionsTable::insert(&db_txn, class2_hash, &sierra_class_definition).unwrap();
         ClassDefinitionsTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
 

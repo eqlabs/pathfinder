@@ -1,5 +1,5 @@
-///! A drop-in replacement for `jsonrpsee::http_client::HttpClient` meant only for testing the RPC API,
-///! which is supposed to provide better error reporting, especially wrt serde errors.
+//! A drop-in replacement for `jsonrpsee::http_client::HttpClient` meant only for testing the RPC API,
+//! which is supposed to provide better error reporting, especially wrt serde errors.
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
