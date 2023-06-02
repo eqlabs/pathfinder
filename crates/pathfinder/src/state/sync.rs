@@ -63,8 +63,8 @@ pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
 where
     Ethereum: EthereumApi + Clone,
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
-    F1: Future<Output = anyhow::Result<()>> + Send + 'static,
-    F2: Future<Output = anyhow::Result<()>> + Send + 'static,
+    F1: Future<Output = ()> + Send + 'static,
+    F2: Future<Output = ()> + Send + 'static,
     L1Sync: FnMut(mpsc::Sender<EthereumStateUpdate>, Ethereum, Chain, H160) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
@@ -77,6 +77,7 @@ where
             l2::BlockValidationMode,
             BlockChain,
             Storage,
+            usize,
         ) -> F2
         + Copy,
 {
@@ -111,13 +112,13 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum.clone(), chain, core_address));
+    tokio::spawn(l1_sync(tx_l1, ethereum.clone(), chain, core_address));
 
     let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-    let mut l2_handle = tokio::spawn(l2_sync(
+    tokio::spawn(l2_sync(
         tx_l2,
         websocket_txs.clone(),
         sequencer.clone(),
@@ -128,15 +129,12 @@ where
         block_validation_mode,
         block_chain,
         storage.clone(),
+        block_cache_size,
     ));
 
     let mut last_block_start = std::time::Instant::now();
     let mut block_time_avg = std::time::Duration::ZERO;
     const BLOCK_TIME_WEIGHT: f32 = 0.05;
-    /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
-    /// tasks are crashing.
-    #[cfg(not(test))]
-    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
 
     loop {
         tokio::select! {
@@ -146,28 +144,8 @@ where
                     tracing::info!("L1 sync updated to block {}", update.block_number);
                 }
                 None => {
-                    // L1 sync process failed; restart it.
-                    match l1_handle.await.context("Join L1 sync process handle")? {
-                        Ok(()) => {
-                            tracing::error!("L1 sync process terminated without an error.");
-                        }
-                        Err(e) => {
-                            tracing::warn!("L1 sync process terminated with: {:?}", e);
-                        }
-                    }
-
-                    let (new_tx, new_rx) = mpsc::channel(1);
-                    rx_l1 = new_rx;
-
-                    let fut = l1_sync(new_tx, ethereum.clone(), chain, core_address);
-
-                    l1_handle = tokio::spawn(async move {
-                        #[cfg(not(test))]
-                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        fut.await
-                    });
-                    tracing::info!("L1 sync process restarted.")
-                },
+                    break Ok(());
+                }
             },
             l2_event = rx_l2.recv() => match l2_event {
                 Some(l2::Event::Update((block, (tx_comm, ev_comm)), state_update, timings)) => {
@@ -277,41 +255,9 @@ where
                     tracing::debug!("Updated pending data");
                 }
                 None => {
-                    pending_data.clear().await;
-                    // L2 sync process failed; restart it.
-                    match l2_handle.await.context("Join L2 sync process handle")? {
-                        Ok(()) => {
-                            tracing::error!("L2 sync process terminated without an error.");
-                        }
-                        Err(e) => {
-                            tracing::warn!("L2 sync process terminated with: {:?}", e);
-                        }
-                    }
-
-                    let l2_head = tokio::task::block_in_place(|| {
-                        let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
-                    })
-                    .context("Query L2 head from database")?
-                    .map(|block| (block.number, block.hash, block.state_commmitment));
-
-                    let (new_tx, new_rx) = mpsc::channel(1);
-
-                    rx_l2 = new_rx;
-
-
-                    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size).await.context("Fetching latest blocks from storage")?;
-                    let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-                    let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain, storage.clone());
-
-                    l2_handle = tokio::spawn(async move {
-                        #[cfg(not(test))]
-                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        fut.await
-                    });
-                    tracing::info!("L2 sync process restarted.");
+                    break Ok(());
                 }
-            },
+            }
         }
     }
 }
@@ -920,15 +866,9 @@ mod tests {
         }
     }
 
-    async fn l1_noop(
-        _: mpsc::Sender<EthereumStateUpdate>,
-        _: FakeTransport,
-        _: Chain,
-        _: H160,
-    ) -> anyhow::Result<()> {
+    async fn l1_noop(_: mpsc::Sender<EthereumStateUpdate>, _: FakeTransport, _: Chain, _: H160) {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -943,10 +883,10 @@ mod tests {
         _: l2::BlockValidationMode,
         _: l2::BlockChain,
         _: Storage,
-    ) -> anyhow::Result<()> {
+        _: usize,
+    ) {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
-        Ok(())
     }
 
     lazy_static::lazy_static! {
@@ -1045,7 +985,7 @@ mod tests {
                 async move {
                     tx.send(u).await.unwrap();
                     tokio::time::sleep(Duration::from_millis(100)).await;
-                    Ok(())
+                    futures::future::pending::<()>().await;
                 }
             };
 
@@ -1122,63 +1062,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_restart() -> Result<(), anyhow::Error> {
-        use anyhow::Context;
-        let storage = Storage::in_memory().unwrap();
-
-        let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
-        let websocket_txs = WebsocketSenders::for_test();
-
-        let l1 = move |_, _, _, _| {
-            let starts_tx = starts_tx.clone();
-            async move {
-                // signal we've (re)started
-                // This will panic on the third repeat
-                //  - the main test task will exit
-                //  - this will panic, but test will pass.
-                //  - not great, but will get refactored eventually.
-                starts_tx
-                    .send(())
-                    .await
-                    .expect("starts_rx should still be alive");
-                Ok(())
-            }
-        };
-
-        // UUT
-        let _jh = tokio::spawn(state::sync(
-            storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            H160::zero(),
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1,
-            l2_noop,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
-            websocket_txs,
-            100,
-        ));
-
-        let timeout = std::time::Duration::from_secs(1);
-
-        tokio::time::timeout(timeout, starts_rx.recv())
-            .await
-            .context("l1 sync should had started")?
-            .context("l1 closure should not had been dropped yet")?;
-
-        tokio::time::timeout(timeout, starts_rx.recv())
-            .await
-            .context("l1 sync should had been re-started")?
-            .context("l1 closure should not had been dropped yet")?;
-
-        Ok(())
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn l2_update() {
         let sync_state = Arc::new(SyncState::default());
         let websocket_txs = WebsocketSenders::for_test();
@@ -1193,7 +1076,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _, _| async move {
             tx.send(l2::Event::Update(
                 (Box::new(block()), Default::default()),
                 Box::new(state_update()),
@@ -1201,8 +1084,7 @@ mod tests {
             ))
             .await
             .unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
+            futures::future::pending::<()>().await;
         };
 
         let results = [
@@ -1300,12 +1182,11 @@ mod tests {
             let websocket_txs = WebsocketSenders::for_test();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
                     .await
                     .unwrap();
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                Ok(())
+                futures::future::pending::<()>().await;
             };
 
             RefsTable::set_l1_l2_head(&tx, Some(BlockNumber::new_or_panic(reorg_on_block)))
@@ -1376,16 +1257,14 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _, _| async move {
             tx.send(l2::Event::CairoClass {
                 definition: vec![],
                 hash: ClassHash(*A),
             })
             .await
             .unwrap();
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
+            futures::future::pending::<()>().await;
         };
 
         // UUT
@@ -1423,7 +1302,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _, _| async move {
             tx.send(l2::Event::SierraClass {
                 sierra_definition: vec![],
                 sierra_hash: ClassHash(*A),
@@ -1432,9 +1311,7 @@ mod tests {
             })
             .await
             .unwrap();
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
+            futures::future::pending::<()>().await;
         };
 
         // UUT
@@ -1466,43 +1343,5 @@ mod tests {
             CasmClassTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
             vec![true]
         );
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_restart() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let storage = Storage::in_memory().unwrap();
-
-        static CNT: AtomicUsize = AtomicUsize::new(0);
-        let websocket_txs = WebsocketSenders::for_test();
-
-        // A simple L2 sync task
-        let l2 = move |_, _, _, _, _, _, _, _, _, _| async move {
-            CNT.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        };
-
-        // UUT
-        let _jh = tokio::spawn(state::sync(
-            storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            H160::zero(),
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1_noop,
-            l2,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
-            websocket_txs,
-            100,
-        ));
-
-        tokio::time::sleep(Duration::from_millis(5)).await;
-
-        assert!(CNT.load(Ordering::Relaxed) > 1);
     }
 }

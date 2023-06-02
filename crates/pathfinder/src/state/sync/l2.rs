@@ -1,5 +1,6 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
+use crate::state::sync::head_poll_interval;
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
@@ -123,9 +124,8 @@ pub async fn sync(
     block_validation_mode: BlockValidationMode,
     mut blocks: BlockChain,
     storage: Storage,
-) -> anyhow::Result<()> {
-    use crate::state::sync::head_poll_interval;
-
+    block_cache_size: usize,
+) {
     'outer: loop {
         // Get the next block from L2.
         let (next, head_meta) = match head {
@@ -138,7 +138,7 @@ pub async fn sync(
         let mut next_state_update = None;
 
         let (block, commitments) = loop {
-            match download_block(
+            let maybe_block = download_block(
                 next,
                 // Reuse the next full block if we got it for free when polling pending
                 std::mem::take(&mut next_block),
@@ -148,8 +148,15 @@ pub async fn sync(
                 &sequencer,
                 block_validation_mode,
             )
-            .await?
-            {
+            .await;
+            let block = match maybe_block {
+                Ok(block) => block,
+                Err(e) => {
+                    tracing::warn!(reason=?e, "Failed to download block");
+                    continue 'outer;
+                }
+            };
+            match block {
                 DownloadBlock::Block(block, commitments) => break (block, commitments),
                 DownloadBlock::AtHead => {
                     // Poll pending if it is enabled, otherwise just wait to poll head again.
@@ -158,14 +165,20 @@ pub async fn sync(
                             tracing::trace!("Entering pending mode");
                             let head = head_meta
                                 .expect("Head hash should exist when entering pending mode");
-                            (next_block, next_state_update) = pending::poll_pending(
+                            (next_block, next_state_update) = match pending::poll_pending(
                                 tx_event.clone(),
                                 &sequencer,
                                 (head.1, head.2),
                                 interval,
                             )
                             .await
-                            .context("Polling pending block")?;
+                            {
+                                Ok(ok) => ok,
+                                Err(e) => {
+                                    tracing::warn!(reason=?e, "Failed to poll pending block");
+                                    continue 'outer;
+                                }
+                            }
                         }
                         None => {
                             let poll_interval = head_poll_interval(chain);
@@ -176,7 +189,7 @@ pub async fn sync(
                 }
                 DownloadBlock::Reorg => {
                     let some_head = head.unwrap();
-                    head = reorg(
+                    match reorg(
                         some_head,
                         chain,
                         chain_id,
@@ -186,11 +199,25 @@ pub async fn sync(
                         &blocks,
                     )
                     .await
-                    .context("L2 reorg")?;
-
-                    match head {
-                        Some((number, hash, commitment)) => blocks.push(number, hash, commitment),
-                        None => blocks.reset_to_genesis(),
+                    {
+                        Ok(Some((number, hash, commitment))) => {
+                            head = Some((number, hash, commitment));
+                            blocks.push(number, hash, commitment)
+                        }
+                        Ok(None) => {
+                            head = None;
+                            blocks.reset_to_genesis();
+                        }
+                        Err(e) => {
+                            tracing::warn!(reason=?e, "L2 reorg failed");
+                            (head, blocks) = match reset_head(&storage, block_cache_size).await {
+                                Ok(ok) => ok,
+                                Err(e) => {
+                                    tracing::warn!(reason=?e, "L2 reorg head reset failed");
+                                    continue 'outer;
+                                }
+                            };
+                        }
                     }
 
                     continue 'outer;
@@ -201,7 +228,7 @@ pub async fn sync(
 
         if let Some(some_head) = head {
             if some_head.1 != block.parent_block_hash {
-                head = reorg(
+                match reorg(
                     some_head,
                     chain,
                     chain_id,
@@ -211,11 +238,25 @@ pub async fn sync(
                     &blocks,
                 )
                 .await
-                .context("L2 reorg")?;
-
-                match head {
-                    Some((number, hash, commitment)) => blocks.push(number, hash, commitment),
-                    None => blocks.reset_to_genesis(),
+                {
+                    Ok(Some((number, hash, commitment))) => {
+                        head = Some((number, hash, commitment));
+                        blocks.push(number, hash, commitment);
+                    }
+                    Ok(None) => {
+                        head = None;
+                        blocks.reset_to_genesis();
+                    }
+                    Err(e) => {
+                        tracing::info!(reason=?e, "L2 reorg failed");
+                        (head, blocks) = match reset_head(&storage, block_cache_size).await {
+                            Ok(ok) => ok,
+                            Err(e) => {
+                                tracing::warn!(reason=?e, "L2 reorg head reset failed");
+                                continue 'outer;
+                            }
+                        };
+                    }
                 }
 
                 continue 'outer;
@@ -232,31 +273,33 @@ pub async fn sync(
                 MaybePendingStateUpdate::StateUpdate(state_update)
             }
             // We were unlucky or poll pending is disabled
-            Some(_) | None => sequencer
-                .state_update(block_hash.into())
-                .await
-                .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?,
+            Some(_) | None => match sequencer.state_update(block_hash.into()).await {
+                Ok(ok) => ok,
+                Err(e) => {
+                    tracing::warn!(block=?next, reason=?e, "Failed to fetch state diff from sequencer");
+                    continue 'outer;
+                }
+            },
         };
 
         let state_update = match state_update {
             MaybePendingStateUpdate::StateUpdate(su) => su,
             MaybePendingStateUpdate::Pending(_) => {
-                anyhow::bail!("Sequencer returned `pending` state update")
+                tracing::warn!("Sequencer returned `pending` state update");
+                continue 'outer;
             }
         };
 
         // An extra sanity check for the state update API.
-        anyhow::ensure!(
-            block_hash == state_update.block_hash,
-            "State update block hash mismatch, actual {:x}, expected {:x}",
-            block_hash.0,
-            state_update.block_hash.0
-        );
+        if block_hash != state_update.block_hash {
+            tracing::warn!(actual=?block_hash.0, expected=?state_update.block_hash.0, "State update block hash mismatch");
+            continue 'outer;
+        }
         let t_update = t_update.elapsed();
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        download_new_classes(
+        match download_new_classes(
             &state_update.state_diff,
             &sequencer,
             &tx_event,
@@ -265,7 +308,15 @@ pub async fn sync(
             storage.clone(),
         )
         .await
-        .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        {
+            Ok(_) => {
+                tracing::info!(block=?next, "Handling newly declared classes");
+            }
+            Err(e) => {
+                tracing::warn!(block=?next, reason=?e, "Failed to handle newly declared classes");
+                break;
+            }
+        }
         let t_declare = t_declare.elapsed();
 
         head = Some((next, block_hash, state_update.new_root));
@@ -279,17 +330,48 @@ pub async fn sync(
 
         let block_header = BlockHeader::from(block.as_ref());
 
-        tx_event
+        match tx_event
             .send(Event::Update(
                 (block, commitments),
                 Box::new(state_update),
                 timings,
             ))
             .await
-            .context("Event channel closed")?;
+        {
+            Ok(_) => (),
+            Err(_) => {
+                tracing::warn!("Event channel is closed");
+                break;
+            }
+        }
 
         websocket_txs.new_head.send_if_receiving(block_header)
     }
+}
+
+async fn reset_head(
+    storage: &Storage,
+    block_cache_size: usize,
+) -> anyhow::Result<(
+    Option<(BlockNumber, BlockHash, StateCommitment)>,
+    BlockChain,
+)> {
+    use crate::state::sync::latest_n_blocks;
+    use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+
+    let mut db = storage.connection()?;
+    let head = tokio::task::block_in_place(|| {
+        let tx = db.transaction()?;
+        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+    })
+    .context("Query L2 head from database")?
+    .map(|block| (block.number, block.hash, block.state_commmitment));
+
+    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
+        .await
+        .context("Fetching latest blocks from storage")?;
+    let blocks = BlockChain::with_capacity(1_000, latest_blocks);
+    Ok((head, blocks))
 }
 
 /// Download and emit new contract classes.
@@ -643,7 +725,7 @@ mod tests {
         fn spawn_sync_default(
             tx_event: mpsc::Sender<Event>,
             sequencer: MockGatewayApi,
-        ) -> JoinHandle<anyhow::Result<()>> {
+        ) -> JoinHandle<()> {
             let storage = Storage::in_memory().unwrap();
             tokio::spawn(sync(
                 tx_event,
@@ -656,6 +738,7 @@ mod tests {
                 MODE,
                 BlockChain::with_capacity(100, vec![]),
                 storage,
+                42,
             ))
         }
 
@@ -1078,6 +1161,7 @@ mod tests {
                         vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
                     ),
                     Storage::in_memory().unwrap(),
+                    42,
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),
@@ -1088,30 +1172,6 @@ mod tests {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-            }
-        }
-
-        mod errors {
-            use super::*;
-            use starknet_gateway_types::reply::Status;
-
-            #[tokio::test]
-            async fn invalid_block_status() {
-                let (tx_event, _rx_event) = tokio::sync::mpsc::channel(1);
-                let mut mock = MockGatewayApi::new();
-                let mut seq = mockall::Sequence::new();
-
-                // Block with a non-accepted status
-                let mut block = BLOCK0.clone();
-                block.status = Status::Reverted;
-                expect_block(&mut mock, &mut seq, BLOCK0_NUMBER.into(), Ok(block.into()));
-
-                let jh = spawn_sync_default(tx_event, mock);
-                let error = jh.await.unwrap().unwrap_err();
-                assert_eq!(
-                    &error.to_string(),
-                    "Rejecting block as its status is REVERTED, and only accepted blocks are allowed"
-                );
             }
         }
 
@@ -2060,8 +2120,7 @@ mod tests {
                 tokio::time::timeout(std::time::Duration::from_secs(2), jh)
                     .await
                     .unwrap()
-                    .unwrap()
-                    .unwrap_err();
+                    .unwrap();
             }
         }
     }
