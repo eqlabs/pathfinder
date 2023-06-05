@@ -168,7 +168,7 @@ impl StateCommitment {
 pub struct StorageCommitment(pub Felt);
 
 /// A Starknet block hash.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash)]
 pub struct BlockHash(pub Felt);
 
 /// A Starknet block number.
@@ -484,6 +484,10 @@ impl StarknetVersion {
 
     pub fn as_str(&self) -> Option<&str> {
         self.0.as_deref()
+    }
+
+    pub fn take_inner(self) -> Option<String> {
+        self.0
     }
 }
 

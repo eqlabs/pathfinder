@@ -40,8 +40,9 @@ fn fetch_block_headers(
     let mut count = std::cmp::min(request.count, MAX_HEADERS_COUNT);
     let mut headers = Vec::new();
 
-    let mut next_block_number =
-        StarknetBlocksTable::get_number(&tx, BlockHash(request.start_block))?;
+    // let mut next_block_number =
+    //     StarknetBlocksTable::get_number(&tx, BlockHash(request.start_block))?;
+    let mut next_block_number = Some(BlockNumber::new_or_panic(request.start_block));
 
     while let Some(block_number) = next_block_number {
         if count == 0 {
@@ -67,12 +68,19 @@ fn fetch_block_headers(
             StarknetBlocksBlockId::Hash(block.hash),
         )?;
 
+        let starknet_version = StarknetBlocksTable::get_version(
+            &tx,
+            pathfinder_storage::StarknetBlocksBlockId::Number(block_number),
+        )?;
+
         headers.push(p2p_proto::common::BlockHeader {
+            block_hash: block.hash.0,
             parent_block_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
             block_number: block.number.get(),
-            global_state_root: block.state_commmitment.0,
+            state_commitment: block.state_commmitment.0,
             sequencer_address: block.sequencer_address.0,
             block_timestamp: block.timestamp.get(),
+            gas_price: block.gas_price.0.into(),
             transaction_count: transaction_count
                 .try_into()
                 .context("Too many transactions")?,
@@ -85,8 +93,7 @@ fn fetch_block_headers(
                 .event_commitment
                 .map(|ev| ev.0)
                 .ok_or(anyhow!("Event commitment missing"))?,
-            // TODO: what's the protocol version?
-            protocol_version: 0,
+            starknet_version: starknet_version.take_inner().unwrap_or_default(),
         });
 
         count -= 1;
@@ -109,6 +116,8 @@ fn get_next_block_number(
     }
 }
 
+// TODO rework to iterate over all types of requests (headers, bodies, state diffs)
+// unfortunately cannot cover classes (ie cairo0/sierra)
 #[cfg(test)]
 mod tests {
     use super::proto::sync::Direction;
@@ -146,7 +155,8 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[0].block.hash.0,
+                // start_block: test_data.blocks[0].block.hash.0,
+                start_block: test_data.blocks[0].block.number.get(),
                 count: COUNT as u64,
                 size_limit: 100,
                 direction: Direction::Forward,
@@ -218,7 +228,8 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[0].block.hash.0,
+                // start_block: test_data.blocks[0].block.hash.0,
+                start_block: test_data.blocks[0].block.number.get(),
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
                 direction: Direction::Forward,
@@ -288,7 +299,8 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[3].block.hash.0,
+                // start_block: test_data.blocks[3].block.hash.0,
+                start_block: test_data.blocks[3].block.number.get(),
                 count: COUNT as u64,
                 size_limit: 100,
                 direction: Direction::Backward,
@@ -365,7 +377,8 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[3].block.hash.0,
+                // start_block: test_data.blocks[3].block.hash.0,
+                start_block: test_data.blocks[3].block.number.get(),
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
                 direction: Direction::Backward,
