@@ -3,7 +3,7 @@ use std::{
     future::Future,
     num::{NonZeroU64, NonZeroUsize},
     result::Result,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio_retry::{strategy::ExponentialBackoff, Retry as TokioRetry, RetryIf as TokioRetryIf};
 
@@ -32,6 +32,7 @@ where
                 base_secs,
                 factor: NonZeroU64::new(1).unwrap(),
                 max_delay: None,
+                deadline: None,
                 max_num_retries: None,
             },
         }
@@ -51,6 +52,11 @@ where
         self
     }
 
+    pub fn deadline(mut self, deadline: std::time::Duration) -> Self {
+        self.strategy.deadline = Some(Instant::now() + deadline);
+        self
+    }
+
     /// Limit the number of retries to `max_num_retries`.
     pub fn max_num_retries(mut self, max_num_retries: NonZeroUsize) -> Self {
         self.strategy.max_num_retries = Some(max_num_retries);
@@ -59,7 +65,7 @@ where
 
     /// Retry the future on any `Err()` until an `Ok()` value is returned by the future.
     pub async fn on_any_err(self) -> Result<T, E> {
-        TokioRetry::spawn(MaybeLimited::from(self.strategy), self.future_factory).await
+        TokioRetry::spawn(RetryMode::from(self.strategy), self.future_factory).await
     }
 
     /// Retry the future on every error that meets `retry_condition` until the future returns:
@@ -70,7 +76,7 @@ where
         RetryCondition: FnMut(&E) -> bool,
     {
         TokioRetryIf::spawn(
-            MaybeLimited::from(self.strategy),
+            RetryMode::from(self.strategy),
             self.future_factory,
             retry_condition,
         )
@@ -82,26 +88,35 @@ struct Strategy {
     base_secs: NonZeroU64,
     factor: NonZeroU64,
     max_delay: Option<Duration>,
+    deadline: Option<Instant>,
     max_num_retries: Option<NonZeroUsize>,
 }
 
-enum MaybeLimited {
+enum RetryMode {
     Limited(std::iter::Take<ExponentialBackoff>),
     Unlimited(ExponentialBackoff),
+    Deadline(ExponentialBackoff, Instant),
 }
 
-impl std::iter::Iterator for MaybeLimited {
+impl std::iter::Iterator for RetryMode {
     type Item = std::time::Duration;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            MaybeLimited::Limited(x) => x.next(),
-            MaybeLimited::Unlimited(x) => x.next(),
+            RetryMode::Limited(backoff) => backoff.next(),
+            RetryMode::Unlimited(backoff) => backoff.next(),
+            RetryMode::Deadline(backoff, deadline) => {
+                if &Instant::now() > deadline {
+                    None
+                } else {
+                    backoff.next()
+                }
+            }
         }
     }
 }
 
-impl From<Strategy> for MaybeLimited {
+impl From<Strategy> for RetryMode {
     fn from(s: Strategy) -> Self {
         // We use milliseconds in tests
         #[cfg(test)]
@@ -124,10 +139,15 @@ impl From<Strategy> for MaybeLimited {
             None => backoff,
         };
 
-        match s.max_num_retries {
-            Some(num_retries) => MaybeLimited::Limited(backoff.take(num_retries.get())),
-            None => MaybeLimited::Unlimited(backoff),
+        if let Some(num_retries) = s.max_num_retries.as_ref() {
+            return RetryMode::Limited(backoff.take(num_retries.get()));
         }
+
+        if let Some(deadline) = s.deadline.as_ref() {
+            return RetryMode::Deadline(backoff, *deadline);
+        }
+
+        RetryMode::Unlimited(backoff)
     }
 }
 
@@ -163,7 +183,7 @@ mod tests {
 
     impl<I> Uut<I>
     where
-        I: IntoIterator<Item = Result<Success, Failure>> + Clone,
+        I: IntoIterator<Item = Result<Success, Failure>>,
     {
         fn new(i: I) -> Self {
             Self {
@@ -272,6 +292,74 @@ mod tests {
             );
             // Retry limit of 3 means 4 tries altogether
             assert_eq!(uut.call_count(), 4);
+        }
+    }
+
+    mod deadline {
+        use super::*;
+
+        #[tokio::test]
+        async fn until_ok() {
+            let uut = Uut::new([
+                Err(Failure::Retryable),
+                Err(Failure::Fatal),
+                Err(Failure::Fatal),
+                Ok(Success),
+            ]);
+            Retry::exponential(|| uut.do_work(), NonZeroU64::new(2).unwrap())
+                .factor(NonZeroU64::new(10).unwrap())
+                .deadline(Duration::from_millis(100))
+                .on_any_err()
+                .await
+                .unwrap();
+            assert_eq!(uut.call_count(), 4);
+            // ~80ms (2^3*10)
+            uut.expect_last_delay(80).unwrap();
+        }
+
+        #[tokio::test]
+        async fn until_deadline_fatal() {
+            let uut = Uut::new([
+                Err(Failure::Retryable),
+                Err(Failure::Fatal),
+                Err(Failure::Fatal),
+                Ok(Success),
+            ]);
+            assert_eq!(
+                Retry::exponential(|| uut.do_work(), NonZeroU64::new(2).unwrap())
+                    .factor(NonZeroU64::new(10).unwrap())
+                    .deadline(Duration::from_millis(50))
+                    .on_any_err()
+                    .await
+                    .unwrap_err(),
+                Failure::Fatal,
+            );
+            assert_eq!(uut.call_count(), 3);
+            // ~40ms (2^2*10)
+            uut.expect_last_delay(40).unwrap();
+        }
+
+        #[tokio::test]
+        async fn until_deadline_retrieable() {
+            let uut = Uut::new([
+                Err(Failure::Retryable),
+                Err(Failure::Retryable),
+                Err(Failure::Retryable),
+                Err(Failure::Fatal),
+                Ok(Success),
+            ]);
+            assert_eq!(
+                Retry::exponential(|| uut.do_work(), NonZeroU64::new(2).unwrap())
+                    .factor(NonZeroU64::new(10).unwrap())
+                    .deadline(Duration::from_millis(50))
+                    .when(|e| *e == Failure::Retryable)
+                    .await
+                    .unwrap_err(),
+                Failure::Retryable
+            );
+            assert_eq!(uut.call_count(), 3);
+            // ~40ms (2^2*10)
+            uut.expect_last_delay(40).unwrap();
         }
     }
 
