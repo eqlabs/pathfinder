@@ -33,7 +33,7 @@ starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tracing = "0.1.37"
+tracing = { workspace = true }
 zstd = "0.12"
 
 [dev-dependencies]

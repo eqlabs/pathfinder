@@ -6001,6 +6001,7 @@ dependencies = [
  "stark_poseidon",
  "starknet-gateway-types",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
