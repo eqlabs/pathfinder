@@ -163,15 +163,15 @@ impl Default for SyncState {
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
-        ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
-        SequencerAddress, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment,
-        TransactionHash, TransactionIndex, TransactionVersion,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment,
+        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
+        SequencerAddress, SierraHash, StarknetVersion, StateCommitment, StorageAddress,
+        StorageCommitment, TransactionHash, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        CanonicalBlocksTable, ClassDefinitionsTable, StarknetBlock, StarknetBlocksBlockId,
-        StarknetBlocksTable, StarknetTransactionsTable, Storage,
+        CanonicalBlocksTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+        StarknetTransactionsTable, Storage,
     };
     use primitive_types::H256;
     use stark_hash::Felt;
@@ -257,10 +257,24 @@ pub mod test_utils {
         let sierra_class_definition =
             starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
 
-        ClassDefinitionsTable::insert(&db_txn, class0_hash, &class0_definition).unwrap();
-        ClassDefinitionsTable::insert(&db_txn, class1_hash, class1_definition).unwrap();
-        ClassDefinitionsTable::insert(&db_txn, class2_hash, &sierra_class_definition).unwrap();
-        ClassDefinitionsTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
+        db_txn
+            .insert_cairo_class(class0_hash, &class0_definition)
+            .unwrap();
+        db_txn
+            .insert_cairo_class(class1_hash, &class1_definition)
+            .unwrap();
+        db_txn
+            .insert_sierra_class(
+                &SierraHash(class2_hash.0),
+                &sierra_class_definition,
+                &CasmHash(felt_bytes!(b"non-existent")),
+                &[],
+                "compiler version 123",
+            )
+            .unwrap();
+        db_txn
+            .insert_cairo_class(class_hash_pending, &class0_definition)
+            .unwrap();
 
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
@@ -482,9 +496,15 @@ pub mod test_utils {
         StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
             .unwrap();
 
-        db_txn.insert_state_diff(block0.number, &state_diff0).unwrap();
-        db_txn.insert_state_diff(block1.number, &state_diff1).unwrap();
-        db_txn.insert_state_diff(block2.number, &state_diff2).unwrap();
+        db_txn
+            .insert_state_diff(block0.number, &state_diff0)
+            .unwrap();
+        db_txn
+            .insert_state_diff(block1.number, &state_diff1)
+            .unwrap();
+        db_txn
+            .insert_state_diff(block2.number, &state_diff2)
+            .unwrap();
 
         db_txn.commit().unwrap();
         storage
@@ -642,7 +662,8 @@ pub mod test_utils {
             let class_definition =
                 starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
             for deployed in deployed_contracts {
-                ClassDefinitionsTable::insert(&tx, deployed.class_hash, class_definition).unwrap();
+                tx.insert_cairo_class(deployed.class_hash, class_definition)
+                    .unwrap();
             }
             tx.commit().unwrap();
         })

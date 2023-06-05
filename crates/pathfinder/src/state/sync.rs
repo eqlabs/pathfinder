@@ -5,7 +5,7 @@ mod pending;
 
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHash, BlockNumber, Chain, ChainId, ClassCommitment, ClassHash, ContractNonce,
+    BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash, ContractNonce,
     ContractRoot, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
     StorageCommitment, TransactionCommitment,
 };
@@ -19,12 +19,11 @@ use pathfinder_rpc::{
     websocket::types::WebsocketSenders,
     SyncState,
 };
-use pathfinder_storage::{
-    CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable, ContractsStateTable,
-    L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-    StarknetTransactionsTable, Storage,
-};
 use pathfinder_storage::{Connection, Transaction};
+use pathfinder_storage::{
+    ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId,
+    StarknetBlocksTable, StarknetTransactionsTable, Storage,
+};
 use primitive_types::H160;
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
@@ -248,7 +247,7 @@ where
                 Some(l2::Event::CairoClass { definition, hash }) => {
                     tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction().context("Creating database transaction")?;
-                        ClassDefinitionsTable::insert(&tx, hash, &definition).context("Inserting new cairo class")?;
+                        tx.insert_cairo_class(hash, &definition).context("Inserting new cairo class")?;
                         tx.commit().context("Committing database transaction")
                     })
                     .with_context(|| {
@@ -260,8 +259,14 @@ where
                 Some(l2::Event::SierraClass { sierra_definition, sierra_hash, casm_definition, casm_hash }) => {
                     tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction().context("Creating database transaction")?;
-                        ClassDefinitionsTable::insert(&tx, sierra_hash, &sierra_definition).context("Inserting sierra class")?;
-                        CasmClassTable::insert(&tx, &casm_definition, sierra_hash, casm_hash, crate::sierra::COMPILER_VERSION).context("Inserting casm definition")?;
+                        tx.insert_sierra_class(
+                            &sierra_hash,
+                            &sierra_definition,
+                            &casm_hash,
+                            &casm_definition,
+                            crate::sierra::COMPILER_VERSION
+                        )
+                        .context("Inserting sierra class")?;
                         tx.commit().context("Committing database transaction")
                     })
                     .with_context(|| {
@@ -684,12 +689,9 @@ fn update_starknet_state(
             sierra_class.compiled_class_hash,
         );
 
-        ClassCommitmentLeavesTable::upsert(
-            transaction,
-            &leaf_hash,
-            &sierra_class.compiled_class_hash,
-        )
-        .context("Adding class commitment leaf")?;
+        transaction
+            .insert_class_commitment_leaf(&leaf_hash, &sierra_class.compiled_class_hash)
+            .context("Adding class commitment leaf")?;
 
         class_commitment_tree
             .set(sierra_class.class_hash, leaf_hash)
@@ -778,7 +780,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
     // Check database to see which are missing.
     let exists = tokio::task::block_in_place(|| {
         let transaction = connection.transaction()?;
-        ClassDefinitionsTable::exists(&transaction, &classes)
+        transaction.class_definitions_exist(&classes)
     })
     .with_context(|| format!("Query storage for existance of classes {classes:?}"))?;
     anyhow::ensure!(
@@ -801,7 +803,8 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
                 tokio::task::block_in_place(|| {
                     let transaction =
                         connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ClassDefinitionsTable::insert(&transaction, hash, &definition)
+                    transaction
+                        .insert_cairo_class(hash, &definition)
                         .context("Inserting new cairo class")?;
                     transaction.commit()?;
                     anyhow::Result::<()>::Ok(())
@@ -831,16 +834,15 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
                 tokio::task::block_in_place(|| {
                     let transaction =
                         connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    ClassDefinitionsTable::insert(&transaction, sierra_hash, &sierra_definition)
+                    transaction
+                        .insert_sierra_class(
+                            &sierra_hash,
+                            &sierra_definition,
+                            &CasmHash(casm_hash.0),
+                            &casm_definition,
+                            &crate::sierra::COMPILER_VERSION,
+                        )
                         .context("Inserting sierra class")?;
-                    CasmClassTable::insert(
-                        &transaction,
-                        &casm_definition,
-                        sierra_hash,
-                        casm_hash,
-                        crate::sierra::COMPILER_VERSION,
-                    )
-                    .context("Inserting casm definition")?;
                     transaction.commit()?;
                     anyhow::Result::<()>::Ok(())
                 })
@@ -878,14 +880,14 @@ mod tests {
     use crate::state;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockHash, BlockId, BlockNumber, BlockTimestamp, Chain, ChainId, ClassCommitment,
-        ClassHash, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
+        BlockHash, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain, ChainId, ClassCommitment,
+        ClassHash, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateCommitment,
+        StorageCommitment,
     };
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::{
-        CasmClassTable, ClassDefinitionsTable, L1StateTable, RefsTable, StarknetBlock,
-        StarknetBlocksBlockId, StarknetBlocksTable, Storage,
+        L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
     };
     use primitive_types::H160;
     use stark_hash::Felt;
@@ -1418,7 +1420,7 @@ mod tests {
 
         let tx = connection.transaction().unwrap();
         assert_eq!(
-            ClassDefinitionsTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
+            tx.class_definitions_exist(&[ClassHash(*A)]).unwrap(),
             vec![true]
         );
     }
@@ -1433,9 +1435,9 @@ mod tests {
         let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
             tx.send(l2::Event::SierraClass {
                 sierra_definition: vec![],
-                sierra_hash: ClassHash(*A),
+                sierra_hash: SierraHash(*A),
                 casm_definition: vec![],
-                casm_hash: ClassHash(*A),
+                casm_hash: CasmHash(*A),
             })
             .await
             .unwrap();
@@ -1467,11 +1469,7 @@ mod tests {
 
         let tx = connection.transaction().unwrap();
         assert_eq!(
-            ClassDefinitionsTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
-            vec![true]
-        );
-        assert_eq!(
-            CasmClassTable::exists(&tx, &[ClassHash(*A)]).unwrap(),
+            tx.class_definitions_exist(&[ClassHash(*A)]).unwrap(),
             vec![true]
         );
     }

@@ -1,178 +1,129 @@
 use anyhow::Context;
-use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash};
+use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash};
 
 use crate::prelude::*;
 
-/// Stores Starknet contract information, specifically a contract's
-///
-/// - [hash](ClassHash)
-/// - definition
-pub struct ClassDefinitionsTable {}
+pub(crate) fn insert_sierra_class(
+    transaction: &Transaction<'_>,
+    sierra_hash: &SierraHash,
+    sierra_definition: &[u8],
+    casm_hash: &CasmHash,
+    casm_definition: &[u8],
+    compiler_version: &str,
+) -> anyhow::Result<()> {
+    let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
+    let sierra_definition = compressor
+        .compress(&sierra_definition)
+        .context("Compressing sierra definition")?;
+    let casm_definition = compressor
+        .compress(&casm_definition)
+        .context("Compressing casm definition")?;
 
-impl ClassDefinitionsTable {
-    /// Insert a class into the table.
-    ///
-    /// Does nothing if the class [hash](ClassHash) is already populated.
-    pub fn insert(
-        transaction: &Transaction<'_>,
-        hash: ClassHash,
-        definition: &[u8],
-    ) -> anyhow::Result<()> {
-        let mut compressor = zstd::bulk::Compressor::new(10)
-            .context("Couldn't create zstd compressor for ClassDefinitionsTable")?;
-        let definition = compressor
-            .compress(definition)
-            .context("Failed to compress definition")?;
-        transaction.execute(
+    let version_id = intern_compiler_version(transaction, compiler_version)
+        .context("Interning compiler version")?;
+
+    transaction
+        .execute(
             r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
-            params![&hash, &definition],
-        )?;
+            params![sierra_hash, &sierra_definition],
+        )
+        .context("Inserting sierra definition")?;
 
-        Ok(())
-    }
-
-    /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(
-        transaction: &Transaction<'_>,
-        classes: &[ClassHash],
-    ) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = transaction.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
-
-        Ok(classes
-            .iter()
-            .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
-            .collect::<Result<Vec<_>, _>>()?)
-    }
-}
-
-/// Stores Sierra to CASM compiler version values
-///
-/// When compiling a Sierra class to CASM we should store the version of the compiler
-/// used so that we can later selectively re-compile CASM based on the compiler version.
-/// Because the version we have is not a properly structured semantic version we're
-/// storing the `id` from the Cargo package metadata here. That is a not-so-short string,
-/// that's why we're interning values.
-struct CasmCompilerVersions;
-
-impl CasmCompilerVersions {
-    /// Interns, or makes sure there's a unique row for each version.
-    ///
-    /// These are not deleted automatically nor is a need expected because new versions
-    /// are introduced _only_ when we're upgrading the CASM compiler in pathdfinder.
-    pub fn intern(transaction: &Transaction<'_>, version: &str) -> anyhow::Result<i64> {
-        let id: Option<i64> = transaction
-            .query_row(
-                "SELECT id FROM casm_compiler_versions WHERE version = ?",
-                [version],
-                |r| Ok(r.get_unwrap(0)),
-            )
-            .optional()
-            .context("Querying for an existing casm_compiler_versions")?;
-
-        let id = if let Some(id) = id {
-            id
-        } else {
-            // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
-            // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
-            // read back with last_insert_rowid
-            let rows = transaction
-                .execute(
-                    "INSERT INTO casm_compiler_versions(version) VALUES (?)",
-                    [version],
-                )
-                .context("Inserting unique casm_compiler_version")?;
-
-            anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
-
-            transaction.last_insert_rowid()
-        };
-
-        Ok(id)
-    }
-}
-
-/// Stores compiled CASM for Sierra classes
-///
-/// Sierra classes need to be compiled to Cairo assembly so that we can execute them.
-pub struct CasmClassTable {}
-
-impl CasmClassTable {
-    /// Insert a CASM class into the table.
-    ///
-    /// Note that the class hash must reference a class stored in [ClassDefinitionsTable].
-    pub fn insert(
-        transaction: &Transaction<'_>,
-        definition: &[u8],
-        class_hash: ClassHash,
-        compiled_class_hash: ClassHash,
-        casm_compiler_version: &str,
-    ) -> anyhow::Result<()> {
-        let version_id = CasmCompilerVersions::intern(transaction, casm_compiler_version)
-            .context("Fetching CASM compiler version id")?;
-
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-        let definition = compressor
-            .compress(definition)
-            .context("Compressing class definition")?;
-
-        transaction.execute(
+    transaction
+        .execute(
             r"INSERT OR REPLACE INTO casm_definitions
                 (hash, definition, compiled_class_hash, compiler_version_id)
             VALUES
                 (:hash, :definition, :compiled_class_hash, :compiler_version_id)",
             named_params! {
-                ":hash": &class_hash,
-                ":definition": &definition,
-                ":compiled_class_hash": &compiled_class_hash,
+                ":hash": sierra_hash,
+                ":definition": &casm_definition,
+                ":compiled_class_hash": casm_hash,
                 ":compiler_version_id": &version_id,
             },
-        )?;
-        Ok(())
-    }
+        )
+        .context("Inserting casm definition")?;
 
-    /// Returns true for each [ClassHash] if the class definition already exists in the table.
-    pub fn exists(
-        transaction: &Transaction<'_>,
-        classes: &[ClassHash],
-    ) -> anyhow::Result<Vec<bool>> {
-        let mut stmt = transaction.prepare("SELECT 1 FROM casm_definitions WHERE hash = ?")?;
-
-        Ok(classes
-            .iter()
-            .map(|hash| stmt.exists([hash]))
-            .collect::<Result<Vec<_>, _>>()?)
-    }
+    Ok(())
 }
 
-/// Stores class commitment table leaf hash to data mapping.
-///
-/// We have to be able to map the leaf hash value in the class commitment tree
-/// to the compiled class hash.
-pub struct ClassCommitmentLeavesTable;
+pub(crate) fn insert_cairo_class(
+    transaction: &Transaction<'_>,
+    cairo_hash: ClassHash,
+    definition: &[u8],
+) -> anyhow::Result<()> {
+    let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
+    let definition = compressor
+        .compress(&definition)
+        .context("Compressing cairo definition")?;
 
-impl ClassCommitmentLeavesTable {
-    /// Upsert a class commitment leaf.
-    pub fn upsert(
-        transaction: &Transaction<'_>,
-        hash: &ClassCommitmentLeafHash,
-        compiled_class_hash: &CasmHash,
-    ) -> anyhow::Result<()> {
-        let mut stmt = transaction.prepare_cached(
-            r"INSERT INTO class_commitment_leaves
-                (hash, compiled_class_hash)
-            VALUES
-                (:hash, :compiled_class_hash)
-            ON CONFLICT DO NOTHING
-            ",
-        )?;
+    transaction
+        .execute(
+            r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
+            params![&cairo_hash, &definition],
+        )
+        .context("Inserting cairo definition")?;
 
-        stmt.execute(named_params! {
-            ":hash": hash,
-            ":compiled_class_hash": compiled_class_hash,
-        })?;
+    Ok(())
+}
 
-        Ok(())
-    }
+fn intern_compiler_version(
+    transaction: &Transaction<'_>,
+    compiler_version: &str,
+) -> anyhow::Result<i64> {
+    let id: Option<i64> = transaction
+        .query_row(
+            "SELECT id FROM casm_compiler_versions WHERE version = ?",
+            [compiler_version],
+            |r| Ok(r.get_unwrap(0)),
+        )
+        .optional()
+        .context("Querying for an existing casm compiler version")?;
+
+    let id = if let Some(id) = id {
+        id
+    } else {
+        // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
+        // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
+        // read back with last_insert_rowid
+        let id = transaction
+            .query_row(
+                "INSERT INTO casm_compiler_versions(version) VALUES (?) RETURNING id",
+                [compiler_version],
+                |row| row.get(0),
+            )
+            .context("Inserting unique casm_compiler_version")?;
+
+        id
+    };
+
+    Ok(id)
+}
+
+/// Returns whether or not the given class definitions exist.
+pub(crate) fn classes_exist(
+    transaction: &Transaction<'_>,
+    classes: &[ClassHash],
+) -> anyhow::Result<Vec<bool>> {
+    let mut stmt = transaction.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+
+    Ok(classes
+        .iter()
+        .map(|hash| stmt.exists([&hash.0.to_be_bytes()[..]]))
+        .collect::<Result<Vec<_>, _>>()?)
+}
+
+pub(crate) fn insert_class_commitment_leaf(
+    transaction: &Transaction<'_>,
+    leaf: &ClassCommitmentLeafHash,
+    casm_hash: &CasmHash,
+) -> anyhow::Result<()> {
+    transaction.execute(
+        "INSERT OR IGNORE INTO class_commitment_leaves (hash, compiled_class_hash) VALUES (?, ?)",
+        params![leaf, casm_hash],
+    )?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -185,7 +136,8 @@ mod tests {
         let hash = ClassHash(felt!("0x123"));
 
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
-        ClassDefinitionsTable::insert(transaction, hash, &definition[..]).unwrap();
+
+        transaction.insert_cairo_class(hash, definition).unwrap();
 
         (
             hash,
@@ -195,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn contracts_exist() {
+    fn class_existence() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
@@ -203,9 +155,32 @@ mod tests {
         let (hash, _, _) = setup_class(&transaction);
         let non_existent = ClassHash(felt!("0x456"));
 
-        let result = ClassDefinitionsTable::exists(&transaction, &[hash, non_existent]).unwrap();
+        let result = super::classes_exist(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];
-
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn compiler_version_interning() {
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+
+        let alpha = intern_compiler_version(&transaction, "alpha").unwrap();
+        let alpha_again = intern_compiler_version(&transaction, "alpha").unwrap();
+        assert_eq!(alpha, alpha_again);
+
+        let beta = intern_compiler_version(&transaction, "beta").unwrap();
+        assert_ne!(alpha, beta);
+
+        let beta_again = intern_compiler_version(&transaction, "beta").unwrap();
+        assert_eq!(beta, beta_again);
+
+        for i in 0..10 {
+            intern_compiler_version(&transaction, i.to_string().as_str()).unwrap();
+        }
+
+        let alpha_again2 = intern_compiler_version(&transaction, "alpha").unwrap();
+        assert_eq!(alpha, alpha_again2);
     }
 }

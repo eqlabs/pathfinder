@@ -31,8 +31,7 @@ pub(crate) use hash;
 pub mod init {
     use super::*;
     use crate::{
-        state_update::insert_canonical_state_diff, CanonicalBlocksTable, CasmClassTable,
-        ClassDefinitionsTable, StarknetBlocksTable,
+        state_update::insert_canonical_state_diff, CanonicalBlocksTable, StarknetBlocksTable,
     };
     use pathfinder_common::{ClassCommitment, StarknetVersion, StorageCommitment};
 
@@ -54,20 +53,17 @@ pub mod init {
                 let update = StateUpdate::with_block_hash(n);
 
                 for declared_class in &update.state_diff.declared_contracts {
-                    ClassDefinitionsTable::insert(tx, declared_class.class_hash, b"").unwrap();
+                    tx.insert_cairo_class(declared_class.class_hash, b"")
+                        .unwrap();
                 }
 
-                for declared_sierra_class in &update.state_diff.declared_sierra_classes {
-                    let class_hash = ClassHash(declared_sierra_class.class_hash.0);
-                    ClassDefinitionsTable::insert(tx, class_hash, b"").unwrap();
-                    CasmClassTable::insert(
-                        tx,
-                        &[],
-                        class_hash,
-                        ClassHash(declared_sierra_class.compiled_class_hash.0),
-                        "1.0.alpha6",
-                    )
-                    .unwrap();
+                for DeclaredSierraClass {
+                    class_hash,
+                    compiled_class_hash,
+                } in &update.state_diff.declared_sierra_classes
+                {
+                    tx.insert_sierra_class(class_hash, &[], compiled_class_hash, &[], "1.0.alpha6")
+                        .unwrap();
                 }
 
                 insert_canonical_state_diff(tx, block_number, &update.state_diff).unwrap();

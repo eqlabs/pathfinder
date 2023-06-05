@@ -320,9 +320,7 @@ mod tests {
         GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
         TransactionVersion,
     };
-    use pathfinder_storage::{
-        ClassDefinitionsTable, JournalMode, StarknetBlock, StarknetBlocksTable, Storage,
-    };
+    use pathfinder_storage::{JournalMode, StarknetBlock, StarknetBlocksTable, Storage};
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
     };
@@ -344,7 +342,7 @@ mod tests {
             let mut db = storage.connection().expect("db connection");
             let tx = db.transaction().expect("tx");
 
-            ClassDefinitionsTable::insert(&tx, DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
+            tx.insert_cairo_class(DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
                 .expect("insert class");
 
             StarknetBlocksTable::insert(

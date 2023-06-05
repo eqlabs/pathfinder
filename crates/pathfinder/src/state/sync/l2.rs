@@ -4,10 +4,10 @@ use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
-    StateCommitment, TransactionCommitment,
+    StateCommitment, TransactionCommitment, CasmHash, SierraHash,
 };
 use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
-use pathfinder_storage::{ClassDefinitionsTable, Storage};
+use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     error::SequencerError,
@@ -103,9 +103,9 @@ pub enum Event {
     /// A new unique L2 Cairo 1.x class was found.
     SierraClass {
         sierra_definition: Vec<u8>,
-        sierra_hash: ClassHash,
+        sierra_hash: SierraHash,
         casm_definition: Vec<u8>,
-        casm_hash: ClassHash,
+        casm_hash: CasmHash,
     },
     /// A new L2 pending update was polled.
     Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
@@ -342,7 +342,8 @@ async fn download_new_classes(
             .transaction()
             .context("Creating database transaction")?;
 
-        let exists = ClassDefinitionsTable::exists(&tx, &new_classes)
+        let exists = tx
+            .class_definitions_exist(&new_classes)
             .context("Querying class existence in database")?;
 
         let missing = new_classes
@@ -390,7 +391,6 @@ async fn download_new_classes(
                         }
                     })
                     .context("Sierra class hash not in declared classes")?;
-                let casm_hash = ClassHash(casm_hash.0);
                 tx_event
                     .send(Event::SierraClass {
                         sierra_definition,

@@ -21,7 +21,6 @@ pub mod types;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use class::{CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable};
 pub use connection::*;
 use rusqlite::functions::FunctionFlags;
 pub use state::{
@@ -199,13 +198,31 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
     let current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
-    // Check that the database is not newer than this application knows of.
-    anyhow::ensure!(
-        current_revision <= migrations.len(),
-        "Database version is newer than this application ({} > {})",
-        current_revision,
-        migrations.len()
-    );
+    let current_revision = match current_revision {
+        0 => {
+            let tx = connection
+                .transaction()
+                .context("Create database transaction")?;
+            schema::base_schema(&tx).context("Applying base schema")?;
+            tx.pragma_update(None, VERSION_KEY, schema::NULL_MIGRATIONS)
+                .context("Failed to update the schema version number")?;
+            tx.commit().context("Commit migration transaction")?;
+
+            schema::NULL_MIGRATIONS
+        }
+        too_old if too_old < schema::NULL_MIGRATIONS => {
+            tracing::error!(version=%current_revision, limit=%schema::NULL_MIGRATIONS, "Database version is too old to migrate");
+            anyhow::bail!("Database version {current_revision} too old to migrate");
+        }
+        too_new if too_new > migrations.len() => {
+            tracing::error!(version=%current_revision, limit=%migrations.len(), "Database version is from a newer than this application expected");
+            anyhow::bail!(
+                "Database version {too_new} is newer than this application expected {}",
+                migrations.len()
+            );
+        }
+        version => version,
+    };
 
     // Early exit to prevent logging
     if current_revision == migrations.len() {

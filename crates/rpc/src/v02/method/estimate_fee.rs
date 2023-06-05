@@ -313,12 +313,9 @@ pub(crate) mod tests {
                 starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
             let class_definition = starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
-            pathfinder_storage::ClassDefinitionsTable::insert(
-                &db_txn,
-                class_hash,
-                class_definition,
-            )
-            .unwrap();
+            db_txn
+                .insert_cairo_class(class_hash, class_definition)
+                .unwrap();
 
             //
             // "Deploy"

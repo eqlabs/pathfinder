@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use pathfinder_common::trie::TrieNode;
-use pathfinder_common::{BlockNumber, ClassCommitment, ContractRoot, StorageCommitment};
+use pathfinder_common::{
+    BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash, ContractRoot,
+    SierraHash, StorageCommitment,
+};
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 
@@ -30,12 +33,54 @@ impl Connection {
     }
 }
 
-pub struct Transaction<'tx>(rusqlite::Transaction<'tx>);
+pub struct Transaction<'inner>(rusqlite::Transaction<'inner>);
 
-impl<'tx> Transaction<'tx> {
+impl<'inner> Transaction<'inner> {
     #[cfg(test)]
-    pub(crate) fn from_inner(tx: rusqlite::Transaction<'tx>) -> Self {
+    pub(crate) fn from_inner(tx: rusqlite::Transaction<'inner>) -> Self {
         Self(tx)
+    }
+
+    pub fn insert_sierra_class(
+        &self,
+        sierra_hash: &SierraHash,
+        sierra_definition: &[u8],
+        casm_hash: &CasmHash,
+        casm_definition: &[u8],
+        compiler_version: &str,
+    ) -> anyhow::Result<()> {
+        crate::class::insert_sierra_class(
+            self,
+            sierra_hash,
+            sierra_definition,
+            casm_hash,
+            casm_definition,
+            compiler_version,
+        )
+    }
+
+    // TODO: create a CairoHash if sensible instead.
+    pub fn insert_cairo_class(
+        &self,
+        cairo_hash: ClassHash,
+        definition: &[u8],
+    ) -> anyhow::Result<()> {
+        crate::class::insert_cairo_class(self, cairo_hash, definition)
+    }
+
+    pub fn insert_class_commitment_leaf(
+        &self,
+        leaf: &ClassCommitmentLeafHash,
+        casm_hash: &CasmHash,
+    ) -> anyhow::Result<()> {
+        crate::class::insert_class_commitment_leaf(&self, leaf, casm_hash)
+    }
+
+    /// Returns whether the Sierra or Cairo class definition exists in the database.
+    ///
+    /// Note that this does not indicate that the class is actually declared -- only that we stored it.
+    pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
+        crate::class::classes_exist(&self, classes)
     }
 
     /// Stores the class trie information using reference counting.

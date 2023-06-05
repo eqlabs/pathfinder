@@ -191,6 +191,11 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                 .contract_class
                 .class_hash()
                 .map_err(|_| CallFailure::Internal("Failed to calculate class hash"))?;
+            use starknet_gateway_types::class_hash::ComputedClassHash;
+            let class_hash = match class_hash {
+                ComputedClassHash::Cairo(c) => ClassHash(c.0),
+                ComputedClassHash::Sierra(s) => ClassHash(s.0),
+            };
             TransactionAndClassHashHint {
                 transaction: add_transaction::AddTransaction::Declare(add_transaction::Declare {
                     version: tx.version,
@@ -205,7 +210,7 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                     nonce: tx.nonce,
                     compiled_class_hash: None,
                 }),
-                class_hash_hint: Some(class_hash.hash()),
+                class_hash_hint: Some(class_hash),
             }
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
@@ -213,6 +218,11 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                 .contract_class
                 .class_hash()
                 .map_err(|_| CallFailure::Internal("Failed to calculate class hash"))?;
+            use starknet_gateway_types::class_hash::ComputedClassHash;
+            let class_hash = match class_hash {
+                ComputedClassHash::Cairo(c) => ClassHash(c.0),
+                ComputedClassHash::Sierra(s) => ClassHash(s.0),
+            };
             TransactionAndClassHashHint {
                 transaction: add_transaction::AddTransaction::Declare(add_transaction::Declare {
                     version: tx.version,
@@ -227,7 +237,7 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                     nonce: tx.nonce,
                     compiled_class_hash: Some(tx.compiled_class_hash),
                 }),
-                class_hash_hint: Some(class_hash.hash()),
+                class_hash_hint: Some(class_hash),
             }
         }
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
@@ -453,8 +463,8 @@ mod tests {
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
-        CanonicalBlocksTable, ClassDefinitionsTable, ContractsStateTable, JournalMode,
-        StarknetBlock, StarknetBlocksTable, Storage, Transaction,
+        CanonicalBlocksTable, ContractsStateTable, JournalMode, StarknetBlock, StarknetBlocksTable,
+        Storage, Transaction,
     };
     use rusqlite::params;
     use stark_hash::Felt;
@@ -994,7 +1004,8 @@ mod tests {
         let class_hash = class_hash.hash();
 
         // create class
-        ClassDefinitionsTable::insert(tx, class_hash, contract_definition).unwrap();
+        tx.insert_cairo_class(class_hash, contract_definition)
+            .unwrap();
 
         // set up contract state tree
         let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO)).unwrap();
