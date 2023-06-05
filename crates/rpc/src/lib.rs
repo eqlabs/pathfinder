@@ -263,30 +263,31 @@ pub mod test_utils {
         ClassDefinitionsTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
 
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
+            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
             Some(ContractNonce(felt!("0x1"))),
             Some(class0_hash),
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
         storage_commitment_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment0 = storage_commitment_tree
-            .commit_and_persist_changes()
+        let (storage_commitment0, nodes) = storage_commitment_tree.commit().unwrap();
+        db_txn
+            .insert_storage_trie(storage_commitment0, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
             None,
             Some(class1_hash),
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
@@ -298,24 +299,25 @@ pub mod test_utils {
             &contract1_update1,
             None,
             None,
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment1 = storage_commitment_tree
-            .commit_and_persist_changes()
+        let (storage_commitment1, nodes) = storage_commitment_tree.commit().unwrap();
+        db_txn
+            .insert_storage_trie(storage_commitment1, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
             Some(ContractNonce(felt!("0x10"))),
             None,
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
@@ -327,15 +329,16 @@ pub mod test_utils {
             &[],
             Some(ContractNonce(felt!("0xfeed"))),
             Some(class2_hash),
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
         storage_commitment_tree
             .set(contract2_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment2 = storage_commitment_tree
-            .commit_and_persist_changes()
+        let (storage_commitment2, nodes) = storage_commitment_tree.commit().unwrap();
+        db_txn
+            .insert_storage_trie(storage_commitment2, &nodes)
             .unwrap();
 
         let genesis_hash = BlockHash(felt_bytes!(b"genesis"));
@@ -353,7 +356,7 @@ pub mod test_utils {
         let block1 = StarknetBlock {
             number: BlockNumber::new_or_panic(1),
             hash: block1_hash,
-            state_commmitment: StateCommitment::calculate(storage_commitment1, class_commitment1),
+            state_commmitment: StateCommitment::calculate(storage_commitment2, class_commitment1),
             timestamp: BlockTimestamp::new_or_panic(1),
             gas_price: GasPrice::from(1),
             sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
@@ -383,7 +386,7 @@ pub mod test_utils {
             &db_txn,
             &block1,
             &StarknetVersion::default(),
-            storage_commitment1,
+            storage_commitment2,
             class_commitment1,
         )
         .unwrap();

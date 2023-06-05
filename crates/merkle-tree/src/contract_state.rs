@@ -17,8 +17,8 @@ pub fn update_contract_state(
     updates: &[StorageDiff],
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
-    storage_commitment_tree: &StorageCommitmentTree<'_>,
-    db: &Transaction<'_>,
+    storage_commitment_tree: &mut StorageCommitmentTree<'_>,
+    transaction: &Transaction<'_>,
 ) -> anyhow::Result<ContractStateHash> {
     // Update the contract state tree.
     let state_hash = storage_commitment_tree
@@ -32,7 +32,7 @@ pub fn update_contract_state(
     // Contract root defaults to ZERO because that is the default merkle tree value.
     // Contract nonce defaults to ZERO because that is its historical value before being added in 0.10.
     let (old_root, old_class_hash, old_nonce) =
-        ContractsStateTable::get_root_class_hash_and_nonce(db, state_hash)
+        ContractsStateTable::get_root_class_hash_and_nonce(transaction, state_hash)
             .context("Read contract root and nonce from contracts state table")?
             .map_or_else(
                 || (ContractRoot::ZERO, None, ContractNonce::ZERO),
@@ -43,15 +43,21 @@ pub fn update_contract_state(
 
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
-        let mut contract_tree = ContractsStorageTree::load(db, old_root);
+        let mut contract_tree = ContractsStorageTree::load(transaction, old_root)?;
         for storage_diff in updates {
             contract_tree
                 .set(storage_diff.key, storage_diff.value)
                 .context("Update contract storage tree")?;
         }
-        contract_tree
-            .commit_and_persist_changes()
-            .context("Apply contract storage tree changes")?
+        let (contract_root, nodes) = contract_tree
+            .commit()
+            .context("Apply contract storage tree changes")?;
+        let count = transaction
+            .insert_contract_trie(contract_root, &nodes)
+            .context("Persisting contract trie")?;
+        tracing::trace!(contract=%contract_address, new_nodes=%count, "Persisted contract trie");
+
+        contract_root
     } else {
         old_root
     };
@@ -62,8 +68,14 @@ pub fn update_contract_state(
         .context("Class hash is unknown for new contract")?;
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
 
-    ContractsStateTable::upsert(db, contract_state_hash, class_hash, new_root, new_nonce)
-        .context("Insert constract state hash into contracts state table")?;
+    ContractsStateTable::upsert(
+        transaction,
+        contract_state_hash,
+        class_hash,
+        new_root,
+        new_nonce,
+    )
+    .context("Insert constract state hash into contracts state table")?;
 
     Ok(contract_state_hash)
 }

@@ -1,9 +1,11 @@
-//! Contains the [Hash] trait and implementations thereof for the [Pedersen](PedersenHash) and [Poseidon](PoseidonHash) hashes.
+//! Contains the [FeltHash] trait and implementations thereof for the [Pedersen](PedersenHash) and [Poseidon](PoseidonHash) hashes.
 
 use stark_hash::Felt;
 
-/// Hashing function used by a particular merkle tree implementation.
-pub trait Hash {
+/// Allows for implementations to be generic over Felt hash functions.
+///
+/// Implemented by [PedersenHash] and [PoseidonHash].
+pub trait FeltHash {
     fn hash(a: Felt, b: Felt) -> Felt;
 }
 
@@ -11,7 +13,7 @@ pub trait Hash {
 #[derive(Debug, Clone, Copy)]
 pub struct PedersenHash {}
 
-impl Hash for PedersenHash {
+impl FeltHash for PedersenHash {
     fn hash(a: Felt, b: Felt) -> Felt {
         stark_hash::stark_hash(a, b)
     }
@@ -20,7 +22,7 @@ impl Hash for PedersenHash {
 /// Implements [Hash] for the [Starknet Poseidon hash](stark_poseidon::poseidon_hash).
 #[derive(Debug, Clone, Copy)]
 pub struct PoseidonHash;
-impl crate::Hash for PoseidonHash {
+impl FeltHash for PoseidonHash {
     fn hash(a: Felt, b: Felt) -> Felt {
         stark_poseidon::poseidon_hash(a.into(), b.into()).into()
     }

@@ -1,3 +1,4 @@
+use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset, CallParam, CallResultValue, CasmHash,
     ClassCommitment, ClassCommitmentLeafHash, ClassHash, ConstructorParam, ContractAddress,
@@ -22,6 +23,37 @@ impl<Inner: ToSql> ToSql for Option<Inner> {
             Some(value) => value.to_sql(),
             None => ToSqlOutput::Owned(Value::Null),
         }
+    }
+}
+
+impl ToSql for TrieNode {
+    fn to_sql(&self) -> rusqlite::types::ToSqlOutput<'_> {
+        use bitvec::order::Msb0;
+        use bitvec::view::BitView;
+        use rusqlite::types::{ToSqlOutput, Value};
+
+        let mut buffer = Vec::with_capacity(65);
+
+        match self {
+            TrieNode::Binary { left, right } => {
+                buffer.extend_from_slice(left.as_be_bytes());
+                buffer.extend_from_slice(right.as_be_bytes());
+            }
+            TrieNode::Edge { child, path } => {
+                buffer.extend_from_slice(child.as_be_bytes());
+                // Bit path must be written in MSB format. This means that the LSB
+                // must be in the last bit position. Since we write a fixed number of
+                // bytes (32) but the path length may vary, we have to ensure we are writing
+                // to the end of the slice.
+                buffer.resize(65, 0);
+                buffer[32..][..32].view_bits_mut::<Msb0>()[256 - path.len()..]
+                    .copy_from_bitslice(path);
+
+                buffer[64] = path.len() as u8;
+            }
+        }
+
+        ToSqlOutput::Owned(Value::Blob(buffer))
     }
 }
 
@@ -83,15 +115,73 @@ to_sql_builtin!(
 /// for the orphan rule -- our types live in a separate crate and can therefore not implement the
 /// rusqlite traits.
 pub trait RowExt {
-    fn get_felt<I: RowIndex>(&self, index: I) -> rusqlite::Result<Felt>;
+    fn get_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<&[u8]>;
+
+    fn get_felt<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<Felt> {
+        let blob = self.get_blob(index)?;
+        let felt = Felt::from_be_slice(blob)
+            .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
+        Ok(felt)
+    }
 
     fn get_class_hash<I: RowIndex>(&self, index: I) -> rusqlite::Result<ClassHash> {
         let felt = self.get_felt(index)?;
         Ok(ClassHash(felt))
     }
+
+    fn get_trie_node<I: RowIndex>(&self, index: I) -> rusqlite::Result<TrieNode> {
+        use anyhow::Context;
+        use bitvec::order::Msb0;
+
+        let data = self.get_blob(index)?;
+
+        use rusqlite::types::FromSqlError;
+        match data.len() {
+            64 => {
+                // unwraps and indexing are safe due to length check == 64.
+                let left: [u8; 32] = data[..32].try_into().unwrap();
+                let right: [u8; 32] = data[32..].try_into().unwrap();
+
+                let left = Felt::from_be_bytes(left)
+                    .context("Binary node's left hash is corrupt")
+                    .map_err(|e| FromSqlError::Other(e.into()))?;
+                let right = Felt::from_be_bytes(right)
+                    .context("Binary node's right hash is corrupt")
+                    .map_err(|e| FromSqlError::Other(e.into()))?;
+
+                Ok(TrieNode::Binary { left, right })
+            }
+            65 => {
+                // unwraps and indexing are safe due to length check == 65.
+                let child: [u8; 32] = data[..32].try_into().unwrap();
+                let path = data[32..64].to_vec();
+                let length = data[64] as usize;
+
+                // Grab the __last__ `length` bits. Path is stored in MSB format, which means LSB
+                // is always stored in the last bit. Since the path may vary in length we must take
+                // the last bits.
+                use bitvec::view::BitView;
+                let path = path.view_bits::<Msb0>()[256 - length..].to_bitvec();
+
+                let child = Felt::from_be_bytes(child)
+                    .context("Edge node's child hash is corrupt.")
+                    .map_err(|e| FromSqlError::Other(e.into()))?;
+
+                anyhow::Result::Ok(TrieNode::Edge { path, child })
+            }
+            other => {
+                Err(FromSqlError::Other(anyhow::anyhow!("Bad node length: {other}").into()).into())
+            }
+        }
+    }
 }
 
 impl<'a> RowExt for &rusqlite::Row<'a> {
+    fn get_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<&[u8]> {
+        let blob = self.get_ref(index)?.as_blob()?;
+        Ok(blob)
+    }
+
     fn get_felt<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<Felt> {
         let bytes = self.get_ref(index)?.as_blob()?;
         let felt = Felt::from_be_slice(bytes)

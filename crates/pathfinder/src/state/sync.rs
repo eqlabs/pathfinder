@@ -589,7 +589,8 @@ fn update_starknet_state(
             .context("Query latest state commitment")?
             .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
-    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment);
+    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
+        .context("Loading storage trie")?;
 
     for contract in &state_update.state_diff.deployed_contracts {
         deploy_contract(transaction, &mut storage_commitment_tree, contract)
@@ -618,7 +619,7 @@ fn update_starknet_state(
             updates,
             nonce,
             replaced_class_hash,
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             transaction,
         )
         .context("Update contract state")?;
@@ -639,7 +640,7 @@ fn update_starknet_state(
             &[],
             Some(nonce),
             replaced_class_hash,
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             transaction,
         )
         .context("Update contract nonce")?;
@@ -657,7 +658,7 @@ fn update_starknet_state(
             &[],
             None,
             Some(new_class_hash),
-            &storage_commitment_tree,
+            &mut storage_commitment_tree,
             transaction,
         )
         .context("Update contract nonce")?;
@@ -669,12 +670,17 @@ fn update_starknet_state(
     }
 
     // Apply storage commitment tree changes.
-    let new_storage_commitment = storage_commitment_tree
-        .commit_and_persist_changes()
+    let (new_storage_commitment, nodes) = storage_commitment_tree
+        .commit()
         .context("Apply storage commitment tree updates")?;
+    let count = transaction
+        .insert_storage_trie(new_storage_commitment, &nodes)
+        .context("Persisting storage trie")?;
+    tracing::trace!(new_nodes=%count, "Storage trie persisted");
 
     // Add new Sierra classes to class commitment tree.
-    let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment);
+    let mut class_commitment_tree =
+        ClassCommitmentTree::load(transaction, class_commitment).context("Loading class trie")?;
 
     for sierra_class in &state_update.state_diff.declared_classes {
         let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(
@@ -694,11 +700,15 @@ fn update_starknet_state(
     }
 
     // Apply all class commitment tree changes.
-    let new_class_commitment = class_commitment_tree
-        .commit_and_persist_changes()
+    let (class_commitment, nodes) = class_commitment_tree
+        .commit()
         .context("Apply class commitment tree updates")?;
+    let count = transaction
+        .insert_class_trie(class_commitment, &nodes)
+        .context("Persisting class trie")?;
+    tracing::trace!(new_nodes=%count, "Class trie persisted");
 
-    Ok((new_storage_commitment, new_class_commitment))
+    Ok((new_storage_commitment, class_commitment))
 }
 
 fn deploy_contract(

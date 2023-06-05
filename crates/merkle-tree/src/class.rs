@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
 use anyhow::Context;
+use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
-use rusqlite::Transaction;
+use pathfinder_storage::{ClassTrieReader, Transaction};
+use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
-use crate::PoseidonHash;
+use pathfinder_common::hash::PoseidonHash;
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to Starknet's Sierra classes.
 ///
@@ -12,17 +16,15 @@ use crate::PoseidonHash;
 /// Tree data is persisted by a sqlite table 'tree_class'.
 pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
-    storage: ClassStorage<'tx>,
+    storage: ClassTrieReader<'tx>,
 }
 
-crate::define_sqlite_storage!(ClassStorage, "tree_class");
-
 impl<'tx> ClassCommitmentTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
         let tree = MerkleTree::new(root.0);
-        let storage = ClassStorage::new(transaction);
+        let storage = transaction.class_trie_reader().context("Loading storage")?;
 
-        Self { tree, storage }
+        Ok(Self { tree, storage })
     }
 
     /// Adds a leaf node for a Sierra -> CASM commitment.
@@ -31,15 +33,14 @@ impl<'tx> ClassCommitmentTree<'tx> {
     /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
     /// for details.
     pub fn set(&mut self, class: SierraHash, value: ClassCommitmentLeafHash) -> anyhow::Result<()> {
-        self.tree.set(&self.storage, class.view_bits(), value.0)
+        self.tree.set(&mut self.storage, class.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new global root.
-    pub fn commit_and_persist_changes(self) -> anyhow::Result<ClassCommitment> {
+    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, TrieNode>)> {
         let update = self.tree.commit()?;
-        for (hash, node) in update.added {
-            self.storage.insert(&hash, &node)?;
-        }
-        Ok(ClassCommitment(update.root))
+
+        let commitment = ClassCommitment(update.root);
+        Ok((commitment, update.nodes))
     }
 }

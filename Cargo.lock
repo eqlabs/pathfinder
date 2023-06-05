@@ -5995,7 +5995,6 @@ dependencies = [
  "pathfinder-storage",
  "pretty_assertions",
  "rand 0.8.5",
- "rusqlite",
  "stark_curve",
  "stark_hash",
  "stark_poseidon",

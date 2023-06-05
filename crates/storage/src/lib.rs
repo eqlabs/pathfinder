@@ -15,6 +15,7 @@ mod state_update;
 pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
+mod trie;
 pub mod types;
 
 use std::path::{Path, PathBuf};
@@ -30,6 +31,7 @@ pub use state::{
     StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
 };
 pub use state_update::insert_canonical_state_diff;
+pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
 use anyhow::Context;
 use r2d2::Pool;

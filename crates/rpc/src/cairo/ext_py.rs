@@ -866,14 +866,14 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO));
+            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO)).unwrap();
 
         storage_commitment_tree
             .set(test_contract_address, test_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree
-            .commit_and_persist_changes()
-            .unwrap();
+        let (storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
+        tx.insert_storage_trie(storage_commitment, &nodes).unwrap();
+
         let class_commitment = ClassCommitment(Felt::ZERO);
 
         let block = StarknetBlock {
@@ -934,14 +934,13 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO));
+            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO)).unwrap();
 
         storage_commitment_tree
             .set(account_contract_address, account_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree
-            .commit_and_persist_changes()
-            .unwrap();
+        let (storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
+        tx.insert_storage_trie(storage_commitment, &nodes).unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
         let block = StarknetBlock {
@@ -999,20 +998,21 @@ mod tests {
         ClassDefinitionsTable::insert(tx, class_hash, contract_definition).unwrap();
 
         // set up contract state tree
-        let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO));
+        let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO)).unwrap();
         for (storage_address, storage_value) in storage_updates {
             contract_state
                 .set(*storage_address, *storage_value)
                 .unwrap();
         }
-        let contract_state_root = contract_state.commit_and_persist_changes().unwrap();
+        let (contract_root, nodes) = contract_state.commit().unwrap();
+        tx.insert_contract_trie(contract_root, &nodes).unwrap();
 
         let contract_nonce = ContractNonce(Felt::ZERO);
 
         let contract_state_hash =
             pathfinder_merkle_tree::contract_state::calculate_contract_state_hash(
                 class_hash,
-                contract_state_root,
+                contract_root,
                 contract_nonce,
             );
 
@@ -1021,7 +1021,7 @@ mod tests {
             tx,
             contract_state_hash,
             class_hash,
-            contract_state_root,
+            contract_root,
             contract_nonce,
         )
         .unwrap();

@@ -11,6 +11,8 @@ pub mod consts;
 mod macros;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+pub mod trie;
+pub mod hash;
 
 /// The address of a Starknet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]

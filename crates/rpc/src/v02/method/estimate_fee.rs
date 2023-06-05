@@ -356,14 +356,16 @@ pub(crate) mod tests {
                 .unwrap();
 
             let mut storage_commitment_tree =
-                pathfinder_merkle_tree::StorageCommitmentTree::load(&db_txn, storage_commitment);
+                pathfinder_merkle_tree::StorageCommitmentTree::load(&db_txn, storage_commitment)
+                    .unwrap();
 
             storage_commitment_tree
                 .set(contract_address, contract_state_hash)
                 .unwrap();
 
-            let new_storage_commitment = storage_commitment_tree
-                .commit_and_persist_changes()
+            let (new_storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
+            db_txn
+                .insert_storage_trie(new_storage_commitment, &nodes)
                 .unwrap();
 
             let new_block = StarknetBlock {

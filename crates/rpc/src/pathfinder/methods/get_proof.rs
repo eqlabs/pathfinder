@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use pathfinder_common::trie::TrieNode;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -7,7 +8,6 @@ use pathfinder_common::{
     BlockId, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
     StateCommitment, StorageAddress,
 };
-use pathfinder_merkle_tree::Node;
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
 use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use stark_hash::Felt;
@@ -50,9 +50,9 @@ struct PathWrapper {
     len: usize,
 }
 
-/// Wrapper around [`Vec<Node>`] as we don't control [Node] in this crate.
+/// Wrapper around [`Vec<TrieNode>`] as we don't control [Node] in this crate.
 #[derive(Debug)]
-pub struct ProofNodes(Vec<Node>);
+pub struct ProofNodes(Vec<TrieNode>);
 
 impl Serialize for ProofNodes {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -63,7 +63,7 @@ impl Serialize for ProofNodes {
         let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
 
         for node in &self.0 {
-            struct SerProofNode<'a>(&'a Node);
+            struct SerProofNode<'a>(&'a TrieNode);
 
             impl Serialize for SerProofNode<'_> {
                 fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -71,7 +71,7 @@ impl Serialize for ProofNodes {
                     S: serde::Serializer,
                 {
                     match self.0 {
-                        Node::Binary { left, right } => {
+                        TrieNode::Binary { left, right } => {
                             let mut state = serializer.serialize_struct_variant(
                                 "proof_node",
                                 0,
@@ -82,7 +82,7 @@ impl Serialize for ProofNodes {
                             state.serialize_field("right", &right)?;
                             state.end()
                         }
-                        Node::Edge { child, path } => {
+                        TrieNode::Edge { child, path } => {
                             let value = Felt::from_bits(path).unwrap();
                             let path = PathWrapper {
                                 value,
@@ -198,7 +198,8 @@ pub async fn get_proof(
             )
         };
 
-        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&tx, storage_commitment).context("Loading storage trie")?;
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
@@ -230,7 +231,8 @@ pub async fn get_proof(
                     .into()
                 })?;
 
-        let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
+        let mut contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root)
+            .context("Loading contract trie")?;
 
         let storage_proofs = input
             .keys

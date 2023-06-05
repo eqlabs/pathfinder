@@ -75,10 +75,6 @@ starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["test-util"] }
 zstd = "0.12"
 
-[[bench]]
-name = "merkle_tree"
-harness = false
-
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }

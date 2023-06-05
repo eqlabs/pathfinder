@@ -9,7 +9,7 @@ use std::{cell::RefCell, rc::Rc};
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
 use stark_hash::Felt;
 
-use crate::Hash;
+use pathfinder_common::hash::FeltHash;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -122,7 +122,7 @@ impl BinaryNode {
     ///
     /// If either childs hash is [None], then the hash cannot
     /// be calculated and it will remain [None].
-    pub(crate) fn calculate_hash<H: Hash>(&mut self) {
+    pub(crate) fn calculate_hash<H: FeltHash>(&mut self) {
         if self.hash.is_some() {
             return;
         }
@@ -218,7 +218,7 @@ impl EdgeNode {
     ///
     /// If the child's hash is [None], then the hash cannot
     /// be calculated and it will remain [None].
-    pub(crate) fn calculate_hash<H: Hash>(&mut self) {
+    pub(crate) fn calculate_hash<H: FeltHash>(&mut self) {
         if self.hash.is_some() {
             return;
         }
@@ -242,7 +242,7 @@ impl EdgeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PedersenHash;
+    use pathfinder_common::hash::PedersenHash;
 
     mod direction {
         use super::*;
