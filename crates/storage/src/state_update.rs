@@ -6,7 +6,7 @@ use crate::prelude::*;
 use crate::types::state_update::{DeployedContract, Nonce, ReplacedClass, StateDiff, StorageDiff};
 
 /// Inserts a canonical [StateDiff] into storage.
-pub fn insert_canonical_state_diff(
+pub(crate) fn insert_canonical_state_diff(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
     state_diff: &StateDiff,

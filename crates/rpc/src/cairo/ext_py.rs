@@ -452,7 +452,6 @@ mod tests {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        insert_canonical_state_diff,
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
         CanonicalBlocksTable, ClassDefinitionsTable, ContractsStateTable, JournalMode,
         StarknetBlock, StarknetBlocksTable, Storage, Transaction,
@@ -918,7 +917,7 @@ mod tests {
             replaced_classes: vec![],
         };
 
-        insert_canonical_state_diff(tx, block.number, &state_diff).unwrap();
+        tx.insert_state_diff(block.number, &state_diff).unwrap();
 
         test_contract_class_hash
     }
@@ -978,7 +977,7 @@ mod tests {
             replaced_classes: vec![],
         };
 
-        insert_canonical_state_diff(tx, block.number, &state_diff).unwrap();
+        tx.insert_state_diff(block.number, &state_diff).unwrap();
 
         account_contract_class_hash
     }

@@ -162,9 +162,7 @@ pub(crate) mod tests {
             ContractRoot, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
         };
         use pathfinder_storage::types::state_update::{DeployedContract, StateDiff};
-        use pathfinder_storage::{
-            insert_canonical_state_diff, StarknetBlock, StarknetBlocksTable, Storage,
-        };
+        use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
         use stark_hash::Felt;
 
         // Mainnet block number 5
@@ -410,7 +408,9 @@ pub(crate) mod tests {
                 replaced_classes: vec![],
             };
 
-            insert_canonical_state_diff(&db_txn, new_block.number, &state_diff).unwrap();
+            db_txn
+                .insert_state_diff(new_block.number, &state_diff)
+                .unwrap();
 
             // Persist
             db_txn.commit().unwrap();

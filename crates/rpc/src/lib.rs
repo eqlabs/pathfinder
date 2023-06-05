@@ -170,8 +170,8 @@ pub mod test_utils {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        insert_canonical_state_diff, CanonicalBlocksTable, ClassDefinitionsTable, StarknetBlock,
-        StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
+        CanonicalBlocksTable, ClassDefinitionsTable, StarknetBlock, StarknetBlocksBlockId,
+        StarknetBlocksTable, StarknetTransactionsTable, Storage,
     };
     use primitive_types::H256;
     use stark_hash::Felt;
@@ -281,7 +281,8 @@ pub mod test_utils {
             .insert_storage_trie(storage_commitment0, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0).unwrap();
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, storage_commitment0).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
@@ -311,7 +312,8 @@ pub mod test_utils {
             .insert_storage_trie(storage_commitment1, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1).unwrap();
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, storage_commitment1).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
@@ -480,9 +482,9 @@ pub mod test_utils {
         StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
             .unwrap();
 
-        insert_canonical_state_diff(&db_txn, block0.number, &state_diff0).unwrap();
-        insert_canonical_state_diff(&db_txn, block1.number, &state_diff1).unwrap();
-        insert_canonical_state_diff(&db_txn, block2.number, &state_diff2).unwrap();
+        db_txn.insert_state_diff(block0.number, &state_diff0).unwrap();
+        db_txn.insert_state_diff(block1.number, &state_diff1).unwrap();
+        db_txn.insert_state_diff(block2.number, &state_diff2).unwrap();
 
         db_txn.commit().unwrap();
         storage

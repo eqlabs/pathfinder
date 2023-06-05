@@ -30,7 +30,6 @@ pub use state::{
     StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter, StarknetEventsTable,
     StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
 };
-pub use state_update::insert_canonical_state_diff;
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
 use anyhow::Context;

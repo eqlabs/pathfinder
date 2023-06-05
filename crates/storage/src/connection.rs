@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use pathfinder_common::trie::TrieNode;
-use pathfinder_common::{ClassCommitment, ContractRoot, StorageCommitment};
+use pathfinder_common::{BlockNumber, ClassCommitment, ContractRoot, StorageCommitment};
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 
@@ -75,6 +75,14 @@ impl<'tx> Transaction<'tx> {
 
     pub fn contract_trie_reader(&self) -> anyhow::Result<ContractTrieReader> {
         ContractTrieReader::new(&self)
+    }
+
+    pub fn insert_state_diff(
+        &self,
+        block_number: BlockNumber,
+        state_diff: &crate::types::state_update::StateDiff,
+    ) -> anyhow::Result<()> {
+        crate::state_update::insert_canonical_state_diff(&self, block_number, state_diff)
     }
 
     pub fn commit(self) -> anyhow::Result<()> {

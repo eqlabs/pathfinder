@@ -20,9 +20,9 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{
-    insert_canonical_state_diff, CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable,
-    ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId,
-    StarknetBlocksTable, StarknetTransactionsTable, Storage,
+    CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable, ContractsStateTable,
+    L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
+    StarknetTransactionsTable, Storage,
 };
 use pathfinder_storage::{Connection, Transaction};
 use primitive_types::H160;
@@ -522,12 +522,9 @@ async fn l2_update(
         .context("Insert transaction data into database")?;
 
         // Insert state updates
-        insert_canonical_state_diff(
-            &transaction,
-            block.block_number,
-            &rpc_state_update.state_diff,
-        )
-        .context("Insert state update into database")?;
+        transaction
+            .insert_state_diff(block.block_number, &rpc_state_update.state_diff)
+            .context("Insert state update into database")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
