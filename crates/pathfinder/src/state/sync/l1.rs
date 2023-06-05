@@ -26,8 +26,8 @@ pub async fn sync<T>(
             NonZeroU64::new(1).unwrap(),
         )
         .factor(NonZeroU64::new(2).unwrap())
-        .max_delay(head_poll_interval / 2)
-        .when(|_| true)
+        .deadline(head_poll_interval / 2)
+        .on_any_err()
         .await;
         match maybe_update {
             Ok(state_update) => {
