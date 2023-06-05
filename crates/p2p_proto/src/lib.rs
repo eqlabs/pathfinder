@@ -31,6 +31,12 @@ impl ToProtobuf<u32> for u32 {
     }
 }
 
+impl ToProtobuf<u8> for u8 {
+    fn to_protobuf(self) -> u8 {
+        self
+    }
+}
+
 impl ToProtobuf<String> for String {
     fn to_protobuf(self) -> String {
         self
@@ -59,6 +65,12 @@ impl<M, T: ToProtobuf<M>> ToProtobuf<Vec<M>> for Vec<T> {
     }
 }
 
+impl<M, T: ToProtobuf<M>> ToProtobuf<Option<M>> for Option<T> {
+    fn to_protobuf(self) -> Option<M> {
+        self.map(ToProtobuf::to_protobuf)
+    }
+}
+
 pub trait TryFromProtobuf<M>
 where
     Self: Sized,
@@ -74,6 +86,12 @@ impl TryFromProtobuf<u64> for u64 {
 
 impl TryFromProtobuf<u32> for u32 {
     fn try_from_protobuf(input: u32, _field_name: &'static str) -> Result<Self, std::io::Error> {
+        Ok(input)
+    }
+}
+
+impl TryFromProtobuf<u8> for u8 {
+    fn try_from_protobuf(input: u8, _field_name: &'static str) -> Result<Self, std::io::Error> {
         Ok(input)
     }
 }

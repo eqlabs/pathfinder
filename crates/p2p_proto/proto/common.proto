@@ -9,24 +9,32 @@ message EthereumAddress { bytes elements = 1; }
 message PeerID { bytes id = 1; }
 
 message BlockHeader {
-  FieldElement parent_block_hash = 1;
-  uint64 block_number = 2;
-  FieldElement global_state_root = 3;
-  FieldElement sequencer_address = 4;
-  uint64 block_timestamp = 5;
-
-  uint32 transaction_count = 6;
-  FieldElement transaction_commitment = 7;
-
-  uint32 event_count = 8;
-  FieldElement event_commitment = 9;
-
-  uint32 protocol_version = 10;
+  FieldElement block_hash = 1;
+  FieldElement parent_block_hash = 2;
+  uint64 block_number = 3;
+  FieldElement state_commitment = 4;
+  FieldElement sequencer_address = 5;
+  uint64 block_timestamp = 6;
+  FieldElement gas_price = 7;
+  uint32 transaction_count = 8;
+  FieldElement transaction_commitment = 9;
+  uint32 event_count = 10;
+  FieldElement event_commitment = 11;
+  string starknet_version = 12;
 }
 
 message InvokeTransaction {
+  message DeprecatedEntryPoint {
+    oneof type {
+      FieldElement unspecified = 1;
+      FieldElement external = 2;
+      FieldElement l1_handler = 3;
+    }
+  }
+
   FieldElement contract_address = 1;
-  FieldElement entry_point_selector = 2;
+  // Optional, only present in very old transactions
+  DeprecatedEntryPoint deprecated_entry_point_selector = 2;
   repeated FieldElement calldata = 3;
   repeated FieldElement signature = 4;
   FieldElement max_fee = 5;
@@ -35,16 +43,17 @@ message InvokeTransaction {
 }
 
 message DeclareTransaction {
-  ContractClass contract_class = 1;
+  FieldElement contract_class_hash = 1;
   FieldElement sender_address = 2;
   FieldElement max_fee = 3;
   repeated FieldElement signature = 4;
   FieldElement nonce = 5;
   FieldElement version = 6;
+  FieldElement compiled_class_hash = 7;
 }
 
-message DeployTransaction {
-  ContractClass contract_class = 1;
+message DeprecatedDeployTransaction {
+  FieldElement contract_class_hash = 1;
   FieldElement contract_address_salt = 2;
   repeated FieldElement constructor_calldata = 3;
   FieldElement version = 4;
@@ -68,24 +77,11 @@ message DeployAccountTransaction {
   FieldElement version = 7;
 }
 
-message ContractClass {
-  message EntryPoint {
-    FieldElement selector = 1;
-    FieldElement offset = 2;
-  }
-
-  repeated EntryPoint constructor_entry_points = 1;
-  repeated EntryPoint external_entry_points = 2;
-  repeated EntryPoint l1_handler_entry_points = 3;
-  string program = 4;
-  string abi = 5;
-}
-
 message Transaction {
   oneof txn {
     InvokeTransaction invoke = 1;
     DeclareTransaction declare = 2;
-    DeployTransaction deploy = 3;
+    DeprecatedDeployTransaction deploy = 3;
     L1HandlerTransaction l1_handler = 4;
     DeployAccountTransaction deploy_account = 5;
   }
@@ -97,6 +93,14 @@ message MessageToL1 {
   EthereumAddress to_address = 3;
 }
 
+message MessageToL2 {
+  EthereumAddress from_address = 1;
+  repeated FieldElement payload = 2;
+  FieldElement to_address = 3;
+  FieldElement entry_point_selector = 4;
+  FieldElement nonce = 5;
+}
+
 message Event {
   FieldElement from_address = 1;
   repeated FieldElement keys = 2;
@@ -105,9 +109,28 @@ message Event {
 
 message CommonTransactionReceiptProperties {
   FieldElement transaction_hash = 1;
-  FieldElement actual_fee = 2;
-  repeated MessageToL1 messages_sent = 3;
-  repeated Event events = 4;
+  uint32 transaction_index = 2;
+  FieldElement actual_fee = 3;
+  repeated MessageToL1 messages_sent = 4;
+  repeated Event events = 5;
+  // Optional
+  MessageToL2 consumed_message = 6;
+  ExecutionResources execution_resources = 7;
+}
+
+message ExecutionResources {
+  message BuiltinInstanceCounter {
+    uint64 bitwise_builtin = 1;
+    uint64 ecdsa_builtin = 2;
+    uint64 ec_op_builtin = 3;
+    uint64 output_builtin = 4;
+    uint64 pedersen_builtin = 5;
+    uint64 range_check_builtin = 6;
+  }
+
+  BuiltinInstanceCounter builtin_instance_counter = 1;
+  uint64 n_steps = 2;
+  uint64 n_memory_holes = 3;
 }
 
 message InvokeTransactionReceipt {
@@ -122,7 +145,7 @@ message DeclareTransactionReceipt {
   CommonTransactionReceiptProperties common = 1;
 }
 
-message DeployTransactionReceipt {
+message DeprecatedDeployTransactionReceipt {
   CommonTransactionReceiptProperties common = 1;
   FieldElement contract_address = 2;
 }
@@ -137,7 +160,7 @@ message Receipt {
     InvokeTransactionReceipt invoke = 1;
     L1HandlerTransactionReceipt l1_handler = 2;
     DeclareTransactionReceipt declare = 3;
-    DeployTransactionReceipt deploy = 4;
+    DeprecatedDeployTransactionReceipt deprecated_deploy = 4;
     DeployAccountTransactionReceipt deploy_account = 5;
   }
 }
@@ -145,4 +168,8 @@ message Receipt {
 message BlockBody {
   repeated Transaction transactions = 1;
   repeated Receipt receipts = 4;
+}
+
+message CompressedContractClass {
+  bytes class = 1;
 }

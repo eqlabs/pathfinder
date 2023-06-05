@@ -13,6 +13,7 @@ pub enum Request {
     GetBlockBodies(GetBlockBodies),
     GetStateDiffs(GetStateDiffs),
     Status(Status),
+    GetContractClasses(GetContractClasses),
 }
 
 const MAX_UNCOMPRESSED_MESSAGE_SIZE: usize = 1024 * 1024;
@@ -66,6 +67,9 @@ impl TryFromProtobuf<proto::sync::Request> for Request {
                 proto::sync::request::Request::Status(r) => Ok(Request::Status(
                     TryFromProtobuf::try_from_protobuf(r, field_name)?,
                 )),
+                proto::sync::request::Request::GetContractClasses(r) => Ok(
+                    Request::GetContractClasses(TryFromProtobuf::try_from_protobuf(r, field_name)?),
+                ),
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -89,6 +93,9 @@ impl ToProtobuf<proto::sync::Request> for Request {
                     proto::sync::request::Request::GetStateDiffs(r.to_protobuf())
                 }
                 Request::Status(r) => proto::sync::request::Request::Status(r.to_protobuf()),
+                Request::GetContractClasses(r) => {
+                    proto::sync::request::Request::GetContractClasses(r.to_protobuf())
+                }
             }),
         }
     }
@@ -129,7 +136,7 @@ impl ToProtobuf<i32> for Direction {
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::GetBlockHeaders")]
 pub struct GetBlockHeaders {
-    pub start_block: Felt,
+    pub start_block: u64,
     pub count: u64,
     pub size_limit: u64,
     pub direction: Direction,
@@ -155,12 +162,22 @@ pub struct GetStateDiffs {
     pub direction: Direction,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[protobuf(name = "crate::proto::sync::GetContractClasses")]
+pub struct GetContractClasses {
+    pub class_hashes: Vec<Felt>,
+    pub count: u64,
+    pub size_limit: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Response {
     BlockHeaders(BlockHeaders),
     BlockBodies(BlockBodies),
     StateDiffs(StateDiffs),
     Status(Status),
+    ContractClasses(ContractClasses),
 }
 
 impl Response {
@@ -212,6 +229,9 @@ impl TryFromProtobuf<proto::sync::Response> for Response {
                 proto::sync::response::Response::Status(s) => Ok(Response::Status(
                     TryFromProtobuf::try_from_protobuf(s, field_name)?,
                 )),
+                proto::sync::response::Response::Classes(s) => Ok(Response::ContractClasses(
+                    TryFromProtobuf::try_from_protobuf(s, field_name)?,
+                )),
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -235,6 +255,9 @@ impl ToProtobuf<proto::sync::Response> for Response {
                     proto::sync::response::Response::StateDiffs(r.to_protobuf())
                 }
                 Response::Status(r) => proto::sync::response::Response::Status(r.to_protobuf()),
+                Response::ContractClasses(r) => {
+                    proto::sync::response::Response::Classes(r.to_protobuf())
+                }
             }),
         }
     }
@@ -276,4 +299,11 @@ pub struct Status {
     pub height: u64,
     pub hash: Felt,
     pub chain_id: Felt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[protobuf(name = "crate::proto::sync::ContractClasses")]
+pub struct ContractClasses {
+    pub contract_classes: Vec<super::common::CompressedContractClass>,
 }

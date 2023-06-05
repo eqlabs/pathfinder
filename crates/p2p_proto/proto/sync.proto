@@ -10,7 +10,8 @@ message Request {
     GetBlockHeaders get_block_headers = 1;
     GetBlockBodies get_block_bodies = 2;
     GetStateDiffs get_state_diffs = 3;
-    Status status = 4;
+    GetContractClasses get_contract_classes = 4;
+    Status status = 5;
   }
 }
 
@@ -19,7 +20,8 @@ message Response {
     BlockHeaders block_headers = 1;
     BlockBodies block_bodies = 2;
     StateDiffs state_diffs = 3;
-    Status status = 4;
+    ContractClasses classes = 4;
+    Status status = 5;
   }
 }
 
@@ -28,42 +30,32 @@ enum Direction {
   BACKWARD = 1;
 }
 
+// Retrieve at most `count` block headers staring at `start_block`
+// and then moving to the next or previous blocks depending on `direction`.
+// Any single reply must not exceed `size_limit`.
 message GetBlockHeaders {
-  starknet.common.FieldElement start_block =
-      2;            // block hash of the starting block
-  uint64 count = 3; // how many block, at most, to retrieve from this requested
-                    // starting point
-  uint64 size_limit = 4; // limit on size of returned messages.
-
-  Direction direction = 5;
+  uint64 start_block = 1;
+  uint64 count = 2;
+  uint64 size_limit = 3; // limit on size of returned messages
+  Direction direction = 4;
 }
 
-/*
-    A response to GetBlockHeaders, returning a consecutive `count` of blocks (or
-   less if there are less available)
- */
-message BlockHeaders { repeated starknet.common.BlockHeader headers = 2; }
+message BlockHeaders { repeated starknet.common.BlockHeader headers = 1; }
 
 message GetBlockBodies {
-  starknet.common.FieldElement start_block =
-      2;            // block hash of the starting block
-  uint64 count = 3; // how many block, at most, to retrieve from this requested
-                    // starting point
-  uint64 size_limit = 4;
-
-  Direction direction = 5;
+  starknet.common.FieldElement start_block = 1;
+  uint64 count = 2;
+  uint64 size_limit = 3;
+  Direction direction = 4;
 }
 
 message BlockBodies { repeated starknet.common.BlockBody block_bodies = 2; }
 
 message GetStateDiffs {
-  starknet.common.FieldElement start_block =
-      2;            // block hash of the starting block
-  uint64 count = 3; // how many block, at most, to retrieve from this requested
-                    // starting point
-  uint64 size_limit = 4;
-
-  Direction direction = 5;
+  starknet.common.FieldElement start_block = 1;
+  uint64 count = 2;
+  uint64 size_limit = 3;
+  Direction direction = 4;
 }
 
 message StateDiffs {
@@ -79,4 +71,14 @@ message Status {
   uint64 height = 1;
   starknet.common.FieldElement hash = 2;
   starknet.common.FieldElement chain_id = 3;
+}
+
+message GetContractClasses {
+  repeated starknet.common.FieldElement class_hashes = 1;
+  uint64 count = 2;
+  uint64 size_limit = 3;
+}
+
+message ContractClasses {
+  repeated starknet.common.CompressedContractClass contract_classes = 1;
 }
