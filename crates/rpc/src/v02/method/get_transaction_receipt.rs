@@ -1,5 +1,5 @@
 use crate::context::RpcContext;
-use crate::v02::common::get_block_status;
+use crate::v02::types::reply::BlockStatus;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
 use pathfinder_storage::StarknetBlocksTable;
@@ -55,7 +55,15 @@ pub async fn get_transaction_receipt(
                 let block_number = StarknetBlocksTable::get_number(&db_tx, block_hash)
                     .context("Reading block from database")?
                     .context("Block missing from database")?;
-                let block_status = get_block_status(&db_tx, block_number)?;
+                let l1_accepted = db_tx
+                    .block_is_l1_accepted(block_number)
+                    .context("Quering block status")?;
+
+                let block_status = if l1_accepted {
+                    BlockStatus::AcceptedOnL1
+                } else {
+                    BlockStatus::AcceptedOnL2
+                };
 
                 Ok(types::MaybePendingTransactionReceipt::Normal(
                     types::TransactionReceipt::with_block_data(

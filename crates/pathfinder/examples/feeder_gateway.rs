@@ -301,7 +301,8 @@ fn get_block_status(
     block_number: BlockNumber,
 ) -> anyhow::Result<Status> {
     // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
-    let l1_l2_head = pathfinder_storage::RefsTable::get_l1_l2_head(tx)
+    let l1_l2_head = tx
+        .l1_l2_pointer()
         .context("Read latest L1 head from database")?;
     let block_status = match l1_l2_head {
         Some(number) if number >= block_number => Status::AcceptedOnL1,

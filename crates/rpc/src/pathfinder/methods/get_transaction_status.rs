@@ -5,7 +5,6 @@ use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
 
 use crate::context::RpcContext;
-use crate::v02::common::get_block_status;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetGatewayTransactionInput {
@@ -17,11 +16,11 @@ crate::error::generate_rpc_error_subset!(GetGatewayTransactionError:);
 pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,
-) -> Result<GatewayStatus, GetGatewayTransactionError> {
+) -> Result<TransactionStatus, GetGatewayTransactionError> {
     // Check in pending block.
     if let Some(pending) = &context.pending_data {
         if is_pending_tx(pending, &input.transaction_hash).await {
-            return Ok(GatewayStatus::Pending);
+            return Ok(TransactionStatus::Pending);
         }
     }
 
@@ -61,7 +60,7 @@ async fn is_pending_tx(pending: &PendingData, tx_hash: &TransactionHash) -> bool
 fn check_database(
     storage: &Storage,
     transaction_hash: &TransactionHash,
-) -> anyhow::Result<Option<GatewayStatus>> {
+) -> anyhow::Result<Option<TransactionStatus>> {
     let mut db = storage
         .connection()
         .context("Opening database connection")?;
@@ -88,22 +87,20 @@ fn check_database(
         None => return anyhow::Ok(None),
     };
 
-    let status =
-        get_block_status(&db_tx, block_number).context("Fetching block status from database")?;
-    use crate::v02::types::reply::BlockStatus;
-    let status = match status {
-        BlockStatus::Pending => GatewayStatus::Pending,
-        BlockStatus::AcceptedOnL2 => GatewayStatus::AcceptedOnL2,
-        BlockStatus::AcceptedOnL1 => GatewayStatus::AcceptedOnL1,
-        BlockStatus::Rejected => GatewayStatus::Rejected,
+    let l1_accepted = db_tx
+        .block_is_l1_accepted(block_number)
+        .context("Fetching block status from database")?;
+    let status = if l1_accepted {
+        TransactionStatus::AcceptedOnL1
+    } else {
+        TransactionStatus::AcceptedOnL2
     };
 
     Ok(Some(status))
 }
 
-/// A local definition of the [gateway's status type](starknet_gateway_types::reply::Status) to decouple this from the official gateway types.
 #[derive(Copy, Clone, Debug, serde::Serialize, PartialEq)]
-pub enum GatewayStatus {
+pub enum TransactionStatus {
     #[serde(rename = "NOT_RECEIVED")]
     NotReceived,
     #[serde(rename = "RECEIVED")]
@@ -122,7 +119,7 @@ pub enum GatewayStatus {
     Aborted,
 }
 
-impl From<starknet_gateway_types::reply::Status> for GatewayStatus {
+impl From<starknet_gateway_types::reply::Status> for TransactionStatus {
     fn from(value: starknet_gateway_types::reply::Status) -> Self {
         use starknet_gateway_types::reply::Status;
         match value {
@@ -152,7 +149,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(status, GatewayStatus::AcceptedOnL2);
+        assert_eq!(status, TransactionStatus::AcceptedOnL2);
     }
 
     #[tokio::test]
@@ -173,6 +170,6 @@ mod tests {
         let context = RpcContext::for_tests();
         let status = get_transaction_status(context, input).await.unwrap();
 
-        assert_eq!(status, GatewayStatus::Rejected);
+        assert_eq!(status, TransactionStatus::Rejected);
     }
 }

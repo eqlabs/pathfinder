@@ -48,6 +48,18 @@ impl<'inner> Transaction<'inner> {
         Self(tx)
     }
 
+    pub fn block_is_l1_accepted(&self, block: BlockNumber) -> anyhow::Result<bool> {
+        crate::block::block_is_l1_accepted(self, block)
+    }
+
+    pub fn update_l1_l2_pointer(&self, block: Option<BlockNumber>) -> anyhow::Result<()> {
+        crate::reference::update_l1_l2_pointer(self, block)
+    }
+
+    pub fn l1_l2_pointer(&self) -> anyhow::Result<Option<BlockNumber>> {
+        crate::reference::l1_l2_pointer(self)
+    }
+
     pub fn upsert_l1_state(&self, update: &EthereumStateUpdate) -> anyhow::Result<()> {
         crate::ethereum::upsert_l1_state(self, update)
     }

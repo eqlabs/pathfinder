@@ -1,5 +1,5 @@
 use crate::context::RpcContext;
-use crate::v02::common::get_block_status;
+use crate::v02::types::reply::BlockStatus;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockHash, BlockId, BlockNumber, StateCommitment};
 use pathfinder_storage::StarknetBlocksTable;
@@ -99,7 +99,12 @@ fn get_raw_block(
         .context("Read block from database")?
         .ok_or(GetBlockError::BlockNotFound)?;
 
-    let block_status = get_block_status(transaction, block.number)?;
+    let l1_accepted = transaction.block_is_l1_accepted(block.number)?;
+    let block_status = if l1_accepted {
+        BlockStatus::AcceptedOnL1
+    } else {
+        BlockStatus::AcceptedOnL2
+    };
 
     let (parent_hash, parent_root) = match block.number {
         BlockNumber::GENESIS => (BlockHash(Felt::ZERO), StateCommitment(Felt::ZERO)),

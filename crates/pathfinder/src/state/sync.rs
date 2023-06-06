@@ -20,9 +20,7 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{Connection, Transaction};
-use pathfinder_storage::{
-    ContractsStateTable, RefsTable, StarknetBlock, StarknetBlocksTable, Storage,
-};
+use pathfinder_storage::{ContractsStateTable, StarknetBlock, StarknetBlocksTable, Storage};
 use primitive_types::H160;
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
@@ -439,12 +437,13 @@ async fn l1_update(
 
         if let Some(l2_hash) = l2_hash {
             if l2_hash == update.block_hash {
-                RefsTable::set_l1_l2_head(&transaction, Some(update.block_number))
-                    .context("Update L1-L2 head")?;
-                tracing::info!(block_number=?update.block_number, "L1/L2 block hash match");
+                transaction
+                    .update_l1_l2_pointer(Some(update.block_number))
+                    .context("Updating L1-L2 pointer")?;
+                tracing::info!(block=?update.block_number, "Updated L1/L2 match");
             } else {
                 tracing::warn!(block_number=?update.block_number, L1=?update.block_hash, L2=?l2_hash, "L1/L2 block hash mismatch");
-                if let Some(matching_block_number) = RefsTable::get_l1_l2_head(&transaction)? {
+                if let Some(matching_block_number) = transaction.l1_l2_pointer()? {
                     tracing::warn!(block_number=?matching_block_number, "Most recent L1/L2 block hash match")
                 }
             }
@@ -533,7 +532,7 @@ async fn l2_update(
             .context("Insert state update into database")?;
 
         // Track combined L1 and L2 state.
-        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
+        let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
         let expected_next = l1_l2_head
             .map(|head| head + 1)
             .unwrap_or(BlockNumber::GENESIS);
@@ -544,7 +543,8 @@ async fn l2_update(
                 .context("Query L1 state")?
             {
                 if l1_state.block_hash == starknet_block.hash {
-                    RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
+                    transaction
+                        .update_l1_l2_pointer(Some(starknet_block.number))
                         .context("Update L1-L2 head")?;
                 }
             }
@@ -569,14 +569,16 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .context("Delete L2 blocks from database")?;
 
         // Track combined L1 and L2 state.
-        let l1_l2_head = RefsTable::get_l1_l2_head(&transaction).context("Query L1-L2 head")?;
+        let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
         match l1_l2_head {
             Some(head) if head >= reorg_tail => {
                 let new_head = match reorg_tail {
                     BlockNumber::GENESIS => None,
                     other => Some(other - 1),
                 };
-                RefsTable::set_l1_l2_head(&transaction, new_head).context("Update L1-L2 head")?;
+                transaction
+                    .update_l1_l2_pointer(new_head)
+                    .context("Update L1-L2 head")?;
             }
             _ => {}
         }
@@ -889,7 +891,7 @@ mod tests {
     };
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
-    use pathfinder_storage::{RefsTable, StarknetBlock, StarknetBlocksTable, Storage};
+    use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
     use primitive_types::H160;
     use stark_hash::Felt;
     use starknet_gateway_client::GatewayApi;
@@ -1107,7 +1109,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(300)).await;
 
             let tx = connection.transaction().unwrap();
-            RefsTable::get_l1_l2_head(&tx).unwrap()
+            tx.l1_l2_pointer().unwrap()
         }
 
         #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1256,7 +1258,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let tx = connection.transaction().unwrap();
-            RefsTable::get_l1_l2_head(&tx)
+            tx.l1_l2_pointer()
         })
         .collect::<futures::stream::FuturesOrdered<_>>()
         .try_collect::<Vec<_>>()
@@ -1319,7 +1321,7 @@ mod tests {
                 Ok(())
             };
 
-            RefsTable::set_l1_l2_head(&tx, Some(BlockNumber::new_or_panic(reorg_on_block)))
+            tx.update_l1_l2_pointer(Some(BlockNumber::new_or_panic(reorg_on_block)))
                 .unwrap();
             updates
                 .into_iter()
@@ -1362,7 +1364,7 @@ mod tests {
                 StarknetBlocksTable::get(&tx, pathfinder_storage::BlockId::Latest)
                     .unwrap()
                     .map(|s| s.number);
-            let head = RefsTable::get_l1_l2_head(&tx).unwrap();
+            let head = tx.l1_l2_pointer().unwrap();
             (head, latest_block_number)
         })
         .collect::<futures::stream::FuturesOrdered<_>>()

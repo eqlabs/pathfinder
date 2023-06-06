@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::BlockHash;
+use pathfinder_common::{BlockHash, BlockNumber};
 
 use crate::{prelude::*, BlockId};
 
@@ -26,4 +26,18 @@ pub(crate) fn block_hash(
             .context("Querying block hash by number"),
         BlockId::Hash(hash) => Ok(Some(hash)),
     }
+}
+
+pub(crate) fn block_is_l1_accepted(
+    tx: &Transaction<'_>,
+    block: BlockNumber,
+) -> anyhow::Result<bool> {
+    let l1_l2 = tx.l1_l2_pointer().context("Querying L1-L2 pointer")?;
+
+    let result = match l1_l2 {
+        Some(number) => number >= block,
+        None => false,
+    };
+
+    Ok(result)
 }

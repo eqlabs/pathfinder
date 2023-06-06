@@ -11,26 +11,6 @@ use pathfinder_common::{
 
 use crate::{prelude::*, BlockId};
 
-pub struct RefsTable {}
-
-impl RefsTable {
-    /// Returns the current L1-L2 head. This indicates the latest block for which L1 and L2 agree.
-    pub fn get_l1_l2_head(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
-        // This table always contains exactly one row.
-        tx.query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
-            row.get::<_, Option<_>>(0)
-        })
-        .map_err(|e| e.into())
-    }
-
-    /// Sets the current L1-L2 head. This should indicate the latest block for which L1 and L2 agree.
-    pub fn set_l1_l2_head(tx: &Transaction<'_>, head: Option<BlockNumber>) -> anyhow::Result<()> {
-        tx.execute("UPDATE refs SET l1_l2_head = ? WHERE idx = 1", [head])?;
-
-        Ok(())
-    }
-}
-
 /// Stores all known [StarknetBlocks][StarknetBlock].
 pub struct StarknetBlocksTable {}
 
@@ -600,42 +580,6 @@ mod tests {
                 ContractsStateTable::get_root_class_hash_and_nonce(&transaction, state_hash)
                     .unwrap();
             assert_eq!(result, Some((root, hash, nonce)));
-        }
-    }
-
-    mod refs {
-        use super::*;
-
-        mod l1_l2_head {
-            use super::*;
-
-            #[test]
-            fn fresh_is_none() {
-                let storage = Storage::in_memory().unwrap();
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-
-                let l1_l2_head = RefsTable::get_l1_l2_head(&tx).unwrap();
-                assert_eq!(l1_l2_head, None);
-            }
-
-            #[test]
-            fn set_get() {
-                let storage = Storage::in_memory().unwrap();
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-
-                let expected = Some(BlockNumber::new_or_panic(22));
-                RefsTable::set_l1_l2_head(&tx, expected).unwrap();
-                assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
-
-                let expected = Some(BlockNumber::new_or_panic(25));
-                RefsTable::set_l1_l2_head(&tx, expected).unwrap();
-                assert_eq!(expected, RefsTable::get_l1_l2_head(&tx).unwrap());
-
-                RefsTable::set_l1_l2_head(&tx, None).unwrap();
-                assert_eq!(None, RefsTable::get_l1_l2_head(&tx).unwrap());
-            }
         }
     }
 
