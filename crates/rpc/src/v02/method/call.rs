@@ -162,14 +162,20 @@ mod tests {
             }
         }
 
-        async fn test_context_with_call_handling() -> (RpcContext, tokio::task::JoinHandle<()>) {
+        async fn test_context_with_call_handling(
+        ) -> (tempfile::TempDir, RpcContext, tokio::task::JoinHandle<()>) {
             use pathfinder_common::ChainId;
 
-            let mut database_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            database_path.push("fixtures/mainnet.sqlite");
-            let storage =
-                pathfinder_storage::Storage::migrate(database_path.clone(), JournalMode::WAL)
-                    .unwrap();
+            let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            source_path.push("fixtures/mainnet.sqlite");
+
+            let db_dir = tempfile::TempDir::new().unwrap();
+            let mut db_path = PathBuf::from(db_dir.path());
+            db_path.push("mainnet.sqlite");
+
+            std::fs::copy(&source_path, &db_path).unwrap();
+
+            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
             let sync_state = Arc::new(crate::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
@@ -183,12 +189,16 @@ mod tests {
             let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
 
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
-            (context.with_call_handling(call_handle), cairo_handle)
+            (
+                db_dir,
+                context.with_call_handling(call_handle),
+                cairo_handle,
+            )
         }
 
         #[tokio::test]
         async fn no_such_block() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let (_temp_dir, context, _join_handle) = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: valid_mainnet_call(),
@@ -200,7 +210,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let (_temp_dir, context, _join_handle) = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: FunctionCall {
@@ -215,7 +225,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_message_selector() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let (_temp_dir, context, _join_handle) = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: FunctionCall {
@@ -230,7 +240,7 @@ mod tests {
 
         #[tokio::test]
         async fn successful_call() {
-            let (context, _join_handle) = test_context_with_call_handling().await;
+            let (_temp_dir, context, _join_handle) = test_context_with_call_handling().await;
 
             let input = CallInput {
                 request: valid_mainnet_call(),

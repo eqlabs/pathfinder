@@ -361,13 +361,17 @@ mod tests {
 
     #[test]
     fn rpc_test_db_is_migrated() {
-        let database = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..") // puts us in crates folder.
-            .join("rpc")
-            .join("fixtures")
-            .join("mainnet.sqlite");
+        let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        source_path.push("../rpc/fixtures/mainnet.sqlite");
 
-        let database = rusqlite::Connection::open(database).unwrap();
+        let db_dir = tempfile::TempDir::new().unwrap();
+        let mut db_path = PathBuf::from(db_dir.path());
+        db_path.push("mainnet.sqlite");
+
+        std::fs::copy(&source_path, &db_path).unwrap();
+
+        let mut database = rusqlite::Connection::open(db_path).unwrap();
+        migrate_database(&mut database).unwrap();
         let version = schema_version(&database).unwrap();
         let expected = schema::migrations().len();
 
