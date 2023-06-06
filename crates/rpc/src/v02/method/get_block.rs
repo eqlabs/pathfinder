@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockHash, BlockId, BlockNumber, StateCommitment};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
+use pathfinder_storage::StarknetBlocksTable;
 use serde::Deserialize;
 use stark_hash::Felt;
 
@@ -65,7 +65,7 @@ async fn get_block(
         }
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => pathfinder_storage::BlockId::Latest,
     };
 
     let storage = context.storage.clone();
@@ -95,7 +95,7 @@ async fn get_block(
 /// Fetches a [RawBlock](types::RawBlock) from storage.
 fn get_raw_block(
     transaction: &pathfinder_storage::Transaction<'_>,
-    block_id: StarknetBlocksBlockId,
+    block_id: pathfinder_storage::BlockId,
 ) -> Result<types::RawBlock, GetBlockError> {
     let block = StarknetBlocksTable::get(transaction, block_id)
         .context("Read block from database")?
@@ -135,9 +135,10 @@ fn get_block_transactions(
     block_number: BlockNumber,
     scope: types::BlockResponseScope,
 ) -> Result<types::Transactions, GetBlockError> {
-    let transactions_receipts =
-        StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
-            .context("Reading transactions from database")?;
+    let transactions_receipts = db_tx
+        .transaction_data_for_block(block_number.into())
+        .context("Reading transactions from database")?
+        .context("Transaction data missing for block")?;
 
     match scope {
         types::BlockResponseScope::TransactionHashes => Ok(types::Transactions::HashesOnly(

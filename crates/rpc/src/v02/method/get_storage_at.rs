@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
-use pathfinder_storage::StarknetBlocksBlockId;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -26,7 +25,7 @@ pub async fn get_storage_at(
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Pending => {
             match context
                 .pending_data
@@ -47,10 +46,10 @@ pub async fn get_storage_at(
 
                     match pending_value {
                         Some(value) => return Ok(GetStorageOutput(value)),
-                        None => StarknetBlocksBlockId::Latest,
+                        None => pathfinder_storage::BlockId::Latest,
                     }
                 }
-                None => StarknetBlocksBlockId::Latest,
+                None => pathfinder_storage::BlockId::Latest,
             }
         }
     };
@@ -72,13 +71,13 @@ pub async fn get_storage_at(
         }
 
         let value = match block_id {
-            StarknetBlocksBlockId::Number(number) => {
+            pathfinder_storage::BlockId::Number(number) => {
                 database::storage_at_block_number(&tx, input.contract_address, input.key, number)
             }
-            StarknetBlocksBlockId::Hash(hash) => {
+            pathfinder_storage::BlockId::Hash(hash) => {
                 database::storage_at_block_hash(&tx, input.contract_address, input.key, hash)
             }
-            StarknetBlocksBlockId::Latest => {
+            pathfinder_storage::BlockId::Latest => {
                 database::storage_at_latest(&tx, input.contract_address, input.key)
             }
         }?;
@@ -159,15 +158,15 @@ mod database {
     pub fn contract_exists(
         tx: &Transaction<'_>,
         contract_address: ContractAddress,
-        block_id: StarknetBlocksBlockId,
+        block_id: pathfinder_storage::BlockId,
     ) -> anyhow::Result<bool> {
         match block_id {
-            StarknetBlocksBlockId::Number(number) => tx.query_row(
+            pathfinder_storage::BlockId::Number(number) => tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= ?)",
                 params![contract_address, number],
                 |row| row.get(0),
             ),
-            StarknetBlocksBlockId::Hash(hash) => tx.query_row(
+            pathfinder_storage::BlockId::Hash(hash) => tx.query_row(
                 r"SELECT EXISTS(
                     SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= (
                         SELECT number FROM canonical_blocks WHERE hash = ?
@@ -176,7 +175,7 @@ mod database {
                 params![contract_address, hash],
                 |row| row.get(0),
             ),
-            StarknetBlocksBlockId::Latest => tx.query_row(
+            pathfinder_storage::BlockId::Latest => tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ?)",
                 [contract_address],
                 |row| row.get(0),

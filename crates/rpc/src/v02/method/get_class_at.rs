@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use pathfinder_storage::StarknetBlocksBlockId;
 use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
 
@@ -22,7 +21,7 @@ pub async fn get_class_at(
     let block_id = match input.block_id {
         BlockId::Number(number) => number.into(),
         BlockId::Hash(hash) => hash.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Pending => {
             match get_pending_class_hash(context.pending_data, input.contract_address).await {
                 Some(class) => {
@@ -49,7 +48,7 @@ pub async fn get_class_at(
                         .context("Reading class definition from database")??;
                     return Ok(class);
                 }
-                None => StarknetBlocksBlockId::Latest,
+                None => pathfinder_storage::BlockId::Latest,
             }
         }
     };
@@ -68,13 +67,13 @@ pub async fn get_class_at(
         }
 
         let compressed_definition = match block_id {
-            StarknetBlocksBlockId::Number(number) => {
+            pathfinder_storage::BlockId::Number(number) => {
                 database::definition_at_block_number(&tx, input.contract_address, number)
             }
-            StarknetBlocksBlockId::Hash(hash) => {
+            pathfinder_storage::BlockId::Hash(hash) => {
                 database::definition_at_block_hash(&tx, input.contract_address, hash)
             }
-            StarknetBlocksBlockId::Latest => {
+            pathfinder_storage::BlockId::Latest => {
                 database::definition_at_latest_block(&tx, input.contract_address)
             }
         }?

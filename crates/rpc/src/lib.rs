@@ -171,8 +171,7 @@ pub mod test_utils {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        CanonicalBlocksTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable,
-        StarknetTransactionsTable, Storage,
+        BlockId, CanonicalBlocksTable, StarknetBlock, StarknetBlocksTable, Storage,
     };
     use primitive_types::H256;
     use stark_hash::Felt;
@@ -490,11 +489,14 @@ pub mod test_utils {
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
         let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
-        StarknetTransactionsTable::upsert(&db_txn, block0.hash, block0.number, &transaction_data0)
+        db_txn
+            .insert_transaction_data(block0.hash, block0.number, &transaction_data0)
             .unwrap();
-        StarknetTransactionsTable::upsert(&db_txn, block1.hash, block1.number, &transaction_data1)
+        db_txn
+            .insert_transaction_data(block1.hash, block1.number, &transaction_data1)
             .unwrap();
-        StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
+        db_txn
+            .insert_transaction_data(block2.hash, block2.number, &transaction_data2)
             .unwrap();
 
         db_txn
@@ -523,7 +525,7 @@ pub mod test_utils {
             let mut db = storage2.connection().unwrap();
             let tx = db.transaction().unwrap();
 
-            StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+            StarknetBlocksTable::get(&tx, BlockId::Latest)
                 .unwrap()
                 .expect("Storage should contain a latest block")
         })

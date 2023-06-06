@@ -4,7 +4,7 @@ use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, ContractNonce, StateCommitment,
 };
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
+use pathfinder_storage::{BlockId, StarknetBlocksTable};
 use primitive_types::H160;
 use serde::Deserialize;
 use stark_hash::Felt;
@@ -72,21 +72,21 @@ async fn serve() -> anyhow::Result<()> {
         block_hash: Option<BlockHash>,
     }
 
-    impl TryInto<StarknetBlocksBlockId> for BlockIdParam {
+    impl TryInto<BlockId> for BlockIdParam {
         type Error = ();
 
-        fn try_into(self) -> Result<StarknetBlocksBlockId, Self::Error> {
+        fn try_into(self) -> Result<BlockId, Self::Error> {
             if let Some(n) = self.block_number {
                 if n == "latest" {
-                    return Ok(StarknetBlocksBlockId::Latest);
+                    return Ok(BlockId::Latest);
                 } else {
                     let n: u64 = n.parse().map_err(|_| ())?;
-                    return Ok(StarknetBlocksBlockId::Number(BlockNumber::new_or_panic(n)));
+                    return Ok(BlockId::Number(BlockNumber::new_or_panic(n)));
                 }
             }
 
             if let Some(h) = self.block_hash {
-                return Ok(StarknetBlocksBlockId::Hash(h));
+                return Ok(BlockId::Hash(h));
             }
             Err(())
         }
@@ -254,7 +254,7 @@ fn contract_addresses(chain: Chain) -> anyhow::Result<ContractAddresses> {
 
 fn resolve_block(
     tx: &pathfinder_storage::Transaction<'_>,
-    block_id: StarknetBlocksBlockId,
+    block_id: BlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::Block> {
     let block =
         pathfinder_storage::StarknetBlocksTable::get(tx, block_id)?.context("Fetching block")?;
@@ -270,9 +270,10 @@ fn resolve_block(
         }
     };
 
-    let transactions_receipts =
-        StarknetTransactionsTable::get_transaction_data_for_block(tx, block.number.into())
-            .context("Reading transactions from database")?;
+    let transactions_receipts = tx
+        .transaction_data_for_block(block.number.into())
+        .context("Reading transactions from database")?
+        .context("Transaction data missing")?;
 
     let (transactions, transaction_receipts): (Vec<_>, Vec<_>) =
         transactions_receipts.into_iter().unzip();
@@ -312,7 +313,7 @@ fn get_block_status(
 
 fn resolve_state_update(
     tx: &pathfinder_storage::Transaction<'_>,
-    block: StarknetBlocksBlockId,
+    block: BlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
     use pathfinder_common::{CasmHash, SierraHash, StorageAddress, StorageValue};
     use starknet_gateway_types::reply::{state_update::StateDiff, StateUpdate};
@@ -493,7 +494,7 @@ fn resolve_state_update(
 
 fn block_info(
     tx: &pathfinder_storage::Transaction<'_>,
-    block: StarknetBlocksBlockId,
+    block: BlockId,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
     let block = StarknetBlocksTable::get(tx, block)?;
     Ok(match block {
@@ -503,7 +504,7 @@ fn block_info(
                 Some(StateCommitment(Felt::ZERO))
             } else {
                 let previous_block_number = BlockNumber::new_or_panic(block.number.get() - 1);
-                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
+                StarknetBlocksTable::get(tx, BlockId::Number(previous_block_number))?
                     .map(|b| b.state_commmitment)
             };
 

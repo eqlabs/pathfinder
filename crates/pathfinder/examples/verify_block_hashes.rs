@@ -1,9 +1,7 @@
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, StarknetVersion};
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
-use pathfinder_storage::{
-    JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
-};
+use pathfinder_storage::{JournalMode, StarknetBlocksTable, Storage};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::{Block, Status};
 
@@ -39,10 +37,11 @@ fn main() -> anyhow::Result<()> {
 
     for block_number in 0..latest_block_number.get() {
         let tx = db.transaction().unwrap();
-        let block_id = StarknetBlocksBlockId::Number(BlockNumber::new_or_panic(block_number));
+        let block_id = pathfinder_storage::BlockId::Number(BlockNumber::new_or_panic(block_number));
         let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
-        let transactions_and_receipts =
-            StarknetTransactionsTable::get_transaction_data_for_block(&tx, block_id)?;
+        let transactions_and_receipts = tx
+            .transaction_data_for_block(block_id)?
+            .context("Transaction data missing")?;
         drop(tx);
 
         let block_hash = block.hash;

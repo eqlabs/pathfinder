@@ -5,6 +5,7 @@
 // This is intended for internal use only -- do not make public.
 mod prelude;
 
+mod block;
 mod class;
 mod connection;
 pub mod event;
@@ -16,6 +17,7 @@ mod state_update;
 pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
+mod transaction;
 mod trie;
 pub mod types;
 
@@ -23,11 +25,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use connection::*;
+use pathfinder_common::{BlockHash, BlockNumber};
 use rusqlite::functions::FunctionFlags;
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable,
-    StarknetBlock, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest, StarknetBlocksTable,
-    StarknetTransactionsTable,
+    StarknetBlock, StarknetBlocksNumberOrLatest, StarknetBlocksTable,
 };
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
@@ -44,6 +46,29 @@ const VERSION_KEY: &str = "user_version";
 pub enum JournalMode {
     Rollback,
     WAL,
+}
+
+/// Identifies a specific starknet block stored in the database.
+///
+/// Note that this excludes the `Pending` variant since we never store pending data
+/// in the database.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BlockId {
+    Latest,
+    Number(BlockNumber),
+    Hash(BlockHash),
+}
+
+impl From<BlockHash> for BlockId {
+    fn from(value: BlockHash) -> Self {
+        Self::Hash(value)
+    }
+}
+
+impl From<BlockNumber> for BlockId {
+    fn from(value: BlockNumber) -> Self {
+        Self::Number(value)
+    }
 }
 
 /// Used to create [Connection's](Connection) to the pathfinder database.

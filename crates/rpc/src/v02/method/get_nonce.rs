@@ -22,17 +22,15 @@ pub async fn get_nonce(
     context: RpcContext,
     input: GetNonceInput,
 ) -> Result<GetNonceOutput, GetNonceError> {
-    use pathfinder_storage::StarknetBlocksBlockId;
-
     // We can potentially read the nonce from pending without having to reach out to the database.
     let block_id = match input.block_id {
         BlockId::Pending => {
             match get_pending_nonce(&context.pending_data, input.contract_address).await {
                 Some(nonce) => return Ok(GetNonceOutput(nonce)),
-                None => StarknetBlocksBlockId::Latest,
+                None => pathfinder_storage::BlockId::Latest,
             }
         }
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
     };
@@ -49,7 +47,7 @@ pub async fn get_nonce(
         let tx = db.transaction().context("Creating database transaction")?;
 
         let nonce = match block_id {
-            StarknetBlocksBlockId::Number(block_number) => {
+            pathfinder_storage::BlockId::Number(block_number) => {
                 // check that block exists
                 let latest = StarknetBlocksTable::get_latest_number(&tx)
                     .context("Querying latest block number")?
@@ -67,7 +65,7 @@ pub async fn get_nonce(
                     }
                 }
             }
-            StarknetBlocksBlockId::Hash(block_hash) => {
+            pathfinder_storage::BlockId::Hash(block_hash) => {
                 // Get the block number from the hash.
                 let block_number = StarknetBlocksTable::get_number(&tx, block_hash)
                     .context("Fetching block number")?
@@ -82,7 +80,7 @@ pub async fn get_nonce(
                     }
                 }
             }
-            StarknetBlocksBlockId::Latest => {
+            pathfinder_storage::BlockId::Latest => {
                 match database::get_nonce_at_latest(&tx, contract_address)? {
                     Some(nonce) => Ok(nonce),
                     None => database::contract_exists_at_latest(&tx, contract_address)?

@@ -1,6 +1,6 @@
 use crate::event::EmittedEvent;
 
-use super::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage};
+use super::{StarknetBlock, StarknetBlocksTable, Storage};
 use pathfinder_common::{
     felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
     ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
@@ -213,8 +213,7 @@ pub fn setup_test_storage() -> (Storage, TestData) {
         )
         .unwrap();
         CanonicalBlocksTable::insert(&tx, block.block.number, block.block.hash).unwrap();
-        StarknetTransactionsTable::upsert(
-            &tx,
+        tx.insert_transaction_data(
             block.block.hash,
             block.block.number,
             &transactions_and_receipts

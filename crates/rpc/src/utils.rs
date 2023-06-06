@@ -1,25 +1,22 @@
-use pathfinder_storage::StarknetBlocksBlockId;
+use pathfinder_storage::BlockId;
 
-/// Returns true if the given [block ID](StarknetBlocksBlockId) is part of the canonical block chain.
-pub fn block_exists(
-    tx: &rusqlite::Transaction<'_>,
-    block_id: StarknetBlocksBlockId,
-) -> anyhow::Result<bool> {
+/// Returns true if the given [block ID](BlockId) is part of the canonical block chain.
+pub fn block_exists(tx: &rusqlite::Transaction<'_>, block_id: BlockId) -> anyhow::Result<bool> {
     use anyhow::Context;
     use rusqlite::params;
 
     match block_id {
-        StarknetBlocksBlockId::Number(number) => tx.query_row(
+        BlockId::Number(number) => tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)",
             params![number],
             |row| row.get(0),
         ),
-        StarknetBlocksBlockId::Hash(hash) => tx.query_row(
+        BlockId::Hash(hash) => tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)",
             params![hash],
             |row| row.get(0),
         ),
-        StarknetBlocksBlockId::Latest => return Ok(true),
+        BlockId::Latest => return Ok(true),
     }
     .context("Querying block exists")
 }
@@ -33,7 +30,7 @@ mod tests {
     mod block_exists {
         use super::*;
 
-        fn run_test<B: Into<StarknetBlocksBlockId>>(block: B) -> bool {
+        fn run_test<B: Into<BlockId>>(block: B) -> bool {
             let context = RpcContext::for_tests();
             let mut conn = context.storage.connection().unwrap();
             let tx = conn.transaction().unwrap();
@@ -43,7 +40,7 @@ mod tests {
 
         #[test]
         fn latest() {
-            assert!(run_test(StarknetBlocksBlockId::Latest));
+            assert!(run_test(BlockId::Latest));
         }
 
         #[test]

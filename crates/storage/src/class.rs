@@ -86,7 +86,6 @@ fn intern_compiler_version(
         // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
         // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
         // read back with last_insert_rowid
-        
 
         transaction
             .query_row(

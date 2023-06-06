@@ -6,7 +6,7 @@ use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, ClassHash, ContractAddress, StateCommitment, StorageAddress,
     StorageValue,
 };
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
+use pathfinder_storage::StarknetBlocksTable;
 use stark_hash::Felt;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -35,7 +35,7 @@ pub async fn get_state_update(
                 None => return Err(GetStateUpdateError::BlockNotFound),
             }
         }
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
     };
@@ -59,7 +59,7 @@ pub async fn get_state_update(
 
 pub(crate) fn block_info(
     tx: &pathfinder_storage::Transaction<'_>,
-    block: StarknetBlocksBlockId,
+    block: pathfinder_storage::BlockId,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
     let block = StarknetBlocksTable::get(tx, block)?;
     Ok(match block {
@@ -69,8 +69,11 @@ pub(crate) fn block_info(
                 Some(StateCommitment(Felt::ZERO))
             } else {
                 let previous_block_number = BlockNumber::new_or_panic(block.number.get() - 1);
-                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
-                    .map(|b| b.state_commmitment)
+                StarknetBlocksTable::get(
+                    tx,
+                    pathfinder_storage::BlockId::Number(previous_block_number),
+                )?
+                .map(|b| b.state_commmitment)
             };
 
             old_root.map(|old_root| (block.number, block.hash, block.state_commmitment, old_root))
@@ -80,7 +83,7 @@ pub(crate) fn block_info(
 
 fn get_state_update_from_storage(
     tx: &pathfinder_storage::Transaction<'_>,
-    block: StarknetBlocksBlockId,
+    block: pathfinder_storage::BlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
     let (number, block_hash, new_root, old_root) =
         block_info(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;

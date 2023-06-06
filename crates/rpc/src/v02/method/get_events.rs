@@ -154,7 +154,7 @@ pub async fn get_events(
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
         // for errors related to query parameters.
-        let page = transaction.get_events(&filter).map_err(|e| {
+        let page = transaction.events(&filter).map_err(|e| {
             if e.downcast_ref::<EventFilterError>().is_some() {
                 GetEventsError::PageSizeTooBig
             } else {

@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use pathfinder_storage::StarknetBlocksBlockId;
 use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassHashAtError: BlockNotFound, ContractNotFound);
@@ -24,11 +23,11 @@ pub async fn get_class_hash_at(
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Pending => {
             match get_pending_class_hash(context.pending_data, input.contract_address).await {
                 Some(class_hash) => return Ok(GetClassHashOutput(class_hash)),
-                None => StarknetBlocksBlockId::Latest,
+                None => pathfinder_storage::BlockId::Latest,
             }
         }
     };
@@ -49,13 +48,13 @@ pub async fn get_class_hash_at(
         }
 
         match block_id {
-            StarknetBlocksBlockId::Number(number) => {
+            pathfinder_storage::BlockId::Number(number) => {
                 database::class_hash_at_block_number(&tx, input.contract_address, number)
             }
-            StarknetBlocksBlockId::Hash(hash) => {
+            pathfinder_storage::BlockId::Hash(hash) => {
                 database::class_hash_at_block_hash(&tx, input.contract_address, hash)
             }
-            StarknetBlocksBlockId::Latest => {
+            pathfinder_storage::BlockId::Latest => {
                 database::class_hash_at_latest_block(&tx, input.contract_address)
             }
         }?

@@ -6,9 +6,7 @@ use pathfinder_lib::state::block_hash::{
     calculate_event_commitment, calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
-use pathfinder_storage::{
-    JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
-};
+use pathfinder_storage::{BlockId, JournalMode, StarknetBlocksTable, Storage};
 
 /// Calculate transaction and event commitments for blocks.
 ///
@@ -44,12 +42,13 @@ fn main() -> anyhow::Result<()> {
         let tx = db.transaction().unwrap();
 
         let now = Instant::now();
-        let block_id = StarknetBlocksBlockId::Number(BlockNumber::new_or_panic(block_number));
+        let block_id = BlockId::Number(BlockNumber::new_or_panic(block_number));
         let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
         let version = StarknetBlocksTable::get_version(&tx, block_id)?;
 
-        let transactions_and_receipts =
-            StarknetTransactionsTable::get_transaction_data_for_block(&tx, block_id)?;
+        let transactions_and_receipts = tx
+            .transaction_data_for_block(block_id)?
+            .context("Transaction data for block not found")?;
         let (transactions, receipts): (Vec<_>, Vec<_>) =
             transactions_and_receipts.into_iter().unzip();
         let read_ms = now.elapsed().as_millis();
@@ -65,12 +64,19 @@ fn main() -> anyhow::Result<()> {
 
         let now = Instant::now();
         if overwrite {
-            StarknetTransactionsTable::update_block_commitments(
-                &tx,
-                block_id,
-                transaction_commitment,
-                event_commitment,
-            )?;
+            let sql = r"UPDATE starknet_blocks SET
+            transaction_commitment = :transaction_commitment,
+            event_commitment = :event_commitment
+        WHERE hash = :block_hash";
+            tx.execute(
+                sql,
+                rusqlite::named_params![
+                    ":transaction_commitment": &transaction_commitment,
+                    ":event_commitment": &event_commitment,
+                    ":block_hash": &block.hash,
+                ],
+            )
+            .context("Update transaction and event commitments")?;
             tx.commit().context("Commit the transaction")?;
         }
         let write_ms = now.elapsed().as_millis();

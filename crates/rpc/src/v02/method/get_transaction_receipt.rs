@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::v02::common::get_block_status;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable};
+use pathfinder_storage::StarknetBlocksTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionReceiptInput {
@@ -46,11 +46,9 @@ pub async fn get_transaction_receipt(
 
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        match StarknetTransactionsTable::get_transaction_with_receipt(
-            &db_tx,
-            input.transaction_hash,
-        )
-        .context("Reading transaction receipt from database")?
+        match db_tx
+            .transaction_with_receipt(input.transaction_hash)
+            .context("Reading transaction receipt from database")?
         {
             Some((transaction, receipt, block_hash)) => {
                 // We require the block status here as well..

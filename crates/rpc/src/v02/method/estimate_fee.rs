@@ -341,7 +341,7 @@ pub(crate) mod tests {
 
             let storage_commitment = StarknetBlocksTable::get_storage_commitment(
                 &db_txn,
-                pathfinder_storage::StarknetBlocksBlockId::Latest,
+                pathfinder_storage::BlockId::Latest,
             )
             .unwrap()
             .unwrap();

@@ -6,12 +6,11 @@ use pathfinder_common::{
     },
     BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ClassHash, ContractNonce,
     ContractRoot, ContractStateHash, EventCommitment, GasPrice, SequencerAddress, StateCommitment,
-    StorageCommitment, TransactionCommitment, TransactionHash,
+    StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
-use starknet_gateway_types::reply::transaction;
 
-use crate::prelude::*;
+use crate::{prelude::*, BlockId};
 
 /// Contains the [L1 Starknet update logs](EthereumStateUpdate).
 pub struct L1StateTable {}
@@ -198,29 +197,26 @@ impl StarknetBlocksTable {
     }
 
     /// Returns the requested [StarknetBlock].
-    pub fn get(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<Option<StarknetBlock>> {
+    pub fn get(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<Option<StarknetBlock>> {
         let mut statement = match block {
-            StarknetBlocksBlockId::Number(_) => tx.prepare(
+            BlockId::Number(_) => tx.prepare(
                 "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
                     FROM starknet_blocks WHERE number = ?",
             ),
-            StarknetBlocksBlockId::Hash(_) => tx.prepare(
+            BlockId::Hash(_) => tx.prepare(
                 "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
                     FROM starknet_blocks WHERE hash = ?",
             ),
-            StarknetBlocksBlockId::Latest => tx.prepare(
+            BlockId::Latest => tx.prepare(
                 "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
                     FROM starknet_blocks ORDER BY number DESC LIMIT 1",
             ),
         }?;
 
         let mut rows = match block {
-            StarknetBlocksBlockId::Number(number) => statement.query([number]),
-            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
-            StarknetBlocksBlockId::Latest => statement.query([]),
+            BlockId::Number(number) => statement.query([number]),
+            BlockId::Hash(hash) => statement.query([hash]),
+            BlockId::Latest => statement.query([]),
         }?;
 
         let row = rows.next().context("Iterate rows")?;
@@ -269,20 +265,20 @@ impl StarknetBlocksTable {
     /// Returns the [storage_commitment](StorageCommitment) of the given block.
     pub fn get_storage_commitment(
         tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
+        block: BlockId,
     ) -> anyhow::Result<Option<StorageCommitment>> {
         match block {
-            StarknetBlocksBlockId::Number(number) => tx.query_row(
+            BlockId::Number(number) => tx.query_row(
                 "SELECT root FROM starknet_blocks WHERE number = ?",
                 [number],
                 |row| row.get(0),
             ),
-            StarknetBlocksBlockId::Hash(hash) => tx.query_row(
+            BlockId::Hash(hash) => tx.query_row(
                 "SELECT root FROM starknet_blocks WHERE hash = ?",
                 [hash],
                 |row| row.get(0),
             ),
-            StarknetBlocksBlockId::Latest => tx.query_row(
+            BlockId::Latest => tx.query_row(
                 "SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1",
                 [],
                 |row| row.get(0),
@@ -295,24 +291,24 @@ impl StarknetBlocksTable {
     /// Returns the state commitment of the given block.
     pub fn get_state_commitment(
         tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
+        block: BlockId,
     ) -> anyhow::Result<Option<(StorageCommitment, ClassCommitment)>> {
         let mut statement = match block {
-            StarknetBlocksBlockId::Number(_) => {
+            BlockId::Number(_) => {
                 tx.prepare("SELECT root, class_commitment FROM starknet_blocks WHERE number = ?")
             }
-            StarknetBlocksBlockId::Hash(_) => {
+            BlockId::Hash(_) => {
                 tx.prepare("SELECT root, class_commitment FROM starknet_blocks WHERE hash = ?")
             }
-            StarknetBlocksBlockId::Latest => tx.prepare(
+            BlockId::Latest => tx.prepare(
                 "SELECT root, class_commitment FROM starknet_blocks ORDER BY number DESC LIMIT 1",
             ),
         }?;
 
         let mut rows = match block {
-            StarknetBlocksBlockId::Number(number) => statement.query([number]),
-            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
-            StarknetBlocksBlockId::Latest => statement.query([]),
+            BlockId::Number(number) => statement.query([number]),
+            BlockId::Hash(hash) => statement.query([hash]),
+            BlockId::Latest => statement.query([]),
         }?;
 
         let row = rows.next().context("Iterate rows")?;
@@ -331,12 +327,9 @@ impl StarknetBlocksTable {
     }
 
     /// Returns the version of the given block.
-    pub fn get_version(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<StarknetVersion> {
+    pub fn get_version(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<StarknetVersion> {
         let mut statement = match block {
-            StarknetBlocksBlockId::Number(_) => tx.prepare(
+            BlockId::Number(_) => tx.prepare(
                 r"
                     SELECT
                         version
@@ -348,7 +341,7 @@ impl StarknetBlocksTable {
                         starknet_blocks.number = ?
                 ",
             ),
-            StarknetBlocksBlockId::Hash(_) => tx.prepare(
+            BlockId::Hash(_) => tx.prepare(
                 r"
                     SELECT
                         version
@@ -360,7 +353,7 @@ impl StarknetBlocksTable {
                         starknet_blocks.hash = ?
                 ",
             ),
-            StarknetBlocksBlockId::Latest => tx.prepare(
+            BlockId::Latest => tx.prepare(
                 r"
                     SELECT
                         version
@@ -377,9 +370,9 @@ impl StarknetBlocksTable {
         }?;
 
         let mut rows = match block {
-            StarknetBlocksBlockId::Number(number) => statement.query([number]),
-            StarknetBlocksBlockId::Hash(hash) => statement.query([hash]),
-            StarknetBlocksBlockId::Latest => statement.query([]),
+            BlockId::Number(number) => statement.query([number]),
+            BlockId::Hash(hash) => statement.query([hash]),
+            BlockId::Latest => statement.query([]),
         }?;
 
         let row = rows.next().context("Iterate rows")?;
@@ -485,26 +478,6 @@ impl StarknetBlocksTable {
 
 /// Identifies block in some [StarknetBlocksTable] queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StarknetBlocksBlockId {
-    Number(BlockNumber),
-    Hash(BlockHash),
-    Latest,
-}
-
-impl From<BlockNumber> for StarknetBlocksBlockId {
-    fn from(number: BlockNumber) -> Self {
-        StarknetBlocksBlockId::Number(number)
-    }
-}
-
-impl From<BlockHash> for StarknetBlocksBlockId {
-    fn from(hash: BlockHash) -> Self {
-        StarknetBlocksBlockId::Hash(hash)
-    }
-}
-
-/// Identifies block in some [StarknetBlocksTable] queries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StarknetBlocksNumberOrLatest {
     Number(BlockNumber),
     Latest,
@@ -520,313 +493,14 @@ impl From<BlockNumber> for StarknetBlocksNumberOrLatest {
 #[error("expected starknet block number or `latest`, got starknet block hash {0}")]
 pub struct FromStarknetBlocksBlockIdError(BlockHash);
 
-impl TryFrom<StarknetBlocksBlockId> for StarknetBlocksNumberOrLatest {
+impl TryFrom<BlockId> for StarknetBlocksNumberOrLatest {
     type Error = FromStarknetBlocksBlockIdError;
 
-    fn try_from(value: StarknetBlocksBlockId) -> Result<Self, Self::Error> {
+    fn try_from(value: BlockId) -> Result<Self, Self::Error> {
         match value {
-            StarknetBlocksBlockId::Number(n) => Ok(Self::Number(n)),
-            StarknetBlocksBlockId::Hash(h) => Err(FromStarknetBlocksBlockIdError(h)),
-            StarknetBlocksBlockId::Latest => Ok(Self::Latest),
-        }
-    }
-}
-
-/// Stores all known starknet transactions
-pub struct StarknetTransactionsTable {}
-
-impl StarknetTransactionsTable {
-    /// Inserts a Starknet block's transactions and transaction receipts into the [StarknetTransactionsTable].
-    ///
-    /// overwrites existing data if the transaction hash already exists.
-    pub fn upsert(
-        tx: &Transaction<'_>,
-        block_hash: BlockHash,
-        block_number: BlockNumber,
-        transaction_data: &[(transaction::Transaction, transaction::Receipt)],
-    ) -> anyhow::Result<()> {
-        if transaction_data.is_empty() {
-            return Ok(());
-        }
-
-        let mut compressor = zstd::bulk::Compressor::new(10).context("Create zstd compressor")?;
-        for (i, (transaction, receipt)) in transaction_data.iter().enumerate() {
-            // Serialize and compress transaction data.
-            let tx_data =
-                serde_json::ser::to_vec(&transaction).context("Serialize Starknet transaction")?;
-            let tx_data = compressor
-                .compress(&tx_data)
-                .context("Compress Starknet transaction")?;
-
-            let serialized_receipt = serde_json::ser::to_vec(&receipt)
-                .context("Serialize Starknet transaction receipt")?;
-            let serialized_receipt = compressor
-                .compress(&serialized_receipt)
-                .context("Compress Starknet transaction receipt")?;
-
-            tx.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
-                       named_params![
-                    ":hash": &transaction.hash(),
-                    ":idx": &i,
-                    ":block_hash": &block_hash,
-                    ":tx": &tx_data,
-                    ":receipt": &serialized_receipt,
-                ]).context("Insert transaction data into transactions table")?;
-
-            // insert events from receipt
-            tx.insert_events(block_number, receipt.transaction_hash, &receipt.events)
-                .context("Inserting events")?;
-        }
-
-        Ok(())
-    }
-
-    pub fn update_block_commitments(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
-        transaction_commitment: TransactionCommitment,
-        event_commitment: EventCommitment,
-    ) -> anyhow::Result<()> {
-        let block_hash = match Self::get_block_hash(tx, block)? {
-            Some(hash) => hash,
-            None => return Ok(()),
-        };
-
-        let sql = r"UPDATE starknet_blocks SET
-                transaction_commitment = :transaction_commitment,
-                event_commitment = :event_commitment
-            WHERE hash = :block_hash";
-        tx.execute(
-            sql,
-            named_params![
-                ":transaction_commitment": &transaction_commitment,
-                ":event_commitment": &event_commitment,
-                ":block_hash": &block_hash,
-            ],
-        )
-        .context("Update transaction and event commitments")?;
-
-        Ok(())
-    }
-
-    fn get_block_hash(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<Option<BlockHash>> {
-        Ok(match block {
-            StarknetBlocksBlockId::Hash(hash) => Some(hash),
-            StarknetBlocksBlockId::Number(number) => {
-                StarknetBlocksTable::get(tx, number.into())?.map(|block| block.hash)
-            }
-            StarknetBlocksBlockId::Latest => {
-                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)?.map(|block| block.hash)
-            }
-        })
-    }
-
-    pub fn get_transaction_data_for_block(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<Vec<(transaction::Transaction, transaction::Receipt)>> {
-        let block_hash = match Self::get_block_hash(tx, block)? {
-            Some(hash) => hash,
-            None => return Ok(Vec::new()),
-        };
-
-        let mut stmt = tx
-            .prepare(
-                "SELECT tx, receipt FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC",
-            )
-            .context("Preparing statement")?;
-
-        let mut rows = stmt.query([block_hash]).context("Executing query")?;
-
-        let mut data = Vec::new();
-        while let Some(row) = rows.next()? {
-            let receipt = row
-                .get_ref_unwrap("receipt")
-                .as_blob_or_null()?
-                .context("Receipt data missing")?;
-            let receipt = zstd::decode_all(receipt).context("Decompressing transaction receipt")?;
-            let receipt =
-                serde_json::from_slice(&receipt).context("Deserializing transaction receipt")?;
-
-            let transaction = row
-                .get_ref_unwrap("tx")
-                .as_blob_or_null()?
-                .context("Transaction data missing")?;
-            let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
-            let transaction =
-                serde_json::from_slice(&transaction).context("Deserializing transaction")?;
-
-            data.push((transaction, receipt));
-        }
-
-        Ok(data)
-    }
-
-    pub fn get_transactions_for_latest_block(
-        sqlite_tx: &Transaction<'_>,
-    ) -> anyhow::Result<Vec<transaction::Transaction>> {
-        let mut stmt = sqlite_tx
-            .prepare(
-                r"SELECT tx FROM starknet_transactions
-                  WHERE starknet_transactions.block_hash =
-                    (SELECT hash FROM starknet_blocks b WHERE b.number = (SELECT MAX(number) FROM starknet_blocks))
-                  ORDER BY starknet_transactions.idx",
-            )
-            .context("Preparing statement")?;
-
-        let mut rows = stmt.query([]).context("Executing query")?;
-
-        let mut data = Vec::new();
-        while let Some(row) = rows.next()? {
-            let starknet_tx = row
-                .get_ref_unwrap("tx")
-                .as_blob_or_null()?
-                .context("Transaction data missing")?;
-            let starknet_tx = zstd::decode_all(starknet_tx).context("Decompressing transaction")?;
-            let starknet_tx =
-                serde_json::from_slice(&starknet_tx).context("Deserializing transaction")?;
-
-            data.push(starknet_tx);
-        }
-
-        Ok(data)
-    }
-
-    pub fn get_transaction_at_block(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
-        index: usize,
-    ) -> anyhow::Result<Option<transaction::Transaction>> {
-        // Identify block hash
-        let block_hash = match block {
-            StarknetBlocksBlockId::Number(number) => {
-                match StarknetBlocksTable::get(tx, number.into())? {
-                    Some(block) => block.hash,
-                    None => return Ok(None),
-                }
-            }
-            StarknetBlocksBlockId::Hash(hash) => hash,
-            StarknetBlocksBlockId::Latest => {
-                match StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)? {
-                    Some(block) => block.hash,
-                    None => return Ok(None),
-                }
-            }
-        };
-
-        let mut stmt = tx
-            .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? AND idx = ?")
-            .context("Preparing statement")?;
-
-        let mut rows = stmt
-            .query(params![&block_hash, &index])
-            .context("Executing query")?;
-
-        let row = match rows.next()? {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let transaction = match row.get_ref_unwrap(0).as_blob_or_null()? {
-            Some(data) => data,
-            None => return Ok(None),
-        };
-
-        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
-        let transaction =
-            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
-
-        Ok(Some(transaction))
-    }
-
-    pub fn get_transaction(
-        tx: &Transaction<'_>,
-        transaction: TransactionHash,
-    ) -> anyhow::Result<Option<transaction::Transaction>> {
-        let mut stmt = tx
-            .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?1")
-            .context("Preparing statement")?;
-
-        let mut rows = stmt.query([transaction]).context("Executing query")?;
-
-        let row = match rows.next()? {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let transaction = row.get_ref_unwrap(0).as_blob()?;
-        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
-        let transaction =
-            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
-
-        Ok(Some(transaction))
-    }
-
-    pub fn get_transaction_with_receipt(
-        tx: &Transaction<'_>,
-        txn_hash: TransactionHash,
-    ) -> anyhow::Result<Option<(transaction::Transaction, transaction::Receipt, BlockHash)>> {
-        let mut stmt = tx
-            .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
-            .context("Preparing statement")?;
-
-        let mut rows = stmt.query([txn_hash]).context("Executing query")?;
-
-        let row = match rows.next()? {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let transaction = row.get_ref_unwrap("tx").as_blob()?;
-        let transaction = zstd::decode_all(transaction).context("Decompressing transaction")?;
-        let transaction =
-            serde_json::from_slice(&transaction).context("Deserializing transaction")?;
-
-        let receipt = match row.get_ref_unwrap("receipt").as_blob_or_null()? {
-            Some(data) => data,
-            None => return Ok(None),
-        };
-        let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
-        let receipt = serde_json::from_slice(&receipt).context("Deserializing receipt")?;
-
-        let block_hash = row.get_unwrap("block_hash");
-
-        Ok(Some((transaction, receipt, block_hash)))
-    }
-
-    pub fn get_transaction_count(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksBlockId,
-    ) -> anyhow::Result<usize> {
-        match block {
-            StarknetBlocksBlockId::Number(number) => tx
-                .query_row(
-                    "SELECT COUNT(*) FROM starknet_transactions
-                    JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
-                    WHERE number = ?1",
-                    [number],
-                    |row| row.get(0),
-                )
-                .context("Counting transactions"),
-            StarknetBlocksBlockId::Hash(hash) => tx
-                .query_row(
-                    "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
-                    [hash],
-                    |row| row.get(0),
-                )
-                .context("Counting transactions"),
-            StarknetBlocksBlockId::Latest => {
-                // First get the latest block
-                let block = match StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)? {
-                    Some(block) => block.number,
-                    None => return Ok(0),
-                };
-
-                Self::get_transaction_count(tx, block.into())
-            }
+            BlockId::Number(n) => Ok(Self::Number(n)),
+            BlockId::Hash(h) => Err(FromStarknetBlocksBlockIdError(h)),
+            BlockId::Latest => Ok(Self::Latest),
         }
     }
 }
@@ -1401,7 +1075,7 @@ mod tests {
                     with_default_blocks(|tx, blocks| {
                         let expected = &blocks.last().unwrap().block;
 
-                        let latest = StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest)
+                        let latest = StarknetBlocksTable::get(tx, BlockId::Latest)
                             .unwrap()
                             .unwrap();
                         assert_eq!(&latest, expected);
@@ -1414,8 +1088,7 @@ mod tests {
                     let mut connection = storage.connection().unwrap();
                     let tx = connection.transaction().unwrap();
 
-                    let latest =
-                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest).unwrap();
+                    let latest = StarknetBlocksTable::get(&tx, BlockId::Latest).unwrap();
                     assert_eq!(latest, None);
                 }
             }
@@ -1558,18 +1231,14 @@ mod tests {
                     with_default_blocks(|tx, blocks| {
                         let expected = blocks.last().unwrap();
 
-                        let storage_commitment = StarknetBlocksTable::get_storage_commitment(
-                            tx,
-                            StarknetBlocksBlockId::Latest,
-                        )
-                        .unwrap()
-                        .unwrap();
-                        let state_commitment = StarknetBlocksTable::get_state_commitment(
-                            tx,
-                            StarknetBlocksBlockId::Latest,
-                        )
-                        .unwrap()
-                        .unwrap();
+                        let storage_commitment =
+                            StarknetBlocksTable::get_storage_commitment(tx, BlockId::Latest)
+                                .unwrap()
+                                .unwrap();
+                        let state_commitment =
+                            StarknetBlocksTable::get_state_commitment(tx, BlockId::Latest)
+                                .unwrap()
+                                .unwrap();
 
                         assert_eq!(storage_commitment, state_commitment.0);
                         assert_eq!(state_commitment.0, expected.storage_commitment);
@@ -1588,19 +1257,11 @@ mod tests {
                     let tx = connection.transaction().unwrap();
 
                     assert_eq!(
-                        StarknetBlocksTable::get_storage_commitment(
-                            &tx,
-                            StarknetBlocksBlockId::Latest,
-                        )
-                        .unwrap(),
+                        StarknetBlocksTable::get_storage_commitment(&tx, BlockId::Latest,).unwrap(),
                         None
                     );
                     assert_eq!(
-                        StarknetBlocksTable::get_state_commitment(
-                            &tx,
-                            StarknetBlocksBlockId::Latest,
-                        )
-                        .unwrap(),
+                        StarknetBlocksTable::get_state_commitment(&tx, BlockId::Latest,).unwrap(),
                         None
                     );
                 }
@@ -1616,10 +1277,7 @@ mod tests {
                     // reorg to genesis expected to wipe the blocks
                     StarknetBlocksTable::reorg(tx, BlockNumber::GENESIS).unwrap();
 
-                    assert_eq!(
-                        StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest).unwrap(),
-                        None
-                    );
+                    assert_eq!(StarknetBlocksTable::get(tx, BlockId::Latest).unwrap(), None);
                 })
             }
 
@@ -1641,7 +1299,7 @@ mod tests {
                     };
 
                     assert_eq!(
-                        StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Latest).unwrap(),
+                        StarknetBlocksTable::get(tx, BlockId::Latest).unwrap(),
                         Some(expected)
                     );
                 })
@@ -1802,8 +1460,7 @@ mod tests {
                     let mut connection = storage.connection().unwrap();
                     let tx = connection.transaction().unwrap();
 
-                    let latest =
-                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest).unwrap();
+                    let latest = StarknetBlocksTable::get(&tx, BlockId::Latest).unwrap();
                     assert_eq!(latest, None);
                 }
             }

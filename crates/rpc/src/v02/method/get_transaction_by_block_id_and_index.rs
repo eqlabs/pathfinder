@@ -2,7 +2,8 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionIndex};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
+use pathfinder_storage::BlockId as StorageBlockId;
+use pathfinder_storage::StarknetBlocksTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByBlockIdAndIndexInput {
@@ -28,7 +29,7 @@ pub async fn get_transaction_by_block_id_and_index(
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => StorageBlockId::Latest,
         BlockId::Pending => {
             return get_transaction_from_pending(&context.pending_data, index).await
         }
@@ -46,7 +47,8 @@ pub async fn get_transaction_by_block_id_and_index(
         let db_tx = db.transaction().context("Creating database transaction")?;
 
         // Get the transaction from storage.
-        match StarknetTransactionsTable::get_transaction_at_block(&db_tx, block_id, index)
+        match db_tx
+            .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
             Some(transaction) => Ok(transaction.into()),

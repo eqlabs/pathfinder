@@ -39,11 +39,12 @@ pub async fn get_class(
 
         // Check that block exists.
         use crate::utils::block_exists;
-        use pathfinder_storage::StarknetBlocksBlockId;
         let exists = match block {
             BlockId::Pending | BlockId::Latest => true,
-            BlockId::Hash(hash) => block_exists(&tx, StarknetBlocksBlockId::Hash(hash))?,
-            BlockId::Number(number) => block_exists(&tx, StarknetBlocksBlockId::Number(number))?,
+            BlockId::Hash(hash) => block_exists(&tx, pathfinder_storage::BlockId::Hash(hash))?,
+            BlockId::Number(number) => {
+                block_exists(&tx, pathfinder_storage::BlockId::Number(number))?
+            }
         };
         if !exists {
             return Err(GetClassError::BlockNotFound);

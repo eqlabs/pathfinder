@@ -5,7 +5,6 @@ use anyhow::{anyhow, Context};
 use pathfinder_common::{
     BlockId, CasmHash, ClassHash, ContractAddress, SierraHash, StorageAddress, StorageValue,
 };
-use pathfinder_storage::StarknetBlocksBlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -33,7 +32,7 @@ pub async fn get_state_update(
                 None => return Err(GetStateUpdateError::BlockNotFound),
             }
         }
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
     };
@@ -57,7 +56,7 @@ pub async fn get_state_update(
 
 fn get_state_update_from_storage(
     tx: &pathfinder_storage::Transaction<'_>,
-    block: StarknetBlocksBlockId,
+    block: pathfinder_storage::BlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
     let (number, block_hash, new_root, old_root) =
         super::super::super::v02::method::get_state_update::block_info(tx, block)?

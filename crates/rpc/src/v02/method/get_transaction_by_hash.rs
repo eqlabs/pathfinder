@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use pathfinder_storage::StarknetTransactionsTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByHashInput {
@@ -41,7 +40,8 @@ pub async fn get_transaction_by_hash(
         let db_tx = db.transaction().context("Creating database transaction")?;
 
         // Get the transaction from storage.
-        StarknetTransactionsTable::get_transaction(&db_tx, input.transaction_hash)
+        db_tx
+            .transaction(input.transaction_hash)
             .context("Reading transaction from database")?
             .ok_or(GetTransactionByHashError::TxnHashNotFound)
             .map(|tx| tx.into())

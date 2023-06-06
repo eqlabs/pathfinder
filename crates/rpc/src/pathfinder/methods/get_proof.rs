@@ -9,7 +9,7 @@ use pathfinder_common::{
     StateCommitment, StorageAddress,
 };
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
-use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
+use pathfinder_storage::{BlockId as StorageBlockId, ContractsStateTable, StarknetBlocksTable};
 use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -158,7 +158,7 @@ pub async fn get_proof(
     let block_id = match input.block_id {
         BlockId::Hash(hash) => hash.into(),
         BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        BlockId::Latest => StorageBlockId::Latest,
         BlockId::Pending => {
             return Err(GetProofError::Internal(anyhow!(
                 "'pending' is not currently supported by this method!"

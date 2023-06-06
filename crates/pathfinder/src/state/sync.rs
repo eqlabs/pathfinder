@@ -21,8 +21,7 @@ use pathfinder_rpc::{
 };
 use pathfinder_storage::{Connection, Transaction};
 use pathfinder_storage::{
-    ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId,
-    StarknetBlocksTable, StarknetTransactionsTable, Storage,
+    ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksTable, Storage,
 };
 use primitive_types::H160;
 use rusqlite::TransactionBehavior;
@@ -89,7 +88,7 @@ where
 
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
-        let l2_head = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+        let l2_head = StarknetBlocksTable::get(&tx, pathfinder_storage::BlockId::Latest)
             .context("Query L2 head from database")?
             .map(|block| (block.number, block.hash, block.state_commmitment));
         Ok(l2_head)
@@ -297,7 +296,7 @@ where
 
                     let l2_head = tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+                        StarknetBlocksTable::get(&tx, pathfinder_storage::BlockId::Latest)
                     })
                     .context("Query L2 head from database")?
                     .map(|block| (block.number, block.hash, block.state_commmitment));
@@ -518,13 +517,13 @@ async fn l2_update(
             .into_iter()
             .zip(block.transaction_receipts.into_iter())
             .collect::<Vec<_>>();
-        StarknetTransactionsTable::upsert(
-            &transaction,
-            starknet_block.hash,
-            starknet_block.number,
-            &transaction_data,
-        )
-        .context("Insert transaction data into database")?;
+        transaction
+            .insert_transaction_data(
+                starknet_block.hash,
+                starknet_block.number,
+                &transaction_data,
+            )
+            .context("Insert transaction data into database")?;
 
         // Insert state updates
         transaction
@@ -587,7 +586,7 @@ fn update_starknet_state(
     state_update: &StateUpdate,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
     let (storage_commitment, class_commitment) =
-        StarknetBlocksTable::get_state_commitment(transaction, StarknetBlocksBlockId::Latest)
+        StarknetBlocksTable::get_state_commitment(transaction, pathfinder_storage::BlockId::Latest)
             .context("Query latest state commitment")?
             .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
@@ -887,7 +886,7 @@ mod tests {
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::{
-        L1StateTable, RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksTable, Storage,
+        L1StateTable, RefsTable, StarknetBlock, StarknetBlocksTable, Storage,
     };
     use primitive_types::H160;
     use stark_hash::Felt;
@@ -1357,9 +1356,10 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let tx = connection.transaction().unwrap();
-            let latest_block_number = StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
-                .unwrap()
-                .map(|s| s.number);
+            let latest_block_number =
+                StarknetBlocksTable::get(&tx, pathfinder_storage::BlockId::Latest)
+                    .unwrap()
+                    .map(|s| s.number);
             let head = RefsTable::get_l1_l2_head(&tx).unwrap();
             (head, latest_block_number)
         })
