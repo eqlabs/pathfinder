@@ -116,9 +116,9 @@ pub struct NewBlockState {
 pub struct BlockStateUpdate {
     pub contract_diffs: Vec<ContractDiff>,
     pub deployed_contracts: Vec<DeployedContract>,
-    pub declared_deprecated_contract_class_hashes: Vec<Felt>,
-    pub declared_contract_classes: Vec<DeclaredClass>,
-    pub replaced_contract_classes: Vec<ReplacedClass>,
+    pub declared_cairo_classes: Vec<Felt>,
+    pub declared_classes: Vec<DeclaredClass>,
+    pub replaced_classes: Vec<ReplacedClass>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -143,15 +143,15 @@ pub struct StorageDiff {
 #[protobuf(name = "crate::proto::propagation::block_state_update::DeployedContract")]
 pub struct DeployedContract {
     pub contract_address: Felt,
-    pub contract_class_hash: Felt,
+    pub class_hash: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::DeclaredClass")]
 pub struct DeclaredClass {
-    pub contract_class_hash: Felt,
-    pub compiled_class_hash: Felt,
+    pub sierra_hash: Felt,
+    pub casm_hash: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -159,5 +159,5 @@ pub struct DeclaredClass {
 #[protobuf(name = "crate::proto::propagation::block_state_update::ReplacedClass")]
 pub struct ReplacedClass {
     pub contract_address: Felt,
-    pub contract_class_hash: Felt,
+    pub class_hash: Felt,
 }

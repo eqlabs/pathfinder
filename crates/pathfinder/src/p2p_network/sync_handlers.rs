@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use p2p_proto as proto;
-use pathfinder_common::{BlockHash, BlockNumber};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetTransactionsTable, Storage};
+use pathfinder_common::{BlockHash, BlockNumber, ClassCommitment, StorageCommitment};
+use pathfinder_storage::{StarknetTransactionsTable, Storage};
 use stark_hash::Felt;
 
 const MAX_HEADERS_COUNT: u64 = 1000;
@@ -49,7 +49,7 @@ fn fetch_block_headers(
 
         let Some(block) = StarknetBlocksTable::get(
             &tx,
-            pathfinder_storage::StarknetBlocksBlockId::Number(block_number),
+            block_number.into(),
         )? else {
             // no such block in our database, stop iterating
             break;
@@ -61,21 +61,21 @@ fn fetch_block_headers(
             None => None,
         };
 
-        let transaction_count = StarknetTransactionsTable::get_transaction_count(
-            &tx,
-            StarknetBlocksBlockId::Hash(block.hash),
-        )?;
+        let transaction_count =
+            StarknetTransactionsTable::get_transaction_count(&tx, block.hash.into())?;
 
-        let starknet_version = StarknetBlocksTable::get_version(
-            &tx,
-            pathfinder_storage::StarknetBlocksBlockId::Number(block_number),
-        )?;
+        let starknet_version = StarknetBlocksTable::get_version(&tx, block_number.into())?;
+        let (storage_commitment, class_commitment) =
+            StarknetBlocksTable::get_state_commitment(&tx, block_number.into())?
+                .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
         headers.push(p2p_proto::common::BlockHeader {
             block_hash: block.hash.0,
             parent_block_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
             block_number: block.number.get(),
             state_commitment: block.state_commmitment.0,
+            storage_commitment: storage_commitment.0,
+            class_commitment: class_commitment.0,
             sequencer_address: block.sequencer_address.0,
             block_timestamp: block.timestamp.get(),
             gas_price: block.gas_price.0.into(),

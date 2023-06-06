@@ -12,8 +12,8 @@ pub enum Request {
     GetBlockHeaders(GetBlockHeaders),
     GetBlockBodies(GetBlockBodies),
     GetStateDiffs(GetStateDiffs),
+    GetClasses(GetClasses),
     Status(Status),
-    GetContractClasses(GetContractClasses),
 }
 
 const MAX_UNCOMPRESSED_MESSAGE_SIZE: usize = 1024 * 1024;
@@ -64,12 +64,12 @@ impl TryFromProtobuf<proto::sync::Request> for Request {
                 proto::sync::request::Request::GetStateDiffs(r) => Ok(Request::GetStateDiffs(
                     TryFromProtobuf::try_from_protobuf(r, field_name)?,
                 )),
+                proto::sync::request::Request::GetClasses(r) => Ok(Request::GetClasses(
+                    TryFromProtobuf::try_from_protobuf(r, field_name)?,
+                )),
                 proto::sync::request::Request::Status(r) => Ok(Request::Status(
                     TryFromProtobuf::try_from_protobuf(r, field_name)?,
                 )),
-                proto::sync::request::Request::GetContractClasses(r) => Ok(
-                    Request::GetContractClasses(TryFromProtobuf::try_from_protobuf(r, field_name)?),
-                ),
             },
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -93,8 +93,8 @@ impl ToProtobuf<proto::sync::Request> for Request {
                     proto::sync::request::Request::GetStateDiffs(r.to_protobuf())
                 }
                 Request::Status(r) => proto::sync::request::Request::Status(r.to_protobuf()),
-                Request::GetContractClasses(r) => {
-                    proto::sync::request::Request::GetContractClasses(r.to_protobuf())
+                Request::GetClasses(r) => {
+                    proto::sync::request::Request::GetClasses(r.to_protobuf())
                 }
             }),
         }
@@ -164,10 +164,9 @@ pub struct GetStateDiffs {
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
-#[protobuf(name = "crate::proto::sync::GetContractClasses")]
-pub struct GetContractClasses {
+#[protobuf(name = "crate::proto::sync::GetClasses")]
+pub struct GetClasses {
     pub class_hashes: Vec<Felt>,
-    pub count: u64,
     pub size_limit: u64,
 }
 
@@ -176,8 +175,8 @@ pub enum Response {
     BlockHeaders(BlockHeaders),
     BlockBodies(BlockBodies),
     StateDiffs(StateDiffs),
+    Classes(Classes),
     Status(Status),
-    ContractClasses(ContractClasses),
 }
 
 impl Response {
@@ -226,10 +225,10 @@ impl TryFromProtobuf<proto::sync::Response> for Response {
                 proto::sync::response::Response::StateDiffs(r) => Ok(Response::StateDiffs(
                     TryFromProtobuf::try_from_protobuf(r, field_name)?,
                 )),
-                proto::sync::response::Response::Status(s) => Ok(Response::Status(
+                proto::sync::response::Response::Classes(s) => Ok(Response::Classes(
                     TryFromProtobuf::try_from_protobuf(s, field_name)?,
                 )),
-                proto::sync::response::Response::Classes(s) => Ok(Response::ContractClasses(
+                proto::sync::response::Response::Status(s) => Ok(Response::Status(
                     TryFromProtobuf::try_from_protobuf(s, field_name)?,
                 )),
             },
@@ -254,10 +253,8 @@ impl ToProtobuf<proto::sync::Response> for Response {
                 Response::StateDiffs(r) => {
                     proto::sync::response::Response::StateDiffs(r.to_protobuf())
                 }
+                Response::Classes(r) => proto::sync::response::Response::Classes(r.to_protobuf()),
                 Response::Status(r) => proto::sync::response::Response::Status(r.to_protobuf()),
-                Response::ContractClasses(r) => {
-                    proto::sync::response::Response::Classes(r.to_protobuf())
-                }
             }),
         }
     }
@@ -303,7 +300,7 @@ pub struct Status {
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
-#[protobuf(name = "crate::proto::sync::ContractClasses")]
-pub struct ContractClasses {
-    pub contract_classes: Vec<super::common::CompressedContractClass>,
+#[protobuf(name = "crate::proto::sync::Classes")]
+pub struct Classes {
+    pub classes: Vec<super::common::CompressedClass>,
 }

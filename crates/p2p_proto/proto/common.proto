@@ -13,14 +13,16 @@ message BlockHeader {
   FieldElement parent_block_hash = 2;
   uint64 block_number = 3;
   FieldElement state_commitment = 4;
-  FieldElement sequencer_address = 5;
-  uint64 block_timestamp = 6;
-  FieldElement gas_price = 7;
-  uint32 transaction_count = 8;
-  FieldElement transaction_commitment = 9;
-  uint32 event_count = 10;
-  FieldElement event_commitment = 11;
-  string starknet_version = 12;
+  FieldElement storage_commitment = 5;
+  FieldElement class_commitment = 6;
+  FieldElement sequencer_address = 7;
+  uint64 block_timestamp = 8;
+  FieldElement gas_price = 9;
+  uint32 transaction_count = 10;
+  FieldElement transaction_commitment = 11;
+  uint32 event_count = 12;
+  FieldElement event_commitment = 13;
+  string starknet_version = 14;
 }
 
 message InvokeTransaction {
@@ -32,7 +34,7 @@ message InvokeTransaction {
     }
   }
 
-  FieldElement contract_address = 1;
+  FieldElement sender_address = 1;
   // Optional, only present in very old transactions
   DeprecatedEntryPoint deprecated_entry_point_selector = 2;
   repeated FieldElement calldata = 3;
@@ -43,17 +45,17 @@ message InvokeTransaction {
 }
 
 message DeclareTransaction {
-  FieldElement contract_class_hash = 1;
+  FieldElement class_hash = 1;
   FieldElement sender_address = 2;
   FieldElement max_fee = 3;
   repeated FieldElement signature = 4;
   FieldElement nonce = 5;
   FieldElement version = 6;
-  FieldElement compiled_class_hash = 7;
+  FieldElement casm_hash = 7;
 }
 
 message DeprecatedDeployTransaction {
-  FieldElement contract_class_hash = 1;
+  FieldElement class_hash = 1;
   FieldElement contract_address_salt = 2;
   repeated FieldElement constructor_calldata = 3;
   FieldElement version = 4;
@@ -170,6 +172,7 @@ message BlockBody {
   repeated Receipt receipts = 4;
 }
 
-message CompressedContractClass {
+message CompressedClass {
+  // FIXME currently a zstd compressed JSON representation
   bytes class = 1;
 }

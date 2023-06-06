@@ -14,6 +14,8 @@ pub struct BlockHeader {
     pub parent_block_hash: Felt,
     pub block_number: u64,
     pub state_commitment: Felt,
+    pub storage_commitment: Felt,
+    pub class_commitment: Felt,
     pub sequencer_address: Felt,
     pub block_timestamp: u64,
     pub gas_price: Felt,
@@ -94,7 +96,7 @@ impl ToProtobuf<proto::common::Transaction> for Transaction {
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::common::InvokeTransaction")]
 pub struct InvokeTransaction {
-    pub contract_address: Felt,
+    pub sender_address: Felt,
     #[optional]
     pub deprecated_entry_point_selector: Option<invoke_transaction::EntryPoint>,
     pub calldata: Vec<Felt>,
@@ -119,13 +121,13 @@ pub struct L1HandlerTransaction {
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeclareTransaction")]
 pub struct DeclareTransaction {
-    pub contract_class_hash: Felt,
+    pub class_hash: Felt,
     pub sender_address: Felt,
     pub signature: Vec<Felt>,
     pub max_fee: Felt,
     pub nonce: Felt,
     pub version: Felt,
-    pub compiled_class_hash: Felt,
+    pub casm_hash: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -145,7 +147,7 @@ pub struct DeployAccountTransaction {
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeprecatedDeployTransaction")]
 pub struct DeployTransaction {
-    pub contract_class_hash: Felt,
+    pub class_hash: Felt,
     pub contract_address_salt: Felt,
     pub constructor_calldata: Vec<Felt>,
     pub version: Felt,
@@ -153,8 +155,8 @@ pub struct DeployTransaction {
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
-#[protobuf(name = "crate::proto::common::CompressedContractClass")]
-pub struct CompressedContractClass {
+#[protobuf(name = "crate::proto::common::CompressedClass")]
+pub struct CompressedClass {
     pub class: Vec<u8>,
 }
 

@@ -112,7 +112,7 @@ async fn handle_p2p_event(
                 }
                 Request::GetBlockBodies(_r) => unimplemented!(),
                 Request::GetStateDiffs(_r) => unimplemented!(),
-                Request::GetContractClasses(_r) => unimplemented!(),
+                Request::GetClasses(_r) => unimplemented!(),
                 Request::Status(_) => Response::Status(current_status(chain_id, sync_state).await),
             };
             p2p_client.send_sync_response(channel, response).await;

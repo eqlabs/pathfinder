@@ -10,7 +10,7 @@ message Request {
     GetBlockHeaders get_block_headers = 1;
     GetBlockBodies get_block_bodies = 2;
     GetStateDiffs get_state_diffs = 3;
-    GetContractClasses get_contract_classes = 4;
+    GetClasses get_classes = 4;
     Status status = 5;
   }
 }
@@ -20,7 +20,7 @@ message Response {
     BlockHeaders block_headers = 1;
     BlockBodies block_bodies = 2;
     StateDiffs state_diffs = 3;
-    ContractClasses classes = 4;
+    Classes classes = 4;
     Status status = 5;
   }
 }
@@ -33,6 +33,8 @@ enum Direction {
 // Retrieve at most `count` block headers staring at `start_block`
 // and then moving to the next or previous blocks depending on `direction`.
 // Any single reply must not exceed `size_limit`.
+//
+// TODO exact semantics for `size_limit` in all request types
 message GetBlockHeaders {
   uint64 start_block = 1;
   uint64 count = 2;
@@ -73,12 +75,11 @@ message Status {
   starknet.common.FieldElement chain_id = 3;
 }
 
-message GetContractClasses {
+message GetClasses {
   repeated starknet.common.FieldElement class_hashes = 1;
-  uint64 count = 2;
-  uint64 size_limit = 3;
+  uint64 size_limit = 2;
 }
 
-message ContractClasses {
-  repeated starknet.common.CompressedContractClass contract_classes = 1;
+message Classes {
+  repeated starknet.common.CompressedClass classes = 1;
 }
