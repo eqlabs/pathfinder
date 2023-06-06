@@ -90,40 +90,18 @@ impl ToProtobuf<proto::common::Transaction> for Transaction {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::common::InvokeTransaction")]
 pub struct InvokeTransaction {
     pub contract_address: Felt,
+    #[optional]
     pub deprecated_entry_point_selector: Option<invoke_transaction::EntryPoint>,
     pub calldata: Vec<Felt>,
     pub signature: Vec<Felt>,
     pub max_fee: Felt,
     pub nonce: Felt,
     pub version: Felt,
-}
-
-impl TryFromProtobuf<crate::proto::common::InvokeTransaction> for InvokeTransaction {
-    fn try_from_protobuf(
-        input: crate::proto::common::InvokeTransaction,
-        field_name: &'static str,
-    ) -> Result<Self, std::io::Error> {
-        Ok(Self {
-            contract_address: TryFromProtobuf::try_from_protobuf(
-                input.contract_address,
-                field_name,
-            )?,
-            deprecated_entry_point_selector: match input.deprecated_entry_point_selector {
-                Some(x) => Some(TryFromProtobuf::try_from_protobuf(x, field_name)?),
-                None => None,
-            },
-            calldata: TryFromProtobuf::try_from_protobuf(input.calldata, field_name)?,
-            signature: TryFromProtobuf::try_from_protobuf(input.signature, field_name)?,
-            max_fee: TryFromProtobuf::try_from_protobuf(input.max_fee, field_name)?,
-            nonce: TryFromProtobuf::try_from_protobuf(input.nonce, field_name)?,
-            version: TryFromProtobuf::try_from_protobuf(input.version, field_name)?,
-        })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -256,7 +234,7 @@ pub mod execution_resources {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::common::CommonTransactionReceiptProperties")]
 pub struct CommonTransactionReceiptProperties {
@@ -265,39 +243,9 @@ pub struct CommonTransactionReceiptProperties {
     pub actual_fee: Felt,
     pub messages_sent: Vec<MessageToL1>,
     pub events: Vec<Event>,
+    #[optional]
     pub consumed_message: Option<MessageToL2>,
     pub execution_resources: ExecutionResources,
-}
-
-impl TryFromProtobuf<crate::proto::common::CommonTransactionReceiptProperties>
-    for CommonTransactionReceiptProperties
-{
-    fn try_from_protobuf(
-        input: crate::proto::common::CommonTransactionReceiptProperties,
-        field_name: &'static str,
-    ) -> Result<Self, std::io::Error> {
-        Ok(Self {
-            transaction_hash: TryFromProtobuf::try_from_protobuf(
-                input.transaction_hash,
-                field_name,
-            )?,
-            transaction_index: TryFromProtobuf::try_from_protobuf(
-                input.transaction_index,
-                field_name,
-            )?,
-            actual_fee: TryFromProtobuf::try_from_protobuf(input.actual_fee, field_name)?,
-            messages_sent: TryFromProtobuf::try_from_protobuf(input.messages_sent, field_name)?,
-            events: TryFromProtobuf::try_from_protobuf(input.events, field_name)?,
-            consumed_message: match input.consumed_message {
-                Some(x) => Some(TryFromProtobuf::try_from_protobuf(x, field_name)?),
-                None => None,
-            },
-            execution_resources: TryFromProtobuf::try_from_protobuf(
-                input.execution_resources,
-                field_name,
-            )?,
-        })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
