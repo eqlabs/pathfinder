@@ -21,7 +21,7 @@ use pathfinder_rpc::{
 };
 use pathfinder_storage::{Connection, Transaction};
 use pathfinder_storage::{
-    ContractsStateTable, L1StateTable, RefsTable, StarknetBlock, StarknetBlocksTable, Storage,
+    ContractsStateTable, RefsTable, StarknetBlock, StarknetBlocksTable, Storage,
 };
 use primitive_types::H160;
 use rusqlite::TransactionBehavior;
@@ -431,7 +431,9 @@ async fn l1_update(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        L1StateTable::upsert(&transaction, update).context("Insert update")?;
+        transaction
+            .upsert_l1_state(update)
+            .context("Insert update")?;
 
         let l2_hash = StarknetBlocksTable::get_hash(&transaction, update.block_number.into())?;
 
@@ -537,12 +539,14 @@ async fn l2_update(
             .unwrap_or(BlockNumber::GENESIS);
 
         if expected_next == starknet_block.number {
-            let l1_root =
-                L1StateTable::get_state_commitment(&transaction, starknet_block.number.into())
-                    .context("Query L1 root")?;
-            if l1_root == Some(starknet_block.state_commmitment) {
-                RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
-                    .context("Update L1-L2 head")?;
+            if let Some(l1_state) = transaction
+                .l1_state_at_number(starknet_block.number)
+                .context("Query L1 state")?
+            {
+                if l1_state.block_hash == starknet_block.hash {
+                    RefsTable::set_l1_l2_head(&transaction, Some(starknet_block.number))
+                        .context("Update L1-L2 head")?;
+                }
             }
         }
 
@@ -885,9 +889,7 @@ mod tests {
     };
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
-    use pathfinder_storage::{
-        L1StateTable, RefsTable, StarknetBlock, StarknetBlocksTable, Storage,
-    };
+    use pathfinder_storage::{RefsTable, StarknetBlock, StarknetBlocksTable, Storage};
     use primitive_types::H160;
     use stark_hash::Felt;
     use starknet_gateway_client::GatewayApi;
@@ -1227,7 +1229,7 @@ mod tests {
             let tx = connection.transaction().unwrap();
 
             if let Some(some_update_log) = update_log {
-                L1StateTable::upsert(&tx, &some_update_log).unwrap();
+                tx.upsert_l1_state(&some_update_log).unwrap();
             }
 
             tx.commit().unwrap();

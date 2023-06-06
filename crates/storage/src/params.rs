@@ -117,6 +117,8 @@ to_sql_builtin!(
 pub trait RowExt {
     fn get_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<&[u8]>;
 
+    fn get_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<i64>;
+
     fn get_felt<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<Felt> {
         let blob = self.get_blob(index)?;
         let felt = Felt::from_be_slice(blob)
@@ -124,10 +126,15 @@ pub trait RowExt {
         Ok(felt)
     }
 
-    fn get_class_hash<I: RowIndex>(&self, index: I) -> rusqlite::Result<ClassHash> {
-        let felt = self.get_felt(index)?;
-        Ok(ClassHash(felt))
+    fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {
+        let num = self.get_i64(index)?;
+        // Always safe since we are fetching an i64
+        Ok(BlockNumber::new_or_panic(num as u64))
     }
+
+    row_felt_wrapper!(get_block_hash, BlockHash);
+    row_felt_wrapper!(get_class_hash, ClassHash);
+    row_felt_wrapper!(get_state_commitment, StateCommitment);
 
     fn get_trie_node<I: RowIndex>(&self, index: I) -> rusqlite::Result<TrieNode> {
         use anyhow::Context;
@@ -178,15 +185,11 @@ pub trait RowExt {
 
 impl<'a> RowExt for &rusqlite::Row<'a> {
     fn get_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<&[u8]> {
-        let blob = self.get_ref(index)?.as_blob()?;
-        Ok(blob)
+        self.get_ref(index)?.as_blob().map_err(|e| e.into())
     }
 
-    fn get_felt<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<Felt> {
-        let bytes = self.get_ref(index)?.as_blob()?;
-        let felt = Felt::from_be_slice(bytes)
-            .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
-        Ok(felt)
+    fn get_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<i64> {
+        self.get_ref(index)?.as_i64().map_err(|e| e.into())
     }
 }
 
@@ -260,7 +263,16 @@ macro_rules! to_sql_builtin {
     }
 }
 
-use {to_sql_builtin, to_sql_compressed_felt, to_sql_felt, to_sql_int};
+macro_rules! row_felt_wrapper {
+    ($fn_name:ident, $Type:ident) => {
+        fn $fn_name<I: RowIndex>(&self, index: I) -> rusqlite::Result<$Type> {
+            let felt = self.get_felt(index)?;
+            Ok($Type(felt))
+        }
+    };
+}
+
+use {row_felt_wrapper, to_sql_builtin, to_sql_compressed_felt, to_sql_felt, to_sql_int};
 
 /// Used in combination with our own [ToSql] trait to provide functionality equivalent to
 /// [rusqlite::params!] for our own foreign types.

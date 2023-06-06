@@ -5,6 +5,7 @@ use pathfinder_common::{
     BlockHash, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash,
     ContractAddress, ContractRoot, SierraHash, StorageCommitment, TransactionHash,
 };
+use pathfinder_ethereum::EthereumStateUpdate;
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
@@ -45,6 +46,21 @@ impl<'inner> Transaction<'inner> {
     #[cfg(test)]
     pub(crate) fn from_inner(tx: rusqlite::Transaction<'inner>) -> Self {
         Self(tx)
+    }
+
+    pub fn upsert_l1_state(&self, update: &EthereumStateUpdate) -> anyhow::Result<()> {
+        crate::ethereum::upsert_l1_state(self, update)
+    }
+
+    pub fn l1_state_at_number(
+        &self,
+        block: BlockNumber,
+    ) -> anyhow::Result<Option<EthereumStateUpdate>> {
+        crate::ethereum::l1_state_at_number(self, block)
+    }
+
+    pub fn latest_l1_state(&self) -> anyhow::Result<Option<EthereumStateUpdate>> {
+        crate::ethereum::latest_l1_state(self)
     }
 
     pub fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {

@@ -8,6 +8,7 @@ mod prelude;
 mod block;
 mod class;
 mod connection;
+mod ethereum;
 pub mod event;
 mod params;
 mod schema;
@@ -28,8 +29,8 @@ pub use connection::*;
 use pathfinder_common::{BlockHash, BlockNumber};
 use rusqlite::functions::FunctionFlags;
 pub use state::{
-    CanonicalBlocksTable, ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable,
-    StarknetBlock, StarknetBlocksNumberOrLatest, StarknetBlocksTable,
+    CanonicalBlocksTable, ContractsStateTable, RefsTable, StarknetBlock,
+    StarknetBlocksNumberOrLatest, StarknetBlocksTable,
 };
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
