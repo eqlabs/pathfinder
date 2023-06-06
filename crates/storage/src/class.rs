@@ -13,10 +13,10 @@ pub(crate) fn insert_sierra_class(
 ) -> anyhow::Result<()> {
     let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
     let sierra_definition = compressor
-        .compress(&sierra_definition)
+        .compress(sierra_definition)
         .context("Compressing sierra definition")?;
     let casm_definition = compressor
-        .compress(&casm_definition)
+        .compress(casm_definition)
         .context("Compressing casm definition")?;
 
     let version_id = intern_compiler_version(transaction, compiler_version)
@@ -54,7 +54,7 @@ pub(crate) fn insert_cairo_class(
 ) -> anyhow::Result<()> {
     let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
     let definition = compressor
-        .compress(&definition)
+        .compress(definition)
         .context("Compressing cairo definition")?;
 
     transaction
@@ -86,15 +86,15 @@ fn intern_compiler_version(
         // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
         // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
         // read back with last_insert_rowid
-        let id = transaction
+        
+
+        transaction
             .query_row(
                 "INSERT INTO casm_compiler_versions(version) VALUES (?) RETURNING id",
                 [compiler_version],
                 |row| row.get(0),
             )
-            .context("Inserting unique casm_compiler_version")?;
-
-        id
+            .context("Inserting unique casm_compiler_version")?
     };
 
     Ok(id)

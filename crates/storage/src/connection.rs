@@ -101,14 +101,14 @@ impl<'inner> Transaction<'inner> {
         leaf: &ClassCommitmentLeafHash,
         casm_hash: &CasmHash,
     ) -> anyhow::Result<()> {
-        crate::class::insert_class_commitment_leaf(&self, leaf, casm_hash)
+        crate::class::insert_class_commitment_leaf(self, leaf, casm_hash)
     }
 
     /// Returns whether the Sierra or Cairo class definition exists in the database.
     ///
     /// Note that this does not indicate that the class is actually declared -- only that we stored it.
     pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        crate::class::classes_exist(&self, classes)
+        crate::class::classes_exist(self, classes)
     }
 
     /// Stores the class trie information using reference counting.
@@ -139,15 +139,15 @@ impl<'inner> Transaction<'inner> {
     }
 
     pub fn class_trie_reader(&self) -> anyhow::Result<ClassTrieReader> {
-        ClassTrieReader::new(&self)
+        ClassTrieReader::new(self)
     }
 
     pub fn storage_trie_reader(&self) -> anyhow::Result<StorageTrieReader> {
-        StorageTrieReader::new(&self)
+        StorageTrieReader::new(self)
     }
 
     pub fn contract_trie_reader(&self) -> anyhow::Result<ContractTrieReader> {
-        ContractTrieReader::new(&self)
+        ContractTrieReader::new(self)
     }
 
     pub fn insert_state_diff(
@@ -155,7 +155,7 @@ impl<'inner> Transaction<'inner> {
         block_number: BlockNumber,
         state_diff: &crate::types::state_update::StateDiff,
     ) -> anyhow::Result<()> {
-        crate::state_update::insert_canonical_state_diff(&self, block_number, state_diff)
+        crate::state_update::insert_canonical_state_diff(self, block_number, state_diff)
     }
 
     pub fn commit(self) -> anyhow::Result<()> {

@@ -3,8 +3,8 @@ use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::pending;
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
-    StateCommitment, TransactionCommitment, CasmHash, SierraHash,
+    BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, SierraHash,
+    StarknetVersion, StateCommitment, TransactionCommitment,
 };
 use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
 use pathfinder_storage::Storage;

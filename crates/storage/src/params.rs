@@ -270,7 +270,7 @@ macro_rules! params {
         rusqlite::params![]
     };
     [$($param:expr),+ $(,)?] => {
-        rusqlite::params![$(&crate::params::ToSql::to_sql($param)),+]
+        rusqlite::params![$(&$crate::params::ToSql::to_sql($param)),+]
     };
 }
 
@@ -282,7 +282,7 @@ macro_rules! named_params {
     // Note: It's a lot more work to support this as part of the same macro as
     // `params!`, unfortunately.
     ($($param_name:literal: $param_val:expr),+ $(,)?) => {
-        rusqlite::named_params![$($param_name: crate::params::ToSql::to_sql($param_val)),+]
+        rusqlite::named_params![$($param_name: $crate::params::ToSql::to_sql($param_val)),+]
     };
 }
 

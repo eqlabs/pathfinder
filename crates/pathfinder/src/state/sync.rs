@@ -840,7 +840,7 @@ async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>
                             &sierra_definition,
                             &CasmHash(casm_hash.0),
                             &casm_definition,
-                            &crate::sierra::COMPILER_VERSION,
+                            crate::sierra::COMPILER_VERSION,
                         )
                         .context("Inserting sierra class")?;
                     transaction.commit()?;

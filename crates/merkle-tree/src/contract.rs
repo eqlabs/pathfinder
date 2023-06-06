@@ -52,7 +52,8 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
-        self.tree.set(&mut self.storage, address.view_bits(), value.0)
+        self.tree
+            .set(&mut self.storage, address.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new tree root.
@@ -104,7 +105,8 @@ impl<'tx> StorageCommitmentTree<'tx> {
         address: ContractAddress,
         value: ContractStateHash,
     ) -> anyhow::Result<()> {
-        self.tree.set(&mut self.storage, address.view_bits(), value.0)
+        self.tree
+            .set(&mut self.storage, address.view_bits(), value.0)
     }
 
     /// Applies and persists any changes. Returns the new global root.

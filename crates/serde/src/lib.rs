@@ -2,9 +2,8 @@
 
 use num_bigint::BigUint;
 use pathfinder_common::{
-    BlockNumber, CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, GasPrice,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionSignatureElem,
-    TransactionVersion,
+    BlockNumber, CallParam, ConstructorParam, EthereumAddress, GasPrice, L1ToL2MessagePayloadElem,
+    L2ToL1MessagePayloadElem, TransactionSignatureElem, TransactionVersion,
 };
 use primitive_types::{H160, H256};
 use serde::de::Visitor;

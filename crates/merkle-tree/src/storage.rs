@@ -1,5 +1,5 @@
 use pathfinder_common::trie::TrieNode;
-use pathfinder_storage::{ClassTrieReader, StorageTrieReader, ContractTrieReader};
+use pathfinder_storage::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 use stark_hash::Felt;
 
 /// Read-only storage used by the [Merkle tree](crate::tree::MerkleTree).
