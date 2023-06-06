@@ -1,10 +1,8 @@
 use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::{
-    EventFilterError, StarknetBlocksNumberOrLatest, StarknetBlocksTable, StarknetEventFilter,
-    StarknetEventsTable, V03KeyFilter,
-};
+use pathfinder_storage::event::{EventFilterError, V03KeyFilter};
+use pathfinder_storage::{StarknetBlocksNumberOrLatest, StarknetBlocksTable};
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -180,7 +178,7 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
-        let filter = StarknetEventFilter {
+        let filter = pathfinder_storage::event::EventFilter {
             from_block,
             to_block,
             contract_address: request.address,
@@ -191,7 +189,7 @@ pub async fn get_events(
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
         // for errors related to query parameters.
-        let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
+        let page = transaction.get_events(&filter).map_err(|e| {
             if e.downcast_ref::<EventFilterError>().is_some() {
                 GetEventsError::PageSizeTooBig
             } else {
@@ -203,13 +201,7 @@ pub async fn get_events(
         // More specifically, we need some database event count in order to page through
         // the pending events properly.
         let event_count = if request.to_block == Some(Pending) && page.events.is_empty() {
-            let count = StarknetEventsTable::event_count(
-                &transaction,
-                from_block,
-                to_block,
-                request.address,
-                &keys,
-            )?;
+            let count = transaction.event_count(from_block, to_block, request.address, &keys)?;
 
             Some(count)
         } else {
@@ -442,7 +434,6 @@ mod types {
     use pathfinder_common::{
         BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
     };
-    use pathfinder_storage::StarknetEmittedEvent;
     use serde::Serialize;
 
     /// Describes an emitted event returned by starknet_getEvents
@@ -459,8 +450,8 @@ mod types {
         pub transaction_hash: TransactionHash,
     }
 
-    impl From<StarknetEmittedEvent> for EmittedEvent {
-        fn from(event: StarknetEmittedEvent) -> Self {
+    impl From<pathfinder_storage::event::EmittedEvent> for EmittedEvent {
+        fn from(event: pathfinder_storage::event::EmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,

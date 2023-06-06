@@ -7,6 +7,7 @@ mod prelude;
 
 mod class;
 mod connection;
+pub mod event;
 mod params;
 mod schema;
 mod state;
@@ -24,10 +25,9 @@ use std::sync::Arc;
 pub use connection::*;
 use rusqlite::functions::FunctionFlags;
 pub use state::{
-    CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
-    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest,
-    StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter, StarknetEventsTable,
-    StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
+    CanonicalBlocksTable, ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable,
+    StarknetBlock, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest, StarknetBlocksTable,
+    StarknetEventsTable, StarknetTransactionsTable,
 };
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
@@ -179,7 +179,7 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
         .split(' ')
         // Convert only the first 256 elements so that the index fits into one u8
         // we will use as a prefix byte.
-        .take(crate::StarknetEventsTable::KEY_FILTER_LIMIT)
+        .take(crate::event::KEY_FILTER_LIMIT)
         .enumerate()
         .map(|(index, key)| {
             let mut buf: [u8; 33] = [0u8; 33];

@@ -1,6 +1,6 @@
-use super::{
-    StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
-};
+use crate::event::EmittedEvent;
+
+use super::{StarknetBlock, StarknetBlocksTable, StarknetTransactionsTable, Storage};
 use pathfinder_common::{
     felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
     ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
@@ -154,7 +154,7 @@ pub(crate) fn create_transactions_and_receipts(
 pub(crate) fn extract_events(
     blocks: &[BlockWithCommitment],
     transactions_and_receipts: &[(transaction::Transaction, transaction::Receipt)],
-) -> Vec<StarknetEmittedEvent> {
+) -> Vec<EmittedEvent> {
     transactions_and_receipts
         .iter()
         .enumerate()
@@ -163,7 +163,7 @@ pub(crate) fn extract_events(
                 let event = &receipt.events[0];
                 let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
 
-                Some(StarknetEmittedEvent {
+                Some(EmittedEvent {
                     data: event.data.clone(),
                     from_address: event.from_address,
                     keys: event.keys.clone(),
@@ -182,7 +182,7 @@ pub struct TestData {
     pub blocks: Vec<BlockWithCommitment>,
     pub transactions: Vec<transaction::Transaction>,
     pub receipts: Vec<Receipt>,
-    pub events: Vec<StarknetEmittedEvent>,
+    pub events: Vec<EmittedEvent>,
 }
 
 #[derive(Clone, Debug)]
@@ -192,7 +192,7 @@ pub struct BlockWithCommitment {
     pub class_commitment: ClassCommitment,
 }
 
-/// Creates a storage instance in memory with a set of expected emitted event
+// Creates a storage instance in memory with a set of expected emitted event
 pub fn setup_test_storage() -> (Storage, TestData) {
     use crate::CanonicalBlocksTable;
 

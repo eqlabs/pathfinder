@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
+use pathfinder_common::event::Event;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash, ContractRoot,
-    SierraHash, StorageCommitment,
+    BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash, ContractAddress,
+    ContractRoot, SierraHash, StorageCommitment, TransactionHash,
 };
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 
+use crate::event::{EventFilter, KeyFilter, PageOfEvents};
 use crate::trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -36,9 +38,35 @@ impl Connection {
 pub struct Transaction<'inner>(rusqlite::Transaction<'inner>);
 
 impl<'inner> Transaction<'inner> {
+    // The implementations here are intentionally kept as simple wrappers. This lets the real implementations
+    // be kept in separate files with more reasonable LOC counts and easier test oversight.
+
     #[cfg(test)]
     pub(crate) fn from_inner(tx: rusqlite::Transaction<'inner>) -> Self {
         Self(tx)
+    }
+
+    pub fn insert_events(
+        &self,
+        block_number: BlockNumber,
+        transaction_hash: TransactionHash,
+        events: &[Event],
+    ) -> anyhow::Result<()> {
+        crate::event::insert_events(self, block_number, transaction_hash, events)
+    }
+
+    pub fn get_events(&self, filter: &EventFilter<impl KeyFilter>) -> anyhow::Result<PageOfEvents> {
+        crate::event::get_events(self, filter)
+    }
+
+    pub fn event_count(
+        &self,
+        from_block: Option<BlockNumber>,
+        to_block: Option<BlockNumber>,
+        contract_address: Option<ContractAddress>,
+        keys: &dyn KeyFilter,
+    ) -> anyhow::Result<usize> {
+        crate::event::event_count(self, from_block, to_block, contract_address, keys)
     }
 
     pub fn insert_sierra_class(

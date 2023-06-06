@@ -13,6 +13,7 @@ mod macros;
 pub mod test_utils;
 pub mod trie;
 pub mod hash;
+pub mod event;
 
 /// The address of a Starknet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
