@@ -6096,6 +6096,7 @@ dependencies = [
  "stark_hash",
  "starknet-gateway-client",
  "starknet-gateway-types",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",

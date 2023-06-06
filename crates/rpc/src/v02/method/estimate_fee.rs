@@ -253,7 +253,7 @@ pub(crate) mod tests {
             let mut db_path = PathBuf::from(db_dir.path());
             db_path.push("mainnet.sqlite");
 
-            std::fs::copy(source_path, db_path.clone()).unwrap();
+            std::fs::copy(&source_path, &db_path).unwrap();
 
             let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
 
