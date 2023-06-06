@@ -63,9 +63,7 @@ async fn get_block(
                 None => return Err(GetBlockError::BlockNotFound),
             }
         }
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => pathfinder_storage::BlockId::Latest,
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();

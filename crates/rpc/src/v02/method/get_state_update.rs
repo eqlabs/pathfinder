@@ -35,9 +35,7 @@ pub async fn get_state_update(
                 None => return Err(GetStateUpdateError::BlockNotFound),
             }
         }
-        BlockId::Latest => pathfinder_storage::BlockId::Latest,
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();

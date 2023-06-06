@@ -21,15 +21,13 @@ pub async fn get_class_hash_at(
     input: GetClassHashAtInput,
 ) -> Result<GetClassHashOutput, GetClassHashAtError> {
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Pending => {
             match get_pending_class_hash(context.pending_data, input.contract_address).await {
                 Some(class_hash) => return Ok(GetClassHashOutput(class_hash)),
                 None => pathfinder_storage::BlockId::Latest,
             }
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let span = tracing::Span::current();

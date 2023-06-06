@@ -71,6 +71,21 @@ impl From<BlockNumber> for BlockId {
     }
 }
 
+impl TryFrom<pathfinder_common::BlockId> for BlockId {
+    type Error = &'static str;
+
+    fn try_from(value: pathfinder_common::BlockId) -> Result<Self, Self::Error> {
+        match value {
+            pathfinder_common::BlockId::Number(x) => Ok(BlockId::Number(x)),
+            pathfinder_common::BlockId::Hash(x) => Ok(BlockId::Hash(x)),
+            pathfinder_common::BlockId::Latest => Ok(BlockId::Latest),
+            pathfinder_common::BlockId::Pending => {
+                Err("Pending is invalid within the storage context")
+            }
+        }
+    }
+}
+
 /// Used to create [Connection's](Connection) to the pathfinder database.
 ///
 /// Intended usage:

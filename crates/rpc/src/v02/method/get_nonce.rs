@@ -30,9 +30,7 @@ pub async fn get_nonce(
                 None => pathfinder_storage::BlockId::Latest,
             }
         }
-        BlockId::Latest => pathfinder_storage::BlockId::Latest,
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let contract_address = input.contract_address;

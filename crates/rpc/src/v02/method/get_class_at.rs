@@ -19,9 +19,6 @@ pub async fn get_class_at(
 ) -> Result<ContractClass, GetClassAtError> {
     let span = tracing::Span::current();
     let block_id = match input.block_id {
-        BlockId::Number(number) => number.into(),
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Pending => {
             match get_pending_class_hash(context.pending_data, input.contract_address).await {
                 Some(class) => {
@@ -51,6 +48,7 @@ pub async fn get_class_at(
                 None => pathfinder_storage::BlockId::Latest,
             }
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let jh = tokio::task::spawn_blocking(move || {

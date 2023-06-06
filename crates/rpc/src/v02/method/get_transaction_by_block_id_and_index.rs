@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionIndex};
-use pathfinder_storage::BlockId as StorageBlockId;
 use pathfinder_storage::StarknetBlocksTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -27,12 +26,10 @@ pub async fn get_transaction_by_block_id_and_index(
         .map_err(|_| GetTransactionByBlockIdAndIndexError::InvalidTxnIndex)?;
 
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => StorageBlockId::Latest,
         BlockId::Pending => {
             return get_transaction_from_pending(&context.pending_data, index).await
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();

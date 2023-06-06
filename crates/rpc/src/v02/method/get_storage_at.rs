@@ -23,9 +23,6 @@ pub async fn get_storage_at(
     input: GetStorageAtInput,
 ) -> Result<GetStorageOutput, GetStorageAtError> {
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Pending => {
             match context
                 .pending_data
@@ -52,6 +49,7 @@ pub async fn get_storage_at(
                 None => pathfinder_storage::BlockId::Latest,
             }
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();

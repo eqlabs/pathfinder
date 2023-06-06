@@ -17,9 +17,6 @@ pub async fn get_block_transaction_count(
     input: GetBlockTransactionCountInput,
 ) -> Result<BlockTransactionCount, GetBlockTransactionCountError> {
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => pathfinder_storage::BlockId::Latest,
         BlockId::Pending => {
             if let Some(pending) = context.pending_data.as_ref() {
                 if let Some(block) = pending.block().await.as_ref() {
@@ -29,6 +26,7 @@ pub async fn get_block_transaction_count(
 
             return Ok(0);
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();
