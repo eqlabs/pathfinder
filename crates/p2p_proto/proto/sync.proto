@@ -81,5 +81,5 @@ message GetClasses {
 }
 
 message Classes {
-  repeated starknet.common.CompressedClass classes = 1;
+  repeated starknet.common.RawClass classes = 1;
 }

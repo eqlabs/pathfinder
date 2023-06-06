@@ -155,8 +155,8 @@ pub struct DeployTransaction {
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
-#[protobuf(name = "crate::proto::common::CompressedClass")]
-pub struct CompressedClass {
+#[protobuf(name = "crate::proto::common::RawClass")]
+pub struct RawClass {
     pub class: Vec<u8>,
 }
 

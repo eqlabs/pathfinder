@@ -209,7 +209,7 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
         pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
@@ -230,15 +230,21 @@ pub mod transaction {
             Empty(EmptyBuiltinInstanceCounter),
         }
 
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+        impl Default for BuiltinInstanceCounter {
+            fn default() -> Self {
+                Self::Normal(Default::default())
+            }
+        }
+
+        #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
         pub struct NormalBuiltinInstanceCounter {
-            bitwise_builtin: u64,
-            ecdsa_builtin: u64,
-            ec_op_builtin: u64,
-            output_builtin: u64,
-            pedersen_builtin: u64,
-            range_check_builtin: u64,
+            pub bitwise_builtin: u64,
+            pub ecdsa_builtin: u64,
+            pub ec_op_builtin: u64,
+            pub output_builtin: u64,
+            pub pedersen_builtin: u64,
+            pub range_check_builtin: u64,
         }
 
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -399,6 +405,17 @@ pub mod transaction {
                 Transaction::L1Handler(t) => t.contract_address,
             }
         }
+
+        pub fn version(&self) -> TransactionVersion {
+            match self {
+                Transaction::Declare(t) => t.version(),
+                Transaction::Deploy(t) => t.version,
+                Transaction::DeployAccount(t) => t.version,
+                Transaction::Invoke(InvokeTransaction::V0(_)) => TransactionVersion::ZERO,
+                Transaction::Invoke(InvokeTransaction::V1(_)) => TransactionVersion::ONE,
+                Transaction::L1Handler(t) => t.version,
+            }
+        }
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -455,6 +472,14 @@ pub mod transaction {
                 DeclareTransaction::V0(tx) => tx.signature.as_ref(),
                 DeclareTransaction::V1(tx) => tx.signature.as_ref(),
                 DeclareTransaction::V2(tx) => tx.signature.as_ref(),
+            }
+        }
+
+        pub fn version(&self) -> TransactionVersion {
+            match self {
+                DeclareTransaction::V0(_) => TransactionVersion::ZERO,
+                DeclareTransaction::V1(_) => TransactionVersion::ONE,
+                DeclareTransaction::V2(_) => TransactionVersion::TWO,
             }
         }
     }

@@ -92,10 +92,10 @@ impl ToProtobuf<proto::sync::Request> for Request {
                 Request::GetStateDiffs(r) => {
                     proto::sync::request::Request::GetStateDiffs(r.to_protobuf())
                 }
-                Request::Status(r) => proto::sync::request::Request::Status(r.to_protobuf()),
                 Request::GetClasses(r) => {
                     proto::sync::request::Request::GetClasses(r.to_protobuf())
                 }
+                Request::Status(r) => proto::sync::request::Request::Status(r.to_protobuf()),
             }),
         }
     }
@@ -302,5 +302,5 @@ pub struct Status {
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::sync::Classes")]
 pub struct Classes {
-    pub classes: Vec<super::common::CompressedClass>,
+    pub classes: Vec<super::common::RawClass>,
 }
