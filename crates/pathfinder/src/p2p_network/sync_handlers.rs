@@ -91,7 +91,7 @@ fn fetch_block_headers(
                 .event_commitment
                 .map(|ev| ev.0)
                 .ok_or(anyhow!("Event commitment missing"))?,
-            starknet_version: starknet_version.take_inner().unwrap_or_default(),
+            starknet_version: starknet_version.take_inner(),
         });
 
         count -= 1;

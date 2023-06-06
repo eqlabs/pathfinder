@@ -167,11 +167,9 @@ impl StarknetBlocksTable {
         storage_commitment: StorageCommitment,
         class_commitment: ClassCommitment,
     ) -> anyhow::Result<()> {
-        let version_id = if let Some(version) = version.as_str() {
-            Some(StarknetVersionsTable::intern(tx, version)?)
-        } else {
-            None
-        };
+        let version = version.as_str();
+        let version_id =
+            (!version.is_empty()).then_some(StarknetVersionsTable::intern(tx, version)?);
 
         let class_commitment = if class_commitment == ClassCommitment::ZERO {
             None
@@ -389,7 +387,7 @@ impl StarknetBlocksTable {
         match row {
             Some(row) => {
                 let version: Option<String> = row.get_unwrap("version");
-                Ok(version.into())
+                Ok(version.unwrap_or_default().into())
             }
             None => Ok(Default::default()),
         }
