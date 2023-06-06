@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 /// The base schema as dumped after revision 30.
 pub(crate) fn base_schema(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(r#"
@@ -189,5 +191,11 @@ CREATE TABLE tree_class (
         hash        BLOB PRIMARY KEY,
         data        BLOB,
         ref_count   INTEGER
-    );"#).map_err(|e| e.into())
+    );"#)?;
+
+    // Code expects there to always be one row here.
+    tx.execute("INSERT INTO refs (idx, l1_l2_head) VALUES(1, NULL)", [])
+        .context("Initializing L1 == L2 reference")?;
+
+    Ok(())
 }
