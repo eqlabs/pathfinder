@@ -40,8 +40,6 @@ fn fetch_block_headers(
     let mut count = std::cmp::min(request.count, MAX_HEADERS_COUNT);
     let mut headers = Vec::new();
 
-    // let mut next_block_number =
-    //     StarknetBlocksTable::get_number(&tx, BlockHash(request.start_block))?;
     let mut next_block_number = Some(BlockNumber::new_or_panic(request.start_block));
 
     while let Some(block_number) = next_block_number {
@@ -155,7 +153,6 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                // start_block: test_data.blocks[0].block.hash.0,
                 start_block: test_data.blocks[0].block.number.get(),
                 count: COUNT as u64,
                 size_limit: 100,
@@ -228,7 +225,6 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                // start_block: test_data.blocks[0].block.hash.0,
                 start_block: test_data.blocks[0].block.number.get(),
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
@@ -299,7 +295,6 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                // start_block: test_data.blocks[3].block.hash.0,
                 start_block: test_data.blocks[3].block.number.get(),
                 count: COUNT as u64,
                 size_limit: 100,
@@ -377,7 +372,6 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                // start_block: test_data.blocks[3].block.hash.0,
                 start_block: test_data.blocks[3].block.number.get(),
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
