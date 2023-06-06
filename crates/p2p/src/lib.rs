@@ -171,7 +171,7 @@ impl Client {
         self.sender
             .send(Command::PublishPropagationMessage {
                 topic,
-                message,
+                message: Box::new(message),
                 sender,
             })
             .await
@@ -228,7 +228,7 @@ enum Command {
     },
     PublishPropagationMessage {
         topic: IdentTopic,
-        message: p2p_proto::propagation::Message,
+        message: Box<p2p_proto::propagation::Message>,
         sender: EmptyResultSender,
     },
     /// For testing purposes only
