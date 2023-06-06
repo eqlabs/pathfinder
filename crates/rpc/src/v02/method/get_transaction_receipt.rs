@@ -373,8 +373,8 @@ mod types {
         pub data: Vec<EventData>,
     }
 
-    impl From<starknet_gateway_types::reply::transaction::Event> for Event {
-        fn from(e: starknet_gateway_types::reply::transaction::Event) -> Self {
+    impl From<pathfinder_common::event::Event> for Event {
+        fn from(e: pathfinder_common::event::Event) -> Self {
             Self {
                 from_address: e.from_address,
                 keys: e.keys,

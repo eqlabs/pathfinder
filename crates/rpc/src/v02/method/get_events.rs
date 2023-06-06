@@ -640,7 +640,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::event::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };

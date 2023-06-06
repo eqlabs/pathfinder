@@ -7,7 +7,7 @@ use pathfinder_common::{
 };
 use stark_hash::Felt;
 
-const PAGE_SIZE_LIMIT: usize = 1_024;
+pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub const KEY_FILTER_LIMIT: usize = 256;
 
 pub struct EventFilter<K: KeyFilter> {

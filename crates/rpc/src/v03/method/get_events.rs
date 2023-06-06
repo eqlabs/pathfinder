@@ -98,9 +98,9 @@ pub async fn get_events(
         None => None,
     };
 
-    if request.keys.len() > pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT {
+    if request.keys.len() > pathfinder_storage::event::KEY_FILTER_LIMIT {
         return Err(GetEventsError::TooManyKeysInFilter {
-            limit: pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT,
+            limit: pathfinder_storage::event::KEY_FILTER_LIMIT,
             requested: request.keys.len(),
         });
     }
@@ -673,7 +673,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::event::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };
@@ -686,7 +686,7 @@ mod tests {
     async fn get_events_with_too_many_keys_in_filter() {
         let (context, _) = setup();
 
-        let limit = pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT;
+        let limit = pathfinder_storage::event::KEY_FILTER_LIMIT;
 
         let keys = [vec![EventKey(felt!("01"))]]
             .iter()

@@ -162,6 +162,7 @@ impl Default for SyncState {
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
+    use pathfinder_common::event::Event;
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment,
         ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
@@ -181,7 +182,7 @@ pub mod test_utils {
             state_update::{ReplacedClass, StorageDiff},
             transaction::{
                 execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                DeployTransaction, EntryPointType, Event, ExecutionResources, InvokeTransaction,
+                DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
                 InvokeTransactionV0, Receipt, Transaction,
             },
         },

@@ -117,7 +117,7 @@ pub(crate) fn create_transactions_and_receipts(
         let receipt = transaction::Receipt {
             actual_fee: None,
             events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
-                vec![transaction::Event {
+                vec![pathfinder_common::event::Event {
                     from_address: ContractAddress::new_or_panic(
                         Felt::from_hex_str(&"2".repeat(i + 3)).unwrap(),
                     ),

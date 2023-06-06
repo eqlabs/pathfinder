@@ -27,7 +27,7 @@ use rusqlite::functions::FunctionFlags;
 pub use state::{
     CanonicalBlocksTable, ContractsStateTable, L1StateTable, L1TableBlockId, RefsTable,
     StarknetBlock, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest, StarknetBlocksTable,
-    StarknetEventsTable, StarknetTransactionsTable,
+    StarknetTransactionsTable,
 };
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 

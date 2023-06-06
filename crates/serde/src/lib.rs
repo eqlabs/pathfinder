@@ -28,20 +28,6 @@ serde_conv!(
 );
 
 serde_conv!(
-    pub EventDataAsDecimalStr,
-    EventData,
-    |serialize_me: &EventData| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(EventData)
-);
-
-serde_conv!(
-    pub EventKeyAsDecimalStr,
-    EventKey,
-    |serialize_me: &EventKey| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(EventKey)
-);
-
-serde_conv!(
     pub L1ToL2MessagePayloadElemAsDecimalStr,
     L1ToL2MessagePayloadElem,
     |serialize_me: &L1ToL2MessagePayloadElem| starkhash_to_dec_str(&serialize_me.0),
