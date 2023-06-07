@@ -21,11 +21,11 @@ pub async fn get_block_bodies(
     spawn_blocking_get(request, storage, block_bodies).await
 }
 
-pub async fn get_state_updates(
+pub async fn get_state_diffs(
     request: p2p_proto::sync::GetStateDiffs,
     storage: &Storage,
 ) -> anyhow::Result<p2p_proto::sync::StateDiffs> {
-    spawn_blocking_get(request, storage, state_updates).await
+    spawn_blocking_get(request, storage, state_diffs).await
 }
 
 pub async fn get_classes(
@@ -56,7 +56,7 @@ where
         let tx = connection
             .transaction()
             .context("Creating database transaction")?;
-        Ok(getter(tx, request)?)
+        getter(tx, request)
     })
     .await
     .context("Database read panic or shutting down")?
@@ -119,7 +119,7 @@ fn block_bodies(
 
         let (transactions, receipts) = transactions_and_receipts
             .into_iter()
-            .map(|tr| conv::body::from(tr))
+            .map(conv::body::from)
             .unzip();
 
         block_bodies.push(p2p_proto::common::BlockBody {
@@ -134,7 +134,7 @@ fn block_bodies(
     Ok(p2p_proto::sync::BlockBodies { block_bodies })
 }
 
-fn state_updates(
+fn state_diffs(
     tx: Transaction<'_>,
     request: p2p_proto::sync::GetStateDiffs,
 ) -> anyhow::Result<p2p_proto::sync::StateDiffs> {
@@ -150,7 +150,15 @@ fn state_updates(
             break;
         }
 
-        todo!();
+        let Some(state_update) = tx.state_update(block_number.into())? else {
+            // No such state update, shouldn't happen with a single source of truth in L2...
+            break;
+        };
+
+        block_state_updates.push(p2p_proto::sync::BlockStateUpdateWithHash {
+            block_hash: state_update.block_hash.0,
+            state_update: conv::state_update::from(state_update),
+        });
 
         count -= 1;
         next_block_number = get_next_block_number(block_number, request.direction);
@@ -192,7 +200,7 @@ mod conv {
                 sequencer_address: header.sequencer_address.0,
                 timestamp: header.timestamp.get(),
                 gas_price: header.gas_price.0.into(),
-                transaction_count: transaction_count,
+                transaction_count,
                 transaction_commitment: header.transaction_commitment.0,
                 event_count: 0,
                 event_commitment: header.event_commitment.0,
@@ -386,6 +394,68 @@ mod conv {
                     });
                     (t, r)
                 }
+            }
+        }
+    }
+
+    pub(super) mod state_update {
+        use p2p_proto::propagation::{
+            BlockStateUpdate, ContractDiff, DeclaredClass, DeployedContract, ReplacedClass,
+            StorageDiff,
+        };
+        use pathfinder_common::state_update::{ContractClassUpdate, StateUpdate};
+
+        pub fn from(x: StateUpdate) -> BlockStateUpdate {
+            let mut deployed_contracts = Vec::new();
+            let mut replaced_classes = Vec::new();
+            let contract_diffs =
+                x.contract_updates
+                    .into_iter()
+                    .map(|(contract_address, update)| {
+                        let nonce = update.nonce.unwrap_or_default().0;
+                        let storage_diffs = update
+                            .storage
+                            .into_iter()
+                            .map(|(key, value)| StorageDiff {
+                                key: key.0,
+                                value: value.0,
+                            })
+                            .collect();
+                        match update.class {
+                            Some(ContractClassUpdate::Deploy(class_hash)) => deployed_contracts
+                                .push(DeployedContract {
+                                    contract_address: contract_address.0,
+                                    class_hash: class_hash.0,
+                                }),
+                            Some(ContractClassUpdate::Replace(class_hash)) => replaced_classes
+                                .push(ReplacedClass {
+                                    contract_address: contract_address.0,
+                                    class_hash: class_hash.0,
+                                }),
+                            None => {}
+                        }
+
+                        ContractDiff {
+                            contract_address: contract_address.0,
+                            nonce,
+                            storage_diffs,
+                        }
+                    })
+                    .collect();
+
+            BlockStateUpdate {
+                contract_diffs,
+                deployed_contracts,
+                declared_cairo_classes: x.declared_cairo_classes.into_iter().map(|c| c.0).collect(),
+                declared_classes: x
+                    .declared_sierra_classes
+                    .into_iter()
+                    .map(|(sierra_hash, casm_hash)| DeclaredClass {
+                        sierra_hash: sierra_hash.0,
+                        casm_hash: casm_hash.0,
+                    })
+                    .collect(),
+                replaced_classes,
             }
         }
     }

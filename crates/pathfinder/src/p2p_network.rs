@@ -118,7 +118,7 @@ async fn handle_p2p_event(
                     Response::BlockBodies(sync_handlers::get_block_bodies(r, storage).await?)
                 }
                 Request::GetStateDiffs(r) => {
-                    Response::StateDiffs(sync_handlers::get_state_updates(r, storage).await?)
+                    Response::StateDiffs(sync_handlers::get_state_diffs(r, storage).await?)
                 }
                 Request::GetClasses(r) => {
                     Response::Classes(sync_handlers::get_classes(r, storage).await?)
