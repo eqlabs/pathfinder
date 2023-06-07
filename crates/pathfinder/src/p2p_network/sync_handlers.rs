@@ -70,14 +70,14 @@ fn fetch_block_headers(
                 .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
         headers.push(p2p_proto::common::BlockHeader {
-            block_hash: block.hash.0,
-            parent_block_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
-            block_number: block.number.get(),
+            hash: block.hash.0,
+            parent_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
+            number: block.number.get(),
             state_commitment: block.state_commmitment.0,
             storage_commitment: storage_commitment.0,
             class_commitment: class_commitment.0,
             sequencer_address: block.sequencer_address.0,
-            block_timestamp: block.timestamp.get(),
+            timestamp: block.timestamp.get(),
             gas_price: block.gas_price.0.into(),
             transaction_count: transaction_count
                 .try_into()
@@ -162,7 +162,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -171,10 +171,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -188,7 +185,7 @@ mod tests {
             headers
                 .iter()
                 .skip(1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks
@@ -234,7 +231,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -242,10 +239,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -258,7 +252,7 @@ mod tests {
             headers
                 .iter()
                 .skip(1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks
@@ -304,7 +298,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -314,10 +308,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -332,7 +323,7 @@ mod tests {
             headers
                 .iter()
                 .take(COUNT - 1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks
@@ -381,7 +372,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -390,10 +381,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -407,7 +395,7 @@ mod tests {
             headers
                 .iter()
                 .take(test_data.blocks.len() - 1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks

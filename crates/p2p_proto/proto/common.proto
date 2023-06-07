@@ -9,14 +9,14 @@ message EthereumAddress { bytes elements = 1; }
 message PeerID { bytes id = 1; }
 
 message BlockHeader {
-  FieldElement block_hash = 1;
-  FieldElement parent_block_hash = 2;
-  uint64 block_number = 3;
+  FieldElement hash = 1;
+  FieldElement parent_hash = 2;
+  uint64 number = 3;
   FieldElement state_commitment = 4;
   FieldElement storage_commitment = 5;
   FieldElement class_commitment = 6;
   FieldElement sequencer_address = 7;
-  uint64 block_timestamp = 8;
+  uint64 timestamp = 8;
   FieldElement gas_price = 9;
   uint32 transaction_count = 10;
   FieldElement transaction_commitment = 11;

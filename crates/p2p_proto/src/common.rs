@@ -10,14 +10,14 @@ use super::proto;
 #[cfg_attr(feature = "test-utils", derive(Dummy))]
 #[protobuf(name = "crate::proto::common::BlockHeader")]
 pub struct BlockHeader {
-    pub block_hash: Felt,
-    pub parent_block_hash: Felt,
-    pub block_number: u64,
+    pub hash: Felt,
+    pub parent_hash: Felt,
+    pub number: u64,
     pub state_commitment: Felt,
     pub storage_commitment: Felt,
     pub class_commitment: Felt,
     pub sequencer_address: Felt,
-    pub block_timestamp: u64,
+    pub timestamp: u64,
     pub gas_price: Felt,
     pub transaction_count: u32,
     pub transaction_commitment: Felt,
