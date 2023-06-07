@@ -354,7 +354,7 @@ macro_rules! felt_bytes {
 /// Note that the assertion only occurs for `#[cfg(test)]`.
 ///
 /// Usage:
-/// ```rust
+/// ```rust,ignore
 /// version_check!(<network> <operator> <version>, <optional assert message>);
 /// version_check!(Testnet < 0-11-0, "Will not compile once Testnet has launched v0.11.0+");
 /// ```
@@ -362,7 +362,7 @@ macro_rules! felt_bytes {
 /// Supported operators: `<, <=, ==, >=, >`.
 ///
 /// Example:
-/// ```rust
+/// ```rust,ignore
 /// version_check!(Mainnet < 0-11-0, "Drop field alias");
 /// #[derive(serde::Serialize)]
 /// struct MyType {
