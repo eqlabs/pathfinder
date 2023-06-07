@@ -1,7 +1,7 @@
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, StarknetVersion};
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
-use pathfinder_storage::{JournalMode, StarknetBlocksTable, Storage};
+use pathfinder_storage::{JournalMode, Storage};
 use stark_hash::Felt;
 use starknet_gateway_types::reply::{Block, Status};
 
@@ -32,31 +32,37 @@ fn main() -> anyhow::Result<()> {
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();
-        StarknetBlocksTable::get_latest_number(&tx)?.unwrap()
+        tx.block_id(pathfinder_storage::BlockId::Latest)
+            .context("Fetching latest block number")?
+            .context("No latest block number")?
+            .0
     };
 
     for block_number in 0..latest_block_number.get() {
         let tx = db.transaction().unwrap();
         let block_id = pathfinder_storage::BlockId::Number(BlockNumber::new_or_panic(block_number));
-        let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
+        let header = tx
+            .block_header(block_id)
+            .context("Fetching block header")?
+            .context("Block header missing")?;
         let transactions_and_receipts = tx
             .transaction_data_for_block(block_id)?
             .context("Transaction data missing")?;
         drop(tx);
 
-        let block_hash = block.hash;
+        let block_hash = header.hash;
         let (transactions, receipts): (Vec<_>, Vec<_>) =
             transactions_and_receipts.into_iter().unzip();
 
         let block = Block {
-            block_hash: block.hash,
-            block_number: block.number,
-            gas_price: Some(block.gas_price),
+            block_hash: header.hash,
+            block_number: header.number,
+            gas_price: Some(header.gas_price),
             parent_block_hash,
-            sequencer_address: Some(block.sequencer_address),
-            state_commitment: block.state_commmitment,
+            sequencer_address: Some(header.sequencer_address),
+            state_commitment: header.state_commitment,
             status: Status::AcceptedOnL1,
-            timestamp: block.timestamp,
+            timestamp: header.timestamp,
             transaction_receipts: receipts,
             transactions,
             starknet_version: StarknetVersion::default(),

@@ -6,7 +6,7 @@ use pathfinder_lib::state::block_hash::{
     calculate_event_commitment, calculate_transaction_commitment,
     TransactionCommitmentFinalHashType,
 };
-use pathfinder_storage::{BlockId, JournalMode, StarknetBlocksTable, Storage};
+use pathfinder_storage::{BlockId, JournalMode, Storage};
 
 /// Calculate transaction and event commitments for blocks.
 ///
@@ -29,7 +29,10 @@ fn main() -> anyhow::Result<()> {
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();
-        StarknetBlocksTable::get_latest_number(&tx)?.unwrap()
+        tx.block_id(BlockId::Latest)
+            .context("Fetching latest block number")?
+            .context("No latest block")?
+            .0
     };
     let num_blocks = latest_block_number.get().min(blocks_limit);
 
@@ -43,8 +46,10 @@ fn main() -> anyhow::Result<()> {
 
         let now = Instant::now();
         let block_id = BlockId::Number(BlockNumber::new_or_panic(block_number));
-        let block = StarknetBlocksTable::get(&tx, block_id)?.unwrap();
-        let version = StarknetBlocksTable::get_version(&tx, block_id)?;
+        let header = tx
+            .block_header(block_id)
+            .context("Fetching block header")?
+            .context("Block header missing")?;
 
         let transactions_and_receipts = tx
             .transaction_data_for_block(block_id)?
@@ -54,7 +59,7 @@ fn main() -> anyhow::Result<()> {
         let read_ms = now.elapsed().as_millis();
 
         let transaction_final_hash_type =
-            TransactionCommitmentFinalHashType::for_version(&version)?;
+            TransactionCommitmentFinalHashType::for_version(&header.starknet_version)?;
         let now = Instant::now();
         let (transaction_commitment, event_commitment) = (
             calculate_transaction_commitment(&transactions, transaction_final_hash_type)?,
@@ -73,7 +78,7 @@ fn main() -> anyhow::Result<()> {
                 rusqlite::named_params![
                     ":transaction_commitment": &transaction_commitment,
                     ":event_commitment": &event_commitment,
-                    ":block_hash": &block.hash,
+                    ":block_hash": &header.hash,
                 ],
             )
             .context("Update transaction and event commitments")?;
@@ -83,7 +88,7 @@ fn main() -> anyhow::Result<()> {
 
         println!(
             "\nblock: {} (tx: {}) read: {} ms, calc: {} ms, write: {} ms\ntx: {}\nev: {}",
-            block.number,
+            header.number,
             transactions.len(),
             read_ms,
             calc_ms,

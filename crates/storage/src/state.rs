@@ -1,339 +1,10 @@
-use anyhow::Context;
-use pathfinder_common::StarknetVersion;
 use pathfinder_common::{
-    consts::{
-        INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
-    },
-    BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ClassHash, ContractNonce,
-    ContractRoot, ContractStateHash, EventCommitment, GasPrice, SequencerAddress, StateCommitment,
-    StorageCommitment, TransactionCommitment,
+    BlockHash, BlockNumber, BlockTimestamp, ClassHash, ContractNonce, ContractRoot,
+    ContractStateHash, EventCommitment, GasPrice, SequencerAddress, StateCommitment,
+    TransactionCommitment,
 };
 
 use crate::{prelude::*, BlockId};
-
-/// Stores all known [StarknetBlocks][StarknetBlock].
-pub struct StarknetBlocksTable {}
-
-impl StarknetBlocksTable {
-    /// Insert a new [StarknetBlock]. Fails if the block number is not unique.
-    ///
-    /// Version is the [`starknet_gateway_types::reply::Block::starknet_version`].
-    pub fn insert(
-        tx: &Transaction<'_>,
-        block: &StarknetBlock,
-        version: &StarknetVersion,
-        storage_commitment: StorageCommitment,
-        class_commitment: ClassCommitment,
-    ) -> anyhow::Result<()> {
-        let version = version.as_str();
-        let version_id =
-            (!version.is_empty()).then_some(StarknetVersionsTable::intern(tx, version)?);
-
-        let class_commitment = if class_commitment == ClassCommitment::ZERO {
-            None
-        } else {
-            Some(class_commitment)
-        };
-
-        tx.execute(
-            r"INSERT INTO starknet_blocks ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment, class_commitment)
-                                   VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
-            named_params! {
-                ":number": &block.number,
-                ":hash": &block.hash,
-                ":root": &storage_commitment,
-                ":timestamp": &block.timestamp,
-                ":gas_price": &block.gas_price.to_be_bytes().as_slice(),
-                ":sequencer_address": &block.sequencer_address,
-                ":version_id": &version_id,
-                ":transaction_commitment": &block.transaction_commitment, 
-                ":event_commitment": &block.event_commitment,
-                ":class_commitment": &class_commitment,
-            },
-        )?;
-
-        Ok(())
-    }
-
-    /// Returns the requested [StarknetBlock].
-    pub fn get(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<Option<StarknetBlock>> {
-        let mut statement = match block {
-            BlockId::Number(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
-                    FROM starknet_blocks WHERE number = ?",
-            ),
-            BlockId::Hash(_) => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
-                    FROM starknet_blocks WHERE hash = ?",
-            ),
-            BlockId::Latest => tx.prepare(
-                "SELECT hash, number, root, timestamp, gas_price, sequencer_address, transaction_commitment, event_commitment, class_commitment
-                    FROM starknet_blocks ORDER BY number DESC LIMIT 1",
-            ),
-        }?;
-
-        let mut rows = match block {
-            BlockId::Number(number) => statement.query([number]),
-            BlockId::Hash(hash) => statement.query([hash]),
-            BlockId::Latest => statement.query([]),
-        }?;
-
-        let row = rows.next().context("Iterate rows")?;
-
-        match row {
-            Some(row) => {
-                let number = row.get_unwrap("number");
-
-                let hash = row.get_unwrap("hash");
-
-                let storage_commitment = row.get_unwrap("root");
-
-                let timestamp = row.get_unwrap("timestamp");
-
-                let gas_price = row.get_ref_unwrap("gas_price").as_blob().unwrap();
-                let gas_price = GasPrice::from_be_slice(gas_price).unwrap();
-
-                let sequencer_address = row.get_unwrap("sequencer_address");
-
-                let transaction_commitment: Option<TransactionCommitment> =
-                    row.get_unwrap("transaction_commitment");
-                let event_commitment: Option<EventCommitment> = row.get_unwrap("event_commitment");
-
-                let class_commitment = row
-                    .get_unwrap::<_, Option<_>>("class_commitment")
-                    .unwrap_or(ClassCommitment::ZERO);
-                let root = StateCommitment::calculate(storage_commitment, class_commitment);
-
-                let block = StarknetBlock {
-                    number,
-                    hash,
-                    state_commmitment: root,
-                    timestamp,
-                    gas_price,
-                    sequencer_address,
-                    transaction_commitment,
-                    event_commitment,
-                };
-
-                Ok(Some(block))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Returns the [storage_commitment](StorageCommitment) of the given block.
-    pub fn get_storage_commitment(
-        tx: &Transaction<'_>,
-        block: BlockId,
-    ) -> anyhow::Result<Option<StorageCommitment>> {
-        match block {
-            BlockId::Number(number) => tx.query_row(
-                "SELECT root FROM starknet_blocks WHERE number = ?",
-                [number],
-                |row| row.get(0),
-            ),
-            BlockId::Hash(hash) => tx.query_row(
-                "SELECT root FROM starknet_blocks WHERE hash = ?",
-                [hash],
-                |row| row.get(0),
-            ),
-            BlockId::Latest => tx.query_row(
-                "SELECT root FROM starknet_blocks ORDER BY number DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            ),
-        }
-        .optional()
-        .map_err(|e| e.into())
-    }
-
-    /// Returns the state commitment of the given block.
-    pub fn get_state_commitment(
-        tx: &Transaction<'_>,
-        block: BlockId,
-    ) -> anyhow::Result<Option<(StorageCommitment, ClassCommitment)>> {
-        let mut statement = match block {
-            BlockId::Number(_) => {
-                tx.prepare("SELECT root, class_commitment FROM starknet_blocks WHERE number = ?")
-            }
-            BlockId::Hash(_) => {
-                tx.prepare("SELECT root, class_commitment FROM starknet_blocks WHERE hash = ?")
-            }
-            BlockId::Latest => tx.prepare(
-                "SELECT root, class_commitment FROM starknet_blocks ORDER BY number DESC LIMIT 1",
-            ),
-        }?;
-
-        let mut rows = match block {
-            BlockId::Number(number) => statement.query([number]),
-            BlockId::Hash(hash) => statement.query([hash]),
-            BlockId::Latest => statement.query([]),
-        }?;
-
-        let row = rows.next().context("Iterate rows")?;
-
-        match row {
-            Some(row) => {
-                let storage_commitment = row.get_unwrap("root");
-                let class_commitment = row
-                    .get_unwrap::<_, Option<_>>("class_commitment")
-                    .unwrap_or(ClassCommitment::ZERO);
-
-                Ok(Some((storage_commitment, class_commitment)))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Returns the version of the given block.
-    pub fn get_version(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<StarknetVersion> {
-        let mut statement = match block {
-            BlockId::Number(_) => tx.prepare(
-                r"
-                    SELECT
-                        version
-                    FROM
-                        starknet_versions
-                    JOIN
-                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
-                    WHERE
-                        starknet_blocks.number = ?
-                ",
-            ),
-            BlockId::Hash(_) => tx.prepare(
-                r"
-                    SELECT
-                        version
-                    FROM
-                        starknet_versions
-                    JOIN
-                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
-                    WHERE
-                        starknet_blocks.hash = ?
-                ",
-            ),
-            BlockId::Latest => tx.prepare(
-                r"
-                    SELECT
-                        version
-                    FROM
-                        starknet_versions
-                    JOIN
-                        starknet_blocks ON starknet_blocks.version_id = starknet_versions.id
-                    ORDER BY
-                        starknet_blocks.number
-                    DESC
-                    LIMIT 1
-                ",
-            ),
-        }?;
-
-        let mut rows = match block {
-            BlockId::Number(number) => statement.query([number]),
-            BlockId::Hash(hash) => statement.query([hash]),
-            BlockId::Latest => statement.query([]),
-        }?;
-
-        let row = rows.next().context("Iterate rows")?;
-
-        match row {
-            Some(row) => {
-                let version: Option<String> = row.get_unwrap("version");
-                Ok(version.unwrap_or_default().into())
-            }
-            None => Ok(Default::default()),
-        }
-    }
-
-    /// Deletes all rows from __head down-to reorg_tail__
-    /// i.e. it deletes all rows where `block number >= reorg_tail`.
-    pub fn reorg(tx: &Transaction<'_>, reorg_tail: BlockNumber) -> anyhow::Result<()> {
-        tx.execute(
-            "DELETE FROM starknet_blocks WHERE number >= ?",
-            [reorg_tail],
-        )?;
-        Ok(())
-    }
-
-    /// Returns the [number](BlockNumber) of the latest block.
-    pub fn get_latest_number(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
-        let maybe = tx
-            .query_row(
-                "SELECT number FROM starknet_blocks ORDER BY number DESC LIMIT 1",
-                [],
-                |row| Ok(row.get_unwrap(0)),
-            )
-            .optional()?;
-        Ok(maybe)
-    }
-
-    /// Returns the [hash](BlockHash) and [number](BlockNumber) of the latest block.
-    pub fn get_latest_hash_and_number(
-        tx: &Transaction<'_>,
-    ) -> anyhow::Result<Option<(BlockHash, BlockNumber)>> {
-        let maybe = tx
-            .query_row(
-                "SELECT hash, number FROM starknet_blocks ORDER BY number DESC LIMIT 1",
-                [],
-                |row| {
-                    let hash = row.get_unwrap(0);
-                    let num = row.get_unwrap(1);
-                    Ok((hash, num))
-                },
-            )
-            .optional()?;
-        Ok(maybe)
-    }
-
-    pub fn get_number(
-        tx: &Transaction<'_>,
-        hash: BlockHash,
-    ) -> anyhow::Result<Option<BlockNumber>> {
-        tx.query_row(
-            "SELECT number FROM starknet_blocks WHERE hash = ? LIMIT 1",
-            [hash],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| e.into())
-    }
-
-    /// Returns the [chain](pathfinder_common::Chain) based on genesis block hash stored in the DB.
-    pub fn get_chain(tx: &Transaction<'_>) -> anyhow::Result<Option<Chain>> {
-        let genesis = Self::get_hash(tx, BlockNumber::GENESIS.into())
-            .context("Read genesis block from database")?;
-
-        match genesis {
-            None => Ok(None),
-            Some(hash) if hash == TESTNET_GENESIS_HASH => Ok(Some(Chain::Testnet)),
-            Some(hash) if hash == TESTNET2_GENESIS_HASH => Ok(Some(Chain::Testnet2)),
-            Some(hash) if hash == MAINNET_GENESIS_HASH => Ok(Some(Chain::Mainnet)),
-            Some(hash) if hash == INTEGRATION_GENESIS_HASH => Ok(Some(Chain::Integration)),
-            Some(hash) => Err(anyhow::anyhow!("Unknown genesis block hash {}", hash.0)),
-        }
-    }
-
-    /// Returns hash of a given block number or `latest`
-    pub fn get_hash(
-        tx: &Transaction<'_>,
-        block: StarknetBlocksNumberOrLatest,
-    ) -> anyhow::Result<Option<BlockHash>> {
-        match block {
-            StarknetBlocksNumberOrLatest::Number(n) => tx.query_row(
-                "SELECT hash FROM starknet_blocks WHERE number = ?",
-                [n],
-                |row| row.get(0),
-            ),
-            StarknetBlocksNumberOrLatest::Latest => tx.query_row(
-                "SELECT hash FROM starknet_blocks ORDER BY number DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            ),
-        }
-        .optional()
-        .map_err(|e| e.into())
-    }
-}
 
 /// Identifies block in some [StarknetBlocksTable] queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -378,53 +49,6 @@ pub struct StarknetBlock {
     pub sequencer_address: SequencerAddress,
     pub transaction_commitment: Option<TransactionCommitment>,
     pub event_commitment: Option<EventCommitment>,
-}
-
-/// StarknetVersionsTable tracks `starknet_versions` table, which just interns the version
-/// metadata on each block.
-///
-/// It was decided to go with interned approach, as we couldn't be sure that a semantic version
-/// string format is followed. Semantic version strings may have been cheaper to just store
-/// in-line.
-///
-/// Introduced in `revision_0014`.
-struct StarknetVersionsTable;
-
-impl StarknetVersionsTable {
-    /// Interns, or makes sure there's a unique row for each version.
-    ///
-    /// These are not deleted automatically nor is a need expected due to multiple blocks being
-    /// generated with a single starknet version.
-    fn intern(transaction: &Transaction<'_>, version: &str) -> anyhow::Result<i64> {
-        let id: Option<i64> = transaction
-            .query_row(
-                "SELECT id FROM starknet_versions WHERE version = ?",
-                [version],
-                |r| Ok(r.get_unwrap(0)),
-            )
-            .optional()
-            .context("Querying for an existing starknet_version")?;
-
-        let id = if let Some(id) = id {
-            id
-        } else {
-            // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
-            // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
-            // read back with last_insert_rowid
-            let rows = transaction
-                .execute(
-                    "INSERT INTO starknet_versions(version) VALUES (?)",
-                    [version],
-                )
-                .context("Inserting unique starknet_version")?;
-
-            anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
-
-            transaction.last_insert_rowid()
-        };
-
-        Ok(id)
-    }
 }
 
 /// Stores the contract state hash along with its preimage. This is useful to
@@ -519,41 +143,13 @@ impl ContractsStateTable {
     }
 }
 
-/// Stores the canonical Starknet block chain.
-pub struct CanonicalBlocksTable {}
-
-impl CanonicalBlocksTable {
-    pub fn insert(
-        tx: &Transaction<'_>,
-        number: BlockNumber,
-        hash: BlockHash,
-    ) -> anyhow::Result<()> {
-        let rows_changed = tx.execute(
-            "INSERT INTO canonical_blocks(number, hash) values(?,?)",
-            params![&number, &hash],
-        )?;
-        assert_eq!(rows_changed, 1);
-
-        Ok(())
-    }
-
-    /// Removes all rows where `number >= reorg_tail`.
-    pub fn reorg(tx: &Transaction<'_>, reorg_tail: BlockNumber) -> anyhow::Result<()> {
-        tx.execute(
-            "DELETE FROM canonical_blocks WHERE number >= ?",
-            [reorg_tail],
-        )?;
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Storage;
-    use stark_hash::Felt;
 
     mod contracts {
+        use crate::Storage;
+
         use super::*;
         use pathfinder_common::felt;
 
@@ -583,495 +179,495 @@ mod tests {
         }
     }
 
-    mod starknet_blocks {
-        use super::*;
-        use crate::test_utils::{self, BlockWithCommitment};
-
-        fn create_blocks() -> [BlockWithCommitment; test_utils::NUM_BLOCKS] {
-            test_utils::create_blocks()
-        }
-
-        fn with_default_blocks<F>(f: F)
-        where
-            F: FnOnce(&Transaction<'_>, [BlockWithCommitment; test_utils::NUM_BLOCKS]),
-        {
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-
-            let blocks = create_blocks();
-            for block in &blocks {
-                StarknetBlocksTable::insert(
-                    &tx,
-                    &block.block,
-                    &StarknetVersion::default(),
-                    block.storage_commitment,
-                    block.class_commitment,
-                )
-                .unwrap();
-            }
-
-            f(&tx, blocks)
-        }
-
-        mod get {
-            use super::*;
-
-            mod by_number {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        for block in blocks {
-                            let result = StarknetBlocksTable::get(tx, block.block.number.into())
-                                .unwrap()
-                                .unwrap();
-
-                            assert_eq!(result, block.block);
-                        }
-                    })
-                }
-
-                #[test]
-                fn none() {
-                    with_default_blocks(|tx, blocks| {
-                        let non_existent = blocks.last().unwrap().block.number + 1;
-                        assert_eq!(
-                            StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
-                            None
-                        );
-                    });
-                }
-            }
-
-            mod by_hash {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        for block in blocks {
-                            let result = StarknetBlocksTable::get(tx, block.block.hash.into())
-                                .unwrap()
-                                .unwrap();
-
-                            assert_eq!(result, block.block);
-                        }
-                    });
-                }
-
-                #[test]
-                fn none() {
-                    with_default_blocks(|tx, _blocks| {
-                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
-                        assert_eq!(
-                            StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
-                            None
-                        );
-                    });
-                }
-            }
-
-            mod latest {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        let expected = &blocks.last().unwrap().block;
-
-                        let latest = StarknetBlocksTable::get(tx, BlockId::Latest)
-                            .unwrap()
-                            .unwrap();
-                        assert_eq!(&latest, expected);
-                    })
-                }
-
-                #[test]
-                fn none() {
-                    let storage = Storage::in_memory().unwrap();
-                    let mut connection = storage.connection().unwrap();
-                    let tx = connection.transaction().unwrap();
-
-                    let latest = StarknetBlocksTable::get(&tx, BlockId::Latest).unwrap();
-                    assert_eq!(latest, None);
-                }
-            }
-
-            mod number_by_hash {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        for block in blocks {
-                            let result = StarknetBlocksTable::get_number(tx, block.block.hash)
-                                .unwrap()
-                                .unwrap();
-
-                            assert_eq!(result, block.block.number);
-                        }
-                    });
-                }
-
-                #[test]
-                fn none() {
-                    with_default_blocks(|tx, _blocks| {
-                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
-                        assert_eq!(
-                            StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
-                            None
-                        );
-                    });
-                }
-            }
-        }
-
-        mod get_storage_and_state_commitments {
-            use super::*;
-
-            mod by_number {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        for block in blocks {
-                            let storage_commitment = StarknetBlocksTable::get_storage_commitment(
-                                tx,
-                                block.block.number.into(),
-                            )
-                            .unwrap()
-                            .unwrap();
-                            let state_commitment = StarknetBlocksTable::get_state_commitment(
-                                tx,
-                                block.block.number.into(),
-                            )
-                            .unwrap()
-                            .unwrap();
-
-                            assert_eq!(storage_commitment, state_commitment.0);
-                            assert_eq!(state_commitment.0, block.storage_commitment);
-                            assert_eq!(state_commitment.1, block.class_commitment);
-                            assert_eq!(
-                                StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                                block.block.state_commmitment
-                            );
-                        }
-                    })
-                }
-
-                #[test]
-                fn none() {
-                    with_default_blocks(|tx, blocks| {
-                        let non_existent = blocks.last().unwrap().block.number + 1;
-                        assert_eq!(
-                            StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
-                                .unwrap(),
-                            None
-                        );
-                        assert_eq!(
-                            StarknetBlocksTable::get_state_commitment(tx, non_existent.into())
-                                .unwrap(),
-                            None
-                        );
-                    })
-                }
-            }
-
-            mod by_hash {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        for block in blocks {
-                            let storage_commitment = StarknetBlocksTable::get_storage_commitment(
-                                tx,
-                                block.block.hash.into(),
-                            )
-                            .unwrap()
-                            .unwrap();
-                            let state_commitment = StarknetBlocksTable::get_state_commitment(
-                                tx,
-                                block.block.hash.into(),
-                            )
-                            .unwrap()
-                            .unwrap();
-
-                            assert_eq!(storage_commitment, state_commitment.0);
-                            assert_eq!(state_commitment.0, block.storage_commitment);
-                            assert_eq!(state_commitment.1, block.class_commitment);
-                            assert_eq!(
-                                StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                                block.block.state_commmitment
-                            );
-                        }
-                    })
-                }
-
-                #[test]
-                fn none() {
-                    with_default_blocks(|tx, _blocks| {
-                        let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
-                        assert_eq!(
-                            StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
-                                .unwrap(),
-                            None
-                        );
-                        assert_eq!(
-                            StarknetBlocksTable::get_state_commitment(tx, non_existent.into())
-                                .unwrap(),
-                            None
-                        );
-                    })
-                }
-            }
-
-            mod latest {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        let expected = blocks.last().unwrap();
-
-                        let storage_commitment =
-                            StarknetBlocksTable::get_storage_commitment(tx, BlockId::Latest)
-                                .unwrap()
-                                .unwrap();
-                        let state_commitment =
-                            StarknetBlocksTable::get_state_commitment(tx, BlockId::Latest)
-                                .unwrap()
-                                .unwrap();
-
-                        assert_eq!(storage_commitment, state_commitment.0);
-                        assert_eq!(state_commitment.0, expected.storage_commitment);
-                        assert_eq!(state_commitment.1, expected.class_commitment);
-                        assert_eq!(
-                            StateCommitment::calculate(state_commitment.0, state_commitment.1),
-                            expected.block.state_commmitment
-                        );
-                    })
-                }
-
-                #[test]
-                fn none() {
-                    let storage = Storage::in_memory().unwrap();
-                    let mut connection = storage.connection().unwrap();
-                    let tx = connection.transaction().unwrap();
-
-                    assert_eq!(
-                        StarknetBlocksTable::get_storage_commitment(&tx, BlockId::Latest,).unwrap(),
-                        None
-                    );
-                    assert_eq!(
-                        StarknetBlocksTable::get_state_commitment(&tx, BlockId::Latest,).unwrap(),
-                        None
-                    );
-                }
-            }
-        }
-
-        mod reorg {
-            use super::*;
-
-            #[test]
-            fn full() {
-                with_default_blocks(|tx, _blocks| {
-                    // reorg to genesis expected to wipe the blocks
-                    StarknetBlocksTable::reorg(tx, BlockNumber::GENESIS).unwrap();
-
-                    assert_eq!(StarknetBlocksTable::get(tx, BlockId::Latest).unwrap(), None);
-                })
-            }
-
-            #[test]
-            fn partial() {
-                with_default_blocks(|tx, blocks| {
-                    let reorg_tail = blocks[1].block.number;
-                    StarknetBlocksTable::reorg(tx, reorg_tail).unwrap();
-
-                    let expected = StarknetBlock {
-                        number: blocks[0].block.number,
-                        hash: blocks[0].block.hash,
-                        state_commmitment: blocks[0].block.state_commmitment,
-                        timestamp: blocks[0].block.timestamp,
-                        gas_price: blocks[0].block.gas_price,
-                        sequencer_address: blocks[0].block.sequencer_address,
-                        transaction_commitment: Some(TransactionCommitment(Felt::ZERO)),
-                        event_commitment: Some(EventCommitment(Felt::ZERO)),
-                    };
-
-                    assert_eq!(
-                        StarknetBlocksTable::get(tx, BlockId::Latest).unwrap(),
-                        Some(expected)
-                    );
-                })
-            }
-        }
-
-        mod interned_version {
-            use super::super::Storage;
-            use super::StarknetBlocksTable;
-            use pathfinder_common::{ClassCommitment, StarknetVersion, StorageCommitment};
-
-            #[test]
-            fn duplicate_versions_interned() {
-                let storage = Storage::in_memory().unwrap();
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-
-                let blocks = super::create_blocks();
-                let versions = [StarknetVersion::new(0, 9, 1), StarknetVersion::new(0, 9, 1)]
-                    .into_iter()
-                    .chain(std::iter::repeat(StarknetVersion::new(0, 9, 2)));
-
-                let mut inserted = 0;
-
-                for (block, version) in blocks.iter().zip(versions) {
-                    StarknetBlocksTable::insert(
-                        &tx,
-                        &block.block,
-                        &version,
-                        StorageCommitment::ZERO,
-                        ClassCommitment::ZERO,
-                    )
-                    .unwrap();
-                    inserted += 1;
-                }
-
-                let rows = tx.prepare("select version_id, count(1) from starknet_blocks group by version_id order by version_id")
-                    .unwrap()
-                    .query([])
-                    .unwrap()
-                    .mapped(|r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?)))
-                    .collect::<Result<Vec<(Option<i64>, i64)>, _>>()
-                    .unwrap();
-
-                // there should be two of 0.9.1
-                assert_eq!(rows.first(), Some(&(Some(1), 2)));
-
-                // there should be a few for 0.9.2 (initially the create_rows returned 3 => 1)
-                assert_eq!(rows.last(), Some(&(Some(2), inserted - 2)));
-
-                // we should not have any nulls
-                assert_eq!(rows.len(), 2, "nulls were not expected in {rows:?}");
-            }
-        }
-
-        mod get_latest_number {
-            use super::*;
-
-            #[test]
-            fn some() {
-                with_default_blocks(|tx, blocks| {
-                    let latest = blocks.last().unwrap().block.number;
-                    assert_eq!(
-                        StarknetBlocksTable::get_latest_number(tx).unwrap(),
-                        Some(latest)
-                    );
-                });
-            }
-
-            #[test]
-            fn none() {
-                let storage = Storage::in_memory().unwrap();
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-
-                assert_eq!(StarknetBlocksTable::get_latest_number(&tx).unwrap(), None);
-            }
-        }
-
-        mod get_latest_hash_and_number {
-            use super::*;
-
-            #[test]
-            fn some() {
-                with_default_blocks(|tx, blocks| {
-                    let latest = &blocks.last().unwrap().block;
-                    assert_eq!(
-                        StarknetBlocksTable::get_latest_hash_and_number(tx).unwrap(),
-                        Some((latest.hash, latest.number))
-                    );
-                });
-            }
-
-            #[test]
-            fn none() {
-                let storage = Storage::in_memory().unwrap();
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-
-                assert_eq!(
-                    StarknetBlocksTable::get_latest_hash_and_number(&tx).unwrap(),
-                    None
-                );
-            }
-        }
-
-        mod get_hash {
-            use super::*;
-
-            mod by_number {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        for block in blocks {
-                            let result =
-                                StarknetBlocksTable::get_hash(tx, block.block.number.into())
-                                    .unwrap()
-                                    .unwrap();
-
-                            assert_eq!(result, block.block.hash);
-                        }
-                    })
-                }
-
-                #[test]
-                fn none() {
-                    with_default_blocks(|tx, blocks| {
-                        let non_existent = blocks.last().unwrap().block.number + 1;
-                        assert_eq!(
-                            StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
-                            None
-                        );
-                    });
-                }
-            }
-
-            mod latest {
-                use super::*;
-
-                #[test]
-                fn some() {
-                    with_default_blocks(|tx, blocks| {
-                        let expected = blocks.last().unwrap().block.hash;
-
-                        let latest =
-                            StarknetBlocksTable::get_hash(tx, StarknetBlocksNumberOrLatest::Latest)
-                                .unwrap()
-                                .unwrap();
-                        assert_eq!(latest, expected);
-                    })
-                }
-
-                #[test]
-                fn none() {
-                    let storage = Storage::in_memory().unwrap();
-                    let mut connection = storage.connection().unwrap();
-                    let tx = connection.transaction().unwrap();
-
-                    let latest = StarknetBlocksTable::get(&tx, BlockId::Latest).unwrap();
-                    assert_eq!(latest, None);
-                }
-            }
-        }
-    }
+    // mod starknet_blocks {
+    //     use super::*;
+    //     use crate::test_utils::{self, BlockWithCommitment};
+
+    //     fn create_blocks() -> [BlockWithCommitment; test_utils::NUM_BLOCKS] {
+    //         test_utils::create_blocks()
+    //     }
+
+    //     fn with_default_blocks<F>(f: F)
+    //     where
+    //         F: FnOnce(&Transaction<'_>, [BlockWithCommitment; test_utils::NUM_BLOCKS]),
+    //     {
+    //         let storage = Storage::in_memory().unwrap();
+    //         let mut connection = storage.connection().unwrap();
+    //         let tx = connection.transaction().unwrap();
+
+    //         let blocks = create_blocks();
+    //         for block in &blocks {
+    //             StarknetBlocksTable::insert(
+    //                 &tx,
+    //                 &block.block,
+    //                 &StarknetVersion::default(),
+    //                 block.storage_commitment,
+    //                 block.class_commitment,
+    //             )
+    //             .unwrap();
+    //         }
+
+    //         f(&tx, blocks)
+    //     }
+
+    //     mod get {
+    //         use super::*;
+
+    //         mod by_number {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     for block in blocks {
+    //                         let result = StarknetBlocksTable::get(tx, block.block.number.into())
+    //                             .unwrap()
+    //                             .unwrap();
+
+    //                         assert_eq!(result, block.block);
+    //                     }
+    //                 })
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     let non_existent = blocks.last().unwrap().block.number + 1;
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
+    //                         None
+    //                     );
+    //                 });
+    //             }
+    //         }
+
+    //         mod by_hash {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     for block in blocks {
+    //                         let result = StarknetBlocksTable::get(tx, block.block.hash.into())
+    //                             .unwrap()
+    //                             .unwrap();
+
+    //                         assert_eq!(result, block.block);
+    //                     }
+    //                 });
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 with_default_blocks(|tx, _blocks| {
+    //                     let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
+    //                         None
+    //                     );
+    //                 });
+    //             }
+    //         }
+
+    //         mod latest {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     let expected = &blocks.last().unwrap().block;
+
+    //                     let latest = StarknetBlocksTable::get(tx, BlockId::Latest)
+    //                         .unwrap()
+    //                         .unwrap();
+    //                     assert_eq!(&latest, expected);
+    //                 })
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 let storage = Storage::in_memory().unwrap();
+    //                 let mut connection = storage.connection().unwrap();
+    //                 let tx = connection.transaction().unwrap();
+
+    //                 let latest = StarknetBlocksTable::get(&tx, BlockId::Latest).unwrap();
+    //                 assert_eq!(latest, None);
+    //             }
+    //         }
+
+    //         mod number_by_hash {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     for block in blocks {
+    //                         let result = StarknetBlocksTable::get_number(tx, block.block.hash)
+    //                             .unwrap()
+    //                             .unwrap();
+
+    //                         assert_eq!(result, block.block.number);
+    //                     }
+    //                 });
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 with_default_blocks(|tx, _blocks| {
+    //                     let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get_number(tx, non_existent).unwrap(),
+    //                         None
+    //                     );
+    //                 });
+    //             }
+    //         }
+    //     }
+
+    //     mod get_storage_and_state_commitments {
+    //         use super::*;
+
+    //         mod by_number {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     for block in blocks {
+    //                         let storage_commitment = StarknetBlocksTable::get_storage_commitment(
+    //                             tx,
+    //                             block.block.number.into(),
+    //                         )
+    //                         .unwrap()
+    //                         .unwrap();
+    //                         let state_commitment = StarknetBlocksTable::get_state_commitment(
+    //                             tx,
+    //                             block.block.number.into(),
+    //                         )
+    //                         .unwrap()
+    //                         .unwrap();
+
+    //                         assert_eq!(storage_commitment, state_commitment.0);
+    //                         assert_eq!(state_commitment.0, block.storage_commitment);
+    //                         assert_eq!(state_commitment.1, block.class_commitment);
+    //                         assert_eq!(
+    //                             StateCommitment::calculate(state_commitment.0, state_commitment.1),
+    //                             block.block.state_commmitment
+    //                         );
+    //                     }
+    //                 })
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     let non_existent = blocks.last().unwrap().block.number + 1;
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
+    //                             .unwrap(),
+    //                         None
+    //                     );
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get_state_commitment(tx, non_existent.into())
+    //                             .unwrap(),
+    //                         None
+    //                     );
+    //                 })
+    //             }
+    //         }
+
+    //         mod by_hash {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     for block in blocks {
+    //                         let storage_commitment = StarknetBlocksTable::get_storage_commitment(
+    //                             tx,
+    //                             block.block.hash.into(),
+    //                         )
+    //                         .unwrap()
+    //                         .unwrap();
+    //                         let state_commitment = StarknetBlocksTable::get_state_commitment(
+    //                             tx,
+    //                             block.block.hash.into(),
+    //                         )
+    //                         .unwrap()
+    //                         .unwrap();
+
+    //                         assert_eq!(storage_commitment, state_commitment.0);
+    //                         assert_eq!(state_commitment.0, block.storage_commitment);
+    //                         assert_eq!(state_commitment.1, block.class_commitment);
+    //                         assert_eq!(
+    //                             StateCommitment::calculate(state_commitment.0, state_commitment.1),
+    //                             block.block.state_commmitment
+    //                         );
+    //                     }
+    //                 })
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 with_default_blocks(|tx, _blocks| {
+    //                     let non_existent = BlockHash(Felt::from_hex_str(&"b".repeat(10)).unwrap());
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get_storage_commitment(tx, non_existent.into())
+    //                             .unwrap(),
+    //                         None
+    //                     );
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get_state_commitment(tx, non_existent.into())
+    //                             .unwrap(),
+    //                         None
+    //                     );
+    //                 })
+    //             }
+    //         }
+
+    //         mod latest {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     let expected = blocks.last().unwrap();
+
+    //                     let storage_commitment =
+    //                         StarknetBlocksTable::get_storage_commitment(tx, BlockId::Latest)
+    //                             .unwrap()
+    //                             .unwrap();
+    //                     let state_commitment =
+    //                         StarknetBlocksTable::get_state_commitment(tx, BlockId::Latest)
+    //                             .unwrap()
+    //                             .unwrap();
+
+    //                     assert_eq!(storage_commitment, state_commitment.0);
+    //                     assert_eq!(state_commitment.0, expected.storage_commitment);
+    //                     assert_eq!(state_commitment.1, expected.class_commitment);
+    //                     assert_eq!(
+    //                         StateCommitment::calculate(state_commitment.0, state_commitment.1),
+    //                         expected.block.state_commmitment
+    //                     );
+    //                 })
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 let storage = Storage::in_memory().unwrap();
+    //                 let mut connection = storage.connection().unwrap();
+    //                 let tx = connection.transaction().unwrap();
+
+    //                 assert_eq!(
+    //                     StarknetBlocksTable::get_storage_commitment(&tx, BlockId::Latest,).unwrap(),
+    //                     None
+    //                 );
+    //                 assert_eq!(
+    //                     StarknetBlocksTable::get_state_commitment(&tx, BlockId::Latest,).unwrap(),
+    //                     None
+    //                 );
+    //             }
+    //         }
+    //     }
+
+    //     mod reorg {
+    //         use super::*;
+
+    //         #[test]
+    //         fn full() {
+    //             with_default_blocks(|tx, _blocks| {
+    //                 // reorg to genesis expected to wipe the blocks
+    //                 StarknetBlocksTable::reorg(tx, BlockNumber::GENESIS).unwrap();
+
+    //                 assert_eq!(StarknetBlocksTable::get(tx, BlockId::Latest).unwrap(), None);
+    //             })
+    //         }
+
+    //         #[test]
+    //         fn partial() {
+    //             with_default_blocks(|tx, blocks| {
+    //                 let reorg_tail = blocks[1].block.number;
+    //                 StarknetBlocksTable::reorg(tx, reorg_tail).unwrap();
+
+    //                 let expected = StarknetBlock {
+    //                     number: blocks[0].block.number,
+    //                     hash: blocks[0].block.hash,
+    //                     state_commmitment: blocks[0].block.state_commmitment,
+    //                     timestamp: blocks[0].block.timestamp,
+    //                     gas_price: blocks[0].block.gas_price,
+    //                     sequencer_address: blocks[0].block.sequencer_address,
+    //                     transaction_commitment: Some(TransactionCommitment(Felt::ZERO)),
+    //                     event_commitment: Some(EventCommitment(Felt::ZERO)),
+    //                 };
+
+    //                 assert_eq!(
+    //                     StarknetBlocksTable::get(tx, BlockId::Latest).unwrap(),
+    //                     Some(expected)
+    //                 );
+    //             })
+    //         }
+    //     }
+
+    //     mod interned_version {
+    //         use super::super::Storage;
+    //         use super::StarknetBlocksTable;
+    //         use pathfinder_common::{ClassCommitment, StarknetVersion, StorageCommitment};
+
+    //         #[test]
+    //         fn duplicate_versions_interned() {
+    //             let storage = Storage::in_memory().unwrap();
+    //             let mut connection = storage.connection().unwrap();
+    //             let tx = connection.transaction().unwrap();
+
+    //             let blocks = super::create_blocks();
+    //             let versions = [StarknetVersion::new(0, 9, 1), StarknetVersion::new(0, 9, 1)]
+    //                 .into_iter()
+    //                 .chain(std::iter::repeat(StarknetVersion::new(0, 9, 2)));
+
+    //             let mut inserted = 0;
+
+    //             for (block, version) in blocks.iter().zip(versions) {
+    //                 StarknetBlocksTable::insert(
+    //                     &tx,
+    //                     &block.block,
+    //                     &version,
+    //                     StorageCommitment::ZERO,
+    //                     ClassCommitment::ZERO,
+    //                 )
+    //                 .unwrap();
+    //                 inserted += 1;
+    //             }
+
+    //             let rows = tx.prepare("select version_id, count(1) from starknet_blocks group by version_id order by version_id")
+    //                 .unwrap()
+    //                 .query([])
+    //                 .unwrap()
+    //                 .mapped(|r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?)))
+    //                 .collect::<Result<Vec<(Option<i64>, i64)>, _>>()
+    //                 .unwrap();
+
+    //             // there should be two of 0.9.1
+    //             assert_eq!(rows.first(), Some(&(Some(1), 2)));
+
+    //             // there should be a few for 0.9.2 (initially the create_rows returned 3 => 1)
+    //             assert_eq!(rows.last(), Some(&(Some(2), inserted - 2)));
+
+    //             // we should not have any nulls
+    //             assert_eq!(rows.len(), 2, "nulls were not expected in {rows:?}");
+    //         }
+    //     }
+
+    //     mod get_latest_number {
+    //         use super::*;
+
+    //         #[test]
+    //         fn some() {
+    //             with_default_blocks(|tx, blocks| {
+    //                 let latest = blocks.last().unwrap().block.number;
+    //                 assert_eq!(
+    //                     StarknetBlocksTable::get_latest_number(tx).unwrap(),
+    //                     Some(latest)
+    //                 );
+    //             });
+    //         }
+
+    //         #[test]
+    //         fn none() {
+    //             let storage = Storage::in_memory().unwrap();
+    //             let mut connection = storage.connection().unwrap();
+    //             let tx = connection.transaction().unwrap();
+
+    //             assert_eq!(StarknetBlocksTable::get_latest_number(&tx).unwrap(), None);
+    //         }
+    //     }
+
+    //     mod get_latest_hash_and_number {
+    //         use super::*;
+
+    //         #[test]
+    //         fn some() {
+    //             with_default_blocks(|tx, blocks| {
+    //                 let latest = &blocks.last().unwrap().block;
+    //                 assert_eq!(
+    //                     StarknetBlocksTable::get_latest_hash_and_number(tx).unwrap(),
+    //                     Some((latest.hash, latest.number))
+    //                 );
+    //             });
+    //         }
+
+    //         #[test]
+    //         fn none() {
+    //             let storage = Storage::in_memory().unwrap();
+    //             let mut connection = storage.connection().unwrap();
+    //             let tx = connection.transaction().unwrap();
+
+    //             assert_eq!(
+    //                 StarknetBlocksTable::get_latest_hash_and_number(&tx).unwrap(),
+    //                 None
+    //             );
+    //         }
+    //     }
+
+    //     mod get_hash {
+    //         use super::*;
+
+    //         mod by_number {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     for block in blocks {
+    //                         let result =
+    //                             StarknetBlocksTable::get_hash(tx, block.block.number.into())
+    //                                 .unwrap()
+    //                                 .unwrap();
+
+    //                         assert_eq!(result, block.block.hash);
+    //                     }
+    //                 })
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     let non_existent = blocks.last().unwrap().block.number + 1;
+    //                     assert_eq!(
+    //                         StarknetBlocksTable::get(tx, non_existent.into()).unwrap(),
+    //                         None
+    //                     );
+    //                 });
+    //             }
+    //         }
+
+    //         mod latest {
+    //             use super::*;
+
+    //             #[test]
+    //             fn some() {
+    //                 with_default_blocks(|tx, blocks| {
+    //                     let expected = blocks.last().unwrap().block.hash;
+
+    //                     let latest =
+    //                         StarknetBlocksTable::get_hash(tx, StarknetBlocksNumberOrLatest::Latest)
+    //                             .unwrap()
+    //                             .unwrap();
+    //                     assert_eq!(latest, expected);
+    //                 })
+    //             }
+
+    //             #[test]
+    //             fn none() {
+    //                 let storage = Storage::in_memory().unwrap();
+    //                 let mut connection = storage.connection().unwrap();
+    //                 let tx = connection.transaction().unwrap();
+
+    //                 let latest = StarknetBlocksTable::get(&tx, BlockId::Latest).unwrap();
+    //                 assert_eq!(latest, None);
+    //             }
+    //         }
+    //     }
+    // }
 
     // mod starknet_events {
     //     use super::*;

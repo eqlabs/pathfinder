@@ -1,10 +1,10 @@
 use crate::event::EmittedEvent;
 
-use super::{StarknetBlock, StarknetBlocksTable, Storage};
+use super::{StarknetBlock, Storage};
 use pathfinder_common::{
-    felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
-    ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
-    EventKey, Fee, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
+    felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment,
+    ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment,
+    EventData, EventKey, Fee, GasPrice, SequencerAddress, StateCommitment, StorageCommitment,
     TransactionCommitment, TransactionHash, TransactionIndex, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
@@ -194,8 +194,6 @@ pub struct BlockWithCommitment {
 
 // Creates a storage instance in memory with a set of expected emitted event
 pub fn setup_test_storage() -> (Storage, TestData) {
-    use crate::CanonicalBlocksTable;
-
     let storage = Storage::in_memory().unwrap();
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
@@ -204,15 +202,19 @@ pub fn setup_test_storage() -> (Storage, TestData) {
     let transactions_and_receipts = create_transactions_and_receipts();
 
     for (i, block) in blocks.iter().enumerate() {
-        StarknetBlocksTable::insert(
-            &tx,
-            &block.block,
-            &StarknetVersion::default(),
-            block.storage_commitment,
-            block.class_commitment,
-        )
-        .unwrap();
-        CanonicalBlocksTable::insert(&tx, block.block.number, block.block.hash).unwrap();
+        let header = BlockHeader::builder()
+            .with_number(block.block.number)
+            .with_state_commitment(block.block.state_commmitment)
+            .with_timestamp(block.block.timestamp)
+            .with_gas_price(block.block.gas_price)
+            .with_sequencer_address(block.block.sequencer_address)
+            .with_transaction_commitment(block.block.transaction_commitment.unwrap_or_default())
+            .with_event_commitment(block.block.event_commitment.unwrap_or_default())
+            .with_storage_commitment(block.storage_commitment)
+            .with_class_commitment(block.class_commitment)
+            .finalize_with_hash(block.block.hash);
+
+        tx.insert_block_header(&header).unwrap();
         tx.insert_transaction_data(
             block.block.hash,
             block.block.number,

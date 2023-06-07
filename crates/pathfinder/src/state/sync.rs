@@ -5,9 +5,9 @@ mod pending;
 
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash, ContractNonce,
-    ContractRoot, EventCommitment, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-    StorageCommitment, TransactionCommitment,
+    BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
+    ContractNonce, ContractRoot, EventCommitment, GasPrice, SequencerAddress, StarknetVersion,
+    StateCommitment, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::{
@@ -20,7 +20,7 @@ use pathfinder_rpc::{
     SyncState,
 };
 use pathfinder_storage::{Connection, Transaction};
-use pathfinder_storage::{ContractsStateTable, StarknetBlock, StarknetBlocksTable, Storage};
+use pathfinder_storage::{ContractsStateTable, Storage};
 use primitive_types::H160;
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
@@ -86,9 +86,11 @@ where
 
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
-        let l2_head = StarknetBlocksTable::get(&tx, pathfinder_storage::BlockId::Latest)
-            .context("Query L2 head from database")?
-            .map(|block| (block.number, block.hash, block.state_commmitment));
+        let l2_head = tx
+            .block_header(pathfinder_storage::BlockId::Latest)
+            .context("Fetching latest block header from database")?
+            .map(|header| (header.number, header.hash, header.state_commitment));
+
         Ok(l2_head)
     })?;
 
@@ -294,10 +296,10 @@ where
 
                     let l2_head = tokio::task::block_in_place(|| {
                         let tx = db_conn.transaction()?;
-                        StarknetBlocksTable::get(&tx, pathfinder_storage::BlockId::Latest)
+                        tx.block_header(pathfinder_storage::BlockId::Latest)
                     })
                     .context("Query L2 head from database")?
-                    .map(|block| (block.number, block.hash, block.state_commmitment));
+                    .map(|block| (block.number, block.hash, block.state_commitment));
 
                     let (new_tx, new_rx) = mpsc::channel(1);
 
@@ -433,7 +435,10 @@ async fn l1_update(
             .upsert_l1_state(update)
             .context("Insert update")?;
 
-        let l2_hash = StarknetBlocksTable::get_hash(&transaction, update.block_number.into())?;
+        let l2_hash = transaction
+            .block_id(update.block_number.into())
+            .context("Fetching block hash")?
+            .map(|(_, hash)| hash);
 
         if let Some(l2_hash) = l2_hash {
             if l2_hash == update.block_hash {
@@ -457,52 +462,50 @@ async fn l1_update(
 async fn l2_update(
     connection: &mut Connection,
     block: Block,
-    tx_commitment: TransactionCommitment,
-    ev_commitment: EventCommitment,
+    transaction_commitment: TransactionCommitment,
+    event_commitment: EventCommitment,
     state_update: StateUpdate,
 ) -> anyhow::Result<()> {
-    use pathfinder_storage::CanonicalBlocksTable;
-
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        let (new_storage_commitment, new_class_commitment) =
+        let (storage_commitment, class_commitment) =
             update_starknet_state(&transaction, &state_update)
                 .context("Updating Starknet state")?;
-        let new_root = StateCommitment::calculate(new_storage_commitment, new_class_commitment);
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
-        anyhow::ensure!(new_root == block.state_commitment, "State root mismatch");
+        anyhow::ensure!(
+            state_commitment == block.state_commitment,
+            "State root mismatch"
+        );
 
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
         // None for pending queries to the sequencer, but we aren't using those here.
-        let starknet_block = StarknetBlock {
-            number: block.block_number,
+        let header = BlockHeader {
             hash: block.block_hash,
-            state_commmitment: block.state_commitment,
+            parent_hash: block.parent_block_hash,
+            number: block.block_number,
             timestamp: block.timestamp,
             // Default value for cairo <0.8.2 is 0
             gas_price: block.gas_price.unwrap_or(GasPrice::ZERO),
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
-            transaction_commitment: Some(tx_commitment),
-            event_commitment: Some(ev_commitment),
+            starknet_version: block.starknet_version,
+            class_commitment,
+            event_commitment,
+            state_commitment,
+            storage_commitment,
+            transaction_commitment,
         };
-        StarknetBlocksTable::insert(
-            &transaction,
-            &starknet_block,
-            &block.starknet_version,
-            new_storage_commitment,
-            new_class_commitment,
-        )
-        .context("Insert block into database")?;
 
-        CanonicalBlocksTable::insert(&transaction, block.block_number, block.block_hash)
-            .context("Inserting canonical block into database")?;
+        transaction
+            .insert_block_header(&header)
+            .context("Inserting block header into database")?;
 
         let rpc_state_update: pathfinder_storage::types::StateUpdate = state_update.into();
 
@@ -519,11 +522,7 @@ async fn l2_update(
             .zip(block.transaction_receipts.into_iter())
             .collect::<Vec<_>>();
         transaction
-            .insert_transaction_data(
-                starknet_block.hash,
-                starknet_block.number,
-                &transaction_data,
-            )
+            .insert_transaction_data(header.hash, header.number, &transaction_data)
             .context("Insert transaction data into database")?;
 
         // Insert state updates
@@ -537,14 +536,14 @@ async fn l2_update(
             .map(|head| head + 1)
             .unwrap_or(BlockNumber::GENESIS);
 
-        if expected_next == starknet_block.number {
+        if expected_next == header.number {
             if let Some(l1_state) = transaction
-                .l1_state_at_number(starknet_block.number)
+                .l1_state_at_number(header.number)
                 .context("Query L1 state")?
             {
-                if l1_state.block_hash == starknet_block.hash {
+                if l1_state.block_hash == header.hash {
                     transaction
-                        .update_l1_l2_pointer(Some(starknet_block.number))
+                        .update_l1_l2_pointer(Some(header.number))
                         .context("Update L1-L2 head")?;
                 }
             }
@@ -555,18 +554,37 @@ async fn l2_update(
 }
 
 async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
-    use pathfinder_storage::CanonicalBlocksTable;
-
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
-        CanonicalBlocksTable::reorg(&transaction, reorg_tail)
-            .context("Delete canonical blocks from database")?;
+        let mut head = transaction
+            .block_id(pathfinder_storage::BlockId::Latest)
+            .context("Quering latest block number")?
+            .context("Latest block number is none during reorg")?
+            .0;
 
-        StarknetBlocksTable::reorg(&transaction, reorg_tail)
-            .context("Delete L2 blocks from database")?;
+        // Purge each block one at a time.
+        //
+        // This is done 1-by-1 to allow sending the reorg'd block data
+        // to websocket subscriptions while keeping a constant memory footprint.
+        //
+        // This is acceptable performance because reorgs are rare and need not be
+        // 100% optimal. However a large reorg could cause a massive memory spike
+        // which is not acceptable.
+        while head >= reorg_tail {
+            transaction
+                .purge_block(head)
+                .with_context(|| format!("Purgin block {head} from database"))?;
+
+            // No further blocks to purge if we just purged genesis.
+            if head == BlockNumber::GENESIS {
+                break;
+            }
+
+            head -= 1;
+        }
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
@@ -591,10 +609,11 @@ fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
-    let (storage_commitment, class_commitment) =
-        StarknetBlocksTable::get_state_commitment(transaction, pathfinder_storage::BlockId::Latest)
-            .context("Query latest state commitment")?
-            .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
+    let (storage_commitment, class_commitment) = transaction
+        .block_header(pathfinder_storage::BlockId::Latest)
+        .context("Querying latest state commitment")?
+        .map(|header| (header.storage_commitment, header.class_commitment))
+        .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
         .context("Loading storage trie")?;
@@ -885,13 +904,13 @@ mod tests {
     use crate::state;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
-        BlockHash, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain, ChainId, ClassCommitment,
-        ClassHash, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateCommitment,
-        StorageCommitment,
+        felt_bytes, BlockHash, BlockHeader, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain,
+        ChainId, ClassCommitment, ClassHash, GasPrice, SequencerAddress, SierraHash,
+        StarknetVersion, StateCommitment, StorageCommitment,
     };
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
-    use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
+    use pathfinder_storage::Storage;
     use primitive_types::H160;
     use stark_hash::Felt;
     use starknet_gateway_client::GatewayApi;
@@ -1008,27 +1027,17 @@ mod tests {
             transactions: vec![],
             starknet_version: StarknetVersion::default(),
         };
-        pub static ref STORAGE_BLOCK0: StarknetBlock = StarknetBlock {
-            number: BlockNumber::GENESIS,
-            hash: BlockHash(*A),
-            state_commmitment: *STATE_COMMITMENT0,
-            timestamp: BlockTimestamp::new_or_panic(0),
-            gas_price: GasPrice::ZERO,
-            sequencer_address: SequencerAddress(Felt::ZERO),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-        pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
-            number: BlockNumber::new_or_panic(1),
-            hash: BlockHash(*B),
-            state_commmitment: *STATE_COMMITMENT1,
-            timestamp: BlockTimestamp::new_or_panic(1),
-            gas_price: GasPrice::from(1),
-            sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-        // Causes root to remain unchanged
+        pub static ref BLOCK_HEADER_0: BlockHeader = BlockHeader::builder()
+            .with_state_commitment(*STATE_COMMITMENT0)
+            .finalize_with_hash(BlockHash(*A));
+        pub static ref BLOCK_HEADER_1: BlockHeader = BLOCK_HEADER_0.child_builder()
+            .with_state_commitment(*STATE_COMMITMENT1)
+            .with_timestamp(BlockTimestamp::new_or_panic(1))
+            .with_gas_price(GasPrice::from(1))
+            .with_sequencer_address(SequencerAddress(felt_bytes!(&[1u8; 32])))
+            .finalize_with_hash(BlockHash(*B));
+
+            // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
             block_hash: BlockHash(*A),
             new_root: *STATE_COMMITMENT0,
@@ -1045,12 +1054,13 @@ mod tests {
     }
 
     mod l1_update {
+        use pathfinder_common::BlockHeader;
         use primitive_types::H160;
 
         use super::*;
 
         async fn with_state(
-            state: Vec<(StarknetBlock, StorageCommitment, ClassCommitment)>,
+            headers: Vec<BlockHeader>,
             update: pathfinder_ethereum::EthereumStateUpdate,
         ) -> Option<BlockNumber> {
             let l1 = move |tx: mpsc::Sender<EthereumStateUpdate>, _, _, _| {
@@ -1072,18 +1082,9 @@ mod tests {
             let tx = connection.transaction().unwrap();
             let websocket_txs = WebsocketSenders::for_test();
 
-            state
-                .into_iter()
-                .for_each(|(block, storage_commitment, class_commitment)| {
-                    StarknetBlocksTable::insert(
-                        &tx,
-                        &block,
-                        &StarknetVersion::default(),
-                        storage_commitment,
-                        class_commitment,
-                    )
-                    .unwrap()
-                });
+            for header in headers {
+                tx.insert_block_header(&header).unwrap();
+            }
 
             tx.commit().unwrap();
 
@@ -1120,15 +1121,7 @@ mod tests {
         #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
         async fn l2_head_one_update() {
             assert_eq!(
-                with_state(
-                    vec![(
-                        STORAGE_BLOCK0.clone(),
-                        *STORAGE_COMMITMENT0,
-                        *CLASS_COMMITMENT0,
-                    )],
-                    STATE_UPDATE_LOG0.clone(),
-                )
-                .await,
+                with_state(vec![BLOCK_HEADER_0.clone()], STATE_UPDATE_LOG0.clone(),).await,
                 Some(BlockNumber::GENESIS),
             );
         }
@@ -1280,37 +1273,18 @@ mod tests {
     async fn l2_reorg() {
         let results = [
             // Case 0: single block in L2, reorg on genesis
-            (
-                vec![(
-                    STORAGE_BLOCK0.clone(),
-                    *STORAGE_COMMITMENT0,
-                    *CLASS_COMMITMENT0,
-                )],
-                0,
-            ),
+            (vec![BLOCK_HEADER_0.clone()], 0),
             // Case 1: 2 blocks in L2, reorg on block #1
-            (
-                vec![
-                    (
-                        STORAGE_BLOCK0.clone(),
-                        *STORAGE_COMMITMENT0,
-                        *CLASS_COMMITMENT0,
-                    ),
-                    (
-                        STORAGE_BLOCK1.clone(),
-                        *STORAGE_COMMITMENT1,
-                        *CLASS_COMMITMENT1,
-                    ),
-                ],
-                1,
-            ),
+            (vec![BLOCK_HEADER_0.clone(), BLOCK_HEADER_1.clone()], 1),
         ]
         .into_iter()
-        .map(|(updates, reorg_on_block)| async move {
+        .map(|(headers, reorg_on_block)| async move {
             let storage = Storage::in_memory().unwrap();
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
             let websocket_txs = WebsocketSenders::for_test();
+
+            println!("a");
 
             // A simple L2 sync task
             let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
@@ -1321,20 +1295,18 @@ mod tests {
                 Ok(())
             };
 
+            println!("b");
+
+            for header in headers {
+                println!("c");
+                tx.insert_block_header(&header).unwrap();
+                println!("d");
+            }
+
             tx.update_l1_l2_pointer(Some(BlockNumber::new_or_panic(reorg_on_block)))
                 .unwrap();
-            updates
-                .into_iter()
-                .for_each(|(block, storage_commitment, class_commitment)| {
-                    StarknetBlocksTable::insert(
-                        &tx,
-                        &block,
-                        &StarknetVersion::default(),
-                        storage_commitment,
-                        class_commitment,
-                    )
-                    .unwrap()
-                });
+
+            println!("e");
 
             tx.commit().unwrap();
 
@@ -1360,11 +1332,13 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             let tx = connection.transaction().unwrap();
-            let latest_block_number =
-                StarknetBlocksTable::get(&tx, pathfinder_storage::BlockId::Latest)
-                    .unwrap()
-                    .map(|s| s.number);
+            let latest_block_number = tx
+                .block_id(pathfinder_storage::BlockId::Latest)
+                .unwrap()
+                .map(|x| x.0);
+            println!("f");
             let head = tx.l1_l2_pointer().unwrap();
+            println!("g");
             (head, latest_block_number)
         })
         .collect::<futures::stream::FuturesOrdered<_>>()

@@ -56,15 +56,21 @@ fn get_state_update_from_storage(
     tx: &pathfinder_storage::Transaction<'_>,
     block: pathfinder_storage::BlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let (number, block_hash, new_root, old_root) =
-        super::super::super::v02::method::get_state_update::block_info(tx, block)?
-            .ok_or(GetStateUpdateError::BlockNotFound)?;
+    let header = tx
+        .block_header(block)
+        .context("Fetching block header")?
+        .ok_or(GetStateUpdateError::BlockNotFound)?;
+    let parent_state_commitment = tx
+        .block_header(header.parent_hash.into())
+        .context("Fetching parent block header")?
+        .map(|header| header.state_commitment)
+        .unwrap_or_default();
 
     let mut stmt = tx
         .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
         .context("Preparing nonce update query statement")?;
     let nonces = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let contract_address = row.get(0)?;
             let nonce = row.get(1)?;
 
@@ -83,7 +89,7 @@ fn get_state_update_from_storage(
         )
         .context("Preparing storage update query statement")?;
     let storage_tuples = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let contract_address: ContractAddress = row.get(0)?;
             let storage_address: StorageAddress = row.get(1)?;
             let storage_value: StorageValue = row.get(2)?;
@@ -127,7 +133,7 @@ fn get_state_update_from_storage(
         Sierra(types::DeclaredSierraClass),
     }
     let declared_classes = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let class_hash: ClassHash = row.get(0)?;
             let compiled_class_hash: Option<CasmHash> = row.get(1)?;
 
@@ -183,7 +189,7 @@ fn get_state_update_from_storage(
         Replaced(types::ReplacedClass),
     }
     let deployed_and_replaced_contracts = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let address: ContractAddress = row.get(0)?;
             let class_hash: ClassHash = row.get(1)?;
             let is_replaced: bool = row.get(2)?;
@@ -225,9 +231,9 @@ fn get_state_update_from_storage(
         .collect();
 
     let state_update = types::StateUpdate {
-        block_hash: Some(block_hash),
-        new_root: Some(new_root),
-        old_root,
+        block_hash: Some(header.hash),
+        new_root: Some(header.state_commitment),
+        old_root: parent_state_commitment,
         state_diff: types::StateDiff {
             storage_diffs,
             deprecated_declared_classes,
@@ -622,7 +628,6 @@ mod tests {
         BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
         StorageValue,
     };
-    use stark_hash::Felt;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -733,8 +738,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                // The fixture happens to init this to zero for genesis block
-                BlockId::Hash(BlockHash(Felt::ZERO)),
+                BlockId::Hash(in_storage[0].block_hash.unwrap()),
                 assert_ok(in_storage[0].clone()),
             ),
             // Errors

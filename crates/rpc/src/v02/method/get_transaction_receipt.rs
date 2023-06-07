@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::BlockStatus;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use pathfinder_storage::StarknetBlocksTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionReceiptInput {
@@ -46,37 +45,36 @@ pub async fn get_transaction_receipt(
 
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        match db_tx
+        let (transaction, receipt, block_hash) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Reading transaction receipt from database")?
-        {
-            Some((transaction, receipt, block_hash)) => {
-                // We require the block status here as well..
-                let block_number = StarknetBlocksTable::get_number(&db_tx, block_hash)
-                    .context("Reading block from database")?
-                    .context("Block missing from database")?;
-                let l1_accepted = db_tx
-                    .block_is_l1_accepted(block_number)
-                    .context("Quering block status")?;
+            .ok_or(GetTransactionReceiptError::TxnHashNotFound)?;
 
-                let block_status = if l1_accepted {
-                    BlockStatus::AcceptedOnL1
-                } else {
-                    BlockStatus::AcceptedOnL2
-                };
+        let block_number = db_tx
+            .block_id(block_hash.into())
+            .context("Querying block number")?
+            .context("Block number info missing")?
+            .0;
 
-                Ok(types::MaybePendingTransactionReceipt::Normal(
-                    types::TransactionReceipt::with_block_data(
-                        receipt,
-                        block_status,
-                        block_hash,
-                        block_number,
-                        transaction,
-                    ),
-                ))
-            }
-            None => Err(GetTransactionReceiptError::TxnHashNotFound),
-        }
+        let l1_accepted = db_tx
+            .block_is_l1_accepted(block_number)
+            .context("Quering block status")?;
+
+        let block_status = if l1_accepted {
+            BlockStatus::AcceptedOnL1
+        } else {
+            BlockStatus::AcceptedOnL2
+        };
+
+        Ok(types::MaybePendingTransactionReceipt::Normal(
+            types::TransactionReceipt::with_block_data(
+                receipt,
+                block_status,
+                block_hash,
+                block_number,
+                transaction,
+            ),
+        ))
     });
 
     jh.await.context("Database read panic or shutting down")?

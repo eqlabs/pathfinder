@@ -2,7 +2,7 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber};
-use pathfinder_storage::StarknetBlocksTable;
+use pathfinder_storage::BlockId;
 
 #[serde_with::serde_as]
 #[derive(serde::Serialize)]
@@ -27,9 +27,9 @@ pub async fn block_hash_and_number(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        StarknetBlocksTable::get_latest_hash_and_number(&tx)
+        tx.block_id(BlockId::Latest)
             .context("Reading latest block hash and number from database")?
-            .map(|(block_hash, block_number)| BlockHashAndNumber {
+            .map(|(block_number, block_hash)| BlockHashAndNumber {
                 block_hash,
                 block_number,
             })

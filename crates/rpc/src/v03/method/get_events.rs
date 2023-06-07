@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
 use pathfinder_storage::event::{EventFilterError, V03KeyFilter};
-use pathfinder_storage::{StarknetBlocksNumberOrLatest, StarknetBlocksTable};
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -215,12 +214,11 @@ pub async fn get_events(
         // indeed the latest block in storage. Replace pending data if it is invalid, or not required.
         let pending_block = match (request.to_block, pending_block) {
             (Some(Pending), Some(pending_block)) => {
-                let latest = StarknetBlocksTable::get_hash(
-                    &transaction,
-                    StarknetBlocksNumberOrLatest::Latest,
-                )
-                .context("Querying latest block hash")?
-                .context("Latest block hash is missing")?;
+                let latest = transaction
+                    .block_id(pathfinder_storage::BlockId::Latest)
+                    .context("Querying latest block hash")?
+                    .context("Latest block hash is missing")?
+                    .1;
 
                 (pending_block.parent_hash == latest).then_some(pending_block)
             }
@@ -301,8 +299,11 @@ fn map_to_block_to_number(
 
     match block {
         Some(Hash(hash)) => {
-            let number =
-                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(hash.into())
+                .context("Querying block number")?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
 
             Ok(Some(number))
         }
@@ -323,15 +324,21 @@ fn map_from_block_to_number(
 
     match block {
         Some(Hash(hash)) => {
-            let number =
-                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(hash.into())
+                .context("Querying block number")?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
 
             Ok(Some(number))
         }
         Some(Number(number)) => Ok(Some(number)),
         Some(Pending) | Some(Latest) => {
-            let number =
-                StarknetBlocksTable::get_latest_number(tx)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(pathfinder_storage::BlockId::Latest)
+                .context("Querying latest block number")?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
             Ok(Some(number))
         }
         None => Ok(None),

@@ -4,10 +4,9 @@ use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, ContractNonce, StateCommitment,
 };
-use pathfinder_storage::{BlockId, StarknetBlocksTable};
+use pathfinder_storage::BlockId;
 use primitive_types::H160;
 use serde::Deserialize;
-use stark_hash::Felt;
 use starknet_gateway_types::reply::{
     state_update::{DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff},
     Status,
@@ -211,9 +210,11 @@ fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> 
         INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
     };
 
-    let genesis_hash = StarknetBlocksTable::get_hash(tx, BlockNumber::GENESIS.into())
+    let genesis_hash = tx
+        .block_id(BlockNumber::GENESIS.into())
         .unwrap()
-        .context("Getting genesis hash")?;
+        .context("Getting genesis hash")?
+        .1;
 
     let chain = match genesis_hash {
         MAINNET_GENESIS_HASH => Chain::Mainnet,
@@ -256,60 +257,41 @@ fn resolve_block(
     tx: &pathfinder_storage::Transaction<'_>,
     block_id: BlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::Block> {
-    let block =
-        pathfinder_storage::StarknetBlocksTable::get(tx, block_id)?.context("Fetching block")?;
-
-    let parent_hash = match block.number {
-        BlockNumber::GENESIS => BlockHash(Felt::ZERO),
-        other => {
-            let parent_block = StarknetBlocksTable::get(tx, (other - 1).into())
-                .context("Read parent block from database")?
-                .context("Parent block missing")?;
-
-            parent_block.hash
-        }
-    };
+    let header = tx
+        .block_header(block_id)
+        .context("Fetching block header")?
+        .context("Block header missing")?;
 
     let transactions_receipts = tx
-        .transaction_data_for_block(block.number.into())
+        .transaction_data_for_block(header.number.into())
         .context("Reading transactions from database")?
         .context("Transaction data missing")?;
 
     let (transactions, transaction_receipts): (Vec<_>, Vec<_>) =
         transactions_receipts.into_iter().unzip();
 
-    let block_status = get_block_status(tx, block.number)?;
-    let block_version = StarknetBlocksTable::get_version(tx, block_id)?;
-
-    Ok(starknet_gateway_types::reply::Block {
-        block_hash: block.hash,
-        block_number: block.number,
-        gas_price: Some(block.gas_price),
-        parent_block_hash: parent_hash,
-        sequencer_address: Some(block.sequencer_address),
-        state_commitment: block.state_commmitment,
-        status: block_status,
-        timestamp: block.timestamp,
-        transaction_receipts,
-        transactions,
-        starknet_version: block_version,
-    })
-}
-
-fn get_block_status(
-    tx: &pathfinder_storage::Transaction<'_>,
-    block_number: BlockNumber,
-) -> anyhow::Result<Status> {
-    // All our data is L2 accepted, check our L1-L2 head to see if this block has been accepted on L1.
-    let l1_l2_head = tx
-        .l1_l2_pointer()
-        .context("Read latest L1 head from database")?;
-    let block_status = match l1_l2_head {
-        Some(number) if number >= block_number => Status::AcceptedOnL1,
-        _ => Status::AcceptedOnL2,
+    let block_status = tx
+        .block_is_l1_accepted(header.number)
+        .context("Querying block status")?;
+    let block_status = if block_status {
+        Status::AcceptedOnL1
+    } else {
+        Status::AcceptedOnL2
     };
 
-    Ok(block_status)
+    Ok(starknet_gateway_types::reply::Block {
+        block_hash: header.hash,
+        block_number: header.number,
+        gas_price: Some(header.gas_price),
+        parent_block_hash: header.parent_hash,
+        sequencer_address: Some(header.sequencer_address),
+        state_commitment: header.state_commitment,
+        status: block_status,
+        timestamp: header.timestamp,
+        transaction_receipts,
+        transactions,
+        starknet_version: header.starknet_version,
+    })
 }
 
 fn resolve_state_update(
@@ -319,14 +301,25 @@ fn resolve_state_update(
     use pathfinder_common::{CasmHash, SierraHash, StorageAddress, StorageValue};
     use starknet_gateway_types::reply::{state_update::StateDiff, StateUpdate};
 
-    let (number, block_hash, new_root, old_root) =
-        block_info(tx, block)?.context("Read block info from database")?;
+    let header = tx
+        .block_header(block)
+        .context("Fetching block header")?
+        .context("Block header is missing")?;
+
+    let parent_state_commmitment = if header.number - 1 == BlockNumber::GENESIS {
+        StateCommitment::default()
+    } else {
+        tx.block_header(header.parent_hash.into())
+            .context("Fetching parent block header")?
+            .context("Parent block header is missing")?
+            .state_commitment
+    };
 
     let mut stmt = tx
         .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
         .context("Preparing nonce update query statement")?;
     let nonces = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let contract_address = row.get(0)?;
             let nonce = row.get(1)?;
 
@@ -342,7 +335,7 @@ fn resolve_state_update(
         )
         .context("Preparing storage update query statement")?;
     let storage_tuples = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let contract_address: ContractAddress = row.get(0)?;
             let storage_address: StorageAddress = row.get(1)?;
             let storage_value: StorageValue = row.get(2)?;
@@ -379,7 +372,7 @@ fn resolve_state_update(
         Sierra(DeclaredSierraClass),
     }
     let declared_classes = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let class_hash: ClassHash = row.get(0)?;
             let compiled_class_hash: Option<CasmHash> = row.get(1)?;
 
@@ -435,7 +428,7 @@ fn resolve_state_update(
         Replaced(ReplacedClass),
     }
     let deployed_and_replaced_contracts = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let address: ContractAddress = row.get(0)?;
             let class_hash: ClassHash = row.get(1)?;
             let is_replaced: bool = row.get(2)?;
@@ -477,9 +470,9 @@ fn resolve_state_update(
         .collect();
 
     let state_update = StateUpdate {
-        block_hash,
-        new_root,
-        old_root,
+        block_hash: header.hash,
+        new_root: header.state_commitment,
+        old_root: parent_state_commmitment,
         state_diff: StateDiff {
             storage_diffs,
             old_declared_contracts: deprecated_declared_classes,
@@ -491,27 +484,6 @@ fn resolve_state_update(
     };
 
     Ok(state_update)
-}
-
-fn block_info(
-    tx: &pathfinder_storage::Transaction<'_>,
-    block: BlockId,
-) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
-    let block = StarknetBlocksTable::get(tx, block)?;
-    Ok(match block {
-        None => None,
-        Some(block) => {
-            let old_root = if block.number == BlockNumber::GENESIS {
-                Some(StateCommitment(Felt::ZERO))
-            } else {
-                let previous_block_number = BlockNumber::new_or_panic(block.number.get() - 1);
-                StarknetBlocksTable::get(tx, BlockId::Number(previous_block_number))?
-                    .map(|b| b.state_commmitment)
-            };
-
-            old_root.map(|old_root| (block.number, block.hash, block.state_commmitment, old_root))
-        }
-    })
 }
 
 fn resolve_class(

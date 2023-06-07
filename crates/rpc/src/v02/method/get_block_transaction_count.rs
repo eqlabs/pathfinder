@@ -1,7 +1,6 @@
 use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::BlockId;
-use pathfinder_storage::StarknetBlocksTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetBlockTransactionCountInput {
@@ -45,10 +44,11 @@ pub async fn get_block_transaction_count(
 
         // Check if the value was 0 because there were no transactions, or because the block hash is invalid.
         if block_transaction_count == 0 {
-            // get_storage_commitment is cheaper than querying the full block.
-            let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-                .context("Reading storage commitment from database")?;
-            return if storage_commitment.is_some() {
+            let header = tx
+                .block_header(block_id)
+                .context("Querying block existence")?;
+
+            return if header.is_some() {
                 Ok(0)
             } else {
                 Err(GetBlockTransactionCountError::BlockNotFound)

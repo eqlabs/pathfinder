@@ -157,13 +157,9 @@ pub(crate) mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{
-            felt_bytes, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ContractNonce,
-            ContractRoot, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-        };
+        use pathfinder_common::{felt_bytes, BlockNumber, CasmHash, ContractNonce, ContractRoot};
         use pathfinder_storage::types::state_update::{DeployedContract, StateDiff};
-        use pathfinder_storage::{StarknetBlock, StarknetBlocksTable, Storage};
-        use stark_hash::Felt;
+        use pathfinder_storage::Storage;
 
         // Mainnet block number 5
         pub(crate) const BLOCK_5: BlockId = BlockId::Hash(BlockHash(felt!(
@@ -339,20 +335,16 @@ pub(crate) mod tests {
             )
             .unwrap();
 
-            let storage_commitment = StarknetBlocksTable::get_storage_commitment(
-                &db_txn,
-                pathfinder_storage::BlockId::Latest,
-            )
-            .unwrap()
-            .unwrap();
-
-            let latest_block_number = StarknetBlocksTable::get_latest_number(&db_txn)
+            let latest_header = db_txn
+                .block_header(pathfinder_storage::BlockId::Latest)
                 .unwrap()
                 .unwrap();
 
-            let mut storage_commitment_tree =
-                pathfinder_merkle_tree::StorageCommitmentTree::load(&db_txn, storage_commitment)
-                    .unwrap();
+            let mut storage_commitment_tree = pathfinder_merkle_tree::StorageCommitmentTree::load(
+                &db_txn,
+                latest_header.storage_commitment,
+            )
+            .unwrap();
 
             storage_commitment_tree
                 .set(contract_address, contract_state_hash)
@@ -363,35 +355,12 @@ pub(crate) mod tests {
                 .insert_storage_trie(new_storage_commitment, &nodes)
                 .unwrap();
 
-            let new_block = StarknetBlock {
-                number: latest_block_number + 1,
-                hash: BlockHash(felt_bytes!(b"latest block")),
-                state_commmitment: StateCommitment::calculate(
-                    new_storage_commitment,
-                    ClassCommitment::ZERO,
-                ),
-                timestamp: BlockTimestamp::new_or_panic(0),
-                gas_price: GasPrice::ZERO,
-                sequencer_address: SequencerAddress(Felt::ZERO),
-                transaction_commitment: None,
-                event_commitment: None,
-            };
-
-            pathfinder_storage::StarknetBlocksTable::insert(
-                &db_txn,
-                &new_block,
-                &StarknetVersion::default(),
-                new_storage_commitment,
-                ClassCommitment::ZERO,
-            )
-            .unwrap();
-
-            pathfinder_storage::CanonicalBlocksTable::insert(
-                &db_txn,
-                new_block.number,
-                new_block.hash,
-            )
-            .unwrap();
+            let new_header = latest_header
+                .child_builder()
+                .with_storage_commitment(new_storage_commitment)
+                .with_calculated_state_commitment()
+                .finalize_with_hash(BlockHash(felt_bytes!(b"latest block")));
+            db_txn.insert_block_header(&new_header).unwrap();
 
             let state_diff = StateDiff {
                 storage_diffs: vec![],
@@ -406,13 +375,13 @@ pub(crate) mod tests {
             };
 
             db_txn
-                .insert_state_diff(new_block.number, &state_diff)
+                .insert_state_diff(new_header.number, &state_diff)
                 .unwrap();
 
             // Persist
             db_txn.commit().unwrap();
 
-            (contract_address, new_block.hash, new_block.number)
+            (contract_address, new_header.hash, new_header.number)
         }
 
         #[tokio::test]

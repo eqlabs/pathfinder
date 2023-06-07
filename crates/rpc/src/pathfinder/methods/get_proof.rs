@@ -9,7 +9,7 @@ use pathfinder_common::{
     StateCommitment, StorageAddress,
 };
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
-use pathfinder_storage::{ContractsStateTable, StarknetBlocksTable};
+use pathfinder_storage::ContractsStateTable;
 use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -177,12 +177,11 @@ pub async fn get_proof(
 
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let (storage_commitment, class_commitment) =
-            StarknetBlocksTable::get_state_commitment(&tx, block_id)
-                .context("Get state commitment for block")?
-                // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
-                // by using a dedicated error code from the RPC API spec
-                .ok_or(GetProofError::BlockNotFound)?;
+        let (storage_commitment, class_commitment) = tx
+            .block_header(block_id)
+            .context("Fetching block header")?
+            .map(|header| (header.storage_commitment, header.class_commitment))
+            .ok_or(GetProofError::BlockNotFound)?;
 
         let (state_commitment, class_commitment) = if class_commitment == ClassCommitment::ZERO {
             (None, None)

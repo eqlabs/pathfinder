@@ -455,16 +455,15 @@ mod tests {
         v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
     };
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, CallParam, CallResultValue,
-        Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, ContractNonce,
-        ContractRoot, ContractStateHash, EntryPoint, GasPrice, SequencerAddress, StarknetVersion,
-        StateCommitment, StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
+        felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam,
+        CallResultValue, Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
+        ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice, StateCommitment,
+        StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
-        CanonicalBlocksTable, ContractsStateTable, JournalMode, StarknetBlock, StarknetBlocksTable,
-        Storage, Transaction,
+        ContractsStateTable, JournalMode, Storage, Transaction,
     };
     use rusqlite::params;
     use stark_hash::Felt;
@@ -882,31 +881,20 @@ mod tests {
             .unwrap();
         let (storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
         tx.insert_storage_trie(storage_commitment, &nodes).unwrap();
-
         let class_commitment = ClassCommitment(Felt::ZERO);
 
-        let block = StarknetBlock {
-            number: BlockNumber::new_or_panic(1),
-            hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
-            state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-            timestamp: BlockTimestamp::new_or_panic(1),
-            gas_price: GasPrice(1),
-            sequencer_address: SequencerAddress(Felt::ZERO),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-
-        // create a block with the global root
-        StarknetBlocksTable::insert(
-            tx,
-            &block,
-            &StarknetVersion::default(),
-            storage_commitment,
-            class_commitment,
-        )
-        .unwrap();
-
-        CanonicalBlocksTable::insert(tx, block.number, block.hash).unwrap();
+        let header = BlockHeader::builder()
+            .with_number(BlockNumber::new_or_panic(1))
+            .with_state_commitment(StateCommitment::calculate(
+                storage_commitment,
+                class_commitment,
+            ))
+            .with_timestamp(BlockTimestamp::new_or_panic(1))
+            .with_gas_price(GasPrice(1))
+            .with_storage_commitment(storage_commitment)
+            .with_class_commitment(class_commitment)
+            .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
+        tx.insert_block_header(&header).unwrap();
 
         let state_diff = StateDiff {
             storage_diffs: storage_updates
@@ -927,7 +915,7 @@ mod tests {
             replaced_classes: vec![],
         };
 
-        tx.insert_state_diff(block.number, &state_diff).unwrap();
+        tx.insert_state_diff(header.number, &state_diff).unwrap();
 
         test_contract_class_hash
     }
@@ -952,28 +940,18 @@ mod tests {
         tx.insert_storage_trie(storage_commitment, &nodes).unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
-        let block = StarknetBlock {
-            number: BlockNumber::new_or_panic(1),
-            hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
-            state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-            timestamp: BlockTimestamp::new_or_panic(1),
-            gas_price: GasPrice(1),
-            sequencer_address: SequencerAddress(Felt::ZERO),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-
-        // create a block with the global root
-        StarknetBlocksTable::insert(
-            tx,
-            &block,
-            &StarknetVersion::default(),
-            storage_commitment,
-            class_commitment,
-        )
-        .unwrap();
-
-        CanonicalBlocksTable::insert(tx, block.number, block.hash).unwrap();
+        let header = BlockHeader::builder()
+            .with_number(BlockNumber::new_or_panic(1))
+            .with_state_commitment(StateCommitment::calculate(
+                storage_commitment,
+                class_commitment,
+            ))
+            .with_timestamp(BlockTimestamp::new_or_panic(1))
+            .with_gas_price(GasPrice(1))
+            .with_storage_commitment(storage_commitment)
+            .with_class_commitment(class_commitment)
+            .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
+        tx.insert_block_header(&header).unwrap();
 
         let state_diff = StateDiff {
             storage_diffs: vec![],
@@ -987,7 +965,7 @@ mod tests {
             replaced_classes: vec![],
         };
 
-        tx.insert_state_diff(block.number, &state_diff).unwrap();
+        tx.insert_state_diff(header.number, &state_diff).unwrap();
 
         account_contract_class_hash
     }

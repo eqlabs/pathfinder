@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionIndex};
-use pathfinder_storage::StarknetBlocksTable;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByBlockIdAndIndexInput {
@@ -52,13 +51,13 @@ pub async fn get_transaction_by_block_id_and_index(
             None => {
                 // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                 // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
-                //
-                // get_storage_commitment is cheaper than querying the full block.
-                match StarknetBlocksTable::get_storage_commitment(&db_tx, block_id)
-                    .context("Reading block from database")?
-                {
-                    Some(_) => Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex),
-                    None => Err(GetTransactionByBlockIdAndIndexError::BlockNotFound),
+                let block_exists = db_tx
+                    .block_exists(block_id)
+                    .context("Querying block existence")?;
+                if block_exists {
+                    Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex)
+                } else {
+                    Err(GetTransactionByBlockIdAndIndexError::BlockNotFound)
                 }
             }
         }

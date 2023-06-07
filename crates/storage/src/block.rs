@@ -1,31 +1,235 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StarknetVersion, StateCommitment};
 
 use crate::{prelude::*, BlockId};
 
-pub(crate) fn block_hash(
+pub(crate) fn insert_block_header(
+    tx: &Transaction<'_>,
+    header: &BlockHeader,
+) -> anyhow::Result<()> {
+    // Intern the starknet version
+    let version_id = intern_starknet_version(tx, &header.starknet_version)
+        .context("Interning starknet version")?;
+
+    // Insert the header
+    tx.execute(
+        r"INSERT INTO starknet_blocks 
+                   ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  class_commitment)
+            VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
+        named_params! {
+            ":number": &header.number,
+            ":hash": &header.hash,
+            ":root": &header.storage_commitment,
+            ":timestamp": &header.timestamp,
+            ":gas_price": &header.gas_price.to_be_bytes().as_slice(),
+            ":sequencer_address": &header.sequencer_address,
+            ":version_id": &version_id,
+            ":transaction_commitment": &header.transaction_commitment,
+            ":event_commitment": &header.event_commitment,
+            ":class_commitment": &header.class_commitment,
+        },
+    ).context("Inserting block header")?;
+
+    // This must occur after the header is inserted as this table references the header table.
+    tx.execute(
+        "INSERT INTO canonical_blocks(number, hash) values(?,?)",
+        params![&header.number, &header.hash],
+    )
+    .context("Inserting into canonical_blocks table")?;
+
+    Ok(())
+}
+
+fn intern_starknet_version(
+    tx: &Transaction<'_>,
+    version: &StarknetVersion,
+) -> anyhow::Result<Option<i64>> {
+    let Some(version) = version.as_str() else {
+        return Ok(None);
+    };
+
+    let id: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM starknet_versions WHERE version = ?",
+            params![&version],
+            |r| Ok(r.get_unwrap(0)),
+        )
+        .optional()
+        .context("Querying for an existing starknet_version")?;
+
+    let id = if let Some(id) = id {
+        id
+    } else {
+        // sqlite "autoincrement" for integer primary keys works like this: we leave it out of
+        // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
+        // read back with last_insert_rowid
+        let rows = tx
+            .execute(
+                "INSERT INTO starknet_versions(version) VALUES (?)",
+                params![&version],
+            )
+            .context("Inserting unique starknet_version")?;
+
+        anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
+
+        tx.last_insert_rowid()
+    };
+
+    Ok(Some(id))
+}
+
+pub(crate) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
+    tx.execute(
+        "DELETE FROM canonical_blocks WHERE number = ?",
+        params![&block],
+    )
+    .context("Deleting block from canonical_blocks table")?;
+
+    tx.execute(
+        "DELETE FROM starknet_blocks WHERE number = ?",
+        params![&block],
+    )
+    .context("Deleting block from starknet_blocks table")?;
+
+    // TODO: delete transactions, state update etc (if required -- check the cascade effects).
+
+    Ok(())
+}
+
+pub(crate) fn block_id(
     tx: &Transaction<'_>,
     block: BlockId,
-) -> anyhow::Result<Option<BlockHash>> {
+) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
     match block {
-        BlockId::Latest => tx
-            .query_row(
-                "SELECT hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .optional()
-            .context("Querying latest block hash"),
-        BlockId::Number(number) => tx
-            .query_row(
-                "SELECT hash FROM canonical_blocks WHERE number = ?",
-                params![&number],
-                |row| row.get(0),
-            )
-            .optional()
-            .context("Querying block hash by number"),
-        BlockId::Hash(hash) => Ok(Some(hash)),
+        BlockId::Latest => tx.query_row(
+            "SELECT number, hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+            [],
+            |row| {
+                let number = row.get_block_number(0)?;
+                let hash = row.get_block_hash(1)?;
+
+                Ok((number, hash))
+            },
+        ),
+        BlockId::Number(number) => tx.query_row(
+            "SELECT hash FROM canonical_blocks WHERE number = ?",
+            params![&number],
+            |row| {
+                let hash = row.get_block_hash(0)?;
+                Ok((number, hash))
+            },
+        ),
+        BlockId::Hash(hash) => tx.query_row(
+            "SELECT number FROM canonical_blocks WHERE hash = ?",
+            params![&hash],
+            |row| {
+                let number = row.get_block_number(0)?;
+                Ok((number, hash))
+            },
+        ),
     }
+    .optional()
+    .map_err(|e| e.into())
+}
+
+pub(crate) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
+    match block {
+        BlockId::Latest => {
+            tx.query_row("SELECT EXISTS(SELECT 1 FROM canonical_blocks)", [], |row| {
+                row.get(0)
+            })
+        }
+        BlockId::Number(number) => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)",
+            params![&number],
+            |row| row.get(0),
+        ),
+        BlockId::Hash(hash) => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)",
+            params![&hash],
+            |row| row.get(0),
+        ),
+    }
+    .map_err(|e| e.into())
+}
+
+pub(crate) fn block_header(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<BlockHeader>> {
+    // TODO: is LEFT JOIN reasonable? It's required because version ID can be null for non-existent versions.
+    const BASE_SQL: &str = "SELECT * FROM starknet_blocks LEFT JOIN starknet_versions ON starknet_blocks.version_id = starknet_versions.id";
+    let sql = match block {
+        BlockId::Latest => format!("{BASE_SQL} ORDER BY number DESC LIMIT 1"),
+        BlockId::Number(_) => format!("{BASE_SQL} WHERE number = ?"),
+        BlockId::Hash(_) => format!("{BASE_SQL} WHERE hash = ?"),
+    };
+
+    let parse_row = |row: &rusqlite::Row| {
+        let number = row.get_block_number("number")?;
+        let hash = row.get_block_hash("hash")?;
+        let storage_commitment = row.get_storage_commitment("root")?;
+        let timestamp = row.get_timestamp("timestamp")?;
+        let gas_price = row.get_gas_price("gas_price")?;
+        let sequencer_address = row.get_sequencer_address("sequencer_address")?;
+        let transaction_commitment = row.get_transaction_commitment("transaction_commitment")?;
+        let event_commitment = row.get_event_commitment("event_commitment")?;
+        let class_commitment = row.get_class_commitment("class_commitment")?;
+        let starknet_version = row.get_starknet_version("version")?;
+
+        // TODO: this really needs to get stored instead.
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        // TODO: test what happens when a field is null.
+
+        let header = BlockHeader {
+            hash,
+            number,
+            timestamp,
+            gas_price,
+            sequencer_address,
+            class_commitment,
+            event_commitment,
+            state_commitment,
+            storage_commitment,
+            transaction_commitment,
+            starknet_version,
+            // TODO: store block hash in-line.
+            // This gets filled in by a separate query, but really should get stored as a column in
+            // order to support truncated history.
+            parent_hash: BlockHash::default(),
+        };
+
+        Ok(header)
+    };
+
+    let header = match block {
+        BlockId::Latest => tx.query_row(&sql, [], parse_row),
+        BlockId::Number(number) => tx.query_row(&sql, params![&number], parse_row),
+        BlockId::Hash(hash) => tx.query_row(&sql, params![&hash], parse_row),
+    }
+    .optional()
+    .context("Querying for block header")?;
+
+    let Some(mut header) = header else {
+        return Ok(None);
+    };
+
+    // Fill in parent hash (unless we are at genesis in which case the current ZERO is correct).
+    if header.number != BlockNumber::GENESIS {
+        let parent_hash = tx
+            .query_row(
+                "SELECT hash FROM starknet_blocks WHERE number = ?",
+                params![&(header.number - 1)],
+                |row| row.get_block_hash(0),
+            )
+            .context("Querying parent hash")?;
+
+        header.parent_hash = parent_hash;
+    }
+
+    // Fill in starknet version
+
+    Ok(Some(header))
 }
 
 pub(crate) fn block_is_l1_accepted(
@@ -40,4 +244,117 @@ pub(crate) fn block_is_l1_accepted(
     };
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::{
+        felt_bytes, BlockTimestamp, ClassCommitment, EventCommitment, GasPrice, SequencerAddress,
+        StorageCommitment, TransactionCommitment,
+    };
+
+    use super::*;
+    use crate::Connection;
+
+    // Create test database filled with block headers.
+    fn setup() -> (Connection, Vec<BlockHeader>) {
+        let storage = crate::Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        // This intentionally does not use the builder so that we don't forget to test
+        // any new fields that get added.
+        //
+        // Set unique values so we can be sure we are (de)serializing correctly.
+        let storage_commitment = StorageCommitment(felt_bytes!(b"storage commitment genesis"));
+        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment genesis"));
+
+        let genesis = BlockHeader {
+            hash: BlockHash(felt_bytes!(b"genesis hash")),
+            parent_hash: BlockHash::ZERO,
+            number: BlockNumber::GENESIS,
+            timestamp: BlockTimestamp::new_or_panic(10),
+            gas_price: GasPrice(32),
+            sequencer_address: SequencerAddress(felt_bytes!(b"sequencer address genesis")),
+            starknet_version: StarknetVersion::default(),
+            class_commitment,
+            event_commitment: EventCommitment(felt_bytes!(b"event commitment genesis")),
+            // This needs to be calculated as this value is never actually stored directly.
+            state_commitment: StateCommitment::calculate(storage_commitment, class_commitment),
+            storage_commitment,
+            transaction_commitment: TransactionCommitment(felt_bytes!(b"tx commitment genesis")),
+        };
+        let header1 = genesis
+            .child_builder()
+            .with_timestamp(BlockTimestamp::new_or_panic(12))
+            .with_gas_price(GasPrice(34))
+            .with_sequencer_address(SequencerAddress(felt_bytes!(b"sequencer address 1")))
+            .with_event_commitment(EventCommitment(felt_bytes!(b"event commitment 1")))
+            .with_class_commitment(ClassCommitment(felt_bytes!(b"class commitment 1")))
+            .with_storage_commitment(StorageCommitment(felt_bytes!(b"storage commitment 1")))
+            .with_calculated_state_commitment()
+            .with_transaction_commitment(TransactionCommitment(felt_bytes!(b"tx commitment 1")))
+            .finalize_with_hash(BlockHash(felt_bytes!(b"block 1 hash")));
+
+        let header2 = header1
+            .child_builder()
+            .with_gas_price(GasPrice(38))
+            .with_timestamp(BlockTimestamp::new_or_panic(15))
+            .with_sequencer_address(SequencerAddress(felt_bytes!(b"sequencer address 2")))
+            .with_event_commitment(EventCommitment(felt_bytes!(b"event commitment 2")))
+            .with_class_commitment(ClassCommitment(felt_bytes!(b"class commitment 2")))
+            .with_storage_commitment(StorageCommitment(felt_bytes!(b"storage commitment 2")))
+            .with_calculated_state_commitment()
+            .with_transaction_commitment(TransactionCommitment(felt_bytes!(b"tx commitment 2")))
+            .finalize_with_hash(BlockHash(felt_bytes!(b"block 2 hash")));
+
+        let headers = vec![genesis, header1, header2];
+        for header in &headers {
+            tx.insert_block_header(header).unwrap();
+        }
+        tx.commit().unwrap();
+
+        (connection, headers)
+    }
+
+    #[test]
+    fn get_latest() {
+        let (mut connection, headers) = setup();
+        let tx = connection.transaction().unwrap();
+
+        let result = tx.block_header(BlockId::Latest).unwrap().unwrap();
+        let expected = headers.last().unwrap();
+
+        assert_eq!(&result, expected);
+    }
+
+    #[test]
+    fn get_by_number() {
+        let (mut connection, headers) = setup();
+        let tx = connection.transaction().unwrap();
+
+        for header in &headers {
+            let result = tx.block_header(header.number.into()).unwrap().unwrap();
+            assert_eq!(&result, header);
+        }
+
+        let past_head = headers.last().unwrap().number + 1;
+        let result = tx.block_header(past_head.into()).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn get_by_hash() {
+        let (mut connection, headers) = setup();
+        let tx = connection.transaction().unwrap();
+
+        for header in &headers {
+            let result = tx.block_header(header.hash.into()).unwrap().unwrap();
+            assert_eq!(&result, header);
+        }
+
+        let invalid = BlockHash(felt_bytes!(b"invalid block hash"));
+        let result = tx.block_header(invalid.into()).unwrap();
+        assert_eq!(result, None);
+    }
 }

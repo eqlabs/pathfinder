@@ -29,10 +29,7 @@ use std::sync::Arc;
 pub use connection::*;
 use pathfinder_common::{BlockHash, BlockNumber};
 use rusqlite::functions::FunctionFlags;
-pub use state::{
-    CanonicalBlocksTable, ContractsStateTable, StarknetBlock, StarknetBlocksNumberOrLatest,
-    StarknetBlocksTable,
-};
+pub use state::{ContractsStateTable, StarknetBlock, StarknetBlocksNumberOrLatest};
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
 use anyhow::Context;

@@ -1,9 +1,11 @@
 //! Simple tool for downloading missing state updates of a given pathfinder db.
 
-use pathfinder_common::Chain;
+use anyhow::Context;
+use pathfinder_common::consts::{MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, INTEGRATION_GENESIS_HASH};
+use pathfinder_common::{BlockNumber, Chain};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var("RUST_LOG", "info");
     }
@@ -25,16 +27,25 @@ async fn main() {
 
     let path = std::path::PathBuf::from(path);
 
-    use pathfinder_storage::{JournalMode, StarknetBlocksTable, Storage};
+    use pathfinder_storage::{JournalMode, Storage};
 
     let storage = Storage::migrate(path, JournalMode::WAL).unwrap();
     let mut connection = storage.connection().unwrap();
 
     let (chain, work_todo) = {
         let tx = connection.transaction().unwrap();
-        let chain = match StarknetBlocksTable::get_chain(&tx).unwrap() {
-            Some(x) => x,
-            None => return,
+        let genesis_hash = tx
+            .block_id(BlockNumber::GENESIS.into())
+            .context("Fetching genesis hash")?
+            .context("No blocks found")?
+            .1;
+
+        let chain = match genesis_hash {
+            MAINNET_GENESIS_HASH => Chain::Mainnet,
+            TESTNET_GENESIS_HASH => Chain::Testnet,
+            TESTNET2_GENESIS_HASH => Chain::Testnet2,
+            INTEGRATION_GENESIS_HASH => Chain::Integration,
+            _other => Chain::Custom,
         };
 
         let work_todo = tx.query_row("select count(1) from starknet_blocks b left outer join starknet_state_updates up on (b.hash = up.block_hash) where up.block_hash is null", [], |row| Ok(row.get_unwrap::<_, i64>(0))).unwrap();
@@ -124,4 +135,6 @@ async fn main() {
     compressor.join().unwrap();
 
     tracing::info!("Done after {:?}", started.elapsed());
+
+    Ok(())
 }

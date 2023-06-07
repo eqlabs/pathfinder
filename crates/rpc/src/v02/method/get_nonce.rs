@@ -3,7 +3,6 @@ use crate::felt::RpcFelt;
 use crate::v02::method::get_nonce::database::get_nonce_at_block;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
-use pathfinder_storage::StarknetBlocksTable;
 use starknet_gateway_types::pending::PendingData;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -47,9 +46,12 @@ pub async fn get_nonce(
         let nonce = match block_id {
             pathfinder_storage::BlockId::Number(block_number) => {
                 // check that block exists
-                let latest = StarknetBlocksTable::get_latest_number(&tx)
+                let latest = tx
+                    .block_id(pathfinder_storage::BlockId::Latest)
                     .context("Querying latest block number")?
-                    .ok_or(GetNonceError::BlockNotFound)?;
+                    .ok_or(GetNonceError::BlockNotFound)?
+                    .0;
+
                 if block_number > latest {
                     return Err(GetNonceError::BlockNotFound);
                 }
@@ -65,9 +67,11 @@ pub async fn get_nonce(
             }
             pathfinder_storage::BlockId::Hash(block_hash) => {
                 // Get the block number from the hash.
-                let block_number = StarknetBlocksTable::get_number(&tx, block_hash)
+                let block_number = tx
+                    .block_header(pathfinder_storage::BlockId::Hash(block_hash))
                     .context("Fetching block number")?
-                    .ok_or(GetNonceError::BlockNotFound)?;
+                    .ok_or(GetNonceError::BlockNotFound)?
+                    .number;
 
                 match get_nonce_at_block(&tx, contract_address, block_number)? {
                     Some(nonce) => Ok(nonce),

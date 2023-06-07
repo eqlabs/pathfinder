@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    BlockHash, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash, ClassHash,
-    ContractAddress, ContractRoot, SierraHash, StorageCommitment, TransactionHash,
+    BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash,
+    ClassHash, ContractAddress, ContractRoot, SierraHash, StorageCommitment, TransactionHash,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
 use rusqlite::TransactionBehavior;
@@ -48,6 +48,29 @@ impl<'inner> Transaction<'inner> {
         Self(tx)
     }
 
+    pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
+        crate::block::insert_block_header(self, header)
+    }
+
+    pub fn block_header(&self, block: BlockId) -> anyhow::Result<Option<BlockHeader>> {
+        crate::block::block_header(self, block)
+    }
+
+    /// Removes all data related to this block.
+    ///
+    /// This includes block header, block body and state update information.
+    pub fn purge_block(&self, block: BlockNumber) -> anyhow::Result<()> {
+        crate::block::purge_block(self, block)
+    }
+
+    pub fn block_id(&self, block: BlockId) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+        crate::block::block_id(self, block)
+    }
+
+    pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
+        crate::block::block_exists(self, block)
+    }
+
     pub fn block_is_l1_accepted(&self, block: BlockNumber) -> anyhow::Result<bool> {
         crate::block::block_is_l1_accepted(self, block)
     }
@@ -73,10 +96,6 @@ impl<'inner> Transaction<'inner> {
 
     pub fn latest_l1_state(&self) -> anyhow::Result<Option<EthereumStateUpdate>> {
         crate::ethereum::latest_l1_state(self)
-    }
-
-    pub fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {
-        crate::block::block_hash(self, block)
     }
 
     /// Inserts the transaction, receipt and event data.

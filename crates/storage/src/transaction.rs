@@ -4,7 +4,7 @@ use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 use starknet_gateway_types::reply::transaction as gateway;
 
-use crate::{prelude::*, BlockId, StarknetBlocksTable};
+use crate::{prelude::*, BlockId};
 
 pub(crate) fn insert_transactions(
     tx: &Transaction<'_>,
@@ -105,7 +105,7 @@ pub fn transaction_at_block(
     index: usize,
 ) -> anyhow::Result<Option<gateway::Transaction>> {
     // Identify block hash
-    let Some(block_hash) = tx.block_hash(block)? else {
+    let Some((_, block_hash)) = tx.block_id(block)? else {
         return Ok(None);
     };
 
@@ -153,8 +153,8 @@ pub fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result
             .context("Counting transactions"),
         BlockId::Latest => {
             // First get the latest block
-            let block = match StarknetBlocksTable::get(tx, BlockId::Latest)? {
-                Some(block) => block.number,
+            let block = match tx.block_id(BlockId::Latest)? {
+                Some((number, _)) => number,
                 None => return Ok(0),
             };
 
@@ -167,7 +167,7 @@ pub fn transaction_data_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<(gateway::Transaction, gateway::Receipt)>>> {
-    let Some(block_hash) = tx.block_hash(block)? else {
+    let Some((_, block_hash)) = tx.block_id(block)? else {
         return Ok(None);
     };
 

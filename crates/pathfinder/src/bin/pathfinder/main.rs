@@ -473,18 +473,17 @@ async fn verify_database(
     network: Chain,
     gateway_client: &starknet_gateway_client::Client,
 ) -> anyhow::Result<()> {
-    use pathfinder_storage::StarknetBlocksTable;
-
     let storage = storage.clone();
     let db_genesis = tokio::task::spawn_blocking(move || {
         let mut conn = storage.connection().context("Create database connection")?;
         let tx = conn.transaction().context("Create database transaction")?;
 
-        StarknetBlocksTable::get_hash(&tx, BlockNumber::GENESIS.into())
+        tx.block_id(BlockNumber::GENESIS.into())
     })
     .await
+    .context("Joining database task")?
     .context("Fetching genesis hash from database")?
-    .context("Waiting for genesis block to be fetched from database")?;
+    .map(|x| x.1);
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{

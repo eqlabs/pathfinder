@@ -3,11 +3,12 @@ use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset, CallParam, CallResultValue, CasmHash,
     ClassCommitment, ClassCommitmentLeafHash, ClassHash, ConstructorParam, ContractAddress,
     ContractAddressSalt, ContractNonce, ContractRoot, ContractStateHash, EntryPoint,
-    EventCommitment, EventData, EventKey, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem, SequencerAddress, SierraHash, StateCommitment, StorageAddress,
-    StorageCommitment, StorageValue, TransactionCommitment, TransactionHash, TransactionNonce,
-    TransactionSignatureElem,
+    EventCommitment, EventData, EventKey, Fee, GasPrice, L1ToL2MessageNonce,
+    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, SequencerAddress, SierraHash,
+    StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
+    TransactionCommitment, TransactionHash, TransactionNonce, TransactionSignatureElem,
 };
+use rusqlite::types::FromSqlError;
 use rusqlite::RowIndex;
 use stark_hash::Felt;
 
@@ -119,11 +120,25 @@ pub trait RowExt {
 
     fn get_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<i64>;
 
+    fn get_optional_str<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&str>>;
+
+    fn get_optional_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&[u8]>>;
+
     fn get_felt<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<Felt> {
         let blob = self.get_blob(index)?;
         let felt = Felt::from_be_slice(blob)
             .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
         Ok(felt)
+    }
+
+    fn get_optional_felt<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<Option<Felt>> {
+        let Some(blob) = self.get_optional_blob(index)? else {
+            return Ok(None);
+        };
+
+        let felt = Felt::from_be_slice(blob)
+            .map_err(|e| rusqlite::types::FromSqlError::Other(e.into()))?;
+        Ok(Some(felt))
     }
 
     fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {
@@ -132,9 +147,62 @@ pub trait RowExt {
         Ok(BlockNumber::new_or_panic(num as u64))
     }
 
+    fn get_gas_price<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<GasPrice> {
+        let blob = self.get_blob(index)?;
+        let gas_price = GasPrice::from_be_slice(blob).map_err(|e| FromSqlError::Other(e.into()))?;
+        Ok(gas_price)
+    }
+
+    fn get_timestamp<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockTimestamp> {
+        let num = self.get_i64(index)?;
+        // Always safe since we are fetching an i64
+        Ok(BlockTimestamp::new_or_panic(num as u64))
+    }
+
+    fn get_starknet_version<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<StarknetVersion> {
+        let s = self.get_optional_str(index)?.map(str::to_string);
+
+        Ok(StarknetVersion::from(s))
+    }
+
+    fn get_transaction_commitment<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<TransactionCommitment> {
+        Ok(self
+            .get_optional_felt(index)?
+            .map(TransactionCommitment)
+            .unwrap_or_default())
+    }
+
+    fn get_event_commitment<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<EventCommitment> {
+        Ok(self
+            .get_optional_felt(index)?
+            .map(EventCommitment)
+            .unwrap_or_default())
+    }
+
+    fn get_class_commitment<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<ClassCommitment> {
+        Ok(self
+            .get_optional_felt(index)?
+            .map(ClassCommitment)
+            .unwrap_or_default())
+    }
+
     row_felt_wrapper!(get_block_hash, BlockHash);
     row_felt_wrapper!(get_class_hash, ClassHash);
     row_felt_wrapper!(get_state_commitment, StateCommitment);
+    row_felt_wrapper!(get_storage_commitment, StorageCommitment);
+    row_felt_wrapper!(get_sequencer_address, SequencerAddress);
 
     fn get_trie_node<I: RowIndex>(&self, index: I) -> rusqlite::Result<TrieNode> {
         use anyhow::Context;
@@ -142,7 +210,6 @@ pub trait RowExt {
 
         let data = self.get_blob(index)?;
 
-        use rusqlite::types::FromSqlError;
         match data.len() {
             64 => {
                 // unwraps and indexing are safe due to length check == 64.
@@ -188,8 +255,16 @@ impl<'a> RowExt for &rusqlite::Row<'a> {
         self.get_ref(index)?.as_blob().map_err(|e| e.into())
     }
 
+    fn get_optional_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&[u8]>> {
+        self.get_ref(index)?.as_blob_or_null().map_err(|e| e.into())
+    }
+
     fn get_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<i64> {
         self.get_ref(index)?.as_i64().map_err(|e| e.into())
+    }
+
+    fn get_optional_str<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&str>> {
+        self.get_ref(index)?.as_str_or_null().map_err(|e| e.into())
     }
 }
 

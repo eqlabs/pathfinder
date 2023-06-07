@@ -2,12 +2,7 @@ use std::collections::HashMap;
 
 use crate::context::RpcContext;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, ClassHash, ContractAddress, StateCommitment, StorageAddress,
-    StorageValue,
-};
-use pathfinder_storage::StarknetBlocksTable;
-use stark_hash::Felt;
+use pathfinder_common::{BlockId, ClassHash, ContractAddress, StorageAddress, StorageValue};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -55,42 +50,26 @@ pub async fn get_state_update(
     jh.await.context("Database read panic or shutting down")?
 }
 
-pub(crate) fn block_info(
-    tx: &pathfinder_storage::Transaction<'_>,
-    block: pathfinder_storage::BlockId,
-) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
-    let block = StarknetBlocksTable::get(tx, block)?;
-    Ok(match block {
-        None => None,
-        Some(block) => {
-            let old_root = if block.number == BlockNumber::GENESIS {
-                Some(StateCommitment(Felt::ZERO))
-            } else {
-                let previous_block_number = BlockNumber::new_or_panic(block.number.get() - 1);
-                StarknetBlocksTable::get(
-                    tx,
-                    pathfinder_storage::BlockId::Number(previous_block_number),
-                )?
-                .map(|b| b.state_commmitment)
-            };
-
-            old_root.map(|old_root| (block.number, block.hash, block.state_commmitment, old_root))
-        }
-    })
-}
-
 fn get_state_update_from_storage(
     tx: &pathfinder_storage::Transaction<'_>,
     block: pathfinder_storage::BlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let (number, block_hash, new_root, old_root) =
-        block_info(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;
+    let header = tx
+        .block_header(block)
+        .context("Fetching block header")?
+        .ok_or(GetStateUpdateError::BlockNotFound)?;
+
+    let parent_state_commitment = tx
+        .block_header(pathfinder_storage::BlockId::Hash(header.parent_hash))
+        .context("Fetching parent block header")?
+        .map(|header| header.state_commitment)
+        .unwrap_or_default();
 
     let mut stmt = tx
         .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
         .context("Preparing nonce update query statement")?;
     let nonces = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let contract_address = row.get(0)?;
             let nonce = row.get(1)?;
 
@@ -109,7 +88,7 @@ fn get_state_update_from_storage(
         )
         .context("Preparing storage update query statement")?;
     let storage_tuples = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let contract_address: ContractAddress = row.get(0)?;
             let storage_address: StorageAddress = row.get(1)?;
             let storage_value: StorageValue = row.get(2)?;
@@ -141,7 +120,7 @@ fn get_state_update_from_storage(
     // This is a change from previous implementation as this also includes sierra hashes..
     // which is probably more correct?
     let declared_contract_hashes = stmt
-        .query_map([number], |row| row.get(0))
+        .query_map([header.number], |row| row.get(0))
         .context("Querying class declarations")?
         .collect::<Result<Vec<_>, _>>()
         .context("Iterating over class declaration query rows")?;
@@ -161,7 +140,7 @@ fn get_state_update_from_storage(
         )
         .context("Preparing contract update query statement")?;
     let deployed_contracts = stmt
-        .query_map([number], |row| {
+        .query_map([header.number], |row| {
             let address: ContractAddress = row.get(0)?;
             let class_hash: ClassHash = row.get(1)?;
 
@@ -175,9 +154,9 @@ fn get_state_update_from_storage(
         .context("Iterating over contract deployment query rows")?;
 
     let state_update = types::StateUpdate {
-        block_hash: Some(block_hash),
-        new_root: Some(new_root),
-        old_root,
+        block_hash: Some(header.hash),
+        new_root: Some(header.state_commitment),
+        old_root: parent_state_commitment,
         state_diff: types::StateDiff {
             storage_diffs,
             declared_contract_hashes,
@@ -496,7 +475,6 @@ mod tests {
         BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
         StorageValue,
     };
-    use stark_hash::Felt;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -608,8 +586,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                // The fixture happens to init this to zero for genesis block
-                BlockId::Hash(BlockHash(Felt::ZERO)),
+                BlockId::Hash(in_storage[0].block_hash.unwrap()),
                 assert_ok(in_storage[0].clone()),
             ),
             // Errors
