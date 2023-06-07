@@ -137,6 +137,8 @@ where
     /// tasks are crashing.
     #[cfg(not(test))]
     const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
+    #[cfg(test)]
+    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::ZERO;
 
     loop {
         tokio::select! {
@@ -162,7 +164,6 @@ where
                     let fut = l1_sync(new_tx, ethereum.clone(), chain, core_address);
 
                     l1_handle = tokio::spawn(async move {
-                        #[cfg(not(test))]
                         tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
                         fut.await
                     });
@@ -305,7 +306,6 @@ where
                     let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain, storage.clone());
 
                     l2_handle = tokio::spawn(async move {
-                        #[cfg(not(test))]
                         tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
                         fut.await
                     });

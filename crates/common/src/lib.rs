@@ -168,7 +168,7 @@ impl StateCommitment {
 pub struct StorageCommitment(pub Felt);
 
 /// A Starknet block hash.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash)]
 pub struct BlockHash(pub Felt);
 
 /// A Starknet block number.
@@ -455,11 +455,11 @@ impl std::fmt::Display for Chain {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StarknetVersion(Option<String>);
+pub struct StarknetVersion(String);
 
 impl StarknetVersion {
     pub fn new(major: u64, minor: u64, patch: u64) -> Self {
-        StarknetVersion(Some(format!("{major}.{minor}.{patch}")))
+        StarknetVersion(format!("{major}.{minor}.{patch}"))
     }
 
     /// Parses the version string.
@@ -469,9 +469,10 @@ impl StarknetVersion {
     pub fn parse_as_semver(&self) -> anyhow::Result<Option<semver::Version>> {
         // Truncate the 4th segment if present. This is a work-around for semver violating
         // version strings like `0.11.0.2`.
-        let str = match &self.0 {
-            Some(s) => s,
-            None => return Ok(None),
+        let str = if self.0.is_empty() {
+            return Ok(None);
+        } else {
+            &self.0
         };
         let truncated = str
             .match_indices('.')
@@ -482,13 +483,17 @@ impl StarknetVersion {
         Some(semver::Version::parse(truncated).context("Parsing semver string")).transpose()
     }
 
-    pub fn as_str(&self) -> Option<&str> {
-        self.0.as_deref()
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn take_inner(self) -> String {
+        self.0
     }
 }
 
-impl From<Option<String>> for StarknetVersion {
-    fn from(value: Option<String>) -> Self {
+impl From<String> for StarknetVersion {
+    fn from(value: String) -> Self {
         Self(value)
     }
 }

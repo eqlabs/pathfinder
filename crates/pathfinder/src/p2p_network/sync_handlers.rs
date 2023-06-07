@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use p2p_proto as proto;
-use pathfinder_common::{BlockHash, BlockNumber};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetTransactionsTable, Storage};
+use pathfinder_common::{BlockHash, BlockNumber, ClassCommitment, StorageCommitment};
+use pathfinder_storage::{StarknetTransactionsTable, Storage};
 use stark_hash::Felt;
 
 const MAX_HEADERS_COUNT: u64 = 1000;
@@ -40,8 +40,7 @@ fn fetch_block_headers(
     let mut count = std::cmp::min(request.count, MAX_HEADERS_COUNT);
     let mut headers = Vec::new();
 
-    let mut next_block_number =
-        StarknetBlocksTable::get_number(&tx, BlockHash(request.start_block))?;
+    let mut next_block_number = Some(BlockNumber::new_or_panic(request.start_block));
 
     while let Some(block_number) = next_block_number {
         if count == 0 {
@@ -50,7 +49,7 @@ fn fetch_block_headers(
 
         let Some(block) = StarknetBlocksTable::get(
             &tx,
-            pathfinder_storage::StarknetBlocksBlockId::Number(block_number),
+            block_number.into(),
         )? else {
             // no such block in our database, stop iterating
             break;
@@ -62,17 +61,24 @@ fn fetch_block_headers(
             None => None,
         };
 
-        let transaction_count = StarknetTransactionsTable::get_transaction_count(
-            &tx,
-            StarknetBlocksBlockId::Hash(block.hash),
-        )?;
+        let transaction_count =
+            StarknetTransactionsTable::get_transaction_count(&tx, block.hash.into())?;
+
+        let starknet_version = StarknetBlocksTable::get_version(&tx, block_number.into())?;
+        let (storage_commitment, class_commitment) =
+            StarknetBlocksTable::get_state_commitment(&tx, block_number.into())?
+                .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
         headers.push(p2p_proto::common::BlockHeader {
-            parent_block_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
-            block_number: block.number.get(),
-            global_state_root: block.state_commmitment.0,
+            hash: block.hash.0,
+            parent_hash: parent_block_hash.unwrap_or(BlockHash(Felt::ZERO)).0,
+            number: block.number.get(),
+            state_commitment: block.state_commmitment.0,
+            storage_commitment: storage_commitment.0,
+            class_commitment: class_commitment.0,
             sequencer_address: block.sequencer_address.0,
-            block_timestamp: block.timestamp.get(),
+            timestamp: block.timestamp.get(),
+            gas_price: block.gas_price.0.into(),
             transaction_count: transaction_count
                 .try_into()
                 .context("Too many transactions")?,
@@ -85,8 +91,7 @@ fn fetch_block_headers(
                 .event_commitment
                 .map(|ev| ev.0)
                 .ok_or(anyhow!("Event commitment missing"))?,
-            // TODO: what's the protocol version?
-            protocol_version: 0,
+            starknet_version: starknet_version.take_inner(),
         });
 
         count -= 1;
@@ -109,6 +114,8 @@ fn get_next_block_number(
     }
 }
 
+// TODO rework to iterate over all types of requests (headers, bodies, state diffs)
+// unfortunately cannot cover classes (ie cairo0/sierra)
 #[cfg(test)]
 mod tests {
     use super::proto::sync::Direction;
@@ -146,7 +153,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[0].block.hash.0,
+                start_block: test_data.blocks[0].block.number.get(),
                 count: COUNT as u64,
                 size_limit: 100,
                 direction: Direction::Forward,
@@ -155,7 +162,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -164,10 +171,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -181,7 +185,7 @@ mod tests {
             headers
                 .iter()
                 .skip(1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks
@@ -218,7 +222,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[0].block.hash.0,
+                start_block: test_data.blocks[0].block.number.get(),
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
                 direction: Direction::Forward,
@@ -227,7 +231,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -235,10 +239,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -251,7 +252,7 @@ mod tests {
             headers
                 .iter()
                 .skip(1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks
@@ -288,7 +289,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[3].block.hash.0,
+                start_block: test_data.blocks[3].block.number.get(),
                 count: COUNT as u64,
                 size_limit: 100,
                 direction: Direction::Backward,
@@ -297,7 +298,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -307,10 +308,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -325,7 +323,7 @@ mod tests {
             headers
                 .iter()
                 .take(COUNT - 1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks
@@ -365,7 +363,7 @@ mod tests {
         let headers = fetch_block_headers(
             tx,
             GetBlockHeaders {
-                start_block: test_data.blocks[3].block.hash.0,
+                start_block: test_data.blocks[3].block.number.get(),
                 count: test_data.blocks.len() as u64 + 10,
                 size_limit: 100,
                 direction: Direction::Backward,
@@ -374,7 +372,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            headers.iter().map(|h| h.block_number).collect::<Vec<_>>(),
+            headers.iter().map(|h| h.number).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -383,10 +381,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            headers
-                .iter()
-                .map(|h| h.block_timestamp)
-                .collect::<Vec<_>>(),
+            headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
             test_data
                 .blocks
                 .iter()
@@ -400,7 +395,7 @@ mod tests {
             headers
                 .iter()
                 .take(test_data.blocks.len() - 1)
-                .map(|h| h.parent_block_hash)
+                .map(|h| h.parent_hash)
                 .collect::<Vec<_>>(),
             test_data
                 .blocks

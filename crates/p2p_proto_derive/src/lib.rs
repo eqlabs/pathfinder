@@ -114,7 +114,7 @@ fn iterate_to_protobuf(data: &Data) -> Result<proc_macro2::TokenStream, syn::Err
     }
 }
 
-#[proc_macro_derive(TryFromProtobuf)]
+#[proc_macro_derive(TryFromProtobuf, attributes(optional))]
 pub fn derive_try_from_protobuf(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -148,8 +148,19 @@ fn iterate_try_from_protobuf(data: &Data) -> Result<proc_macro2::TokenStream, sy
             syn::Fields::Named(ref fields) => {
                 let recurse = fields.named.iter().map(|f| {
                     let name = &f.ident;
-                    quote_spanned! {f.span()=>
-                        #name: crate::TryFromProtobuf::try_from_protobuf(input.#name, stringify!(#name))?
+                    let is_optional = f.attrs.iter().any(|a| a.path.is_ident("optional"));
+
+                    if is_optional {
+                        quote_spanned! {f.span()=>
+                            #name: match input.#name {
+                                Some(x) => Some(crate::TryFromProtobuf::try_from_protobuf(x, stringify!(#name))?),
+                                None => None,
+                            }
+                        }
+                    } else {
+                        quote_spanned! {f.span()=>
+                            #name: crate::TryFromProtobuf::try_from_protobuf(input.#name, stringify!(#name))?
+                        }
                     }
                 });
                 Ok(quote! {

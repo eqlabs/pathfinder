@@ -38,10 +38,23 @@ message BlockStateUpdate {
 
   message DeployedContract {
     starknet.common.FieldElement contract_address = 1;
-    starknet.common.FieldElement contract_class_hash = 2;
+    starknet.common.FieldElement class_hash = 2;
   }
 
-  repeated ContractDiff contract_diffs = 2;
-  repeated DeployedContract deployed_contracts = 3;
-  repeated starknet.common.FieldElement declared_contract_class_hashes = 4;
+  message DeclaredClass {
+    starknet.common.FieldElement sierra_hash = 1;
+    starknet.common.FieldElement casm_hash = 2;
+  }
+
+  message ReplacedClass {
+    starknet.common.FieldElement contract_address = 1;
+    starknet.common.FieldElement class_hash = 2;
+  }
+
+  repeated ContractDiff contract_diffs = 1;
+  repeated DeployedContract deployed_contracts = 2;
+  repeated starknet.common.FieldElement declared_cairo_classes = 3;
+  repeated DeclaredClass declared_classes = 4;
+  repeated ReplacedClass replaced_classes = 5;
+
 }
