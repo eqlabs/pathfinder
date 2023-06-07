@@ -589,6 +589,7 @@ mod tests {
                 params![1u128.to_be_bytes(), latest_block_hash],
             )
             .unwrap();
+        db_tx.commit().unwrap();
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 

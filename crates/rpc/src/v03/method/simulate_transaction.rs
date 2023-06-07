@@ -351,6 +351,7 @@ mod tests {
                 .finalize_with_hash(BlockHash::ZERO);
 
             tx.insert_block_header(&header).unwrap();
+            tx.commit().unwrap();
         }
 
         let (call_handle, _join_handle) = crate::cairo::ext_py::start(
