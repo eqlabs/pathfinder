@@ -490,7 +490,7 @@ mod tests {
         #[test_log::test(tokio::test)]
         async fn stop_on_fatal() {
             use crate::builder;
-            use starknet_gateway_types::error::{SequencerError, StarknetErrorCode};
+            use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 
             tokio::time::pause();
 
@@ -522,7 +522,7 @@ mod tests {
             .unwrap_err();
             assert_matches!(
                 error,
-                SequencerError::StarknetError(se) => assert_eq!(se.code, StarknetErrorCode::BlockNotFound)
+                SequencerError::StarknetError(se) => assert_eq!(se.code, KnownStarknetErrorCode::BlockNotFound.into())
             );
         }
 

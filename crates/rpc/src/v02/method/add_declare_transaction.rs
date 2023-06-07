@@ -12,9 +12,9 @@ crate::error::generate_rpc_error_subset!(AddDeclareTransactionError: InvalidCont
 
 impl From<SequencerError> for AddDeclareTransactionError {
     fn from(e: SequencerError) -> Self {
-        use starknet_gateway_types::error::StarknetErrorCode::InvalidProgram;
+        use starknet_gateway_types::error::KnownStarknetErrorCode::InvalidProgram;
         match e {
-            SequencerError::StarknetError(e) if e.code == InvalidProgram => {
+            SequencerError::StarknetError(e) if e.code == InvalidProgram.into() => {
                 Self::InvalidContractClass
             }
             _ => Self::Internal(e.into()),
@@ -120,7 +120,7 @@ mod tests {
     use starknet_gateway_test_fixtures::class_definitions::{
         CAIRO_1_0_0_ALPHA6_SIERRA, CONTRACT_DEFINITION,
     };
-    use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::error::KnownStarknetErrorCode;
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_CLASS: CairoContractClass = {
@@ -360,7 +360,7 @@ mod tests {
         assert_matches::assert_matches!(error, AddDeclareTransactionError::Internal(error) => {
             let error = error.downcast::<SequencerError>().unwrap();
             assert_matches::assert_matches!(error, SequencerError::StarknetError(error) => {
-                assert_eq!(error.code, StarknetErrorCode::CompilationFailed);
+                assert_eq!(error.code, KnownStarknetErrorCode::CompilationFailed.into());
             })
         });
     }

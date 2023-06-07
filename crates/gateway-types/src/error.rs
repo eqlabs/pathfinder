@@ -33,10 +33,24 @@ impl std::fmt::Display for StarknetError {
     }
 }
 
-/// Represents starknet specific error codes reported by the sequencer.
+/// Represents a starknet error code reported by the sequencer.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum StarknetErrorCode {
+    Known(KnownStarknetErrorCode),
+    Unknown(String),
+}
+
+impl From<KnownStarknetErrorCode> for StarknetErrorCode {
+    fn from(value: KnownStarknetErrorCode) -> Self {
+        Self::Known(value)
+    }
+}
+
+/// Represents well-known starknet specific error codes reported by the sequencer.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub enum StarknetErrorCode {
+pub enum KnownStarknetErrorCode {
     #[serde(rename = "StarknetErrorCode.BLOCK_NOT_FOUND")]
     BlockNotFound,
     #[serde(rename = "StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT")]
