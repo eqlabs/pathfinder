@@ -3,7 +3,7 @@ use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StarknetVersion, St
 
 use crate::{prelude::*, BlockId};
 
-pub(crate) fn insert_block_header(
+pub(super) fn insert_block_header(
     tx: &Transaction<'_>,
     header: &BlockHeader,
 ) -> anyhow::Result<()> {
@@ -71,7 +71,7 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
     Ok(id)
 }
 
-pub(crate) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
+pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
     tx.execute(
         "DELETE FROM canonical_blocks WHERE number = ?",
         params![&block],
@@ -89,7 +89,7 @@ pub(crate) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
     Ok(())
 }
 
-pub(crate) fn block_id(
+pub(super) fn block_id(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
@@ -125,7 +125,7 @@ pub(crate) fn block_id(
     .map_err(|e| e.into())
 }
 
-pub(crate) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
+pub(super) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
     match block {
         BlockId::Latest => {
             tx.query_row("SELECT EXISTS(SELECT 1 FROM canonical_blocks)", [], |row| {
@@ -146,7 +146,7 @@ pub(crate) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Resu
     .map_err(|e| e.into())
 }
 
-pub(crate) fn block_header(
+pub(super) fn block_header(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<BlockHeader>> {
@@ -225,7 +225,7 @@ pub(crate) fn block_header(
     Ok(Some(header))
 }
 
-pub(crate) fn block_is_l1_accepted(
+pub(super) fn block_is_l1_accepted(
     tx: &Transaction<'_>,
     block: BlockNumber,
 ) -> anyhow::Result<bool> {

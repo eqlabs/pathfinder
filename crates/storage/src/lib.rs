@@ -5,31 +5,23 @@
 // This is intended for internal use only -- do not make public.
 mod prelude;
 
-mod block;
-mod class;
 mod connection;
-mod ethereum;
-pub mod event;
 mod params;
-mod reference;
 mod schema;
-mod state;
-mod state_update;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
-mod transaction;
-mod trie;
 pub mod types;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use connection::*;
+
 use pathfinder_common::{BlockHash, BlockNumber};
 use rusqlite::functions::FunctionFlags;
-pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
+// pub use connection::trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
 use anyhow::Context;
 use r2d2::Pool;
@@ -217,7 +209,7 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
         .split(' ')
         // Convert only the first 256 elements so that the index fits into one u8
         // we will use as a prefix byte.
-        .take(crate::event::KEY_FILTER_LIMIT)
+        .take(connection::EVENT_KEY_FILTER_LIMIT)
         .enumerate()
         .map(|(index, key)| {
             let mut buf: [u8; 33] = [0u8; 33];

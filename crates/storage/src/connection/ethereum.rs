@@ -3,7 +3,7 @@ use pathfinder_ethereum::EthereumStateUpdate;
 
 use crate::prelude::*;
 
-pub(crate) fn upsert_l1_state(
+pub(super) fn upsert_l1_state(
     tx: &Transaction<'_>,
     update: &EthereumStateUpdate,
 ) -> anyhow::Result<()> {
@@ -27,7 +27,7 @@ pub(crate) fn upsert_l1_state(
     Ok(())
 }
 
-pub(crate) fn l1_state_at_number(
+pub(super) fn l1_state_at_number(
     tx: &Transaction<'_>,
     block: BlockNumber,
 ) -> anyhow::Result<Option<EthereumStateUpdate>> {
@@ -51,7 +51,7 @@ pub(crate) fn l1_state_at_number(
     .map_err(|e| e.into())
 }
 
-pub(crate) fn latest_l1_state(tx: &Transaction<'_>) -> anyhow::Result<Option<EthereumStateUpdate>> {
+pub(super) fn latest_l1_state(tx: &Transaction<'_>) -> anyhow::Result<Option<EthereumStateUpdate>> {
     tx.query_row(
         r"SELECT starknet_block_number, starknet_block_hash, starknet_state_root FROM l1_state 
             ORDER BY starknet_block_number DESC

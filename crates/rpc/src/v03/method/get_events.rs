@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::event::{EventFilterError, V03KeyFilter};
+use pathfinder_storage::{EventFilterError, V03KeyFilter};
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -97,9 +97,9 @@ pub async fn get_events(
         None => None,
     };
 
-    if request.keys.len() > pathfinder_storage::event::KEY_FILTER_LIMIT {
+    if request.keys.len() > pathfinder_storage::EVENT_KEY_FILTER_LIMIT {
         return Err(GetEventsError::TooManyKeysInFilter {
-            limit: pathfinder_storage::event::KEY_FILTER_LIMIT,
+            limit: pathfinder_storage::EVENT_KEY_FILTER_LIMIT,
             requested: request.keys.len(),
         });
     }
@@ -177,7 +177,7 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
-        let filter = pathfinder_storage::event::EventFilter {
+        let filter = pathfinder_storage::EventFilter {
             from_block,
             to_block,
             contract_address: request.address,
@@ -457,8 +457,8 @@ mod types {
         pub transaction_hash: TransactionHash,
     }
 
-    impl From<pathfinder_storage::event::EmittedEvent> for EmittedEvent {
-        fn from(event: pathfinder_storage::event::EmittedEvent) -> Self {
+    impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
+        fn from(event: pathfinder_storage::EmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,
@@ -680,7 +680,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: pathfinder_storage::event::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };
@@ -693,7 +693,7 @@ mod tests {
     async fn get_events_with_too_many_keys_in_filter() {
         let (context, _) = setup();
 
-        let limit = pathfinder_storage::event::KEY_FILTER_LIMIT;
+        let limit = pathfinder_storage::KEY_FILTER_LIMIT;
 
         let keys = [vec![EventKey(felt!("01"))]]
             .iter()

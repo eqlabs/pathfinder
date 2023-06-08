@@ -2,7 +2,7 @@ use pathfinder_common::BlockNumber;
 
 use crate::prelude::*;
 
-pub(crate) fn update_l1_l2_pointer(
+pub(super) fn update_l1_l2_pointer(
     tx: &Transaction<'_>,
     head: Option<BlockNumber>,
 ) -> anyhow::Result<()> {
@@ -11,7 +11,7 @@ pub(crate) fn update_l1_l2_pointer(
     Ok(())
 }
 
-pub(crate) fn l1_l2_pointer(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
+pub(super) fn l1_l2_pointer(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
     // This table always contains exactly one row.
     tx.query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
         row.get::<_, Option<_>>(0)

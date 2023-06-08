@@ -1,5 +1,20 @@
 use std::collections::HashMap;
 
+mod block;
+mod class;
+mod ethereum;
+mod event;
+mod reference;
+mod state;
+mod state_update;
+mod transaction;
+mod trie;
+
+pub use event::KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT;
+pub use event::*;
+
+pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
+
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash,
@@ -11,8 +26,6 @@ use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
 
-use crate::event::{EventFilter, KeyFilter, PageOfEvents};
-use crate::trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 use crate::BlockId;
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -57,7 +70,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         state_hash: ContractStateHash,
     ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
-        crate::state::contract_state(self, state_hash)
+        state::contract_state(self, state_hash)
     }
 
     pub fn insert_contract_state(
@@ -67,57 +80,57 @@ impl<'inner> Transaction<'inner> {
         root: ContractRoot,
         nonce: ContractNonce,
     ) -> anyhow::Result<()> {
-        crate::state::insert_contract_state(self, state_hash, class_hash, root, nonce)
+        state::insert_contract_state(self, state_hash, class_hash, root, nonce)
     }
 
     pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
-        crate::block::insert_block_header(self, header)
+        block::insert_block_header(self, header)
     }
 
     pub fn block_header(&self, block: BlockId) -> anyhow::Result<Option<BlockHeader>> {
-        crate::block::block_header(self, block)
+        block::block_header(self, block)
     }
 
     /// Removes all data related to this block.
     ///
     /// This includes block header, block body and state update information.
     pub fn purge_block(&self, block: BlockNumber) -> anyhow::Result<()> {
-        crate::block::purge_block(self, block)
+        block::purge_block(self, block)
     }
 
     pub fn block_id(&self, block: BlockId) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
-        crate::block::block_id(self, block)
+        block::block_id(self, block)
     }
 
     pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
-        crate::block::block_exists(self, block)
+        block::block_exists(self, block)
     }
 
     pub fn block_is_l1_accepted(&self, block: BlockNumber) -> anyhow::Result<bool> {
-        crate::block::block_is_l1_accepted(self, block)
+        block::block_is_l1_accepted(self, block)
     }
 
     pub fn update_l1_l2_pointer(&self, block: Option<BlockNumber>) -> anyhow::Result<()> {
-        crate::reference::update_l1_l2_pointer(self, block)
+        reference::update_l1_l2_pointer(self, block)
     }
 
     pub fn l1_l2_pointer(&self) -> anyhow::Result<Option<BlockNumber>> {
-        crate::reference::l1_l2_pointer(self)
+        reference::l1_l2_pointer(self)
     }
 
     pub fn upsert_l1_state(&self, update: &EthereumStateUpdate) -> anyhow::Result<()> {
-        crate::ethereum::upsert_l1_state(self, update)
+        ethereum::upsert_l1_state(self, update)
     }
 
     pub fn l1_state_at_number(
         &self,
         block: BlockNumber,
     ) -> anyhow::Result<Option<EthereumStateUpdate>> {
-        crate::ethereum::l1_state_at_number(self, block)
+        ethereum::l1_state_at_number(self, block)
     }
 
     pub fn latest_l1_state(&self) -> anyhow::Result<Option<EthereumStateUpdate>> {
-        crate::ethereum::latest_l1_state(self)
+        ethereum::latest_l1_state(self)
     }
 
     /// Inserts the transaction, receipt and event data.
@@ -127,21 +140,21 @@ impl<'inner> Transaction<'inner> {
         block_number: BlockNumber,
         transaction_data: &[(gateway::Transaction, gateway::Receipt)],
     ) -> anyhow::Result<()> {
-        crate::transaction::insert_transactions(self, block_hash, block_number, transaction_data)
+        transaction::insert_transactions(self, block_hash, block_number, transaction_data)
     }
 
     pub fn transaction(
         &self,
         hash: TransactionHash,
     ) -> anyhow::Result<Option<gateway::Transaction>> {
-        crate::transaction::transaction(self, hash)
+        transaction::transaction(self, hash)
     }
 
     pub fn transaction_with_receipt(
         &self,
         hash: TransactionHash,
     ) -> anyhow::Result<Option<(gateway::Transaction, gateway::Receipt, BlockHash)>> {
-        crate::transaction::transaction_with_receipt(self, hash)
+        transaction::transaction_with_receipt(self, hash)
     }
 
     pub fn transaction_at_block(
@@ -149,22 +162,22 @@ impl<'inner> Transaction<'inner> {
         block: BlockId,
         index: usize,
     ) -> anyhow::Result<Option<gateway::Transaction>> {
-        crate::transaction::transaction_at_block(self, block, index)
+        transaction::transaction_at_block(self, block, index)
     }
 
     pub fn transaction_data_for_block(
         &self,
         block: BlockId,
     ) -> anyhow::Result<Option<Vec<(gateway::Transaction, gateway::Receipt)>>> {
-        crate::transaction::transaction_data_for_block(self, block)
+        transaction::transaction_data_for_block(self, block)
     }
 
     pub fn transaction_count(&self, block: BlockId) -> anyhow::Result<usize> {
-        crate::transaction::transaction_count(self, block)
+        transaction::transaction_count(self, block)
     }
 
     pub fn events(&self, filter: &EventFilter<impl KeyFilter>) -> anyhow::Result<PageOfEvents> {
-        crate::event::get_events(self, filter)
+        event::get_events(self, filter)
     }
 
     pub fn event_count(
@@ -174,7 +187,7 @@ impl<'inner> Transaction<'inner> {
         contract_address: Option<ContractAddress>,
         keys: &dyn KeyFilter,
     ) -> anyhow::Result<usize> {
-        crate::event::event_count(self, from_block, to_block, contract_address, keys)
+        event::event_count(self, from_block, to_block, contract_address, keys)
     }
 
     pub fn insert_sierra_class(
@@ -185,7 +198,7 @@ impl<'inner> Transaction<'inner> {
         casm_definition: &[u8],
         compiler_version: &str,
     ) -> anyhow::Result<()> {
-        crate::class::insert_sierra_class(
+        class::insert_sierra_class(
             self,
             sierra_hash,
             sierra_definition,
@@ -201,7 +214,7 @@ impl<'inner> Transaction<'inner> {
         cairo_hash: ClassHash,
         definition: &[u8],
     ) -> anyhow::Result<()> {
-        crate::class::insert_cairo_class(self, cairo_hash, definition)
+        class::insert_cairo_class(self, cairo_hash, definition)
     }
 
     pub fn insert_class_commitment_leaf(
@@ -209,14 +222,14 @@ impl<'inner> Transaction<'inner> {
         leaf: &ClassCommitmentLeafHash,
         casm_hash: &CasmHash,
     ) -> anyhow::Result<()> {
-        crate::class::insert_class_commitment_leaf(self, leaf, casm_hash)
+        class::insert_class_commitment_leaf(self, leaf, casm_hash)
     }
 
     /// Returns whether the Sierra or Cairo class definition exists in the database.
     ///
     /// Note that this does not indicate that the class is actually declared -- only that we stored it.
     pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
-        crate::class::classes_exist(self, classes)
+        class::classes_exist(self, classes)
     }
 
     /// Stores the class trie information using reference counting.
@@ -225,7 +238,7 @@ impl<'inner> Transaction<'inner> {
         root: ClassCommitment,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        crate::trie::insert_class_trie(&self.0, root.0, nodes)
+        trie::insert_class_trie(&self.0, root.0, nodes)
     }
 
     /// Stores a single contract's storage trie information using reference counting.
@@ -234,7 +247,7 @@ impl<'inner> Transaction<'inner> {
         root: ContractRoot,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        crate::trie::insert_contract_trie(&self.0, root.0, nodes)
+        trie::insert_contract_trie(&self.0, root.0, nodes)
     }
 
     /// Stores the global starknet storage trie information using reference counting.
@@ -243,7 +256,7 @@ impl<'inner> Transaction<'inner> {
         root: StorageCommitment,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        crate::trie::insert_storage_trie(&self.0, root.0, nodes)
+        trie::insert_storage_trie(&self.0, root.0, nodes)
     }
 
     pub fn class_trie_reader(&self) -> anyhow::Result<ClassTrieReader<'_>> {
@@ -263,7 +276,7 @@ impl<'inner> Transaction<'inner> {
         block_number: BlockNumber,
         state_diff: &crate::types::state_update::StateDiff,
     ) -> anyhow::Result<()> {
-        crate::state_update::insert_canonical_state_diff(self, block_number, state_diff)
+        state_update::insert_canonical_state_diff(self, block_number, state_diff)
     }
 
     pub fn commit(self) -> anyhow::Result<()> {

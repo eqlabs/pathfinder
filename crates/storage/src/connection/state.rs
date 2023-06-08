@@ -2,7 +2,7 @@ use pathfinder_common::{ClassHash, ContractNonce, ContractRoot, ContractStateHas
 
 use crate::prelude::*;
 
-pub(crate) fn contract_state(
+pub(super) fn contract_state(
     tx: &Transaction<'_>,
     state_hash: ContractStateHash,
 ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
@@ -23,7 +23,7 @@ pub(crate) fn contract_state(
     .map_err(|e| e.into())
 }
 
-pub(crate) fn insert_contract_state(
+pub(super) fn insert_contract_state(
     tx: &Transaction<'_>,
     state_hash: ContractStateHash,
     class_hash: ClassHash,

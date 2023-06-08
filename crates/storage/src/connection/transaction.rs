@@ -6,7 +6,7 @@ use starknet_gateway_types::reply::transaction as gateway;
 
 use crate::{prelude::*, BlockId};
 
-pub(crate) fn insert_transactions(
+pub(super) fn insert_transactions(
     tx: &Transaction<'_>,
     block_hash: BlockHash,
     block_number: BlockNumber,
@@ -39,14 +39,14 @@ pub(crate) fn insert_transactions(
             ]).context("Inserting transaction data")?;
 
         // insert events from receipt
-        crate::event::insert_events(tx, block_number, receipt.transaction_hash, &receipt.events)
+        super::event::insert_events(tx, block_number, receipt.transaction_hash, &receipt.events)
             .context("Inserting events")?;
     }
 
     Ok(())
 }
 
-pub(crate) fn transaction(
+pub(super) fn transaction(
     tx: &Transaction<'_>,
     transaction: TransactionHash,
 ) -> anyhow::Result<Option<gateway::Transaction>> {
@@ -68,7 +68,7 @@ pub(crate) fn transaction(
     Ok(Some(transaction))
 }
 
-pub(crate) fn transaction_with_receipt(
+pub(super) fn transaction_with_receipt(
     tx: &Transaction<'_>,
     txn_hash: TransactionHash,
 ) -> anyhow::Result<Option<(gateway::Transaction, gateway::Receipt, BlockHash)>> {

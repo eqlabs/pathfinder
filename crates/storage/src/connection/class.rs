@@ -3,7 +3,7 @@ use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash
 
 use crate::prelude::*;
 
-pub(crate) fn insert_sierra_class(
+pub(super) fn insert_sierra_class(
     transaction: &Transaction<'_>,
     sierra_hash: &SierraHash,
     sierra_definition: &[u8],
@@ -47,7 +47,7 @@ pub(crate) fn insert_sierra_class(
     Ok(())
 }
 
-pub(crate) fn insert_cairo_class(
+pub(super) fn insert_cairo_class(
     transaction: &Transaction<'_>,
     cairo_hash: ClassHash,
     definition: &[u8],
@@ -100,7 +100,7 @@ fn intern_compiler_version(
 }
 
 /// Returns whether or not the given class definitions exist.
-pub(crate) fn classes_exist(
+pub(super) fn classes_exist(
     transaction: &Transaction<'_>,
     classes: &[ClassHash],
 ) -> anyhow::Result<Vec<bool>> {
@@ -112,7 +112,7 @@ pub(crate) fn classes_exist(
         .collect::<Result<Vec<_>, _>>()?)
 }
 
-pub(crate) fn insert_class_commitment_leaf(
+pub(super) fn insert_class_commitment_leaf(
     transaction: &Transaction<'_>,
     leaf: &ClassCommitmentLeafHash,
     casm_hash: &CasmHash,

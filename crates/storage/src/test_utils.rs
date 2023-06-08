@@ -1,4 +1,4 @@
-use crate::event::EmittedEvent;
+use crate::EmittedEvent;
 
 use super::Storage;
 use pathfinder_common::{

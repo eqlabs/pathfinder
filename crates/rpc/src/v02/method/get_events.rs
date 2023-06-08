@@ -1,7 +1,7 @@
 use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::event::{EventFilter, EventFilterError, V02KeyFilter};
+use pathfinder_storage::{EventFilter, EventFilterError, V02KeyFilter};
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -421,8 +421,8 @@ mod types {
         pub transaction_hash: TransactionHash,
     }
 
-    impl From<pathfinder_storage::event::EmittedEvent> for EmittedEvent {
-        fn from(event: pathfinder_storage::event::EmittedEvent) -> Self {
+    impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
+        fn from(event: pathfinder_storage::EmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,
@@ -644,7 +644,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: pathfinder_storage::event::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };

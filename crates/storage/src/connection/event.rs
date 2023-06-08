@@ -52,7 +52,7 @@ pub struct KeyFilterResult<'a> {
     pub param: (&'static str, &'a str),
 }
 
-pub(crate) fn insert_events(
+pub(super) fn insert_events(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
     transaction_hash: TransactionHash,
@@ -86,7 +86,7 @@ pub(crate) fn insert_events(
     Ok(())
 }
 
-pub(crate) fn get_events<K: KeyFilter>(
+pub(super) fn get_events<K: KeyFilter>(
     tx: &Transaction<'_>,
     filter: &EventFilter<K>,
 ) -> anyhow::Result<PageOfEvents> {

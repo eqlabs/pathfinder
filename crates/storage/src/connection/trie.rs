@@ -25,7 +25,7 @@ macro_rules! insert_trie {
         /// any node definition not present in the hash map is in fact a leaf node. This means we recurse through
         /// child nodes until the child node already exists in the database, or the child definition is not present
         /// in the hash map (indicating it is a leaf node, and should not be inserted).
-        pub(crate) fn $fn_name(
+        pub(super) fn $fn_name(
             tx: &rusqlite::Transaction<'_>,
             root: Felt,
             nodes: &HashMap<Felt, TrieNode>,
@@ -73,7 +73,7 @@ macro_rules! insert_trie {
         pub struct $reader_struct<'tx>(rusqlite::CachedStatement<'tx>);
 
         impl<'tx> $reader_struct<'tx> {
-            pub(crate) fn new(tx: &'tx Transaction<'tx>) -> anyhow::Result<Self> {
+            pub(super) fn new(tx: &'tx Transaction<'tx>) -> anyhow::Result<Self> {
                 let stmt = tx
                     .prepare_cached(concat!(
                         "SELECT data FROM ",
