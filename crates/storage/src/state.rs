@@ -1,8 +1,4 @@
-use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, ClassHash, ContractNonce, ContractRoot,
-    ContractStateHash, EventCommitment, GasPrice, SequencerAddress, StateCommitment,
-    TransactionCommitment,
-};
+use pathfinder_common::{ClassHash, ContractNonce, ContractRoot, ContractStateHash};
 
 use crate::prelude::*;
 
@@ -44,22 +40,6 @@ pub(crate) fn insert_contract_state(
         },
     )?;
     Ok(())
-}
-
-/// Describes a Starknet block.
-///
-/// While the sequencer version on each block (when present) is stored since starknet 0.9.1, it is
-/// not yet read.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StarknetBlock {
-    pub number: BlockNumber,
-    pub hash: BlockHash,
-    pub state_commmitment: StateCommitment,
-    pub timestamp: BlockTimestamp,
-    pub gas_price: GasPrice,
-    pub sequencer_address: SequencerAddress,
-    pub transaction_commitment: Option<TransactionCommitment>,
-    pub event_commitment: Option<EventCommitment>,
 }
 
 #[cfg(test)]
