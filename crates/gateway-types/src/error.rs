@@ -96,4 +96,6 @@ pub enum KnownStarknetErrorCode {
     CompilationFailed,
     #[serde(rename = "StarknetErrorCode.UNAUTHORIZED_ENTRY_POINT_FOR_INVOKE")]
     UnauthorizedEntryPointForInvoke,
+    #[serde(rename = "StarknetErrorCode.INVALID_CONTRACT_CLASS")]
+    InvalidContractClass,
 }
