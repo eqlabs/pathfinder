@@ -40,18 +40,11 @@ pub(crate) fn insert_block_header(
     Ok(())
 }
 
-fn intern_starknet_version(
-    tx: &Transaction<'_>,
-    version: &StarknetVersion,
-) -> anyhow::Result<Option<i64>> {
-    let Some(version) = version.as_str() else {
-        return Ok(None);
-    };
-
+fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> anyhow::Result<i64> {
     let id: Option<i64> = tx
         .query_row(
             "SELECT id FROM starknet_versions WHERE version = ?",
-            params![&version],
+            params![version],
             |r| Ok(r.get_unwrap(0)),
         )
         .optional()
@@ -66,7 +59,7 @@ fn intern_starknet_version(
         let rows = tx
             .execute(
                 "INSERT INTO starknet_versions(version) VALUES (?)",
-                params![&version],
+                params![version],
             )
             .context("Inserting unique starknet_version")?;
 
@@ -75,7 +68,7 @@ fn intern_starknet_version(
         tx.last_insert_rowid()
     };
 
-    Ok(Some(id))
+    Ok(id)
 }
 
 pub(crate) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {

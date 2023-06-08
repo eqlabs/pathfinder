@@ -8,17 +8,17 @@ use pathfinder_common::{
     StarknetVersion, StateCommitment, StorageAddress, StorageCommitment, StorageValue,
     TransactionCommitment, TransactionHash, TransactionNonce, TransactionSignatureElem,
 };
-use rusqlite::types::FromSqlError;
+use rusqlite::types::{FromSqlError, ToSqlOutput};
 use rusqlite::RowIndex;
 use stark_hash::Felt;
 
 pub trait ToSql {
-    fn to_sql(&self) -> rusqlite::types::ToSqlOutput<'_>;
+    fn to_sql(&self) -> ToSqlOutput<'_>;
 }
 
 impl<Inner: ToSql> ToSql for Option<Inner> {
-    fn to_sql(&self) -> rusqlite::types::ToSqlOutput<'_> {
-        use rusqlite::types::{ToSqlOutput, Value};
+    fn to_sql(&self) -> ToSqlOutput<'_> {
+        use rusqlite::types::Value;
 
         match self {
             Some(value) => value.to_sql(),
@@ -27,11 +27,18 @@ impl<Inner: ToSql> ToSql for Option<Inner> {
     }
 }
 
+impl ToSql for StarknetVersion {
+    fn to_sql(&self) -> ToSqlOutput<'_> {
+        use rusqlite::types::ValueRef;
+        ToSqlOutput::Borrowed(ValueRef::Text(self.as_str().as_bytes()))
+    }
+}
+
 impl ToSql for TrieNode {
-    fn to_sql(&self) -> rusqlite::types::ToSqlOutput<'_> {
+    fn to_sql(&self) -> ToSqlOutput<'_> {
         use bitvec::order::Msb0;
         use bitvec::view::BitView;
-        use rusqlite::types::{ToSqlOutput, Value};
+        use rusqlite::types::Value;
 
         let mut buffer = Vec::with_capacity(65);
 
@@ -163,7 +170,11 @@ pub trait RowExt {
         &self,
         index: Index,
     ) -> rusqlite::Result<StarknetVersion> {
-        let s = self.get_optional_str(index)?.map(str::to_string);
+        // Older starknet versions were stored as null, map those to empty string.
+        let s = self
+            .get_optional_str(index)?
+            .unwrap_or_default()
+            .to_string();
 
         Ok(StarknetVersion::from(s))
     }
