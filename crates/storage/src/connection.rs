@@ -246,15 +246,15 @@ impl<'inner> Transaction<'inner> {
         crate::trie::insert_storage_trie(&self.0, root.0, nodes)
     }
 
-    pub fn class_trie_reader(&self) -> anyhow::Result<ClassTrieReader> {
+    pub fn class_trie_reader(&self) -> anyhow::Result<ClassTrieReader<'_>> {
         ClassTrieReader::new(self)
     }
 
-    pub fn storage_trie_reader(&self) -> anyhow::Result<StorageTrieReader> {
+    pub fn storage_trie_reader(&self) -> anyhow::Result<StorageTrieReader<'_>> {
         StorageTrieReader::new(self)
     }
 
-    pub fn contract_trie_reader(&self) -> anyhow::Result<ContractTrieReader> {
+    pub fn contract_trie_reader(&self) -> anyhow::Result<ContractTrieReader<'_>> {
         ContractTrieReader::new(self)
     }
 

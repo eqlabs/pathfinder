@@ -259,7 +259,7 @@ pub mod test_utils {
             .insert_cairo_class(class0_hash, &class0_definition)
             .unwrap();
         db_txn
-            .insert_cairo_class(class1_hash, &class1_definition)
+            .insert_cairo_class(class1_hash, class1_definition)
             .unwrap();
         db_txn
             .insert_sierra_class(

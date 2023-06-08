@@ -158,7 +158,7 @@ pub(crate) fn block_header(
         BlockId::Hash(_) => format!("{BASE_SQL} WHERE hash = ?"),
     };
 
-    let parse_row = |row: &rusqlite::Row| {
+    let parse_row = |row: &rusqlite::Row<'_>| {
         let number = row.get_block_number("number")?;
         let hash = row.get_block_hash("hash")?;
         let storage_commitment = row.get_storage_commitment("root")?;

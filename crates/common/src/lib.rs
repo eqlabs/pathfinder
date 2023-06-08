@@ -16,7 +16,7 @@ mod macros;
 pub mod test_utils;
 pub mod trie;
 
-pub use header::BlockHeader;
+pub use header::{BlockHeader, BlockHeaderBuilder};
 
 /// The address of a Starknet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]

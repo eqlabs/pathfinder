@@ -190,7 +190,7 @@ pub fn setup_test_storage() -> (Storage, TestData) {
     let transactions_and_receipts = create_transactions_and_receipts();
 
     for (i, header) in headers.iter().enumerate() {
-        tx.insert_block_header(&header).unwrap();
+        tx.insert_block_header(header).unwrap();
         tx.insert_transaction_data(
             header.hash,
             header.number,

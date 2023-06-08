@@ -185,7 +185,6 @@ mod types {
     }
 
     impl Block {
-        /// Constructs [Block] from [RawBlock]
         pub fn from_parts(
             header: BlockHeader,
             status: BlockStatus,

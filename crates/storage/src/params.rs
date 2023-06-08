@@ -301,7 +301,7 @@ macro_rules! to_sql_felt {
 
 /// Implements [ToSql] for the target [Felt] newtype.
 ///
-/// Same as [to_sql!] except it compresses the [Felt] by skipping leading zeros.
+/// Same as [to_sql_felt!] except it compresses the [Felt] by skipping leading zeros.
 ///
 /// [Felt]: stark_hash::Felt
 macro_rules! to_sql_compressed_felt {
@@ -364,7 +364,6 @@ use {row_felt_wrapper, to_sql_builtin, to_sql_compressed_felt, to_sql_felt, to_s
 
 /// Used in combination with our own [ToSql] trait to provide functionality equivalent to
 /// [rusqlite::params!] for our own foreign types.
-#[macro_export]
 macro_rules! params {
     [] => {
         rusqlite::params![]
@@ -374,7 +373,6 @@ macro_rules! params {
     };
 }
 
-#[macro_export]
 macro_rules! named_params {
     () => {
         rusqlite::named_params![]
@@ -385,6 +383,8 @@ macro_rules! named_params {
         rusqlite::named_params![$($param_name: $crate::params::ToSql::to_sql($param_val)),+]
     };
 }
+
+pub(crate) use {named_params, params};
 
 #[cfg(test)]
 mod tests {

@@ -84,7 +84,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Self::new(Felt::ZERO)
     }
 
-    /// Commits all tree mutations and returns the [changes](Update) to the tree.
+    /// Commits all tree mutations and returns the [changes](TrieUpdate) to the tree.
     pub fn commit(mut self) -> anyhow::Result<TrieUpdate> {
         self.commit_mut()
     }

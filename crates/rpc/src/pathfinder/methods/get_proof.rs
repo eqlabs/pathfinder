@@ -49,7 +49,7 @@ struct PathWrapper {
     len: usize,
 }
 
-/// Wrapper around [`Vec<TrieNode>`] as we don't control [Node] in this crate.
+/// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this crate.
 #[derive(Debug)]
 pub struct ProofNodes(Vec<TrieNode>);
 

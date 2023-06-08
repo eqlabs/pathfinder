@@ -9,8 +9,6 @@ use starknet_gateway_types::reply::state_update::StorageDiff;
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.
-///
-/// Specifically, it updates the [ContractsStorageTree] and [ContractsStateTable].
 pub fn update_contract_state(
     contract_address: ContractAddress,
     updates: &[StorageDiff],
