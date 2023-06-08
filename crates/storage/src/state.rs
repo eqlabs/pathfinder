@@ -4,35 +4,46 @@ use pathfinder_common::{
     TransactionCommitment,
 };
 
-use crate::{prelude::*, BlockId};
+use crate::prelude::*;
 
-/// Identifies block in some [StarknetBlocksTable] queries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StarknetBlocksNumberOrLatest {
-    Number(BlockNumber),
-    Latest,
+pub(crate) fn contract_state(
+    tx: &Transaction<'_>,
+    state_hash: ContractStateHash,
+) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
+    tx.query_row(
+        "SELECT root, hash, nonce FROM contract_states WHERE state_hash = :state_hash",
+        named_params! {
+            ":state_hash": &state_hash
+        },
+        |row| {
+            let root = row.get_contract_root("root")?;
+            let hash = row.get_class_hash("hash")?;
+            let nonce = row.get_contract_nonce("nonce")?;
+
+            Ok((root, hash, nonce))
+        },
+    )
+    .optional()
+    .map_err(|e| e.into())
 }
 
-impl From<BlockNumber> for StarknetBlocksNumberOrLatest {
-    fn from(number: BlockNumber) -> Self {
-        Self::Number(number)
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("expected starknet block number or `latest`, got starknet block hash {0}")]
-pub struct FromStarknetBlocksBlockIdError(BlockHash);
-
-impl TryFrom<BlockId> for StarknetBlocksNumberOrLatest {
-    type Error = FromStarknetBlocksBlockIdError;
-
-    fn try_from(value: BlockId) -> Result<Self, Self::Error> {
-        match value {
-            BlockId::Number(n) => Ok(Self::Number(n)),
-            BlockId::Hash(h) => Err(FromStarknetBlocksBlockIdError(h)),
-            BlockId::Latest => Ok(Self::Latest),
-        }
-    }
+pub(crate) fn insert_contract_state(
+    tx: &Transaction<'_>,
+    state_hash: ContractStateHash,
+    class_hash: ClassHash,
+    root: ContractRoot,
+    nonce: ContractNonce,
+) -> anyhow::Result<()> {
+    tx.execute(
+        "INSERT OR IGNORE INTO contract_states (state_hash, hash, root, nonce) VALUES (:state_hash, :hash, :root, :nonce)",
+        named_params! {
+            ":state_hash": &state_hash,
+            ":hash": &class_hash,
+            ":root": &root,
+            ":nonce": &nonce,
+        },
+    )?;
+    Ok(())
 }
 
 /// Describes a Starknet block.
@@ -51,133 +62,9 @@ pub struct StarknetBlock {
     pub event_commitment: Option<EventCommitment>,
 }
 
-/// Stores the contract state hash along with its preimage. This is useful to
-/// map between the global state tree and the contracts tree.
-///
-/// Specifically it stores
-///
-/// - [contract state hash](ContractStateHash)
-/// - [class hash](ClassHash)
-/// - [contract root](ContractRoot)
-pub struct ContractsStateTable {}
-
-impl ContractsStateTable {
-    /// Insert a state hash into the table, overwrites the data if the hash already exists.
-    pub fn upsert(
-        transaction: &Transaction<'_>,
-        state_hash: ContractStateHash,
-        hash: ClassHash,
-        root: ContractRoot,
-        nonce: ContractNonce,
-    ) -> anyhow::Result<()> {
-        transaction.execute(
-            "INSERT OR IGNORE INTO contract_states (state_hash, hash, root, nonce) VALUES (:state_hash, :hash, :root, :nonce)",
-            named_params! {
-                ":state_hash": &state_hash,
-                ":hash": &hash,
-                ":root": &root,
-                ":nonce": &nonce,
-            },
-        )?;
-        Ok(())
-    }
-
-    /// Gets the root associated with the given state hash, or [None]
-    /// if it does not exist.
-    pub fn get_root(
-        transaction: &Transaction<'_>,
-        state_hash: ContractStateHash,
-    ) -> anyhow::Result<Option<ContractRoot>> {
-        transaction
-            .query_row(
-                "SELECT root FROM contract_states WHERE state_hash = :state_hash",
-                named_params! {
-                    ":state_hash": &state_hash
-                },
-                |row| row.get("root"),
-            )
-            .optional()
-            .map_err(|e| e.into())
-    }
-
-    /// Gets the nonce associated with the given state hash, or [None]
-    /// if it does not exist.
-    pub fn get_nonce(
-        transaction: &Transaction<'_>,
-        state_hash: ContractStateHash,
-    ) -> anyhow::Result<Option<ContractNonce>> {
-        transaction
-            .query_row(
-                "SELECT nonce FROM contract_states WHERE state_hash = :state_hash",
-                named_params! {
-                    ":state_hash": &state_hash
-                },
-                |row| row.get("nonce"),
-            )
-            .optional()
-            .map_err(|e| e.into())
-    }
-
-    /// Gets the root and nonce associated with the given state hash, or [None]
-    /// if it does not exist.
-    pub fn get_root_class_hash_and_nonce(
-        transaction: &Transaction<'_>,
-        state_hash: ContractStateHash,
-    ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
-        transaction
-            .query_row(
-                "SELECT root, hash, nonce FROM contract_states WHERE state_hash = :state_hash",
-                named_params! {
-                    ":state_hash": &state_hash
-                },
-                |row| {
-                    let root = row.get("root")?;
-                    let hash = row.get("hash")?;
-                    let nonce = row.get("nonce")?;
-
-                    Ok((root, hash, nonce))
-                },
-            )
-            .optional()
-            .map_err(|e| e.into())
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    mod contracts {
-        use crate::Storage;
-
-        use super::*;
-        use pathfinder_common::felt;
-
-        #[test]
-        fn get() {
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let transaction = connection.transaction().unwrap();
-
-            let state_hash = ContractStateHash(felt!("0xabc"));
-            let hash = ClassHash(felt!("0x123"));
-            let root = ContractRoot(felt!("0xdef"));
-            let nonce = ContractNonce(felt!("0x456"));
-
-            ContractsStateTable::upsert(&transaction, state_hash, hash, root, nonce).unwrap();
-
-            let result = ContractsStateTable::get_root(&transaction, state_hash).unwrap();
-            assert_eq!(result, Some(root));
-
-            let result = ContractsStateTable::get_nonce(&transaction, state_hash).unwrap();
-            assert_eq!(result, Some(nonce));
-
-            let result =
-                ContractsStateTable::get_root_class_hash_and_nonce(&transaction, state_hash)
-                    .unwrap();
-            assert_eq!(result, Some((root, hash, nonce)));
-        }
-    }
+    // use super::*;
 
     // mod starknet_blocks {
     //     use super::*;

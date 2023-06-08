@@ -1,7 +1,9 @@
 //! Simple tool for downloading missing state updates of a given pathfinder db.
 
 use anyhow::Context;
-use pathfinder_common::consts::{MAINNET_GENESIS_HASH, TESTNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, INTEGRATION_GENESIS_HASH};
+use pathfinder_common::consts::{
+    INTEGRATION_GENESIS_HASH, MAINNET_GENESIS_HASH, TESTNET2_GENESIS_HASH, TESTNET_GENESIS_HASH,
+};
 use pathfinder_common::{BlockNumber, Chain};
 
 #[tokio::main]

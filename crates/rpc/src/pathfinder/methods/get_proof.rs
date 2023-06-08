@@ -9,7 +9,6 @@ use pathfinder_common::{
     StateCommitment, StorageAddress,
 };
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
-use pathfinder_storage::ContractsStateTable;
 use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -216,17 +215,17 @@ pub async fn get_proof(
             }
         };
 
-        let (contract_state_root, class_hash, nonce) =
-            ContractsStateTable::get_root_class_hash_and_nonce(&tx, contract_state_hash)
-                .context("Get contract state root and nonce")?
-                // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
-                .ok_or_else(|| -> GetProofError {
-                    anyhow::anyhow!(
-                        "Root or nonce missing for state_hash={}",
-                        contract_state_hash
-                    )
-                    .into()
-                })?;
+        let (contract_state_root, class_hash, nonce) = tx
+            .contract_state(contract_state_hash)
+            .context("Get contract state root and nonce")?
+            // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
+            .ok_or_else(|| -> GetProofError {
+                anyhow::anyhow!(
+                    "Root or nonce missing for state_hash={}",
+                    contract_state_hash
+                )
+                .into()
+            })?;
 
         let mut contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root)
             .context("Loading contract trie")?;

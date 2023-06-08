@@ -1,6 +1,7 @@
 use crate::event::EmittedEvent;
+use crate::state::StarknetBlock;
 
-use super::{StarknetBlock, Storage};
+use super::Storage;
 use pathfinder_common::{
     felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment,
     ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment,

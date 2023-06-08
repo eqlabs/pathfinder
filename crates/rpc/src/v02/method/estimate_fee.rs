@@ -326,14 +326,14 @@ pub(crate) mod tests {
                     contract_nonce,
                 );
 
-            pathfinder_storage::ContractsStateTable::upsert(
-                &db_txn,
-                contract_state_hash,
-                class_hash,
-                contract_root,
-                contract_nonce,
-            )
-            .unwrap();
+            db_txn
+                .insert_contract_state(
+                    contract_state_hash,
+                    class_hash,
+                    contract_root,
+                    contract_nonce,
+                )
+                .unwrap();
 
             let latest_header = db_txn
                 .block_header(pathfinder_storage::BlockId::Latest)

@@ -19,8 +19,7 @@ use pathfinder_rpc::{
     websocket::types::WebsocketSenders,
     SyncState,
 };
-use pathfinder_storage::{Connection, Transaction};
-use pathfinder_storage::{ContractsStateTable, Storage};
+use pathfinder_storage::{Connection, Storage, Transaction};
 use primitive_types::H160;
 use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
@@ -750,14 +749,9 @@ fn deploy_contract(
     storage_commitment_tree
         .set(contract.address, state_hash)
         .context("Adding deployed contract to global state tree")?;
-    ContractsStateTable::upsert(
-        transaction,
-        state_hash,
-        class_hash,
-        contract_root,
-        contract_nonce,
-    )
-    .context("Insert constract state hash into contracts state table")
+    transaction
+        .insert_contract_state(state_hash, class_hash, contract_root, contract_nonce)
+        .context("Insert constract state hash into contracts state table")
 }
 
 /// Downloads and inserts class definitions for any classes in the

@@ -47,7 +47,6 @@ pub mod init {
 
         let mut headers = vec![genesis];
         for i in 1..n {
-            let i = i as u8;
             let header = headers
                 .last()
                 .unwrap()

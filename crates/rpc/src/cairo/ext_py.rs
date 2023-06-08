@@ -463,7 +463,7 @@ mod tests {
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
-        ContractsStateTable, JournalMode, Storage, Transaction,
+        JournalMode, Storage, Transaction,
     };
     use rusqlite::params;
     use stark_hash::Felt;
@@ -1006,8 +1006,7 @@ mod tests {
             );
 
         // set up contract state table
-        ContractsStateTable::upsert(
-            tx,
+        tx.insert_contract_state(
             contract_state_hash,
             class_hash,
             contract_root,

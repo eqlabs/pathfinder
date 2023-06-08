@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash,
-    ClassHash, ContractAddress, ContractRoot, SierraHash, StorageCommitment, TransactionHash,
+    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, SierraHash,
+    StorageCommitment, TransactionHash,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
 use rusqlite::TransactionBehavior;
@@ -46,6 +47,27 @@ impl<'inner> Transaction<'inner> {
     #[cfg(test)]
     pub(crate) fn from_inner(tx: rusqlite::Transaction<'inner>) -> Self {
         Self(tx)
+    }
+
+    // TODO: get rid of this in favor of storing contract roots in a separate table similar to
+    //       nonces and storage updates. This would remove the last reliance on navigating the
+    //       global trie -- since this is required to retrieve the state hash, and thereby the
+    //       contract root.
+    pub fn contract_state(
+        &self,
+        state_hash: ContractStateHash,
+    ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
+        crate::state::contract_state(self, state_hash)
+    }
+
+    pub fn insert_contract_state(
+        &self,
+        state_hash: ContractStateHash,
+        class_hash: ClassHash,
+        root: ContractRoot,
+        nonce: ContractNonce,
+    ) -> anyhow::Result<()> {
+        crate::state::insert_contract_state(self, state_hash, class_hash, root, nonce)
     }
 
     pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
