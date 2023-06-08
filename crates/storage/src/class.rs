@@ -129,7 +129,8 @@ pub(crate) fn insert_class_commitment_leaf(
 mod tests {
     use super::*;
     use crate::Storage;
-    use pathfinder_common::felt;
+    use pathfinder_common::{felt, felt_bytes};
+    use stark_hash::Felt;
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
         let hash = ClassHash(felt!("0x123"));
@@ -147,8 +148,7 @@ mod tests {
 
     #[test]
     fn class_existence() {
-        let storage = Storage::in_memory().unwrap();
-        let mut connection = storage.connection().unwrap();
+        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
         let (hash, _, _) = setup_class(&transaction);
@@ -161,8 +161,7 @@ mod tests {
 
     #[test]
     fn compiler_version_interning() {
-        let storage = Storage::in_memory().unwrap();
-        let mut connection = storage.connection().unwrap();
+        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
         let alpha = intern_compiler_version(&transaction, "alpha").unwrap();
@@ -181,5 +180,84 @@ mod tests {
 
         let alpha_again2 = intern_compiler_version(&transaction, "alpha").unwrap();
         assert_eq!(alpha, alpha_again2);
+    }
+
+    #[test]
+    fn insert_cairo() {
+        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let cairo_hash = ClassHash(felt_bytes!(b"cairo hash"));
+        let cairo_definition = b"example cairo program";
+
+        insert_cairo_class(&tx, cairo_hash, cairo_definition).unwrap();
+
+        let definition = tx
+            .query_row(
+                "SELECT definition FROM class_definitions WHERE hash = ?",
+                params![&cairo_hash],
+                |row| Ok(row.get_blob(0)?.to_vec()),
+            )
+            .unwrap();
+        let definition = zstd::decode_all(definition.as_slice()).unwrap();
+
+        assert_eq!(definition, cairo_definition);
+    }
+
+    #[test]
+    fn insert_sierra() {
+        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let sierra_hash = SierraHash(felt_bytes!(b"sierra hash"));
+        let casm_hash = CasmHash(felt_bytes!(b"casm hash"));
+        let sierra_definition = b"example sierra program";
+        let casm_definition = b"compiled sierra program";
+        let version = "compiler version";
+
+        insert_sierra_class(
+            &tx,
+            &sierra_hash,
+            sierra_definition,
+            &casm_hash,
+            casm_definition,
+            version,
+        )
+        .unwrap();
+
+        let casm_result = tx
+            .query_row(
+                r"SELECT * FROM casm_definitions 
+                    JOIN casm_compiler_versions ON casm_definitions.compiler_version_id = casm_compiler_versions.id 
+                    WHERE hash = ?",
+                params![&sierra_hash],
+                |row| {
+                    let casm_hash = row.get_blob("compiled_class_hash").unwrap();
+                    let casm_hash = CasmHash(Felt::from_be_slice(casm_hash).unwrap());
+
+                    let casm_definition = row.get_blob("definition").unwrap().to_vec();
+                    let casm_definition = zstd::decode_all(casm_definition.as_slice()).unwrap();
+
+                    let version: String = row.get("version").unwrap();
+
+                    Ok((casm_hash, casm_definition, version))
+                },
+            )
+            .unwrap();
+
+        assert_eq!(casm_result.0, casm_hash);
+        assert_eq!(casm_result.1, casm_definition);
+        assert_eq!(casm_result.2, version);
+
+        let definition = tx
+            .query_row(
+                "SELECT definition FROM class_definitions WHERE hash = ?",
+                params![&sierra_hash],
+                |row| Ok(row.get_blob(0)?.to_vec()),
+            )
+            .unwrap();
+        let definition = zstd::decode_all(definition.as_slice()).unwrap();
+
+        assert_eq!(definition, sierra_definition);
     }
 }
