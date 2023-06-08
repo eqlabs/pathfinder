@@ -56,7 +56,8 @@ impl<'tx> ContractsStorageTree<'tx> {
             .set(&mut self.storage, address.view_bits(), value.0)
     }
 
-    /// Applies and persists any changes. Returns the new tree root.
+    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
+    /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, TrieNode>)> {
         let update = self.tree.commit()?;
         let commitment = ContractRoot(update.root);
@@ -109,7 +110,8 @@ impl<'tx> StorageCommitmentTree<'tx> {
             .set(&mut self.storage, address.view_bits(), value.0)
     }
 
-    /// Applies and persists any changes. Returns the new global root.
+    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
+    /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, TrieNode>)> {
         let update = self.tree.commit()?;
         let commitment = StorageCommitment(update.root);

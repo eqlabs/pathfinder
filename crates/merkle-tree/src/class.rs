@@ -36,7 +36,8 @@ impl<'tx> ClassCommitmentTree<'tx> {
         self.tree.set(&mut self.storage, class.view_bits(), value.0)
     }
 
-    /// Applies and persists any changes. Returns the new global root.
+    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
+    /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, TrieNode>)> {
         let update = self.tree.commit()?;
 
