@@ -99,3 +99,27 @@ pub enum KnownStarknetErrorCode {
     #[serde(rename = "StarknetErrorCode.INVALID_CONTRACT_CLASS")]
     InvalidContractClass,
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::error::KnownStarknetErrorCode;
+
+    use super::StarknetErrorCode;
+
+    #[test]
+    fn test_known_error_code() {
+        let e = serde_json::from_str::<StarknetErrorCode>(r#""StarknetErrorCode.BLOCK_NOT_FOUND""#)
+            .unwrap();
+        assert_eq!(e, KnownStarknetErrorCode::BlockNotFound.into())
+    }
+
+    #[test]
+    fn test_unknown_error_code() {
+        let e = serde_json::from_str::<StarknetErrorCode>(r#""StarknetErrorCode.UNKNOWN_ERROR""#)
+            .unwrap();
+        assert_eq!(
+            e,
+            StarknetErrorCode::Unknown("StarknetErrorCode.UNKNOWN_ERROR".to_owned())
+        )
+    }
+}
