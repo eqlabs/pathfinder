@@ -1,7 +1,7 @@
 use anyhow::Context;
 use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash};
 
-use crate::prelude::*;
+use crate::{prelude::*, BlockId};
 
 pub(super) fn insert_sierra_class(
     transaction: &Transaction<'_>,
@@ -124,6 +124,41 @@ pub(super) fn class_definition(
         )
         .optional()
         .context("Querying for class definition")?;
+
+    let Some(definition) = definition else {
+        return Ok(None);
+    };
+    let definition =
+        zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
+
+    Ok(Some(definition))
+}
+
+pub(super) fn class_definition_at(
+    tx: &Transaction<'_>,
+    block_id: BlockId,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let definition = match block_id {
+        BlockId::Latest => tx.query_row(
+            "SELECT definition FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
+            params![&class_hash],
+            |row| row.get_blob(0).map(|x| x.to_vec()),
+        ),
+        BlockId::Number(number) => tx.query_row(
+            "SELECT definition FROM class_definitions WHERE hash=? AND block_number <= ?",
+            params![&class_hash, &number],
+            |row| row.get_blob(0).map(|x| x.to_vec()),
+        ),
+        BlockId::Hash(hash) => tx.query_row(
+            r"SELECT definition FROM class_definitions
+                WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
+            params![&class_hash, &hash],
+            |row| row.get_blob(0).map(|x| x.to_vec()),
+        ),
+    }
+    .optional()
+    .context("Querying for class definition")?;
 
     let Some(definition) = definition else {
         return Ok(None);

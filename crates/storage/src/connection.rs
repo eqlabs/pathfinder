@@ -239,6 +239,14 @@ impl<'inner> Transaction<'inner> {
         class::class_definition(self, class_hash)
     }
 
+    pub fn class_definition_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        class::class_definition_at(self, block_id, class_hash)
+    }
+
     /// Stores the class trie information using reference counting.
     pub fn insert_class_trie(
         &self,
