@@ -68,22 +68,14 @@ pub async fn get_storage_at(
             return Err(GetStorageAtError::BlockNotFound);
         }
 
-        let value = match block_id {
-            pathfinder_storage::BlockId::Number(number) => {
-                database::storage_at_block_number(&tx, input.contract_address, input.key, number)
-            }
-            pathfinder_storage::BlockId::Hash(hash) => {
-                database::storage_at_block_hash(&tx, input.contract_address, input.key, hash)
-            }
-            pathfinder_storage::BlockId::Latest => {
-                database::storage_at_latest(&tx, input.contract_address, input.key)
-            }
-        }?;
+        let value = tx
+            .storage_value(block_id, input.contract_address, input.key)
+            .context("Querying storage value")?;
 
         match value {
             Some(value) => Ok(GetStorageOutput(value)),
             None => {
-                if database::contract_exists(&tx, input.contract_address, block_id)? {
+                if tx.contract_exists(input.contract_address, block_id)? {
                     Ok(GetStorageOutput(StorageValue::ZERO))
                 } else {
                     Err(GetStorageAtError::ContractNotFound)
@@ -93,94 +85,6 @@ pub async fn get_storage_at(
     });
 
     jh.await.context("Database read panic or shutting down")?
-}
-
-mod database {
-    use pathfinder_common::{BlockHash, BlockNumber};
-    use rusqlite::{params, OptionalExtension, Transaction};
-
-    use super::*;
-
-    pub fn storage_at_latest(
-        tx: &Transaction<'_>,
-        contract_address: ContractAddress,
-        key: StorageAddress,
-    ) -> anyhow::Result<Option<StorageValue>> {
-        tx.query_row(
-            r"SELECT storage_value FROM storage_updates 
-                WHERE contract_address = ? AND storage_address = ?
-                ORDER BY block_number DESC LIMIT 1",
-            params![contract_address, key],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Reading latest storage value")
-    }
-
-    pub fn storage_at_block_hash(
-        tx: &Transaction<'_>,
-        contract_address: ContractAddress,
-        key: StorageAddress,
-        block: BlockHash,
-    ) -> anyhow::Result<Option<StorageValue>> {
-        tx.query_row(
-            r"SELECT storage_value FROM storage_updates 
-                WHERE contract_address = ? AND storage_address = ? AND block_number <= (
-                    SELECT number FROM canonical_blocks WHERE hash = ?
-                )
-                ORDER BY block_number DESC LIMIT 1",
-            params![contract_address, key, block],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Reading storage value at block hash")
-    }
-
-    pub fn storage_at_block_number(
-        tx: &Transaction<'_>,
-        contract_address: ContractAddress,
-        key: StorageAddress,
-        block: BlockNumber,
-    ) -> anyhow::Result<Option<StorageValue>> {
-        tx.query_row(
-            r"SELECT storage_value FROM storage_updates 
-                WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
-                ORDER BY block_number DESC LIMIT 1",
-            params![contract_address, key, block],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Reading storage value at block number")
-    }
-
-    pub fn contract_exists(
-        tx: &Transaction<'_>,
-        contract_address: ContractAddress,
-        block_id: pathfinder_storage::BlockId,
-    ) -> anyhow::Result<bool> {
-        match block_id {
-            pathfinder_storage::BlockId::Number(number) => tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= ?)",
-                params![contract_address, number],
-                |row| row.get(0),
-            ),
-            pathfinder_storage::BlockId::Hash(hash) => tx.query_row(
-                r"SELECT EXISTS(
-                    SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= (
-                        SELECT number FROM canonical_blocks WHERE hash = ?
-                    )
-                )",
-                params![contract_address, hash],
-                |row| row.get(0),
-            ),
-            pathfinder_storage::BlockId::Latest => tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ?)",
-                [contract_address],
-                |row| row.get(0),
-            ),
-        }
-        .context("Querying that contract exists")
-    }
 }
 
 #[cfg(test)]

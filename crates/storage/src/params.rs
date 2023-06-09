@@ -216,6 +216,7 @@ pub trait RowExt {
     row_felt_wrapper!(get_sequencer_address, SequencerAddress);
     row_felt_wrapper!(get_contract_root, ContractRoot);
     row_felt_wrapper!(get_contract_nonce, ContractNonce);
+    row_felt_wrapper!(get_storage_value, StorageValue);
 
     fn get_trie_node<I: RowIndex>(&self, index: I) -> rusqlite::Result<TrieNode> {
         use anyhow::Context;

@@ -1,7 +1,9 @@
 use anyhow::Context;
-use pathfinder_common::BlockNumber;
+use pathfinder_common::{
+    BlockNumber, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+};
 
-use crate::prelude::*;
+use crate::{prelude::*, BlockId};
 
 use crate::types::state_update::{DeployedContract, Nonce, ReplacedClass, StateDiff, StorageDiff};
 
@@ -95,4 +97,101 @@ pub(super) fn insert_canonical_state_diff(
     }
 
     Ok(())
+}
+
+pub(super) fn storage_value(
+    tx: &Transaction<'_>,
+    block: BlockId,
+    contract_address: ContractAddress,
+    key: StorageAddress,
+) -> anyhow::Result<Option<StorageValue>> {
+    match block {
+        BlockId::Latest => tx.query_row(
+            r"SELECT storage_value FROM storage_updates 
+                WHERE contract_address = ? AND storage_address = ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&contract_address, &key],
+            |row| row.get_storage_value(0),
+        ),
+        BlockId::Number(number) => tx.query_row(
+            r"SELECT storage_value FROM storage_updates
+                WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&contract_address, &key, &number],
+            |row| row.get(0),
+        ),
+        BlockId::Hash(hash) => tx.query_row(
+            r"SELECT storage_value FROM storage_updates
+                WHERE contract_address = ? AND storage_address = ? AND block_number <= (
+                    SELECT number FROM canonical_blocks WHERE hash = ?
+                )
+                ORDER BY block_number DESC LIMIT 1",
+            params![&contract_address, &key, &hash],
+            |row| row.get(0),
+        ),
+    }
+    .optional()
+    .map_err(|e| e.into())
+}
+
+pub(super) fn contract_exists(
+    tx: &Transaction<'_>,
+    contract_address: ContractAddress,
+    block_id: BlockId,
+) -> anyhow::Result<bool> {
+    match block_id {
+        BlockId::Number(number) => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= ?)",
+            params![&contract_address, &number],
+            |row| row.get(0),
+        ),
+        BlockId::Hash(hash) => tx.query_row(
+            r"SELECT EXISTS(
+                SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= (
+                    SELECT number FROM canonical_blocks WHERE hash = ?
+                )
+            )",
+            params![&contract_address, &hash],
+            |row| row.get(0),
+        ),
+        BlockId::Latest => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ?)",
+            [contract_address],
+            |row| row.get(0),
+        ),
+    }
+    .context("Querying that contract exists")
+}
+
+pub(super) fn contract_nonce(
+    tx: &Transaction<'_>,
+    contract_address: ContractAddress,
+    block_id: BlockId,
+) -> anyhow::Result<Option<ContractNonce>> {
+    match block_id {
+        BlockId::Latest => tx.query_row(
+            r"SELECT nonce FROM nonce_updates
+                WHERE contract_address = ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&contract_address],
+            |row| row.get_contract_nonce(0),
+        ),
+        BlockId::Number(number) => tx.query_row(
+            r"SELECT nonce FROM nonce_updates
+                WHERE contract_address = ? AND block_number <= ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&contract_address, &number],
+            |row| row.get_contract_nonce(0),
+        ),
+        BlockId::Hash(hash) => tx.query_row(
+            r"SELECT nonce FROM nonce_updates
+                JOIN canonical_blocks ON canonical_blocks.number = nonce_updates.block_number
+                WHERE canonical_blocks.hash = ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&hash],
+            |row| row.get_contract_nonce(0),
+        ),
+    }
+    .optional()
+    .map_err(|e| e.into())
 }
