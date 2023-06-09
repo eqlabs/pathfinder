@@ -5919,7 +5919,6 @@ dependencies = [
  "primitive-types",
  "rand 0.8.5",
  "reqwest",
- "rusqlite",
  "semver",
  "serde",
  "serde_json",

@@ -10,6 +10,9 @@ mod state_update;
 mod transaction;
 mod trie;
 
+// Re-export this so users don't require rusqlite as a direct dep.
+pub use rusqlite::TransactionBehavior;
+
 pub use event::KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT;
 pub use event::*;
 
@@ -22,7 +25,6 @@ use pathfinder_common::{
     StorageCommitment, TransactionHash,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
-use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
 
@@ -230,6 +232,11 @@ impl<'inner> Transaction<'inner> {
     /// Note that this does not indicate that the class is actually declared -- only that we stored it.
     pub fn class_definitions_exist(&self, classes: &[ClassHash]) -> anyhow::Result<Vec<bool>> {
         class::classes_exist(self, classes)
+    }
+
+    /// Returns the uncompressed class definition.
+    pub fn class_definition(&self, class_hash: ClassHash) -> anyhow::Result<Option<Vec<u8>>> {
+        class::class_definition(self, class_hash)
     }
 
     /// Stores the class trie information using reference counting.

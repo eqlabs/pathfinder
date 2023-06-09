@@ -112,6 +112,28 @@ pub(super) fn classes_exist(
         .collect::<Result<Vec<_>, _>>()?)
 }
 
+pub(super) fn class_definition(
+    transaction: &Transaction<'_>,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let definition = transaction
+        .query_row(
+            "SELECT definition FROM class_definitions WHERE hash = ?",
+            params![&class_hash],
+            |row| row.get_blob(0).map(|x| x.to_vec()),
+        )
+        .optional()
+        .context("Querying for class definition")?;
+
+    let Some(definition) = definition else {
+        return Ok(None);
+    };
+    let definition =
+        zstd::decode_all(definition.as_slice()).context("Decompressing class definition")?;
+
+    Ok(Some(definition))
+}
+
 pub(super) fn insert_class_commitment_leaf(
     transaction: &Transaction<'_>,
     leaf: &ClassCommitmentLeafHash,
@@ -192,14 +214,7 @@ mod tests {
 
         insert_cairo_class(&tx, cairo_hash, cairo_definition).unwrap();
 
-        let definition = tx
-            .query_row(
-                "SELECT definition FROM class_definitions WHERE hash = ?",
-                params![&cairo_hash],
-                |row| Ok(row.get_blob(0)?.to_vec()),
-            )
-            .unwrap();
-        let definition = zstd::decode_all(definition.as_slice()).unwrap();
+        let definition = class_definition(&tx, cairo_hash).unwrap().unwrap();
 
         assert_eq!(definition, cairo_definition);
     }
@@ -249,15 +264,9 @@ mod tests {
         assert_eq!(casm_result.1, casm_definition);
         assert_eq!(casm_result.2, version);
 
-        let definition = tx
-            .query_row(
-                "SELECT definition FROM class_definitions WHERE hash = ?",
-                params![&sierra_hash],
-                |row| Ok(row.get_blob(0)?.to_vec()),
-            )
+        let definition = class_definition(&tx, ClassHash(sierra_hash.0))
+            .unwrap()
             .unwrap();
-        let definition = zstd::decode_all(definition.as_slice()).unwrap();
-
         assert_eq!(definition, sierra_definition);
     }
 }

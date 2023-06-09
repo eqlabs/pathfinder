@@ -19,9 +19,8 @@ use pathfinder_rpc::{
     websocket::types::WebsocketSenders,
     SyncState,
 };
-use pathfinder_storage::{Connection, Storage, Transaction};
+use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
-use rusqlite::TransactionBehavior;
 use stark_hash::Felt;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{

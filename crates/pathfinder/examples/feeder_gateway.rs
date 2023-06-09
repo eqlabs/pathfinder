@@ -490,24 +490,12 @@ fn resolve_class(
     tx: &pathfinder_storage::Transaction<'_>,
     class_hash: ClassHash,
 ) -> anyhow::Result<Vec<u8>> {
-    use rusqlite::OptionalExtension;
-
     tracing::info!(%class_hash, "Resolving class hash");
 
     let definition = tx
-        .query_row(
-            r"SELECT definition FROM class_definitions WHERE hash = ?",
-            [class_hash],
-            |row| {
-                let def = row.get_ref_unwrap(0).as_blob()?.to_owned();
-                Ok(def)
-            },
-        )
-        .optional()
+        .class_definition(class_hash)
         .context("Reading class definition from database")?
         .ok_or_else(|| anyhow::anyhow!("No such class found"))?;
-
-    let definition = zstd::decode_all(&*definition).context("Decompressing class definition")?;
 
     Ok(definition)
 }
