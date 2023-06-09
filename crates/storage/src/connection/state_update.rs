@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{
-    BlockNumber, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+    BlockNumber, ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
 };
 
 use crate::{prelude::*, BlockId};
@@ -190,6 +190,39 @@ pub(super) fn contract_nonce(
                 ORDER BY block_number DESC LIMIT 1",
             params![&hash],
             |row| row.get_contract_nonce(0),
+        ),
+    }
+    .optional()
+    .map_err(|e| e.into())
+}
+
+pub(super) fn contract_class_hash(
+    tx: &Transaction<'_>,
+    block_id: BlockId,
+    contract_address: ContractAddress,
+) -> anyhow::Result<Option<ClassHash>> {
+    match block_id {
+        BlockId::Latest => tx.query_row(
+            r"SELECT class_hash FROM contract_updates
+                WHERE contract_address = ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&contract_address],
+            |row| row.get_class_hash(0),
+        ),
+        BlockId::Number(number) => tx.query_row(
+            r"SELECT class_hash FROM contract_updates
+                WHERE contract_address = ? AND block_number <= ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&contract_address, &number],
+            |row| row.get_class_hash(0),
+        ),
+        BlockId::Hash(hash) => tx.query_row(
+            r"SELECT class_hash FROM contract_updates
+                JOIN canonical_blocks ON canonical_blocks.number = contract_updates.block_number
+                WHERE canonical_blocks.hash = ?
+                ORDER BY block_number DESC LIMIT 1",
+            params![&hash],
+            |row| row.get_class_hash(0),
         ),
     }
     .optional()

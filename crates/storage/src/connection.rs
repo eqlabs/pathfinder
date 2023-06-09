@@ -247,6 +247,14 @@ impl<'inner> Transaction<'inner> {
         class::class_definition_at(self, block_id, class_hash)
     }
 
+    pub fn contract_class_hash(
+        &self,
+        block_id: BlockId,
+        contract_address: ContractAddress,
+    ) -> anyhow::Result<Option<ClassHash>> {
+        state_update::contract_class_hash(self, block_id, contract_address)
+    }
+
     /// Stores the class trie information using reference counting.
     pub fn insert_class_trie(
         &self,
