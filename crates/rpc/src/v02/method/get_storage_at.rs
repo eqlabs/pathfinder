@@ -64,7 +64,7 @@ pub async fn get_storage_at(
         let tx = db.transaction().context("Creating database transaction")?;
 
         // Check for block existence.
-        if !crate::utils::block_exists(&tx, block_id)? {
+        if !tx.block_exists(block_id)? {
             return Err(GetStorageAtError::BlockNotFound);
         }
 

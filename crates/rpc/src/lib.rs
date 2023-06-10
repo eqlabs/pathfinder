@@ -10,7 +10,6 @@ mod module;
 mod pathfinder;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_client;
-mod utils;
 pub mod v02;
 pub mod v03;
 pub mod websocket;
