@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassAtError: BlockNotFound, ContractNotFound);
@@ -18,37 +17,18 @@ pub async fn get_class_at(
     input: GetClassAtInput,
 ) -> Result<ContractClass, GetClassAtError> {
     let span = tracing::Span::current();
+
+    // Map block id to the storage variant.
     let block_id = match input.block_id {
-        BlockId::Pending => {
-            match get_pending_class_hash(context.pending_data, input.contract_address).await {
-                Some(class) => {
-                    let jh = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                        let _g = span.enter();
-                        let mut db = context
-                            .storage
-                            .connection()
-                            .context("Opening database connection")?;
+        BlockId::Pending => pathfinder_storage::BlockId::Latest,
+        // safe as only pending cast fails
+        other => other.try_into().unwrap(),
+    };
 
-                        let tx = db.transaction().context("Creating database transaction")?;
-
-                        let definition = database::definition_unchecked(&tx, class)?;
-                        let definition = zstd::decode_all(&*definition)
-                            .context("Decompressing class definition")?;
-                        let class = ContractClass::from_definition_bytes(&definition)
-                            .context("Parsing class definition")?;
-
-                        Ok(class)
-                    });
-
-                    let class = jh
-                        .await
-                        .context("Reading class definition from database")??;
-                    return Ok(class);
-                }
-                None => pathfinder_storage::BlockId::Latest,
-            }
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
+    let pending_class_hash = if input.block_id == BlockId::Pending {
+        get_pending_class_hash(context.pending_data, input.contract_address).await
+    } else {
+        None
     };
 
     let jh = tokio::task::spawn_blocking(move || {
@@ -60,25 +40,22 @@ pub async fn get_class_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        if !crate::utils::block_exists(&tx, block_id)? {
+        if !tx.block_exists(block_id)? {
             return Err(GetClassAtError::BlockNotFound);
         }
 
-        let compressed_definition = match block_id {
-            pathfinder_storage::BlockId::Number(number) => {
-                database::definition_at_block_number(&tx, input.contract_address, number)
-            }
-            pathfinder_storage::BlockId::Hash(hash) => {
-                database::definition_at_block_hash(&tx, input.contract_address, hash)
-            }
-            pathfinder_storage::BlockId::Latest => {
-                database::definition_at_latest_block(&tx, input.contract_address)
-            }
-        }?
-        .ok_or(GetClassAtError::ContractNotFound)?;
+        let class_hash = match pending_class_hash {
+            Some(class_hash) => class_hash,
+            None => tx
+                .contract_class_hash(block_id, input.contract_address)
+                .context("Querying contract's class hash")?
+                .ok_or(GetClassAtError::ContractNotFound)?,
+        };
 
-        let definition =
-            zstd::decode_all(&*compressed_definition).context("Decompressing class definition")?;
+        let definition = tx
+            .class_definition(class_hash)
+            .context("Fetching class definition")?
+            .context("Class definition missing from database")?;
 
         let class = ContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
@@ -87,82 +64,6 @@ pub async fn get_class_at(
     });
 
     jh.await.context("Reading class from database")?
-}
-
-mod database {
-    use pathfinder_common::{BlockHash, BlockNumber};
-
-    use super::*;
-
-    pub fn definition_at_latest_block(
-        tx: &rusqlite::Transaction<'_>,
-        contract: ContractAddress,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
-        tx.query_row(
-            r"SELECT definition FROM class_definitions 
-                JOIN contract_updates ON (class_definitions.hash = contract_updates.class_hash)
-                WHERE contract_updates.contract_address = ?
-                ORDER BY contract_updates.block_number DESC LIMIT 1",
-            [contract],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Fetching class definition at latest block")
-    }
-
-    pub fn definition_at_block_number(
-        tx: &rusqlite::Transaction<'_>,
-        contract: ContractAddress,
-        block_number: BlockNumber,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
-        tx.query_row(
-            r"SELECT definition FROM class_definitions 
-                JOIN contract_updates ON (class_definitions.hash = contract_updates.class_hash)
-                WHERE contract_updates.contract_address = ?
-                    AND contract_updates.block_number <= ?
-                ORDER BY contract_updates.block_number DESC LIMIT 1",
-            rusqlite::params![contract, block_number],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Fetching class definition at block number")
-    }
-
-    pub fn definition_at_block_hash(
-        tx: &rusqlite::Transaction<'_>,
-        contract: ContractAddress,
-        block_hash: BlockHash,
-    ) -> anyhow::Result<Option<Vec<u8>>> {
-        tx.query_row(
-            r"SELECT definition FROM class_definitions 
-                JOIN contract_updates ON (class_definitions.hash = contract_updates.class_hash)
-                WHERE contract_updates.contract_address = ?
-                    AND contract_updates.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)
-                ORDER BY contract_updates.block_number DESC LIMIT 1",
-            rusqlite::params![contract, block_hash],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Fetching class definition at block hash")
-    }
-
-    /// Fetches the class's definition without checking any block requirements.
-    ///
-    /// This is useful if you have previously already verified that the class should exist,
-    /// for example if the class declaration is part of the pending block.
-    pub fn definition_unchecked(
-        tx: &rusqlite::Transaction<'_>,
-        class_hash: ClassHash,
-    ) -> anyhow::Result<Vec<u8>> {
-        tx.query_row(
-            "SELECT definition FROM class_definitions WHERE hash=?",
-            [class_hash],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Reading definition from database")?
-        .context("Class definition is missing")
-    }
 }
 
 /// Returns the [ClassHash] of the given [ContractAddress] if any is defined in the pending data.
