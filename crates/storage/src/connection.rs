@@ -16,6 +16,8 @@ pub use rusqlite::TransactionBehavior;
 pub use event::KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT;
 pub use event::*;
 
+pub use transaction::TransactionStatus;
+
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
 use pathfinder_common::trie::TrieNode;
@@ -108,7 +110,7 @@ impl<'inner> Transaction<'inner> {
         block::block_exists(self, block)
     }
 
-    pub fn block_is_l1_accepted(&self, block: BlockNumber) -> anyhow::Result<bool> {
+    pub fn block_is_l1_accepted(&self, block: BlockId) -> anyhow::Result<bool> {
         block::block_is_l1_accepted(self, block)
     }
 
@@ -143,6 +145,13 @@ impl<'inner> Transaction<'inner> {
         transaction_data: &[(gateway::Transaction, gateway::Receipt)],
     ) -> anyhow::Result<()> {
         transaction::insert_transactions(self, block_hash, block_number, transaction_data)
+    }
+
+    pub fn transaction_block_hash(
+        &self,
+        hash: TransactionHash,
+    ) -> anyhow::Result<Option<BlockHash>> {
+        transaction::transaction_block_hash(self, hash)
     }
 
     pub fn transaction(

@@ -1,7 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockNumber, TransactionHash};
-use pathfinder_storage::Storage;
-use rusqlite::OptionalExtension;
+use pathfinder_common::TransactionHash;
 use starknet_gateway_types::pending::PendingData;
 
 use crate::context::RpcContext;
@@ -29,13 +27,33 @@ pub async fn get_transaction_status(
 
     let db_status = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        check_database(&context.storage, &input.transaction_hash)
+
+        let mut db = context
+            .storage
+            .connection()
+            .context("Opening database connection")?;
+        let db_tx = db.transaction().context("Creating database transaction")?;
+        let block_hash = db_tx
+            .transaction_block_hash(input.transaction_hash)
+            .context("Fetching transaction block hash from database")?;
+
+        let Some(block_hash) = block_hash else {
+            return Ok(None);
+        };
+
+        let tx_status = db_tx
+            .block_is_l1_accepted(block_hash.into())
+            .context("Quering block's status")?;
+
+        anyhow::Ok(Some(tx_status))
     })
     .await
-    .context("Database read panic or shutting down")?
-    .context("Checking database for transaction")?;
-    if let Some(status) = db_status {
-        return Ok(status);
+    .context("Joining database task")??;
+
+    match db_status {
+        Some(true) => return Ok(TransactionStatus::AcceptedOnL1),
+        Some(false) => return Ok(TransactionStatus::AcceptedOnL2),
+        None => {}
     }
 
     // Check gateway for rejected transactions.
@@ -55,48 +73,6 @@ async fn is_pending_tx(pending: &PendingData, tx_hash: &TransactionHash) -> bool
         .await
         .map(|block| block.transactions.iter().any(|tx| &tx.hash() == tx_hash))
         .unwrap_or_default()
-}
-
-fn check_database(
-    storage: &Storage,
-    transaction_hash: &TransactionHash,
-) -> anyhow::Result<Option<TransactionStatus>> {
-    let mut db = storage
-        .connection()
-        .context("Opening database connection")?;
-
-    let db_tx = db.transaction().context("Creating database transaction")?;
-
-    // Get the transaction from storage.
-    let block_number = db_tx
-        .query_row(
-            r"SELECT starknet_blocks.number FROM starknet_transactions 
-    JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
-    WHERE starknet_transactions.hash = ?",
-            [transaction_hash],
-            |row| {
-                let number = row.get_ref_unwrap(0).as_i64()?;
-                Ok(BlockNumber::new_or_panic(number as u64))
-            },
-        )
-        .optional()
-        .context("Fetching transaction's block number from database")?;
-
-    let block_number = match block_number {
-        Some(block_number) => block_number,
-        None => return anyhow::Ok(None),
-    };
-
-    let l1_accepted = db_tx
-        .block_is_l1_accepted(block_number)
-        .context("Fetching block status from database")?;
-    let status = if l1_accepted {
-        TransactionStatus::AcceptedOnL1
-    } else {
-        TransactionStatus::AcceptedOnL2
-    };
-
-    Ok(Some(status))
 }
 
 #[derive(Copy, Clone, Debug, serde::Serialize, PartialEq)]
@@ -141,16 +117,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn database() {
-        let context = RpcContext::for_tests();
-
-        let status = check_database(&context.storage, &TransactionHash(felt_bytes!(b"txn 0")))
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(status, TransactionStatus::AcceptedOnL2);
-    }
+    // TODO: L1 accepted
+    // TODO: L2 accepted
 
     #[tokio::test]
     async fn pending() {

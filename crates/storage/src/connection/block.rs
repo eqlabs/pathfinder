@@ -225,18 +225,17 @@ pub(super) fn block_header(
     Ok(Some(header))
 }
 
-pub(super) fn block_is_l1_accepted(
-    tx: &Transaction<'_>,
-    block: BlockNumber,
-) -> anyhow::Result<bool> {
-    let l1_l2 = tx.l1_l2_pointer().context("Querying L1-L2 pointer")?;
-
-    let result = match l1_l2 {
-        Some(number) => number >= block,
-        None => false,
+pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
+    let Some(l1_l2) = tx.l1_l2_pointer().context("Querying L1-L2 pointer")? else {
+        return Ok(false);
     };
 
-    Ok(result)
+    let Some(block_number) = tx.block_id(block).context("Fetching block number")? else {
+        return Ok(false);
+    };
+    let block_number = block_number.0;
+
+    Ok(block_number >= l1_l2)
 }
 
 #[cfg(test)]

@@ -82,7 +82,7 @@ async fn get_block(
             .context("Reading block from database")?
             .ok_or(GetBlockError::BlockNotFound)?;
 
-        let l1_accepted = transaction.block_is_l1_accepted(header.number)?;
+        let l1_accepted = transaction.block_is_l1_accepted(header.number.into())?;
         let block_status = if l1_accepted {
             BlockStatus::AcceptedOnL1
         } else {

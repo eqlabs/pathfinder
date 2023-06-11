@@ -271,7 +271,7 @@ fn resolve_block(
         transactions_receipts.into_iter().unzip();
 
     let block_status = tx
-        .block_is_l1_accepted(header.number)
+        .block_is_l1_accepted(header.number.into())
         .context("Querying block status")?;
     let block_status = if block_status {
         Status::AcceptedOnL1

@@ -6,6 +6,11 @@ use starknet_gateway_types::reply::transaction as gateway;
 
 use crate::{prelude::*, BlockId};
 
+pub enum TransactionStatus {
+    L1Accepted,
+    L2Accepted,
+}
+
 pub(super) fn insert_transactions(
     tx: &Transaction<'_>,
     block_hash: BlockHash,
@@ -99,7 +104,7 @@ pub(super) fn transaction_with_receipt(
     Ok(Some((transaction, receipt, block_hash)))
 }
 
-pub fn transaction_at_block(
+pub(super) fn transaction_at_block(
     tx: &Transaction<'_>,
     block: BlockId,
     index: usize,
@@ -133,7 +138,7 @@ pub fn transaction_at_block(
     Ok(Some(transaction))
 }
 
-pub fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<usize> {
+pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<usize> {
     match block {
         BlockId::Number(number) => tx
             .query_row(
@@ -163,7 +168,7 @@ pub fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result
     }
 }
 
-pub fn transaction_data_for_block(
+pub(super) fn transaction_data_for_block(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<Vec<(gateway::Transaction, gateway::Receipt)>>> {
@@ -201,4 +206,17 @@ pub fn transaction_data_for_block(
     }
 
     Ok(Some(data))
+}
+
+pub(super) fn transaction_block_hash(
+    tx: &Transaction<'_>,
+    hash: TransactionHash,
+) -> anyhow::Result<Option<BlockHash>> {
+    tx.query_row(
+        "SELECT block_hash FROM starknet_transactions WHERE hash = ?",
+        params![&hash],
+        |row| row.get_block_hash(0),
+    )
+    .optional()
+    .map_err(|e| e.into())
 }
