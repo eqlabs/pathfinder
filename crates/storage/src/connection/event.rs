@@ -1,3 +1,4 @@
+use crate::params::ToSql;
 use crate::prelude::*;
 
 use anyhow::Context;
@@ -124,14 +125,18 @@ pub(super) fn get_events<K: KeyFilter>(
     // We have to be able to decide if there are more events. We request one extra event
     // above the requested page size, so that we can decide.
     let limit = filter.page_size + 1;
-    params.push((":limit", &limit));
-    params.push((":offset", &filter.offset));
+    params.push((":limit", limit.to_sql()));
+    params.push((":offset", filter.offset.to_sql()));
 
     base_query.to_mut().push_str(
         " ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
     );
 
     let mut statement = tx.prepare(&base_query).context("Preparing SQL query")?;
+    let params = params
+        .iter()
+        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
+        .collect::<Vec<_>>();
     let mut rows = statement
         .query(params.as_slice())
         .context("Executing SQL query")?;
@@ -282,6 +287,11 @@ pub fn event_count(
         &mut key_fts_expression,
     );
 
+    let params = params
+        .iter()
+        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
+        .collect::<Vec<_>>();
+
     let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
 
     Ok(count)
@@ -348,33 +358,27 @@ fn event_query<'query, 'arg>(
     key_fts_expression: &'arg mut String,
 ) -> (
     std::borrow::Cow<'query, str>,
-    Vec<(&'static str, &'arg dyn rusqlite::ToSql)>,
+    Vec<(&'static str, rusqlite::types::ToSqlOutput<'arg>)>,
 ) {
     let mut base_query = std::borrow::Cow::Borrowed(base);
 
     let mut where_statement_parts: Vec<&'static str> = Vec::new();
-    let mut params: Vec<(&str, &dyn rusqlite::ToSql)> = Vec::new();
+    let mut params: Vec<(&str, rusqlite::types::ToSqlOutput<'arg>)> = Vec::new();
 
     // filter on block range
     match (from_block, to_block) {
         (Some(from_block), Some(to_block)) => {
             where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-            params.extend(named_params! {
-                ":from_block": from_block,
-                ":to_block": to_block,
-            });
+            params.push((":from_block", from_block.to_sql()));
+            params.push((":to_block", to_block.to_sql()));
         }
         (Some(from_block), None) => {
             where_statement_parts.push("block_number >= :from_block");
-            params.extend(named_params! {
-                ":from_block": from_block,
-            });
+            params.push((":from_block", from_block.to_sql()));
         }
         (None, Some(to_block)) => {
             where_statement_parts.push("block_number <= :to_block");
-            params.extend(named_params! {
-                ":to_block": to_block,
-            });
+            params.push((":to_block", to_block.to_sql()));
         }
         (None, None) => {}
     }
@@ -382,9 +386,7 @@ fn event_query<'query, 'arg>(
     // on contract address
     if let Some(contract_address) = contract_address {
         where_statement_parts.push("from_address = :contract_address");
-        params.extend(named_params! {
-            ":contract_address": contract_address,
-        });
+        params.push((":contract_address", contract_address.to_sql()));
     }
 
     // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
@@ -393,7 +395,7 @@ fn event_query<'query, 'arg>(
     if let Some(result) = keys.apply(key_fts_expression) {
         base_query.to_mut().push_str(result.base_query);
         where_statement_parts.push(result.where_statement);
-        params.push((result.param.0, key_fts_expression));
+        params.push((result.param.0, key_fts_expression.to_sql()));
     }
 
     if !where_statement_parts.is_empty() {
