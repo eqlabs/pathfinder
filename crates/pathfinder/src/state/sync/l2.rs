@@ -439,7 +439,7 @@ async fn download_block(
 ) -> anyhow::Result<DownloadBlock> {
     use pathfinder_common::BlockId;
     use starknet_gateway_types::{
-        error::StarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
+        error::KnownStarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
     };
 
     let result = match next_block {
@@ -484,7 +484,7 @@ async fn download_block(
             }
         }
         Ok(MaybePendingBlock::Pending(_)) => anyhow::bail!("Sequencer returned `pending` block"),
-        Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound => {
+        Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
             // This would occur if we queried past the head of the chain. We now need to check that
             // a reorg hasn't put us too far in the future. This does run into race conditions with
             // the sequencer but this is the best we can do I think.
@@ -610,7 +610,7 @@ mod tests {
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::{
-            error::{SequencerError, StarknetError, StarknetErrorCode},
+            error::{KnownStarknetErrorCode, SequencerError, StarknetError},
             reply,
         };
         use std::collections::HashMap;
@@ -935,7 +935,7 @@ mod tests {
         /// Convenience wrapper
         fn block_not_found() -> SequencerError {
             SequencerError::StarknetError(StarknetError {
-                code: StarknetErrorCode::BlockNotFound,
+                code: KnownStarknetErrorCode::BlockNotFound.into(),
                 message: String::new(),
             })
         }

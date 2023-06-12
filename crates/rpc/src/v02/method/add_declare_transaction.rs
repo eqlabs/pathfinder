@@ -12,9 +12,13 @@ crate::error::generate_rpc_error_subset!(AddDeclareTransactionError: InvalidCont
 
 impl From<SequencerError> for AddDeclareTransactionError {
     fn from(e: SequencerError) -> Self {
-        use starknet_gateway_types::error::StarknetErrorCode::InvalidProgram;
+        use starknet_gateway_types::error::KnownStarknetErrorCode::{
+            InvalidContractClass, InvalidProgram,
+        };
         match e {
-            SequencerError::StarknetError(e) if e.code == InvalidProgram => {
+            SequencerError::StarknetError(e)
+                if e.code == InvalidProgram.into() || e.code == InvalidContractClass.into() =>
+            {
                 Self::InvalidContractClass
             }
             _ => Self::Internal(e.into()),
@@ -120,11 +124,19 @@ mod tests {
     use starknet_gateway_test_fixtures::class_definitions::{
         CAIRO_1_0_0_ALPHA6_SIERRA, CONTRACT_DEFINITION,
     };
-    use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::error::KnownStarknetErrorCode;
 
     lazy_static::lazy_static! {
         pub static ref CONTRACT_CLASS: CairoContractClass = {
             ContractClass::from_definition_bytes(CONTRACT_DEFINITION).unwrap().as_cairo().unwrap()
+        };
+
+        pub static ref CONTRACT_CLASS_WITH_INVALID_PRIME: CairoContractClass = {
+            let mut definition: serde_json::Value = serde_json::from_slice(CONTRACT_DEFINITION).unwrap();
+            // change program.prime to an invalid one
+            *definition.get_mut("program").unwrap().get_mut("prime").unwrap() = serde_json::json!("0x1");
+            let definition = serde_json::to_vec(&definition).unwrap();
+            ContractClass::from_definition_bytes(&definition).unwrap().as_cairo().unwrap()
         };
 
         pub static ref CONTRACT_CLASS_JSON: String = {
@@ -360,9 +372,33 @@ mod tests {
         assert_matches::assert_matches!(error, AddDeclareTransactionError::Internal(error) => {
             let error = error.downcast::<SequencerError>().unwrap();
             assert_matches::assert_matches!(error, SequencerError::StarknetError(error) => {
-                assert_eq!(error.code, StarknetErrorCode::CompilationFailed);
+                assert_eq!(error.code, KnownStarknetErrorCode::CompilationFailed.into());
             })
         });
+    }
+
+    #[test_log::test(tokio::test)]
+    #[ignore = "gateway 429"]
+    async fn invalid_contract_class() {
+        let context = RpcContext::for_tests();
+
+        let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
+            BroadcastedDeclareTransactionV1 {
+                version: TransactionVersion::ONE,
+                max_fee: Fee(felt!("0xfffffffffff")),
+                signature: vec![],
+                nonce: TransactionNonce(Default::default()),
+                contract_class: CONTRACT_CLASS_WITH_INVALID_PRIME.clone(),
+                sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
+            },
+        ));
+
+        let input = AddDeclareTransactionInput {
+            declare_transaction,
+            token: None,
+        };
+        let error = add_declare_transaction(context, input).await.unwrap_err();
+        assert_matches::assert_matches!(error, AddDeclareTransactionError::InvalidContractClass);
     }
 
     #[test_log::test(tokio::test)]

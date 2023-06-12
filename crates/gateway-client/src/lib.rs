@@ -415,7 +415,7 @@ impl GatewayApi for Client {
 pub mod test_utils {
     use super::Client;
     use pathfinder_common::Chain;
-    use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::error::KnownStarknetErrorCode;
 
     /// Helper funtion which allows for easy creation of a response tuple
     /// that contains a [StarknetError] for a given [StarknetErrorCode].
@@ -424,11 +424,11 @@ pub mod test_utils {
     ///
     /// The `message` field is always an empty string.
     /// The HTTP status code for this response is always `500` (`Internal Server Error`).
-    pub fn response_from(code: StarknetErrorCode) -> (String, u16) {
+    pub fn response_from(code: KnownStarknetErrorCode) -> (String, u16) {
         use starknet_gateway_types::error::StarknetError;
 
         let e = StarknetError {
-            code,
+            code: code.into(),
             message: "".to_string(),
         };
         (serde_json::to_string(&e).unwrap(), 500)
@@ -589,7 +589,7 @@ mod tests {
     use pathfinder_common::{felt, BlockHash, BlockNumber, StarknetVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
-    use starknet_gateway_types::error::StarknetErrorCode;
+    use starknet_gateway_types::error::KnownStarknetErrorCode;
     use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag};
 
     pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
@@ -732,7 +732,7 @@ mod tests {
         async fn invalid_hash() {
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockHash={INVALID_BLOCK_HASH}"),
-                response_from(StarknetErrorCode::BlockNotFound),
+                response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .block(BlockId::from(INVALID_BLOCK_HASH))
@@ -740,7 +740,7 @@ mod tests {
                 .unwrap_err();
             assert_matches!(
                 error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+                SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::BlockNotFound.into())
             );
         }
 
@@ -748,7 +748,7 @@ mod tests {
         async fn invalid_number() {
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_block?blockNumber={INVALID_BLOCK_NUMBER}"),
-                response_from(StarknetErrorCode::BlockNotFound),
+                response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .block(BlockId::from(INVALID_BLOCK_NUMBER))
@@ -756,7 +756,7 @@ mod tests {
                 .unwrap_err();
             assert_matches!(
                 error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+                SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::BlockNotFound.into())
             );
         }
 
@@ -802,12 +802,12 @@ mod tests {
                     "/feeder_gateway/get_class_by_hash?classHash={}",
                     INVALID_CLASS_HASH.0.to_hex_str()
                 ),
-                response_from(StarknetErrorCode::UndeclaredClass),
+                response_from(KnownStarknetErrorCode::UndeclaredClass),
             )]);
             let error = client.class_by_hash(INVALID_CLASS_HASH).await.unwrap_err();
             assert_matches!(
                 error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::UndeclaredClass)
+                SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::UndeclaredClass.into())
             );
         }
 
@@ -1015,7 +1015,7 @@ mod tests {
         async fn invalid_number() {
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_state_update?blockNumber={INVALID_BLOCK_NUMBER}"),
-                response_from(StarknetErrorCode::BlockNotFound),
+                response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .state_update(BlockId::from(INVALID_BLOCK_NUMBER))
@@ -1023,7 +1023,7 @@ mod tests {
                 .unwrap_err();
             assert_matches!(
                 error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+                SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::BlockNotFound.into())
             );
         }
 
@@ -1031,7 +1031,7 @@ mod tests {
         async fn invalid_hash() {
             let (_jh, client) = setup([(
                 format!("/feeder_gateway/get_state_update?blockHash={INVALID_BLOCK_HASH}"),
-                response_from(StarknetErrorCode::BlockNotFound),
+                response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
                 .state_update(BlockId::from(INVALID_BLOCK_HASH))
@@ -1039,7 +1039,7 @@ mod tests {
                 .unwrap_err();
             assert_matches!(
                 error,
-                SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::BlockNotFound)
+                SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::BlockNotFound.into())
             );
         }
 
@@ -1130,7 +1130,7 @@ mod tests {
             async fn v0_is_deprecated() {
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
-                    response_from(StarknetErrorCode::DeprecatedTransaction),
+                    response_from(KnownStarknetErrorCode::DeprecatedTransaction),
                 )]);
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let error = client
@@ -1139,7 +1139,7 @@ mod tests {
                     .unwrap_err();
                 assert_matches!(
                     error,
-                    SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::DeprecatedTransaction)
+                    SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::DeprecatedTransaction.into())
                 );
             }
 
@@ -1172,7 +1172,7 @@ mod tests {
             async fn v0_is_deprecated() {
                 let (_jh, client) = setup([(
                     "/gateway/add_transaction",
-                    response_from(StarknetErrorCode::DeprecatedTransaction),
+                    response_from(KnownStarknetErrorCode::DeprecatedTransaction),
                 )]);
 
                 let error = client
@@ -1190,7 +1190,7 @@ mod tests {
                     .unwrap_err();
                 assert_matches!(
                     error,
-                    SequencerError::StarknetError(e) => assert_eq!(e.code, StarknetErrorCode::DeprecatedTransaction)
+                    SequencerError::StarknetError(e) => assert_eq!(e.code, KnownStarknetErrorCode::DeprecatedTransaction.into())
                 );
             }
 
@@ -1471,7 +1471,7 @@ mod tests {
                     .unwrap_err();
 
                 assert_matches!(err, SequencerError::StarknetError(se) => {
-                        assert_eq!(se.code, StarknetErrorCode::NotPermittedContract);
+                        assert_eq!(se.code, KnownStarknetErrorCode::NotPermittedContract.into());
                         assert_eq!(se.message, EXPECTED_ERROR_MESSAGE);
                 });
             }
