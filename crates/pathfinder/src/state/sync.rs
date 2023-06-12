@@ -331,25 +331,23 @@ async fn latest_n_blocks(
             .transaction()
             .context("Creating database transaction")?;
 
-        let mut stmt = tx
-            .prepare_cached(
-                "SELECT number, hash, root FROM starknet_blocks ORDER BY number DESC LIMIT ?",
-            )
-            .context("Preparing database statement")?;
-        let rows = stmt
-            .query_map([n], |row| {
-                let number: BlockNumber = row.get(0).unwrap();
-                let hash: BlockHash = row.get(1).unwrap();
-                let commitment: StateCommitment = row.get(2).unwrap();
-
-                Ok((number, hash, commitment))
-            })
-            .context("Querying database")?;
-
+        let mut current = pathfinder_storage::BlockId::Latest;
         let mut blocks = Vec::new();
-        for row in rows {
-            blocks.push(row.context("Reading row from database")?);
+
+        for _ in 0..n {
+            let header = tx.block_header(current).context("Fetching block header")?;
+            let Some(header) = header else {
+                break;
+            };
+
+            blocks.push((header.number, header.hash, header.state_commitment));
+
+            if header.number == BlockNumber::GENESIS {
+                break;
+            }
+            current = (header.number - 1).into();
         }
+
         // We need to reverse the order here because we want the last `N` blocks in chronological order.
         // Our sql query gives us the last `N` blocks but in reverse order (ORDER BY DESC), so we undo that here.
         blocks.reverse();

@@ -1,8 +1,10 @@
+use crate::params::named_params;
 use pathfinder_common::{
     BlockHash, BlockNumber, ClassCommitment, StateCommitment, StorageCommitment,
 };
-use rusqlite::{named_params, OptionalExtension, Transaction};
-use stark_hash::Felt;
+use rusqlite::{OptionalExtension, Transaction};
+
+use crate::params::RowExt;
 
 pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
     tx.execute("DROP TABLE l1_state", [])?;
@@ -23,16 +25,11 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
         LIMIT 1",
             [],
             |row| {
-                let number: BlockNumber = row.get(0)?;
-                let hash: BlockHash = row.get(1)?;
-                let storage: StorageCommitment = row.get(2)?;
-                let class: Option<ClassCommitment> = row.get(3)?;
-                Ok((
-                    number,
-                    hash,
-                    storage,
-                    class.unwrap_or(ClassCommitment(Felt::ZERO)),
-                ))
+                let number: BlockNumber = row.get_block_number(0)?;
+                let hash: BlockHash = row.get_block_hash(1)?;
+                let storage: StorageCommitment = row.get_storage_commitment(2)?;
+                let class: ClassCommitment = row.get_class_commitment(3)?;
+                Ok((number, hash, storage, class))
             },
         )
         .optional()?;
@@ -50,7 +47,7 @@ pub(crate) fn migrate(tx: &Transaction<'_>) -> anyhow::Result<()> {
                         :starknet_state_root
                     )",
             named_params! {
-                ":starknet_block_number": number,
+                ":starknet_block_number": &number,
                 ":starknet_block_hash": &hash,
                 ":starknet_state_root": &root,
             },

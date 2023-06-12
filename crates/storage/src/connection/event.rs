@@ -144,10 +144,10 @@ pub(super) fn get_events<K: KeyFilter>(
             // This means that there are more pages.
             is_last_page = false;
         } else {
-            let block_number = row.get_unwrap("block_number");
-            let block_hash = row.get_unwrap("block_hash");
-            let transaction_hash = row.get_unwrap("transaction_hash");
-            let from_address = row.get_unwrap("from_address");
+            let block_number = row.get_block_number("block_number")?;
+            let block_hash = row.get_block_hash("block_hash")?;
+            let transaction_hash = row.get_transaction_hash("transaction_hash")?;
+            let from_address = row.get_contract_address("from_address")?;
 
             let data = row.get_ref_unwrap("data").as_blob().unwrap();
             let data: Vec<_> = data
@@ -359,16 +359,22 @@ fn event_query<'query, 'arg>(
     match (from_block, to_block) {
         (Some(from_block), Some(to_block)) => {
             where_statement_parts.push("block_number BETWEEN :from_block AND :to_block");
-            params.push((":from_block", from_block));
-            params.push((":to_block", to_block));
+            params.extend(named_params! {
+                ":from_block": from_block,
+                ":to_block": to_block,
+            });
         }
         (Some(from_block), None) => {
             where_statement_parts.push("block_number >= :from_block");
-            params.push((":from_block", from_block));
+            params.extend(named_params! {
+                ":from_block": from_block,
+            });
         }
         (None, Some(to_block)) => {
             where_statement_parts.push("block_number <= :to_block");
-            params.push((":to_block", to_block));
+            params.extend(named_params! {
+                ":to_block": to_block,
+            });
         }
         (None, None) => {}
     }
@@ -376,7 +382,9 @@ fn event_query<'query, 'arg>(
     // on contract address
     if let Some(contract_address) = contract_address {
         where_statement_parts.push("from_address = :contract_address");
-        params.push((":contract_address", contract_address))
+        params.extend(named_params! {
+            ":contract_address": contract_address,
+        });
     }
 
     // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.

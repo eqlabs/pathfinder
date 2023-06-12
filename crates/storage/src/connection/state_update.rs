@@ -274,7 +274,7 @@ pub(super) fn storage_value(
                 WHERE contract_address = ? AND storage_address = ? AND block_number <= ?
                 ORDER BY block_number DESC LIMIT 1",
             params![&contract_address, &key, &number],
-            |row| row.get(0),
+            |row| row.get_storage_value(0),
         ),
         BlockId::Hash(hash) => tx.query_row(
             r"SELECT storage_value FROM storage_updates
@@ -283,7 +283,7 @@ pub(super) fn storage_value(
                 )
                 ORDER BY block_number DESC LIMIT 1",
             params![&contract_address, &key, &hash],
-            |row| row.get(0),
+            |row| row.get_storage_value(0),
         ),
     }
     .optional()
@@ -312,7 +312,7 @@ pub(super) fn contract_exists(
         ),
         BlockId::Latest => tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ?)",
-            [contract_address],
+            params![&contract_address],
             |row| row.get(0),
         ),
     }

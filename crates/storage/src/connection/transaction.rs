@@ -59,7 +59,9 @@ pub(super) fn transaction(
         .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?")
         .context("Preparing statement")?;
 
-    let mut rows = stmt.query([transaction]).context("Executing query")?;
+    let mut rows = stmt
+        .query(params![&transaction])
+        .context("Executing query")?;
 
     let row = match rows.next()? {
         Some(row) => row,
@@ -81,7 +83,7 @@ pub(super) fn transaction_with_receipt(
         .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
         .context("Preparing statement")?;
 
-    let mut rows = stmt.query([txn_hash]).context("Executing query")?;
+    let mut rows = stmt.query(params![&txn_hash]).context("Executing query")?;
 
     let row = match rows.next()? {
         Some(row) => row,
@@ -99,7 +101,7 @@ pub(super) fn transaction_with_receipt(
     let receipt = zstd::decode_all(receipt).context("Decompressing receipt")?;
     let receipt = serde_json::from_slice(&receipt).context("Deserializing receipt")?;
 
-    let block_hash = row.get_unwrap("block_hash");
+    let block_hash = row.get_block_hash("block_hash")?;
 
     Ok(Some((transaction, receipt, block_hash)))
 }
@@ -145,14 +147,14 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
                 "SELECT COUNT(*) FROM starknet_transactions
                 JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
                 WHERE number = ?1",
-                [number],
+                params![&number],
                 |row| row.get(0),
             )
             .context("Counting transactions"),
         BlockId::Hash(hash) => tx
             .query_row(
                 "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
-                [hash],
+                params![&hash],
                 |row| row.get(0),
             )
             .context("Counting transactions"),
@@ -182,7 +184,9 @@ pub(super) fn transaction_data_for_block(
         )
         .context("Preparing statement")?;
 
-    let mut rows = stmt.query([block_hash]).context("Executing query")?;
+    let mut rows = stmt
+        .query(params![&block_hash])
+        .context("Executing query")?;
 
     let mut data = Vec::new();
     while let Some(row) = rows.next()? {

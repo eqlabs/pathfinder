@@ -127,6 +127,8 @@ pub trait RowExt {
 
     fn get_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<i64>;
 
+    fn get_optional_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<i64>>;
+
     fn get_optional_str<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&str>>;
 
     fn get_optional_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&[u8]>>;
@@ -261,6 +263,7 @@ pub trait RowExt {
     row_felt_wrapper!(get_contract_root, ContractRoot);
     row_felt_wrapper!(get_contract_nonce, ContractNonce);
     row_felt_wrapper!(get_storage_value, StorageValue);
+    row_felt_wrapper!(get_transaction_hash, TransactionHash);
 
     fn get_trie_node<I: RowIndex>(&self, index: I) -> rusqlite::Result<TrieNode> {
         use anyhow::Context;
@@ -319,6 +322,10 @@ impl<'a> RowExt for &rusqlite::Row<'a> {
 
     fn get_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<i64> {
         self.get_ref(index)?.as_i64().map_err(|e| e.into())
+    }
+
+    fn get_optional_i64<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<i64>> {
+        self.get_ref(index)?.as_i64_or_null().map_err(|e| e.into())
     }
 
     fn get_optional_str<I: RowIndex>(&self, index: I) -> rusqlite::Result<Option<&str>> {

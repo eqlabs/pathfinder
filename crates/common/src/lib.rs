@@ -181,7 +181,6 @@ pub struct BlockHash(pub Felt);
 #[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
 pub struct BlockNumber(u64);
 
-macros::i64_backed_u64::to_from_sql!(BlockNumber);
 macros::i64_backed_u64::new_get_partialeq!(BlockNumber);
 macros::i64_backed_u64::serdes!(BlockNumber);
 
@@ -203,7 +202,6 @@ impl std::iter::Iterator for BlockNumber {
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Default)]
 pub struct BlockTimestamp(u64);
 
-macros::i64_backed_u64::to_from_sql!(BlockTimestamp);
 macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
 macros::i64_backed_u64::serdes!(BlockTimestamp);
 
@@ -223,7 +221,6 @@ pub struct TransactionHash(pub Felt);
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TransactionIndex(u64);
 
-macros::i64_backed_u64::to_from_sql!(TransactionIndex);
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
 macros::i64_backed_u64::serdes!(TransactionIndex);
 
@@ -504,12 +501,6 @@ impl From<String> for StarknetVersion {
     }
 }
 
-macros::starkhash::common_newtype_with_compressed_sql!(
-    ContractNonce,
-    StorageValue,
-    TransactionNonce
-);
-
 macros::starkhash::common_newtype!(
     ByteCodeOffset,
     CallParam,
@@ -521,6 +512,7 @@ macros::starkhash::common_newtype!(
     ConstructorParam,
     ContractAddress,
     ContractAddressSalt,
+    ContractNonce,
     ContractStateHash,
     ContractRoot,
     EntryPoint,
@@ -538,7 +530,9 @@ macros::starkhash::common_newtype!(
     StateCommitment,
     StorageAddress,
     StorageCommitment,
+    StorageValue,
     TransactionCommitment,
+    TransactionNonce,
     TransactionSignatureElem,
 );
 

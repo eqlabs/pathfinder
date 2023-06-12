@@ -465,7 +465,6 @@ mod tests {
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
         JournalMode, Storage, Transaction,
     };
-    use rusqlite::params;
     use stark_hash::Felt;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
@@ -583,12 +582,15 @@ mod tests {
 
         let mut db_conn = storage.connection().unwrap();
         let db_tx = db_conn.transaction().unwrap();
-        db_tx
-            .execute(
-                "UPDATE starknet_blocks SET gas_price = ? where hash = ?",
-                params![1u128.to_be_bytes(), latest_block_hash],
-            )
+
+        // Overwrite the latest gas price to 1.
+        let mut header = db_tx
+            .block_header(pathfinder_storage::BlockId::Latest)
+            .unwrap()
             .unwrap();
+        header.gas_price = GasPrice(1);
+
+        db_tx.insert_block_header(&header).unwrap();
         db_tx.commit().unwrap();
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();

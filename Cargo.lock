@@ -5948,7 +5948,6 @@ dependencies = [
  "metrics",
  "num-bigint 0.4.3",
  "primitive-types",
- "rusqlite",
  "semver",
  "serde",
  "serde_json",
