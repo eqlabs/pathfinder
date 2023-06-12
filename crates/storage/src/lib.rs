@@ -42,7 +42,7 @@ pub enum JournalMode {
 ///
 /// Note that this excludes the `Pending` variant since we never store pending data
 /// in the database.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockId {
     Latest,
     Number(BlockNumber),

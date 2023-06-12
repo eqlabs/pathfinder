@@ -219,12 +219,85 @@ pub(super) fn contract_class_hash(
         BlockId::Hash(hash) => tx.query_row(
             r"SELECT class_hash FROM contract_updates
                 JOIN canonical_blocks ON canonical_blocks.number = contract_updates.block_number
-                WHERE canonical_blocks.hash = ?
+                WHERE 
+                    canonical_blocks.hash = ? AND 
+                    block_number <= contract_updates.block_number AND 
+                    contract_address = ?
                 ORDER BY block_number DESC LIMIT 1",
-            params![&hash],
+            params![&hash, &contract_address],
             |row| row.get_class_hash(0),
         ),
     }
     .optional()
     .map_err(|e| e.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::{felt, BlockHash, BlockHeader};
+
+    use super::*;
+
+    #[test]
+    fn contract_class_hash() {
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let tx = db.transaction().unwrap();
+
+        let original_class = ClassHash(felt!("0xdeadbeef"));
+        let replaced_class = ClassHash(felt!("0xdeadbeefabcdef"));
+        let definition = b"example definition";
+        let contract = ContractAddress::new_or_panic(felt!("0x12345"));
+
+        let header_0 = BlockHeader::builder().finalize_with_hash(BlockHash(felt!("0xabc")));
+        let header_1 = header_0
+            .child_builder()
+            .finalize_with_hash(BlockHash(felt!("0xabcdef")));
+        let header_2 = header_1
+            .child_builder()
+            .finalize_with_hash(BlockHash(felt!("0xa111123")));
+
+        let diff_0 = StateDiff::default();
+        let diff_1 = StateDiff::default()
+            .add_declared_cairo_class(original_class)
+            .add_deployed_contract(contract, original_class);
+        let diff_2 = StateDiff::default().add_replaced_class(contract, replaced_class);
+
+        tx.insert_cairo_class(original_class, definition).unwrap();
+        tx.insert_cairo_class(replaced_class, definition).unwrap();
+
+        tx.insert_block_header(&header_0).unwrap();
+        tx.insert_block_header(&header_1).unwrap();
+        tx.insert_block_header(&header_2).unwrap();
+
+        tx.insert_state_diff(header_0.number, &diff_0).unwrap();
+        tx.insert_state_diff(header_1.number, &diff_1).unwrap();
+        tx.insert_state_diff(header_2.number, &diff_2).unwrap();
+
+        let not_deployed_yet =
+            super::contract_class_hash(&tx, header_0.number.into(), contract).unwrap();
+        assert_eq!(not_deployed_yet, None);
+
+        let not_deployed_yet =
+            super::contract_class_hash(&tx, header_0.hash.into(), contract).unwrap();
+        assert_eq!(not_deployed_yet, None);
+
+        let is_deployed =
+            super::contract_class_hash(&tx, header_1.number.into(), contract).unwrap();
+        assert_eq!(is_deployed, Some(original_class));
+
+        let is_deployed = super::contract_class_hash(&tx, header_1.hash.into(), contract).unwrap();
+        assert_eq!(is_deployed, Some(original_class));
+
+        let is_replaced =
+            super::contract_class_hash(&tx, header_2.number.into(), contract).unwrap();
+        assert_eq!(is_replaced, Some(replaced_class));
+
+        let is_replaced = super::contract_class_hash(&tx, header_2.hash.into(), contract).unwrap();
+        assert_eq!(is_replaced, Some(replaced_class));
+
+        let non_existent = ContractAddress::new_or_panic(felt!("0xaaaaa"));
+        let non_existent =
+            super::contract_class_hash(&tx, BlockNumber::GENESIS.into(), non_existent).unwrap();
+        assert_eq!(non_existent, None);
+    }
 }
