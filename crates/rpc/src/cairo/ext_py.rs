@@ -577,21 +577,8 @@ mod tests {
         };
 
         let (_db_dir, storage, account_address, latest_block_hash, latest_block_number) =
-            test_storage_with_account();
+            test_storage_with_account(GasPrice(1));
         let db_path = storage.path();
-
-        let mut db_conn = storage.connection().unwrap();
-        let db_tx = db_conn.transaction().unwrap();
-
-        // Overwrite the latest gas price to 1.
-        let mut header = db_tx
-            .block_header(pathfinder_storage::BlockId::Latest)
-            .unwrap()
-            .unwrap();
-        header.gas_price = GasPrice(1);
-
-        db_tx.insert_block_header(&header).unwrap();
-        db_tx.commit().unwrap();
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 

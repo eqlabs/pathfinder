@@ -157,7 +157,9 @@ pub(crate) mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{felt_bytes, BlockNumber, CasmHash, ContractNonce, ContractRoot};
+        use pathfinder_common::{
+            felt_bytes, BlockNumber, CasmHash, ContractNonce, ContractRoot, GasPrice,
+        };
         use pathfinder_storage::types::state_update::{DeployedContract, StateDiff};
         use pathfinder_storage::Storage;
 
@@ -233,7 +235,9 @@ pub(crate) mod tests {
             ))
         }
 
-        pub(crate) fn test_storage_with_account() -> (
+        pub(crate) fn test_storage_with_account(
+            gas_price: GasPrice,
+        ) -> (
             tempfile::TempDir,
             Storage,
             ContractAddress,
@@ -252,7 +256,7 @@ pub(crate) mod tests {
             let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
 
             let (account_address, latest_block_hash, latest_block_number) =
-                add_dummy_account(storage.clone());
+                add_dummy_account(storage.clone(), gas_price);
 
             (
                 db_dir,
@@ -273,7 +277,7 @@ pub(crate) mod tests {
             use pathfinder_common::ChainId;
 
             let (db_dir, storage, account_address, latest_block_hash, _) =
-                test_storage_with_account();
+                test_storage_with_account(GasPrice::ZERO);
 
             let sync_state = Arc::new(crate::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
@@ -298,6 +302,7 @@ pub(crate) mod tests {
 
         fn add_dummy_account(
             storage: pathfinder_storage::Storage,
+            gas_price: GasPrice,
         ) -> (ContractAddress, BlockHash, BlockNumber) {
             let mut db_conn = storage.connection().unwrap();
             let db_txn = db_conn.transaction().unwrap();
@@ -358,6 +363,7 @@ pub(crate) mod tests {
             let new_header = latest_header
                 .child_builder()
                 .with_storage_commitment(new_storage_commitment)
+                .with_gas_price(gas_price)
                 .with_calculated_state_commitment()
                 .finalize_with_hash(BlockHash(felt_bytes!(b"latest block")));
             db_txn.insert_block_header(&new_header).unwrap();

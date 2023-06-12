@@ -6035,7 +6035,6 @@ dependencies = [
  "pretty_assertions",
  "primitive-types",
  "reqwest",
- "rusqlite",
  "serde",
  "serde_json",
  "serde_with",
