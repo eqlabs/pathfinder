@@ -76,7 +76,7 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
                 serde_json::to_vec(&request).map(Option::Some)
             }
             Err(_) => match serde_json::from_slice::<
-                jsonrpsee::types::Notification<Option<&serde_json::value::RawValue>>,
+                jsonrpsee::types::Notification<'_, Option<&serde_json::value::RawValue>>,
             >(&body)
             {
                 // Pathfinder explicitly disallows JSON-RPC Notifications from the client
