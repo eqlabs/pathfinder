@@ -31,6 +31,7 @@ use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
 
 use crate::BlockId;
+use crate::types::state_update::StateDiff;
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
@@ -306,9 +307,16 @@ impl<'inner> Transaction<'inner> {
     pub fn insert_state_diff(
         &self,
         block_number: BlockNumber,
-        state_diff: &crate::types::state_update::StateDiff,
+        state_diff: &StateDiff,
     ) -> anyhow::Result<()> {
         state_update::insert_canonical_state_diff(self, block_number, state_diff)
+    }
+
+    pub fn state_diff(
+        &self,
+        block: BlockId,
+    ) -> anyhow::Result<Option<StateDiff>> {
+        state_update::state_diff(self, block)
     }
 
     pub fn storage_value(

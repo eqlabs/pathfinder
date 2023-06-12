@@ -148,6 +148,24 @@ pub trait RowExt {
         Ok(Some(felt))
     }
 
+    fn get_optional_block_number<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<BlockNumber>> {
+        let num = self
+            .get_optional_i64(index)?
+            // Always safe since we are fetching an i64
+            .map(|x| BlockNumber::new_or_panic(x as u64));
+        Ok(num)
+    }
+
+    fn get_optional_casm_hash<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<CasmHash>> {
+        Ok(self.get_optional_felt(index)?.map(|x| CasmHash(x)))
+    }
+
     fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {
         let num = self.get_i64(index)?;
         // Always safe since we are fetching an i64
@@ -207,6 +225,32 @@ pub trait RowExt {
             .get_optional_felt(index)?
             .map(ClassCommitment)
             .unwrap_or_default())
+    }
+
+    fn get_contract_address<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<ContractAddress> {
+        let felt = self.get_felt(index)?;
+
+        let addr = ContractAddress::new(felt).ok_or(rusqlite::types::FromSqlError::Other(
+            anyhow::anyhow!("contract address out of range").into(),
+        ))?;
+
+        Ok(addr)
+    }
+
+    fn get_storage_address<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<StorageAddress> {
+        let felt = self.get_felt(index)?;
+
+        let addr = StorageAddress::new(felt).ok_or(rusqlite::types::FromSqlError::Other(
+            anyhow::anyhow!("storage address out of range").into(),
+        ))?;
+
+        Ok(addr)
     }
 
     row_felt_wrapper!(get_block_hash, BlockHash);

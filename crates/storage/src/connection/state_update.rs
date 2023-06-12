@@ -1,11 +1,15 @@
 use anyhow::Context;
 use pathfinder_common::{
-    BlockNumber, ClassHash, ContractAddress, ContractNonce, StorageAddress, StorageValue,
+    BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
+    StorageValue,
 };
 
 use crate::{prelude::*, BlockId};
 
-use crate::types::state_update::{DeployedContract, Nonce, ReplacedClass, StateDiff, StorageDiff};
+use crate::types::state_update::{
+    DeclaredCairoClass, DeclaredSierraClass, DeployedContract, Nonce, ReplacedClass, StateDiff,
+    StorageDiff,
+};
 
 /// Inserts a canonical [StateDiff] into storage.
 pub(super) fn insert_canonical_state_diff(
@@ -97,6 +101,158 @@ pub(super) fn insert_canonical_state_diff(
     }
 
     Ok(())
+}
+
+pub(super) fn state_diff(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<StateDiff>> {
+    // Simplify the following queries by only relying on block number and not hash etc as well.
+    let block_number = tx.block_id(block).context("Querying block number")?;
+    let Some((block_number, _)) = block_number else {
+        return Ok(None);
+    };
+
+    let mut stmt = tx
+        .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
+        .context("Preparing nonce update query statement")?;
+
+    let nonces = stmt
+        .query_map(params![&block_number], |row| {
+            let contract_address = row.get_contract_address(0)?;
+            let nonce = row.get_contract_nonce(1)?;
+
+            Ok(Nonce {
+                contract_address,
+                nonce,
+            })
+        })
+        .context("Querying nonce updates")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over nonce query rows")?;
+
+    let mut stmt = tx
+        .prepare_cached(
+            "SELECT contract_address, storage_address, storage_value FROM storage_updates WHERE block_number = ?"
+        )
+        .context("Preparing storage update query statement")?;
+    let storage_diffs = stmt
+        .query_map(params![&block_number], |row| {
+            let address: ContractAddress = row.get_contract_address(0)?;
+            let key: StorageAddress = row.get_storage_address(1)?;
+            let value: StorageValue = row.get_storage_value(2)?;
+
+            Ok(StorageDiff {
+                address,
+                key,
+                value,
+            })
+        })
+        .context("Querying storage updates")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over storage query rows")?;
+
+    let mut stmt = tx
+        .prepare_cached(
+            r"SELECT
+                class_definitions.hash AS class_hash,
+                casm_definitions.compiled_class_hash AS compiled_class_hash
+            FROM
+                class_definitions
+            LEFT OUTER JOIN
+                casm_definitions ON casm_definitions.hash = class_definitions.hash
+            WHERE
+                class_definitions.block_number = ?",
+        )
+        .context("Preparing class declaration query statement")?;
+
+    let declared_classes = stmt
+        .query_map(params![&block_number], |row| {
+            let class_hash: ClassHash = row.get_class_hash(0)?;
+            let casm_hash = row.get_optional_casm_hash(1)?;
+
+            Ok((class_hash, casm_hash))
+        })
+        .context("Querying class declarations")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over class declaration query rows")?;
+
+    let declared_sierra_classes = declared_classes
+        .iter()
+        .filter_map(|(sierra_hash, casm_hash)| {
+            casm_hash.map(|casm| DeclaredSierraClass {
+                class_hash: SierraHash(sierra_hash.0),
+                compiled_class_hash: casm,
+            })
+        })
+        .collect();
+
+    let declared_contracts = declared_classes
+        .into_iter()
+        .filter_map(|(class_hash, casm_hash)| {
+            casm_hash
+                .is_none()
+                .then_some(DeclaredCairoClass { class_hash })
+        })
+        .collect();
+
+    let mut stmt = tx
+        .prepare_cached(
+            r"SELECT
+                cu1.contract_address AS contract_address,
+                cu1.class_hash AS class_hash,
+                cu2.block_number IS NOT NULL AS is_replaced
+            FROM
+                contract_updates cu1
+            LEFT OUTER JOIN
+                contract_updates cu2 ON cu1.contract_address = cu2.contract_address AND cu2.block_number < cu1.block_number
+            WHERE
+                cu1.block_number = ?",
+        )
+        .context("Preparing contract update query statement")?;
+
+    let deployed_and_replaced_contracts = stmt
+        .query_map(params![&block_number], |row| {
+            let address: ContractAddress = row.get_contract_address(0)?;
+            let class_hash: ClassHash = row.get_class_hash(1)?;
+            let is_replaced: bool = row.get(2)?;
+
+            Ok((address, class_hash, is_replaced))
+        })
+        .context("Querying contract deployments")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Iterating over contract deployment query rows")?;
+
+    let replaced_classes = deployed_and_replaced_contracts
+        .iter()
+        .filter_map(|(address, class_hash, is_replaced)| {
+            is_replaced.then_some(ReplacedClass {
+                address: *address,
+                class_hash: *class_hash,
+            })
+        })
+        .collect();
+
+    let deployed_contracts = deployed_and_replaced_contracts
+        .iter()
+        .filter_map(|(address, class_hash, is_replaced)| {
+            (!is_replaced).then_some(DeployedContract {
+                address: *address,
+                class_hash: *class_hash,
+            })
+        })
+        .collect();
+
+    let diff = StateDiff {
+        storage_diffs,
+        declared_contracts,
+        deployed_contracts,
+        nonces,
+        declared_sierra_classes,
+        replaced_classes,
+    };
+
+    Ok(Some(diff))
 }
 
 pub(super) fn storage_value(

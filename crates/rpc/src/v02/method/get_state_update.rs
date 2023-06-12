@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use crate::context::RpcContext;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{BlockId, ClassHash, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{BlockId};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -65,104 +63,16 @@ fn get_state_update_from_storage(
         .map(|header| header.state_commitment)
         .unwrap_or_default();
 
-    let mut stmt = tx
-        .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
-        .context("Preparing nonce update query statement")?;
-    let nonces = stmt
-        .query_map([header.number], |row| {
-            let contract_address = row.get(0)?;
-            let nonce = row.get(1)?;
-
-            Ok(types::Nonce {
-                contract_address,
-                nonce,
-            })
-        })
-        .context("Querying nonce updates")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over nonce query rows")?;
-
-    let mut stmt = tx
-        .prepare_cached(
-            "SELECT contract_address, storage_address, storage_value FROM storage_updates WHERE block_number = ?"
-        )
-        .context("Preparing storage update query statement")?;
-    let storage_tuples = stmt
-        .query_map([header.number], |row| {
-            let contract_address: ContractAddress = row.get(0)?;
-            let storage_address: StorageAddress = row.get(1)?;
-            let storage_value: StorageValue = row.get(2)?;
-
-            Ok((contract_address, storage_address, storage_value))
-        })
-        .context("Querying storage updates")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over storage query rows")?;
-    // Convert storage tuples to contract based mapping.
-    let mut storage_updates: HashMap<ContractAddress, Vec<types::StorageEntry>> = HashMap::new();
-    for (addr, key, value) in storage_tuples {
-        storage_updates
-            .entry(addr)
-            .or_default()
-            .push(types::StorageEntry { key, value });
-    }
-    let storage_diffs = storage_updates
-        .into_iter()
-        .map(|(address, storage_entries)| types::StorageDiff {
-            address,
-            storage_entries,
-        })
-        .collect();
-
-    let mut stmt = tx
-        .prepare_cached("SELECT hash FROM class_definitions WHERE block_number = ?")
-        .context("Preparing class declaration query statement")?;
-    // This is a change from previous implementation as this also includes sierra hashes..
-    // which is probably more correct?
-    let declared_contract_hashes = stmt
-        .query_map([header.number], |row| row.get(0))
-        .context("Querying class declarations")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over class declaration query rows")?;
-
-    let mut stmt = tx
-        .prepare_cached(
-            r"SELECT
-                cu1.contract_address,
-                cu1.class_hash
-            FROM
-                contract_updates cu1
-            LEFT OUTER JOIN
-                contract_updates cu2 ON cu1.contract_address = cu2.contract_address AND cu2.block_number < cu1.block_number
-            WHERE
-                cu1.block_number = ? AND
-                cu2.block_number IS NULL",
-        )
-        .context("Preparing contract update query statement")?;
-    let deployed_contracts = stmt
-        .query_map([header.number], |row| {
-            let address: ContractAddress = row.get(0)?;
-            let class_hash: ClassHash = row.get(1)?;
-
-            Ok(types::DeployedContract {
-                address,
-                class_hash,
-            })
-        })
-        .context("Querying contract deployments")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over contract deployment query rows")?;
+    let state_diff = tx
+        .state_diff(block)
+        .context("Fetching state diff")?
+        .context("State diff missing from database")?;
 
     let state_update = types::StateUpdate {
         block_hash: Some(header.hash),
         new_root: Some(header.state_commitment),
         old_root: parent_state_commitment,
-        state_diff: types::StateDiff {
-            storage_diffs,
-            declared_contract_hashes,
-            deployed_contracts,
-            nonces,
-        },
+        state_diff: types::StateDiff::from(state_diff),
     };
 
     Ok(state_update)
