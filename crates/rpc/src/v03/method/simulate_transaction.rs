@@ -20,7 +20,9 @@ use super::common::prepare_handle_and_block;
 #[derive(Deserialize, Debug)]
 pub struct SimulateTrasactionInput {
     block_id: BlockId,
-    transaction: Vec<BroadcastedTransaction>,
+    // `transactions` used to be called `transaction` in the JSON-RPC 0.3.0 specification.
+    #[serde(alias = "transaction")]
+    transactions: Vec<BroadcastedTransaction>,
     simulation_flags: dto::SimulationFlags,
 }
 
@@ -65,7 +67,7 @@ pub async fn simulate_transaction(
             gas_price,
             pending_update,
             pending_timestamp,
-            input.transaction,
+            input.transactions,
             skip_validate,
         )
         .await?;
