@@ -394,7 +394,7 @@ pub(super) fn contract_class_hash(
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, BlockHash, BlockHeader};
+    use pathfinder_common::{felt, felt_bytes, BlockHash, BlockHeader, CasmHash};
 
     use super::*;
 
@@ -459,5 +459,210 @@ mod tests {
         let non_existent =
             super::contract_class_hash(&tx, BlockNumber::GENESIS.into(), non_existent).unwrap();
         assert_eq!(non_existent, None);
+    }
+
+    #[test]
+    fn state_diff() {
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let tx = db.transaction().unwrap();
+
+        // Submit the class definitions since this occurs out of band of the header and state diff.
+        let cairo_hash = ClassHash(felt_bytes!(b"cairo class hash"));
+        let sierra_hash = SierraHash(felt_bytes!(b"sierra hash"));
+        let casm_hash = CasmHash(felt_bytes!(b"casm hash"));
+
+        let cairo_hash2 = ClassHash(felt_bytes!(b"cairo class hash again"));
+
+        tx.insert_cairo_class(cairo_hash, b"cairo definition")
+            .unwrap();
+        tx.insert_cairo_class(cairo_hash2, b"cairo definition 2")
+            .unwrap();
+
+        tx.insert_sierra_class(
+            &sierra_hash,
+            b"sierra definition",
+            &casm_hash,
+            b"casm definition",
+            "compiler version",
+        )
+        .unwrap();
+
+        // Create genesis block with a deployed contract so we can replace it in the
+        // next block and test against it.
+        let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"contract addr"));
+        let genesis_diff = StateDiff::default()
+            .add_declared_cairo_class(cairo_hash)
+            .add_deployed_contract(contract_address, cairo_hash);
+        let header = BlockHeader::builder().finalize_with_hash(BlockHash(felt!("0xabc")));
+        tx.insert_block_header(&header).unwrap();
+        tx.insert_state_diff(header.number, &genesis_diff).unwrap();
+
+        // The actual data we want to query.
+        // Note: create without builder to ensure we cover all the fields (and add new ones) in this test.
+        let diff = StateDiff {
+            storage_diffs: vec![StorageDiff {
+                address: contract_address,
+                key: StorageAddress::new_or_panic(felt_bytes!(b"storage key")),
+                value: StorageValue(felt_bytes!(b"storage value")),
+            }],
+            declared_contracts: vec![DeclaredCairoClass {
+                class_hash: cairo_hash2,
+            }],
+            deployed_contracts: vec![DeployedContract {
+                address: ContractAddress::new_or_panic(felt_bytes!(b"contract addr 2")),
+                class_hash: ClassHash(sierra_hash.0),
+            }],
+            nonces: vec![Nonce {
+                contract_address,
+                nonce: ContractNonce(felt_bytes!(b"nonce")),
+            }],
+            declared_sierra_classes: vec![DeclaredSierraClass {
+                class_hash: SierraHash(felt_bytes!(b"sierra hash")),
+                compiled_class_hash: CasmHash(felt_bytes!(b"casm hash")),
+            }],
+            replaced_classes: vec![
+                // Replace the contract from the previous block.
+                ReplacedClass {
+                    address: contract_address,
+                    class_hash: ClassHash(sierra_hash.0),
+                },
+            ],
+        };
+
+        let header = header
+            .child_builder()
+            .finalize_with_hash(BlockHash(felt!("0xabcdef")));
+        tx.insert_block_header(&header).unwrap();
+        tx.insert_state_diff(header.number, &diff).unwrap();
+
+        let result = super::state_diff(&tx, header.number.into())
+            .unwrap()
+            .unwrap();
+        assert_eq!(result, diff);
+
+        let non_existent = super::state_diff(&tx, (header.number + 1).into()).unwrap();
+        assert_eq!(non_existent, None);
+    }
+
+    mod contract_state {
+        //! Tests involving contract nonces and storage.
+        use super::*;
+
+        /// Create and inserts a basic state diff for testing.
+        fn setup() -> (crate::Connection, StateDiff, BlockHeader) {
+            let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+            let tx = db.transaction().unwrap();
+
+            let header = BlockHeader::builder().finalize_with_hash(BlockHash(felt_bytes!(b"hash")));
+            let contract_adress = ContractAddress::new_or_panic(felt_bytes!(b"contract address"));
+            let diff = StateDiff::default()
+                .add_nonce_update(contract_adress, ContractNonce(felt_bytes!(b"nonce value")))
+                .add_storage_update(
+                    contract_adress,
+                    StorageAddress::new_or_panic(felt_bytes!(b"storage address")),
+                    StorageValue(felt_bytes!(b"storage value")),
+                );
+
+            tx.insert_block_header(&header).unwrap();
+            tx.insert_state_diff(header.number, &diff).unwrap();
+            tx.commit().unwrap();
+
+            (db, diff, header)
+        }
+
+        #[test]
+        fn get_contract_nonce() {
+            let (mut db, diff, header) = setup();
+            let tx = db.transaction().unwrap();
+
+            // Valid contract nonce
+            let (contract, expected) = diff
+                .nonces
+                .first()
+                .map(|x| (x.contract_address, x.nonce))
+                .unwrap();
+
+            let latest = contract_nonce(&tx, contract, BlockId::Latest)
+                .unwrap()
+                .unwrap();
+            assert_eq!(latest, expected);
+
+            let by_number = contract_nonce(&tx, contract, header.number.into())
+                .unwrap()
+                .unwrap();
+            assert_eq!(by_number, expected);
+
+            let by_hash = contract_nonce(&tx, contract, header.hash.into())
+                .unwrap()
+                .unwrap();
+            assert_eq!(by_hash, expected);
+
+            // Invalid i.e. missing contract should be None
+            let invalid_contract = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
+            let invalid_latest = contract_nonce(&tx, invalid_contract, BlockId::Latest).unwrap();
+            assert_eq!(invalid_latest, None);
+            let invalid_by_hash = contract_nonce(
+                &tx,
+                invalid_contract,
+                BlockHash(felt_bytes!(b"invalid")).into(),
+            )
+            .unwrap();
+            assert_eq!(invalid_by_hash, None);
+            let invalid_by_number =
+                contract_nonce(&tx, invalid_contract, BlockNumber::MAX.into()).unwrap();
+            assert_eq!(invalid_by_number, None);
+        }
+
+        #[test]
+        fn get_storage_value() {
+            let (mut db, diff, header) = setup();
+            let tx = db.transaction().unwrap();
+
+            let (contract, key, expected) = diff
+                .storage_diffs
+                .first()
+                .map(|x| (x.address, x.key, x.value))
+                .unwrap();
+
+            // Valid key and contract.
+            let latest = storage_value(&tx, BlockId::Latest, contract, key)
+                .unwrap()
+                .unwrap();
+            assert_eq!(latest, expected);
+            let by_hash = storage_value(&tx, header.hash.into(), contract, key)
+                .unwrap()
+                .unwrap();
+            assert_eq!(by_hash, expected);
+            let by_number = storage_value(&tx, header.number.into(), contract, key)
+                .unwrap()
+                .unwrap();
+            assert_eq!(by_number, expected);
+
+            // Invalid key should be none
+            let invalid_key = StorageAddress::new_or_panic(felt_bytes!(b"invalid key"));
+            let latest = storage_value(&tx, BlockId::Latest, contract, invalid_key).unwrap();
+            assert_eq!(latest, None);
+            let by_hash = storage_value(
+                &tx,
+                BlockHash(felt_bytes!(b"invalid")).into(),
+                contract,
+                invalid_key,
+            )
+            .unwrap();
+            assert_eq!(by_hash, None);
+            let by_number =
+                storage_value(&tx, BlockNumber::MAX.into(), contract, invalid_key).unwrap();
+            assert_eq!(by_number, None);
+
+            // Invalid contract should be none
+            let invalid_contract = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
+            let latest = storage_value(&tx, BlockId::Latest, invalid_contract, key).unwrap();
+            assert_eq!(latest, None);
+            let by_hash = storage_value(&tx, header.hash.into(), invalid_contract, key).unwrap();
+            assert_eq!(by_hash, None);
+            let by_number =
+                storage_value(&tx, header.number.into(), invalid_contract, key).unwrap();
+            assert_eq!(by_number, None);
+        }
     }
 }

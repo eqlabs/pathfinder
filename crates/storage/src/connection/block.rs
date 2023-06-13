@@ -243,8 +243,6 @@ pub(super) fn block_header(
         header.parent_hash = parent_hash;
     }
 
-    // Fill in starknet version
-
     Ok(Some(header))
 }
 
@@ -447,5 +445,25 @@ mod tests {
 
         let by_hash = tx.block_id(target.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
+    }
+
+    #[test]
+    fn block_is_l1_accepted() {
+        let (mut connection, headers) = setup();
+        let tx = connection.transaction().unwrap();
+
+        // Mark the genesis header as L1 accepted.
+        tx.update_l1_l2_pointer(Some(headers[0].number)).unwrap();
+
+        let l1_by_hash = tx.block_is_l1_accepted(headers[0].hash.into()).unwrap();
+        assert!(l1_by_hash);
+        let l1_by_number = tx.block_is_l1_accepted(headers[0].number.into()).unwrap();
+        assert!(l1_by_number);
+
+        // The second block will therefore be L2 accepted.
+        let l2_by_hash = tx.block_is_l1_accepted(headers[1].hash.into()).unwrap();
+        assert!(!l2_by_hash);
+        let l2_by_number = tx.block_is_l1_accepted(headers[1].number.into()).unwrap();
+        assert!(!l2_by_number);
     }
 }
