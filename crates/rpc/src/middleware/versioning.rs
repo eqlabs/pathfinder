@@ -18,8 +18,8 @@ enum VersioningError {
     Malformed,
     #[error("Internal")]
     Internal,
-    #[error("Invalid request")]
-    InvalidRequest,
+    #[error("JSON-RPC notification queries are not allowed, please specify the `id` property")]
+    Notification,
 }
 
 impl VersioningError {
@@ -29,7 +29,7 @@ impl VersioningError {
             VersioningError::TooLarge(limit) => response::too_large(*limit),
             VersioningError::Malformed => response::malformed(),
             VersioningError::Internal => response::internal(),
-            VersioningError::InvalidRequest => response::invalid_request(),
+            VersioningError::Notification => response::notification(),
         }
     }
 }
@@ -80,7 +80,7 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
             >(&body)
             {
                 // Pathfinder explicitly disallows JSON-RPC Notifications from the client
-                Ok(_) => return Err(BoxError::from(VersioningError::InvalidRequest)),
+                Ok(_) => return Err(BoxError::from(VersioningError::Notification)),
                 Err(_) => Ok(None),
             },
         }
@@ -105,7 +105,7 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
                                 })
                                 .unwrap_or_default()
                         }) {
-                            return Err(BoxError::from(VersioningError::InvalidRequest));
+                            return Err(BoxError::from(VersioningError::Notification));
                         }
 
                         Ok(None)
@@ -179,8 +179,9 @@ mod response {
         with_error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError)
     }
 
-    pub(super) fn invalid_request() -> Response<Body> {
-        with_error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InvalidRequest)
+    pub(super) fn notification() -> Response<Body> {
+        let error = ErrorObject::owned(ErrorCode::InvalidRequest.code(), "Invalid request, JSON-RPC notification queries are not allowed, please specify the `id` property", Option::<()>::None);
+        with_error(StatusCode::INTERNAL_SERVER_ERROR, error)
     }
 
     fn with_error<'a>(code: StatusCode, error: impl Into<ErrorObject<'a>>) -> Response<Body> {
@@ -357,7 +358,7 @@ mod tests {
                 .downcast::<super::VersioningError>()
                 .unwrap();
             assert!(
-                matches!(*error, super::VersioningError::InvalidRequest),
+                matches!(*error, super::VersioningError::Notification),
                 "{case}"
             );
         }
