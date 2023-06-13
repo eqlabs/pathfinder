@@ -87,8 +87,8 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
     tx.inner()
         .execute(
             r"DELETE FROM starknet_transactions WHERE block_hash = (
-            SELECT hash FROM canonical_blocks WHERE number = ?
-        )",
+                SELECT hash FROM canonical_blocks WHERE number = ?
+            )",
             params![&block],
         )
         .context("Deleting transactions")?;
@@ -264,11 +264,12 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 #[cfg(test)]
 mod tests {
     use pathfinder_common::{
-        felt_bytes, BlockTimestamp, ClassCommitment, EventCommitment, GasPrice, SequencerAddress,
-        StorageCommitment, TransactionCommitment,
+        felt, felt_bytes, BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice,
+        SequencerAddress, StorageCommitment, TransactionCommitment,
     };
 
     use super::*;
+    use crate::types::state_update::StateDiff;
     use crate::Connection;
 
     // Create test database filled with block headers.
@@ -412,12 +413,26 @@ mod tests {
     fn purge_block() {
         let (mut connection, headers) = setup();
         let tx = connection.transaction().unwrap();
-
         let latest = headers.last().unwrap();
+
+        // Add a class to test that purging a block unsets its block number;
+        let cairo_hash = ClassHash(felt!("0x1234"));
+        tx.insert_cairo_class(cairo_hash, &[]).unwrap();
+        tx.insert_state_diff(
+            latest.number,
+            &StateDiff::default().add_declared_cairo_class(cairo_hash),
+        )
+        .unwrap();
+
         tx.purge_block(latest.number).unwrap();
 
         let exists = tx.block_exists(latest.number.into()).unwrap();
         assert!(!exists);
+
+        let class_exists = tx
+            .class_definition_at(latest.number.into(), ClassHash(cairo_hash.0))
+            .unwrap();
+        assert_eq!(class_exists, None);
     }
 
     #[test]

@@ -572,7 +572,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
         while head >= reorg_tail {
             transaction
                 .purge_block(head)
-                .with_context(|| format!("Purgin block {head} from database"))?;
+                .with_context(|| format!("Purging block {head} from database"))?;
 
             // No further blocks to purge if we just purged genesis.
             if head == BlockNumber::GENESIS {
@@ -584,17 +584,18 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
-        match l1_l2_head {
-            Some(head) if head >= reorg_tail => {
-                let new_head = match reorg_tail {
-                    BlockNumber::GENESIS => None,
-                    other => Some(other - 1),
-                };
+        if let Some(l1_l2_head) = l1_l2_head {
+            if reorg_tail == BlockNumber::GENESIS {
+                // If we purged genesis then unset the L1 L2 pointer as well since there
+                // are now no blocks remaining.
                 transaction
-                    .update_l1_l2_pointer(new_head)
-                    .context("Update L1-L2 head")?;
+                    .update_l1_l2_pointer(None)
+                    .context("Unsetting L1-L2 head")?;
+            } else if l1_l2_head >= reorg_tail {
+                transaction
+                    .update_l1_l2_pointer(Some(reorg_tail - 1))
+                    .context("Updating L1-L2 head")?;
             }
-            _ => {}
         }
 
         transaction.commit().context("Commit database transaction")
@@ -1274,8 +1275,6 @@ mod tests {
             let tx = connection.transaction().unwrap();
             let websocket_txs = WebsocketSenders::for_test();
 
-            println!("a");
-
             // A simple L2 sync task
             let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
                 tx.send(l2::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
@@ -1285,18 +1284,12 @@ mod tests {
                 Ok(())
             };
 
-            println!("b");
-
             for header in headers {
-                println!("c");
                 tx.insert_block_header(&header).unwrap();
-                println!("d");
             }
 
             tx.update_l1_l2_pointer(Some(BlockNumber::new_or_panic(reorg_on_block)))
                 .unwrap();
-
-            println!("e");
 
             tx.commit().unwrap();
 
@@ -1326,9 +1319,7 @@ mod tests {
                 .block_id(pathfinder_storage::BlockId::Latest)
                 .unwrap()
                 .map(|x| x.0);
-            println!("f");
             let head = tx.l1_l2_pointer().unwrap();
-            println!("g");
             (head, latest_block_number)
         })
         .collect::<futures::stream::FuturesOrdered<_>>()
