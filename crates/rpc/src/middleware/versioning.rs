@@ -18,6 +18,8 @@ enum VersioningError {
     Malformed,
     #[error("Internal")]
     Internal,
+    #[error("JSON-RPC notification queries are not allowed, please specify the `id` property")]
+    Notification,
 }
 
 impl VersioningError {
@@ -27,6 +29,7 @@ impl VersioningError {
             VersioningError::TooLarge(limit) => response::too_large(*limit),
             VersioningError::Malformed => response::malformed(),
             VersioningError::Internal => response::internal(),
+            VersioningError::Notification => response::notification(),
         }
     }
 }
@@ -72,7 +75,14 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
                 prefix_method(&mut request, prefixes);
                 serde_json::to_vec(&request).map(Option::Some)
             }
-            Err(_) => Ok(None),
+            Err(_) => match serde_json::from_slice::<
+                jsonrpsee::types::Notification<'_, Option<&serde_json::value::RawValue>>,
+            >(&body)
+            {
+                // Pathfinder explicitly disallows JSON-RPC Notifications from the client
+                Ok(_) => return Err(BoxError::from(VersioningError::Notification)),
+                Err(_) => Ok(None),
+            },
         }
     } else {
         match serde_json::from_slice::<Vec<jsonrpsee::types::Request<'_>>>(&body) {
@@ -82,7 +92,27 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
                     .for_each(|request| prefix_method(request, prefixes));
                 serde_json::to_vec(&batch).map(Option::Some)
             }
-            Err(_) => Ok(None),
+            Err(_) => {
+                match serde_json::from_slice::<Vec<serde_json::Value>>(&body) {
+                    Ok(json_array) => {
+                        // Pathfinder explicitly disallows JSON-RPC Notifications from the client
+                        if json_array.into_iter().any(|item| {
+                            item.as_object()
+                                .map(|obj| {
+                                    !obj.contains_key("id")
+                                        && obj.contains_key("jsonrpc")
+                                        && obj.contains_key("method")
+                                })
+                                .unwrap_or_default()
+                        }) {
+                            return Err(BoxError::from(VersioningError::Notification));
+                        }
+
+                        Ok(None)
+                    }
+                    Err(_) => Ok(None),
+                }
+            }
         }
     };
 
@@ -147,6 +177,11 @@ mod response {
 
     pub(super) fn internal() -> Response<Body> {
         with_error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError)
+    }
+
+    pub(super) fn notification() -> Response<Body> {
+        let error = ErrorObject::owned(ErrorCode::InvalidRequest.code(), "Invalid request, JSON-RPC notification queries are not allowed, please specify the `id` property", Option::<()>::None);
+        with_error(StatusCode::INTERNAL_SERVER_ERROR, error)
     }
 
     fn with_error<'a>(code: StatusCode, error: impl Into<ErrorObject<'a>>) -> Response<Body> {
@@ -219,6 +254,7 @@ pub mod test_utils {
 #[cfg(test)]
 mod tests {
 
+    use super::prefix_rpc_method_names_with_version;
     use super::test_utils::{method_names, paths};
     use crate::test_client::TestClientBuilder;
     use crate::{RpcContext, RpcServer};
@@ -301,5 +337,58 @@ mod tests {
             .as_u16();
 
         assert_eq!(status_code, 404);
+    }
+
+    #[tokio::test]
+    async fn disallow_notifications() {
+        for case in [
+            // Notification w/o params
+            r#"{"jsonrpc":"2.0","method":"foo"}"#,
+            // Request, notification, w/o params
+            r#"[{"jsonrpc":"2.0","method":"foo","id":0},{"jsonrpc":"2.0","method":"foo"}]"#,
+            // Notification w params
+            r#"{"jsonrpc":"2.0","method":"foo","params":["bar"]}"#,
+            // Request, notification, w params
+            r#"[{"jsonrpc":"2.0","method":"foo","params":[1],"id":0},{"jsonrpc":"2.0","method":"foo","params":[1,2]}]"#,
+        ] {
+            let request = http::Request::new(hyper::Body::from(case));
+            let error = prefix_rpc_method_names_with_version(request, 1_000)
+                .await
+                .unwrap_err()
+                .downcast::<super::VersioningError>()
+                .unwrap();
+            assert!(
+                matches!(*error, super::VersioningError::Notification),
+                "{case}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pass_non_notifications() {
+        for case in [
+            // Neither valid requests nor valid notifications but valid json
+            r#"{"jsonrpc":"2.0"}"#,
+            r#"[{"jsonrpc":"2.0"},{"method":"foo"}]"#,
+            r#"{"id":0}"#,
+            r#"[{"id":0},{"method":"foo"}]"#,
+            r#"{"foo":"bar"}"#,
+            r#"["foo","bar"]"#,
+            // Valid requests
+            r#"{"jsonrpc":"2.0","method":"foo","id":0,"params":[1]}"#,
+            r#"[{"jsonrpc":"2.0","method":"foo","id":0,"params":"bar"},{"jsonrpc":"2.0","method":"bar","id":0,"params":[1,2]}]"#,
+        ] {
+            let request = http::Request::new(hyper::Body::from(case));
+            let body = prefix_rpc_method_names_with_version(request, 1_000)
+                .await
+                .unwrap()
+                .into_body();
+            let body = serde_json::from_slice::<serde_json::Value>(
+                &hyper::body::to_bytes(body).await.unwrap(),
+            )
+            .unwrap();
+            let expected = serde_json::from_str::<serde_json::Value>(case).unwrap();
+            assert_eq!(body, expected, "{case}");
+        }
     }
 }
