@@ -914,7 +914,7 @@ impl KeyFilter for V02KeyFilter {
             );
 
             Some(KeyFilterResult {
-                base_query: " INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
+                base_query: " CROSS JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
                 where_statement: "starknet_events_keys.keys MATCH :events_match",
                 param: (":events_match", key_fts_expression),
             })
@@ -963,7 +963,7 @@ impl KeyFilter for V03KeyFilter {
                 }
             });
             Some(KeyFilterResult {
-                base_query: " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                base_query: " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
                 where_statement: "starknet_events_keys_03.keys MATCH :events_match",
                 param: (":events_match", key_fts_expression),
             })
@@ -3001,7 +3001,7 @@ mod tests {
             match expected_fts_expression {
                 Some(expected_fts_expression) => assert_matches!(
                     result,
-                    Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                    Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
                      where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression) })}
                 ),
                 None => assert_eq!(result, None),
