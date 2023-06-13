@@ -6,21 +6,22 @@ pub(super) fn contract_state(
     tx: &Transaction<'_>,
     state_hash: ContractStateHash,
 ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
-    tx.query_row(
-        "SELECT root, hash, nonce FROM contract_states WHERE state_hash = :state_hash",
-        named_params! {
-            ":state_hash": &state_hash
-        },
-        |row| {
-            let root = row.get_contract_root("root")?;
-            let hash = row.get_class_hash("hash")?;
-            let nonce = row.get_contract_nonce("nonce")?;
+    tx.inner()
+        .query_row(
+            "SELECT root, hash, nonce FROM contract_states WHERE state_hash = :state_hash",
+            named_params! {
+                ":state_hash": &state_hash
+            },
+            |row| {
+                let root = row.get_contract_root("root")?;
+                let hash = row.get_class_hash("hash")?;
+                let nonce = row.get_contract_nonce("nonce")?;
 
-            Ok((root, hash, nonce))
-        },
-    )
-    .optional()
-    .map_err(|e| e.into())
+                Ok((root, hash, nonce))
+            },
+        )
+        .optional()
+        .map_err(|e| e.into())
 }
 
 pub(super) fn insert_contract_state(
@@ -30,7 +31,7 @@ pub(super) fn insert_contract_state(
     root: ContractRoot,
     nonce: ContractNonce,
 ) -> anyhow::Result<()> {
-    tx.execute(
+    tx.inner().execute(
         "INSERT OR IGNORE INTO contract_states (state_hash, hash, root, nonce) VALUES (:state_hash, :hash, :root, :nonce)",
         named_params! {
             ":state_hash": &state_hash,

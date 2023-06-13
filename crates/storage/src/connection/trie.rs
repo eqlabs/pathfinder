@@ -75,7 +75,7 @@ macro_rules! insert_trie {
         impl<'tx> $reader_struct<'tx> {
             pub(super) fn new(tx: &'tx Transaction<'tx>) -> anyhow::Result<Self> {
                 let stmt = tx
-                    .prepare_cached(concat!(
+                    .inner().prepare_cached(concat!(
                         "SELECT data FROM ",
                         stringify!($table),
                         " WHERE hash = ?"

@@ -20,9 +20,8 @@ fn main() {
     let size_before = std::fs::metadata(&path).expect("Path does not exist").len() as i64;
 
     let started_at = std::time::Instant::now();
-    let storage =
-        pathfinder_storage::Storage::migrate(path.clone(), pathfinder_storage::JournalMode::WAL)
-            .unwrap();
+    pathfinder_storage::Storage::migrate(path.clone(), pathfinder_storage::JournalMode::WAL)
+        .unwrap();
     let migrated_at = std::time::Instant::now();
 
     let size_after_migration = std::fs::metadata(&path)
@@ -35,28 +34,5 @@ fn main() {
         size_after_migration - size_before
     );
 
-    // in general one does not want to do the full vacuum because it's going to take a long time
-    if false {
-        let mut conn = storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
-
-        let vacuum_started = std::time::Instant::now();
-        let vacuum_ret = tx.execute("VACUUM", []).expect("vacuum failed");
-        tx.commit().unwrap();
-        drop(conn);
-        drop(storage);
-
-        let vacuumed_at = std::time::Instant::now();
-
-        let size_after_vacuum = std::fs::metadata(&path)
-            .expect("Vacuuming removed the database?")
-            .len() as i64;
-
-        println!(
-            "vacuumed in {:?}, size change: {}, VACUUM returned {}",
-            vacuumed_at - vacuum_started,
-            size_after_vacuum - size_after_migration,
-            vacuum_ret
-        );
-    }
+    println!("Reminder: database vacuum must be performed manually if desired");
 }

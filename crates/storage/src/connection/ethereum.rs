@@ -7,7 +7,7 @@ pub(super) fn upsert_l1_state(
     tx: &Transaction<'_>,
     update: &EthereumStateUpdate,
 ) -> anyhow::Result<()> {
-    tx.execute(
+    tx.inner().execute(
         r"INSERT OR REPLACE INTO l1_state (
                     starknet_block_number,
                     starknet_block_hash,
@@ -31,46 +31,48 @@ pub(super) fn l1_state_at_number(
     tx: &Transaction<'_>,
     block: BlockNumber,
 ) -> anyhow::Result<Option<EthereumStateUpdate>> {
-    tx.query_row(
-        r"SELECT starknet_block_number, starknet_block_hash, starknet_state_root FROM l1_state 
+    tx.inner()
+        .query_row(
+            r"SELECT starknet_block_number, starknet_block_hash, starknet_state_root FROM l1_state 
             WHERE starknet_block_number = ?",
-        params![&block],
-        |row| {
-            let block_number = row.get_block_number(0)?;
-            let block_hash = row.get_block_hash(1)?;
-            let state_root = row.get_state_commitment(2)?;
+            params![&block],
+            |row| {
+                let block_number = row.get_block_number(0)?;
+                let block_hash = row.get_block_hash(1)?;
+                let state_root = row.get_state_commitment(2)?;
 
-            Ok(EthereumStateUpdate {
-                state_root,
-                block_number,
-                block_hash,
-            })
-        },
-    )
-    .optional()
-    .map_err(|e| e.into())
+                Ok(EthereumStateUpdate {
+                    state_root,
+                    block_number,
+                    block_hash,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| e.into())
 }
 
 pub(super) fn latest_l1_state(tx: &Transaction<'_>) -> anyhow::Result<Option<EthereumStateUpdate>> {
-    tx.query_row(
-        r"SELECT starknet_block_number, starknet_block_hash, starknet_state_root FROM l1_state 
+    tx.inner()
+        .query_row(
+            r"SELECT starknet_block_number, starknet_block_hash, starknet_state_root FROM l1_state 
             ORDER BY starknet_block_number DESC
             LIMIT 1",
-        [],
-        |row| {
-            let block_number = row.get_block_number(0)?;
-            let block_hash = row.get_block_hash(1)?;
-            let state_root = row.get_state_commitment(2)?;
+            [],
+            |row| {
+                let block_number = row.get_block_number(0)?;
+                let block_hash = row.get_block_hash(1)?;
+                let state_root = row.get_state_commitment(2)?;
 
-            Ok(EthereumStateUpdate {
-                state_root,
-                block_number,
-                block_hash,
-            })
-        },
-    )
-    .optional()
-    .map_err(|e| e.into())
+                Ok(EthereumStateUpdate {
+                    state_root,
+                    block_number,
+                    block_hash,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| e.into())
 }
 
 #[cfg(test)]

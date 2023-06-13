@@ -59,7 +59,7 @@ pub(super) fn insert_events(
     transaction_hash: TransactionHash,
     events: &[Event],
 ) -> anyhow::Result<()> {
-    let mut stmt = tx.prepare(
+    let mut stmt = tx.inner().prepare(
         r"INSERT INTO starknet_events ( block_number,  idx,  transaction_hash,  from_address,  keys,  data)
                                VALUES (:block_number, :idx, :transaction_hash, :from_address, :keys, :data)"
     )?;
@@ -132,7 +132,10 @@ pub(super) fn get_events<K: KeyFilter>(
         " ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",
     );
 
-    let mut statement = tx.prepare(&base_query).context("Preparing SQL query")?;
+    let mut statement = tx
+        .inner()
+        .prepare(&base_query)
+        .context("Preparing SQL query")?;
     let params = params
         .iter()
         .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
@@ -292,7 +295,9 @@ pub fn event_count(
         .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
         .collect::<Vec<_>>();
 
-    let count: usize = tx.query_row(&query, params.as_slice(), |row| row.get(0))?;
+    let count: usize = tx
+        .inner()
+        .query_row(&query, params.as_slice(), |row| row.get(0))?;
 
     Ok(count)
 }

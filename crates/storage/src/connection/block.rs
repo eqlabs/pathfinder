@@ -12,7 +12,7 @@ pub(super) fn insert_block_header(
         .context("Interning starknet version")?;
 
     // Insert the header
-    tx.execute(
+    tx.inner().execute(
         r"INSERT INTO starknet_blocks 
                    ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  class_commitment)
             VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
@@ -31,17 +31,19 @@ pub(super) fn insert_block_header(
     ).context("Inserting block header")?;
 
     // This must occur after the header is inserted as this table references the header table.
-    tx.execute(
-        "INSERT INTO canonical_blocks(number, hash) values(?,?)",
-        params![&header.number, &header.hash],
-    )
-    .context("Inserting into canonical_blocks table")?;
+    tx.inner()
+        .execute(
+            "INSERT INTO canonical_blocks(number, hash) values(?,?)",
+            params![&header.number, &header.hash],
+        )
+        .context("Inserting into canonical_blocks table")?;
 
     Ok(())
 }
 
 fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> anyhow::Result<i64> {
     let id: Option<i64> = tx
+        .inner()
         .query_row(
             "SELECT id FROM starknet_versions WHERE version = ?",
             params![version],
@@ -57,6 +59,7 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
         // the insert, even though it's not null, it will get max(id)+1 assigned, which we can
         // read back with last_insert_rowid
         let rows = tx
+            .inner()
             .execute(
                 "INSERT INTO starknet_versions(version) VALUES (?)",
                 params![version],
@@ -65,7 +68,7 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 
         anyhow::ensure!(rows == 1, "Unexpected number of rows inserted: {rows}");
 
-        tx.last_insert_rowid()
+        tx.inner().last_insert_rowid()
     };
 
     Ok(id)
@@ -74,31 +77,35 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
     // This table does not have an ON DELETE clause, so we do it manually.
     // TODO: migration to add ON DELETE.
-    tx.execute(
-        "UPDATE class_definitions SET block_number = NULL WHERE block_number = ?",
-        params![&block],
-    )
-    .context("Unsetting class definitions block number")?;
+    tx.inner()
+        .execute(
+            "UPDATE class_definitions SET block_number = NULL WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Unsetting class definitions block number")?;
 
-    tx.execute(
-        r"DELETE FROM starknet_transactions WHERE block_hash = (
+    tx.inner()
+        .execute(
+            r"DELETE FROM starknet_transactions WHERE block_hash = (
             SELECT hash FROM canonical_blocks WHERE number = ?
         )",
-        params![&block],
-    )
-    .context("Deleting transactions")?;
+            params![&block],
+        )
+        .context("Deleting transactions")?;
 
-    tx.execute(
-        "DELETE FROM canonical_blocks WHERE number = ?",
-        params![&block],
-    )
-    .context("Deleting block from canonical_blocks table")?;
+    tx.inner()
+        .execute(
+            "DELETE FROM canonical_blocks WHERE number = ?",
+            params![&block],
+        )
+        .context("Deleting block from canonical_blocks table")?;
 
-    tx.execute(
-        "DELETE FROM starknet_blocks WHERE number = ?",
-        params![&block],
-    )
-    .context("Deleting block from starknet_blocks table")?;
+    tx.inner()
+        .execute(
+            "DELETE FROM starknet_blocks WHERE number = ?",
+            params![&block],
+        )
+        .context("Deleting block from starknet_blocks table")?;
 
     Ok(())
 }
@@ -108,7 +115,7 @@ pub(super) fn block_id(
     block: BlockId,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
     match block {
-        BlockId::Latest => tx.query_row(
+        BlockId::Latest => tx.inner().query_row(
             "SELECT number, hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
             [],
             |row| {
@@ -118,7 +125,7 @@ pub(super) fn block_id(
                 Ok((number, hash))
             },
         ),
-        BlockId::Number(number) => tx.query_row(
+        BlockId::Number(number) => tx.inner().query_row(
             "SELECT hash FROM canonical_blocks WHERE number = ?",
             params![&number],
             |row| {
@@ -126,7 +133,7 @@ pub(super) fn block_id(
                 Ok((number, hash))
             },
         ),
-        BlockId::Hash(hash) => tx.query_row(
+        BlockId::Hash(hash) => tx.inner().query_row(
             "SELECT number FROM canonical_blocks WHERE hash = ?",
             params![&hash],
             |row| {
@@ -142,16 +149,17 @@ pub(super) fn block_id(
 pub(super) fn block_exists(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<bool> {
     match block {
         BlockId::Latest => {
-            tx.query_row("SELECT EXISTS(SELECT 1 FROM canonical_blocks)", [], |row| {
-                row.get(0)
-            })
+            tx.inner()
+                .query_row("SELECT EXISTS(SELECT 1 FROM canonical_blocks)", [], |row| {
+                    row.get(0)
+                })
         }
-        BlockId::Number(number) => tx.query_row(
+        BlockId::Number(number) => tx.inner().query_row(
             "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)",
             params![&number],
             |row| row.get(0),
         ),
-        BlockId::Hash(hash) => tx.query_row(
+        BlockId::Hash(hash) => tx.inner().query_row(
             "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)",
             params![&hash],
             |row| row.get(0),
@@ -210,9 +218,9 @@ pub(super) fn block_header(
     };
 
     let header = match block {
-        BlockId::Latest => tx.query_row(&sql, [], parse_row),
-        BlockId::Number(number) => tx.query_row(&sql, params![&number], parse_row),
-        BlockId::Hash(hash) => tx.query_row(&sql, params![&hash], parse_row),
+        BlockId::Latest => tx.inner().query_row(&sql, [], parse_row),
+        BlockId::Number(number) => tx.inner().query_row(&sql, params![&number], parse_row),
+        BlockId::Hash(hash) => tx.inner().query_row(&sql, params![&hash], parse_row),
     }
     .optional()
     .context("Querying for block header")?;
@@ -224,6 +232,7 @@ pub(super) fn block_header(
     // Fill in parent hash (unless we are at genesis in which case the current ZERO is correct).
     if header.number != BlockNumber::GENESIS {
         let parent_hash = tx
+            .inner()
             .query_row(
                 "SELECT hash FROM starknet_blocks WHERE number = ?",
                 params![&(header.number - 1)],
@@ -378,7 +387,7 @@ mod tests {
         let target = headers.last().unwrap();
 
         // Overwrite the commitment fields to NULL.
-        tx.execute(
+        tx.inner().execute(
             r"UPDATE starknet_blocks
                 SET transaction_commitment=NULL, event_commitment=NULL, class_commitment=NULL, version_id=NULL
                 WHERE number=?",

@@ -34,7 +34,7 @@ pub(super) fn insert_transactions(
             .compress(&serialized_receipt)
             .context("Compressing receipt")?;
 
-        tx.execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
+        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
                    named_params![
                 ":hash": &transaction.hash(),
                 ":idx": &i,
@@ -56,6 +56,7 @@ pub(super) fn transaction(
     transaction: TransactionHash,
 ) -> anyhow::Result<Option<gateway::Transaction>> {
     let mut stmt = tx
+        .inner()
         .prepare("SELECT tx FROM starknet_transactions WHERE hash = ?")
         .context("Preparing statement")?;
 
@@ -80,6 +81,7 @@ pub(super) fn transaction_with_receipt(
     txn_hash: TransactionHash,
 ) -> anyhow::Result<Option<(gateway::Transaction, gateway::Receipt, BlockHash)>> {
     let mut stmt = tx
+        .inner()
         .prepare("SELECT tx, receipt, block_hash FROM starknet_transactions WHERE hash = ?1")
         .context("Preparing statement")?;
 
@@ -117,6 +119,7 @@ pub(super) fn transaction_at_block(
     };
 
     let mut stmt = tx
+        .inner()
         .prepare("SELECT tx FROM starknet_transactions WHERE block_hash = ? AND idx = ?")
         .context("Preparing statement")?;
 
@@ -143,6 +146,7 @@ pub(super) fn transaction_at_block(
 pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<usize> {
     match block {
         BlockId::Number(number) => tx
+            .inner()
             .query_row(
                 "SELECT COUNT(*) FROM starknet_transactions
                 JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
@@ -152,6 +156,7 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
             )
             .context("Counting transactions"),
         BlockId::Hash(hash) => tx
+            .inner()
             .query_row(
                 "SELECT COUNT(*) FROM starknet_transactions WHERE block_hash = ?1",
                 params![&hash],
@@ -179,6 +184,7 @@ pub(super) fn transaction_data_for_block(
     };
 
     let mut stmt = tx
+        .inner()
         .prepare(
             "SELECT tx, receipt FROM starknet_transactions WHERE block_hash = ? ORDER BY idx ASC",
         )
@@ -216,11 +222,12 @@ pub(super) fn transaction_block_hash(
     tx: &Transaction<'_>,
     hash: TransactionHash,
 ) -> anyhow::Result<Option<BlockHash>> {
-    tx.query_row(
-        "SELECT block_hash FROM starknet_transactions WHERE hash = ?",
-        params![&hash],
-        |row| row.get_block_hash(0),
-    )
-    .optional()
-    .map_err(|e| e.into())
+    tx.inner()
+        .query_row(
+            "SELECT block_hash FROM starknet_transactions WHERE hash = ?",
+            params![&hash],
+            |row| row.get_block_hash(0),
+        )
+        .optional()
+        .map_err(|e| e.into())
 }

@@ -449,7 +449,7 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 
 #[cfg(test)]
 mod tests {
-    use super::{sub_process::launch_python, BlockHashNumberOrLatest};
+    use super::BlockHashNumberOrLatest;
     use crate::{
         cairo::ext_py::GasPriceSource,
         v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
@@ -468,35 +468,6 @@ mod tests {
     use stark_hash::Felt;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
-
-    #[test_log::test(tokio::test)]
-    async fn start_with_wrong_database_schema_fails() {
-        let db_file = tempfile::NamedTempFile::new().unwrap();
-
-        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
-
-        {
-            let mut conn = s.connection().unwrap();
-            let tx = conn.transaction().unwrap();
-            tx.execute("pragma user_version = 0", []).unwrap();
-            tx.commit().unwrap();
-        }
-
-        let (_work_tx, work_rx) = tokio::sync::mpsc::channel(1);
-        let work_rx = tokio::sync::Mutex::new(work_rx);
-        let (status_tx, _status_rx) = tokio::sync::mpsc::channel(1);
-        let (_shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
-
-        let err = launch_python(
-            db_file.path().into(),
-            work_rx.into(),
-            status_tx,
-            shutdown_rx,
-        )
-        .await;
-
-        println!("{:?}", err.unwrap_err());
-    }
 
     #[test_log::test(tokio::test)]
     async fn call_like_in_python_ten_times() {

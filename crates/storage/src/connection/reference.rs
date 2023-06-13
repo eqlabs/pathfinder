@@ -6,7 +6,7 @@ pub(super) fn update_l1_l2_pointer(
     tx: &Transaction<'_>,
     head: Option<BlockNumber>,
 ) -> anyhow::Result<()> {
-    tx.execute(
+    tx.inner().execute(
         "UPDATE refs SET l1_l2_head = ? WHERE idx = 1",
         params![&head],
     )?;
@@ -16,10 +16,11 @@ pub(super) fn update_l1_l2_pointer(
 
 pub(super) fn l1_l2_pointer(tx: &Transaction<'_>) -> anyhow::Result<Option<BlockNumber>> {
     // This table always contains exactly one row.
-    tx.query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
-        row.get_optional_block_number(0)
-    })
-    .map_err(|e| e.into())
+    tx.inner()
+        .query_row("SELECT l1_l2_head FROM refs WHERE idx = 1", [], |row| {
+            row.get_optional_block_number(0)
+        })
+        .map_err(|e| e.into())
 }
 
 #[cfg(test)]

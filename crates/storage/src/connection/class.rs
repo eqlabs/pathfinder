@@ -23,6 +23,7 @@ pub(super) fn insert_sierra_class(
         .context("Interning compiler version")?;
 
     transaction
+        .inner()
         .execute(
             r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
             params![sierra_hash, &sierra_definition],
@@ -30,6 +31,7 @@ pub(super) fn insert_sierra_class(
         .context("Inserting sierra definition")?;
 
     transaction
+        .inner()
         .execute(
             r"INSERT OR REPLACE INTO casm_definitions
                 (hash, definition, compiled_class_hash, compiler_version_id)
@@ -58,6 +60,7 @@ pub(super) fn insert_cairo_class(
         .context("Compressing cairo definition")?;
 
     transaction
+        .inner()
         .execute(
             r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
             params![&cairo_hash, &definition],
@@ -72,6 +75,7 @@ fn intern_compiler_version(
     compiler_version: &str,
 ) -> anyhow::Result<i64> {
     let id: Option<i64> = transaction
+        .inner()
         .query_row(
             "SELECT id FROM casm_compiler_versions WHERE version = ?",
             [compiler_version],
@@ -88,6 +92,7 @@ fn intern_compiler_version(
         // read back with last_insert_rowid
 
         transaction
+            .inner()
             .query_row(
                 "INSERT INTO casm_compiler_versions(version) VALUES (?) RETURNING id",
                 [compiler_version],
@@ -104,7 +109,9 @@ pub(super) fn classes_exist(
     transaction: &Transaction<'_>,
     classes: &[ClassHash],
 ) -> anyhow::Result<Vec<bool>> {
-    let mut stmt = transaction.prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
+    let mut stmt = transaction
+        .inner()
+        .prepare("SELECT 1 FROM class_definitions WHERE hash = ?")?;
 
     Ok(classes
         .iter()
@@ -117,6 +124,7 @@ pub(super) fn class_definition(
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
     let definition = transaction
+        .inner()
         .query_row(
             "SELECT definition FROM class_definitions WHERE hash = ?",
             params![&class_hash],
@@ -140,17 +148,17 @@ pub(super) fn class_definition_at(
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
     let definition = match block_id {
-        BlockId::Latest => tx.query_row(
+        BlockId::Latest => tx.inner().query_row(
             "SELECT definition FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
             params![&class_hash],
             |row| row.get_blob(0).map(|x| x.to_vec()),
         ),
-        BlockId::Number(number) => tx.query_row(
+        BlockId::Number(number) => tx.inner().query_row(
             "SELECT definition FROM class_definitions WHERE hash=? AND block_number <= ?",
             params![&class_hash, &number],
             |row| row.get_blob(0).map(|x| x.to_vec()),
         ),
-        BlockId::Hash(hash) => tx.query_row(
+        BlockId::Hash(hash) => tx.inner().query_row(
             r"SELECT definition FROM class_definitions
                 WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
             params![&class_hash, &hash],
@@ -174,7 +182,7 @@ pub(super) fn insert_class_commitment_leaf(
     leaf: &ClassCommitmentLeafHash,
     casm_hash: &CasmHash,
 ) -> anyhow::Result<()> {
-    transaction.execute(
+    transaction.inner().execute(
         "INSERT OR IGNORE INTO class_commitment_leaves (hash, compiled_class_hash) VALUES (?, ?)",
         params![leaf, casm_hash],
     )?;
@@ -276,7 +284,7 @@ mod tests {
         .unwrap();
 
         let casm_result = tx
-            .query_row(
+            .inner().query_row(
                 r"SELECT * FROM casm_definitions 
                     JOIN casm_compiler_versions ON casm_definitions.compiler_version_id = casm_compiler_versions.id 
                     WHERE hash = ?",

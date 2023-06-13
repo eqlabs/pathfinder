@@ -341,16 +341,11 @@ impl<'inner> Transaction<'inner> {
         state_update::contract_exists(self, contract_address, block_id)
     }
 
+    pub(self) fn inner(&self) -> &rusqlite::Transaction {
+        &self.0
+    }
+
     pub fn commit(self) -> anyhow::Result<()> {
         Ok(self.0.commit()?)
-    }
-}
-
-// TODO: this should be removed once all database methods are self-contained within this crate.
-impl<'tx> std::ops::Deref for Transaction<'tx> {
-    type Target = rusqlite::Transaction<'tx>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
