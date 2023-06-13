@@ -627,7 +627,7 @@ mod tests {
                     common: CommonTransactionReceiptProperties {
                         transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
                         actual_fee: Fee::ZERO,
-                        status: TransactionStatus::AcceptedOnL2,
+                        status: TransactionStatus::AcceptedOnL1,
                         block_hash: BlockHash(felt_bytes!(b"genesis")),
                         block_number: BlockNumber::new_or_panic(0),
                         messages_sent: vec![],

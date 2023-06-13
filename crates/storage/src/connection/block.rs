@@ -253,12 +253,11 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
         return Ok(false);
     };
 
-    let Some(block_number) = tx.block_id(block).context("Fetching block number")? else {
+    let Some((block_number, _)) = tx.block_id(block).context("Fetching block number")? else {
         return Ok(false);
     };
-    let block_number = block_number.0;
 
-    Ok(block_number >= l1_l2)
+    Ok(block_number <= l1_l2)
 }
 
 #[cfg(test)]

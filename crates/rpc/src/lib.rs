@@ -473,6 +473,9 @@ pub mod test_utils {
             .insert_state_diff(header2.number, &state_diff2)
             .unwrap();
 
+        // Mark block 0 as L1 accepted.
+        db_txn.update_l1_l2_pointer(Some(header0.number)).unwrap();
+
         db_txn.commit().unwrap();
         storage
     }
