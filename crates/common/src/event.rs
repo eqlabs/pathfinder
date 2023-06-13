@@ -18,21 +18,21 @@ pub struct Event {
 }
 
 serde_conv!(
-    pub EventDataAsDecimalStr,
+    EventDataAsDecimalStr,
     EventData,
     |serialize_me: &EventData| starkhash_to_dec_str(&serialize_me.0),
     |s: &str| starkhash_from_dec_str(s).map(EventData)
 );
 
 serde_conv!(
-    pub EventKeyAsDecimalStr,
+    EventKeyAsDecimalStr,
     EventKey,
     |serialize_me: &EventKey| starkhash_to_dec_str(&serialize_me.0),
     |s: &str| starkhash_from_dec_str(s).map(EventKey)
 );
 
 /// A helper conversion function. Only use with __sequencer API related types__.
-pub fn starkhash_to_dec_str(h: &Felt) -> String {
+fn starkhash_to_dec_str(h: &Felt) -> String {
     let b = h.to_be_bytes();
     let b = BigUint::from_bytes_be(&b);
     b.to_str_radix(10)

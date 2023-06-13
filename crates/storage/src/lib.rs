@@ -21,7 +21,6 @@ pub use connection::*;
 
 use pathfinder_common::{BlockHash, BlockNumber};
 use rusqlite::functions::FunctionFlags;
-// pub use connection::trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
 use anyhow::Context;
 use r2d2::Pool;

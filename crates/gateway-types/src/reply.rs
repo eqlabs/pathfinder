@@ -273,7 +273,6 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction receipt data.
-    #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct Receipt {

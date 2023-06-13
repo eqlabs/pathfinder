@@ -21,8 +21,7 @@ pub async fn get_class_at(
     // Map block id to the storage variant.
     let block_id = match input.block_id {
         BlockId::Pending => pathfinder_storage::BlockId::Latest,
-        // safe as only pending cast fails
-        other => other.try_into().unwrap(),
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let pending_class_hash = if input.block_id == BlockId::Pending {

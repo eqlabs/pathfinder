@@ -22,8 +22,10 @@ pub async fn get_class(
             let is_pending = is_pending_class(&context.pending_data, input.class_hash).await;
             (latest, is_pending)
         }
-        // unwrap is safe as only pending fails to cast.
-        other => (other.try_into().unwrap(), false),
+        other => (
+            other.try_into().expect("Only pending cast should fail"),
+            false,
+        ),
     };
 
     let span = tracing::Span::current();
