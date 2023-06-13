@@ -30,8 +30,8 @@ use pathfinder_ethereum::EthereumStateUpdate;
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
 
-use crate::BlockId;
 use crate::types::state_update::StateDiff;
+use crate::BlockId;
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
@@ -312,10 +312,7 @@ impl<'inner> Transaction<'inner> {
         state_update::insert_canonical_state_diff(self, block_number, state_diff)
     }
 
-    pub fn state_diff(
-        &self,
-        block: BlockId,
-    ) -> anyhow::Result<Option<StateDiff>> {
+    pub fn state_diff(&self, block: BlockId) -> anyhow::Result<Option<StateDiff>> {
         state_update::state_diff(self, block)
     }
 

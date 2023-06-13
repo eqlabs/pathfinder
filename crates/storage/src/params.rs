@@ -165,7 +165,7 @@ pub trait RowExt {
         &self,
         index: Index,
     ) -> rusqlite::Result<Option<CasmHash>> {
-        Ok(self.get_optional_felt(index)?.map(|x| CasmHash(x)))
+        Ok(self.get_optional_felt(index)?.map(CasmHash))
     }
 
     fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {

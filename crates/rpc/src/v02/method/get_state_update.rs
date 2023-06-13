@@ -1,6 +1,6 @@
 use crate::context::RpcContext;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{BlockId};
+use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
