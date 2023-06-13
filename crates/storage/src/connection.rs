@@ -292,15 +292,15 @@ impl<'inner> Transaction<'inner> {
         trie::insert_storage_trie(&self.0, root.0, nodes)
     }
 
-    pub fn class_trie_reader(&self) -> anyhow::Result<ClassTrieReader<'_>> {
+    pub fn class_trie_reader(&self) -> ClassTrieReader<'_> {
         ClassTrieReader::new(self)
     }
 
-    pub fn storage_trie_reader(&self) -> anyhow::Result<StorageTrieReader<'_>> {
+    pub fn storage_trie_reader(&self) -> StorageTrieReader<'_> {
         StorageTrieReader::new(self)
     }
 
-    pub fn contract_trie_reader(&self) -> anyhow::Result<ContractTrieReader<'_>> {
+    pub fn contract_trie_reader(&self) -> ContractTrieReader<'_> {
         ContractTrieReader::new(self)
     }
 

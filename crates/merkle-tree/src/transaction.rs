@@ -28,7 +28,7 @@ impl Default for TransactionOrEventTree {
 struct NullStorage;
 
 impl crate::storage::Storage for NullStorage {
-    fn get(&mut self, _node: &Felt) -> anyhow::Result<Option<TrieNode>> {
+    fn get(&self, _node: &Felt) -> anyhow::Result<Option<TrieNode>> {
         Ok(None)
     }
 }

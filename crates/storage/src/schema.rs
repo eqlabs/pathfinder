@@ -14,36 +14,6 @@ type MigrationFn = fn(&rusqlite::Transaction<'_>) -> anyhow::Result<()>;
 pub fn migrations() -> &'static [MigrationFn] {
     // Don't forget to update `call.py` database version number!
     &[
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
-        null_migration,
         revision_0031::migrate,
         revision_0032::migrate,
         revision_0033::migrate,
@@ -52,8 +22,5 @@ pub fn migrations() -> &'static [MigrationFn] {
     ]
 }
 
-pub(crate) const NULL_MIGRATIONS: usize = 30;
-
-fn null_migration(_: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
-    Ok(())
-}
+/// The number of schema revisions replaced by the [base schema](base::base_schema).
+pub(crate) const BASE_SCHEMA_REVISION: usize = 30;

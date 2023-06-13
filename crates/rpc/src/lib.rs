@@ -299,7 +299,7 @@ pub mod test_utils {
             &contract1_update0,
             None,
             Some(class1_hash),
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
@@ -311,7 +311,7 @@ pub mod test_utils {
             &contract1_update1,
             None,
             None,
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
@@ -330,7 +330,7 @@ pub mod test_utils {
             &contract1_update2,
             Some(ContractNonce(felt!("0x10"))),
             None,
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();

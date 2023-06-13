@@ -227,8 +227,7 @@ pub async fn get_proof(
                 .into()
             })?;
 
-        let mut contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root)
-            .context("Loading contract trie")?;
+        let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
 
         let storage_proofs = input
             .keys

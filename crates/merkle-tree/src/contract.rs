@@ -7,7 +7,6 @@ use crate::{
     merkle_node::InternalNode,
     tree::{MerkleTree, Visit},
 };
-use anyhow::Context;
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::hash::PedersenHash;
 use pathfinder_common::trie::TrieNode;
@@ -31,24 +30,22 @@ pub struct ContractsStorageTree<'tx> {
 }
 
 impl<'tx> ContractsStorageTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> anyhow::Result<Self> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = transaction
-            .contract_trie_reader()
-            .context("Loading storage")?;
+        let storage = transaction.contract_trie_reader();
 
-        Ok(Self { tree, storage })
+        Self { tree, storage }
     }
 
     #[allow(dead_code)]
-    pub fn get(&mut self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
-        let value = self.tree.get(&mut self.storage, address.view_bits())?;
+    pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
+        let value = self.tree.get(&self.storage, address.view_bits())?;
         Ok(value.map(StorageValue))
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(&mut self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<TrieNode>> {
-        self.tree.get_proof(&mut self.storage, key)
+    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<TrieNode>> {
+        self.tree.get_proof(&self.storage, key)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -89,15 +86,13 @@ impl<'tx> StorageCommitmentTree<'tx> {
         root: StorageCommitment,
     ) -> anyhow::Result<Self> {
         let tree = MerkleTree::new(root.0);
-        let storage = transaction
-            .storage_trie_reader()
-            .context("Loading storage")?;
+        let storage = transaction.storage_trie_reader();
 
         Ok(Self { tree, storage })
     }
 
-    pub fn get(&mut self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
-        let value = self.tree.get(&mut self.storage, address.view_bits())?;
+    pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
+        let value = self.tree.get(&self.storage, address.view_bits())?;
         Ok(value.map(ContractStateHash))
     }
 

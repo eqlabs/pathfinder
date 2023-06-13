@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::Context;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
 use pathfinder_storage::{ClassTrieReader, Transaction};
@@ -20,11 +19,11 @@ pub struct ClassCommitmentTree<'tx> {
 }
 
 impl<'tx> ClassCommitmentTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> anyhow::Result<Self> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = transaction.class_trie_reader().context("Loading storage")?;
+        let storage = transaction.class_trie_reader();
 
-        Ok(Self { tree, storage })
+        Self { tree, storage }
     }
 
     /// Adds a leaf node for a Sierra -> CASM commitment.

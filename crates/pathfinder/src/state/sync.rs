@@ -701,8 +701,7 @@ fn update_starknet_state(
     tracing::trace!(new_nodes=%count, "Storage trie persisted");
 
     // Add new Sierra classes to class commitment tree.
-    let mut class_commitment_tree =
-        ClassCommitmentTree::load(transaction, class_commitment).context("Loading class trie")?;
+    let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment);
 
     for sierra_class in &state_update.state_diff.declared_classes {
         let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(

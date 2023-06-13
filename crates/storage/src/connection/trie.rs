@@ -70,24 +70,26 @@ macro_rules! insert_trie {
             Ok(count)
         }
 
-        pub struct $reader_struct<'tx>(rusqlite::CachedStatement<'tx>);
+        pub struct $reader_struct<'tx>(&'tx Transaction<'tx>);
 
         impl<'tx> $reader_struct<'tx> {
-            pub(super) fn new(tx: &'tx Transaction<'tx>) -> anyhow::Result<Self> {
-                let stmt = tx
-                    .inner().prepare_cached(concat!(
-                        "SELECT data FROM ",
-                        stringify!($table),
-                        " WHERE hash = ?"
-                    ))
-                    .context("Preparing database statement")?;
-
-                Ok(Self(stmt))
+            pub(super) fn new(tx: &'tx Transaction<'tx>) -> Self {
+                Self(tx)
             }
 
-            pub fn get(&mut self, node: &stark_hash::Felt) -> anyhow::Result<Option<TrieNode>> {
-                let node: Option<TrieNode> = self
-                    .0
+            pub fn get(&self, node: &stark_hash::Felt) -> anyhow::Result<Option<TrieNode>> {
+                // We rely on sqlite caching the statement here. Storing the statement would be nice,
+                // however that leads to &mut requirements or interior mutable work-arounds.
+                let mut stmt = self.0
+                    .inner()
+                    .prepare_cached(concat!(
+                        "SELECT data FROM ",
+                        stringify!($table),
+                        " WHERE hash = ?",
+                    ))
+                    .context("Creating get statement")?;
+
+                let node: Option<TrieNode> = stmt
                     .query_row(params![&node.as_be_bytes().as_slice()], |row| {
                         row.get_trie_node(0)
                     })
@@ -209,7 +211,7 @@ mod tests {
 
         let tx = Transaction::from_inner(tx);
 
-        let mut reader = TestTrieReader::new(&tx).unwrap();
+        let reader = TestTrieReader::new(&tx);
 
         let root = reader.get(&root).unwrap().unwrap();
         assert_eq!(root, root_node);

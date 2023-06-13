@@ -152,7 +152,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// Sets the value of a key. To delete a key, set the value to [Felt::ZERO].
     pub fn set(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &impl Storage,
         key: &BitSlice<Msb0, u8>,
         value: Felt,
     ) -> anyhow::Result<()> {
@@ -289,7 +289,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// [`MerkleTree::set`] with value set to [`Felt::ZERO`].
     fn delete_leaf(
         &mut self,
-        storage: &mut impl Storage,
+        storage: &impl Storage,
         key: &BitSlice<Msb0, u8>,
     ) -> anyhow::Result<()> {
         // Algorithm explanation:
@@ -374,7 +374,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// Returns the value stored at key, or `None` if it does not exist.
     pub fn get(
         &self,
-        storage: &mut impl Storage,
+        storage: &impl Storage,
         key: &BitSlice<Msb0, u8>,
     ) -> anyhow::Result<Option<Felt>> {
         let result = self
@@ -400,7 +400,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///   3. the root hash matches the known root
     pub fn get_proof(
         &self,
-        storage: &mut impl Storage,
+        storage: &impl Storage,
         key: &BitSlice<Msb0, u8>,
     ) -> anyhow::Result<Vec<TrieNode>> {
         let mut nodes = self.traverse(storage, key)?;
@@ -449,7 +449,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// resolved to check if we can travel further.
     fn traverse(
         &self,
-        storage: &mut impl Storage,
+        storage: &impl Storage,
         dst: &BitSlice<Msb0, u8>,
     ) -> anyhow::Result<Vec<Rc<RefCell<InternalNode>>>> {
         if self.root.borrow().is_empty() {
@@ -497,7 +497,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// Result will be either a [Binary](InternalNode::Binary), [Edge](InternalNode::Edge) or [Leaf](InternalNode::Leaf) node.
     fn resolve(
         &self,
-        storage: &mut impl Storage,
+        storage: &impl Storage,
         hash: Felt,
         height: usize,
     ) -> anyhow::Result<InternalNode> {
@@ -539,7 +539,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
     /// (since edge nodes __must be__ maximal subtrees).
-    fn merge_edges(&self, storage: &mut impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
+    fn merge_edges(&self, storage: &impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
         let resolved_child = match &*parent.child.borrow() {
             InternalNode::Unresolved(hash) => {
                 self.resolve(storage, *hash, parent.height + parent.path.len())?
@@ -568,7 +568,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     #[allow(dead_code)]
     pub fn dfs<X, VisitorFn>(
         &self,
-        storage: &mut impl Storage,
+        storage: &impl Storage,
         visitor_fn: &mut VisitorFn,
     ) -> anyhow::Result<Option<X>>
     where
@@ -686,7 +686,7 @@ mod tests {
     struct TestStorage(HashMap<Felt, TrieNode>);
 
     impl Storage for TestStorage {
-        fn get(&mut self, node: &Felt) -> anyhow::Result<Option<TrieNode>> {
+        fn get(&self, node: &Felt) -> anyhow::Result<Option<TrieNode>> {
             Ok(self.0.get(node).cloned())
         }
     }
@@ -1616,7 +1616,7 @@ mod tests {
         fn get_proofs<H: FeltHash, const HEIGHT: usize>(
             keys: &'_ [&BitSlice<Msb0, u8>],
             tree: &MerkleTree<H, HEIGHT>,
-            storage: &mut impl Storage,
+            storage: &impl Storage,
         ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
             keys.iter().map(|k| tree.get_proof(storage, k)).collect()
         }

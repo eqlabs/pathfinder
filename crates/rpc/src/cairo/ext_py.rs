@@ -947,7 +947,7 @@ mod tests {
             .unwrap();
 
         // set up contract state tree
-        let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO)).unwrap();
+        let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO));
         for (storage_address, storage_value) in storage_updates {
             contract_state
                 .set(*storage_address, *storage_value)

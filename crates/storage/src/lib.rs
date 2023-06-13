@@ -224,53 +224,66 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
 fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()> {
-    let current_revision = schema_version(connection)?;
+    let mut current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
-    let current_revision = match current_revision {
-        0 => {
-            let tx = connection
-                .transaction()
-                .context("Create database transaction")?;
-            schema::base_schema(&tx).context("Applying base schema")?;
-            tx.pragma_update(None, VERSION_KEY, schema::NULL_MIGRATIONS)
-                .context("Failed to update the schema version number")?;
-            tx.commit().context("Commit migration transaction")?;
+    // The target version is the number of null migrations which have been replaced
+    // by the base schema + the new migrations built on top of that.
+    let latest_revision = schema::BASE_SCHEMA_REVISION + migrations.len();
 
-            schema::NULL_MIGRATIONS
-        }
-        too_old if too_old < schema::NULL_MIGRATIONS => {
-            tracing::error!(version=%current_revision, limit=%schema::NULL_MIGRATIONS, "Database version is too old to migrate");
-            anyhow::bail!("Database version {current_revision} too old to migrate");
-        }
-        too_new if too_new > migrations.len() => {
-            tracing::error!(version=%current_revision, limit=%migrations.len(), "Database version is from a newer than this application expected");
-            anyhow::bail!(
-                "Database version {too_new} is newer than this application expected {}",
-                migrations.len()
-            );
-        }
-        version => version,
-    };
+    // Apply the base schema if the database is new.
+    if current_revision == 0 {
+        let tx = connection
+            .transaction()
+            .context("Create database transaction")?;
+        schema::base_schema(&tx).context("Applying base schema")?;
+        tx.pragma_update(None, VERSION_KEY, schema::BASE_SCHEMA_REVISION)
+            .context("Failed to update the schema version number")?;
+        tx.commit().context("Commit migration transaction")?;
 
-    // Early exit to prevent logging
-    if current_revision == migrations.len() {
+        current_revision = schema::BASE_SCHEMA_REVISION;
+    }
+
+    // Skip migration if we already at latest.
+    if current_revision == latest_revision {
         tracing::info!(%current_revision, "No database migrations required");
         return Ok(());
     }
 
-    let latest_revision = migrations.len();
+    // Check for database version compatibility.
+    if current_revision < schema::BASE_SCHEMA_REVISION {
+        tracing::error!(
+            version=%current_revision,
+            limit=%schema::BASE_SCHEMA_REVISION,
+            "Database version is too old to migrate"
+        );
+        anyhow::bail!("Database version {current_revision} too old to migrate");
+    }
+
+    if current_revision > latest_revision {
+        tracing::error!(
+            version=%current_revision,
+            limit=%latest_revision,
+            "Database version is from a newer than this application expected"
+        );
+        anyhow::bail!(
+            "Database version {current_revision} is newer than this application expected {latest_revision}",
+        );
+    }
+
     let amount = latest_revision - current_revision;
     tracing::info!(%current_revision, %latest_revision, migrations=%amount, "Performing database migrations");
 
     // Sequentially apply each missing migration.
     migrations
         .iter()
-        .enumerate()
-        .skip(current_revision)
-        .try_for_each(|(from, migration)| {
+        .rev()
+        .take(amount)
+        .rev()
+        .try_for_each(|migration| {
             let mut do_migration = || -> anyhow::Result<()> {
-                let span = tracing::info_span!("db_migration", revision = from + 1);
+                current_revision += 1;
+                let span = tracing::info_span!("db_migration", revision = current_revision);
                 let _enter = span.enter();
 
                 let transaction = connection
@@ -278,7 +291,7 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
                     .context("Create database transaction")?;
                 migration(&transaction)?;
                 transaction
-                    .pragma_update(None, VERSION_KEY, from + 1)
+                    .pragma_update(None, VERSION_KEY, current_revision)
                     .context("Failed to update the schema version number")?;
                 transaction
                     .commit()
@@ -287,7 +300,7 @@ fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()>
                 Ok(())
             };
 
-            do_migration().with_context(|| format!("Migrating from {from}"))
+            do_migration().with_context(|| format!("Migrating to {current_revision}"))
         })?;
 
     Ok(())
@@ -328,7 +341,7 @@ mod tests {
         setup_connection(&mut conn).unwrap();
         migrate_database(&mut conn).unwrap();
         let version = schema_version(&conn).unwrap();
-        let expected = schema::migrations().len();
+        let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
         assert_eq!(version, expected);
     }
 
@@ -424,7 +437,7 @@ mod tests {
         let mut database = rusqlite::Connection::open(db_path).unwrap();
         migrate_database(&mut database).unwrap();
         let version = schema_version(&database).unwrap();
-        let expected = schema::migrations().len();
+        let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
 
         assert_eq!(version, expected, "RPC database fixture needs migrating");
     }
