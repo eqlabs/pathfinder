@@ -242,10 +242,10 @@ mod types {
     }
 
     impl From<starknet_gateway_types::reply::state_update::StorageDiff> for StorageEntry {
-        fn from(diff: starknet_gateway_types::reply::state_update::StorageDiff) -> Self {
+        fn from(d: starknet_gateway_types::reply::state_update::StorageDiff) -> Self {
             Self {
-                key: diff.key,
-                value: diff.value,
+                key: d.key,
+                value: d.value,
             }
         }
     }

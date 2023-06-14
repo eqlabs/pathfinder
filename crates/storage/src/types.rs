@@ -122,11 +122,17 @@ pub mod state_update {
             key: StorageAddress,
             value: StorageValue,
         ) -> Self {
-            self.storage_diffs.push(StorageDiff {
-                address: contract_address,
-                key,
-                value,
-            });
+            match self
+                .storage_diffs
+                .iter_mut()
+                .find(|x| x.address == contract_address)
+            {
+                Some(x) => x.storage_entries.push(StorageEntry { key, value }),
+                None => self.storage_diffs.push(StorageDiff {
+                    address: contract_address,
+                    storage_entries: vec![StorageEntry { key, value }],
+                }),
+            }
             self
         }
     }
@@ -137,12 +143,9 @@ pub mod state_update {
                 storage_diffs: x
                     .storage_diffs
                     .into_iter()
-                    .flat_map(|(contract_address, storage_diffs)| {
-                        storage_diffs.into_iter().map(move |x| StorageDiff {
-                            address: contract_address,
-                            key: x.key,
-                            value: x.value,
-                        })
+                    .map(|(contract_address, storage_diffs)| StorageDiff {
+                        address: contract_address,
+                        storage_entries: storage_diffs.into_iter().map(Into::into).collect(),
                     })
                     .collect(),
                 declared_contracts: x
@@ -175,10 +178,26 @@ pub mod state_update {
     /// L2 storage diff of a contract.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+
     pub struct StorageDiff {
         pub address: ContractAddress,
+        pub storage_entries: Vec<StorageEntry>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields)]
+    pub struct StorageEntry {
         pub key: StorageAddress,
         pub value: StorageValue,
+    }
+
+    impl From<starknet_gateway_types::reply::state_update::StorageDiff> for StorageEntry {
+        fn from(x: starknet_gateway_types::reply::state_update::StorageDiff) -> Self {
+            Self {
+                key: x.key,
+                value: x.value,
+            }
+        }
     }
 
     /// L2 state diff Declared V1 class item.
@@ -236,117 +255,6 @@ pub mod state_update {
             Self {
                 address: x.address,
                 class_hash: x.class_hash,
-            }
-        }
-    }
-}
-
-/// A more user-friendly state update structs
-pub mod v2 {
-    use pathfinder_common::{BlockHash, StateCommitment};
-
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct StateUpdate {
-        pub block_hash: Option<BlockHash>,
-        pub new_root: StateCommitment,
-        pub old_root: StateCommitment,
-        pub state_diff: state_update::StateDiff,
-    }
-
-    pub mod state_update {
-        use super::super::state_update::{
-            DeclaredSierraClass, DeployedContract, Nonce, ReplacedClass,
-        };
-        use pathfinder_common::{ClassHash, ContractAddress, StorageAddress, StorageValue};
-        use std::collections::HashMap;
-
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        pub struct StateDiff {
-            pub storage_diffs: Vec<StorageDiff>,
-            pub deprecated_declared_classes: Vec<ClassHash>,
-            pub declared_classes: Vec<DeclaredSierraClass>,
-            pub deployed_contracts: Vec<DeployedContract>,
-            pub replaced_classes: Vec<ReplacedClass>,
-            pub nonces: Vec<Nonce>,
-        }
-
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        pub struct StorageDiff {
-            pub address: ContractAddress,
-            pub storage_entries: Vec<StorageEntry>,
-        }
-
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        pub struct StorageEntry {
-            pub key: StorageAddress,
-            pub value: StorageValue,
-        }
-
-        /// Convert from the v0.1.0 representation we have in the storage to the new one.
-        ///
-        /// We need this conversion because the representation of storage diffs have changed
-        /// in v0.2.0 of the JSON-RPC specification and we're storing v0.1.0 formatted JSONs
-        /// in our storage.
-        /// Storage updates are now grouped per-contract and individual update entries no
-        /// longer contain the contract address.
-        impl From<crate::types::state_update::StateDiff> for StateDiff {
-            fn from(diff: crate::types::state_update::StateDiff) -> Self {
-                let mut per_contract_diff: HashMap<ContractAddress, Vec<StorageEntry>> =
-                    HashMap::new();
-                for storage_diff in diff.storage_diffs {
-                    per_contract_diff
-                        .entry(storage_diff.address)
-                        .and_modify(|entries| {
-                            entries.push(StorageEntry {
-                                key: storage_diff.key,
-                                value: storage_diff.value,
-                            })
-                        })
-                        .or_insert_with(|| {
-                            vec![StorageEntry {
-                                key: storage_diff.key,
-                                value: storage_diff.value,
-                            }]
-                        });
-                }
-                let storage_diffs: Vec<StorageDiff> = per_contract_diff
-                    .into_iter()
-                    .map(|(address, storage_entries)| StorageDiff {
-                        address,
-                        storage_entries,
-                    })
-                    .collect();
-                Self {
-                    storage_diffs,
-                    deprecated_declared_classes: diff
-                        .declared_contracts
-                        .into_iter()
-                        .map(|d| d.class_hash)
-                        .collect(),
-                    declared_classes: diff
-                        .declared_sierra_classes
-                        .into_iter()
-                        .map(Into::into)
-                        .collect(),
-                    deployed_contracts: diff
-                        .deployed_contracts
-                        .into_iter()
-                        .map(Into::into)
-                        .collect(),
-                    replaced_classes: diff.replaced_classes.into_iter().map(Into::into).collect(),
-                    nonces: diff.nonces.into_iter().map(Into::into).collect(),
-                }
-            }
-        }
-    }
-
-    impl From<super::StateUpdate> for StateUpdate {
-        fn from(x: super::StateUpdate) -> Self {
-            Self {
-                block_hash: x.block_hash,
-                new_root: x.new_root,
-                old_root: x.old_root,
-                state_diff: x.state_diff.into(),
             }
         }
     }
