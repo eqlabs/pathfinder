@@ -231,3 +231,295 @@ pub(super) fn transaction_block_hash(
         .optional()
         .map_err(|e| e.into())
 }
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::{
+        felt_bytes, BlockHeader, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
+        ContractAddressSalt, EntryPoint, Fee, TransactionIndex, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
+    };
+    use starknet_gateway_types::reply::transaction::{
+        DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction, DeployTransaction,
+        InvokeTransactionV0, InvokeTransactionV1,
+    };
+
+    use super::*;
+
+    fn setup() -> (
+        crate::Connection,
+        BlockHeader,
+        Vec<(gateway::Transaction, gateway::Receipt)>,
+    ) {
+        let header =
+            BlockHeader::builder().finalize_with_hash(BlockHash(felt_bytes!(b"block hash")));
+
+        // Create one of each transaction type.
+        let transactions = vec![
+            gateway::Transaction::Declare(gateway::DeclareTransaction::V0(
+                DeclareTransactionV0V1 {
+                    class_hash: ClassHash(felt_bytes!(b"declare v0 class hash")),
+                    max_fee: Fee(felt_bytes!(b"declare v0 max fee")),
+                    nonce: TransactionNonce(felt_bytes!(b"declare v0 tx nonce")),
+                    sender_address: ContractAddress::new_or_panic(felt_bytes!(
+                        b"declare v0 contract address"
+                    )),
+                    signature: vec![
+                        TransactionSignatureElem(felt_bytes!(b"declare v0 tx sig 0")),
+                        TransactionSignatureElem(felt_bytes!(b"declare v0 tx sig 1")),
+                    ],
+                    transaction_hash: TransactionHash(felt_bytes!(b"declare v0 tx hash")),
+                },
+            )),
+            gateway::Transaction::Declare(gateway::DeclareTransaction::V1(
+                DeclareTransactionV0V1 {
+                    class_hash: ClassHash(felt_bytes!(b"declare v1 class hash")),
+                    max_fee: Fee(felt_bytes!(b"declare v1 max fee")),
+                    nonce: TransactionNonce(felt_bytes!(b"declare v1 tx nonce")),
+                    sender_address: ContractAddress::new_or_panic(felt_bytes!(
+                        b"declare v1 contract address"
+                    )),
+                    signature: vec![
+                        TransactionSignatureElem(felt_bytes!(b"declare v1 tx sig 0")),
+                        TransactionSignatureElem(felt_bytes!(b"declare v1 tx sig 1")),
+                    ],
+                    transaction_hash: TransactionHash(felt_bytes!(b"declare v1 tx hash")),
+                },
+            )),
+            gateway::Transaction::Declare(gateway::DeclareTransaction::V2(DeclareTransactionV2 {
+                class_hash: ClassHash(felt_bytes!(b"declare v2 class hash")),
+                max_fee: Fee(felt_bytes!(b"declare v2 max fee")),
+                nonce: TransactionNonce(felt_bytes!(b"declare v2 tx nonce")),
+                sender_address: ContractAddress::new_or_panic(felt_bytes!(
+                    b"declare v2 contract address"
+                )),
+                signature: vec![
+                    TransactionSignatureElem(felt_bytes!(b"declare v2 tx sig 0")),
+                    TransactionSignatureElem(felt_bytes!(b"declare v2 tx sig 1")),
+                ],
+                transaction_hash: TransactionHash(felt_bytes!(b"declare v2 tx hash")),
+                compiled_class_hash: CasmHash(felt_bytes!(b"declare v2 casm hash")),
+            })),
+            gateway::Transaction::Deploy(DeployTransaction {
+                contract_address: ContractAddress::new_or_panic(felt_bytes!(
+                    b"deploy contract address"
+                )),
+                contract_address_salt: ContractAddressSalt(felt_bytes!(
+                    b"deploy contract address salt"
+                )),
+                class_hash: ClassHash(felt_bytes!(b"deploy class hash")),
+                constructor_calldata: vec![
+                    ConstructorParam(felt_bytes!(b"deploy call data 0")),
+                    ConstructorParam(felt_bytes!(b"deploy call data 1")),
+                ],
+                transaction_hash: TransactionHash(felt_bytes!(b"deploy tx hash")),
+                version: TransactionVersion::ZERO,
+            }),
+            gateway::Transaction::DeployAccount(DeployAccountTransaction {
+                contract_address: ContractAddress::new_or_panic(felt_bytes!(
+                    b"deploy account contract address"
+                )),
+                transaction_hash: TransactionHash(felt_bytes!(b"deploy account tx hash")),
+                max_fee: Fee(felt_bytes!(b"deploy account max fee")),
+                version: TransactionVersion::ZERO,
+                signature: vec![
+                    TransactionSignatureElem(felt_bytes!(b"deploy account tx sig 0")),
+                    TransactionSignatureElem(felt_bytes!(b"deploy account tx sig 1")),
+                ],
+                nonce: TransactionNonce(felt_bytes!(b"deploy account tx nonce")),
+                contract_address_salt: ContractAddressSalt(felt_bytes!(
+                    b"deploy account address salt"
+                )),
+                constructor_calldata: vec![
+                    CallParam(felt_bytes!(b"deploy account call data 0")),
+                    CallParam(felt_bytes!(b"deploy account call data 1")),
+                ],
+                class_hash: ClassHash(felt_bytes!(b"deploy account class hash")),
+            }),
+            gateway::Transaction::Invoke(gateway::InvokeTransaction::V0(InvokeTransactionV0 {
+                calldata: vec![
+                    CallParam(felt_bytes!(b"invoke v0 call data 0")),
+                    CallParam(felt_bytes!(b"invoke v0 call data 1")),
+                ],
+                sender_address: ContractAddress::new_or_panic(felt_bytes!(
+                    b"invoke v0 contract address"
+                )),
+                entry_point_selector: EntryPoint(felt_bytes!(b"invoke v0 entry point")),
+                entry_point_type: None,
+                max_fee: Fee(felt_bytes!(b"invoke v0 max fee")),
+                signature: vec![
+                    TransactionSignatureElem(felt_bytes!(b"invoke v0 tx sig 0")),
+                    TransactionSignatureElem(felt_bytes!(b"invoke v0 tx sig 1")),
+                ],
+                transaction_hash: TransactionHash(felt_bytes!(b"invoke v0 tx hash")),
+            })),
+            gateway::Transaction::Invoke(gateway::InvokeTransaction::V1(InvokeTransactionV1 {
+                calldata: vec![
+                    CallParam(felt_bytes!(b"invoke v1 call data 0")),
+                    CallParam(felt_bytes!(b"invoke v1 call data 1")),
+                ],
+                sender_address: ContractAddress::new_or_panic(felt_bytes!(
+                    b"invoke v1 contract address"
+                )),
+                max_fee: Fee(felt_bytes!(b"invoke v1 max fee")),
+                signature: vec![
+                    TransactionSignatureElem(felt_bytes!(b"invoke v1 tx sig 0")),
+                    TransactionSignatureElem(felt_bytes!(b"invoke v1 tx sig 1")),
+                ],
+                nonce: TransactionNonce(felt_bytes!(b"invoke v1 tx nonce")),
+                transaction_hash: TransactionHash(felt_bytes!(b"invoke v1 tx hash")),
+            })),
+            gateway::Transaction::L1Handler(gateway::L1HandlerTransaction {
+                contract_address: ContractAddress::new_or_panic(felt_bytes!(
+                    b"L1 handler contract address"
+                )),
+                entry_point_selector: EntryPoint(felt_bytes!(b"L1 handler entry point")),
+                nonce: TransactionNonce(felt_bytes!(b"L1 handler tx nonce")),
+                calldata: vec![
+                    CallParam(felt_bytes!(b"L1 handler call data 0")),
+                    CallParam(felt_bytes!(b"L1 handler call data 1")),
+                ],
+                transaction_hash: TransactionHash(felt_bytes!(b"L1 handler tx hash")),
+                version: TransactionVersion::ZERO,
+            }),
+        ];
+
+        // Generate a random receipt for each transaction. Note that these won't make physical sense
+        // but its enough for the tests.
+        let receipts: Vec<gateway::Receipt> = transactions
+            .iter()
+            .enumerate()
+            .map(|(i, t)| gateway::Receipt {
+                actual_fee: None,
+                events: vec![],
+                execution_resources: None,
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: t.hash(),
+                transaction_index: TransactionIndex::new_or_panic(i as u64),
+            })
+            .collect();
+        assert_eq!(transactions.len(), receipts.len());
+
+        let body = transactions
+            .into_iter()
+            .zip(receipts.into_iter())
+            .map(|(t, r)| (t, r))
+            .collect::<Vec<_>>();
+
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let db_tx = db.transaction().unwrap();
+
+        db_tx.insert_block_header(&header).unwrap();
+        db_tx
+            .insert_transaction_data(header.hash, header.number, &body)
+            .unwrap();
+
+        db_tx.commit().unwrap();
+
+        (db, header, body)
+    }
+
+    #[test]
+    fn transaction() {
+        let (mut db, _, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let (expected, _) = body.first().unwrap().clone();
+
+        let result = super::transaction(&tx, expected.hash()).unwrap().unwrap();
+        assert_eq!(result, expected);
+
+        let invalid = super::transaction(&tx, TransactionHash(felt_bytes!(b"invalid"))).unwrap();
+        assert_eq!(invalid, None);
+    }
+
+    #[test]
+    fn transaction_wtih_receipt() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let (transaction, receipt) = body.first().unwrap().clone();
+
+        let result = super::transaction_with_receipt(&tx, transaction.hash())
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.0, transaction);
+        assert_eq!(result.1, receipt);
+        assert_eq!(result.2, header.hash);
+
+        let invalid =
+            super::transaction_with_receipt(&tx, TransactionHash(felt_bytes!(b"invalid"))).unwrap();
+        assert_eq!(invalid, None);
+    }
+
+    #[test]
+    fn transaction_at_block() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let idx = 5;
+        let expected = Some(body[idx].0.clone());
+
+        let by_number = super::transaction_at_block(&tx, header.number.into(), idx).unwrap();
+        assert_eq!(by_number, expected);
+        let by_hash = super::transaction_at_block(&tx, header.hash.into(), idx).unwrap();
+        assert_eq!(by_hash, expected);
+        let by_latest = super::transaction_at_block(&tx, BlockId::Latest, idx).unwrap();
+        assert_eq!(by_latest, expected);
+
+        let invalid_index =
+            super::transaction_at_block(&tx, header.number.into(), body.len() + 1).unwrap();
+        assert_eq!(invalid_index, None);
+
+        let invalid_index = super::transaction_at_block(&tx, BlockNumber::MAX.into(), idx).unwrap();
+        assert_eq!(invalid_index, None);
+    }
+
+    #[test]
+    fn transaction_count() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let by_latest = super::transaction_count(&tx, BlockId::Latest).unwrap();
+        assert_eq!(by_latest, body.len());
+        let by_number = super::transaction_count(&tx, header.number.into()).unwrap();
+        assert_eq!(by_number, body.len());
+        let by_hash = super::transaction_count(&tx, header.hash.into()).unwrap();
+        assert_eq!(by_hash, body.len());
+    }
+
+    #[test]
+    fn transaction_data_for_block() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let expected = Some(body);
+
+        let by_number = super::transaction_data_for_block(&tx, header.number.into()).unwrap();
+        assert_eq!(by_number, expected);
+        let by_hash = super::transaction_data_for_block(&tx, header.hash.into()).unwrap();
+        assert_eq!(by_hash, expected);
+        let by_latest = super::transaction_data_for_block(&tx, BlockId::Latest).unwrap();
+        assert_eq!(by_latest, expected);
+
+        let invalid_block =
+            super::transaction_data_for_block(&tx, BlockNumber::MAX.into()).unwrap();
+        assert_eq!(invalid_block, None);
+    }
+
+    #[test]
+    fn transaction_block_hash() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let target = body.first().unwrap().0.hash();
+        let valid = super::transaction_block_hash(&tx, target).unwrap().unwrap();
+        assert_eq!(valid, header.hash);
+
+        let invalid =
+            super::transaction_block_hash(&tx, TransactionHash(felt_bytes!(b"invalid hash")))
+                .unwrap();
+        assert_eq!(invalid, None);
+    }
+}

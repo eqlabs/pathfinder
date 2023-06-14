@@ -42,3 +42,33 @@ pub(super) fn insert_contract_state(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::felt_bytes;
+
+    use super::*;
+
+    #[test]
+    fn contract_state() {
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let tx = db.transaction().unwrap();
+
+        let state_hash = ContractStateHash(felt_bytes!(b"state hash"));
+        let class_hash = ClassHash(felt_bytes!(b"class hash"));
+        let contract_root = ContractRoot(felt_bytes!(b"contract root"));
+        let contract_nonce = ContractNonce(felt_bytes!(b"contract nonce"));
+
+        insert_contract_state(&tx, state_hash, class_hash, contract_root, contract_nonce).unwrap();
+
+        let result = super::contract_state(&tx, state_hash).unwrap().unwrap();
+        assert_eq!(result.0, contract_root);
+        assert_eq!(result.1, class_hash);
+        assert_eq!(result.2, contract_nonce);
+
+        let invalid =
+            super::contract_state(&tx, ContractStateHash(felt_bytes!(b"invalid state hash")))
+                .unwrap();
+        assert_eq!(invalid, None);
+    }
+}
