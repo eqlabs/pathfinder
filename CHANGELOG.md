@@ -9,13 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.0] - 2023-06-14
+
 ### Fixed
 
 - `starknet_simulateTransaction` requires `transactions` instead of `transaction` as input field.
+- gateway's error message is hidden when submitting a failed transaction
+- `starknet_getEvents` is very slow for certain filter combinations
 
 ### Changed
 
 - default RPC API version changed from v0.2 to v0.3
+- disallow JSON-RPC notification-style requests
 
 ## [0.5.6] - 2023-05-25
 
