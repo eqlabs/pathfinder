@@ -642,7 +642,7 @@ fn update_starknet_state(
             updates,
             nonce,
             replaced_class_hash,
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             transaction,
         )
         .context("Update contract state")?;
@@ -663,7 +663,7 @@ fn update_starknet_state(
             &[],
             Some(nonce),
             replaced_class_hash,
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             transaction,
         )
         .context("Update contract nonce")?;
@@ -681,7 +681,7 @@ fn update_starknet_state(
             &[],
             None,
             Some(new_class_hash),
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             transaction,
         )
         .context("Update contract nonce")?;

@@ -32,7 +32,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
     /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
     /// for details.
     pub fn set(&mut self, class: SierraHash, value: ClassCommitmentLeafHash) -> anyhow::Result<()> {
-        self.tree.set(&mut self.storage, class.view_bits(), value.0)
+        self.tree.set(&self.storage, class.view_bits(), value.0)
     }
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and

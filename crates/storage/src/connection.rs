@@ -341,7 +341,7 @@ impl<'inner> Transaction<'inner> {
         state_update::contract_exists(self, contract_address, block_id)
     }
 
-    pub(self) fn inner(&self) -> &rusqlite::Transaction {
+    pub(self) fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.0
     }
 

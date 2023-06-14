@@ -280,7 +280,7 @@ pub mod test_utils {
             &contract0_update,
             Some(ContractNonce(felt!("0x1"))),
             Some(class0_hash),
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();
@@ -342,7 +342,7 @@ pub mod test_utils {
             &[],
             Some(ContractNonce(felt!("0xfeed"))),
             Some(class2_hash),
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             &db_txn,
         )
         .unwrap();

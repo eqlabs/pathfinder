@@ -49,8 +49,7 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
-        self.tree
-            .set(&mut self.storage, address.view_bits(), value.0)
+        self.tree.set(&self.storage, address.view_bits(), value.0)
     }
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
@@ -66,7 +65,7 @@ impl<'tx> ContractsStorageTree<'tx> {
         &mut self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
-        self.tree.dfs(&mut self.storage, f)
+        self.tree.dfs(&self.storage, f)
     }
 }
 
@@ -101,8 +100,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
         address: ContractAddress,
         value: ContractStateHash,
     ) -> anyhow::Result<()> {
-        self.tree
-            .set(&mut self.storage, address.view_bits(), value.0)
+        self.tree.set(&self.storage, address.view_bits(), value.0)
     }
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
@@ -115,7 +113,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
     pub fn get_proof(&mut self, address: &ContractAddress) -> anyhow::Result<Vec<TrieNode>> {
-        self.tree.get_proof(&mut self.storage, address.view_bits())
+        self.tree.get_proof(&self.storage, address.view_bits())
     }
 
     /// See [`MerkleTree::dfs`]
@@ -123,6 +121,6 @@ impl<'tx> StorageCommitmentTree<'tx> {
         &mut self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
-        self.tree.dfs(&mut self.storage, f)
+        self.tree.dfs(&self.storage, f)
     }
 }

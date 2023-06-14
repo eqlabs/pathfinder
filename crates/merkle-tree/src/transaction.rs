@@ -36,7 +36,7 @@ impl crate::storage::Storage for NullStorage {
 impl TransactionOrEventTree {
     pub fn set(&mut self, index: u64, value: Felt) -> anyhow::Result<()> {
         let key = index.to_be_bytes();
-        self.tree.set(&mut NullStorage {}, key.view_bits(), value)
+        self.tree.set(&NullStorage {}, key.view_bits(), value)
     }
 
     pub fn commit(self) -> anyhow::Result<Felt> {
