@@ -36,6 +36,18 @@ pub(crate) enum ChildCommand<'a> {
         gas_price: &'a primitive_types::H256,
         transactions: &'a [TransactionAndClassHashHint],
     },
+    EstimateMessageFee {
+        #[serde(flatten)]
+        common: CommonProperties<'a>,
+
+        // zero means use the gas price from the block.
+        #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
+        gas_price: &'a primitive_types::H256,
+
+        contract_address: &'a ContractAddress,
+        calldata: &'a [CallParam],
+        entry_point_selector: Option<&'a EntryPoint>,
+    },
     SimulateTx {
         #[serde(flatten)]
         common: CommonProperties<'a>,

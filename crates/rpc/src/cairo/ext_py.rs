@@ -128,6 +128,41 @@ impl Handle {
         }
     }
 
+    pub async fn estimate_message_fee(
+        &self,
+        message: Call,
+        at_block: BlockHashNumberOrLatest,
+        gas_price: GasPriceSource,
+        diffs: Option<Arc<PendingStateUpdate>>,
+        block_timestamp: Option<BlockTimestamp>,
+    ) -> Result<FeeEstimate, CallFailure> {
+        use tracing::field::Empty;
+        let (response, rx) = oneshot::channel();
+
+        let continued_span = tracing::info_span!("ext_py_est_msg_fee", pid = Empty);
+
+        self.command_tx
+            .send((
+                Command::EstimateMessageFee {
+                    message,
+                    at_block,
+                    gas_price,
+                    chain: self.chain,
+                    diffs,
+                    block_timestamp,
+                    response,
+                },
+                continued_span,
+            ))
+            .await
+            .map_err(|_| CallFailure::Shutdown)?;
+
+        match rx.await {
+            Ok(x) => x,
+            Err(_closed) => Err(CallFailure::Shutdown),
+        }
+    }
+
     pub async fn simulate_transaction(
         &self,
         at_block: BlockHashNumberOrLatest,
@@ -335,18 +370,25 @@ enum Command {
     EstimateFee {
         transactions: Vec<TransactionAndClassHashHint>,
         at_block: BlockHashNumberOrLatest,
-        /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,
         diffs: Option<Arc<PendingStateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<Vec<FeeEstimate>, CallFailure>>,
     },
+    EstimateMessageFee {
+        message: Call,
+        at_block: BlockHashNumberOrLatest,
+        gas_price: GasPriceSource,
+        chain: UsedChain,
+        diffs: Option<Arc<PendingStateUpdate>>,
+        block_timestamp: Option<BlockTimestamp>,
+        response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
+    },
     SimulateTransaction {
         transactions: Vec<TransactionAndClassHashHint>,
         at_block: BlockHashNumberOrLatest,
         skip_validate: bool,
-        /// Price input for the fee estimation, also communicated back in response
         gas_price: GasPriceSource,
         chain: UsedChain,
         diffs: Option<Arc<PendingStateUpdate>>,
@@ -367,6 +409,7 @@ impl Command {
         match self {
             Call { response, .. } => response.is_closed(),
             EstimateFee { response, .. } => response.is_closed(),
+            EstimateMessageFee { response, .. } => response.is_closed(),
             SimulateTransaction { response, .. } => response.is_closed(),
         }
     }
@@ -376,6 +419,7 @@ impl Command {
         match self {
             Call { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
             EstimateFee { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
+            EstimateMessageFee { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
             SimulateTransaction { response, .. } => {
                 response.send(Err(err)).map_err(|e| e.unwrap_err())
             }
@@ -387,6 +431,7 @@ impl Command {
         match self {
             Call { response, .. } => response.closed().await,
             EstimateFee { response, .. } => response.closed().await,
+            EstimateMessageFee { response, .. } => response.closed().await,
             SimulateTransaction { response, .. } => response.closed().await,
         }
     }

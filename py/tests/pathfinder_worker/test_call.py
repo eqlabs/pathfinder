@@ -30,6 +30,7 @@ from pathfinder_worker.call import (
     Call,
     Command,
     EstimateFee,
+    EstimateMessageFee,
     FeeEstimation,
     TransactionSimulation,
     TransactionAndClassHashHint,
@@ -2283,3 +2284,27 @@ def test_simulate_transaction_succeeds():
     expected = TransactionSimulation.Schema().loads(expected_json)
 
     assert output == [expected]
+
+
+def test_estimate_message_fee_direct_command():
+    con = inmemory_with_tables()
+    (contract_address, _) = populate_test_contract_with_132_on_3(con)
+
+    command = EstimateMessageFee(
+        at_block="1",
+        chain=call.Chain.TESTNET,
+        contract_address=contract_address,
+        entry_point_selector=get_selector_from_name("get_value"),
+        calldata=[],
+        gas_price=1,
+        pending_updates={},
+        pending_deployed=[],
+        pending_nonces={},
+        pending_timestamp=0,
+    )
+
+    con.execute("BEGIN")
+
+    (verb, output, _timings) = loop_inner(con, command)
+
+    assert output == [3]
