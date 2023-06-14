@@ -80,7 +80,7 @@ pub mod metrics {
                 let mut write_guard = self.0.counters.write().unwrap();
                 // Put it there
                 // let counter = write_guard.entry(key.clone()).or_default();
-                let counter = write_guard.entry(key.clone()).or_insert_with(Arc::default);
+                let counter = write_guard.entry(key.clone()).or_default();
                 Counter::from_arc(counter.clone())
             } else {
                 // We don't care
