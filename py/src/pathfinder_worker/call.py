@@ -58,6 +58,7 @@ try:
         ExecutionResourcesManager,
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
+    from starkware.starknet.business_logic.transaction.objects import InternalL1Handler
     from starkware.starknet.core.os.contract_class.utils import (
         ClassHashType,
         class_hash_cache_ctx_var,
@@ -239,6 +240,18 @@ class EstimateFee(Command):
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
     transactions: List[TransactionAndClassHashHint]
+
+
+@marshmallow_dataclass.dataclass(frozen=True)
+class EstimateMessageFee(Command):
+    verb: ClassVar[Verb] = Verb.ESTIMATE_FEE
+
+    # zero means to use the gas price from the current block.
+    gas_price: int = field(metadata=fields.gas_price_metadata)
+
+    contract_address: int = field(metadata=fields.contract_address_metadata)
+    calldata: List[int] = field(metadata=fields.calldata_as_hex_metadata)
+    entry_point_selector: int = field(metadata=fields.entry_point_selector_metadata)
 
 
 @marshmallow_dataclass.dataclass(frozen=True)
@@ -497,6 +510,18 @@ def loop_inner(
                 general_config,
                 block_info,
                 command.transactions,
+            )
+        )
+        ret = (command.verb, fees, timings)
+    elif isinstance(command, EstimateMessageFee):
+        fees = asyncio.run(
+            do_estimate_message_fee(
+                async_state,
+                general_config,
+                block_info,
+                command.contract_address,
+                command.calldata,
+                command.entry_point_selector,
             )
         )
         ret = (command.verb, fees, timings)
@@ -803,6 +828,45 @@ async def do_estimate_fee(
             fees.append(fee)
 
     return fees
+
+
+async def do_estimate_message_fee(
+    state: CachedState,
+    general_config: StarknetGeneralConfig,
+    block_info: BlockInfo,
+    contract_address: int,
+    calldata: List[int],
+    entry_point_selector: int,
+):
+    internal_tx = InternalL1Handler(
+        contract_address=contract_address, 
+        entry_point_selector=entry_point_selector,
+        calldata=calldata,
+        nonce=42,
+        paid_fee_on_l1=None,
+        hash_value=0,
+    )
+
+    ## TODO(SM): Fix test_call.py:test_estimate_message_fee_direct_command
+    # {'code': <StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT: 8>, 'message': '
+    # Entry point 0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0 not found in contract 
+    # with class hash 0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b.'}
+    execution_info = await internal_tx.apply_state_updates(
+        state=state,
+        general_config=general_config
+    )
+
+    tx_fee = calculate_tx_fee(
+        gas_price=block_info.gas_price,
+        general_config=general_config,
+        resources=execution_info.actual_resources,
+    )
+
+    return FeeEstimation(
+        gas_price=block_info.gas_price,
+        gas_consumed=tx_fee // max(1, block_info.gas_price),
+        overall_fee=tx_fee,
+    )
 
 
 async def do_simulate_tx(

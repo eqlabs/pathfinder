@@ -368,6 +368,28 @@ async fn process(
             gas_price: gas_price.as_price(),
             transactions,
         },
+        Command::EstimateMessageFee {
+            message,
+            at_block,
+            gas_price,
+            chain,
+            diffs: maybe_diffs,
+            block_timestamp,
+            ..
+        } => ChildCommand::EstimateMessageFee {
+            common: CommonProperties {
+                at_block,
+                chain: *chain,
+                pending_updates: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_deployed: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_nonces: maybe_diffs.as_ref().map(|x| &**x).into(),
+                pending_timestamp: block_timestamp.map(|t| t.get()).unwrap_or_default(),
+            },
+            gas_price: gas_price.as_price(),
+            contract_address: &message.contract_address,
+            calldata: &message.calldata,
+            entry_point_selector: message.entry_point_selector.as_ref(),
+        },
         Command::SimulateTransaction {
             transactions,
             at_block,
