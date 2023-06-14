@@ -20,6 +20,7 @@ where
     T: EthereumApi + Clone,
 {
     let head_poll_interval = head_poll_interval(chain);
+    let mut previous = EthereumStateUpdate::default();
 
     loop {
         let state_update = Retry::exponential(
@@ -31,9 +32,11 @@ where
         .when(|_| true)
         .await?;
 
-        tx_event.send(state_update).await?;
+        if previous != state_update {
+            previous = state_update.clone();
+            tx_event.send(state_update).await?;
+        }
 
         tokio::time::sleep(head_poll_interval).await;
-        continue;
     }
 }

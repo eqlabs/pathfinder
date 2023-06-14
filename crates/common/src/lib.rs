@@ -131,7 +131,7 @@ pub struct StorageValue(pub Felt);
 /// The commitment for the state of a Starknet block.
 ///
 /// Before Starknet v0.11.0 this was equivalent to [StorageCommitment].
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct StateCommitment(pub Felt);
 
 impl StateCommitment {
@@ -168,7 +168,7 @@ impl StateCommitment {
 pub struct StorageCommitment(pub Felt);
 
 /// A Starknet block hash.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash, Default)]
 pub struct BlockHash(pub Felt);
 
 /// A Starknet block number.
