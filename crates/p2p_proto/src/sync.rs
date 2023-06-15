@@ -8,6 +8,7 @@ use super::common::{BlockBody, BlockHeader};
 use super::proto;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub enum Request {
     GetBlockHeaders(GetBlockHeaders),
     GetBlockBodies(GetBlockBodies),
@@ -171,6 +172,7 @@ pub struct GetClasses {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub enum Response {
     BlockHeaders(BlockHeaders),
     BlockBodies(BlockBodies),

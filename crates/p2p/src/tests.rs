@@ -297,10 +297,7 @@ async fn subscription_and_propagation() {
 #[test_log::test(tokio::test)]
 async fn sync_request_response() {
     use fake::{Fake, Faker};
-    use p2p_proto::sync::{
-        BlockBodies, BlockHeaders, GetBlockBodies, GetBlockHeaders, GetStateDiffs, Request,
-        Response, StateDiffs, Status,
-    };
+    use p2p_proto::sync::{Request, Response, Status};
 
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -331,24 +328,10 @@ async fn sync_request_response() {
     // Dial so that the peers have each other in their DHTs, the direction doesn't matter
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    for (expected_request, expected_response) in [
-        (
-            Request::GetBlockHeaders(Faker.fake::<GetBlockHeaders>()),
-            Response::BlockHeaders(Faker.fake::<BlockHeaders>()),
-        ),
-        (
-            Request::GetBlockBodies(Faker.fake::<GetBlockBodies>()),
-            Response::BlockBodies(Faker.fake::<BlockBodies>()),
-        ),
-        (
-            Request::GetStateDiffs(Faker.fake::<GetStateDiffs>()),
-            Response::StateDiffs(Faker.fake::<StateDiffs>()),
-        ),
-        (
-            Request::Status(Faker.fake::<Status>()),
-            Response::Status(Faker.fake::<Status>()),
-        ),
-    ] {
+    for _ in 0..10 {
+        let expected_request = Faker.fake::<Request>();
+        let expected_response = Faker.fake::<Response>();
+
         let expected_request_cloned = expected_request.clone();
         let expected_response_cloned = expected_response.clone();
         let client2 = peer2.client.clone();
