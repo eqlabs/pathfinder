@@ -1,5 +1,7 @@
 //! Sync related data retrieval from other peers
 
+// TODO temporary hybrid p2p/gw client goes here
+
 /// Workaround for the orphan rule - implement conversion traits for types ourside our crate.
 mod body {
     use p2p_proto::common::{BlockBody, Receipt, Transaction};
@@ -21,19 +23,18 @@ mod body {
 
         fn entry_point(
             entry_point: Option<p2p_proto::common::invoke_transaction::EntryPoint>,
-        ) -> (EntryPoint, Option<EntryPointType>) {
+        ) -> anyhow::Result<(EntryPoint, Option<EntryPointType>)> {
             match entry_point {
                 Some(p2p_proto::common::invoke_transaction::EntryPoint::Unspecified(e)) => {
-                    (EntryPoint(e), None)
+                    Ok((EntryPoint(e), None))
                 }
                 Some(p2p_proto::common::invoke_transaction::EntryPoint::External(e)) => {
-                    (EntryPoint(e), Some(EntryPointType::External))
+                    Ok((EntryPoint(e), Some(EntryPointType::External)))
                 }
                 Some(p2p_proto::common::invoke_transaction::EntryPoint::L1Handler(e)) => {
-                    (EntryPoint(e), Some(EntryPointType::L1Handler))
+                    Ok((EntryPoint(e), Some(EntryPointType::L1Handler)))
                 }
-                // FIXME should this be a fatal error?
-                None => (EntryPoint::ZERO, None),
+                None => anyhow::bail!("Missing entry point selector for Invoke v0 transaction"),
             }
         }
 
@@ -46,7 +47,7 @@ mod body {
                     (Transaction::Invoke(t), Receipt::Invoke(r)) => match version(t.version) {
                         0 => {
                             let (entry_point_selector, entry_point_type) =
-                                entry_point(t.deprecated_entry_point_selector);
+                                entry_point(t.deprecated_entry_point_selector)?;
 
                             Ok(gw::Transaction::Invoke(gw::InvokeTransaction::V0(
                                 gw::InvokeTransactionV0 {
@@ -83,7 +84,7 @@ mod body {
                     (Transaction::Declare(t), Receipt::Declare(r)) => match version(t.version) {
                         0 => Ok(gw::Transaction::Declare(gw::DeclareTransaction::V0(
                             gw::DeclareTransactionV0V1 {
-                                class_hash: ClassHash(t.contract_class_hash),
+                                class_hash: ClassHash(t.class_hash),
                                 max_fee: Fee(t.max_fee),
                                 nonce: TransactionNonce(t.nonce),
                                 sender_address: ContractAddress::new_or_panic(t.sender_address),
@@ -97,7 +98,7 @@ mod body {
                         ))),
                         1 => Ok(gw::Transaction::Declare(gw::DeclareTransaction::V1(
                             gw::DeclareTransactionV0V1 {
-                                class_hash: ClassHash(t.contract_class_hash),
+                                class_hash: ClassHash(t.class_hash),
                                 max_fee: Fee(t.max_fee),
                                 nonce: TransactionNonce(t.nonce),
                                 sender_address: ContractAddress::new_or_panic(t.sender_address),
@@ -111,7 +112,7 @@ mod body {
                         ))),
                         2 => Ok(gw::Transaction::Declare(gw::DeclareTransaction::V2(
                             gw::DeclareTransactionV2 {
-                                class_hash: ClassHash(t.contract_class_hash),
+                                class_hash: ClassHash(t.class_hash),
                                 max_fee: Fee(t.max_fee),
                                 nonce: TransactionNonce(t.nonce),
                                 sender_address: ContractAddress::new_or_panic(t.sender_address),
@@ -121,7 +122,7 @@ mod body {
                                     .map(TransactionSignatureElem)
                                     .collect(),
                                 transaction_hash: TransactionHash(r.common.transaction_hash),
-                                compiled_class_hash: CasmHash(t.compiled_class_hash),
+                                compiled_class_hash: CasmHash(t.casm_hash),
                             },
                         ))),
                         _ => anyhow::bail!("Invalid declare transaction version {}", t.version),
@@ -130,7 +131,7 @@ mod body {
                         Ok(gw::Transaction::Deploy(gw::DeployTransaction {
                             contract_address: ContractAddress::new_or_panic(r.contract_address),
                             contract_address_salt: ContractAddressSalt(t.contract_address_salt),
-                            class_hash: ClassHash(t.contract_class_hash),
+                            class_hash: ClassHash(t.class_hash),
                             constructor_calldata: t
                                 .constructor_calldata
                                 .into_iter()
@@ -171,7 +172,9 @@ mod body {
                             class_hash: ClassHash(t.class_hash),
                         }),
                     ),
-                    _ => anyhow::bail!("TODO txn vs receipt type mismatch"),
+                    _ => anyhow::bail!(
+                        "Transaction receipt type differs from its respective transaction type"
+                    ),
                 }
                 .map(|t| (t, receipt::from_p2p(r)))
             })
@@ -189,7 +192,7 @@ mod body {
             InvokeTransactionReceipt, L1HandlerTransactionReceipt, Receipt,
         };
         use pathfinder_common::{
-            ContractAddress, EntryPoint, EthereumAddress, EventData, EventKey, Fee,
+            event::Event, ContractAddress, EntryPoint, EthereumAddress, EventData, EventKey, Fee,
             L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem,
             TransactionHash, TransactionIndex,
         };
@@ -205,7 +208,7 @@ mod body {
                     events: common
                         .events
                         .into_iter()
-                        .map(|e| gw::Event {
+                        .map(|e| Event {
                             data: e.data.into_iter().map(EventData).collect(),
                             from_address: ContractAddress::new_or_panic(e.from_address),
                             keys: e.keys.into_iter().map(EventKey).collect(),
