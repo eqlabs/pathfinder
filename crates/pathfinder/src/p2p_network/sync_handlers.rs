@@ -1,3 +1,4 @@
+//! Sync related data retrieval from storage as requested by other p2p clients
 use anyhow::Context;
 use p2p_proto as proto;
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
@@ -185,6 +186,7 @@ fn classes(
     Ok(p2p_proto::sync::Classes { classes })
 }
 
+/// Workaround for the orphan rule - implement conversion traits for types ourside our crate.
 mod conv {
     pub(super) mod header {
         use pathfinder_common::BlockHeader;

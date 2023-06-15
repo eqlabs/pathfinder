@@ -10,6 +10,7 @@ use stark_hash::Felt;
 use tokio::sync::RwLock;
 use tracing::Instrument;
 
+mod client;
 mod sync_handlers;
 
 #[tracing::instrument(name = "p2p", skip_all)]
