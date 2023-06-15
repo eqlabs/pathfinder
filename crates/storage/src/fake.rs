@@ -202,14 +202,6 @@ pub mod init {
                 //
                 state_update.parent_state_commitment = parent_state_commitment;
 
-                // Disallow empty storage entries
-                state_update.contract_updates.iter_mut().for_each(|(_, u)| {
-                    if u.storage.is_empty() {
-                        u.storage
-                            .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
-                    }
-                });
-
                 let num_deployed_in_parent = deployed_in_parent.len();
 
                 if num_deployed_in_parent > 0 {
