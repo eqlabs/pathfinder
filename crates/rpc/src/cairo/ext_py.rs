@@ -191,6 +191,11 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                 .contract_class
                 .class_hash()
                 .map_err(|_| CallFailure::Internal("Failed to calculate class hash"))?;
+            use starknet_gateway_types::class_hash::ComputedClassHash;
+            let class_hash = match class_hash {
+                ComputedClassHash::Cairo(c) => ClassHash(c.0),
+                ComputedClassHash::Sierra(s) => ClassHash(s.0),
+            };
             TransactionAndClassHashHint {
                 transaction: add_transaction::AddTransaction::Declare(add_transaction::Declare {
                     version: tx.version,
@@ -205,7 +210,7 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                     nonce: tx.nonce,
                     compiled_class_hash: None,
                 }),
-                class_hash_hint: Some(class_hash.hash()),
+                class_hash_hint: Some(class_hash),
             }
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
@@ -213,6 +218,11 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                 .contract_class
                 .class_hash()
                 .map_err(|_| CallFailure::Internal("Failed to calculate class hash"))?;
+            use starknet_gateway_types::class_hash::ComputedClassHash;
+            let class_hash = match class_hash {
+                ComputedClassHash::Cairo(c) => ClassHash(c.0),
+                ComputedClassHash::Sierra(s) => ClassHash(s.0),
+            };
             TransactionAndClassHashHint {
                 transaction: add_transaction::AddTransaction::Declare(add_transaction::Declare {
                     version: tx.version,
@@ -227,7 +237,7 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
                     nonce: tx.nonce,
                     compiled_class_hash: Some(tx.compiled_class_hash),
                 }),
-                class_hash_hint: Some(class_hash.hash()),
+                class_hash_hint: Some(class_hash),
             }
         }
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx)) => {
@@ -439,55 +449,25 @@ type SubprocessExitInfo = (u32, Option<std::process::ExitStatus>, SubprocessExit
 
 #[cfg(test)]
 mod tests {
-    use super::{sub_process::launch_python, BlockHashNumberOrLatest};
+    use super::BlockHashNumberOrLatest;
     use crate::{
         cairo::ext_py::GasPriceSource,
         v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
     };
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, CallParam, CallResultValue,
-        Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, ContractNonce,
-        ContractRoot, ContractStateHash, EntryPoint, GasPrice, SequencerAddress, StarknetVersion,
-        StateCommitment, StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
+        felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam,
+        CallResultValue, Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
+        ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice, StateCommitment,
+        StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
-        insert_canonical_state_diff,
         types::state_update::{DeployedContract, StateDiff, StorageDiff},
-        CanonicalBlocksTable, ClassDefinitionsTable, ContractsStateTable, JournalMode,
-        StarknetBlock, StarknetBlocksTable, Storage,
+        JournalMode, Storage, Transaction,
     };
-    use rusqlite::params;
     use stark_hash::Felt;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
-
-    #[test_log::test(tokio::test)]
-    async fn start_with_wrong_database_schema_fails() {
-        let db_file = tempfile::NamedTempFile::new().unwrap();
-
-        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
-
-        {
-            let conn = s.connection().unwrap();
-            conn.execute("pragma user_version = 0", []).unwrap();
-        }
-
-        let (_work_tx, work_rx) = tokio::sync::mpsc::channel(1);
-        let work_rx = tokio::sync::Mutex::new(work_rx);
-        let (status_tx, _status_rx) = tokio::sync::mpsc::channel(1);
-        let (_shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
-
-        let err = launch_python(
-            db_file.path().into(),
-            work_rx.into(),
-            status_tx,
-            shutdown_rx,
-        )
-        .await;
-
-        println!("{:?}", err.unwrap_err());
-    }
 
     #[test_log::test(tokio::test)]
     async fn call_like_in_python_ten_times() {
@@ -568,16 +548,8 @@ mod tests {
         };
 
         let (_db_dir, storage, account_address, latest_block_hash, latest_block_number) =
-            test_storage_with_account();
+            test_storage_with_account(GasPrice(1));
         let db_path = storage.path();
-
-        let db_conn = storage.connection().unwrap();
-        db_conn
-            .execute(
-                "UPDATE starknet_blocks SET gas_price = ? where hash = ?",
-                params![1u128.to_be_bytes(), latest_block_hash],
-            )
-            .unwrap();
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
@@ -846,7 +818,7 @@ mod tests {
         jh.await.unwrap();
     }
 
-    fn deploy_test_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
+    fn deploy_test_contract_in_block_one(tx: &Transaction<'_>) -> ClassHash {
         let test_contract_definition =
             starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
         let test_contract_address = ContractAddress::new_or_panic(felt!(
@@ -863,38 +835,27 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO));
+            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO)).unwrap();
 
         storage_commitment_tree
             .set(test_contract_address, test_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree
-            .commit_and_persist_changes()
-            .unwrap();
+        let (storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
+        tx.insert_storage_trie(storage_commitment, &nodes).unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
-        let block = StarknetBlock {
-            number: BlockNumber::new_or_panic(1),
-            hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
-            state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-            timestamp: BlockTimestamp::new_or_panic(1),
-            gas_price: GasPrice(1),
-            sequencer_address: SequencerAddress(Felt::ZERO),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-
-        // create a block with the global root
-        StarknetBlocksTable::insert(
-            tx,
-            &block,
-            &StarknetVersion::default(),
-            storage_commitment,
-            class_commitment,
-        )
-        .unwrap();
-
-        CanonicalBlocksTable::insert(tx, block.number, block.hash).unwrap();
+        let header = BlockHeader::builder()
+            .with_number(BlockNumber::new_or_panic(1))
+            .with_state_commitment(StateCommitment::calculate(
+                storage_commitment,
+                class_commitment,
+            ))
+            .with_timestamp(BlockTimestamp::new_or_panic(1))
+            .with_gas_price(GasPrice(1))
+            .with_storage_commitment(storage_commitment)
+            .with_class_commitment(class_commitment)
+            .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
+        tx.insert_block_header(&header).unwrap();
 
         let state_diff = StateDiff {
             storage_diffs: storage_updates
@@ -915,12 +876,12 @@ mod tests {
             replaced_classes: vec![],
         };
 
-        insert_canonical_state_diff(tx, block.number, &state_diff).unwrap();
+        tx.insert_state_diff(header.number, &state_diff).unwrap();
 
         test_contract_class_hash
     }
 
-    fn deploy_account_contract_in_block_one(tx: &rusqlite::Transaction<'_>) -> ClassHash {
+    fn deploy_account_contract_in_block_one(tx: &Transaction<'_>) -> ClassHash {
         let account_contract_definition =
             starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
@@ -931,38 +892,27 @@ mod tests {
 
         // and then add the contract states to the global tree
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO));
+            StorageCommitmentTree::load(tx, StorageCommitment(Felt::ZERO)).unwrap();
 
         storage_commitment_tree
             .set(account_contract_address, account_contract_state_hash)
             .unwrap();
-        let storage_commitment = storage_commitment_tree
-            .commit_and_persist_changes()
-            .unwrap();
+        let (storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
+        tx.insert_storage_trie(storage_commitment, &nodes).unwrap();
         let class_commitment = ClassCommitment(Felt::ZERO);
 
-        let block = StarknetBlock {
-            number: BlockNumber::new_or_panic(1),
-            hash: BlockHash(felt_bytes!(b"some blockhash somewhere")),
-            state_commmitment: StateCommitment::calculate(storage_commitment, class_commitment),
-            timestamp: BlockTimestamp::new_or_panic(1),
-            gas_price: GasPrice(1),
-            sequencer_address: SequencerAddress(Felt::ZERO),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-
-        // create a block with the global root
-        StarknetBlocksTable::insert(
-            tx,
-            &block,
-            &StarknetVersion::default(),
-            storage_commitment,
-            class_commitment,
-        )
-        .unwrap();
-
-        CanonicalBlocksTable::insert(tx, block.number, block.hash).unwrap();
+        let header = BlockHeader::builder()
+            .with_number(BlockNumber::new_or_panic(1))
+            .with_state_commitment(StateCommitment::calculate(
+                storage_commitment,
+                class_commitment,
+            ))
+            .with_timestamp(BlockTimestamp::new_or_panic(1))
+            .with_gas_price(GasPrice(1))
+            .with_storage_commitment(storage_commitment)
+            .with_class_commitment(class_commitment)
+            .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
+        tx.insert_block_header(&header).unwrap();
 
         let state_diff = StateDiff {
             storage_diffs: vec![],
@@ -976,13 +926,13 @@ mod tests {
             replaced_classes: vec![],
         };
 
-        insert_canonical_state_diff(tx, block.number, &state_diff).unwrap();
+        tx.insert_state_diff(header.number, &state_diff).unwrap();
 
         account_contract_class_hash
     }
 
     fn deploy_contract(
-        tx: &rusqlite::Transaction<'_>,
+        tx: &Transaction<'_>,
         contract_definition: &[u8],
         storage_updates: &[(StorageAddress, StorageValue)],
     ) -> (ContractStateHash, ClassHash) {
@@ -993,7 +943,8 @@ mod tests {
         let class_hash = class_hash.hash();
 
         // create class
-        ClassDefinitionsTable::insert(tx, class_hash, contract_definition).unwrap();
+        tx.insert_cairo_class(class_hash, contract_definition)
+            .unwrap();
 
         // set up contract state tree
         let mut contract_state = ContractsStorageTree::load(tx, ContractRoot(Felt::ZERO));
@@ -1002,23 +953,23 @@ mod tests {
                 .set(*storage_address, *storage_value)
                 .unwrap();
         }
-        let contract_state_root = contract_state.commit_and_persist_changes().unwrap();
+        let (contract_root, nodes) = contract_state.commit().unwrap();
+        tx.insert_contract_trie(contract_root, &nodes).unwrap();
 
         let contract_nonce = ContractNonce(Felt::ZERO);
 
         let contract_state_hash =
             pathfinder_merkle_tree::contract_state::calculate_contract_state_hash(
                 class_hash,
-                contract_state_root,
+                contract_root,
                 contract_nonce,
             );
 
         // set up contract state table
-        ContractsStateTable::upsert(
-            tx,
+        tx.insert_contract_state(
             contract_state_hash,
             class_hash,
-            contract_state_root,
+            contract_root,
             contract_nonce,
         )
         .unwrap();

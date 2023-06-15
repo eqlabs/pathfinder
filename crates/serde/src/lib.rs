@@ -2,9 +2,8 @@
 
 use num_bigint::BigUint;
 use pathfinder_common::{
-    BlockNumber, CallParam, ConstructorParam, EthereumAddress, EventData, EventKey, GasPrice,
-    L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionSignatureElem,
-    TransactionVersion,
+    BlockNumber, CallParam, ConstructorParam, EthereumAddress, GasPrice, L1ToL2MessagePayloadElem,
+    L2ToL1MessagePayloadElem, TransactionSignatureElem, TransactionVersion,
 };
 use primitive_types::{H160, H256};
 use serde::de::Visitor;
@@ -25,20 +24,6 @@ serde_conv!(
     ConstructorParam,
     |serialize_me: &ConstructorParam| starkhash_to_dec_str(&serialize_me.0),
     |s: &str| starkhash_from_dec_str(s).map(ConstructorParam)
-);
-
-serde_conv!(
-    pub EventDataAsDecimalStr,
-    EventData,
-    |serialize_me: &EventData| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(EventData)
-);
-
-serde_conv!(
-    pub EventKeyAsDecimalStr,
-    EventKey,
-    |serialize_me: &EventKey| starkhash_to_dec_str(&serialize_me.0),
-    |s: &str| starkhash_from_dec_str(s).map(EventKey)
 );
 
 serde_conv!(

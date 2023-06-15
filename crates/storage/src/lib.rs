@@ -2,37 +2,32 @@
 //!
 //! Currently this consists of a Sqlite backend implementation.
 
-mod class;
+// This is intended for internal use only -- do not make public.
+mod prelude;
+
+mod connection;
+mod params;
 mod schema;
-mod state;
-mod state_update;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 pub mod types;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use class::{CasmClassTable, ClassCommitmentLeavesTable, ClassDefinitionsTable};
+pub use connection::*;
+
+use pathfinder_common::{BlockHash, BlockNumber};
 use rusqlite::functions::FunctionFlags;
-pub use state::{
-    CanonicalBlocksTable, ContractsStateTable, EventFilterError, L1StateTable, L1TableBlockId,
-    RefsTable, StarknetBlock, StarknetBlocksBlockId, StarknetBlocksNumberOrLatest,
-    StarknetBlocksTable, StarknetEmittedEvent, StarknetEventFilter, StarknetEventsTable,
-    StarknetTransactionsTable, V02KeyFilter, V03KeyFilter,
-};
-pub use state_update::insert_canonical_state_diff;
 
 use anyhow::Context;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
 
 /// Sqlite key used for the PRAGMA user version.
 const VERSION_KEY: &str = "user_version";
-
-type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 
 /// Specifies the [journal mode](https://sqlite.org/pragma.html#pragma_journal_mode)
 /// of the [Storage].
@@ -40,6 +35,44 @@ type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 pub enum JournalMode {
     Rollback,
     WAL,
+}
+
+/// Identifies a specific starknet block stored in the database.
+///
+/// Note that this excludes the `Pending` variant since we never store pending data
+/// in the database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockId {
+    Latest,
+    Number(BlockNumber),
+    Hash(BlockHash),
+}
+
+impl From<BlockHash> for BlockId {
+    fn from(value: BlockHash) -> Self {
+        Self::Hash(value)
+    }
+}
+
+impl From<BlockNumber> for BlockId {
+    fn from(value: BlockNumber) -> Self {
+        Self::Number(value)
+    }
+}
+
+impl TryFrom<pathfinder_common::BlockId> for BlockId {
+    type Error = &'static str;
+
+    fn try_from(value: pathfinder_common::BlockId) -> Result<Self, Self::Error> {
+        match value {
+            pathfinder_common::BlockId::Number(x) => Ok(BlockId::Number(x)),
+            pathfinder_common::BlockId::Hash(x) => Ok(BlockId::Hash(x)),
+            pathfinder_common::BlockId::Latest => Ok(BlockId::Latest),
+            pathfinder_common::BlockId::Pending => {
+                Err("Pending is invalid within the storage context")
+            }
+        }
+    }
 }
 
 /// Used to create [Connection's](Connection) to the pathfinder database.
@@ -92,9 +125,9 @@ impl Storage {
     }
 
     /// Returns a new Sqlite [Connection] to the database.
-    pub fn connection(&self) -> anyhow::Result<PooledConnection> {
+    pub fn connection(&self) -> anyhow::Result<Connection> {
         let conn = self.0.pool.get()?;
-        Ok(conn)
+        Ok(Connection::from_inner(conn))
     }
 
     /// Convenience function for tests to create an in-memory database.
@@ -175,7 +208,7 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
         .split(' ')
         // Convert only the first 256 elements so that the index fits into one u8
         // we will use as a prefix byte.
-        .take(crate::StarknetEventsTable::KEY_FILTER_LIMIT)
+        .take(connection::EVENT_KEY_FILTER_LIMIT)
         .enumerate()
         .map(|(index, key)| {
             let mut buf: [u8; 33] = [0u8; 33];
@@ -190,36 +223,67 @@ fn base64_felts_to_index_prefixed_base32_felts(base64_felts: &str) -> String {
 
 /// Migrates the database to the latest version. This __MUST__ be called
 /// at the beginning of the application.
-fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
-    let current_revision = schema_version(connection)?;
+fn migrate_database(connection: &mut rusqlite::Connection) -> anyhow::Result<()> {
+    let mut current_revision = schema_version(connection)?;
     let migrations = schema::migrations();
 
-    // Check that the database is not newer than this application knows of.
-    anyhow::ensure!(
-        current_revision <= migrations.len(),
-        "Database version is newer than this application ({} > {})",
-        current_revision,
-        migrations.len()
-    );
+    // The target version is the number of null migrations which have been replaced
+    // by the base schema + the new migrations built on top of that.
+    let latest_revision = schema::BASE_SCHEMA_REVISION + migrations.len();
 
-    // Early exit to prevent logging
-    if current_revision == migrations.len() {
+    // Apply the base schema if the database is new.
+    if current_revision == 0 {
+        let tx = connection
+            .transaction()
+            .context("Create database transaction")?;
+        schema::base_schema(&tx).context("Applying base schema")?;
+        tx.pragma_update(None, VERSION_KEY, schema::BASE_SCHEMA_REVISION)
+            .context("Failed to update the schema version number")?;
+        tx.commit().context("Commit migration transaction")?;
+
+        current_revision = schema::BASE_SCHEMA_REVISION;
+    }
+
+    // Skip migration if we already at latest.
+    if current_revision == latest_revision {
         tracing::info!(%current_revision, "No database migrations required");
         return Ok(());
     }
 
-    let latest_revision = migrations.len();
+    // Check for database version compatibility.
+    if current_revision < schema::BASE_SCHEMA_REVISION {
+        tracing::error!(
+            version=%current_revision,
+            limit=%schema::BASE_SCHEMA_REVISION,
+            "Database version is too old to migrate"
+        );
+        anyhow::bail!("Database version {current_revision} too old to migrate");
+    }
+
+    if current_revision > latest_revision {
+        tracing::error!(
+            version=%current_revision,
+            limit=%latest_revision,
+            "Database version is from a newer than this application expected"
+        );
+        anyhow::bail!(
+            "Database version {current_revision} is newer than this application expected {latest_revision}",
+        );
+    }
+
     let amount = latest_revision - current_revision;
     tracing::info!(%current_revision, %latest_revision, migrations=%amount, "Performing database migrations");
 
     // Sequentially apply each missing migration.
     migrations
         .iter()
-        .enumerate()
-        .skip(current_revision)
-        .try_for_each(|(from, migration)| {
+        .rev()
+        .take(amount)
+        .rev()
+        .try_for_each(|migration| {
             let mut do_migration = || -> anyhow::Result<()> {
-                let span = tracing::info_span!("db_migration", revision = from + 1);
+                current_revision += 1;
+                let span = tracing::info_span!("db_migration", revision = current_revision);
                 let _enter = span.enter();
 
                 let transaction = connection
@@ -227,7 +291,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
                     .context("Create database transaction")?;
                 migration(&transaction)?;
                 transaction
-                    .pragma_update(None, VERSION_KEY, from + 1)
+                    .pragma_update(None, VERSION_KEY, current_revision)
                     .context("Failed to update the schema version number")?;
                 transaction
                     .commit()
@@ -236,7 +300,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
                 Ok(())
             };
 
-            do_migration().with_context(|| format!("Migrating from {from}"))
+            do_migration().with_context(|| format!("Migrating to {current_revision}"))
         })?;
 
     Ok(())
@@ -244,7 +308,7 @@ fn migrate_database(connection: &mut Connection) -> anyhow::Result<()> {
 
 /// Returns the current schema version of the existing database,
 /// or `0` if database does not yet exist.
-fn schema_version(connection: &Connection) -> anyhow::Result<usize> {
+fn schema_version(connection: &rusqlite::Connection) -> anyhow::Result<usize> {
     // We store the schema version in the Sqlite provided PRAGMA "user_version",
     // which stores an INTEGER and defaults to 0.
     let version = connection.query_row(
@@ -277,7 +341,7 @@ mod tests {
         setup_connection(&mut conn).unwrap();
         migrate_database(&mut conn).unwrap();
         let version = schema_version(&conn).unwrap();
-        let expected = schema::migrations().len();
+        let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
         assert_eq!(version, expected);
     }
 
@@ -373,7 +437,7 @@ mod tests {
         let mut database = rusqlite::Connection::open(db_path).unwrap();
         migrate_database(&mut database).unwrap();
         let version = schema_version(&database).unwrap();
-        let expected = schema::migrations().len();
+        let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
 
         assert_eq!(version, expected, "RPC database fixture needs migrating");
     }

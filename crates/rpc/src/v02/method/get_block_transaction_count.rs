@@ -1,7 +1,6 @@
 use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::BlockId;
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetBlockTransactionCountInput {
@@ -17,9 +16,6 @@ pub async fn get_block_transaction_count(
     input: GetBlockTransactionCountInput,
 ) -> Result<BlockTransactionCount, GetBlockTransactionCountError> {
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
         BlockId::Pending => {
             if let Some(pending) = context.pending_data.as_ref() {
                 if let Some(block) = pending.block().await.as_ref() {
@@ -29,6 +25,7 @@ pub async fn get_block_transaction_count(
 
             return Ok(0);
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();
@@ -41,16 +38,17 @@ pub async fn get_block_transaction_count(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let block_transaction_count =
-            StarknetTransactionsTable::get_transaction_count(&tx, block_id)
-                .context("Reading transaction count from database")?;
+        let block_transaction_count = tx
+            .transaction_count(block_id)
+            .context("Reading transaction count from database")?;
 
         // Check if the value was 0 because there were no transactions, or because the block hash is invalid.
         if block_transaction_count == 0 {
-            // get_storage_commitment is cheaper than querying the full block.
-            let storage_commitment = StarknetBlocksTable::get_storage_commitment(&tx, block_id)
-                .context("Reading storage commitment from database")?;
-            return if storage_commitment.is_some() {
+            let header = tx
+                .block_header(block_id)
+                .context("Querying block existence")?;
+
+            return if header.is_some() {
                 Ok(0)
             } else {
                 Err(GetBlockTransactionCountError::BlockNotFound)

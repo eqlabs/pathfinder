@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
-use rusqlite::OptionalExtension;
 use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
@@ -17,15 +16,16 @@ pub async fn get_class(
     context: RpcContext,
     input: GetClassInput,
 ) -> Result<ContractClass, GetClassError> {
-    let block = match input.block_id {
+    let (block_id, is_pending) = match input.block_id {
         BlockId::Pending => {
-            if is_pending_class(&context.pending_data, input.class_hash).await {
-                BlockId::Pending
-            } else {
-                BlockId::Latest
-            }
+            let latest = pathfinder_storage::BlockId::Latest;
+            let is_pending = is_pending_class(&context.pending_data, input.class_hash).await;
+            (latest, is_pending)
         }
-        other => other,
+        other => (
+            other.try_into().expect("Only pending cast should fail"),
+            false,
+        ),
     };
 
     let span = tracing::Span::current();
@@ -37,27 +37,25 @@ pub async fn get_class(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        // Check that block exists.
-        use crate::utils::block_exists;
-        use pathfinder_storage::StarknetBlocksBlockId;
-        let exists = match block {
-            BlockId::Pending | BlockId::Latest => true,
-            BlockId::Hash(hash) => block_exists(&tx, StarknetBlocksBlockId::Hash(hash))?,
-            BlockId::Number(number) => block_exists(&tx, StarknetBlocksBlockId::Number(number))?,
-        };
-        if !exists {
+        // Check that block exists
+        let block_exists = tx.block_exists(block_id)?;
+        if !block_exists {
             return Err(GetClassError::BlockNotFound);
         }
 
-        let definition = match block {
-            BlockId::Pending => read_pending(&tx, input.class_hash),
-            BlockId::Number(number) => read_at_number(&tx, input.class_hash, number),
-            BlockId::Hash(hash) => read_at_hash(&tx, input.class_hash, hash),
-            BlockId::Latest => read_latest(&tx, input.class_hash),
-        }?;
+        // If the class is declared in the pending block, then we shouldn't check the class's
+        // declaration point.
+        let definition = if is_pending {
+            tx.class_definition(input.class_hash)
+        } else {
+            tx.class_definition_at(block_id, input.class_hash)
+        }
+        .context("Fetching class definition")?;
 
-        let definition =
-            zstd::decode_all(&*definition).context("Decompressing class definition")?;
+        let Some(definition) = definition else {
+            return Err(GetClassError::ClassHashNotFound);
+        };
+
         let class = ContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
 
@@ -65,73 +63,6 @@ pub async fn get_class(
     });
 
     jh.await.context("Reading class from database")?
-}
-
-/// Returns the class definition data.
-///
-/// This is useful only if you are already certain this class was declared.
-fn read_pending(
-    tx: &rusqlite::Transaction<'_>,
-    class: ClassHash,
-) -> Result<Vec<u8>, GetClassError> {
-    tx.query_row(
-        "SELECT definition FROM class_definitions WHERE hash=?",
-        rusqlite::params! { class },
-        |row| {
-            let def = row.get_ref_unwrap(0).as_blob()?.to_owned();
-            Ok(def)
-        },
-    )
-    .optional()
-    .context("Reading class definition from database")?
-    .ok_or(GetClassError::ClassHashNotFound)
-}
-
-/// Returns the class definition data iff it was declared on a canonical block.
-fn read_latest(tx: &rusqlite::Transaction<'_>, class: ClassHash) -> Result<Vec<u8>, GetClassError> {
-    // This works because declared_on is only set if the class was declared in a canonical block.
-    tx.query_row(
-        "SELECT definition FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
-        rusqlite::params! { class },
-        |row| row.get(0),
-    )
-    .optional()
-    .context("Reading class definition from database")?
-    .ok_or(GetClassError::ClassHashNotFound)
-}
-
-/// Returns the class definition data iff it was declared on or before the given block hash.
-/// The block hash provided must also form part of the canonical chain.
-fn read_at_hash(
-    tx: &rusqlite::Transaction<'_>,
-    class: ClassHash,
-    block: pathfinder_common::BlockHash,
-) -> Result<Vec<u8>, GetClassError> {
-    tx.query_row(
-        r"SELECT definition FROM class_definitions
-            WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
-        rusqlite::params! { class, block },
-        |row| row.get(0)
-    )
-    .optional()
-    .context("Reading class definition from database")?
-    .ok_or(GetClassError::ClassHashNotFound)
-}
-
-/// Returns the class definition data iff it was declared on or before the given block number.
-fn read_at_number(
-    tx: &rusqlite::Transaction<'_>,
-    class: ClassHash,
-    block: pathfinder_common::BlockNumber,
-) -> Result<Vec<u8>, GetClassError> {
-    tx.query_row(
-        r"SELECT definition FROM class_definitions WHERE hash=? AND block_number <= ?",
-        rusqlite::params! { class, block },
-        |row| row.get(0),
-    )
-    .optional()
-    .context("Reading class definition from database")?
-    .ok_or(GetClassError::ClassHashNotFound)
 }
 
 /// Returns true if the class is declared or deployed in the pending state.

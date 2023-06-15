@@ -186,15 +186,14 @@ pub struct TransactionStatus {
 pub mod transaction {
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
-        EntryPoint, EthereumAddress, EventData, EventKey, Fee, L1ToL2MessageNonce,
-        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, TransactionHash, TransactionIndex,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        EntryPoint, EthereumAddress, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
+        L2ToL1MessagePayloadElem, TransactionHash, TransactionIndex, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
-        EventDataAsDecimalStr, EventKeyAsDecimalStr, L1ToL2MessagePayloadElemAsDecimalStr,
-        L2ToL1MessagePayloadElemAsDecimalStr, TransactionSignatureElemAsDecimalStr,
-        TransactionVersionAsHexStr,
+        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
+        TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -279,25 +278,13 @@ pub mod transaction {
     pub struct Receipt {
         #[serde(default)]
         pub actual_fee: Option<Fee>,
-        pub events: Vec<Event>,
+        pub events: Vec<pathfinder_common::event::Event>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub execution_resources: Option<ExecutionResources>,
         pub l1_to_l2_consumed_message: Option<L1ToL2Message>,
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: TransactionHash,
         pub transaction_index: TransactionIndex,
-    }
-
-    /// Represents deserialized L2 transaction event data.
-    #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct Event {
-        #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
-        pub data: Vec<EventData>,
-        pub from_address: ContractAddress,
-        #[serde_as(as = "Vec<EventKeyAsDecimalStr>")]
-        pub keys: Vec<EventKey>,
     }
 
     /// Represents deserialized L2 transaction data.

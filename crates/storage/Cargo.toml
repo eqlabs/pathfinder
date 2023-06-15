@@ -26,14 +26,14 @@ r2d2_sqlite = "0.21.0"
 rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
-serde_with = "2.1.0"
+serde_with = { workspace = true }
 sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tracing = "0.1.37"
+tracing = { workspace = true }
 zstd = "0.12"
 
 [dev-dependencies]

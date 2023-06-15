@@ -1,11 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockNumber, TransactionHash};
-use pathfinder_storage::Storage;
-use rusqlite::OptionalExtension;
+use pathfinder_common::TransactionHash;
 use starknet_gateway_types::pending::PendingData;
 
 use crate::context::RpcContext;
-use crate::v02::common::get_block_status;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetGatewayTransactionInput {
@@ -17,11 +14,11 @@ crate::error::generate_rpc_error_subset!(GetGatewayTransactionError:);
 pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,
-) -> Result<GatewayStatus, GetGatewayTransactionError> {
+) -> Result<TransactionStatus, GetGatewayTransactionError> {
     // Check in pending block.
     if let Some(pending) = &context.pending_data {
         if is_pending_tx(pending, &input.transaction_hash).await {
-            return Ok(GatewayStatus::Pending);
+            return Ok(TransactionStatus::Pending);
         }
     }
 
@@ -30,13 +27,33 @@ pub async fn get_transaction_status(
 
     let db_status = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        check_database(&context.storage, &input.transaction_hash)
+
+        let mut db = context
+            .storage
+            .connection()
+            .context("Opening database connection")?;
+        let db_tx = db.transaction().context("Creating database transaction")?;
+        let block_hash = db_tx
+            .transaction_block_hash(input.transaction_hash)
+            .context("Fetching transaction block hash from database")?;
+
+        let Some(block_hash) = block_hash else {
+            return Ok(None);
+        };
+
+        let tx_status = db_tx
+            .block_is_l1_accepted(block_hash.into())
+            .context("Quering block's status")?;
+
+        anyhow::Ok(Some(tx_status))
     })
     .await
-    .context("Database read panic or shutting down")?
-    .context("Checking database for transaction")?;
-    if let Some(status) = db_status {
-        return Ok(status);
+    .context("Joining database task")??;
+
+    match db_status {
+        Some(true) => return Ok(TransactionStatus::AcceptedOnL1),
+        Some(false) => return Ok(TransactionStatus::AcceptedOnL2),
+        None => {}
     }
 
     // Check gateway for rejected transactions.
@@ -58,52 +75,8 @@ async fn is_pending_tx(pending: &PendingData, tx_hash: &TransactionHash) -> bool
         .unwrap_or_default()
 }
 
-fn check_database(
-    storage: &Storage,
-    transaction_hash: &TransactionHash,
-) -> anyhow::Result<Option<GatewayStatus>> {
-    let mut db = storage
-        .connection()
-        .context("Opening database connection")?;
-
-    let db_tx = db.transaction().context("Creating database transaction")?;
-
-    // Get the transaction from storage.
-    let block_number = db_tx
-        .query_row(
-            r"SELECT starknet_blocks.number FROM starknet_transactions 
-    JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
-    WHERE starknet_transactions.hash = ?",
-            [transaction_hash],
-            |row| {
-                let number = row.get_ref_unwrap(0).as_i64()?;
-                Ok(BlockNumber::new_or_panic(number as u64))
-            },
-        )
-        .optional()
-        .context("Fetching transaction's block number from database")?;
-
-    let block_number = match block_number {
-        Some(block_number) => block_number,
-        None => return anyhow::Ok(None),
-    };
-
-    let status =
-        get_block_status(&db_tx, block_number).context("Fetching block status from database")?;
-    use crate::v02::types::reply::BlockStatus;
-    let status = match status {
-        BlockStatus::Pending => GatewayStatus::Pending,
-        BlockStatus::AcceptedOnL2 => GatewayStatus::AcceptedOnL2,
-        BlockStatus::AcceptedOnL1 => GatewayStatus::AcceptedOnL1,
-        BlockStatus::Rejected => GatewayStatus::Rejected,
-    };
-
-    Ok(Some(status))
-}
-
-/// A local definition of the [gateway's status type](starknet_gateway_types::reply::Status) to decouple this from the official gateway types.
 #[derive(Copy, Clone, Debug, serde::Serialize, PartialEq)]
-pub enum GatewayStatus {
+pub enum TransactionStatus {
     #[serde(rename = "NOT_RECEIVED")]
     NotReceived,
     #[serde(rename = "RECEIVED")]
@@ -122,7 +95,7 @@ pub enum GatewayStatus {
     Aborted,
 }
 
-impl From<starknet_gateway_types::reply::Status> for GatewayStatus {
+impl From<starknet_gateway_types::reply::Status> for TransactionStatus {
     fn from(value: starknet_gateway_types::reply::Status) -> Self {
         use starknet_gateway_types::reply::Status;
         match value {
@@ -144,22 +117,42 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn database() {
+    #[tokio::test]
+    async fn l1_accepted() {
         let context = RpcContext::for_tests();
+        // This transaction is in block 0 which is L1 accepted.
+        let tx_hash = TransactionHash(felt_bytes!(b"txn 0"));
+        let input = GetGatewayTransactionInput {
+            transaction_hash: tx_hash,
+        };
+        let status = get_transaction_status(context, input).await.unwrap();
 
-        let status = check_database(&context.storage, &TransactionHash(felt_bytes!(b"txn 0")))
-            .unwrap()
-            .unwrap();
+        assert_eq!(status, TransactionStatus::AcceptedOnL1);
+    }
 
-        assert_eq!(status, GatewayStatus::AcceptedOnL2);
+    #[tokio::test]
+    async fn l2_accepted() {
+        let context = RpcContext::for_tests();
+        // This transaction is in block 1 which is not L1 accepted.
+        let tx_hash = TransactionHash(felt_bytes!(b"txn 1"));
+        let input = GetGatewayTransactionInput {
+            transaction_hash: tx_hash,
+        };
+        let status = get_transaction_status(context, input).await.unwrap();
+
+        assert_eq!(status, TransactionStatus::AcceptedOnL2);
     }
 
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
         let tx_hash = TransactionHash(felt_bytes!(b"pending tx hash 0"));
-        assert!(is_pending_tx(&context.pending_data.unwrap(), &tx_hash).await);
+        let input = GetGatewayTransactionInput {
+            transaction_hash: tx_hash,
+        };
+        let status = get_transaction_status(context, input).await.unwrap();
+
+        assert_eq!(status, TransactionStatus::Pending);
     }
 
     #[tokio::test]
@@ -173,6 +166,6 @@ mod tests {
         let context = RpcContext::for_tests();
         let status = get_transaction_status(context, input).await.unwrap();
 
-        assert_eq!(status, GatewayStatus::Rejected);
+        assert_eq!(status, TransactionStatus::Rejected);
     }
 }

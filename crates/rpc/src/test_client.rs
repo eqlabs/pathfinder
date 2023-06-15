@@ -80,7 +80,7 @@ pub struct TestClient {
 impl TestClient {
     /// Perform a request towards the server.
     ///
-    /// ```
+    /// ```rust, ignore
     /// use serde_json::json;
     /// let latest = client
     ///     .request::<Block>("starknet_getBlock", json!(["latest"]))

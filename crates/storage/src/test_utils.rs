@@ -1,12 +1,12 @@
-use super::{
-    StarknetBlock, StarknetBlocksTable, StarknetEmittedEvent, StarknetTransactionsTable, Storage,
-};
+use crate::EmittedEvent;
+
+use super::Storage;
 use pathfinder_common::{
-    felt, BlockHash, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
-    ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
-    EventKey, Fee, GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
-    TransactionCommitment, TransactionHash, TransactionIndex, TransactionNonce,
-    TransactionSignatureElem, TransactionVersion,
+    felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment,
+    ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment,
+    EventData, EventKey, Fee, GasPrice, SequencerAddress, StorageCommitment, TransactionCommitment,
+    TransactionHash, TransactionIndex, TransactionNonce, TransactionSignatureElem,
+    TransactionVersion,
 };
 use primitive_types::H256;
 use stark_hash::Felt;
@@ -27,30 +27,25 @@ pub const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
 
 /// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
 /// with arbitrary other values.
-pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
+pub(crate) fn create_blocks() -> [BlockHeader; NUM_BLOCKS] {
     (0..NUM_BLOCKS)
         .map(|i| {
             let storage_commitment =
                 StorageCommitment(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap());
             let class_commitment = ClassCommitment(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap());
             let index_as_felt = Felt::from_be_slice(&[i as u8]).unwrap();
-            BlockWithCommitment {
-                block: StarknetBlock {
-                    number: BlockNumber::GENESIS + i as u64,
-                    hash: BlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()),
-                    state_commmitment: StateCommitment::calculate(
-                        storage_commitment,
-                        class_commitment,
-                    ),
-                    timestamp: BlockTimestamp::new_or_panic(i as u64 + 500),
-                    gas_price: GasPrice::from(i as u64),
-                    sequencer_address: SequencerAddress(index_as_felt),
-                    transaction_commitment: Some(TransactionCommitment(index_as_felt)),
-                    event_commitment: Some(EventCommitment(index_as_felt)),
-                },
-                class_commitment,
-                storage_commitment,
-            }
+
+            BlockHeader::builder()
+                .with_number(BlockNumber::GENESIS + i as u64)
+                .with_timestamp(BlockTimestamp::new_or_panic(i as u64 + 500))
+                .with_class_commitment(class_commitment)
+                .with_storage_commitment(storage_commitment)
+                .with_calculated_state_commitment()
+                .with_gas_price(GasPrice::from(i as u64))
+                .with_sequencer_address(SequencerAddress(index_as_felt))
+                .with_transaction_commitment(TransactionCommitment(index_as_felt))
+                .with_event_commitment(EventCommitment(index_as_felt))
+                .finalize_with_hash(BlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()))
         })
         .collect::<Vec<_>>()
         .try_into()
@@ -117,7 +112,7 @@ pub(crate) fn create_transactions_and_receipts(
         let receipt = transaction::Receipt {
             actual_fee: None,
             events: if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
-                vec![transaction::Event {
+                vec![pathfinder_common::event::Event {
                     from_address: ContractAddress::new_or_panic(
                         Felt::from_hex_str(&"2".repeat(i + 3)).unwrap(),
                     ),
@@ -152,9 +147,9 @@ pub(crate) fn create_transactions_and_receipts(
 
 /// Creates a set of emitted events from given blocks and transactions.
 pub(crate) fn extract_events(
-    blocks: &[BlockWithCommitment],
+    blocks: &[BlockHeader],
     transactions_and_receipts: &[(transaction::Transaction, transaction::Receipt)],
-) -> Vec<StarknetEmittedEvent> {
+) -> Vec<EmittedEvent> {
     transactions_and_receipts
         .iter()
         .enumerate()
@@ -163,12 +158,12 @@ pub(crate) fn extract_events(
                 let event = &receipt.events[0];
                 let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
 
-                Some(StarknetEmittedEvent {
+                Some(EmittedEvent {
                     data: event.data.clone(),
                     from_address: event.from_address,
                     keys: event.keys.clone(),
-                    block_hash: block.block.hash,
-                    block_number: block.block.number,
+                    block_hash: block.hash,
+                    block_number: block.number,
                     transaction_hash: txn.hash(),
                 })
             } else {
@@ -179,44 +174,26 @@ pub(crate) fn extract_events(
 }
 
 pub struct TestData {
-    pub blocks: Vec<BlockWithCommitment>,
+    pub headers: Vec<BlockHeader>,
     pub transactions: Vec<transaction::Transaction>,
     pub receipts: Vec<Receipt>,
-    pub events: Vec<StarknetEmittedEvent>,
+    pub events: Vec<EmittedEvent>,
 }
 
-#[derive(Clone, Debug)]
-pub struct BlockWithCommitment {
-    pub block: StarknetBlock,
-    pub storage_commitment: StorageCommitment,
-    pub class_commitment: ClassCommitment,
-}
-
-/// Creates a storage instance in memory with a set of expected emitted event
+// Creates a storage instance in memory with a set of expected emitted event
 pub fn setup_test_storage() -> (Storage, TestData) {
-    use crate::CanonicalBlocksTable;
-
     let storage = Storage::in_memory().unwrap();
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
 
-    let blocks = create_blocks();
+    let headers = create_blocks();
     let transactions_and_receipts = create_transactions_and_receipts();
 
-    for (i, block) in blocks.iter().enumerate() {
-        StarknetBlocksTable::insert(
-            &tx,
-            &block.block,
-            &StarknetVersion::default(),
-            block.storage_commitment,
-            block.class_commitment,
-        )
-        .unwrap();
-        CanonicalBlocksTable::insert(&tx, block.block.number, block.block.hash).unwrap();
-        StarknetTransactionsTable::upsert(
-            &tx,
-            block.block.hash,
-            block.block.number,
+    for (i, header) in headers.iter().enumerate() {
+        tx.insert_block_header(header).unwrap();
+        tx.insert_transaction_data(
+            header.hash,
+            header.number,
             &transactions_and_receipts
                 [i * TRANSACTIONS_PER_BLOCK..(i + 1) * TRANSACTIONS_PER_BLOCK],
         )
@@ -225,13 +202,13 @@ pub fn setup_test_storage() -> (Storage, TestData) {
 
     tx.commit().unwrap();
 
-    let events = extract_events(&blocks, &transactions_and_receipts);
+    let events = extract_events(&headers, &transactions_and_receipts);
     let (transactions, receipts): (Vec<_>, Vec<_>) = transactions_and_receipts.into_iter().unzip();
 
     (
         storage,
         TestData {
-            blocks: blocks.to_vec(),
+            headers: headers.to_vec(),
             transactions,
             receipts,
             events,

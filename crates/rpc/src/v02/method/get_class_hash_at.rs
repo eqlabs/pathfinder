@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use pathfinder_storage::StarknetBlocksBlockId;
 use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassHashAtError: BlockNotFound, ContractNotFound);
@@ -22,15 +21,13 @@ pub async fn get_class_hash_at(
     input: GetClassHashAtInput,
 ) -> Result<GetClassHashOutput, GetClassHashAtError> {
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
         BlockId::Pending => {
             match get_pending_class_hash(context.pending_data, input.contract_address).await {
                 Some(class_hash) => return Ok(GetClassHashOutput(class_hash)),
-                None => StarknetBlocksBlockId::Latest,
+                None => pathfinder_storage::BlockId::Latest,
             }
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let span = tracing::Span::current();
@@ -44,23 +41,14 @@ pub async fn get_class_hash_at(
         let tx = db.transaction().context("Creating database transaction")?;
 
         // Check for block existence.
-        if !crate::utils::block_exists(&tx, block_id)? {
+        if !tx.block_exists(block_id)? {
             return Err(GetClassHashAtError::BlockNotFound);
         }
 
-        match block_id {
-            StarknetBlocksBlockId::Number(number) => {
-                database::class_hash_at_block_number(&tx, input.contract_address, number)
-            }
-            StarknetBlocksBlockId::Hash(hash) => {
-                database::class_hash_at_block_hash(&tx, input.contract_address, hash)
-            }
-            StarknetBlocksBlockId::Latest => {
-                database::class_hash_at_latest_block(&tx, input.contract_address)
-            }
-        }?
-        .ok_or(GetClassHashAtError::ContractNotFound)
-        .map(GetClassHashOutput)
+        tx.contract_class_hash(block_id, input.contract_address)
+            .context("Fetching class hash from database")?
+            .ok_or(GetClassHashAtError::ContractNotFound)
+            .map(GetClassHashOutput)
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -83,59 +71,6 @@ async fn get_pending_class_hash(
                 .iter()
                 .find_map(|contract| (contract.address == address).then_some(contract.class_hash)))
     })
-}
-
-mod database {
-    use pathfinder_common::{BlockHash, BlockNumber};
-    use rusqlite::{OptionalExtension, Transaction};
-
-    use super::*;
-
-    pub fn class_hash_at_latest_block(
-        tx: &Transaction<'_>,
-        contract: ContractAddress,
-    ) -> anyhow::Result<Option<ClassHash>> {
-        tx.query_row(
-            r"SELECT class_hash FROM contract_updates WHERE contract_address = ?
-                ORDER BY block_number DESC LIMIT 1",
-            [contract],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Querying database for class hash at latest block")
-    }
-
-    pub fn class_hash_at_block_number(
-        tx: &Transaction<'_>,
-        contract: ContractAddress,
-        block_number: BlockNumber,
-    ) -> anyhow::Result<Option<ClassHash>> {
-        tx.query_row(
-            r"SELECT class_hash FROM contract_updates WHERE contract_address = ? AND
-                block_number <= ? ORDER BY block_number DESC LIMIT 1",
-            rusqlite::params![contract, block_number],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Querying database for class hash at block number")
-    }
-
-    pub fn class_hash_at_block_hash(
-        tx: &Transaction<'_>,
-        contract: ContractAddress,
-        block_hash: BlockHash,
-    ) -> anyhow::Result<Option<ClassHash>> {
-        tx.query_row(
-            r"SELECT class_hash FROM contract_updates JOIN canonical_blocks ON (contract_updates.block_number = canonical_blocks.number)
-                WHERE contract_address = ? AND
-                block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)
-                ORDER BY block_number DESC LIMIT 1",
-            rusqlite::params![contract, block_hash],
-            |row| row.get(0),
-        )
-        .optional()
-        .context("Querying database for class hash at block hash")
-    }
 }
 
 #[cfg(test)]

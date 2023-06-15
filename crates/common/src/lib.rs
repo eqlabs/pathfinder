@@ -8,9 +8,15 @@ use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
 pub mod consts;
+pub mod event;
+pub mod hash;
+mod header;
 mod macros;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+pub mod trie;
+
+pub use header::{BlockHeader, BlockHeaderBuilder};
 
 /// The address of a Starknet contract.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
@@ -48,7 +54,7 @@ macros::starkhash251::newtype!(CasmHash);
 macros::starkhash251::deserialization!(CasmHash);
 
 /// The root of a class commitment tree.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Default)]
 pub struct ClassCommitment(pub Felt);
 
 macros::starkhash251::newtype!(ClassCommitment);
@@ -164,18 +170,17 @@ impl StateCommitment {
 /// The commitment for all contracts' storage of a Starknet block.
 ///
 /// Before Starknet v0.11.0 this was equivalent to [StateCommitment].
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct StorageCommitment(pub Felt);
 
 /// A Starknet block hash.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Hash)]
 pub struct BlockHash(pub Felt);
 
 /// A Starknet block number.
 #[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
 pub struct BlockNumber(u64);
 
-macros::i64_backed_u64::to_from_sql!(BlockNumber);
 macros::i64_backed_u64::new_get_partialeq!(BlockNumber);
 macros::i64_backed_u64::serdes!(BlockNumber);
 
@@ -194,10 +199,9 @@ impl std::iter::Iterator for BlockNumber {
 }
 
 /// The timestamp of a Starknet block.
-#[derive(Copy, Debug, Clone, PartialEq, Eq)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, Default)]
 pub struct BlockTimestamp(u64);
 
-macros::i64_backed_u64::to_from_sql!(BlockTimestamp);
 macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
 macros::i64_backed_u64::serdes!(BlockTimestamp);
 
@@ -217,7 +221,6 @@ pub struct TransactionHash(pub Felt);
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TransactionIndex(u64);
 
-macros::i64_backed_u64::to_from_sql!(TransactionIndex);
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
 macros::i64_backed_u64::serdes!(TransactionIndex);
 
@@ -246,7 +249,7 @@ pub struct EventData(pub Felt);
 pub struct EventKey(pub Felt);
 
 /// Starknet sequencer address.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct SequencerAddress(pub Felt);
 
 /// Starknet fee value.
@@ -254,7 +257,7 @@ pub struct SequencerAddress(pub Felt);
 pub struct Fee(pub Felt);
 
 /// Starknet gas price.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct GasPrice(pub u128);
 
 // Starknet transaction nonce.
@@ -498,12 +501,6 @@ impl From<String> for StarknetVersion {
     }
 }
 
-macros::starkhash::common_newtype_with_compressed_sql!(
-    ContractNonce,
-    StorageValue,
-    TransactionNonce
-);
-
 macros::starkhash::common_newtype!(
     ByteCodeOffset,
     CallParam,
@@ -515,6 +512,7 @@ macros::starkhash::common_newtype!(
     ConstructorParam,
     ContractAddress,
     ContractAddressSalt,
+    ContractNonce,
     ContractStateHash,
     ContractRoot,
     EntryPoint,
@@ -532,7 +530,9 @@ macros::starkhash::common_newtype!(
     StateCommitment,
     StorageAddress,
     StorageCommitment,
+    StorageValue,
     TransactionCommitment,
+    TransactionNonce,
     TransactionSignatureElem,
 );
 

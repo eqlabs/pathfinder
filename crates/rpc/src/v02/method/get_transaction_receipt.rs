@@ -1,8 +1,7 @@
 use crate::context::RpcContext;
-use crate::v02::common::get_block_status;
+use crate::v02::types::reply::BlockStatus;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use pathfinder_storage::{StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionReceiptInput {
@@ -46,31 +45,36 @@ pub async fn get_transaction_receipt(
 
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        match StarknetTransactionsTable::get_transaction_with_receipt(
-            &db_tx,
-            input.transaction_hash,
-        )
-        .context("Reading transaction receipt from database")?
-        {
-            Some((transaction, receipt, block_hash)) => {
-                // We require the block status here as well..
-                let block_number = StarknetBlocksTable::get_number(&db_tx, block_hash)
-                    .context("Reading block from database")?
-                    .context("Block missing from database")?;
-                let block_status = get_block_status(&db_tx, block_number)?;
+        let (transaction, receipt, block_hash) = db_tx
+            .transaction_with_receipt(input.transaction_hash)
+            .context("Reading transaction receipt from database")?
+            .ok_or(GetTransactionReceiptError::TxnHashNotFound)?;
 
-                Ok(types::MaybePendingTransactionReceipt::Normal(
-                    types::TransactionReceipt::with_block_data(
-                        receipt,
-                        block_status,
-                        block_hash,
-                        block_number,
-                        transaction,
-                    ),
-                ))
-            }
-            None => Err(GetTransactionReceiptError::TxnHashNotFound),
-        }
+        let block_number = db_tx
+            .block_id(block_hash.into())
+            .context("Querying block number")?
+            .context("Block number info missing")?
+            .0;
+
+        let l1_accepted = db_tx
+            .block_is_l1_accepted(block_number.into())
+            .context("Quering block status")?;
+
+        let block_status = if l1_accepted {
+            BlockStatus::AcceptedOnL1
+        } else {
+            BlockStatus::AcceptedOnL2
+        };
+
+        Ok(types::MaybePendingTransactionReceipt::Normal(
+            types::TransactionReceipt::with_block_data(
+                receipt,
+                block_status,
+                block_hash,
+                block_number,
+                transaction,
+            ),
+        ))
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -373,8 +377,8 @@ mod types {
         pub data: Vec<EventData>,
     }
 
-    impl From<starknet_gateway_types::reply::transaction::Event> for Event {
-        fn from(e: starknet_gateway_types::reply::transaction::Event) -> Self {
+    impl From<pathfinder_common::event::Event> for Event {
+        fn from(e: pathfinder_common::event::Event) -> Self {
             Self {
                 from_address: e.from_address,
                 keys: e.keys,
@@ -623,7 +627,7 @@ mod tests {
                     common: CommonTransactionReceiptProperties {
                         transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
                         actual_fee: Fee::ZERO,
-                        status: TransactionStatus::AcceptedOnL2,
+                        status: TransactionStatus::AcceptedOnL1,
                         block_hash: BlockHash(felt_bytes!(b"genesis")),
                         block_number: BlockNumber::new_or_panic(0),
                         messages_sent: vec![],

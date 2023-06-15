@@ -10,7 +10,6 @@ mod module;
 mod pathfinder;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_client;
-mod utils;
 pub mod v02;
 pub mod v03;
 pub mod websocket;
@@ -162,17 +161,15 @@ impl Default for SyncState {
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
+    use pathfinder_common::event::Event;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
-        ContractAddress, ContractAddressSalt, EntryPoint, EventData, EventKey, GasPrice,
-        SequencerAddress, StarknetVersion, StateCommitment, StorageAddress, StorageCommitment,
-        TransactionHash, TransactionIndex, TransactionVersion,
+        felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash,
+        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData,
+        EventKey, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StorageAddress,
+        StorageCommitment, TransactionHash, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
-    use pathfinder_storage::{
-        insert_canonical_state_diff, CanonicalBlocksTable, ClassDefinitionsTable, StarknetBlock,
-        StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
-    };
+    use pathfinder_storage::{BlockId, Storage};
     use primitive_types::H256;
     use stark_hash::Felt;
     use starknet_gateway_types::{
@@ -181,7 +178,7 @@ pub mod test_utils {
             state_update::{ReplacedClass, StorageDiff},
             transaction::{
                 execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                DeployTransaction, EntryPointType, Event, ExecutionResources, InvokeTransaction,
+                DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
                 InvokeTransactionV0, Receipt, Transaction,
             },
         },
@@ -257,13 +254,27 @@ pub mod test_utils {
         let sierra_class_definition =
             starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
 
-        ClassDefinitionsTable::insert(&db_txn, class0_hash, &class0_definition).unwrap();
-        ClassDefinitionsTable::insert(&db_txn, class1_hash, class1_definition).unwrap();
-        ClassDefinitionsTable::insert(&db_txn, class2_hash, &sierra_class_definition).unwrap();
-        ClassDefinitionsTable::insert(&db_txn, class_hash_pending, &class0_definition).unwrap();
+        db_txn
+            .insert_cairo_class(class0_hash, &class0_definition)
+            .unwrap();
+        db_txn
+            .insert_cairo_class(class1_hash, class1_definition)
+            .unwrap();
+        db_txn
+            .insert_sierra_class(
+                &SierraHash(class2_hash.0),
+                &sierra_class_definition,
+                &CasmHash(felt_bytes!(b"non-existent")),
+                &[],
+                "compiler version 123",
+            )
+            .unwrap();
+        db_txn
+            .insert_cairo_class(class_hash_pending, &class0_definition)
+            .unwrap();
 
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
+            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
@@ -276,11 +287,13 @@ pub mod test_utils {
         storage_commitment_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment0 = storage_commitment_tree
-            .commit_and_persist_changes()
+        let (storage_commitment0, nodes) = storage_commitment_tree.commit().unwrap();
+        db_txn
+            .insert_storage_trie(storage_commitment0, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, storage_commitment0).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
@@ -305,11 +318,13 @@ pub mod test_utils {
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment1 = storage_commitment_tree
-            .commit_and_persist_changes()
+        let (storage_commitment1, nodes) = storage_commitment_tree.commit().unwrap();
+        db_txn
+            .insert_storage_trie(storage_commitment1, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, storage_commitment1).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
@@ -334,71 +349,39 @@ pub mod test_utils {
         storage_commitment_tree
             .set(contract2_addr, contract_state_hash)
             .unwrap();
-        let storage_commitment2 = storage_commitment_tree
-            .commit_and_persist_changes()
+        let (storage_commitment2, nodes) = storage_commitment_tree.commit().unwrap();
+        db_txn
+            .insert_storage_trie(storage_commitment2, &nodes)
             .unwrap();
 
-        let genesis_hash = BlockHash(felt_bytes!(b"genesis"));
-        let block0 = StarknetBlock {
-            number: BlockNumber::GENESIS,
-            hash: genesis_hash,
-            state_commmitment: StateCommitment::calculate(storage_commitment0, class_commitment0),
-            timestamp: BlockTimestamp::new_or_panic(0),
-            gas_price: GasPrice::ZERO,
-            sequencer_address: SequencerAddress(Felt::ZERO),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-        let block1_hash = BlockHash(felt_bytes!(b"block 1"));
-        let block1 = StarknetBlock {
-            number: BlockNumber::new_or_panic(1),
-            hash: block1_hash,
-            state_commmitment: StateCommitment::calculate(storage_commitment1, class_commitment1),
-            timestamp: BlockTimestamp::new_or_panic(1),
-            gas_price: GasPrice::from(1),
-            sequencer_address: SequencerAddress(felt_bytes!(&[1u8])),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-        let latest_hash = BlockHash(felt_bytes!(b"latest"));
-        let block2 = StarknetBlock {
-            number: BlockNumber::new_or_panic(2),
-            hash: latest_hash,
-            state_commmitment: StateCommitment::calculate(storage_commitment2, class_commitment2),
-            timestamp: BlockTimestamp::new_or_panic(2),
-            gas_price: GasPrice::from(2),
-            sequencer_address: SequencerAddress(felt_bytes!(&[2u8])),
-            transaction_commitment: None,
-            event_commitment: None,
-        };
-        StarknetBlocksTable::insert(
-            &db_txn,
-            &block0,
-            &StarknetVersion::default(),
-            storage_commitment0,
-            class_commitment0,
-        )
-        .unwrap();
-        StarknetBlocksTable::insert(
-            &db_txn,
-            &block1,
-            &StarknetVersion::default(),
-            storage_commitment1,
-            class_commitment1,
-        )
-        .unwrap();
-        StarknetBlocksTable::insert(
-            &db_txn,
-            &block2,
-            &StarknetVersion::default(),
-            storage_commitment2,
-            class_commitment2,
-        )
-        .unwrap();
+        let header0 = BlockHeader::builder()
+            .with_number(BlockNumber::GENESIS)
+            .with_storage_commitment(storage_commitment0)
+            .with_class_commitment(class_commitment0)
+            .with_calculated_state_commitment()
+            .finalize_with_hash(BlockHash(felt_bytes!(b"genesis")));
+        let header1 = header0
+            .child_builder()
+            .with_timestamp(BlockTimestamp::new_or_panic(1))
+            .with_storage_commitment(storage_commitment1)
+            .with_class_commitment(class_commitment1)
+            .with_calculated_state_commitment()
+            .with_gas_price(GasPrice::from(1))
+            .with_sequencer_address(SequencerAddress(felt_bytes!(&[1u8])))
+            .finalize_with_hash(BlockHash(felt_bytes!(b"block 1")));
+        let header2 = header1
+            .child_builder()
+            .with_timestamp(BlockTimestamp::new_or_panic(2))
+            .with_storage_commitment(storage_commitment2)
+            .with_class_commitment(class_commitment2)
+            .with_calculated_state_commitment()
+            .with_gas_price(GasPrice::from(2))
+            .with_sequencer_address(SequencerAddress(felt_bytes!(&[2u8])))
+            .finalize_with_hash(BlockHash(felt_bytes!(b"latest")));
 
-        CanonicalBlocksTable::insert(&db_txn, block0.number, block0.hash).unwrap();
-        CanonicalBlocksTable::insert(&db_txn, block1.number, block1.hash).unwrap();
-        CanonicalBlocksTable::insert(&db_txn, block2.number, block2.hash).unwrap();
+        db_txn.insert_block_header(&header0).unwrap();
+        db_txn.insert_block_header(&header1).unwrap();
+        db_txn.insert_block_header(&header2).unwrap();
 
         let txn0_hash = TransactionHash(felt_bytes!(b"txn 0"));
         // TODO introduce other types of transactions too
@@ -470,16 +453,28 @@ pub mod test_utils {
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
         let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
-        StarknetTransactionsTable::upsert(&db_txn, block0.hash, block0.number, &transaction_data0)
+        db_txn
+            .insert_transaction_data(header0.hash, header0.number, &transaction_data0)
             .unwrap();
-        StarknetTransactionsTable::upsert(&db_txn, block1.hash, block1.number, &transaction_data1)
+        db_txn
+            .insert_transaction_data(header1.hash, header1.number, &transaction_data1)
             .unwrap();
-        StarknetTransactionsTable::upsert(&db_txn, block2.hash, block2.number, &transaction_data2)
+        db_txn
+            .insert_transaction_data(header2.hash, header2.number, &transaction_data2)
             .unwrap();
 
-        insert_canonical_state_diff(&db_txn, block0.number, &state_diff0).unwrap();
-        insert_canonical_state_diff(&db_txn, block1.number, &state_diff1).unwrap();
-        insert_canonical_state_diff(&db_txn, block2.number, &state_diff2).unwrap();
+        db_txn
+            .insert_state_diff(header0.number, &state_diff0)
+            .unwrap();
+        db_txn
+            .insert_state_diff(header1.number, &state_diff1)
+            .unwrap();
+        db_txn
+            .insert_state_diff(header2.number, &state_diff2)
+            .unwrap();
+
+        // Mark block 0 as L1 accepted.
+        db_txn.update_l1_l2_pointer(Some(header0.number)).unwrap();
 
         db_txn.commit().unwrap();
         storage
@@ -497,7 +492,7 @@ pub mod test_utils {
             let mut db = storage2.connection().unwrap();
             let tx = db.transaction().unwrap();
 
-            StarknetBlocksTable::get(&tx, StarknetBlocksBlockId::Latest)
+            tx.block_header(BlockId::Latest)
                 .unwrap()
                 .expect("Storage should contain a latest block")
         })
@@ -637,7 +632,8 @@ pub mod test_utils {
             let class_definition =
                 starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
             for deployed in deployed_contracts {
-                ClassDefinitionsTable::insert(&tx, deployed.class_hash, class_definition).unwrap();
+                tx.insert_cairo_class(deployed.class_hash, class_definition)
+                    .unwrap();
             }
             tx.commit().unwrap();
         })
@@ -645,7 +641,7 @@ pub mod test_utils {
         .unwrap();
 
         let state_update = starknet_gateway_types::reply::PendingStateUpdate {
-            old_root: latest.state_commmitment,
+            old_root: latest.state_commitment,
             state_diff,
         };
 

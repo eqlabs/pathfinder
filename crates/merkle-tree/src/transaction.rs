@@ -2,6 +2,8 @@ use bitvec::view::BitView;
 use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
+use pathfinder_common::hash::PedersenHash;
+use pathfinder_common::trie::TrieNode;
 
 /// A (Patricia Merkle tree)[MerkleTree] which can be used to calculate transaction or event commitments.
 ///
@@ -11,7 +13,7 @@ use crate::tree::MerkleTree;
 ///
 /// More information about these commitments can be found in the Starknet [documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Blocks/header/).
 pub struct TransactionOrEventTree {
-    tree: MerkleTree<crate::PedersenHash, 64>,
+    tree: MerkleTree<PedersenHash, 64>,
 }
 
 impl Default for TransactionOrEventTree {
@@ -26,9 +28,7 @@ impl Default for TransactionOrEventTree {
 struct NullStorage;
 
 impl crate::storage::Storage for NullStorage {
-    type Error = std::convert::Infallible;
-
-    fn get(&self, _node: &Felt) -> Result<Option<crate::Node>, Self::Error> {
+    fn get(&self, _node: &Felt) -> anyhow::Result<Option<TrieNode>> {
         Ok(None)
     }
 }

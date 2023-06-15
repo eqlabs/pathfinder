@@ -1,6 +1,5 @@
 use crate::module::Module;
 
-pub mod common;
 pub mod method;
 pub mod types;
 

@@ -39,7 +39,6 @@ pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
 primitive-types = "0.12.1"
 reqwest = { version = "0.11.13", features = ["json"] }
-rusqlite = { version = "0.28.0", features = ["bundled"] }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
@@ -51,7 +50,7 @@ thiserror = "1.0.40"
 time = { version = "0.3.20", features = ["macros"] }
 tokio = { workspace = true, features = ["process"] }
 toml = "0.5.9"
-tracing = "0.1.37"
+tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "time"] }
 url = "2.3.1"
 warp = "0.3.3"
@@ -69,15 +68,11 @@ pathfinder-rpc = { path = "../rpc", features = ["test-utils"] }
 pathfinder-storage = { path = "../storage", features = ["test-utils"] }
 pretty_assertions = "1.3.0"
 rand = "0.8"
-serde_with = "2.1.0"
+serde_with = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["test-util"] }
 zstd = "0.12"
-
-[[bench]]
-name = "merkle_tree"
-harness = false
 
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }

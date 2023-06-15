@@ -18,7 +18,7 @@ primitive-types = "0.12.1"
 reqwest = "0.11.13"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
-serde_with = "2.1.0"
+serde_with = { workspace = true }
 sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }

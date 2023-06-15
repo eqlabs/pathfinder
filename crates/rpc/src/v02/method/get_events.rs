@@ -1,10 +1,7 @@
 use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::{
-    EventFilterError, StarknetBlocksNumberOrLatest, StarknetBlocksTable, StarknetEventFilter,
-    StarknetEventsTable, V02KeyFilter,
-};
+use pathfinder_storage::{EventFilter, EventFilterError, V02KeyFilter};
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -18,14 +15,14 @@ crate::error::generate_rpc_error_subset!(
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Clone))]
 pub struct GetEventsInput {
-    filter: EventFilter,
+    filter: InputFilter,
 }
 
 /// Contains event filter parameters passed to `starknet_getEvents`.
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct EventFilter {
+pub struct InputFilter {
     #[serde(default)]
     pub from_block: Option<BlockId>,
     #[serde(default)]
@@ -145,7 +142,7 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
-        let filter = StarknetEventFilter {
+        let filter = EventFilter {
             from_block,
             to_block,
             contract_address: request.address,
@@ -156,7 +153,7 @@ pub async fn get_events(
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
         // for errors related to query parameters.
-        let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
+        let page = transaction.events(&filter).map_err(|e| {
             if e.downcast_ref::<EventFilterError>().is_some() {
                 GetEventsError::PageSizeTooBig
             } else {
@@ -168,13 +165,7 @@ pub async fn get_events(
         // More specifically, we need some database event count in order to page through
         // the pending events properly.
         let event_count = if request.to_block == Some(Pending) && page.events.is_empty() {
-            let count = StarknetEventsTable::event_count(
-                &transaction,
-                from_block,
-                to_block,
-                request.address,
-                &keys,
-            )?;
+            let count = transaction.event_count(from_block, to_block, request.address, &keys)?;
 
             Some(count)
         } else {
@@ -188,12 +179,11 @@ pub async fn get_events(
         // indeed the latest block in storage. Replace pending data if it is invalid, or not required.
         let pending_block = match (request.to_block, pending_block) {
             (Some(Pending), Some(pending_block)) => {
-                let latest = StarknetBlocksTable::get_hash(
-                    &transaction,
-                    StarknetBlocksNumberOrLatest::Latest,
-                )
-                .context("Querying latest block hash")?
-                .context("Latest block hash is missing")?;
+                let latest = transaction
+                    .block_id(pathfinder_storage::BlockId::Latest)
+                    .context("Querying latest block hash")?
+                    .context("Latest block hash is missing")?
+                    .1;
 
                 (pending_block.parent_hash == latest).then_some(pending_block)
             }
@@ -266,15 +256,17 @@ pub async fn get_events(
 // This block id specifies the upper end of the range, so pending/latest/None means
 // there's no upper limit.
 fn map_to_block_to_number(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: Option<BlockId>,
 ) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;
 
     match block {
         Some(Hash(hash)) => {
-            let number =
-                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(pathfinder_storage::BlockId::Hash(hash))?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
 
             Ok(Some(number))
         }
@@ -288,22 +280,26 @@ fn map_to_block_to_number(
 // This block id specifies the lower end of the range, so pending/latest means
 // a lower limit here.
 fn map_from_block_to_number(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: Option<BlockId>,
 ) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;
 
     match block {
         Some(Hash(hash)) => {
-            let number =
-                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(pathfinder_storage::BlockId::Hash(hash))?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
 
             Ok(Some(number))
         }
         Some(Number(number)) => Ok(Some(number)),
         Some(Pending) | Some(Latest) => {
-            let number =
-                StarknetBlocksTable::get_latest_number(tx)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(pathfinder_storage::BlockId::Latest)?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
             Ok(Some(number))
         }
         None => Ok(None),
@@ -403,7 +399,6 @@ mod types {
     use pathfinder_common::{
         BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
     };
-    use pathfinder_storage::StarknetEmittedEvent;
     use serde::Serialize;
 
     /// Describes an emitted event returned by starknet_getEvents
@@ -426,8 +421,8 @@ mod types {
         pub transaction_hash: TransactionHash,
     }
 
-    impl From<StarknetEmittedEvent> for EmittedEvent {
-        fn from(event: StarknetEmittedEvent) -> Self {
+    impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
+        fn from(event: pathfinder_storage::EmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,
@@ -463,7 +458,7 @@ mod tests {
 
     #[test]
     fn parsing() {
-        let optional_present = EventFilter {
+        let optional_present = InputFilter {
             from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
             to_block: Some(BlockId::Latest),
             address: Some(ContractAddress::new_or_panic(felt!("0x1"))),
@@ -471,7 +466,7 @@ mod tests {
             chunk_size: 3,
             continuation_token: Some("4".to_string()),
         };
-        let optional_absent = EventFilter {
+        let optional_absent = InputFilter {
             from_block: None,
             to_block: None,
             address: None,
@@ -532,7 +527,7 @@ mod tests {
         let (context, events) = setup();
 
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: None,
                 to_block: None,
                 address: None,
@@ -562,7 +557,7 @@ mod tests {
             continuation_token: None,
         };
         let mut input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: Some(expected_event.block_number.unwrap().into()),
                 to_block: Some(expected_event.block_number.unwrap().into()),
                 address: Some(expected_event.from_address),
@@ -587,7 +582,7 @@ mod tests {
 
         const BLOCK_NUMBER: usize = 2;
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
                 to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
                 address: None,
@@ -616,7 +611,7 @@ mod tests {
 
         const LATEST_BLOCK_NUMBER: usize = 3;
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: Some(BlockId::Latest),
                 to_block: Some(BlockId::Latest),
                 address: None,
@@ -644,12 +639,12 @@ mod tests {
         let (context, _) = setup();
 
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: None,
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };
@@ -666,7 +661,7 @@ mod tests {
         let keys_for_expected_events: Vec<_> = expected_events.iter().map(|e| e.keys[0]).collect();
 
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: None,
                 to_block: None,
                 address: None,
@@ -685,7 +680,7 @@ mod tests {
         );
 
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: None,
                 to_block: None,
                 address: None,
@@ -704,7 +699,7 @@ mod tests {
         );
 
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: None,
                 to_block: None,
                 address: None,
@@ -724,7 +719,7 @@ mod tests {
 
         // nonexistent page
         let input = GetEventsInput {
-            filter: EventFilter {
+            filter: InputFilter {
                 from_block: None,
                 to_block: None,
                 address: None,
@@ -748,7 +743,7 @@ mod tests {
             let context = RpcContext::for_tests_with_pending().await;
 
             let input = GetEventsInput {
-                filter: EventFilter {
+                filter: InputFilter {
                     from_block: Some(BlockId::Pending),
                     to_block: Some(BlockId::Latest),
                     address: None,
@@ -766,7 +761,7 @@ mod tests {
             let context = RpcContext::for_tests_with_pending().await;
 
             let input0 = GetEventsInput {
-                filter: EventFilter {
+                filter: InputFilter {
                     from_block: None,
                     to_block: Some(BlockId::Latest),
                     address: None,
@@ -804,7 +799,7 @@ mod tests {
             let context = RpcContext::for_tests_with_pending().await;
 
             let mut input = GetEventsInput {
-                filter: EventFilter {
+                filter: InputFilter {
                     from_block: None,
                     to_block: Some(BlockId::Pending),
                     address: None,
@@ -859,7 +854,7 @@ mod tests {
             context.pending_data = Some(pending);
 
             let all_non_pending_filter = GetEventsInput {
-                filter: EventFilter {
+                filter: InputFilter {
                     from_block: None,
                     to_block: Some(BlockId::Latest),
                     address: None,

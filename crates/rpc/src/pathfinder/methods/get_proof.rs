@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use pathfinder_common::trie::TrieNode;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -7,9 +8,7 @@ use pathfinder_common::{
     BlockId, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
     StateCommitment, StorageAddress,
 };
-use pathfinder_merkle_tree::Node;
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
-use pathfinder_storage::{ContractsStateTable, StarknetBlocksBlockId, StarknetBlocksTable};
 use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -50,9 +49,9 @@ struct PathWrapper {
     len: usize,
 }
 
-/// Wrapper around [`Vec<Node>`] as we don't control [Node] in this crate.
+/// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this crate.
 #[derive(Debug)]
-pub struct ProofNodes(Vec<Node>);
+pub struct ProofNodes(Vec<TrieNode>);
 
 impl Serialize for ProofNodes {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -63,7 +62,7 @@ impl Serialize for ProofNodes {
         let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
 
         for node in &self.0 {
-            struct SerProofNode<'a>(&'a Node);
+            struct SerProofNode<'a>(&'a TrieNode);
 
             impl Serialize for SerProofNode<'_> {
                 fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -71,7 +70,7 @@ impl Serialize for ProofNodes {
                     S: serde::Serializer,
                 {
                     match self.0 {
-                        Node::Binary { left, right } => {
+                        TrieNode::Binary { left, right } => {
                             let mut state = serializer.serialize_struct_variant(
                                 "proof_node",
                                 0,
@@ -82,7 +81,7 @@ impl Serialize for ProofNodes {
                             state.serialize_field("right", &right)?;
                             state.end()
                         }
-                        Node::Edge { child, path } => {
+                        TrieNode::Edge { child, path } => {
                             let value = Felt::from_bits(path).unwrap();
                             let path = PathWrapper {
                                 value,
@@ -156,14 +155,12 @@ pub async fn get_proof(
     }
 
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
         BlockId::Pending => {
             return Err(GetProofError::Internal(anyhow!(
                 "'pending' is not currently supported by this method!"
             )))
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();
@@ -179,12 +176,11 @@ pub async fn get_proof(
 
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let (storage_commitment, class_commitment) =
-            StarknetBlocksTable::get_state_commitment(&tx, block_id)
-                .context("Get state commitment for block")?
-                // Since the db query succeeded in execution, we can now report if the block hash was indeed not found
-                // by using a dedicated error code from the RPC API spec
-                .ok_or(GetProofError::BlockNotFound)?;
+        let (storage_commitment, class_commitment) = tx
+            .block_header(block_id)
+            .context("Fetching block header")?
+            .map(|header| (header.storage_commitment, header.class_commitment))
+            .ok_or(GetProofError::BlockNotFound)?;
 
         let (state_commitment, class_commitment) = if class_commitment == ClassCommitment::ZERO {
             (None, None)
@@ -198,7 +194,8 @@ pub async fn get_proof(
             )
         };
 
-        let storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&tx, storage_commitment).context("Loading storage trie")?;
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
@@ -218,17 +215,17 @@ pub async fn get_proof(
             }
         };
 
-        let (contract_state_root, class_hash, nonce) =
-            ContractsStateTable::get_root_class_hash_and_nonce(&tx, contract_state_hash)
-                .context("Get contract state root and nonce")?
-                // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
-                .ok_or_else(|| -> GetProofError {
-                    anyhow::anyhow!(
-                        "Root or nonce missing for state_hash={}",
-                        contract_state_hash
-                    )
-                    .into()
-                })?;
+        let (contract_state_root, class_hash, nonce) = tx
+            .contract_state(contract_state_hash)
+            .context("Get contract state root and nonce")?
+            // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
+            .ok_or_else(|| -> GetProofError {
+                anyhow::anyhow!(
+                    "Root or nonce missing for state_hash={}",
+                    contract_state_hash
+                )
+                .into()
+            })?;
 
         let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
 

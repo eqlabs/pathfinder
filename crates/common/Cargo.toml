@@ -12,11 +12,12 @@ test-utils = ["dep:metrics"]
 anyhow = { workspace = true }
 bitvec = "0.20.4"
 metrics = { version = "0.20.1", optional = true }
+num-bigint = { version = "0.4.3", features = ["serde"] }
 primitive-types = { version = "0.12.1", features = ["serde"] }
-rusqlite = { version = "0.28.0", features = ["bundled"] }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_with = { workspace = true }
 sha3 = "0.10"
 stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }

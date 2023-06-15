@@ -46,9 +46,10 @@
 
 use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
 use crate::storage::Storage;
-use crate::Hash;
 use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
+use pathfinder_common::hash::FeltHash;
+use pathfinder_common::trie::TrieNode;
 use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -56,21 +57,21 @@ use std::{cell::RefCell, rc::Rc};
 
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
-pub struct MerkleTree<H: Hash, const HEIGHT: usize> {
+pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
     root: Rc<RefCell<InternalNode>>,
     _hasher: std::marker::PhantomData<H>,
 }
 
 /// The result of committing a [MerkleTree]. Contains the new root and any
 /// new nodes added in this update.
-pub struct Update {
+pub struct TrieUpdate {
     pub root: Felt,
     /// New nodes added. Note that these may contain false positives if the
     /// mutations resulted in removing and then re-adding the same nodes within the tree.
-    pub added: HashMap<Felt, crate::Node>,
+    pub nodes: HashMap<Felt, TrieNode>,
 }
 
-impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
+impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn new(root: Felt) -> Self {
         let root_node = Rc::new(RefCell::new(InternalNode::Unresolved(root)));
         Self {
@@ -83,19 +84,19 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Self::new(Felt::ZERO)
     }
 
-    /// Commits all tree mutations and returns the [changes](Update) to the tree.
-    pub fn commit(mut self) -> anyhow::Result<Update> {
+    /// Commits all tree mutations and returns the [changes](TrieUpdate) to the tree.
+    pub fn commit(mut self) -> anyhow::Result<TrieUpdate> {
         self.commit_mut()
     }
 
-    pub fn commit_mut(&mut self) -> anyhow::Result<Update> {
+    pub fn commit_mut(&mut self) -> anyhow::Result<TrieUpdate> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = HashMap::new();
         Self::commit_subtree(&mut self.root.borrow_mut(), &mut added)?;
         // unwrap is safe as `commit_subtree` will set the hash.
         let root = self.root.borrow().hash().unwrap();
 
-        Ok(Update { root, added })
+        Ok(TrieUpdate { root, nodes: added })
     }
 
     /// Persists any changes in this subtree to storage.
@@ -107,7 +108,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// In effect, the entire subtree gets persisted.
     fn commit_subtree(
         node: &mut InternalNode,
-        added: &mut HashMap<Felt, crate::Node>,
+        added: &mut HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<()> {
         use InternalNode::*;
         match node {
@@ -124,7 +125,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // unwrap is safe as `commit_subtree` will set the hashes.
                 let left = binary.left.borrow().hash().unwrap();
                 let right = binary.right.borrow().hash().unwrap();
-                let persisted_node = crate::Node::Binary { left, right };
+                let persisted_node = TrieNode::Binary { left, right };
                 // unwrap is safe as we just set the hash.
                 added.insert(binary.hash.unwrap(), persisted_node);
             }
@@ -136,7 +137,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
                 // unwrap is safe as `commit_subtree` will set the hash.
                 let child = edge.child.borrow().hash().unwrap();
-                let persisted_node = crate::Node::Edge {
+                let persisted_node = TrieNode::Edge {
                     path: edge.path.clone(),
                     child,
                 };
@@ -388,7 +389,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Generates a merkle-proof for a given `key`.
     ///
-    /// Returns vector of [`crate::Node`] which form a chain from the root to the key,
+    /// Returns vector of [`TrieNode`] which form a chain from the root to the key,
     /// if it exists, or down to the node which proves that the key does not exist.
     ///
     /// The nodes are returned in order, root first.
@@ -401,7 +402,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         &self,
         storage: &impl Storage,
         key: &BitSlice<Msb0, u8>,
-    ) -> anyhow::Result<Vec<crate::Node>> {
+    ) -> anyhow::Result<Vec<TrieNode>> {
         let mut nodes = self.traverse(storage, key)?;
 
         // Return an empty list if tree is empty.
@@ -418,11 +419,11 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Ok(nodes
             .iter()
             .map(|node| match &*node.borrow() {
-                InternalNode::Binary(bin) => crate::Node::Binary {
+                InternalNode::Binary(bin) => TrieNode::Binary {
                     left: bin.left.borrow().hash().expect("Node should be committed"),
                     right: bin.right.borrow().hash().expect("Node should be committed"),
                 },
-                InternalNode::Edge(edge) => crate::Node::Edge {
+                InternalNode::Edge(edge) => TrieNode::Edge {
                     child: edge
                         .child
                         .borrow()
@@ -503,7 +504,7 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         if height == HEIGHT {
             #[cfg(debug_assertions)]
             match storage.get(&hash)? {
-                Some(crate::Node::Edge { .. } | crate::Node::Binary { .. }) | None => {
+                Some(TrieNode::Edge { .. } | TrieNode::Binary { .. }) | None => {
                     // some cases are because of collisions, none is the common outcome
                 }
             }
@@ -515,13 +516,13 @@ impl<H: Hash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             .with_context(|| format!("Node at height {height} does not exist: {hash}"))?;
 
         let node = match node {
-            crate::Node::Binary { left, right } => InternalNode::Binary(BinaryNode {
+            TrieNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
                 hash: Some(hash),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Unresolved(left))),
                 right: Rc::new(RefCell::new(InternalNode::Unresolved(right))),
             }),
-            crate::Node::Edge { child, path } => InternalNode::Edge(EdgeNode {
+            TrieNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
                 hash: Some(hash),
                 height,
                 path,
@@ -673,35 +674,32 @@ pub enum Visit {
 
 #[cfg(test)]
 mod tests {
-    use crate::PedersenHash;
+    use pathfinder_common::hash::PedersenHash;
 
     use super::*;
     use bitvec::prelude::*;
     use pathfinder_common::felt;
 
     type TestTree = MerkleTree<PedersenHash, 251>;
-    crate::define_sqlite_storage!(TestStorage, "test");
 
-    impl<'tx> TestStorage<'tx> {
-        /// Creates and in-memory [TestStorage] - includes table creation.
-        fn create(transaction: &'tx rusqlite::Transaction<'tx>) -> Self {
-            transaction
-                .execute("CREATE TABLE test (hash BLOB PRIMARY KEY, data BLOB)", [])
-                .unwrap();
+    #[derive(Default)]
+    struct TestStorage(HashMap<Felt, TrieNode>);
 
-            Self(transaction)
+    impl Storage for TestStorage {
+        fn get(&self, node: &Felt) -> anyhow::Result<Option<TrieNode>> {
+            Ok(self.0.get(node).cloned())
         }
     }
 
     /// Commits the tree changes and persists them to storage.
-    fn commit_and_persist<H: Hash, const HEIGHT: usize>(
+    fn commit_and_persist<H: FeltHash, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
-        storage: &TestStorage<'_>,
+        storage: &mut TestStorage,
     ) -> Felt {
         let update = tree.commit().unwrap();
 
-        for (hash, node) in update.added {
-            storage.insert(&hash, &node).unwrap();
+        for (hash, node) in update.nodes {
+            storage.0.insert(hash, node);
         }
 
         update.root
@@ -709,10 +707,8 @@ mod tests {
 
     #[test]
     fn get_empty() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
         let uut = TestTree::empty();
-        let storage = TestStorage::create(&transaction);
+        let storage = TestStorage::default();
 
         let key = felt!("0x99cadc82").view_bits().to_bitvec();
         assert_eq!(uut.get(&storage, &key).unwrap(), None);
@@ -723,10 +719,8 @@ mod tests {
 
         #[test]
         fn set_get() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
@@ -747,10 +741,8 @@ mod tests {
 
         #[test]
         fn overwrite() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key = felt!("0x123").view_bits().to_bitvec();
             let old_value = felt!("0xabc");
@@ -768,10 +760,8 @@ mod tests {
 
         #[test]
         fn single_leaf() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key = felt!("0x123").view_bits().to_bitvec();
             let value = felt!("0xabc");
@@ -805,10 +795,8 @@ mod tests {
             let value0 = felt!("0xabc");
             let value1 = felt!("0xdef");
 
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             uut.set(&storage, &key0, value0).unwrap();
             uut.set(&storage, &key1, value1).unwrap();
@@ -869,10 +857,8 @@ mod tests {
             let value0 = felt!("0xabc");
             let value1 = felt!("0xdef");
 
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             uut.set(&storage, &key0, value0).unwrap();
             uut.set(&storage, &key1, value1).unwrap();
@@ -919,10 +905,8 @@ mod tests {
             let value0 = felt!("0xabc");
             let value1 = felt!("0xdef");
 
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             uut.set(&storage, &key0, value0).unwrap();
             uut.set(&storage, &key1, value1).unwrap();
@@ -972,10 +956,8 @@ mod tests {
 
         #[test]
         fn empty() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key = felt!("0x123abc").view_bits().to_bitvec();
             uut.delete_leaf(&storage, &key).unwrap();
@@ -985,10 +967,8 @@ mod tests {
 
         #[test]
         fn single_insert_and_removal() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key = felt!("0x123").view_bits().to_bitvec();
             let value = felt!("0xabc");
@@ -1002,10 +982,8 @@ mod tests {
 
         #[test]
         fn three_leaves_and_one_removal() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
@@ -1032,10 +1010,8 @@ mod tests {
 
         #[test]
         fn set() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
@@ -1049,7 +1025,7 @@ mod tests {
             uut.set(&storage, &key1, val1).unwrap();
             uut.set(&storage, &key2, val2).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
 
             let uut = TestTree::new(root);
 
@@ -1064,10 +1040,8 @@ mod tests {
             // by the merge code not resolving unresolved nodes. This meant that
             // unresolved edge nodes would not get merged with the parent edge node
             // causing a malformed tree.
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             let leaves = [
                 (
@@ -1097,23 +1071,20 @@ mod tests {
                 let key = key.view_bits();
                 uut.set(&storage, key, *val).unwrap();
             }
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
             let mut uut = TestTree::new(root);
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&storage, &key, val).unwrap();
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let expect = felt!("0x5f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
             assert_eq!(root, expect);
         }
 
         #[test]
         fn consecutive_roots() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
             let key2 = felt!("0x8975").view_bits().to_bitvec();
@@ -1123,17 +1094,17 @@ mod tests {
             let val2 = felt!("0x3");
 
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
             uut.set(&storage, &key0, val0).unwrap();
-            let root0 = commit_and_persist(uut, &storage);
+            let root0 = commit_and_persist(uut, &mut storage);
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key1, val1).unwrap();
-            let root1 = commit_and_persist(uut, &storage);
+            let root1 = commit_and_persist(uut, &mut storage);
 
             let mut uut = TestTree::new(root1);
             uut.set(&storage, &key2, val2).unwrap();
-            let root2 = commit_and_persist(uut, &storage);
+            let root2 = commit_and_persist(uut, &mut storage);
 
             let uut = TestTree::new(root0);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
@@ -1153,9 +1124,6 @@ mod tests {
 
         #[test]
         fn parallel_roots() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-
             let key0 = felt!("0x99cadc82").view_bits().to_bitvec();
             let key1 = felt!("0x901823").view_bits().to_bitvec();
             let key2 = felt!("0x8975").view_bits().to_bitvec();
@@ -1165,17 +1133,17 @@ mod tests {
             let val2 = felt!("0x3");
 
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
             uut.set(&storage, &key0, val0).unwrap();
-            let root0 = commit_and_persist(uut, &storage);
+            let root0 = commit_and_persist(uut, &mut storage);
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key1, val1).unwrap();
-            let root1 = commit_and_persist(uut, &storage);
+            let root1 = commit_and_persist(uut, &mut storage);
 
             let mut uut = TestTree::new(root0);
             uut.set(&storage, &key2, val2).unwrap();
-            let root2 = commit_and_persist(uut, &storage);
+            let root2 = commit_and_persist(uut, &mut storage);
 
             let uut = TestTree::new(root0);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
@@ -1195,22 +1163,20 @@ mod tests {
 
         #[test]
         fn multiple_identical_roots() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             let key = felt!("0x99cadc82").view_bits().to_bitvec();
             let val = felt!("0x12345678");
             uut.set(&storage, &key, val).unwrap();
 
-            let root0 = commit_and_persist(uut, &storage);
+            let root0 = commit_and_persist(uut, &mut storage);
 
             let uut = TestTree::new(root0);
-            let root1 = commit_and_persist(uut, &storage);
+            let root1 = commit_and_persist(uut, &mut storage);
 
             let uut = TestTree::new(root1);
-            let root2 = commit_and_persist(uut, &storage);
+            let root2 = commit_and_persist(uut, &mut storage);
 
             assert_eq!(root0, root1);
             assert_eq!(root0, root2);
@@ -1225,10 +1191,8 @@ mod tests {
         fn simple() {
             // Test data created from Starknet cairo wrangling.
 
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             uut.set(&storage, felt!("0x1").view_bits(), felt!("0x0"))
                 .unwrap();
@@ -1239,7 +1203,7 @@ mod tests {
             uut.set(&storage, felt!("0x87").view_bits(), felt!("0x2"))
                 .unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
 
             assert_eq!(
                 root,
@@ -1277,11 +1241,9 @@ mod tests {
             ];
 
             // create test database
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
 
             let mut tree = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             for (key, val) in leaves {
                 let key = key.view_bits();
@@ -1308,10 +1270,8 @@ mod tests {
 
         #[test]
         fn empty_tree() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &InternalNode, path: &BitSlice<Msb0, u8>| {
@@ -1324,10 +1284,8 @@ mod tests {
 
         #[test]
         fn one_leaf() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key = felt!("0x1");
             let value = felt!("0x2");
@@ -1360,10 +1318,8 @@ mod tests {
 
         #[test]
         fn two_leaves() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key_left = felt!("0x0");
             let value_left = felt!("0x2");
@@ -1413,10 +1369,8 @@ mod tests {
 
         #[test]
         fn three_leaves() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let storage = TestStorage::default();
 
             let key_a = felt!("0x10");
             let value_a = felt!("0xa");
@@ -1509,13 +1463,13 @@ mod tests {
     mod proofs {
         use crate::storage::Storage;
         use crate::tree::tests::commit_and_persist;
-        use crate::PedersenHash;
+        use pathfinder_common::hash::{FeltHash, PedersenHash};
+        use pathfinder_common::trie::TrieNode;
 
         use super::{Direction, MerkleTree, TestStorage, TestTree};
         use bitvec::prelude::Msb0;
         use bitvec::slice::BitSlice;
         use pathfinder_common::felt;
-        use rusqlite::Transaction;
         use stark_hash::Felt;
 
         #[derive(Debug, PartialEq, Eq)]
@@ -1545,7 +1499,7 @@ mod tests {
             root: Felt,
             key: &BitSlice<Msb0, u8>,
             value: Felt,
-            proofs: &[crate::Node],
+            proofs: &[TrieNode],
         ) -> Option<Membership> {
             // Protect from ill-formed keys
             if key.len() != 251 {
@@ -1561,7 +1515,7 @@ mod tests {
                     return None;
                 }
                 match proof_node {
-                    crate::Node::Binary { left, right } => {
+                    TrieNode::Binary { left, right } => {
                         // Direction will always correspond to the 0th index
                         // because we're removing bits on every iteration.
                         let direction = Direction::from(remaining_path[0]);
@@ -1576,7 +1530,7 @@ mod tests {
                         // Advance by a single bit
                         remaining_path = &remaining_path[1..];
                     }
-                    crate::Node::Edge { child, path } => {
+                    TrieNode::Edge { child, path } => {
                         if path != &remaining_path[..path.len()] {
                             // If paths don't match, we've found a proof of non membership because we:
                             // 1. Correctly moved towards the target insofar as is possible, and
@@ -1604,19 +1558,19 @@ mod tests {
         }
 
         /// Structure representing a randomly generated tree.
-        struct RandomTree<'tx> {
+        struct RandomTree {
             keys: Vec<Felt>,
             values: Vec<Felt>,
             root: Felt,
             tree: MerkleTree<PedersenHash, 251>,
-            storage: TestStorage<'tx>,
+            storage: TestStorage,
         }
 
-        impl<'tx> RandomTree<'tx> {
+        impl RandomTree {
             /// Creates a new random tree with `len` key / value pairs.
-            fn new(len: usize, transaction: &'tx Transaction<'tx>) -> Self {
+            fn new(len: usize) -> Self {
                 let mut uut = TestTree::empty();
-                let storage = TestStorage::create(transaction);
+                let mut storage = TestStorage::default();
 
                 // Create random keys
                 let keys: Vec<Felt> = gen_random_hashes(len);
@@ -1629,7 +1583,7 @@ mod tests {
                     .zip(values.iter())
                     .for_each(|(k, v)| uut.set(&storage, k.view_bits(), *v).unwrap());
 
-                let root = commit_and_persist(uut, &storage);
+                let root = commit_and_persist(uut, &mut storage);
                 let tree = TestTree::new(root);
 
                 Self {
@@ -1642,7 +1596,7 @@ mod tests {
             }
 
             /// Calls `get_proof` and `verify_proof` on every key/value pair in the random_tree.
-            fn verify(&self) {
+            fn verify(&mut self) {
                 let keys_bits: Vec<&BitSlice<Msb0, u8>> =
                     self.keys.iter().map(|k| k.view_bits()).collect();
                 let proofs = get_proofs(&keys_bits, &self.tree, &self.storage).unwrap();
@@ -1658,20 +1612,18 @@ mod tests {
         }
 
         /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
-        fn get_proofs<H: crate::Hash, const HEIGHT: usize>(
+        fn get_proofs<H: FeltHash, const HEIGHT: usize>(
             keys: &'_ [&BitSlice<Msb0, u8>],
             tree: &MerkleTree<H, HEIGHT>,
             storage: &impl Storage,
-        ) -> anyhow::Result<Vec<Vec<crate::Node>>> {
+        ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
             keys.iter().map(|k| tree.get_proof(storage, k)).collect()
         }
 
         #[test]
         fn simple_binary() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //   (250, 0, x1)
             //        |
@@ -1691,7 +1643,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
 
             let uut = TestTree::new(root);
 
@@ -1704,10 +1656,8 @@ mod tests {
 
         #[test]
         fn double_binary() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //           (249,0,x3)
             //               |
@@ -1734,7 +1684,7 @@ mod tests {
             uut.set(&storage, key2, value_2).unwrap();
             uut.set(&storage, key3, value_3).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1750,10 +1700,8 @@ mod tests {
 
         #[test]
         fn left_edge() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //  (251,0x00,0x99)
             //       /
@@ -1769,7 +1717,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1779,10 +1727,8 @@ mod tests {
 
         #[test]
         fn left_right_edge() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //  (251,0xff,0xaa)
             //     /
@@ -1798,7 +1744,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1808,10 +1754,8 @@ mod tests {
 
         #[test]
         fn right_most_edge() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //  (251,0x7fff...,0xbb)
             //          \
@@ -1827,7 +1771,7 @@ mod tests {
 
             uut.set(&storage, key1, value_1).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1837,10 +1781,8 @@ mod tests {
 
         #[test]
         fn binary_root() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //           (0, 0, x)
             //    /                    \
@@ -1861,7 +1803,7 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let uut = TestTree::new(root);
 
             let proofs = get_proofs(&keys, &uut, &storage).unwrap();
@@ -1891,20 +1833,14 @@ mod tests {
         #[test]
         fn random_tree() {
             const LEN: usize = 256;
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
-            let random_tree = RandomTree::new(LEN, &transaction);
-
-            random_tree.verify();
+            RandomTree::new(LEN).verify();
         }
 
         #[test]
         fn non_membership() {
             const LEN: usize = 256;
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
 
-            let random_tree = RandomTree::new(LEN, &transaction);
+            let random_tree = RandomTree::new(LEN);
 
             // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
             let keys_set: std::collections::HashSet<&Felt> = random_tree.keys.iter().collect();
@@ -1930,10 +1866,8 @@ mod tests {
         #[test]
         fn invalid_values() {
             const LEN: usize = 256;
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
 
-            let random_tree = RandomTree::new(LEN, &transaction);
+            let random_tree = RandomTree::new(LEN);
 
             // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
             let values_set: std::collections::HashSet<&Felt> = random_tree.values.iter().collect();
@@ -1960,10 +1894,8 @@ mod tests {
 
         #[test]
         fn modified_binary_left() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //           (0, 0, x)
             //    /                    \
@@ -1984,14 +1916,14 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let uut = TestTree::new(root);
 
             let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
 
             // Modify the left hash
             let new_node = match &proofs[0][0] {
-                crate::Node::Binary { right, .. } => crate::Node::Binary {
+                TrieNode::Binary { right, .. } => TrieNode::Binary {
                     left: felt!("0x42"),
                     right: *right,
                 },
@@ -2005,10 +1937,8 @@ mod tests {
 
         #[test]
         fn modified_edge_child() {
-            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-            let transaction = conn.transaction().unwrap();
             let mut uut = TestTree::empty();
-            let storage = TestStorage::create(&transaction);
+            let mut storage = TestStorage::default();
 
             //           (0, 0, x)
             //    /                    \
@@ -2029,14 +1959,14 @@ mod tests {
             uut.set(&storage, key1, value_1).unwrap();
             uut.set(&storage, key2, value_2).unwrap();
 
-            let root = commit_and_persist(uut, &storage);
+            let root = commit_and_persist(uut, &mut storage);
             let uut = TestTree::new(root);
 
             let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
 
             // Modify the child hash
             let new_node = match &proofs[0][1] {
-                crate::Node::Edge { path, .. } => crate::Node::Edge {
+                TrieNode::Edge { path, .. } => TrieNode::Edge {
                     child: felt!("0x42"),
                     path: path.clone(),
                 },
@@ -2051,10 +1981,8 @@ mod tests {
 
     #[test]
     fn dfs_on_leaf_to_binary_collision_tree() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        let transaction = conn.transaction().unwrap();
         let mut uut = TestTree::empty();
-        let storage = TestStorage::create(&transaction);
+        let mut storage = TestStorage::default();
 
         let value = felt!("0x1");
         let key0 = felt!("0xee00").view_bits().to_bitvec();
@@ -2067,7 +1995,7 @@ mod tests {
         uut.set(&storage, &key0, value).unwrap();
         uut.set(&storage, &key1, value).unwrap();
 
-        let root = commit_and_persist(uut, &storage);
+        let root = commit_and_persist(uut, &mut storage);
 
         let uut = TestTree::new(root);
         // this used to panic because it did find the binary on dev profile with the leaf hash

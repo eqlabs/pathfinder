@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionIndex};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByBlockIdAndIndexInput {
@@ -26,12 +25,10 @@ pub async fn get_transaction_by_block_id_and_index(
         .map_err(|_| GetTransactionByBlockIdAndIndexError::InvalidTxnIndex)?;
 
     let block_id = match input.block_id {
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
         BlockId::Pending => {
             return get_transaction_from_pending(&context.pending_data, index).await
         }
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();
@@ -46,20 +43,21 @@ pub async fn get_transaction_by_block_id_and_index(
         let db_tx = db.transaction().context("Creating database transaction")?;
 
         // Get the transaction from storage.
-        match StarknetTransactionsTable::get_transaction_at_block(&db_tx, block_id, index)
+        match db_tx
+            .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
             Some(transaction) => Ok(transaction.into()),
             None => {
                 // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                 // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
-                //
-                // get_storage_commitment is cheaper than querying the full block.
-                match StarknetBlocksTable::get_storage_commitment(&db_tx, block_id)
-                    .context("Reading block from database")?
-                {
-                    Some(_) => Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex),
-                    None => Err(GetTransactionByBlockIdAndIndexError::BlockNotFound),
+                let block_exists = db_tx
+                    .block_exists(block_id)
+                    .context("Querying block existence")?;
+                if block_exists {
+                    Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex)
+                } else {
+                    Err(GetTransactionByBlockIdAndIndexError::BlockNotFound)
                 }
             }
         }

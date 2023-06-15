@@ -1,8 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{BlockNumber, ChainId};
-use pathfinder_storage::{
-    JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
-};
+use pathfinder_storage::{JournalMode, Storage};
 use starknet_gateway_types::transaction_hash::{verify, VerifyResult};
 
 /// Verify transaction hashes in a pathfinder database.
@@ -37,7 +35,10 @@ fn main() -> anyhow::Result<()> {
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();
-        StarknetBlocksTable::get_latest_number(&tx)?.unwrap()
+        tx.block_id(pathfinder_storage::BlockId::Latest)
+            .context("Fetching latest block number")?
+            .context("Latest block number does not exist")?
+            .0
     };
 
     println!("Done. Verifying transactions...");
@@ -48,9 +49,10 @@ fn main() -> anyhow::Result<()> {
         }
 
         let tx = db.transaction().unwrap();
-        let block_id = StarknetBlocksBlockId::Number(BlockNumber::new_or_panic(block_number));
-        let transactions =
-            StarknetTransactionsTable::get_transaction_data_for_block(&tx, block_id)?;
+        let block_id = pathfinder_storage::BlockId::Number(BlockNumber::new_or_panic(block_number));
+        let transactions = tx
+            .transaction_data_for_block(block_id)?
+            .context("Transaction data missing")?;
         drop(tx);
 
         for (i, (txn, _)) in transactions.iter().enumerate() {

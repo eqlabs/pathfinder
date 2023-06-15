@@ -1,21 +1,17 @@
 //! Basic test fixtures for storage.
 
+use crate::Transaction;
 use crate::{
     types::{
-        state_update::{
-            DeclaredCairoClass, DeclaredSierraClass, DeployedContract, Nonce, ReplacedClass,
-            StateDiff, StorageDiff,
-        },
+        state_update::{DeclaredSierraClass, DeployedContract, StateDiff},
         StateUpdate,
     },
-    {StarknetBlock, Storage},
+    Storage,
 };
 use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ClassHash, ContractAddress,
-    ContractNonce, GasPrice, SequencerAddress, SierraHash, StateCommitment, StorageAddress,
-    StorageCommitment, StorageValue,
+    BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassHash, ContractAddress, ContractNonce,
+    GasPrice, SequencerAddress, SierraHash, StateCommitment, StorageAddress, StorageValue,
 };
-use rusqlite::Transaction;
 use stark_hash::Felt;
 
 /// Generate [`Felt`] from a sequence of bytes.
@@ -30,124 +26,102 @@ pub(crate) use hash;
 /// Initializers for storage test fixtures.
 pub mod init {
     use super::*;
-    use crate::{
-        state_update::insert_canonical_state_diff, CanonicalBlocksTable, CasmClassTable,
-        ClassDefinitionsTable, StarknetBlocksTable,
-    };
-    use pathfinder_common::{ClassCommitment, StarknetVersion, StorageCommitment};
+    use pathfinder_common::{felt, BlockHeader, ClassCommitment, StorageCommitment};
 
     /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
-        (0..n)
-            .map(|n| {
-                let block_number = BlockNumber::new_or_panic(n as u64);
-                StarknetBlocksTable::insert(
-                    tx,
-                    &StarknetBlock::nth(n),
-                    &StarknetVersion::default(),
-                    StorageCommitment(hash!(11, n)),
-                    ClassCommitment(hash!(12, n)),
+        if n == 0 {
+            return vec![];
+        }
+
+        let genesis = BlockHeader::builder()
+            .with_number(BlockNumber::GENESIS)
+            .with_storage_commitment(StorageCommitment(hash!(11, 0)))
+            .with_class_commitment(ClassCommitment(hash!(12, 0)))
+            .with_calculated_state_commitment()
+            .with_timestamp(BlockTimestamp::new_or_panic(1000))
+            .with_gas_price(GasPrice(2000))
+            .with_sequencer_address(SequencerAddress(hash!(2, 0)))
+            .with_calculated_state_commitment()
+            .finalize_with_hash(BlockHash(felt!("0xabcd")));
+
+        let mut headers = vec![genesis];
+        for i in 1..n {
+            let header = headers
+                .last()
+                .unwrap()
+                .child_builder()
+                .with_storage_commitment(StorageCommitment(hash!(11, i)))
+                .with_class_commitment(ClassCommitment(hash!(12, i)))
+                .with_calculated_state_commitment()
+                .with_timestamp(BlockTimestamp::new_or_panic(i as u64 + 1000))
+                .with_gas_price(GasPrice(i as u128 + 2000))
+                .with_sequencer_address(SequencerAddress(hash!(2, i)))
+                .finalize_with_hash(BlockHash(hash!(i)));
+            headers.push(header);
+        }
+
+        let mut updates = Vec::new();
+
+        let mut parent_state_commitment = StateCommitment::ZERO;
+        let mut deployed_contract: Option<DeployedContract> = None;
+
+        for (i, header) in headers.iter().enumerate() {
+            let i = i as u8;
+            let mut state_diff = StateDiff::default()
+                .add_storage_update(
+                    ContractAddress::new_or_panic(hash!(3, i)),
+                    StorageAddress::new_or_panic(hash!(4, i)),
+                    StorageValue(hash!(5, i)),
                 )
-                .unwrap();
-                CanonicalBlocksTable::insert(tx, block_number, BlockHash(hash!(n))).unwrap();
+                .add_declared_cairo_class(ClassHash(hash!(6, i)))
+                .add_deployed_contract(
+                    ContractAddress::new_or_panic(hash!(7, i)),
+                    ClassHash(hash!(8, i)),
+                )
+                .add_nonce_update(
+                    ContractAddress::new_or_panic(hash!(9, i)),
+                    ContractNonce(hash!(10, i)),
+                )
+                .add_declared_sierra_class(SierraHash(hash!(11, i)), CasmHash(hash!(12, i)));
 
-                let update = StateUpdate::with_block_hash(n);
+            // Replace the last deployed contract.
+            if let Some(deployed) = deployed_contract {
+                state_diff = state_diff.add_replaced_class(deployed.address, deployed.class_hash);
+            };
 
-                for declared_class in &update.state_diff.declared_contracts {
-                    ClassDefinitionsTable::insert(tx, declared_class.class_hash, b"").unwrap();
-                }
+            let update = StateUpdate {
+                block_hash: Some(header.hash),
+                new_root: header.state_commitment,
+                old_root: parent_state_commitment,
+                state_diff,
+            };
 
-                for declared_sierra_class in &update.state_diff.declared_sierra_classes {
-                    let class_hash = ClassHash(declared_sierra_class.class_hash.0);
-                    ClassDefinitionsTable::insert(tx, class_hash, b"").unwrap();
-                    CasmClassTable::insert(
-                        tx,
-                        &[],
-                        class_hash,
-                        ClassHash(declared_sierra_class.compiled_class_hash.0),
-                        "1.0.alpha6",
-                    )
+            for declared_class in &update.state_diff.declared_contracts {
+                tx.insert_cairo_class(declared_class.class_hash, b"")
                     .unwrap();
-                }
+            }
 
-                insert_canonical_state_diff(tx, block_number, &update.state_diff).unwrap();
+            for DeclaredSierraClass {
+                class_hash,
+                compiled_class_hash,
+            } in &update.state_diff.declared_sierra_classes
+            {
+                tx.insert_sierra_class(class_hash, &[], compiled_class_hash, &[], "1.0.alpha6")
+                    .unwrap();
+            }
 
-                update
-            })
-            .collect()
-    }
-}
+            tx.insert_block_header(header).unwrap();
+            tx.insert_state_diff(header.number, &update.state_diff)
+                .unwrap();
 
-impl StateUpdate {
-    /// Creates a [`StateUpdate`] for a block with hash `0xh` filled with arbitrary data useful for testing.
-    pub fn with_block_hash(h: u8) -> Self {
-        let old_root = if h > 0 {
-            StateCommitment::calculate(
-                StorageCommitment(hash!(11, h - 1)),
-                ClassCommitment(hash!(12, h - 1)),
-            )
-        } else {
-            StateCommitment(Felt::ZERO)
-        };
-        let replaced_classes = if h > 0 {
-            // contract deployed in the previous block
-            vec![ReplacedClass {
-                address: ContractAddress::new_or_panic(hash!(7, h - 1)),
-                class_hash: ClassHash(hash!(14, h)),
-            }]
-        } else {
-            vec![]
-        };
-        Self {
-            block_hash: Some(BlockHash(hash!(h))),
-            new_root: StateCommitment::calculate(
-                StorageCommitment(hash!(11, h)),
-                ClassCommitment(hash!(12, h)),
-            ),
-            old_root,
-            state_diff: StateDiff {
-                storage_diffs: vec![StorageDiff {
-                    address: ContractAddress::new_or_panic(hash!(3, h)),
-                    key: StorageAddress::new_or_panic(hash!(4, h)),
-                    value: StorageValue(hash!(5, h)),
-                }],
-                declared_contracts: vec![DeclaredCairoClass {
-                    class_hash: ClassHash(hash!(6, h)),
-                }],
-                deployed_contracts: vec![DeployedContract {
-                    address: ContractAddress::new_or_panic(hash!(7, h)),
-                    class_hash: ClassHash(hash!(8, h)),
-                }],
-                nonces: vec![Nonce {
-                    contract_address: ContractAddress::new_or_panic(hash!(9, h)),
-                    nonce: ContractNonce(hash!(10, h)),
-                }],
-                declared_sierra_classes: vec![DeclaredSierraClass {
-                    class_hash: SierraHash(hash!(11, h)),
-                    compiled_class_hash: CasmHash(hash!(12, h)),
-                }],
-                replaced_classes,
-            },
+            parent_state_commitment = header.state_commitment;
+            deployed_contract = update.state_diff.deployed_contracts.last().cloned();
+
+            updates.push(update);
         }
-    }
-}
 
-impl StarknetBlock {
-    /// Creates a [`StarknetBlock`] with number `n` and hash `0xh` filled with arbitrary data useful for testing.
-    pub fn nth(n: u8) -> Self {
-        Self {
-            number: BlockNumber::new(n as u64).expect("block number out of range"),
-            hash: BlockHash(hash!(n)),
-            state_commmitment: StateCommitment::calculate(
-                StorageCommitment(hash!(11, n)),
-                ClassCommitment(hash!(12, n)),
-            ),
-            timestamp: BlockTimestamp::new(n as u64 + 1000).expect("block timestamp out of range"),
-            gas_price: GasPrice(n as u128 + 2000),
-            sequencer_address: SequencerAddress(hash!(2, n)),
-            transaction_commitment: None,
-            event_commitment: None,
-        }
+        updates
     }
 }
 

@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{Chain, ClassHash, StarknetVersion};
+use pathfinder_common::{Chain, ClassHash, SierraHash, StarknetVersion};
 use starknet_gateway_client::GatewayApi;
 
 pub enum DownloadedClass {
@@ -9,7 +9,7 @@ pub enum DownloadedClass {
     },
     Sierra {
         sierra_definition: Vec<u8>,
-        sierra_hash: ClassHash,
+        sierra_hash: SierraHash,
         casm_definition: Vec<u8>,
     },
 }
@@ -66,7 +66,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
 
                 Ok(DownloadedClass::Sierra {
                     sierra_definition: definition,
-                    sierra_hash: hash,
+                    sierra_hash: SierraHash(hash.0),
                     casm_definition,
                 }                )
             }

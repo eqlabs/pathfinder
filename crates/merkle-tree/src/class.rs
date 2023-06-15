@@ -1,9 +1,12 @@
-use anyhow::Context;
+use std::collections::HashMap;
+
+use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
-use rusqlite::Transaction;
+use pathfinder_storage::{ClassTrieReader, Transaction};
+use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
-use crate::PoseidonHash;
+use pathfinder_common::hash::PoseidonHash;
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to Starknet's Sierra classes.
 ///
@@ -12,15 +15,13 @@ use crate::PoseidonHash;
 /// Tree data is persisted by a sqlite table 'tree_class'.
 pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
-    storage: ClassStorage<'tx>,
+    storage: ClassTrieReader<'tx>,
 }
-
-crate::define_sqlite_storage!(ClassStorage, "tree_class");
 
 impl<'tx> ClassCommitmentTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
         let tree = MerkleTree::new(root.0);
-        let storage = ClassStorage::new(transaction);
+        let storage = transaction.class_trie_reader();
 
         Self { tree, storage }
     }
@@ -34,12 +35,12 @@ impl<'tx> ClassCommitmentTree<'tx> {
         self.tree.set(&self.storage, class.view_bits(), value.0)
     }
 
-    /// Applies and persists any changes. Returns the new global root.
-    pub fn commit_and_persist_changes(self) -> anyhow::Result<ClassCommitment> {
+    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
+    /// any potentially newly created nodes.
+    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, TrieNode>)> {
         let update = self.tree.commit()?;
-        for (hash, node) in update.added {
-            self.storage.insert(&hash, &node)?;
-        }
-        Ok(ClassCommitment(update.root))
+
+        let commitment = ClassCommitment(update.root);
+        Ok((commitment, update.nodes))
     }
 }

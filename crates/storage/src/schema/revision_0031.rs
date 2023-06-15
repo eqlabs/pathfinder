@@ -1,6 +1,8 @@
 use anyhow::Context;
 use pathfinder_common::ContractNonce;
 
+use crate::params::RowExt;
+
 /// This migration re-serializes contract nonce's to use the new compressed felt encoding,
 /// i.e. skipping leading zeros.
 ///
@@ -24,10 +26,10 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut t = std::time::Instant::now();
     while let Some(row) = rows.next().context("Reading next row")? {
         let rowid: usize = row.get(0).context("Getting rowid")?;
-        let nonce: ContractNonce = row.get(1).context("Getting nonce")?;
+        let nonce: ContractNonce = row.get_contract_nonce(1).context("Getting nonce")?;
 
         write
-            .execute(rusqlite::params![nonce, rowid])
+            .execute(crate::params::params![&nonce, &rowid])
             .context("Updating nonce")?;
 
         count += 1;

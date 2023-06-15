@@ -1,13 +1,6 @@
-use std::collections::HashMap;
-
 use crate::context::RpcContext;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, ClassHash, ContractAddress, StateCommitment, StorageAddress,
-    StorageValue,
-};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable};
-use stark_hash::Felt;
+use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetStateUpdateInput {
@@ -35,9 +28,7 @@ pub async fn get_state_update(
                 None => return Err(GetStateUpdateError::BlockNotFound),
             }
         }
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();
@@ -57,132 +48,31 @@ pub async fn get_state_update(
     jh.await.context("Database read panic or shutting down")?
 }
 
-pub(crate) fn block_info(
-    tx: &rusqlite::Transaction<'_>,
-    block: StarknetBlocksBlockId,
-) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
-    let block = StarknetBlocksTable::get(tx, block)?;
-    Ok(match block {
-        None => None,
-        Some(block) => {
-            let old_root = if block.number == BlockNumber::GENESIS {
-                Some(StateCommitment(Felt::ZERO))
-            } else {
-                let previous_block_number = BlockNumber::new_or_panic(block.number.get() - 1);
-                StarknetBlocksTable::get(tx, StarknetBlocksBlockId::Number(previous_block_number))?
-                    .map(|b| b.state_commmitment)
-            };
-
-            old_root.map(|old_root| (block.number, block.hash, block.state_commmitment, old_root))
-        }
-    })
-}
-
 fn get_state_update_from_storage(
-    tx: &rusqlite::Transaction<'_>,
-    block: StarknetBlocksBlockId,
+    tx: &pathfinder_storage::Transaction<'_>,
+    block: pathfinder_storage::BlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let (number, block_hash, new_root, old_root) =
-        block_info(tx, block)?.ok_or(GetStateUpdateError::BlockNotFound)?;
+    let header = tx
+        .block_header(block)
+        .context("Fetching block header")?
+        .ok_or(GetStateUpdateError::BlockNotFound)?;
 
-    let mut stmt = tx
-        .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
-        .context("Preparing nonce update query statement")?;
-    let nonces = stmt
-        .query_map([number], |row| {
-            let contract_address = row.get(0)?;
-            let nonce = row.get(1)?;
+    let parent_state_commitment = tx
+        .block_header(pathfinder_storage::BlockId::Hash(header.parent_hash))
+        .context("Fetching parent block header")?
+        .map(|header| header.state_commitment)
+        .unwrap_or_default();
 
-            Ok(types::Nonce {
-                contract_address,
-                nonce,
-            })
-        })
-        .context("Querying nonce updates")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over nonce query rows")?;
-
-    let mut stmt = tx
-        .prepare_cached(
-            "SELECT contract_address, storage_address, storage_value FROM storage_updates WHERE block_number = ?"
-        )
-        .context("Preparing storage update query statement")?;
-    let storage_tuples = stmt
-        .query_map([number], |row| {
-            let contract_address: ContractAddress = row.get(0)?;
-            let storage_address: StorageAddress = row.get(1)?;
-            let storage_value: StorageValue = row.get(2)?;
-
-            Ok((contract_address, storage_address, storage_value))
-        })
-        .context("Querying storage updates")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over storage query rows")?;
-    // Convert storage tuples to contract based mapping.
-    let mut storage_updates: HashMap<ContractAddress, Vec<types::StorageEntry>> = HashMap::new();
-    for (addr, key, value) in storage_tuples {
-        storage_updates
-            .entry(addr)
-            .or_default()
-            .push(types::StorageEntry { key, value });
-    }
-    let storage_diffs = storage_updates
-        .into_iter()
-        .map(|(address, storage_entries)| types::StorageDiff {
-            address,
-            storage_entries,
-        })
-        .collect();
-
-    let mut stmt = tx
-        .prepare_cached("SELECT hash FROM class_definitions WHERE block_number = ?")
-        .context("Preparing class declaration query statement")?;
-    // This is a change from previous implementation as this also includes sierra hashes..
-    // which is probably more correct?
-    let declared_contract_hashes = stmt
-        .query_map([number], |row| row.get(0))
-        .context("Querying class declarations")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over class declaration query rows")?;
-
-    let mut stmt = tx
-        .prepare_cached(
-            r"SELECT
-                cu1.contract_address,
-                cu1.class_hash
-            FROM
-                contract_updates cu1
-            LEFT OUTER JOIN
-                contract_updates cu2 ON cu1.contract_address = cu2.contract_address AND cu2.block_number < cu1.block_number
-            WHERE
-                cu1.block_number = ? AND
-                cu2.block_number IS NULL",
-        )
-        .context("Preparing contract update query statement")?;
-    let deployed_contracts = stmt
-        .query_map([number], |row| {
-            let address: ContractAddress = row.get(0)?;
-            let class_hash: ClassHash = row.get(1)?;
-
-            Ok(types::DeployedContract {
-                address,
-                class_hash,
-            })
-        })
-        .context("Querying contract deployments")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over contract deployment query rows")?;
+    let state_diff = tx
+        .state_diff(block)
+        .context("Fetching state diff")?
+        .context("State diff missing from database")?;
 
     let state_update = types::StateUpdate {
-        block_hash: Some(block_hash),
-        new_root: Some(new_root),
-        old_root,
-        state_diff: types::StateDiff {
-            storage_diffs,
-            declared_contract_hashes,
-            deployed_contracts,
-            nonces,
-        },
+        block_hash: Some(header.hash),
+        new_root: Some(header.state_commitment),
+        old_root: parent_state_commitment,
+        state_diff: types::StateDiff::from(state_diff),
     };
 
     Ok(state_update)
@@ -495,7 +385,6 @@ mod tests {
         BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
         StorageValue,
     };
-    use stark_hash::Felt;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -607,8 +496,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                // The fixture happens to init this to zero for genesis block
-                BlockId::Hash(BlockHash(Felt::ZERO)),
+                BlockId::Hash(in_storage[0].block_hash.unwrap()),
                 assert_ok(in_storage[0].clone()),
             ),
             // Errors

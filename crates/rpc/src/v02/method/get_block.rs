@@ -1,10 +1,8 @@
 use crate::context::RpcContext;
-use crate::v02::common::get_block_status;
+use crate::v02::types::reply::BlockStatus;
 use anyhow::{anyhow, Context};
-use pathfinder_common::{BlockHash, BlockId, BlockNumber, StateCommitment};
-use pathfinder_storage::{StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable};
+use pathfinder_common::{BlockId, BlockNumber};
 use serde::Deserialize;
-use stark_hash::Felt;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -63,9 +61,7 @@ async fn get_block(
                 None => return Err(GetBlockError::BlockNotFound),
             }
         }
-        BlockId::Hash(hash) => hash.into(),
-        BlockId::Number(number) => number.into(),
-        BlockId::Latest => StarknetBlocksBlockId::Latest,
+        other => other.try_into().expect("Only pending cast should fail"),
     };
 
     let storage = context.storage.clone();
@@ -81,63 +77,36 @@ async fn get_block(
             .transaction()
             .context("Creating database transaction")?;
 
-        // Need to get the block status. This also tests that the block hash is valid.
-        let block = get_raw_block(&transaction, block_id)?;
+        let header = transaction
+            .block_header(block_id)
+            .context("Reading block from database")?
+            .ok_or(GetBlockError::BlockNotFound)?;
 
-        let transactions = get_block_transactions(&transaction, block.number, scope)?;
+        let l1_accepted = transaction.block_is_l1_accepted(header.number.into())?;
+        let block_status = if l1_accepted {
+            BlockStatus::AcceptedOnL1
+        } else {
+            BlockStatus::AcceptedOnL2
+        };
 
-        Ok(types::Block::from_raw(block, transactions))
+        let transactions = get_block_transactions(&transaction, header.number, scope)?;
+
+        Ok(types::Block::from_parts(header, block_status, transactions))
     })
     .await
     .context("Database read panic or shutting down")?
 }
 
-/// Fetches a [RawBlock](types::RawBlock) from storage.
-fn get_raw_block(
-    transaction: &rusqlite::Transaction<'_>,
-    block_id: StarknetBlocksBlockId,
-) -> Result<types::RawBlock, GetBlockError> {
-    let block = StarknetBlocksTable::get(transaction, block_id)
-        .context("Read block from database")?
-        .ok_or(GetBlockError::BlockNotFound)?;
-
-    let block_status = get_block_status(transaction, block.number)?;
-
-    let (parent_hash, parent_root) = match block.number {
-        BlockNumber::GENESIS => (BlockHash(Felt::ZERO), StateCommitment(Felt::ZERO)),
-        other => {
-            let parent_block = StarknetBlocksTable::get(transaction, (other - 1).into())
-                .context("Read parent block from database")?
-                .context("Parent block missing")?;
-
-            (parent_block.hash, parent_block.state_commmitment)
-        }
-    };
-
-    let block = types::RawBlock {
-        number: block.number,
-        hash: block.hash,
-        root: block.state_commmitment,
-        parent_hash,
-        parent_root,
-        timestamp: block.timestamp,
-        status: block_status,
-        gas_price: block.gas_price,
-        sequencer: block.sequencer_address,
-    };
-
-    Ok(block)
-}
-
 /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
 fn get_block_transactions(
-    db_tx: &rusqlite::Transaction<'_>,
+    db_tx: &pathfinder_storage::Transaction<'_>,
     block_number: BlockNumber,
     scope: types::BlockResponseScope,
 ) -> Result<types::Transactions, GetBlockError> {
-    let transactions_receipts =
-        StarknetTransactionsTable::get_transaction_data_for_block(db_tx, block_number.into())
-            .context("Reading transactions from database")?;
+    let transactions_receipts = db_tx
+        .transaction_data_for_block(block_number.into())
+        .context("Reading transactions from database")?
+        .context("Transaction data missing for block")?;
 
     match scope {
         types::BlockResponseScope::TransactionHashes => Ok(types::Transactions::HashesOnly(
@@ -160,7 +129,7 @@ mod types {
     use crate::felt::RpcFelt;
     use crate::v02::types::reply::{BlockStatus, Transaction};
     use pathfinder_common::{
-        BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress, StateCommitment,
+        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, SequencerAddress, StateCommitment,
         TransactionHash,
     };
     use serde::Serialize;
@@ -215,31 +184,20 @@ mod types {
         pub transactions: Transactions,
     }
 
-    /// Convenience type for DB manipulation.
-    #[derive(Debug)]
-    pub struct RawBlock {
-        pub number: BlockNumber,
-        pub hash: BlockHash,
-        pub root: StateCommitment,
-        pub parent_hash: BlockHash,
-        pub parent_root: StateCommitment,
-        pub timestamp: BlockTimestamp,
-        pub status: BlockStatus,
-        pub sequencer: SequencerAddress,
-        pub gas_price: GasPrice,
-    }
-
     impl Block {
-        /// Constructs [Block] from [RawBlock]
-        pub fn from_raw(block: RawBlock, transactions: Transactions) -> Self {
+        pub fn from_parts(
+            header: BlockHeader,
+            status: BlockStatus,
+            transactions: Transactions,
+        ) -> Self {
             Self {
-                status: block.status,
-                block_hash: Some(block.hash),
-                parent_hash: block.parent_hash,
-                block_number: Some(block.number),
-                new_root: Some(block.root),
-                timestamp: block.timestamp,
-                sequencer_address: block.sequencer,
+                status,
+                block_hash: Some(header.hash),
+                parent_hash: header.parent_hash,
+                block_number: Some(header.number),
+                new_root: Some(header.state_commitment),
+                timestamp: header.timestamp,
+                sequencer_address: header.sequencer_address,
                 transactions,
             }
         }

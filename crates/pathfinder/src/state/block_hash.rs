@@ -1,4 +1,5 @@
 use anyhow::{Context, Error, Result};
+use pathfinder_common::event::Event;
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
     StarknetVersion, StateCommitment, TransactionCommitment, TransactionSignatureElem,
@@ -6,7 +7,7 @@ use pathfinder_common::{
 use pathfinder_merkle_tree::TransactionOrEventTree;
 use stark_hash::{stark_hash, Felt, HashChain};
 use starknet_gateway_types::reply::{
-    transaction::{Event, Receipt, Transaction},
+    transaction::{Receipt, Transaction},
     Block,
 };
 

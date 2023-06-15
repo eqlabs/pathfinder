@@ -1,10 +1,7 @@
 use crate::context::RpcContext;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::{
-    EventFilterError, StarknetBlocksNumberOrLatest, StarknetBlocksTable, StarknetEventFilter,
-    StarknetEventsTable, V03KeyFilter,
-};
+use pathfinder_storage::{EventFilterError, V03KeyFilter};
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
@@ -100,9 +97,9 @@ pub async fn get_events(
         None => None,
     };
 
-    if request.keys.len() > pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT {
+    if request.keys.len() > pathfinder_storage::EVENT_KEY_FILTER_LIMIT {
         return Err(GetEventsError::TooManyKeysInFilter {
-            limit: pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT,
+            limit: pathfinder_storage::EVENT_KEY_FILTER_LIMIT,
             requested: request.keys.len(),
         });
     }
@@ -180,7 +177,7 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
-        let filter = StarknetEventFilter {
+        let filter = pathfinder_storage::EventFilter {
             from_block,
             to_block,
             contract_address: request.address,
@@ -191,7 +188,7 @@ pub async fn get_events(
         // We don't add context here, because [StarknetEventsTable::get_events] adds its
         // own context to the errors. This way we get meaningful error information
         // for errors related to query parameters.
-        let page = StarknetEventsTable::get_events(&transaction, &filter).map_err(|e| {
+        let page = transaction.events(&filter).map_err(|e| {
             if e.downcast_ref::<EventFilterError>().is_some() {
                 GetEventsError::PageSizeTooBig
             } else {
@@ -203,13 +200,7 @@ pub async fn get_events(
         // More specifically, we need some database event count in order to page through
         // the pending events properly.
         let event_count = if request.to_block == Some(Pending) && page.events.is_empty() {
-            let count = StarknetEventsTable::event_count(
-                &transaction,
-                from_block,
-                to_block,
-                request.address,
-                &keys,
-            )?;
+            let count = transaction.event_count(from_block, to_block, request.address, &keys)?;
 
             Some(count)
         } else {
@@ -223,12 +214,11 @@ pub async fn get_events(
         // indeed the latest block in storage. Replace pending data if it is invalid, or not required.
         let pending_block = match (request.to_block, pending_block) {
             (Some(Pending), Some(pending_block)) => {
-                let latest = StarknetBlocksTable::get_hash(
-                    &transaction,
-                    StarknetBlocksNumberOrLatest::Latest,
-                )
-                .context("Querying latest block hash")?
-                .context("Latest block hash is missing")?;
+                let latest = transaction
+                    .block_id(pathfinder_storage::BlockId::Latest)
+                    .context("Querying latest block hash")?
+                    .context("Latest block hash is missing")?
+                    .1;
 
                 (pending_block.parent_hash == latest).then_some(pending_block)
             }
@@ -302,15 +292,18 @@ pub async fn get_events(
 // This block id specifies the upper end of the range, so pending/latest/None means
 // there's no upper limit.
 fn map_to_block_to_number(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: Option<BlockId>,
 ) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;
 
     match block {
         Some(Hash(hash)) => {
-            let number =
-                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(hash.into())
+                .context("Querying block number")?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
 
             Ok(Some(number))
         }
@@ -324,22 +317,28 @@ fn map_to_block_to_number(
 // This block id specifies the lower end of the range, so pending/latest means
 // a lower limit here.
 fn map_from_block_to_number(
-    tx: &rusqlite::Transaction<'_>,
+    tx: &pathfinder_storage::Transaction<'_>,
     block: Option<BlockId>,
 ) -> Result<Option<BlockNumber>, GetEventsError> {
     use BlockId::*;
 
     match block {
         Some(Hash(hash)) => {
-            let number =
-                StarknetBlocksTable::get_number(tx, hash)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(hash.into())
+                .context("Querying block number")?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
 
             Ok(Some(number))
         }
         Some(Number(number)) => Ok(Some(number)),
         Some(Pending) | Some(Latest) => {
-            let number =
-                StarknetBlocksTable::get_latest_number(tx)?.ok_or(GetEventsError::BlockNotFound)?;
+            let number = tx
+                .block_id(pathfinder_storage::BlockId::Latest)
+                .context("Querying latest block number")?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
             Ok(Some(number))
         }
         None => Ok(None),
@@ -442,7 +441,6 @@ mod types {
     use pathfinder_common::{
         BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
     };
-    use pathfinder_storage::StarknetEmittedEvent;
     use serde::Serialize;
 
     /// Describes an emitted event returned by starknet_getEvents
@@ -459,8 +457,8 @@ mod types {
         pub transaction_hash: TransactionHash,
     }
 
-    impl From<StarknetEmittedEvent> for EmittedEvent {
-        fn from(event: StarknetEmittedEvent) -> Self {
+    impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
+        fn from(event: pathfinder_storage::EmittedEvent) -> Self {
             Self {
                 data: event.data,
                 keys: event.keys,
@@ -682,7 +680,7 @@ mod tests {
                 to_block: None,
                 address: None,
                 keys: vec![],
-                chunk_size: pathfinder_storage::StarknetEventsTable::PAGE_SIZE_LIMIT + 1,
+                chunk_size: pathfinder_storage::PAGE_SIZE_LIMIT + 1,
                 continuation_token: None,
             },
         };
@@ -695,7 +693,7 @@ mod tests {
     async fn get_events_with_too_many_keys_in_filter() {
         let (context, _) = setup();
 
-        let limit = pathfinder_storage::StarknetEventsTable::KEY_FILTER_LIMIT;
+        let limit = pathfinder_storage::KEY_FILTER_LIMIT;
 
         let keys = [vec![EventKey(felt!("01"))]]
             .iter()

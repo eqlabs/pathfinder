@@ -73,6 +73,37 @@ pub mod state_update {
             self
         }
 
+        pub fn add_declared_cairo_class(mut self, cairo_hash: ClassHash) -> Self {
+            self.declared_contracts.push(DeclaredCairoClass {
+                class_hash: cairo_hash,
+            });
+            self
+        }
+
+        pub fn add_declared_sierra_class(
+            mut self,
+            sierra_hash: SierraHash,
+            casm_hash: CasmHash,
+        ) -> Self {
+            self.declared_sierra_classes.push(DeclaredSierraClass {
+                class_hash: sierra_hash,
+                compiled_class_hash: casm_hash,
+            });
+            self
+        }
+
+        pub fn add_replaced_class(
+            mut self,
+            address: ContractAddress,
+            class_hash: ClassHash,
+        ) -> Self {
+            self.replaced_classes.push(ReplacedClass {
+                address,
+                class_hash,
+            });
+            self
+        }
+
         pub fn add_nonce_update(
             mut self,
             contract_address: ContractAddress,

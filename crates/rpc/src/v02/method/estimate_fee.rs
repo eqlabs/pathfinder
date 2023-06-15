@@ -158,14 +158,10 @@ pub(crate) mod tests {
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{
-            felt_bytes, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ContractNonce,
-            ContractRoot, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+            felt_bytes, BlockNumber, CasmHash, ContractNonce, ContractRoot, GasPrice,
         };
         use pathfinder_storage::types::state_update::{DeployedContract, StateDiff};
-        use pathfinder_storage::{
-            insert_canonical_state_diff, StarknetBlock, StarknetBlocksTable, Storage,
-        };
-        use stark_hash::Felt;
+        use pathfinder_storage::Storage;
 
         // Mainnet block number 5
         pub(crate) const BLOCK_5: BlockId = BlockId::Hash(BlockHash(felt!(
@@ -239,7 +235,9 @@ pub(crate) mod tests {
             ))
         }
 
-        pub(crate) fn test_storage_with_account() -> (
+        pub(crate) fn test_storage_with_account(
+            gas_price: GasPrice,
+        ) -> (
             tempfile::TempDir,
             Storage,
             ContractAddress,
@@ -258,7 +256,7 @@ pub(crate) mod tests {
             let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
 
             let (account_address, latest_block_hash, latest_block_number) =
-                add_dummy_account(storage.clone());
+                add_dummy_account(storage.clone(), gas_price);
 
             (
                 db_dir,
@@ -279,7 +277,7 @@ pub(crate) mod tests {
             use pathfinder_common::ChainId;
 
             let (db_dir, storage, account_address, latest_block_hash, _) =
-                test_storage_with_account();
+                test_storage_with_account(GasPrice::ZERO);
 
             let sync_state = Arc::new(crate::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
@@ -304,6 +302,7 @@ pub(crate) mod tests {
 
         fn add_dummy_account(
             storage: pathfinder_storage::Storage,
+            gas_price: GasPrice,
         ) -> (ContractAddress, BlockHash, BlockNumber) {
             let mut db_conn = storage.connection().unwrap();
             let db_txn = db_conn.transaction().unwrap();
@@ -315,12 +314,9 @@ pub(crate) mod tests {
                 starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
             let class_definition = starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
-            pathfinder_storage::ClassDefinitionsTable::insert(
-                &db_txn,
-                class_hash,
-                class_definition,
-            )
-            .unwrap();
+            db_txn
+                .insert_cairo_class(class_hash, class_definition)
+                .unwrap();
 
             //
             // "Deploy"
@@ -335,66 +331,42 @@ pub(crate) mod tests {
                     contract_nonce,
                 );
 
-            pathfinder_storage::ContractsStateTable::upsert(
-                &db_txn,
-                contract_state_hash,
-                class_hash,
-                contract_root,
-                contract_nonce,
-            )
-            .unwrap();
+            db_txn
+                .insert_contract_state(
+                    contract_state_hash,
+                    class_hash,
+                    contract_root,
+                    contract_nonce,
+                )
+                .unwrap();
 
-            let storage_commitment = StarknetBlocksTable::get_storage_commitment(
-                &db_txn,
-                pathfinder_storage::StarknetBlocksBlockId::Latest,
-            )
-            .unwrap()
-            .unwrap();
-
-            let latest_block_number = StarknetBlocksTable::get_latest_number(&db_txn)
+            let latest_header = db_txn
+                .block_header(pathfinder_storage::BlockId::Latest)
                 .unwrap()
                 .unwrap();
 
-            let mut storage_commitment_tree =
-                pathfinder_merkle_tree::StorageCommitmentTree::load(&db_txn, storage_commitment);
+            let mut storage_commitment_tree = pathfinder_merkle_tree::StorageCommitmentTree::load(
+                &db_txn,
+                latest_header.storage_commitment,
+            )
+            .unwrap();
 
             storage_commitment_tree
                 .set(contract_address, contract_state_hash)
                 .unwrap();
 
-            let new_storage_commitment = storage_commitment_tree
-                .commit_and_persist_changes()
+            let (new_storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
+            db_txn
+                .insert_storage_trie(new_storage_commitment, &nodes)
                 .unwrap();
 
-            let new_block = StarknetBlock {
-                number: latest_block_number + 1,
-                hash: BlockHash(felt_bytes!(b"latest block")),
-                state_commmitment: StateCommitment::calculate(
-                    new_storage_commitment,
-                    ClassCommitment::ZERO,
-                ),
-                timestamp: BlockTimestamp::new_or_panic(0),
-                gas_price: GasPrice::ZERO,
-                sequencer_address: SequencerAddress(Felt::ZERO),
-                transaction_commitment: None,
-                event_commitment: None,
-            };
-
-            pathfinder_storage::StarknetBlocksTable::insert(
-                &db_txn,
-                &new_block,
-                &StarknetVersion::default(),
-                new_storage_commitment,
-                ClassCommitment::ZERO,
-            )
-            .unwrap();
-
-            pathfinder_storage::CanonicalBlocksTable::insert(
-                &db_txn,
-                new_block.number,
-                new_block.hash,
-            )
-            .unwrap();
+            let new_header = latest_header
+                .child_builder()
+                .with_storage_commitment(new_storage_commitment)
+                .with_gas_price(gas_price)
+                .with_calculated_state_commitment()
+                .finalize_with_hash(BlockHash(felt_bytes!(b"latest block")));
+            db_txn.insert_block_header(&new_header).unwrap();
 
             let state_diff = StateDiff {
                 storage_diffs: vec![],
@@ -408,12 +380,14 @@ pub(crate) mod tests {
                 replaced_classes: vec![],
             };
 
-            insert_canonical_state_diff(&db_txn, new_block.number, &state_diff).unwrap();
+            db_txn
+                .insert_state_diff(new_header.number, &state_diff)
+                .unwrap();
 
             // Persist
             db_txn.commit().unwrap();
 
-            (contract_address, new_block.hash, new_block.number)
+            (contract_address, new_header.hash, new_header.number)
         }
 
         #[tokio::test]

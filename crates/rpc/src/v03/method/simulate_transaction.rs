@@ -316,13 +316,10 @@ pub mod dto {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::{
-        felt, BlockHash, BlockNumber, BlockTimestamp, Chain, ClassCommitment, ContractAddress,
-        GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment,
-        TransactionVersion,
+        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, ContractAddress,
+        GasPrice, TransactionVersion,
     };
-    use pathfinder_storage::{
-        ClassDefinitionsTable, JournalMode, StarknetBlock, StarknetBlocksTable, Storage,
-    };
+    use pathfinder_storage::{JournalMode, Storage};
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
     };
@@ -344,27 +341,17 @@ mod tests {
             let mut db = storage.connection().expect("db connection");
             let tx = db.transaction().expect("tx");
 
-            ClassDefinitionsTable::insert(&tx, DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
+            tx.insert_cairo_class(DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
                 .expect("insert class");
 
-            StarknetBlocksTable::insert(
-                &tx,
-                &StarknetBlock {
-                    number: BlockNumber::new_or_panic(1),
-                    hash: BlockHash::ZERO,
-                    state_commmitment: StateCommitment::ZERO,
-                    timestamp: BlockTimestamp::new_or_panic(1),
-                    gas_price: GasPrice(1),
-                    sequencer_address: SequencerAddress::ZERO,
-                    transaction_commitment: None,
-                    event_commitment: None,
-                },
-                &StarknetVersion::default(),
-                StorageCommitment::ZERO,
-                ClassCommitment::ZERO,
-            )
-            .expect("insert block");
-            tx.commit().expect("commit");
+            let header = BlockHeader::builder()
+                .with_number(BlockNumber::GENESIS + 1)
+                .with_timestamp(BlockTimestamp::new_or_panic(1))
+                .with_gas_price(GasPrice(1))
+                .finalize_with_hash(BlockHash::ZERO);
+
+            tx.insert_block_header(&header).unwrap();
+            tx.commit().unwrap();
         }
 
         let (call_handle, _join_handle) = crate::cairo::ext_py::start(
