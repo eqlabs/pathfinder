@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-test-utils = []
+test-utils = ["dep:fake", "dep:rand"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -15,6 +15,7 @@ base64 = "0.13.1"
 bitvec = "0.20.4"
 const_format = { workspace = true }
 data-encoding = "2.3.3"
+fake = { version = "2.5.0", features = ["derive"], optional = true }
 flate2 = "1.0.25"
 hex = "0.4.3"
 lazy_static = "1.4.0"
@@ -22,6 +23,7 @@ pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
 primitive-types = "0.12.1"
+rand = { version = "0.8.5", optional = true }
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.21.0"
 rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }

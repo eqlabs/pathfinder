@@ -1,3 +1,5 @@
+#[cfg(feature = "test-utils")]
+use fake::Dummy;
 use pathfinder_common::{BlockHash, StateCommitment};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -7,6 +9,7 @@ use serde_with::skip_serializing_none;
 #[skip_serializing_none]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct StateUpdate {
     /// Keeping optional because not sure if all serialized state updates contain this field
     // FIXME regenesis: remove Option<> around block_hash
@@ -36,6 +39,8 @@ impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
 /// on the `rpc-full-serde` feature because state updates are
 /// stored in the DB as compressed raw JSON bytes.
 pub mod state_update {
+    #[cfg(feature = "test-utils")]
+    use fake::Dummy;
     use pathfinder_common::{
         CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
         StorageValue,
@@ -45,6 +50,7 @@ pub mod state_update {
     /// L2 state diff.
     #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
         /// Refers to Declare V0 & V1 txns, these contain Cairo classes
@@ -178,7 +184,7 @@ pub mod state_update {
     /// L2 storage diff of a contract.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct StorageDiff {
         pub address: ContractAddress,
         pub storage_entries: Vec<StorageEntry>,
@@ -186,6 +192,7 @@ pub mod state_update {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct StorageEntry {
         pub key: StorageAddress,
         pub value: StorageValue,
@@ -203,6 +210,7 @@ pub mod state_update {
     /// L2 state diff Declared V1 class item.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct DeclaredCairoClass {
         pub class_hash: ClassHash,
     }
@@ -210,6 +218,7 @@ pub mod state_update {
     /// L2 state diff deployed contract item.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct DeployedContract {
         pub address: ContractAddress,
         pub class_hash: ClassHash,
@@ -218,6 +227,7 @@ pub mod state_update {
     /// L2 state diff nonce item.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct Nonce {
         pub contract_address: ContractAddress,
         pub nonce: ContractNonce,
@@ -226,6 +236,7 @@ pub mod state_update {
     /// L2 state diff Declared V2 class item. Maps Sierra class hash to a Casm hash.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct DeclaredSierraClass {
         pub class_hash: SierraHash,
         pub compiled_class_hash: CasmHash,
@@ -245,6 +256,7 @@ pub mod state_update {
     /// L2 state diff replaced class item. Maps contract address to a new class.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
+    #[cfg_attr(feature = "test-utils", derive(Dummy))]
     pub struct ReplacedClass {
         pub address: ContractAddress,
         pub class_hash: ClassHash,

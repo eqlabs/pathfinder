@@ -114,6 +114,7 @@ macro_rules! felt_newtypes {
     (@define_felt $target:ident) => {
         paste::paste! {
             #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, PartialOrd, Ord)]
+            #[cfg_attr(feature = "test-utils", derive(Dummy))]
             pub struct $target(pub stark_hash::Felt);
 
             #[allow(unused)]
@@ -138,6 +139,7 @@ macro_rules! felt_newtypes {
     (@define_felt251 $target:ident) => {
         paste::paste! {
             #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, PartialOrd, Ord)]
+            #[cfg_attr(feature = "test-utils", derive(Dummy))]
             pub struct $target(pub stark_hash::Felt);
 
             $crate::macros::fmt::thin_debug!($target);

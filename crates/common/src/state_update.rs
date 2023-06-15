@@ -1,11 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "test-utils")]
+use fake::Dummy;
+
 use crate::{
     BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
     StorageAddress, StorageValue,
 };
 
 #[derive(Default, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct StateUpdate {
     pub block_hash: BlockHash,
     pub parent_state_commitment: StateCommitment,
@@ -17,6 +21,7 @@ pub struct StateUpdate {
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
     /// The class associated with this update as the result of either a deploy or class replacement transaction.
@@ -25,11 +30,13 @@ pub struct ContractUpdate {
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct SystemContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub enum ContractClassUpdate {
     Deploy(ClassHash),
     Replace(ClassHash),

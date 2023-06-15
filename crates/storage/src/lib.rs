@@ -6,6 +6,8 @@
 mod prelude;
 
 mod connection;
+#[cfg(any(feature = "test-utils", test))]
+mod fake;
 mod params;
 mod schema;
 #[cfg(any(feature = "test-utils", test))]

@@ -3,6 +3,8 @@
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
 use anyhow::Context;
+#[cfg(feature = "test-utils")]
+use fake::Dummy;
 use primitive_types::{H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
@@ -83,6 +85,7 @@ impl StateCommitment {
 
 /// A Starknet block number.
 #[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct BlockNumber(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(BlockNumber);
@@ -104,6 +107,7 @@ impl std::iter::Iterator for BlockNumber {
 
 /// The timestamp of a Starknet block.
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct BlockTimestamp(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
@@ -111,6 +115,7 @@ macros::i64_backed_u64::serdes!(BlockTimestamp);
 
 /// A Starknet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct TransactionIndex(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
@@ -118,6 +123,7 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 
 /// Starknet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct GasPrice(pub u128);
 
 /// Starknet transaction version.
@@ -212,6 +218,13 @@ impl std::ops::SubAssign<u64> for BlockNumber {
 /// An Ethereum address.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EthereumAddress(pub H160);
+
+#[cfg(feature = "test-utils")]
+impl<T> Dummy<T> for EthereumAddress {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(H160::random_using(rng))
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error("expected slice length of 16 or less, got {0}")]
@@ -314,6 +327,7 @@ impl std::fmt::Display for Chain {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct StarknetVersion(String);
 
 impl StarknetVersion {
