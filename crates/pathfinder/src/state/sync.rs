@@ -32,46 +32,88 @@ use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
 
-use crate::state::l2::BlockChain;
+use crate::state::l1::L1SyncContext;
+use crate::state::l2::{BlockChain, L2SyncContext};
+
+#[derive(Clone)]
+pub struct SyncContext<G, E> {
+    pub storage: Storage,
+    pub ethereum: E,
+    pub chain: Chain,
+    pub chain_id: ChainId,
+    pub core_address: H160,
+    pub sequencer: G,
+    pub state: Arc<SyncState>,
+    pub pending_data: PendingData,
+    pub pending_poll_interval: Option<std::time::Duration>,
+    pub block_validation_mode: l2::BlockValidationMode,
+    pub websocket_txs: WebsocketSenders,
+    pub block_cache_size: usize,
+}
+
+impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
+    fn from(value: SyncContext<G, E>) -> Self {
+        Self {
+            ethereum: value.ethereum,
+            chain: value.chain,
+            core_address: value.core_address,
+        }
+    }
+}
+
+impl<G, E> From<SyncContext<G, E>> for L2SyncContext<G> {
+    fn from(value: SyncContext<G, E>) -> Self {
+        Self {
+            websocket_txs: value.websocket_txs,
+            sequencer: value.sequencer,
+            chain: value.chain,
+            chain_id: value.chain_id,
+            pending_poll_interval: value.pending_poll_interval,
+            block_validation_mode: value.block_validation_mode,
+            storage: value.storage,
+        }
+    }
+}
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
 pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
-    storage: Storage,
-    ethereum: Ethereum,
-    chain: Chain,
-    chain_id: ChainId,
-    core_address: H160,
-    sequencer: SequencerClient,
-    state: Arc<SyncState>,
+    context: SyncContext<SequencerClient, Ethereum>,
     mut l1_sync: L1Sync,
     l2_sync: L2Sync,
-    pending_data: PendingData,
-    pending_poll_interval: Option<std::time::Duration>,
-    block_validation_mode: l2::BlockValidationMode,
-    websocket_txs: WebsocketSenders,
-    block_cache_size: usize,
 ) -> anyhow::Result<()>
 where
     Ethereum: EthereumApi + Clone,
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
-    L1Sync: FnMut(mpsc::Sender<EthereumStateUpdate>, Ethereum, Chain, H160) -> F1,
+    L1Sync: FnMut(mpsc::Sender<EthereumStateUpdate>, L1SyncContext<Ethereum>) -> F1,
     L2Sync: FnOnce(
             mpsc::Sender<l2::Event>,
-            WebsocketSenders,
-            SequencerClient,
+            L2SyncContext<SequencerClient>,
             Option<(BlockNumber, BlockHash, StateCommitment)>,
-            Chain,
-            ChainId,
-            Option<std::time::Duration>,
-            l2::BlockValidationMode,
             BlockChain,
-            Storage,
         ) -> F2
         + Copy,
 {
+    let l1_context = L1SyncContext::from(context.clone());
+    let l2_context = L2SyncContext::from(context.clone());
+
+    let SyncContext {
+        storage,
+        ethereum: _,
+        chain,
+        chain_id: _,
+        core_address: _,
+        sequencer,
+        state,
+        pending_data,
+        pending_poll_interval: _,
+        block_validation_mode: _,
+        websocket_txs: _,
+        block_cache_size,
+    } = context;
+
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
@@ -105,24 +147,13 @@ where
     ));
 
     // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum.clone(), chain, core_address));
+    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, l1_context.clone()));
 
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-    let mut l2_handle = tokio::spawn(l2_sync(
-        tx_l2,
-        websocket_txs.clone(),
-        sequencer.clone(),
-        l2_head,
-        chain,
-        chain_id,
-        pending_poll_interval,
-        block_validation_mode,
-        block_chain,
-        storage.clone(),
-    ));
+    let mut l2_handle = tokio::spawn(l2_sync(tx_l2, l2_context.clone(), l2_head, block_chain));
 
     let mut last_block_start = std::time::Instant::now();
     let mut block_time_avg = std::time::Duration::ZERO;
@@ -155,7 +186,7 @@ where
                     let (new_tx, new_rx) = mpsc::channel(1);
                     rx_l1 = new_rx;
 
-                    let fut = l1_sync(new_tx, ethereum.clone(), chain, core_address);
+                    let fut = l1_sync(new_tx, l1_context.clone());
 
                     l1_handle = tokio::spawn(async move {
                         tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
@@ -299,7 +330,7 @@ where
 
                     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size).await.context("Fetching latest blocks from storage")?;
                     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-                    let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain, storage.clone());
+                    let fut = l2_sync(new_tx, l2_context.clone(), l2_head, block_chain);
 
                     l2_handle = tokio::spawn(async move {
                         tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
@@ -761,6 +792,8 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 mod tests {
     use super::l2;
     use crate::state;
+    use crate::state::l1::L1SyncContext;
+    use crate::state::sync::SyncContext;
     use futures::stream::{StreamExt, TryStreamExt};
     use pathfinder_common::{
         felt_bytes, BlockHash, BlockHeader, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain,
@@ -811,11 +844,9 @@ mod tests {
         }
     }
 
-    async fn l1_noop(
+    async fn l1_noop<E>(
         _: mpsc::Sender<EthereumStateUpdate>,
-        _: FakeTransport,
-        _: Chain,
-        _: H160,
+        _: L1SyncContext<E>,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -825,15 +856,9 @@ mod tests {
     #[allow(clippy::too_many_arguments)]
     async fn l2_noop(
         _: mpsc::Sender<l2::Event>,
-        _: WebsocketSenders,
-        _: impl GatewayApi,
+        _: l2::L2SyncContext<impl GatewayApi>,
         _: Option<(BlockNumber, BlockHash, StateCommitment)>,
-        _: Chain,
-        _: ChainId,
-        _: Option<std::time::Duration>,
-        _: l2::BlockValidationMode,
         _: l2::BlockChain,
-        _: Storage,
     ) -> anyhow::Result<()> {
         // Avoid being restarted all the time by the outer sync() loop
         std::future::pending::<()>().await;
@@ -916,13 +941,15 @@ mod tests {
         use pathfinder_common::BlockHeader;
         use primitive_types::H160;
 
+        use crate::state::sync::SyncContext;
+
         use super::*;
 
         async fn with_state(
             headers: Vec<BlockHeader>,
             update: pathfinder_ethereum::EthereumStateUpdate,
         ) -> Option<BlockNumber> {
-            let l1 = move |tx: mpsc::Sender<EthereumStateUpdate>, _, _, _| {
+            let l1 = move |tx: mpsc::Sender<EthereumStateUpdate>, _| {
                 let u = update.clone();
                 async move {
                     tx.send(u).await.unwrap();
@@ -948,22 +975,22 @@ mod tests {
             tx.commit().unwrap();
 
             // UUT
-            let _jh = tokio::spawn(state::sync(
-                storage.clone(),
-                FakeTransport,
+            let context = SyncContext {
+                storage,
+                ethereum: FakeTransport,
                 chain,
                 chain_id,
                 core_address,
-                FakeSequencer,
-                sync_state.clone(),
-                l1,
-                l2_noop,
-                PendingData::default(),
-                None,
-                l2::BlockValidationMode::Strict,
-                websocket_txs.clone(),
-                100,
-            ));
+                sequencer: FakeSequencer,
+                state: sync_state,
+                pending_data: PendingData::default(),
+                pending_poll_interval: None,
+                block_validation_mode: l2::BlockValidationMode::Strict,
+                websocket_txs,
+                block_cache_size: 100,
+            };
+
+            let _jh = tokio::spawn(state::sync(context, l1, l2_noop));
 
             // TODO Find a better way to figure out that the DB update has already been performed
             tokio::time::sleep(Duration::from_millis(300)).await;
@@ -994,7 +1021,7 @@ mod tests {
         let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
         let websocket_txs = WebsocketSenders::for_test();
 
-        let l1 = move |_, _, _, _| {
+        let l1 = move |_, _| {
             let starts_tx = starts_tx.clone();
             async move {
                 // signal we've (re)started
@@ -1011,22 +1038,22 @@ mod tests {
         };
 
         // UUT
-        let _jh = tokio::spawn(state::sync(
+        let context = SyncContext {
             storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            H160::zero(),
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1,
-            l2_noop,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
+            ethereum: FakeTransport,
+            chain: Chain::Testnet,
+            chain_id: ChainId::TESTNET,
+            core_address: H160::zero(),
+            sequencer: FakeSequencer,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            pending_poll_interval: None,
+            block_validation_mode: l2::BlockValidationMode::Strict,
             websocket_txs,
-            100,
-        ));
+            block_cache_size: 100,
+        };
+
+        let _jh = tokio::spawn(state::sync(context, l1, l2_noop));
 
         let timeout = std::time::Duration::from_secs(1);
 
@@ -1058,7 +1085,7 @@ mod tests {
         };
 
         // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+        let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
             tx.send(l2::Event::Update(
                 (Box::new(block()), Default::default()),
                 Box::new(state_update()),
@@ -1089,22 +1116,22 @@ mod tests {
             tx.commit().unwrap();
 
             // UUT
-            let _jh = tokio::spawn(state::sync(
-                storage.clone(),
-                FakeTransport,
-                Chain::Testnet,
-                ChainId::TESTNET,
-                H160::zero(),
-                FakeSequencer,
-                sync_state.clone(),
-                l1_noop,
-                l2,
-                PendingData::default(),
-                None,
-                l2::BlockValidationMode::Strict,
-                websocket_txs.clone(),
-                100,
-            ));
+            let context = SyncContext {
+                storage,
+                ethereum: FakeTransport,
+                chain: Chain::Testnet,
+                chain_id: ChainId::TESTNET,
+                core_address: H160::zero(),
+                sequencer: FakeSequencer,
+                state: sync_state.clone(),
+                pending_data: PendingData::default(),
+                pending_poll_interval: None,
+                block_validation_mode: l2::BlockValidationMode::Strict,
+                websocket_txs: websocket_txs.clone(),
+                block_cache_size: 100,
+            };
+
+            let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
 
             // TODO Find a better way to figure out that the DB update has already been performed
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1144,7 +1171,7 @@ mod tests {
             let websocket_txs = WebsocketSenders::for_test();
 
             // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+            let l2 = move |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
                 tx.send(l2::Event::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
                     .await
                     .unwrap();
@@ -1162,22 +1189,22 @@ mod tests {
             tx.commit().unwrap();
 
             // UUT
-            let _jh = tokio::spawn(state::sync(
-                storage.clone(),
-                FakeTransport,
-                Chain::Testnet,
-                ChainId::TESTNET,
-                H160::zero(),
-                FakeSequencer,
-                Arc::new(SyncState::default()),
-                l1_noop,
-                l2,
-                PendingData::default(),
-                None,
-                l2::BlockValidationMode::Strict,
+            let context = SyncContext {
+                storage,
+                ethereum: FakeTransport,
+                chain: Chain::Testnet,
+                chain_id: ChainId::TESTNET,
+                core_address: H160::zero(),
+                sequencer: FakeSequencer,
+                state: Arc::new(SyncState::default()),
+                pending_data: PendingData::default(),
+                pending_poll_interval: None,
+                block_validation_mode: l2::BlockValidationMode::Strict,
                 websocket_txs,
-                100,
-            ));
+                block_cache_size: 100,
+            };
+
+            let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
 
             // TODO Find a better way to figure out that the DB update has already been performed
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1212,7 +1239,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
             tx.send(l2::Event::CairoClass {
                 definition: vec![],
                 hash: ClassHash(*A),
@@ -1225,22 +1252,22 @@ mod tests {
         };
 
         // UUT
-        let _jh = tokio::spawn(state::sync(
+        let context = SyncContext {
             storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            H160::zero(),
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1_noop,
-            l2,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
+            ethereum: FakeTransport,
+            chain: Chain::Testnet,
+            chain_id: ChainId::TESTNET,
+            core_address: H160::zero(),
+            sequencer: FakeSequencer,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            pending_poll_interval: None,
+            block_validation_mode: l2::BlockValidationMode::Strict,
             websocket_txs,
-            100,
-        ));
+            block_cache_size: 100,
+        };
+
+        let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
 
         // TODO Find a better way to figure out that the DB update has already been performed
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1259,7 +1286,7 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _, _, _, _, _, _, _| async move {
+        let l2 = |tx: mpsc::Sender<l2::Event>, _, _, _| async move {
             tx.send(l2::Event::SierraClass {
                 sierra_definition: vec![],
                 sierra_hash: SierraHash(*A),
@@ -1274,22 +1301,22 @@ mod tests {
         };
 
         // UUT
-        let _jh = tokio::spawn(state::sync(
+        let context = SyncContext {
             storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            H160::zero(),
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1_noop,
-            l2,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
+            ethereum: FakeTransport,
+            chain: Chain::Testnet,
+            chain_id: ChainId::TESTNET,
+            core_address: H160::zero(),
+            sequencer: FakeSequencer,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            pending_poll_interval: None,
+            block_validation_mode: l2::BlockValidationMode::Strict,
             websocket_txs,
-            100,
-        ));
+            block_cache_size: 100,
+        };
+
+        let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
 
         // TODO Find a better way to figure out that the DB update has already been performed
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1311,28 +1338,28 @@ mod tests {
         let websocket_txs = WebsocketSenders::for_test();
 
         // A simple L2 sync task
-        let l2 = move |_, _, _, _, _, _, _, _, _, _| async move {
+        let l2 = move |_, _, _, _| async move {
             CNT.fetch_add(1, Ordering::Relaxed);
             Ok(())
         };
 
         // UUT
-        let _jh = tokio::spawn(state::sync(
+        let context = SyncContext {
             storage,
-            FakeTransport,
-            Chain::Testnet,
-            ChainId::TESTNET,
-            H160::zero(),
-            FakeSequencer,
-            Arc::new(SyncState::default()),
-            l1_noop,
-            l2,
-            PendingData::default(),
-            None,
-            l2::BlockValidationMode::Strict,
+            ethereum: FakeTransport,
+            chain: Chain::Testnet,
+            chain_id: ChainId::TESTNET,
+            core_address: H160::zero(),
+            sequencer: FakeSequencer,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            pending_poll_interval: None,
+            block_validation_mode: l2::BlockValidationMode::Strict,
             websocket_txs,
-            100,
-        ));
+            block_cache_size: 100,
+        };
+
+        let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
 
         tokio::time::sleep(Duration::from_millis(5)).await;
 

@@ -111,20 +111,37 @@ pub enum Event {
     Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn sync(
+#[derive(Clone)]
+pub struct L2SyncContext<GatewayClient> {
+    pub websocket_txs: WebsocketSenders,
+    pub sequencer: GatewayClient,
+    pub chain: Chain,
+    pub chain_id: ChainId,
+    pub pending_poll_interval: Option<Duration>,
+    pub block_validation_mode: BlockValidationMode,
+    pub storage: Storage,
+}
+
+pub async fn sync<GatewayClient>(
     tx_event: mpsc::Sender<Event>,
-    websocket_txs: WebsocketSenders,
-    sequencer: impl GatewayApi,
+    context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
-    chain: Chain,
-    chain_id: ChainId,
-    pending_poll_interval: Option<Duration>,
-    block_validation_mode: BlockValidationMode,
     mut blocks: BlockChain,
-    storage: Storage,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    GatewayClient: GatewayApi,
+{
     use crate::state::sync::head_poll_interval;
+
+    let L2SyncContext {
+        websocket_txs,
+        sequencer,
+        chain,
+        chain_id,
+        pending_poll_interval,
+        block_validation_mode,
+        storage,
+    } = context;
 
     'outer: loop {
         // Get the next block from L2.
@@ -598,7 +615,7 @@ async fn reorg(
 #[cfg(test)]
 mod tests {
     mod sync {
-        use crate::state::l2::BlockChain;
+        use crate::state::l2::{BlockChain, L2SyncContext};
 
         use super::super::{sync, BlockValidationMode, Event};
         use assert_matches::assert_matches;
@@ -647,17 +664,21 @@ mod tests {
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<()>> {
             let storage = Storage::in_memory().unwrap();
+            let context = L2SyncContext {
+                websocket_txs: WebsocketSenders::for_test(),
+                sequencer,
+                chain: Chain::Testnet,
+                chain_id: ChainId::TESTNET,
+                pending_poll_interval: None,
+                block_validation_mode: MODE,
+                storage,
+            };
+
             tokio::spawn(sync(
                 tx_event,
-                WebsocketSenders::for_test(),
-                sequencer,
+                context,
                 None,
-                Chain::Testnet,
-                ChainId::TESTNET,
-                None,
-                MODE,
                 BlockChain::with_capacity(100, vec![]),
-                storage,
             ))
         }
 
@@ -1066,20 +1087,24 @@ mod tests {
                 );
 
                 // Let's run the UUT
+                let context = L2SyncContext {
+                    websocket_txs: WebsocketSenders::for_test(),
+                    sequencer: mock,
+                    chain: Chain::Testnet,
+                    chain_id: ChainId::TESTNET,
+                    pending_poll_interval: None,
+                    block_validation_mode: MODE,
+                    storage: Storage::in_memory().unwrap(),
+                };
+
                 let _jh = tokio::spawn(sync(
                     tx_event,
-                    WebsocketSenders::for_test(),
-                    mock,
+                    context,
                     Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
-                    Chain::Testnet,
-                    ChainId::TESTNET,
-                    None,
-                    MODE,
                     BlockChain::with_capacity(
                         100,
                         vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
                     ),
-                    Storage::in_memory().unwrap(),
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),

@@ -8,17 +8,29 @@ use tokio::sync::mpsc;
 
 use super::head_poll_interval;
 
+#[derive(Clone)]
+pub struct L1SyncContext<EthereumClient> {
+    pub ethereum: EthereumClient,
+    pub chain: Chain,
+    /// The Starknet core contract address on Ethereum
+    pub core_address: H160,
+}
+
 /// Syncs L1 state update logs. Emits [Ethereum state update](EthereumStateUpdate)
 /// which should be handled to update storage and respond to queries.
 pub async fn sync<T>(
     tx_event: mpsc::Sender<EthereumStateUpdate>,
-    ethereum: T,
-    chain: Chain,
-    core_address: H160,
+    context: L1SyncContext<T>,
 ) -> anyhow::Result<()>
 where
     T: EthereumApi + Clone,
 {
+    let L1SyncContext {
+        ethereum,
+        chain,
+        core_address,
+    } = context;
+
     let head_poll_interval = head_poll_interval(chain);
     let mut previous = EthereumStateUpdate::default();
 
