@@ -1,3 +1,5 @@
+use pathfinder_common::Chain;
+use pathfinder_storage::Storage;
 use starknet_gateway_types::reply::{Block, StateUpdate};
 
 /// Poll's the Sequencer's pending block and emits [Event::Pending](super::l2::Event::Pending)
@@ -17,6 +19,8 @@ pub async fn poll_pending(
         pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
+    chain: Chain,
+    storage: Storage,
 ) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
     use anyhow::Context;
     use pathfinder_common::BlockId;
@@ -25,7 +29,7 @@ pub async fn poll_pending(
     loop {
         use starknet_gateway_types::reply::{MaybePendingBlock, MaybePendingStateUpdate};
 
-        let pending_block = match sequencer
+        let block = match sequencer
             .block(BlockId::Pending)
             .await
             .context("Download pending block")?
@@ -70,7 +74,7 @@ pub async fn poll_pending(
         }
         .context("Downloading pending state update")?;
 
-        match state_update {
+        let state_update = match state_update {
             MaybePendingStateUpdate::StateUpdate(state_update) => {
                 tracing::trace!("Found full state update, exiting pending mode.");
                 return Ok((None, Some(state_update)));
@@ -81,19 +85,30 @@ pub async fn poll_pending(
                     return Ok((None, None));
                 }
 
-                // Emit new pending data.
-                use crate::state::l2::Event::Pending;
-                tx_event
-                    .send(Pending(
-                        Arc::new(pending_block),
-                        Arc::new(pending_state_update),
-                    ))
-                    .await
-                    .context("Event channel closed")?;
-
-                tokio::time::sleep(poll_interval).await;
+                pending_state_update
             }
-        }
+        };
+
+        // Download, process and emit all missing classes.
+        super::l2::download_new_classes(
+            &state_update.state_diff,
+            sequencer,
+            &tx_event,
+            chain,
+            &block.starknet_version,
+            storage.clone(),
+        )
+        .await
+        .context("Handling newly declared classes for pending block")?;
+
+        // Emit new block.
+        use crate::state::l2::Event::Pending;
+        tx_event
+            .send(Pending(Arc::new(block), Arc::new(state_update)))
+            .await
+            .context("Event channel closed")?;
+
+        tokio::time::sleep(poll_interval).await;
     }
 }
 
@@ -102,9 +117,10 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress,
-        StarknetVersion, StateCommitment,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice,
+        SequencerAddress, StarknetVersion, StateCommitment,
     };
+    use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{
         state_update::StateDiff, Block, MaybePendingBlock, MaybePendingStateUpdate, PendingBlock,
@@ -176,6 +192,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -217,6 +235,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -250,6 +270,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -282,6 +304,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -311,6 +335,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });

@@ -163,6 +163,8 @@ pub async fn sync(
                                 &sequencer,
                                 (head.1, head.2),
                                 interval,
+                                chain,
+                                storage.clone(),
                             )
                             .await
                             .context("Polling pending block")?;
@@ -305,7 +307,7 @@ pub async fn sync(
 /// can show up in `replaced_classes`. This is caused by DECLARE v0 transactions
 /// that were _failing_ but the sequencer has still added the class to its list of
 /// known classes...
-async fn download_new_classes(
+pub async fn download_new_classes(
     state_diff: &StateDiff,
     sequencer: &impl GatewayApi,
     tx_event: &mpsc::Sender<Event>,

@@ -5,9 +5,9 @@ mod pending;
 
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-    ContractNonce, ContractRoot, EventCommitment, GasPrice, SequencerAddress, StarknetVersion,
-    StateCommitment, StorageCommitment, TransactionCommitment,
+    BlockHash, BlockHeader, BlockNumber, Chain, ChainId, ClassCommitment, ContractNonce,
+    ContractRoot, EventCommitment, GasPrice, SequencerAddress, StateCommitment, StorageCommitment,
+    TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::{
@@ -25,9 +25,7 @@ use stark_hash::Felt;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     pending::PendingData,
-    reply::{
-        state_update::DeployedContract, Block, MaybePendingBlock, PendingStateUpdate, StateUpdate,
-    },
+    reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
 };
 
 use std::sync::Arc;
@@ -35,7 +33,6 @@ use std::{collections::HashMap, future::Future};
 use tokio::sync::mpsc;
 
 use crate::state::l2::BlockChain;
-use crate::state::sync::class::{download_class, DownloadedClass};
 
 /// Implements the main sync loop, where L1 and L2 sync results are combined.
 #[allow(clippy::too_many_arguments)]
@@ -273,10 +270,6 @@ where
                     tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
                 }
                 Some(l2::Event::Pending(block, state_update)) => {
-                    download_verify_and_insert_missing_classes(sequencer.clone(), &mut db_conn, &state_update, chain, &block.starknet_version)
-                        .await
-                        .context("Downloading missing classes for pending block")?;
-
                     pending_data.set(block, state_update).await;
                     tracing::debug!("Updated pending data");
                 }
@@ -744,126 +737,6 @@ fn deploy_contract(
     transaction
         .insert_contract_state(state_hash, class_hash, contract_root, contract_nonce)
         .context("Insert constract state hash into contracts state table")
-}
-
-/// Downloads and inserts class definitions for any classes in the
-/// list which are not already present in the database.
-async fn download_verify_and_insert_missing_classes<SequencerClient: GatewayApi>(
-    sequencer: SequencerClient,
-    connection: &mut Connection,
-    state_update: &PendingStateUpdate,
-    chain: Chain,
-    version: &StarknetVersion,
-) -> anyhow::Result<()> {
-    let deployed_classes = state_update
-        .state_diff
-        .deployed_contracts
-        .iter()
-        .map(|x| x.class_hash);
-    let declared_cairo_classes = state_update
-        .state_diff
-        .old_declared_contracts
-        .iter()
-        .cloned();
-    let declared_sierra_classes = state_update
-        .state_diff
-        .declared_classes
-        .iter()
-        .map(|x| ClassHash(x.class_hash.0));
-    let replaced_classes = state_update
-        .state_diff
-        .replaced_classes
-        .iter()
-        .map(|x| x.class_hash);
-
-    let classes = deployed_classes
-        .chain(declared_cairo_classes)
-        .chain(declared_sierra_classes)
-        .chain(replaced_classes);
-
-    // Make list unique.
-    let classes = classes
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter() // TODO: remove this allocation by using Iter in exists.
-        .collect::<Vec<_>>();
-
-    // Check database to see which are missing.
-    let exists = tokio::task::block_in_place(|| {
-        let transaction = connection.transaction()?;
-        transaction.class_definitions_exist(&classes)
-    })
-    .with_context(|| format!("Query storage for existance of classes {classes:?}"))?;
-    anyhow::ensure!(
-        exists.len() == classes.len(),
-        "Length mismatch when querying for class existance. Expected {} but got {}.",
-        classes.len(),
-        exists.len()
-    );
-    let missing = classes
-        .into_iter()
-        .zip(exists.into_iter())
-        .filter_map(|(class, exist)| (!exist).then_some(class));
-
-    // For each missing, download, verify and insert definition.
-    for class_hash in missing {
-        let class = download_class(&sequencer, class_hash, chain, version.clone()).await?;
-
-        match class {
-            DownloadedClass::Cairo { definition, hash } => {
-                tokio::task::block_in_place(|| {
-                    let transaction =
-                        connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    transaction
-                        .insert_cairo_class(hash, &definition)
-                        .context("Inserting new cairo class")?;
-                    transaction.commit()?;
-                    anyhow::Result::<()>::Ok(())
-                })
-                .with_context(|| format!("Insert class definition with hash: {hash}"))?;
-            }
-            DownloadedClass::Sierra {
-                sierra_definition,
-                sierra_hash,
-                casm_definition,
-            } => {
-                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
-                // since that's what has been added to the class commitment tree.
-                let casm_hash = state_update
-                    .state_diff
-                    .declared_classes
-                    .iter()
-                    .find_map(|declared_class| {
-                        if declared_class.class_hash.0 == class_hash.0 {
-                            Some(declared_class.compiled_class_hash)
-                        } else {
-                            None
-                        }
-                    })
-                    .context("Sierra class hash not in declared classes")?;
-                let casm_hash = ClassHash(casm_hash.0);
-                tokio::task::block_in_place(|| {
-                    let transaction =
-                        connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                    transaction
-                        .insert_sierra_class(
-                            &sierra_hash,
-                            &sierra_definition,
-                            &CasmHash(casm_hash.0),
-                            &casm_definition,
-                            crate::sierra::COMPILER_VERSION,
-                        )
-                        .context("Inserting sierra class")?;
-                    transaction.commit()?;
-                    anyhow::Result::<()>::Ok(())
-                })
-                .with_context(|| format!("Insert class definition with hash: {sierra_hash}"))?;
-            }
-        }
-
-        tracing::trace!("Inserted new class {}", class_hash.0.to_hex_str());
-    }
-
-    Ok(())
 }
 
 /// Interval at which poll for new data when at the head of chain.
