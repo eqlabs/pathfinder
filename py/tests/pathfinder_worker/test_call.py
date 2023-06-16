@@ -2363,7 +2363,8 @@ def test_estimate_message_fee_json():
     name = "cairo-0.11.0-decimal-entry-point-offset.json"
     deploy_contract(con, name, contract_address, class_hash)
 
-    command = Command.Schema().loads("""
+    command = Command.Schema().loads(
+        """
     {
         "verb": "ESTIMATE_MSG_FEE",
         "at_block": "1",
@@ -2377,7 +2378,8 @@ def test_estimate_message_fee_json():
         "pending_timestamp": 42,
         "gas_price": "0x1"
     }
-    """)
+    """
+    )
 
     con.execute("BEGIN")
 
@@ -2385,5 +2387,8 @@ def test_estimate_message_fee_json():
     assert output == FeeEstimation(gas_consumed=18330, gas_price=1, overall_fee=18330)
 
     result = render(command.verb, output)
-    assert result == {'gas_consumed': '0x479a', 'gas_price': '0x1', 'overall_fee': '0x479a'}
-
+    assert result == {
+        "gas_consumed": "0x479a",
+        "gas_price": "0x1",
+        "overall_fee": "0x479a",
+    }

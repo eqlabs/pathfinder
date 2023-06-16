@@ -557,6 +557,7 @@ def render(verb, vals):
     elif verb == Verb.ESTIMATE_MSG_FEE:
         return FeeEstimation.Schema().dump(vals)
 
+
 def as_hex(x):
     hex = x.to_bytes(32, "big").hex()
     return f"0x0{hex.lstrip('0')}"
