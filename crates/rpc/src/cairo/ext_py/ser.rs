@@ -36,7 +36,7 @@ pub(crate) enum ChildCommand<'a> {
         gas_price: &'a primitive_types::H256,
         transactions: &'a [TransactionAndClassHashHint],
     },
-    EstimateMessageFee {
+    EstimateMsgFee {
         #[serde(flatten)]
         common: CommonProperties<'a>,
 
