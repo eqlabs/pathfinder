@@ -37,6 +37,7 @@ from pathfinder_worker.call import (
     check_cairolang_version,
     do_loop,
     loop_inner,
+    render,
     resolve_block,
 )
 
@@ -2352,3 +2353,37 @@ def test_estimate_message_fee_direct_command():
     (verb, output, _timings) = loop_inner(con, command)
 
     assert output == FeeEstimation(gas_consumed=18330, gas_price=1, overall_fee=18330)
+
+
+def test_estimate_message_fee_json():
+    con = inmemory_with_tables()
+
+    contract_address = 0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
+    class_hash = 0x1002E3DD34DAD22590DD348D10754311102F03F4FC517F1C2018DDF77C7A614
+    name = "cairo-0.11.0-decimal-entry-point-offset.json"
+    deploy_contract(con, name, contract_address, class_hash)
+
+    command = Command.Schema().loads("""
+    {
+        "verb": "ESTIMATE_MSG_FEE",
+        "at_block": "1",
+        "chain": "TESTNET",
+        "contract_address": "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
+        "entry_point_selector": "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01",
+        "calldata": ["0x1", "0x2"],
+        "pending_updates": {},
+        "pending_deployed": [],
+        "pending_nonces": {},
+        "pending_timestamp": 42,
+        "gas_price": "0x1"
+    }
+    """)
+
+    con.execute("BEGIN")
+
+    (verb, output, _timings) = loop_inner(con, command)
+    assert output == FeeEstimation(gas_consumed=18330, gas_price=1, overall_fee=18330)
+
+    result = render(command.verb, output)
+    assert result == {'gas_consumed': '0x479a', 'gas_price': '0x1', 'overall_fee': '0x479a'}
+
