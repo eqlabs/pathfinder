@@ -378,7 +378,7 @@ def test_edge_node_hash():
     assert e.hash() == expected
 
 
-def populate_test_contract_with_132_on_3(con):  ## here
+def populate_test_contract_with_132_on_3(con):
     """
     Populates a situation created with cairo-lang contract_test.py where
     the test contract has been deployed and it's memory address 132 has been
