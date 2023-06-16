@@ -419,7 +419,9 @@ impl Command {
         match self {
             Call { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
             EstimateFee { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
-            EstimateMessageFee { response, .. } => response.send(Err(err)).map_err(|e| e.unwrap_err()),
+            EstimateMessageFee { response, .. } => {
+                response.send(Err(err)).map_err(|e| e.unwrap_err())
+            }
             SimulateTransaction { response, .. } => {
                 response.send(Err(err)).map_err(|e| e.unwrap_err())
             }
