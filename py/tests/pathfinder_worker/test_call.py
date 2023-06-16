@@ -378,7 +378,7 @@ def test_edge_node_hash():
     assert e.hash() == expected
 
 
-def populate_test_contract_with_132_on_3(con):
+def populate_test_contract_with_132_on_3(con): ## here
     """
     Populates a situation created with cairo-lang contract_test.py where
     the test contract has been deployed and it's memory address 132 has been
@@ -2285,17 +2285,59 @@ def test_simulate_transaction_succeeds():
 
     assert output == [expected]
 
+def deploy_contract(con, path, contract_address, class_hash):
+    cur = con.execute("BEGIN")
+    path = test_relative_path(
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/" + path
+    )
+    declare_class(cur, class_hash, path, 1)
+
+    cur.execute(
+        "insert into contract_updates (contract_address, block_number, class_hash) values (?, ?, ?)",
+        [felt_to_bytes(contract_address), 1, felt_to_bytes(class_hash)],
+    )
+
+    root_node = EdgeNode(path=1, path_length=251, child=LeafNode(value=1))
+    contract_root = root_node.hash()
+
+    contract_state_hash = calculate_contract_state_hash(class_hash, contract_root, 0)
+    root_node = EdgeNode(
+        path=contract_address,
+        path_length=251,
+        child=LeafNode(value=contract_state_hash),
+    )
+    state_root = root_node.hash()
+
+    cur.execute(
+        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        [
+            b"some blockhash somewhere".rjust(32, b"\x00"),
+            felt_to_bytes(state_root),
+            b"\x00" * 16,
+            b"\x00" * 32,
+            None,
+        ],
+    )
+
+    con.commit()
+
 
 def test_estimate_message_fee_direct_command():
     con = inmemory_with_tables()
-    (contract_address, _) = populate_test_contract_with_132_on_3(con)
+
+    contract_address = 0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
+    class_hash = 0x1002e3dd34dad22590dd348d10754311102f03f4fc517f1c2018ddf77c7a614
+    deploy_contract(con, 'contract-with-l1-handler.json', contract_address, class_hash)
 
     command = EstimateMessageFee(
         at_block="1",
         chain=call.Chain.TESTNET,
         contract_address=contract_address,
-        entry_point_selector=get_selector_from_name("get_value"),
-        calldata=[],
+        entry_point_selector=get_selector_from_name("appeal"),
+        calldata=[
+            0x1,
+            0x2,
+        ],
         gas_price=1,
         pending_updates={},
         pending_deployed=[],
