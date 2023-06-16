@@ -60,7 +60,7 @@ mod tests {
         felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, Chain, ClassHash,
         ContractAddress, EntryPoint, GasPrice,
     };
-    use pathfinder_storage::{JournalMode, Storage};
+    use pathfinder_storage::{types::state_update::StateDiff, JournalMode, Storage};
     use primitive_types::{H160, H256};
     use starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET;
     use tempfile::tempdir;
@@ -141,25 +141,28 @@ mod tests {
             let mut db = storage.connection().expect("db connection");
             let tx = db.transaction().expect("tx");
 
-            let hash = ClassHash(felt!(
+            let class_hash = ClassHash(felt!(
                 "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
             ));
-            tx.insert_cairo_class(hash, CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET)
+            tx.insert_cairo_class(class_hash, CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET)
                 .expect("insert class");
 
+            let block_number = BlockNumber::GENESIS + 1;
             let header = BlockHeader::builder()
-                .with_number(BlockNumber::GENESIS + 1)
+                .with_number(block_number)
                 .with_timestamp(BlockTimestamp::new_or_panic(1))
                 .with_gas_price(GasPrice(1))
                 .finalize_with_hash(BlockHash::ZERO);
 
             tx.insert_block_header(&header).unwrap();
 
-            let addr = ContractAddress::new_or_panic(felt!(
+            let contract_address = ContractAddress::new_or_panic(felt!(
                 "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             ));
-            tx.insert_contract_class_hash(BlockNumber::GENESIS + 1, addr, hash)
-                .unwrap();
+
+            let state_diff =
+                StateDiff::default().add_deployed_contract(contract_address, class_hash);
+            tx.insert_state_diff(block_number, &state_diff).unwrap();
 
             tx.commit().unwrap();
         }
@@ -329,26 +332,29 @@ mod tests {
             let mut db = storage.connection().expect("db connection");
             let tx = db.transaction().expect("tx");
 
-            let hash = ClassHash(felt!(
+            let class_hash = ClassHash(felt!(
                 "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
             ));
-            tx.insert_cairo_class(hash, CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET)
+            tx.insert_cairo_class(class_hash, CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET)
                 .expect("insert class");
 
+            let block_number = BlockNumber::GENESIS + 1;
             let header = BlockHeader::builder()
-                .with_number(BlockNumber::GENESIS + 1)
+                .with_number(block_number)
                 .with_timestamp(BlockTimestamp::new_or_panic(1))
                 .with_gas_price(GasPrice(1))
                 .finalize_with_hash(BlockHash::ZERO);
 
             tx.insert_block_header(&header).unwrap();
 
-            let addr = ContractAddress::new_or_panic(felt!(
+            let contract_address = ContractAddress::new_or_panic(felt!(
                 "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
             ));
-            tx.insert_contract_class_hash(BlockNumber::GENESIS + 1, addr, hash)
-                .unwrap();
 
+            let state_diff =
+                StateDiff::default().add_deployed_contract(contract_address, class_hash);
+            tx.insert_state_diff(block_number, &state_diff).unwrap();
+    
             tx.commit().unwrap();
         }
 
