@@ -193,15 +193,15 @@ mod tests {
 
         let expected = FeeEstimate {
             gas_consumed: H256::from_str(
-                "0x000000000000000000000000000000000000000000000000000000000000479a"
+                "0x000000000000000000000000000000000000000000000000000000000000479a",
             )
             .unwrap(),
             gas_price: H256::from_str(
-                "0x0000000000000000000000000000000000000000000000000000000000000001"
+                "0x0000000000000000000000000000000000000000000000000000000000000001",
             )
             .unwrap(),
             overall_fee: H256::from_str(
-                "0x000000000000000000000000000000000000000000000000000000000000479a"
+                "0x000000000000000000000000000000000000000000000000000000000000479a",
             )
             .unwrap(),
         };
@@ -268,7 +268,10 @@ mod tests {
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
         };
 
-        assert_matches::assert_matches!(estimate_message_fee(rpc, input).await, Err(EstimateMessageFeeError::ContractNotFound));
+        assert_matches::assert_matches!(
+            estimate_message_fee(rpc, input).await,
+            Err(EstimateMessageFeeError::ContractNotFound)
+        );
     }
 
     #[tokio::test]
@@ -308,9 +311,11 @@ mod tests {
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
         };
 
-        assert_matches::assert_matches!(estimate_message_fee(rpc, input).await, Err(EstimateMessageFeeError::BlockNotFound));
+        assert_matches::assert_matches!(
+            estimate_message_fee(rpc, input).await,
+            Err(EstimateMessageFeeError::BlockNotFound)
+        );
     }
-
 
     #[tokio::test]
     async fn test_error_invalid_selector() {
@@ -374,6 +379,9 @@ mod tests {
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
         };
 
-        assert_matches::assert_matches!(estimate_message_fee(rpc, input).await, Err(EstimateMessageFeeError::ContractError));
+        assert_matches::assert_matches!(
+            estimate_message_fee(rpc, input).await,
+            Err(EstimateMessageFeeError::ContractError)
+        );
     }
 }
