@@ -1,9 +1,6 @@
 use crate::{
     context::RpcContext,
-    v02::{
-        method::call::FunctionCall,
-        types::reply::FeeEstimate,
-    },
+    v02::{method::call::FunctionCall, types::reply::FeeEstimate},
 };
 use pathfinder_common::{BlockId, EthereumAddress};
 
