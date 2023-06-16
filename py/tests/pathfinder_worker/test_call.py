@@ -378,7 +378,7 @@ def test_edge_node_hash():
     assert e.hash() == expected
 
 
-def populate_test_contract_with_132_on_3(con): ## here
+def populate_test_contract_with_132_on_3(con):  ## here
     """
     Populates a situation created with cairo-lang contract_test.py where
     the test contract has been deployed and it's memory address 132 has been
@@ -2285,6 +2285,7 @@ def test_simulate_transaction_succeeds():
 
     assert output == [expected]
 
+
 def deploy_contract(con, name, contract_address, class_hash):
     cur = con.execute("BEGIN")
     path = test_relative_path(
@@ -2326,8 +2327,8 @@ def test_estimate_message_fee_direct_command():
     con = inmemory_with_tables()
 
     contract_address = 0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
-    class_hash = 0x1002e3dd34dad22590dd348d10754311102f03f4fc517f1c2018ddf77c7a614
-    name = 'cairo-0.11.0-decimal-entry-point-offset.json'
+    class_hash = 0x1002E3DD34DAD22590DD348D10754311102F03F4FC517F1C2018DDF77C7A614
+    name = "cairo-0.11.0-decimal-entry-point-offset.json"
     deploy_contract(con, name, contract_address, class_hash)
 
     command = EstimateMessageFee(

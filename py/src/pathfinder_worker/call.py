@@ -841,7 +841,7 @@ async def do_estimate_message_fee(
     entry_point_selector: int,
 ):
     internal_tx = InternalL1Handler(
-        contract_address=contract_address, 
+        contract_address=contract_address,
         entry_point_selector=entry_point_selector,
         calldata=calldata,
         nonce=1,
@@ -850,8 +850,7 @@ async def do_estimate_message_fee(
     )
 
     execution_info = await internal_tx.apply_state_updates(
-        state=state,
-        general_config=general_config
+        state=state, general_config=general_config
     )
 
     tx_fee = calculate_tx_fee(
