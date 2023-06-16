@@ -354,7 +354,7 @@ mod tests {
             let state_diff =
                 StateDiff::default().add_deployed_contract(contract_address, class_hash);
             tx.insert_state_diff(block_number, &state_diff).unwrap();
-    
+
             tx.commit().unwrap();
         }
 
