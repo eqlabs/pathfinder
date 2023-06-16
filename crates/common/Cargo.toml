@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 full-serde = []
-test-utils = ["dep:fake", "dep:metrics", "dep:rand"]
+test-utils = ["dep:fake", "dep:metrics", "dep:rand", "stark_hash/test-utils"]
 
 [dependencies]
 anyhow = { workspace = true }

@@ -85,7 +85,6 @@ impl StateCommitment {
 
 /// A Starknet block number.
 #[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct BlockNumber(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(BlockNumber);
@@ -107,7 +106,6 @@ impl std::iter::Iterator for BlockNumber {
 
 /// The timestamp of a Starknet block.
 #[derive(Copy, Debug, Clone, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct BlockTimestamp(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
@@ -115,7 +113,6 @@ macros::i64_backed_u64::serdes!(BlockTimestamp);
 
 /// A Starknet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
 pub struct TransactionIndex(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);

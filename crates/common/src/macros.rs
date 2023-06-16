@@ -1,7 +1,8 @@
 /// Macros for newtypes stored with an sqlite INTEGER column.
 pub(super) mod i64_backed_u64 {
 
-    /// Generates `new`, `new_or_panic` and `get` methods, and `PartialEq` against `i64` and `u64`.
+    /// Generates `new`, `new_or_panic` and `get` methods, `PartialEq` against `i64` and `u64`, and `fake::Dummy` when
+    /// feature `test-utils` enabled.
     macro_rules! new_get_partialeq {
         ($target:ty) => {
             impl $target {
@@ -36,6 +37,13 @@ pub(super) mod i64_backed_u64 {
             impl PartialEq<i64> for $target {
                 fn eq(&self, other: &i64) -> bool {
                     u64::try_from(*other).map(|x| self == &x).unwrap_or(false)
+                }
+            }
+
+            #[cfg(feature = "test-utils")]
+            impl<T> fake::Dummy<T> for $target {
+                fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+                    Self(rng.gen_range(0..i64::MAX as u64))
                 }
             }
         };

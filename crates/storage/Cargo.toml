@@ -42,6 +42,3 @@ zstd = "0.12"
 [dev-dependencies]
 assert_matches = { workspace = true }
 tempfile = "3.4"
-# fake = { workspace = true }
-# pretty_assertions = "1.3.0"
-# stark_hash = { path = "../stark_hash", features = ["test-utils"] }

@@ -4,7 +4,11 @@ use p2p_proto as proto;
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use pathfinder_storage::{Storage, Transaction};
 
+#[cfg(not(test))]
 const MAX_HEADERS_COUNT: u64 = 1000;
+#[cfg(test)]
+const MAX_HEADERS_COUNT: u64 = 10;
+
 const MAX_BODIES_COUNT: u64 = 100;
 const MAX_STATE_UPDATES_COUNT: u64 = 100;
 
@@ -70,7 +74,13 @@ fn block_headers(
     let mut count = std::cmp::min(request.count, MAX_HEADERS_COUNT);
     let mut headers = Vec::new();
 
-    let mut next_block_number = Some(BlockNumber::new_or_panic(request.start_block));
+    let mut next_block_number = match BlockNumber::new(request.start_block) {
+        Some(n) => Some(n),
+        None => anyhow::bail!(
+            "Unsupported block number value: {} > i64::MAX",
+            request.start_block
+        ),
+    };
 
     while let Some(block_number) = next_block_number {
         if count == 0 {
@@ -204,6 +214,7 @@ mod conv {
                 gas_price: header.gas_price.0.into(),
                 transaction_count,
                 transaction_commitment: header.transaction_commitment.0,
+                // FIXME
                 event_count: 0,
                 event_commitment: header.event_commitment.0,
                 starknet_version: header.starknet_version.take_inner(),
@@ -480,11 +491,19 @@ fn get_next_block_number(
 // unfortunately cannot cover classes (ie cairo0/sierra)
 #[cfg(test)]
 mod tests {
-    use super::proto::sync::Direction;
+    use super::super::client::conv;
+    use super::*;
+    use super::{block_headers, get_next_block_number};
+    use ::fake::Dummy;
+    use fake::{Fake, Faker};
+    use http::request;
+    use p2p_proto::sync::Direction;
     use p2p_proto::sync::GetBlockHeaders;
-    use pathfinder_common::BlockNumber;
-
-    use super::get_next_block_number;
+    use pathfinder_common::{BlockHeader, BlockNumber};
+    use pathfinder_storage::{fake2, Storage};
+    use proptest::prelude::*;
+    use quickcheck::Arbitrary;
+    use quickcheck_macros::quickcheck;
 
     #[test]
     fn test_get_next_block_number() {
@@ -503,6 +522,183 @@ mod tests {
             get_next_block_number(BlockNumber::new_or_panic(1), Direction::Forward),
             Some(BlockNumber::new_or_panic(2))
         );
+    }
+
+    /*
+        const NUM_BLOCKS_IN_DB: u64 = super::MAX_HEADERS_COUNT * 2;
+
+        #[derive(Clone, Debug)]
+        struct ValidGetBlockHeadersFixture(p2p_proto::sync::GetBlockHeaders);
+
+        impl Arbitrary for ValidGetBlockHeadersFixture {
+            fn arbitrary(_: &mut quickcheck::Gen) -> Self {
+                // Include values beyond highest block in DB
+                let start_block = (0..(NUM_BLOCKS_IN_DB * 2)).fake();
+                // Include values beyond the max allowed number of elements in reply
+                let count = (0..NUM_BLOCKS_IN_DB).fake();
+
+                Self(p2p_proto::sync::GetBlockHeaders {
+                    start_block,
+                    count,
+                    size_limit: Faker.fake(), // FIXME once this field matters
+                    direction: Faker.fake(),
+                })
+            }
+        }
+
+        #[quickcheck]
+        fn requested_block_headers_match_storage(request: ValidGetBlockHeadersFixture) -> bool {
+            let request = request.0;
+            let storage = Storage::in_memory().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            let backward = request.direction == Direction::Backward;
+            let start: usize = request.start_block.try_into().unwrap();
+            let capped_len = std::cmp::min(request.count, super::MAX_HEADERS_COUNT)
+                .try_into()
+                .unwrap();
+
+            let from_db = fake2::with_n_blocks(&storage, NUM_BLOCKS_IN_DB.try_into().unwrap())
+                .into_iter()
+                .map(|(header, _, _)| header);
+
+            let from_proto = block_headers(tx, request)
+                .unwrap()
+                .headers
+                .into_iter()
+                .map(|header| super::super::client::conv::header::from_p2p(header));
+
+            if backward {
+                from_db
+                    .skip(start.saturating_sub(capped_len))
+                    .take(capped_len)
+                    .eq(from_proto.rev())
+            } else {
+                from_db.skip(start).take(capped_len).eq(from_proto)
+            }
+        }
+    */
+
+    const NUM_BLOCKS: u64 = super::MAX_HEADERS_COUNT * 2;
+
+    mod block_headers {
+        use super::super::MAX_HEADERS_COUNT;
+        use super::*;
+        use crate::p2p_network::client::conv::header;
+
+        proptest! {
+            // FIXME pick a value that allows to run sufficient number of iterations
+            // but what about test execution time?
+            // run them separately?
+            #![proptest_config(ProptestConfig::with_cases(50))]
+
+            #[test]
+            fn block_headers_forward(start_block in 0..(NUM_BLOCKS * 2), count in 0..(NUM_BLOCKS * 2)) {
+                let storage = Storage::in_memory().unwrap();
+
+                let from_db = fake2::with_n_blocks(&storage, NUM_BLOCKS.try_into().unwrap())
+                    .into_iter()
+                    .skip(start_block.try_into().unwrap())
+                    .take(std::cmp::min(count, MAX_HEADERS_COUNT).try_into().unwrap())
+                    .map(|(header, _, _)| header).collect::<Vec<_>>();
+
+                let mut connection = storage.connection().unwrap();
+                let tx = connection.transaction().unwrap();
+
+                let request = p2p_proto::sync::GetBlockHeaders {
+                    start_block,
+                    count,
+                    // FIXME once size_limit is really used
+                    size_limit: Faker.fake(),
+                    direction: Direction::Forward
+                };
+
+                let from_p2p = block_headers(tx, request)
+                    .unwrap()
+                    .headers
+                    .into_iter()
+                    .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
+
+                prop_assert_eq!(from_p2p, from_db)
+            }
+
+            #[test]
+            fn block_headers_backward(start_block in 0..(NUM_BLOCKS * 2), count in 0..(NUM_BLOCKS * 2)) {
+                let storage = Storage::in_memory().unwrap();
+
+                let from_db = fake2::with_n_blocks(&storage, NUM_BLOCKS.try_into().unwrap())
+                    .into_iter()
+                    .take((start_block + 1).try_into().unwrap())
+                    .rev()
+                    .take(std::cmp::min(count, MAX_HEADERS_COUNT).try_into().unwrap())
+                    .map(|(header, _, _)| header).collect::<Vec<_>>();
+
+                let mut connection = storage.connection().unwrap();
+                let tx = connection.transaction().unwrap();
+
+                let request = p2p_proto::sync::GetBlockHeaders {
+                    start_block,
+                    count,
+                    // FIXME once size_limit is really used
+                    size_limit: Faker.fake(),
+                    direction: Direction::Backward
+                };
+
+                let from_p2p = block_headers(tx, request)
+                    .unwrap()
+                    .headers
+                    .into_iter()
+                    .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
+
+                if start_block >= NUM_BLOCKS {
+                    prop_assert!(from_p2p.is_empty())
+                } else {
+                    prop_assert_eq!(from_p2p, from_db)
+                }
+            }
+        }
+
+        #[test]
+        fn unsupported_start_block_value() {
+            let request = p2p_proto::sync::GetBlockHeaders {
+                start_block: (i64::MAX as u64 + 1),
+                count: Faker.fake(),
+                size_limit: Faker.fake(),
+                direction: Faker.fake(),
+            };
+
+            let storage = Storage::in_memory().unwrap();
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+            assert!(block_headers(tx, request).is_err());
+        }
+    }
+
+    #[test]
+    fn requested_block_headers_match_storage2() {
+        let storage = Storage::in_memory().unwrap();
+        let from_db = fake2::with_n_blocks(&storage, 3)
+            .into_iter()
+            .map(|(header, _, _)| header)
+            .collect::<Vec<_>>();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+        let from_proto = block_headers(
+            tx,
+            p2p_proto::sync::GetBlockHeaders {
+                start_block: 0,
+                count: 100,
+                size_limit: 1000000,
+                direction: Direction::Forward,
+            },
+        )
+        .unwrap()
+        .headers
+        .into_iter()
+        .map(|proto_header| super::super::client::conv::header::from_p2p(proto_header))
+        .collect::<Vec<_>>();
+        pretty_assertions::assert_eq!(from_db, from_proto);
     }
 
     #[cfg(DISABLED)]

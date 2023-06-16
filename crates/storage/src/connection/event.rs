@@ -247,8 +247,11 @@ pub(super) fn get_events<K: KeyFilter>(
 }
 
 fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
-    // with padding it seems 44 bytes are needed for each
-    let needed = (keys.len() * (" ".len() + 44)).saturating_sub(" ".len());
+    // base64 of 3 bytes == 4 base64 digits == 8 bytes in the string buf
+    // Felt == 32 bytes == ceil(32/3) * 4 = 44 base64 digits = 88 bytest in the string
+    // Padding is a single ascii char, which is 2 bytes
+
+    let needed = (keys.len() * 90).saturating_sub(2);
     if let Some(more) = needed.checked_sub(out.capacity() - out.len()) {
         out.reserve(more);
     }

@@ -7,11 +7,11 @@ mod prelude;
 
 mod connection;
 #[cfg(any(feature = "test-utils", test))]
-mod fake;
+pub mod fake2;
 mod params;
 mod schema;
-#[cfg(any(feature = "test-utils", test))]
-pub mod test_fixtures;
+// #[cfg(any(feature = "test-utils", test))]
+// pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 

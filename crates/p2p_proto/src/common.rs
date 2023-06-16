@@ -179,11 +179,11 @@ pub struct MessageToL1 {
 
 #[cfg(feature = "test-utils")]
 impl<T> Dummy<T> for MessageToL1 {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, _: &mut R) -> Self {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
         Self {
-            from_address: Faker.fake(),
-            payload: Faker.fake(),
-            to_address: primitive_types::H160::random(),
+            from_address: Felt::dummy_with_rng(config, rng),
+            payload: Faker.fake_with_rng(rng),
+            to_address: primitive_types::H160::random_using(rng),
         }
     }
 }
@@ -200,13 +200,13 @@ pub struct MessageToL2 {
 
 #[cfg(feature = "test-utils")]
 impl<T> Dummy<T> for MessageToL2 {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, _: &mut R) -> Self {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
-            from_address: primitive_types::H160::random(),
-            payload: Faker.fake(),
-            to_address: Faker.fake(),
-            entry_point_selector: Faker.fake(),
-            nonce: Faker.fake(),
+            from_address: primitive_types::H160::random_using(rng),
+            payload: Faker.fake_with_rng(rng),
+            to_address: Faker.fake_with_rng(rng),
+            entry_point_selector: Faker.fake_with_rng(rng),
+            nonce: Faker.fake_with_rng(rng),
         }
     }
 }

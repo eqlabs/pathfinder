@@ -558,7 +558,12 @@ pub mod transaction {
             use primitive_types::H256;
             Self {
                 version: TransactionVersion(H256::from_low_u64_be(rng.gen_range(0..=1))),
-                ..Faker.fake()
+
+                contract_address: Faker.fake_with_rng(rng),
+                contract_address_salt: Faker.fake_with_rng(rng),
+                class_hash: Faker.fake_with_rng(rng),
+                constructor_calldata: Faker.fake_with_rng(rng),
+                transaction_hash: Faker.fake_with_rng(rng),
             }
         }
     }
@@ -584,12 +589,20 @@ pub mod transaction {
 
     #[cfg(feature = "test-utils")]
     impl<T> Dummy<T> for DeployAccountTransaction {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, _: &mut R) -> Self {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             use fake::{Fake, Faker};
             Self {
                 // TODO verify this is the only realistic value
                 version: TransactionVersion::ONE,
-                ..Faker.fake()
+
+                contract_address: Faker.fake_with_rng(rng),
+                transaction_hash: Faker.fake_with_rng(rng),
+                max_fee: Faker.fake_with_rng(rng),
+                signature: Faker.fake_with_rng(rng),
+                nonce: Faker.fake_with_rng(rng),
+                contract_address_salt: Faker.fake_with_rng(rng),
+                constructor_calldata: Faker.fake_with_rng(rng),
+                class_hash: Faker.fake_with_rng(rng),
             }
         }
     }
@@ -709,12 +722,17 @@ pub mod transaction {
 
     #[cfg(feature = "test-utils")]
     impl<T> Dummy<T> for L1HandlerTransaction {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, _: &mut R) -> Self {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             use fake::{Fake, Faker};
             Self {
                 // TODO verify this is the only realistic value
                 version: TransactionVersion::ZERO,
-                ..Faker.fake()
+
+                contract_address: Faker.fake_with_rng(rng),
+                entry_point_selector: Faker.fake_with_rng(rng),
+                nonce: Faker.fake_with_rng(rng),
+                calldata: Faker.fake_with_rng(rng),
+                transaction_hash: Faker.fake_with_rng(rng),
             }
         }
     }
