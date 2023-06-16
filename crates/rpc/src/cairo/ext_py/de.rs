@@ -28,7 +28,8 @@ pub(crate) struct ChildResponse<'a> {
 #[serde(untagged)]
 pub(crate) enum OutputValue {
     Call(Vec<CallResultValue>),
-    Fee(Vec<FeeEstimate>),
+    Fees(Vec<FeeEstimate>),
+    Fee(FeeEstimate),
     Traces(Vec<TransactionSimulation>),
 }
 

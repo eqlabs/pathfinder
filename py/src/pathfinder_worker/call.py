@@ -120,7 +120,7 @@ class Verb(Enum):
     CALL = 0
     ESTIMATE_FEE = 1
     SIMULATE_TX = 2
-    ESTIMATE_MSG_FEE = 1
+    ESTIMATE_MSG_FEE = 3
 
 
 class Chain(Enum):
@@ -273,6 +273,7 @@ class CommandSchema(marshmallow_oneofschema.OneOfSchema):
         Verb.CALL.name: Call.Schema,
         Verb.ESTIMATE_FEE.name: EstimateFee.Schema,
         Verb.SIMULATE_TX.name: SimulateTx.Schema,
+        Verb.ESTIMATE_MSG_FEE.name: EstimateMessageFee.Schema,
     }
 
     at_block = mfields.Str()
@@ -553,7 +554,8 @@ def render(verb, vals):
         return FeeEstimation.Schema(many=True).dump(vals)
     elif verb == Verb.SIMULATE_TX:
         return TransactionSimulation.Schema(many=True).dump(vals)
-
+    elif verb == Verb.ESTIMATE_MSG_FEE:
+        return FeeEstimation.Schema().dump(vals)
 
 def as_hex(x):
     hex = x.to_bytes(32, "big").hex()

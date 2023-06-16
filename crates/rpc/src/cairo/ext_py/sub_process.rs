@@ -376,7 +376,7 @@ async fn process(
             diffs: maybe_diffs,
             block_timestamp,
             ..
-        } => ChildCommand::EstimateMessageFee {
+        } => ChildCommand::EstimateMsgFee {
             common: CommonProperties {
                 at_block,
                 chain: *chain,
@@ -480,10 +480,13 @@ async fn process(
         (Command::Call { response, .. }, Ok(OutputValue::Call(x))) => {
             let _ = response.send(Ok(x));
         }
-        (Command::EstimateFee { response, .. }, Ok(OutputValue::Fee(x))) => {
+        (Command::EstimateFee { response, .. }, Ok(OutputValue::Fees(x))) => {
             let _ = response.send(Ok(x));
         }
         (Command::SimulateTransaction { response, .. }, Ok(OutputValue::Traces(x))) => {
+            let _ = response.send(Ok(x));
+        }
+        (Command::EstimateMessageFee { response, .. }, Ok(OutputValue::Fee(x))) => {
             let _ = response.send(Ok(x));
         }
         (command, Err(fail)) => {
