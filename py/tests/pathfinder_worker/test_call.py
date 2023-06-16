@@ -2285,10 +2285,10 @@ def test_simulate_transaction_succeeds():
 
     assert output == [expected]
 
-def deploy_contract(con, path, contract_address, class_hash):
+def deploy_contract(con, name, contract_address, class_hash):
     cur = con.execute("BEGIN")
     path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/" + path
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/" + name
     )
     declare_class(cur, class_hash, path, 1)
 
@@ -2327,13 +2327,14 @@ def test_estimate_message_fee_direct_command():
 
     contract_address = 0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
     class_hash = 0x1002e3dd34dad22590dd348d10754311102f03f4fc517f1c2018ddf77c7a614
-    deploy_contract(con, 'contract-with-l1-handler.json', contract_address, class_hash)
+    name = 'cairo-0.11.0-decimal-entry-point-offset.json'
+    deploy_contract(con, name, contract_address, class_hash)
 
     command = EstimateMessageFee(
         at_block="1",
         chain=call.Chain.TESTNET,
         contract_address=contract_address,
-        entry_point_selector=get_selector_from_name("appeal"),
+        entry_point_selector=get_selector_from_name("deposit"),
         calldata=[
             0x1,
             0x2,
@@ -2349,4 +2350,4 @@ def test_estimate_message_fee_direct_command():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == [3]
+    assert output == FeeEstimation(gas_consumed=18330, gas_price=1, overall_fee=18330)

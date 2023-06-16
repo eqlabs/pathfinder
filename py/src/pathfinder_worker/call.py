@@ -58,6 +58,7 @@ try:
         ExecutionResourcesManager,
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
+    from starkware.starknet.business_logic.transaction.fee import calculate_tx_fee
     from starkware.starknet.business_logic.transaction.objects import InternalL1Handler
     from starkware.starknet.core.os.contract_class.utils import (
         ClassHashType,
@@ -119,6 +120,7 @@ class Verb(Enum):
     CALL = 0
     ESTIMATE_FEE = 1
     SIMULATE_TX = 2
+    ESTIMATE_MSG_FEE = 1
 
 
 class Chain(Enum):
@@ -244,7 +246,7 @@ class EstimateFee(Command):
 
 @marshmallow_dataclass.dataclass(frozen=True)
 class EstimateMessageFee(Command):
-    verb: ClassVar[Verb] = Verb.ESTIMATE_FEE
+    verb: ClassVar[Verb] = Verb.ESTIMATE_MSG_FEE
 
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
@@ -847,12 +849,6 @@ async def do_estimate_message_fee(
         hash_value=0xDEADBEEF,
     )
 
-    ## TODO(SM): FIXME
-    # StarknetErrorCode.TRANSACTION_FAILED: 53>
-    # 
-    # Error at pc=0:1889:\nAn ASSERT_EQ instruction failed: 1 != 0.
-    # Cairo traceback (most recent call last):\nUnknown location (pc=0:1977)
-    # (/starkware/starknet/business_logic/execution/execute_entry_point.py:567)
     execution_info = await internal_tx.apply_state_updates(
         state=state,
         general_config=general_config
