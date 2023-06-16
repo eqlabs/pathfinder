@@ -842,15 +842,17 @@ async def do_estimate_message_fee(
         contract_address=contract_address, 
         entry_point_selector=entry_point_selector,
         calldata=calldata,
-        nonce=42,
+        nonce=1,
         paid_fee_on_l1=None,
-        hash_value=0,
+        hash_value=0xDEADBEEF,
     )
 
-    ## TODO(SM): Fix test_call.py:test_estimate_message_fee_direct_command
-    # {'code': <StarknetErrorCode.ENTRY_POINT_NOT_FOUND_IN_CONTRACT: 8>, 'message': '
-    # Entry point 0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0 not found in contract 
-    # with class hash 0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b.'}
+    ## TODO(SM): FIXME
+    # StarknetErrorCode.TRANSACTION_FAILED: 53>
+    # 
+    # Error at pc=0:1889:\nAn ASSERT_EQ instruction failed: 1 != 0.
+    # Cairo traceback (most recent call last):\nUnknown location (pc=0:1977)
+    # (/starkware/starknet/business_logic/execution/execute_entry_point.py:567)
     execution_info = await internal_tx.apply_state_updates(
         state=state,
         general_config=general_config
