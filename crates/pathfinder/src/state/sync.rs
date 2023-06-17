@@ -31,7 +31,7 @@ use starknet_gateway_types::{
 
 use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Receiver};
 
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
@@ -113,7 +113,7 @@ pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
     l2_sync: L2Sync,
 ) -> anyhow::Result<()>
 where
-    Ethereum: EthereumApi + Clone,
+    Ethereum: EthereumApi + Clone + Send + 'static,
     SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
@@ -142,13 +142,14 @@ where
         block_validation_mode: _,
         websocket_txs: _,
         block_cache_size,
-    } = context;
+    } = context.clone();
 
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
 
-    let (event_sender, mut event_receiver) = mpsc::channel(2);
+    // TODO: consider increasing the capacity.
+    let (event_sender, event_receiver) = mpsc::channel(2);
 
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
@@ -193,9 +194,8 @@ where
         block_chain,
     ));
 
-    let mut last_block_start = std::time::Instant::now();
-    let mut block_time_avg = std::time::Duration::ZERO;
-    const BLOCK_TIME_WEIGHT: f32 = 0.05;
+    let mut consumer_handle = tokio::spawn(consumer(event_receiver, context.clone()));
+
     /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
     /// tasks are crashing.
     #[cfg(not(test))]
@@ -250,60 +250,149 @@ where
                 });
                 tracing::info!("L2 sync process restarted.");
             },
-            event = event_receiver.recv() => {
-                let Some(event) = event else {
-                    anyhow::bail!("Sync event queue closed, this should never happen.");
-                };
-
-                use SyncEvent::*;
-                match event {
-                    L1Update(update) => {
-                        l1_update(&mut db_conn, &update).await?;
-                        tracing::info!("L1 sync updated to block {}", update.block_number);
+            consumer_result = &mut consumer_handle => {
+                match consumer_result {
+                    Ok(Ok(())) => {
+                        tracing::debug!("Sync consumer task exited gracefully");
                     },
-                    Block((block, (tx_comm, ev_comm)), state_update, timings) => {
-                        let block_number = block.block_number;
-                        let block_hash = block.block_hash;
-                        let storage_updates: usize = state_update.state_diff.storage_diffs.values().map(|storage_diffs| storage_diffs.len()).sum();
-                        let update_t = std::time::Instant::now();
-                        l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
-                            .await
-                            .with_context(|| format!("Update L2 state to {block_number}"))?;
-                        // This opens a short window where `pending` overlaps with `latest` in storage. Unfortuantely
-                        // there is no easy way of having a transaction over both memory and database. sqlite does support
-                        // multi-database transactions, but it does not work for WAL mode.
-                        pending_data.clear().await;
-                        let block_time = last_block_start.elapsed();
-                        let update_t = update_t.elapsed();
-                        last_block_start = std::time::Instant::now();
+                    Ok(Err(e)) => {
+                        tracing::error!(reason=%e, "Sync consumer task terminated with an error");
+                    }
+                    Err(e) if e.is_cancelled() => {
+                        tracing::debug!("Sync consumer task cancelled succesfully");
+                    },
+                    Err(panic) => {
+                        tracing::error!(%panic, "Sync consumer task panic'd");
+                    }
+                }
 
-                        block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
-                            + block_time.mul_f32(BLOCK_TIME_WEIGHT);
+                // Shutdown the other processes.
+                tracing::debug!("Shutting down L1 and L2 sync producer tasks");
+                l1_handle.abort();
+                l2_handle.abort();
 
-                        // Update sync status
-                        match &mut *state.status.write().await {
-                            Syncing::False(_) => {}
-                            Syncing::Status(status) => {
-                                status.current = NumberedBlock::from((block_hash, block_number));
+                match l1_handle.await {
+                    Ok(Ok(())) => {
+                        tracing::debug!("L1 sync task exited gracefully");
+                    },
+                    Ok(Err(e)) => {
+                        tracing::error!(reason=%e, "L1 sync task terminated with an error");
+                    }
+                    Err(e) if e.is_cancelled() => {
+                        tracing::debug!("L1 sync task cancelled succesfully");
+                    },
+                    Err(panic) => {
+                        tracing::error!(%panic, "L1 sync task panic'd");
+                    }
+                }
 
-                                if status.highest.number <= block_number {
-                                    status.highest = status.current;
-                                }
-                            }
+                match l2_handle.await {
+                    Ok(Ok(())) => {
+                        tracing::debug!("L2 sync task exited gracefully");
+                    },
+                    Ok(Err(e)) => {
+                        tracing::error!(reason=%e, "L2 sync task terminated with an error");
+                    }
+                    Err(e) if e.is_cancelled() => {
+                        tracing::debug!("L2 sync task cancelled succesfully");
+                    },
+                    Err(panic) => {
+                        tracing::error!(%panic, "L2 sync task panic'd");
+                    }
+                }
+
+                anyhow::bail!("Sync process terminated");
+            }
+        }
+    }
+}
+
+async fn consumer<SequencerClient, Ethereum>(
+    mut events: Receiver<SyncEvent>,
+    context: SyncContext<SequencerClient, Ethereum>,
+) -> anyhow::Result<()>
+where
+    Ethereum: EthereumApi + Clone,
+    SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
+{
+    let SyncContext {
+        storage,
+        ethereum: _,
+        chain: _,
+        chain_id: _,
+        core_address: _,
+        sequencer: _,
+        state,
+        pending_data,
+        pending_poll_interval: _,
+        block_validation_mode: _,
+        websocket_txs: _,
+        block_cache_size: _,
+    } = context;
+
+    let mut last_block_start = std::time::Instant::now();
+    let mut block_time_avg = std::time::Duration::ZERO;
+    const BLOCK_TIME_WEIGHT: f32 = 0.05;
+
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+
+    while let Some(event) = events.recv().await {
+        use SyncEvent::*;
+        match event {
+            L1Update(update) => {
+                l1_update(&mut db_conn, &update).await?;
+                tracing::info!("L1 sync updated to block {}", update.block_number);
+            }
+            Block((block, (tx_comm, ev_comm)), state_update, timings) => {
+                let block_number = block.block_number;
+                let block_hash = block.block_hash;
+                let storage_updates: usize = state_update
+                    .state_diff
+                    .storage_diffs
+                    .values()
+                    .map(|storage_diffs| storage_diffs.len())
+                    .sum();
+                let update_t = std::time::Instant::now();
+                l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
+                    .await
+                    .with_context(|| format!("Update L2 state to {block_number}"))?;
+                // This opens a short window where `pending` overlaps with `latest` in storage. Unfortuantely
+                // there is no easy way of having a transaction over both memory and database. sqlite does support
+                // multi-database transactions, but it does not work for WAL mode.
+                pending_data.clear().await;
+                let block_time = last_block_start.elapsed();
+                let update_t = update_t.elapsed();
+                last_block_start = std::time::Instant::now();
+
+                block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
+                    + block_time.mul_f32(BLOCK_TIME_WEIGHT);
+
+                // Update sync status
+                match &mut *state.status.write().await {
+                    Syncing::False(_) => {}
+                    Syncing::Status(status) => {
+                        status.current = NumberedBlock::from((block_hash, block_number));
+
+                        if status.highest.number <= block_number {
+                            status.highest = status.current;
                         }
+                    }
+                }
 
-                        // Give a simple log under INFO level, and a more verbose log
-                        // with timing information under DEBUG+ level.
-                        //
-                        // This should be removed if we have a configurable log level.
-                        // See the docs for LevelFilter for more information.
-                        match tracing::level_filters::LevelFilter::current().into_level() {
-                            None => {}
-                            Some(level) if level <= tracing::Level::INFO => {
-                                tracing::info!("Updated Starknet state with block {}", block_number)
-                            }
-                            Some(_) => {
-                                tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
+                // Give a simple log under INFO level, and a more verbose log
+                // with timing information under DEBUG+ level.
+                //
+                // This should be removed if we have a configurable log level.
+                // See the docs for LevelFilter for more information.
+                match tracing::level_filters::LevelFilter::current().into_level() {
+                    None => {}
+                    Some(level) if level <= tracing::Level::INFO => {
+                        tracing::info!("Updated Starknet state with block {}", block_number)
+                    }
+                    Some(_) => {
+                        tracing::debug!("Updated Starknet state with block {} after {:2}s ({:2}s avg). contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in {:2}s, state diff in {:2}s",
                                     block_number,
                                     block_time.as_secs_f32(),
                                     block_time_avg.as_secs_f32(),
@@ -313,66 +402,74 @@ where
                                     timings.block_download.as_secs_f32(),
                                     timings.state_diff_download.as_secs_f32(),
                                 );
-                            }
-                        }
-                    },
-                    Reorg(reorg_tail) => {
-                        pending_data.clear().await;
-
-                        l2_reorg(&mut db_conn, reorg_tail)
-                            .await
-                            .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
-
-                        let new_head = match reorg_tail {
-                            BlockNumber::GENESIS => None,
-                            other => Some(other - 1),
-                        };
-                        match new_head {
-                            Some(head) => {
-                                tracing::info!("L2 reorg occurred, new L2 head is block {}", head)
-                            }
-                            None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
-                        }
-                    },
-                    CairoClass { definition, hash } => {
-                        tokio::task::block_in_place(|| {
-                            let tx = db_conn.transaction().context("Creating database transaction")?;
-                            tx.insert_cairo_class(hash, &definition).context("Inserting new cairo class")?;
-                            tx.commit().context("Committing database transaction")
-                        })
-                        .with_context(|| {
-                            format!("Insert Cairo contract definition with hash: {hash}")
-                        })?;
-
-                        tracing::debug!(%hash, "Inserted new Cairo class");
-                    },
-                    SierraClass { sierra_definition, sierra_hash, casm_definition, casm_hash } => {
-                        tokio::task::block_in_place(|| {
-                            let tx = db_conn.transaction().context("Creating database transaction")?;
-                            tx.insert_sierra_class(
-                                &sierra_hash,
-                                &sierra_definition,
-                                &casm_hash,
-                                &casm_definition,
-                                crate::sierra::COMPILER_VERSION
-                            )
-                            .context("Inserting sierra class")?;
-                            tx.commit().context("Committing database transaction")
-                        })
-                        .with_context(|| {
-                            format!("Insert Sierra contract definition with hash: {sierra_hash}")
-                        })?;
-
-                        tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
-                    },
-                    Pending(block, state_update) => {
-                        pending_data.set(block, state_update).await;
-                        tracing::debug!("Updated pending data");
                     }
                 }
-            },
+            }
+            Reorg(reorg_tail) => {
+                pending_data.clear().await;
+
+                l2_reorg(&mut db_conn, reorg_tail)
+                    .await
+                    .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
+
+                let new_head = match reorg_tail {
+                    BlockNumber::GENESIS => None,
+                    other => Some(other - 1),
+                };
+                match new_head {
+                    Some(head) => {
+                        tracing::info!("L2 reorg occurred, new L2 head is block {}", head)
+                    }
+                    None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
+                }
+            }
+            CairoClass { definition, hash } => {
+                tokio::task::block_in_place(|| {
+                    let tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    tx.insert_cairo_class(hash, &definition)
+                        .context("Inserting new cairo class")?;
+                    tx.commit().context("Committing database transaction")
+                })
+                .with_context(|| format!("Insert Cairo contract definition with hash: {hash}"))?;
+
+                tracing::debug!(%hash, "Inserted new Cairo class");
+            }
+            SierraClass {
+                sierra_definition,
+                sierra_hash,
+                casm_definition,
+                casm_hash,
+            } => {
+                tokio::task::block_in_place(|| {
+                    let tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    tx.insert_sierra_class(
+                        &sierra_hash,
+                        &sierra_definition,
+                        &casm_hash,
+                        &casm_definition,
+                        crate::sierra::COMPILER_VERSION,
+                    )
+                    .context("Inserting sierra class")?;
+                    tx.commit().context("Committing database transaction")
+                })
+                .with_context(|| {
+                    format!("Insert Sierra contract definition with hash: {sierra_hash}")
+                })?;
+
+                tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
+            }
+            Pending(block, state_update) => {
+                pending_data.set(block, state_update).await;
+                tracing::debug!("Updated pending data");
+            }
         }
     }
+
+    Ok(())
 }
 
 async fn latest_n_blocks(
