@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct Timings {
     pub block_download: Duration,
     pub state_diff_download: Duration,

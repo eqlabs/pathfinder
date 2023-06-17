@@ -920,23 +920,20 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use super::l2;
-    use crate::state;
-    use crate::state::l1::L1SyncContext;
-    use crate::state::sync::{SyncContext, SyncEvent};
-    use futures::stream::{StreamExt, TryStreamExt};
+    use crate::state::sync::{consumer, SyncContext, SyncEvent};
     use pathfinder_common::{
-        felt_bytes, BlockHash, BlockHeader, BlockId, BlockNumber, BlockTimestamp, CasmHash, Chain,
-        ChainId, ClassCommitment, ClassHash, GasPrice, SequencerAddress, SierraHash,
-        StarknetVersion, StateCommitment, StorageCommitment,
+        felt_bytes, BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassHash,
+        EventCommitment, SierraHash, StateCommitment, TransactionCommitment,
     };
     use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
     use pathfinder_storage::Storage;
     use primitive_types::H160;
     use stark_hash::Felt;
     use starknet_gateway_client::GatewayApi;
-    use starknet_gateway_types::{error::SequencerError, pending::PendingData, reply};
-    use std::{sync::Arc, time::Duration};
-    use tokio::sync::mpsc;
+    use starknet_gateway_types::reply::state_update::StateDiff;
+    use starknet_gateway_types::reply::{Block, StateUpdate};
+    use starknet_gateway_types::{pending::PendingData, reply};
+    use std::sync::Arc;
 
     #[derive(Debug, Clone)]
     struct FakeTransport;
@@ -962,421 +959,89 @@ mod tests {
     struct FakeSequencer;
 
     #[async_trait::async_trait]
-    impl GatewayApi for FakeSequencer {
-        async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-            match block {
-                BlockId::Latest => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
-                BlockId::Number(_) => Ok(reply::MaybePendingBlock::Block(BLOCK0.clone())),
-                _ => unimplemented!(),
-            }
-        }
-    }
+    impl GatewayApi for FakeSequencer {}
 
-    async fn l1_noop<E>(_: mpsc::Sender<SyncEvent>, _: L1SyncContext<E>) -> anyhow::Result<()> {
-        // Avoid being restarted all the time by the outer sync() loop
-        std::future::pending::<()>().await;
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn l2_noop(
-        _: mpsc::Sender<SyncEvent>,
-        _: l2::L2SyncContext<impl GatewayApi>,
-        _: Option<(BlockNumber, BlockHash, StateCommitment)>,
-        _: l2::BlockChain,
-    ) -> anyhow::Result<()> {
-        // Avoid being restarted all the time by the outer sync() loop
-        std::future::pending::<()>().await;
-        Ok(())
-    }
-
-    lazy_static::lazy_static! {
-        static ref A: Felt = Felt::from_be_slice(&[0xA]).unwrap();
-        static ref B: Felt = Felt::from_be_slice(&[0xB]).unwrap();
-        static ref STORAGE_COMMITMENT0: StorageCommitment = StorageCommitment::ZERO;
-        static ref STORAGE_COMMITMENT1: StorageCommitment = StorageCommitment(Felt::from_be_slice(&[0xC]).unwrap());
-        static ref CLASS_COMMITMENT0: ClassCommitment = ClassCommitment::ZERO;
-        static ref CLASS_COMMITMENT1: ClassCommitment = ClassCommitment(Felt::from_be_slice(&[0xD]).unwrap());
-        static ref STATE_COMMITMENT0: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT0, *CLASS_COMMITMENT0);
-        static ref STATE_COMMITMENT1: StateCommitment = StateCommitment::calculate(*STORAGE_COMMITMENT1, *CLASS_COMMITMENT1);
-
-        pub static ref STATE_UPDATE_LOG0: pathfinder_ethereum::EthereumStateUpdate = pathfinder_ethereum::EthereumStateUpdate {
-            block_number: BlockNumber::GENESIS,
-            block_hash: BlockHash(*A),
-            state_root: *STATE_COMMITMENT0,
-        };
-        pub static ref STATE_UPDATE_LOG1: pathfinder_ethereum::EthereumStateUpdate = pathfinder_ethereum::EthereumStateUpdate {
-            block_number: BlockNumber::new_or_panic(1),
-            block_hash: BlockHash(*B),
-            state_root: *STATE_COMMITMENT1,
-        };
-        pub static ref BLOCK0: reply::Block = reply::Block {
-            block_hash: BlockHash(*A),
-            block_number: BlockNumber::GENESIS,
-            gas_price: Some(GasPrice::ZERO),
-            parent_block_hash: BlockHash(Felt::ZERO),
-            sequencer_address: Some(SequencerAddress(Felt::ZERO)),
-            state_commitment: *STATE_COMMITMENT0,
-            status: reply::Status::AcceptedOnL1,
-            timestamp: BlockTimestamp::new_or_panic(0),
-            transaction_receipts: vec![],
-            transactions: vec![],
-            starknet_version: StarknetVersion::default(),
-        };
-        pub static ref BLOCK1: reply::Block = reply::Block {
-            block_hash: BlockHash(*B),
-            block_number: BlockNumber::new_or_panic(1),
-            gas_price: Some(GasPrice::from(1)),
-            parent_block_hash: BlockHash(*A),
-            sequencer_address: Some(SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap())),
-            state_commitment: *STATE_COMMITMENT1,
-            status: reply::Status::AcceptedOnL2,
-            timestamp: BlockTimestamp::new_or_panic(1),
-            transaction_receipts: vec![],
-            transactions: vec![],
-            starknet_version: StarknetVersion::default(),
-        };
-        pub static ref BLOCK_HEADER_0: BlockHeader = BlockHeader::builder()
-            .with_state_commitment(*STATE_COMMITMENT0)
-            .finalize_with_hash(BlockHash(*A));
-        pub static ref BLOCK_HEADER_1: BlockHeader = BLOCK_HEADER_0.child_builder()
-            .with_state_commitment(*STATE_COMMITMENT1)
-            .with_timestamp(BlockTimestamp::new_or_panic(1))
-            .with_gas_price(GasPrice::from(1))
-            .with_sequencer_address(SequencerAddress(felt_bytes!(&[1u8; 32])))
-            .finalize_with_hash(BlockHash(*B));
-
-            // Causes root to remain unchanged
-        pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-            block_hash: BlockHash(*A),
-            new_root: *STATE_COMMITMENT0,
-            old_root: *STATE_COMMITMENT0,
-            state_diff: reply::state_update::StateDiff{
-                storage_diffs: std::collections::HashMap::new(),
-                deployed_contracts: vec![],
-                old_declared_contracts: vec![],
-                nonces: std::collections::HashMap::new(),
-                declared_classes: vec![],
-                replaced_classes: vec![],
-            },
-        };
-    }
-
-    mod l1_update {
-        use pathfinder_common::BlockHeader;
-        use primitive_types::H160;
-
-        use crate::state::sync::SyncContext;
-
-        use super::*;
-
-        async fn with_state(
-            headers: Vec<BlockHeader>,
-            update: pathfinder_ethereum::EthereumStateUpdate,
-        ) -> Option<BlockNumber> {
-            let l1 = move |tx: mpsc::Sender<SyncEvent>, _| {
-                let u = update.clone();
-                async move {
-                    tx.send(SyncEvent::L1Update(u)).await.unwrap();
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                    Ok(())
-                }
-            };
-
-            let chain = Chain::Testnet;
-            let chain_id = ChainId::TESTNET;
-            let sync_state = Arc::new(SyncState::default());
-            let core_address = H160::zero();
-
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-            let websocket_txs = WebsocketSenders::for_test();
-
-            for header in headers {
-                tx.insert_block_header(&header).unwrap();
-            }
-
-            tx.commit().unwrap();
-
-            // UUT
-            let context = SyncContext {
-                storage,
-                ethereum: FakeTransport,
-                chain,
-                chain_id,
-                core_address,
-                sequencer: FakeSequencer,
-                state: sync_state,
-                pending_data: PendingData::default(),
-                pending_poll_interval: None,
-                block_validation_mode: l2::BlockValidationMode::Strict,
-                websocket_txs,
-                block_cache_size: 100,
-            };
-
-            let _jh = tokio::spawn(state::sync(context, l1, l2_noop));
-
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(300)).await;
-
-            let tx = connection.transaction().unwrap();
-            tx.l1_l2_pointer().unwrap()
-        }
-
-        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-        async fn no_l2_head() {
-            assert_eq!(with_state(vec![], STATE_UPDATE_LOG0.clone()).await, None);
-        }
-
-        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-        async fn l2_head_one_update() {
-            assert_eq!(
-                with_state(vec![BLOCK_HEADER_0.clone()], STATE_UPDATE_LOG0.clone(),).await,
-                Some(BlockNumber::GENESIS),
-            );
-        }
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l1_restart() -> Result<(), anyhow::Error> {
-        use anyhow::Context;
-        let storage = Storage::in_memory().unwrap();
-
-        let (starts_tx, mut starts_rx) = tokio::sync::mpsc::channel(1);
-        let websocket_txs = WebsocketSenders::for_test();
-
-        let l1 = move |_, _| {
-            let starts_tx = starts_tx.clone();
-            async move {
-                // signal we've (re)started
-                // This will panic on the third repeat
-                //  - the main test task will exit
-                //  - this will panic, but test will pass.
-                //  - not great, but will get refactored eventually.
-                starts_tx
-                    .send(())
-                    .await
-                    .expect("starts_rx should still be alive");
-                Ok(())
-            }
-        };
-
-        // UUT
-        let context = SyncContext {
-            storage,
-            ethereum: FakeTransport,
-            chain: Chain::Testnet,
-            chain_id: ChainId::TESTNET,
-            core_address: H160::zero(),
-            sequencer: FakeSequencer,
-            state: Arc::new(SyncState::default()),
-            pending_data: PendingData::default(),
-            pending_poll_interval: None,
-            block_validation_mode: l2::BlockValidationMode::Strict,
-            websocket_txs,
-            block_cache_size: 100,
-        };
-
-        let _jh = tokio::spawn(state::sync(context, l1, l2_noop));
-
-        let timeout = std::time::Duration::from_secs(1);
-
-        tokio::time::timeout(timeout, starts_rx.recv())
-            .await
-            .context("l1 sync should had started")?
-            .context("l1 closure should not had been dropped yet")?;
-
-        tokio::time::timeout(timeout, starts_rx.recv())
-            .await
-            .context("l1 sync should had been re-started")?
-            .context("l1 closure should not had been dropped yet")?;
-
-        Ok(())
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_update() {
-        let sync_state = Arc::new(SyncState::default());
-        let websocket_txs = WebsocketSenders::for_test();
-
-        // Incoming L2 update
-        let block = || BLOCK0.clone();
-        let state_update = || STATE_UPDATE0.clone();
-        let timings = l2::Timings {
-            block_download: Duration::default(),
-            state_diff_download: Duration::default(),
-            class_declaration: Duration::default(),
-        };
-
-        // A simple L2 sync task
-        let l2 = move |tx: mpsc::Sender<SyncEvent>, _, _, _| async move {
-            tx.send(SyncEvent::Block(
-                (Box::new(block()), Default::default()),
-                Box::new(state_update()),
-                timings,
-            ))
-            .await
-            .unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
-        };
-
-        let results = [
-            // Case 0: no L1 head
-            None,
-            // Case 1: some L1 head
-            Some(STATE_UPDATE_LOG0.clone()),
-        ]
-        .into_iter()
-        .map(|update_log| async {
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-
-            if let Some(some_update_log) = update_log {
-                tx.upsert_l1_state(&some_update_log).unwrap();
-            }
-
-            tx.commit().unwrap();
-
-            // UUT
-            let context = SyncContext {
-                storage,
-                ethereum: FakeTransport,
-                chain: Chain::Testnet,
-                chain_id: ChainId::TESTNET,
-                core_address: H160::zero(),
-                sequencer: FakeSequencer,
-                state: sync_state.clone(),
-                pending_data: PendingData::default(),
-                pending_poll_interval: None,
-                block_validation_mode: l2::BlockValidationMode::Strict,
-                websocket_txs: websocket_txs.clone(),
-                block_cache_size: 100,
-            };
-
-            let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
-
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(100)).await;
-
-            let tx = connection.transaction().unwrap();
-            tx.l1_l2_pointer()
-        })
-        .collect::<futures::stream::FuturesOrdered<_>>()
-        .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
-
-        assert_eq!(
-            results,
-            vec![
-                // Case 0: no L1-L2 head expected
-                None,
-                // Case 1: some L1-L2 head expected
-                Some(BlockNumber::GENESIS),
-            ]
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_reorg() {
-        let results = [
-            // Case 0: single block in L2, reorg on genesis
-            (vec![BLOCK_HEADER_0.clone()], 0),
-            // Case 1: 2 blocks in L2, reorg on block #1
-            (vec![BLOCK_HEADER_0.clone(), BLOCK_HEADER_1.clone()], 1),
-        ]
-        .into_iter()
-        .map(|(headers, reorg_on_block)| async move {
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-            let websocket_txs = WebsocketSenders::for_test();
-
-            // A simple L2 sync task
-            let l2 = move |tx: mpsc::Sender<SyncEvent>, _, _, _| async move {
-                tx.send(SyncEvent::Reorg(BlockNumber::new_or_panic(reorg_on_block)))
-                    .await
-                    .unwrap();
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                Ok(())
-            };
-
-            for header in headers {
-                tx.insert_block_header(&header).unwrap();
-            }
-
-            tx.update_l1_l2_pointer(Some(BlockNumber::new_or_panic(reorg_on_block)))
-                .unwrap();
-
-            tx.commit().unwrap();
-
-            // UUT
-            let context = SyncContext {
-                storage,
-                ethereum: FakeTransport,
-                chain: Chain::Testnet,
-                chain_id: ChainId::TESTNET,
-                core_address: H160::zero(),
-                sequencer: FakeSequencer,
-                state: Arc::new(SyncState::default()),
-                pending_data: PendingData::default(),
-                pending_poll_interval: None,
-                block_validation_mode: l2::BlockValidationMode::Strict,
-                websocket_txs,
-                block_cache_size: 100,
-            };
-
-            let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
-
-            // TODO Find a better way to figure out that the DB update has already been performed
-            tokio::time::sleep(Duration::from_millis(100)).await;
-
-            let tx = connection.transaction().unwrap();
-            let latest_block_number = tx
-                .block_id(pathfinder_storage::BlockId::Latest)
+    /// Generate some arbitrary block chain data from genesis onwards.
+    ///
+    /// Note: not very realistic data but is enough to drive tests.
+    #[allow(clippy::type_complexity)]
+    fn generate_block_data() -> Vec<(
+        (Box<Block>, (TransactionCommitment, EventCommitment)),
+        Box<StateUpdate>,
+        l2::Timings,
+    )> {
+        let genesis_header = BlockHeader::builder()
+            .finalize_with_hash(BlockHash(felt_bytes!(b"genesis block hash")));
+        let mut headers = vec![genesis_header];
+        for i in 1..3 {
+            let block_hash =
+                BlockHash(Felt::from_be_slice(format!("{i} block hash").as_bytes()).unwrap());
+            let header = headers
+                .last()
                 .unwrap()
-                .map(|x| x.0);
-            let head = tx.l1_l2_pointer().unwrap();
-            (head, latest_block_number)
-        })
-        .collect::<futures::stream::FuturesOrdered<_>>()
-        .collect::<Vec<_>>()
-        .await;
+                .child_builder()
+                .finalize_with_hash(block_hash);
+            headers.push(header);
+        }
 
-        assert_eq!(
-            results,
-            vec![
-                // Case 0: no L1-L2 head expected, as we start from genesis
-                (None, None),
-                // Case 1: some L1-L2 head expected, block #1 removed
-                (Some(BlockNumber::GENESIS), Some(BlockNumber::GENESIS)),
-            ]
-        );
+        let mut data = Vec::new();
+        let timings = l2::Timings::default();
+        let mut parent_state_commitment = StateCommitment::ZERO;
+        for header in headers {
+            let state_update = Box::new(StateUpdate {
+                block_hash: header.hash,
+                new_root: header.state_commitment,
+                old_root: parent_state_commitment,
+                state_diff: StateDiff::default(),
+            });
+
+            let block = Box::new(reply::Block {
+                block_hash: header.hash,
+                block_number: header.number,
+                gas_price: Some(header.gas_price),
+                parent_block_hash: header.parent_hash,
+                sequencer_address: Some(header.sequencer_address),
+                state_commitment: header.state_commitment,
+                status: reply::Status::AcceptedOnL2,
+                timestamp: header.timestamp,
+                transaction_receipts: vec![],
+                transactions: vec![],
+                starknet_version: header.starknet_version,
+            });
+
+            data.push((
+                (
+                    block,
+                    (header.transaction_commitment, header.event_commitment),
+                ),
+                state_update,
+                timings,
+            ));
+
+            parent_state_commitment = header.state_commitment;
+        }
+
+        data
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_new_cairo_contract() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn block_updates() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let websocket_txs = WebsocketSenders::for_test();
 
-        // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<SyncEvent>, _, _, _| async move {
-            tx.send(SyncEvent::CairoClass {
-                definition: vec![],
-                hash: ClassHash(*A),
-            })
-            .await
-            .unwrap();
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
-        };
+        let block_data = generate_block_data();
+        let num_blocks = block_data.len();
 
-        // UUT
+        // Send block updates, followed by a reorg to genesis.
+        for (a, b, c) in block_data {
+            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        }
+        // Close the event channel which allows the consumer task to exit.
+        drop(event_tx);
+
         let context = SyncContext {
             storage,
             ethereum: FakeTransport,
@@ -1392,39 +1057,136 @@ mod tests {
             block_cache_size: 100,
         };
 
-        let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
-
-        // TODO Find a better way to figure out that the DB update has already been performed
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        consumer(event_rx, context).await.unwrap();
 
         let tx = connection.transaction().unwrap();
-        assert_eq!(
-            tx.class_definitions_exist(&[ClassHash(*A)]).unwrap(),
-            vec![true]
-        );
+        for i in 0..num_blocks {
+            // TODO: Ideally we would test data consistency as well, but that will be easier once we use
+            // the same types between storage, sync and gateway.
+            let should_exist = tx
+                .block_exists(BlockNumber::new_or_panic(i as u64).into())
+                .unwrap();
+            assert!(should_exist, "Block {i} should exist");
+        }
+
+        let should_not_exist = tx
+            .block_exists(BlockNumber::new_or_panic(num_blocks as u64).into())
+            .unwrap();
+        assert!(!should_not_exist);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_new_sierra_contract() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reorg() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let websocket_txs = WebsocketSenders::for_test();
 
-        // A simple L2 sync task
-        let l2 = |tx: mpsc::Sender<SyncEvent>, _, _, _| async move {
-            tx.send(SyncEvent::SierraClass {
-                sierra_definition: vec![],
-                sierra_hash: SierraHash(*A),
-                casm_definition: vec![],
-                casm_hash: CasmHash(*A),
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
+
+        // Send block updates, followed by a reorg to genesis.
+        for (a, b, c) in generate_block_data() {
+            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        }
+        event_tx
+            .send(SyncEvent::Reorg(BlockNumber::new_or_panic(2)))
+            .await
+            .unwrap();
+        // Close the event channel which allows the consumer task to exit.
+        drop(event_tx);
+
+        let context = SyncContext {
+            storage,
+            ethereum: FakeTransport,
+            chain: Chain::Testnet,
+            chain_id: ChainId::TESTNET,
+            core_address: H160::zero(),
+            sequencer: FakeSequencer,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            pending_poll_interval: None,
+            block_validation_mode: l2::BlockValidationMode::Strict,
+            websocket_txs,
+            block_cache_size: 100,
+        };
+
+        consumer(event_rx, context).await.unwrap();
+
+        let tx = connection.transaction().unwrap();
+        let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
+        assert!(genesis_exists);
+
+        let block_1_exists = tx
+            .block_exists(BlockNumber::new_or_panic(1).into())
+            .unwrap();
+        assert!(block_1_exists);
+
+        let block_2_exists = tx
+            .block_exists(BlockNumber::new_or_panic(2).into())
+            .unwrap();
+        assert!(!block_2_exists);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reorg_to_genesis() {
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let websocket_txs = WebsocketSenders::for_test();
+
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
+
+        // Send block updates, followed by a reorg to genesis.
+        for (a, b, c) in generate_block_data() {
+            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        }
+        event_tx
+            .send(SyncEvent::Reorg(BlockNumber::GENESIS))
+            .await
+            .unwrap();
+        // Close the event channel which allows the consumer task to exit.
+        drop(event_tx);
+
+        let context = SyncContext {
+            storage,
+            ethereum: FakeTransport,
+            chain: Chain::Testnet,
+            chain_id: ChainId::TESTNET,
+            core_address: H160::zero(),
+            sequencer: FakeSequencer,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            pending_poll_interval: None,
+            block_validation_mode: l2::BlockValidationMode::Strict,
+            websocket_txs,
+            block_cache_size: 100,
+        };
+
+        consumer(event_rx, context).await.unwrap();
+
+        let tx = connection.transaction().unwrap();
+        let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
+        assert!(!genesis_exists);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn new_cairo_contract() {
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let websocket_txs = WebsocketSenders::for_test();
+
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
+
+        let class_hash = ClassHash(felt_bytes!(b"class hash"));
+        let expected_definition = b"cairo class definition".to_vec();
+
+        event_tx
+            .send(SyncEvent::CairoClass {
+                definition: expected_definition.clone(),
+                hash: class_hash,
             })
             .await
             .unwrap();
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok(())
-        };
-
+        // This closes the event channel which ends the consumer task.
+        drop(event_tx);
         // UUT
         let context = SyncContext {
             storage,
@@ -1441,34 +1203,37 @@ mod tests {
             block_cache_size: 100,
         };
 
-        let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
-
-        // TODO Find a better way to figure out that the DB update has already been performed
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        consumer(event_rx, context).await.unwrap();
 
         let tx = connection.transaction().unwrap();
-        assert_eq!(
-            tx.class_definitions_exist(&[ClassHash(*A)]).unwrap(),
-            vec![true]
-        );
+        let definition = tx.class_definition(class_hash).unwrap().unwrap();
+
+        assert_eq!(definition, expected_definition);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn l2_restart() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
+    #[tokio::test(flavor = "multi_thread")]
+    async fn new_sierra_contract() {
         let storage = Storage::in_memory().unwrap();
-
-        static CNT: AtomicUsize = AtomicUsize::new(0);
+        let mut connection = storage.connection().unwrap();
         let websocket_txs = WebsocketSenders::for_test();
 
-        // A simple L2 sync task
-        let l2 = move |_, _, _, _| async move {
-            CNT.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        };
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
 
-        // UUT
+        let class_hash = felt_bytes!(b"class hash");
+        let expected_definition = b"sierra class definition".to_vec();
+
+        event_tx
+            .send(SyncEvent::SierraClass {
+                sierra_definition: expected_definition.clone(),
+                sierra_hash: SierraHash(class_hash),
+                casm_definition: b"casm definition".to_vec(),
+                casm_hash: CasmHash(felt_bytes!(b"casm hash")),
+            })
+            .await
+            .unwrap();
+        // This closes the event channel which ends the consumer task.
+        drop(event_tx);
+
         let context = SyncContext {
             storage,
             ethereum: FakeTransport,
@@ -1484,10 +1249,11 @@ mod tests {
             block_cache_size: 100,
         };
 
-        let _jh = tokio::spawn(state::sync(context, l1_noop, l2));
+        consumer(event_rx, context).await.unwrap();
 
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        let tx = connection.transaction().unwrap();
+        let definition = tx.class_definition(ClassHash(class_hash)).unwrap().unwrap();
 
-        assert!(CNT.load(Ordering::Relaxed) > 1);
+        assert_eq!(definition, expected_definition);
     }
 }
