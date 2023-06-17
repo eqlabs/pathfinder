@@ -146,14 +146,23 @@ where
         chain,
     ));
 
-    // Start L1 and L2 sync processes.
-    let mut l1_handle = tokio::spawn(l1_sync(tx_l1, l1_context.clone()));
+    // Start L1 producer task. Clone the event sender so that the channel remains open
+    // even if the producer task fails.
+    let mut l1_handle = tokio::spawn(l1_sync(tx_l1.clone(), l1_context.clone()));
 
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-    let mut l2_handle = tokio::spawn(l2_sync(tx_l2, l2_context.clone(), l2_head, block_chain));
+
+    // Start L2 producer task. Clone the event sender so that the channel remains open
+    // even if the producer task fails.
+    let mut l2_handle = tokio::spawn(l2_sync(
+        tx_l2.clone(),
+        l2_context.clone(),
+        l2_head,
+        block_chain,
+    ));
 
     let mut last_block_start = std::time::Instant::now();
     let mut block_time_avg = std::time::Duration::ZERO;
@@ -167,32 +176,58 @@ where
 
     loop {
         tokio::select! {
+            l1_producer_result = &mut l1_handle => {
+                match l1_producer_result.context("Join L1 sync process handle")? {
+                    Ok(()) => {
+                        tracing::error!("L1 sync process terminated without an error.");
+                    }
+                    Err(e) => {
+                        tracing::warn!("L1 sync process terminated with: {e:?}");
+                    }
+                }
+
+                let fut = l1_sync(tx_l1.clone(), l1_context.clone());
+                l1_handle = tokio::spawn(async move {
+                    tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
+                    fut.await
+                });
+            },
+            l2_producer_result = &mut l2_handle => {
+                pending_data.clear().await;
+                // L2 sync process failed; restart it.
+                match l2_producer_result.context("Join L2 sync process handle")? {
+                    Ok(()) => {
+                        tracing::error!("L2 sync process terminated without an error.");
+                    }
+                    Err(e) => {
+                        tracing::warn!("L2 sync process terminated with: {e:?}");
+                    }
+                }
+
+                let l2_head = tokio::task::block_in_place(|| {
+                    let tx = db_conn.transaction()?;
+                    tx.block_header(pathfinder_storage::BlockId::Latest)
+                })
+                .context("Query L2 head from database")?
+                .map(|block| (block.number, block.hash, block.state_commitment));
+
+                let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size).await.context("Fetching latest blocks from storage")?;
+                let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
+                let fut = l2_sync(tx_l2.clone(), l2_context.clone(), l2_head, block_chain);
+
+                l2_handle = tokio::spawn(async move {
+                    tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
+                    fut.await
+                });
+                tracing::info!("L2 sync process restarted.");
+            },
             l1_event = rx_l1.recv() => match l1_event {
                 Some(update) => {
                     l1_update(&mut db_conn, &update).await?;
                     tracing::info!("L1 sync updated to block {}", update.block_number);
                 }
                 None => {
-                    // L1 sync process failed; restart it.
-                    match l1_handle.await.context("Join L1 sync process handle")? {
-                        Ok(()) => {
-                            tracing::error!("L1 sync process terminated without an error.");
-                        }
-                        Err(e) => {
-                            tracing::warn!("L1 sync process terminated with: {:?}", e);
-                        }
-                    }
-
-                    let (new_tx, new_rx) = mpsc::channel(1);
-                    rx_l1 = new_rx;
-
-                    let fut = l1_sync(new_tx, l1_context.clone());
-
-                    l1_handle = tokio::spawn(async move {
-                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        fut.await
-                    });
-                    tracing::info!("L1 sync process restarted.")
+                    anyhow::bail!("L1 event queue closed, this should never happen.");
                 },
             },
             l2_event = rx_l2.recv() => match l2_event {
@@ -305,38 +340,7 @@ where
                     tracing::debug!("Updated pending data");
                 }
                 None => {
-                    pending_data.clear().await;
-                    // L2 sync process failed; restart it.
-                    match l2_handle.await.context("Join L2 sync process handle")? {
-                        Ok(()) => {
-                            tracing::error!("L2 sync process terminated without an error.");
-                        }
-                        Err(e) => {
-                            tracing::warn!("L2 sync process terminated with: {:?}", e);
-                        }
-                    }
-
-                    let l2_head = tokio::task::block_in_place(|| {
-                        let tx = db_conn.transaction()?;
-                        tx.block_header(pathfinder_storage::BlockId::Latest)
-                    })
-                    .context("Query L2 head from database")?
-                    .map(|block| (block.number, block.hash, block.state_commitment));
-
-                    let (new_tx, new_rx) = mpsc::channel(1);
-
-                    rx_l2 = new_rx;
-
-
-                    let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size).await.context("Fetching latest blocks from storage")?;
-                    let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
-                    let fut = l2_sync(new_tx, l2_context.clone(), l2_head, block_chain);
-
-                    l2_handle = tokio::spawn(async move {
-                        tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
-                        fut.await
-                    });
-                    tracing::info!("L2 sync process restarted.");
+                    anyhow::bail!("L2 event queue closed, this should never happen.");
                 }
             },
         }
