@@ -1,25 +1,22 @@
 use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
-use crate::state::sync::pending;
+use crate::state::sync::{pending, SyncEvent};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
-    BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash, EventCommitment, SierraHash,
-    StarknetVersion, StateCommitment, TransactionCommitment,
+    BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
+    StateCommitment, TransactionCommitment,
 };
 use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     error::SequencerError,
-    reply::{
-        state_update::StateDiff, Block, MaybePendingStateUpdate, PendingBlock, PendingStateUpdate,
-        StateUpdate, Status,
-    },
+    reply::{state_update::StateDiff, Block, MaybePendingStateUpdate, Status},
     transaction_hash::verify,
 };
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::time::Duration;
-use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Copy)]
@@ -82,35 +79,6 @@ impl BlockChain {
     }
 }
 
-/// Events and queries emitted by L2 sync process.
-#[derive(Debug)]
-pub enum Event {
-    /// New L2 [block update](StateUpdate) found.
-    Update(
-        (Box<Block>, (TransactionCommitment, EventCommitment)),
-        Box<StateUpdate>,
-        Timings,
-    ),
-    /// An L2 reorg was detected, contains the reorg-tail which
-    /// indicates the oldest block which is now invalid
-    /// i.e. reorg-tail + 1 should be the new head.
-    Reorg(BlockNumber),
-    /// A new unique L2 Cairo 0.x class was found.
-    CairoClass {
-        definition: Vec<u8>,
-        hash: ClassHash,
-    },
-    /// A new unique L2 Cairo 1.x class was found.
-    SierraClass {
-        sierra_definition: Vec<u8>,
-        sierra_hash: SierraHash,
-        casm_definition: Vec<u8>,
-        casm_hash: CasmHash,
-    },
-    /// A new L2 pending update was polled.
-    Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
-}
-
 #[derive(Clone)]
 pub struct L2SyncContext<GatewayClient> {
     pub websocket_txs: WebsocketSenders,
@@ -123,7 +91,7 @@ pub struct L2SyncContext<GatewayClient> {
 }
 
 pub async fn sync<GatewayClient>(
-    tx_event: mpsc::Sender<Event>,
+    tx_event: mpsc::Sender<SyncEvent>,
     context: L2SyncContext<GatewayClient>,
     mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
@@ -299,7 +267,7 @@ where
         let block_header = BlockHeader::from(block.as_ref());
 
         tx_event
-            .send(Event::Update(
+            .send(SyncEvent::Block(
                 (block, commitments),
                 Box::new(state_update),
                 timings,
@@ -327,7 +295,7 @@ where
 pub async fn download_new_classes(
     state_diff: &StateDiff,
     sequencer: &impl GatewayApi,
-    tx_event: &mpsc::Sender<Event>,
+    tx_event: &mpsc::Sender<SyncEvent>,
     chain: Chain,
     version: &StarknetVersion,
     storage: Storage,
@@ -384,7 +352,7 @@ pub async fn download_new_classes(
 
         match class {
             DownloadedClass::Cairo { definition, hash } => tx_event
-                .send(Event::CairoClass { definition, hash })
+                .send(SyncEvent::CairoClass { definition, hash })
                 .await
                 .with_context(|| {
                     format!(
@@ -411,7 +379,7 @@ pub async fn download_new_classes(
                     })
                     .context("Sierra class hash not in declared classes")?;
                 tx_event
-                    .send(Event::SierraClass {
+                    .send(SyncEvent::SierraClass {
                         sierra_definition,
                         sierra_hash,
                         casm_definition,
@@ -562,7 +530,7 @@ async fn reorg(
     head: (BlockNumber, BlockHash, StateCommitment),
     chain: Chain,
     chain_id: ChainId,
-    tx_event: &mpsc::Sender<Event>,
+    tx_event: &mpsc::Sender<SyncEvent>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
     blocks: &BlockChain,
@@ -605,7 +573,7 @@ async fn reorg(
     let reorg_tail = new_head.map(|x| x.0 + 1).unwrap_or(BlockNumber::GENESIS);
 
     tx_event
-        .send(Event::Reorg(reorg_tail))
+        .send(SyncEvent::Reorg(reorg_tail))
         .await
         .context("Event channel closed")?;
 
@@ -617,7 +585,7 @@ mod tests {
     mod sync {
         use crate::state::l2::{BlockChain, L2SyncContext};
 
-        use super::super::{sync, BlockValidationMode, Event};
+        use super::super::{sync, BlockValidationMode, SyncEvent};
         use assert_matches::assert_matches;
         use pathfinder_common::{
             BlockHash, BlockId, BlockNumber, BlockTimestamp, Chain, ChainId, ClassHash,
@@ -660,7 +628,7 @@ mod tests {
         const BLOCK4_NUMBER: BlockNumber = BlockNumber::new_or_panic(4);
 
         fn spawn_sync_default(
-            tx_event: mpsc::Sender<Event>,
+            tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<()>> {
             let storage = Storage::in_memory().unwrap();
@@ -1029,18 +997,18 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass { hash, .. } => {
+                    SyncEvent::CairoClass { hash, .. } => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                Event::CairoClass { hash, .. } => {
+                    SyncEvent::CairoClass { hash, .. } => {
                     assert_eq!(hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -1108,10 +1076,10 @@ mod tests {
                 ));
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
@@ -1238,22 +1206,22 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 // Reorg started from the genesis block
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK0_NUMBER);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
@@ -1425,38 +1393,38 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
                 // Reorg started at the genesis block
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK0_NUMBER);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0_V2);
                     assert_eq!(*state_update, *STATE_UPDATE0_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block1_v2);
                     assert!(state_update.state_diff.deployed_contracts.is_empty());
                     assert!(state_update.state_diff.storage_diffs.is_empty());
@@ -1671,38 +1639,38 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block3);
                     assert_eq!(*state_update, *STATE_UPDATE3);
                 });
                 // Reorg started from block #1
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -1848,30 +1816,30 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });
                 // Reorg started from block #2
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK2_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block2_v2);
                     assert_eq!(*state_update, *STATE_UPDATE2_V2);
                 });
@@ -2022,30 +1990,30 @@ mod tests {
                 let _jh = spawn_sync_default(tx_event, mock);
 
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT0_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK0);
                     assert_eq!(*state_update, *STATE_UPDATE0);
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
-                    Event::CairoClass{hash, ..} => {
+                    SyncEvent::CairoClass{hash, ..} => {
                         assert_eq!(hash, *CONTRACT1_HASH);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, *BLOCK1);
                     assert_eq!(*state_update, *STATE_UPDATE1);
                 });
                 // Reorg started from block #1
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Reorg(tail) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Reorg(tail) => {
                     assert_eq!(tail, BLOCK1_NUMBER);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block1_v2);
                     assert_eq!(*state_update, *STATE_UPDATE1_V2);
                 });
-                assert_matches!(rx_event.recv().await.unwrap(), Event::Update((block, _), state_update, _) => {
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block2);
                     assert_eq!(*state_update, *STATE_UPDATE2);
                 });

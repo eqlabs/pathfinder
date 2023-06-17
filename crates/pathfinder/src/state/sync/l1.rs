@@ -6,6 +6,8 @@ use pathfinder_retry::Retry;
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
+use crate::state::sync::SyncEvent;
+
 use super::head_poll_interval;
 
 #[derive(Clone)]
@@ -19,7 +21,7 @@ pub struct L1SyncContext<EthereumClient> {
 /// Syncs L1 state update logs. Emits [Ethereum state update](EthereumStateUpdate)
 /// which should be handled to update storage and respond to queries.
 pub async fn sync<T>(
-    tx_event: mpsc::Sender<EthereumStateUpdate>,
+    tx_event: mpsc::Sender<SyncEvent>,
     context: L1SyncContext<T>,
 ) -> anyhow::Result<()>
 where
@@ -46,7 +48,7 @@ where
 
         if previous != state_update {
             previous = state_update.clone();
-            tx_event.send(state_update).await?;
+            tx_event.send(SyncEvent::L1Update(state_update)).await?;
         }
 
         tokio::time::sleep(head_poll_interval).await;

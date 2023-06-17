@@ -2,7 +2,9 @@ use pathfinder_common::Chain;
 use pathfinder_storage::Storage;
 use starknet_gateway_types::reply::{Block, StateUpdate};
 
-/// Poll's the Sequencer's pending block and emits [Event::Pending](super::l2::Event::Pending)
+use crate::state::sync::SyncEvent;
+
+/// Poll's the Sequencer's pending block and emits [pending events](SyncEvent::Pending)
 /// until the pending block is no longer connected to our current head.
 ///
 /// This disconnect is detected whenever
@@ -12,7 +14,7 @@ use starknet_gateway_types::reply::{Block, StateUpdate};
 ///
 /// A full block or full state update can be returned from this function if it is encountered during polling.
 pub async fn poll_pending(
-    tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
+    tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: &impl starknet_gateway_client::GatewayApi,
     head: (
         pathfinder_common::BlockHash,
@@ -102,9 +104,8 @@ pub async fn poll_pending(
         .context("Handling newly declared classes for pending block")?;
 
         // Emit new block.
-        use crate::state::l2::Event::Pending;
         tx_event
-            .send(Pending(Arc::new(block), Arc::new(state_update)))
+            .send(SyncEvent::Pending(Arc::new(block), Arc::new(state_update)))
             .await
             .context("Event channel closed")?;
 
@@ -114,6 +115,8 @@ pub async fn poll_pending(
 
 #[cfg(test)]
 mod tests {
+    use crate::state::sync::SyncEvent;
+
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
@@ -346,7 +349,6 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        use crate::state::l2::Event::Pending;
-        assert_matches!(result, Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_DIFF);
+        assert_matches!(result, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_DIFF);
     }
 }
