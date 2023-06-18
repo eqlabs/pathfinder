@@ -166,6 +166,7 @@ pub mod zstd_compressed_contracts {
     use pathfinder_common::{felt, ClassHash};
 
     pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json.zst");
+    pub const CHINESE: &[u8] = bytes_fixture!("contracts/chinese.json");
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json.zst");
     pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash = ClassHash(felt!(
         "0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf"

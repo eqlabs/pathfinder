@@ -209,15 +209,54 @@ fn compute_cairo_class_hash(
         add_extra_space_to_cairo_named_tuples(&mut contract_definition.program.reference_manager);
     }
 
-    let truncated_keccak = {
-        let mut ser =
-            serde_json::Serializer::with_formatter(KeccakWriter::default(), PythonDefaultFormatter);
+    // Temporary hack here because Python only emits ASCII to JSON.
+    fn unicode_encode(s: &str) -> String {
+        use std::fmt::Write;
 
+        let mut output = String::with_capacity(s.len());
+        let mut buf = [0, 0];
+
+        for c in s.chars() {
+            if c.is_ascii() {
+                output.push(c);
+            } else {
+                let buf = c.encode_utf16(&mut buf);
+                for i in buf {
+                    // Unwrapping should be safe here
+                    write!(output, r"\u{:4x}", i).unwrap();
+                }
+            }
+        }
+
+        output
+    }
+
+    let truncated_keccak = {
+        use std::io::Write;
+
+        // It's less efficient than tweaking the formatter to emit the encoding but I don't know
+        // how and this is an emergency issue (mainnt nodes stuck).
+        let mut string_buffer = vec![];
+
+        let mut ser =
+            serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
         contract_definition
             .serialize(&mut ser)
             .context("Serializing contract_definition for Keccak256")?;
 
-        let KeccakWriter(hash) = ser.into_inner();
+        let raw_json_output = unsafe {
+            // We never emit invalid UTF-8.
+            String::from_utf8_unchecked(string_buffer)
+        };
+
+        let unicode_encoded_json_output = unicode_encode(&raw_json_output);
+
+        let mut keccak_writer = KeccakWriter::default();
+        keccak_writer
+            .write_all(unicode_encoded_json_output.as_bytes())
+            .expect("writing to KeccakWriter never fails");
+
+        let KeccakWriter(hash) = keccak_writer;
         truncated_keccak(<[u8; 32]>::from(hash.finalize()))
     };
 
@@ -530,8 +569,7 @@ mod json {
 
         #[tokio::test]
         async fn first() {
-            let contract_definition = zstd::decode_all(INTEGRATION_TEST).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(INTEGRATION_TEST).unwrap();
 
             assert_eq!(
                 hash,
@@ -543,8 +581,7 @@ mod json {
 
         #[test]
         fn second() {
-            let contract_definition = zstd::decode_all(CONTRACT_DEFINITION).unwrap();
-            let hash = super::super::compute_class_hash(&contract_definition).unwrap();
+            let hash = super::super::compute_class_hash(CONTRACT_DEFINITION).unwrap();
 
             assert_eq!(
                 hash,
@@ -556,8 +593,7 @@ mod json {
 
         #[tokio::test]
         async fn genesis_contract() {
-            let contract_definition = zstd::decode_all(GOERLI_GENESIS).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(GOERLI_GENESIS).unwrap();
 
             assert_eq!(
                 hash,
@@ -578,10 +614,8 @@ mod json {
             )));
 
             // Known contract which triggered a hash mismatch failure.
-            let contract_definition = zstd::decode_all(CAIRO_0_8_NEW_ATTRIBUTES).unwrap();
-
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let hash = compute_class_hash(&contract_definition)?;
+                let hash = compute_class_hash(CAIRO_0_8_NEW_ATTRIBUTES)?;
                 Ok(hash)
             });
             let calculated_hash = extract.await.unwrap().unwrap();
@@ -592,8 +626,7 @@ mod json {
         #[tokio::test]
         async fn cairo_0_10() {
             // Contract whose class triggered a deserialization issue because of the new `compiler_version` property.
-            let contract_definition = zstd::decode_all(CAIRO_0_10_COMPILER_VERSION).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_10_COMPILER_VERSION).unwrap();
 
             assert_eq!(
                 hash,
@@ -607,8 +640,7 @@ mod json {
         async fn cairo_0_10_part_2() {
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
-            let contract_definition = zstd::decode_all(CAIRO_0_10_TUPLES_INTEGRATION).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_10_TUPLES_INTEGRATION).unwrap();
 
             assert_eq!(
                 hash,
@@ -622,8 +654,7 @@ mod json {
         async fn cairo_0_10_part_3() {
             // Contract who's class contains `compiler_version` property as well as `cairo_type` with tuple values.
             // These tuple values require a space to be injected in order to achieve the correct hash.
-            let contract_definition = zstd::decode_all(CAIRO_0_10_TUPLES_GOERLI).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_10_TUPLES_GOERLI).unwrap();
 
             assert_eq!(
                 hash,
@@ -635,8 +666,7 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_11_sierra() {
-            let contract_definition = zstd::decode_all(CAIRO_0_11_SIERRA).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_11_SIERRA).unwrap();
 
             assert_eq!(
                 hash,
@@ -648,14 +678,24 @@ mod json {
 
         #[tokio::test]
         async fn cairo_0_11_with_decimal_entry_point_offset() {
-            let contract_definition =
-                zstd::decode_all(CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET).unwrap();
-            let hash = compute_class_hash(&contract_definition).unwrap();
+            let hash = compute_class_hash(CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET).unwrap();
 
             assert_eq!(
                 hash,
                 ComputedClassHash::Cairo(ClassHash(felt!(
                     "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
+                )))
+            )
+        }
+
+        #[tokio::test]
+        async fn cairo_0_with_non_ascii() {
+            let hash = compute_class_hash(CHINESE).unwrap();
+
+            assert_eq!(
+                hash,
+                ComputedClassHash::Cairo(ClassHash(felt!(
+                    "0x00801AD5DC7C995ADDF7FBCE1C4C74413586ACB44F9FF44BA903A08A6153FA80"
                 )))
             )
         }
