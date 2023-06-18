@@ -165,6 +165,7 @@ pub mod integration {
 pub mod class_definitions {
     use pathfinder_common::{felt, ClassHash};
 
+    pub const CHINESE: &[u8] = bytes_fixture!("contracts/chinese.json");
     pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json");
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json");
     pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash = ClassHash(felt!(
