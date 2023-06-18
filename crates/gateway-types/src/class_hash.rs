@@ -209,15 +209,54 @@ fn compute_cairo_class_hash(
         add_extra_space_to_cairo_named_tuples(&mut contract_definition.program.reference_manager);
     }
 
-    let truncated_keccak = {
-        let mut ser =
-            serde_json::Serializer::with_formatter(KeccakWriter::default(), PythonDefaultFormatter);
+    // Temporary hack here because Python only emits ASCII to JSON.
+    fn unicode_encode(s: &str) -> String {
+        use std::fmt::Write;
 
+        let mut output = String::with_capacity(s.len());
+        let mut buf = [0, 0];
+
+        for c in s.chars() {
+            if c.is_ascii() {
+                output.push(c);
+            } else {
+                let buf = c.encode_utf16(&mut buf);
+                for i in buf {
+                    // Unwrapping should be safe here
+                    write!(output, r"\u{:4x}", i).unwrap();
+                }
+            }
+        }
+
+        output
+    }
+
+    let truncated_keccak = {
+        use std::io::Write;
+
+        // It's less efficient than tweaking the formatter to emit the encoding but I don't know
+        // how and this is an emergency issue (mainnt nodes stuck).
+        let mut string_buffer = vec![];
+
+        let mut ser =
+            serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
         contract_definition
             .serialize(&mut ser)
             .context("Serializing contract_definition for Keccak256")?;
 
-        let KeccakWriter(hash) = ser.into_inner();
+        let raw_json_output = unsafe {
+            // We never emit invalid UTF-8.
+            String::from_utf8_unchecked(string_buffer)
+        };
+
+        let unicode_encoded_json_output = unicode_encode(&raw_json_output);
+
+        let mut keccak_writer = KeccakWriter::default();
+        keccak_writer
+            .write_all(unicode_encoded_json_output.as_bytes())
+            .expect("writing to KeccakWriter never fails");
+
+        let KeccakWriter(hash) = keccak_writer;
         truncated_keccak(<[u8; 32]>::from(hash.finalize()))
     };
 
