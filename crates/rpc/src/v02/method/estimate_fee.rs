@@ -149,6 +149,7 @@ pub(crate) mod tests {
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
     pub(crate) mod ext_py {
+        use std::num::NonZeroU32;
         use std::sync::Arc;
 
         use super::*;
@@ -253,7 +254,10 @@ pub(crate) mod tests {
 
             std::fs::copy(&source_path, &db_path).unwrap();
 
-            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
+            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL)
+                .unwrap()
+                .create_pool(NonZeroU32::new(1).unwrap())
+                .unwrap();
 
             let (account_address, latest_block_hash, latest_block_number) =
                 add_dummy_account(storage.clone(), gas_price);

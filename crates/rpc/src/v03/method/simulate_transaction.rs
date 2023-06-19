@@ -315,6 +315,8 @@ pub mod dto {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use pathfinder_common::{
         felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, ContractAddress,
         GasPrice, TransactionVersion,
@@ -335,10 +337,13 @@ mod tests {
         let mut db_path = dir.path().to_path_buf();
         db_path.push("db.sqlite");
 
-        let storage = Storage::migrate(db_path, JournalMode::WAL).expect("storage");
+        let storage = Storage::migrate(db_path, JournalMode::WAL)
+            .expect("storage")
+            .create_pool(NonZeroU32::new(1).unwrap())
+            .unwrap();
 
         {
-            let mut db = storage.connection().expect("db connection");
+            let mut db = storage.connection().unwrap();
             let tx = db.transaction().expect("tx");
 
             tx.insert_cairo_class(DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)

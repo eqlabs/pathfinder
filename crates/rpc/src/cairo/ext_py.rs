@@ -466,6 +466,7 @@ mod tests {
         JournalMode, Storage, Transaction,
     };
     use stark_hash::Felt;
+    use std::num::NonZeroU32;
     use std::path::PathBuf;
     use tokio::sync::oneshot;
 
@@ -475,7 +476,10 @@ mod tests {
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL)
+            .unwrap()
+            .create_pool(NonZeroU32::new(1).unwrap())
+            .unwrap();
 
         let mut conn = s.connection().unwrap();
 
@@ -613,7 +617,10 @@ mod tests {
         // TODO: refactor the outer parts to a with_test_env or similar?
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL)
+            .unwrap()
+            .create_pool(NonZeroU32::new(1).unwrap())
+            .unwrap();
 
         let mut conn = s.connection().unwrap();
 
@@ -680,7 +687,10 @@ mod tests {
     async fn call_with_unknown_contract() {
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL)
+            .unwrap()
+            .create_pool(NonZeroU32::new(1).unwrap())
+            .unwrap();
 
         let mut conn = s.connection().unwrap();
 
@@ -738,7 +748,10 @@ mod tests {
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
-        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL).unwrap();
+        let s = Storage::migrate(PathBuf::from(db_file.path()), JournalMode::WAL)
+            .unwrap()
+            .create_pool(NonZeroU32::new(1).unwrap())
+            .unwrap();
 
         let mut conn = s.connection().unwrap();
 

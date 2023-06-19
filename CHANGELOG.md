@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- reorgs fail if a class declaration is included in the reorg
+- sync can fail if db connection pool is held saturated by rpc queries
+
+## Changed
+
+- dropped upgrade support for pathfinder v0.4 and earlier
+- separate db connection pools rpc, sync and storage
+
+## [0.6.1] - 2023-06-18
+
+### Fixed
+
+- class hash mismatch for cairo 0 classes with non-ascii text
+
 ## [0.6.0] - 2023-06-14
 
 ### Fixed

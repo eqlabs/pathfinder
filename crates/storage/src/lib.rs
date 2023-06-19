@@ -14,6 +14,7 @@ pub mod test_fixtures;
 pub mod test_utils;
 pub mod types;
 
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -92,36 +93,44 @@ struct Inner {
     pool: Pool<SqliteConnectionManager>,
 }
 
+pub struct StorageManager(PathBuf);
+
+impl StorageManager {
+    pub fn create_pool(&self, capacity: NonZeroU32) -> anyhow::Result<Storage> {
+        let pool_manager = SqliteConnectionManager::file(&self.0).with_init(setup_connection);
+        let pool = Pool::builder()
+            .max_size(capacity.get())
+            .build(pool_manager)?;
+
+        Ok(Storage(Inner {
+            database_path: Arc::new(self.0.clone()),
+            pool,
+        }))
+    }
+}
+
 impl Storage {
-    /// Performs database schema migration and returns a new [Storage].
+    /// Performs the database schema migration and returns a [storage manager](StorageManager).
     ///
     /// This should be called __once__ at the start of the application,
     /// and passed to the various components which require access to the database.
     ///
-    /// May be cloned safely.
-    pub fn migrate(database_path: PathBuf, journal_mode: JournalMode) -> anyhow::Result<Self> {
+    /// Panics if u32
+    pub fn migrate(
+        database_path: PathBuf,
+        journal_mode: JournalMode,
+    ) -> anyhow::Result<StorageManager> {
         let mut connection = rusqlite::Connection::open(&database_path)
             .context("Opening DB for setting journal mode")?;
+        setup_connection(&mut connection).context("Setting up database connection")?;
         setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
+        migrate_database(&mut connection).context("Migrate database")?;
         connection
             .close()
             .map_err(|(_connection, error)| error)
             .context("Closing DB after setting journal mode")?;
 
-        let manager = SqliteConnectionManager::file(&database_path).with_init(setup_connection);
-        let pool = Pool::builder().build(manager)?;
-
-        let mut conn = pool.get()?;
-        migrate_database(&mut conn).context("Migrate database")?;
-
-        let inner = Inner {
-            database_path: Arc::new(database_path),
-            pool,
-        };
-
-        let storage = Storage(inner);
-
-        Ok(storage)
+        Ok(StorageManager(database_path))
     }
 
     /// Returns a new Sqlite [Connection] to the database.
@@ -148,8 +157,14 @@ impl Storage {
         };
 
         let database_path = PathBuf::from(unique_mem_db);
+        // This connection must be held until a pool has been created, since an
+        // in-memory database is dropped once all its connections are. This connection
+        // therefore holds the database in-place until the pool is established.
+        let _conn = rusqlite::Connection::open(&database_path)?;
 
-        Self::migrate(database_path, JournalMode::Rollback)
+        let storage = Self::migrate(database_path, JournalMode::Rollback)?;
+
+        storage.create_pool(NonZeroU32::new(5).unwrap())
     }
 
     pub fn path(&self) -> &Path {

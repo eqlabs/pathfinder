@@ -14,6 +14,7 @@ use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::pending::PendingData;
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc};
 use tracing::info;
@@ -72,10 +73,21 @@ async fn main() -> anyhow::Result<()> {
     verify_networks(pathfinder_context.network, ethereum.chain)?;
 
     // Setup and verify database
-    let storage = Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
+    let storage_manager =
+        Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
+    let sync_storage = storage_manager
+        .create_pool(NonZeroU32::new(5).unwrap())
+        .context("Creating database connection pool for sync")?;
+    let rpc_storage = storage_manager
+        .create_pool(NonZeroU32::new(20).unwrap())
+        .context("Creating database connection pool for sync")?;
+    let p2p_storage = storage_manager
+        .create_pool(NonZeroU32::new(1).unwrap())
+        .context("Creating database connection pool for p2p")?;
+
     info!(location=?pathfinder_context.database, "Database migrated.");
     verify_database(
-        &storage,
+        &sync_storage,
         pathfinder_context.network,
         &pathfinder_context.gateway,
     )
@@ -90,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let (call_handle, cairo_handle) = cairo::ext_py::start(
-        storage.path().into(),
+        rpc_storage.path().into(),
         config.python_subprocesses,
         futures::future::pending(),
         pathfinder_context.network,
@@ -103,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
     let shared = pathfinder_rpc::gas_price::Cached::new(pathfinder_context.gateway.clone());
 
     let context = pathfinder_rpc::context::RpcContext::new(
-        storage.clone(),
+        rpc_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
@@ -127,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let sync_handle = tokio::spawn(state::sync(
-        storage.clone(),
+        sync_storage,
         ethereum.client,
         pathfinder_context.network,
         pathfinder_context.network_id,
@@ -152,7 +164,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
 
-    let p2p_handle = start_p2p(pathfinder_context.network_id, storage, sync_state).await?;
+    let p2p_handle = start_p2p(pathfinder_context.network_id, p2p_storage, sync_state).await?;
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 

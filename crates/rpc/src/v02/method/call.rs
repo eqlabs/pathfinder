@@ -134,6 +134,7 @@ mod tests {
         use super::*;
         use pathfinder_common::{felt_bytes, BlockHash, Chain};
         use pathfinder_storage::JournalMode;
+        use std::num::NonZeroU32;
         use std::path::PathBuf;
         use std::sync::Arc;
 
@@ -175,7 +176,10 @@ mod tests {
 
             std::fs::copy(&source_path, &db_path).unwrap();
 
-            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL).unwrap();
+            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL)
+                .unwrap()
+                .create_pool(NonZeroU32::new(1).unwrap())
+                .unwrap();
             let sync_state = Arc::new(crate::SyncState::default());
             let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
                 storage.path().into(),
