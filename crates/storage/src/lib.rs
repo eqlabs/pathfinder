@@ -157,6 +157,10 @@ impl Storage {
         };
 
         let database_path = PathBuf::from(unique_mem_db);
+        // This connection must be held until a pool has been created, since an
+        // in-memory database is dropped once all its connections are. This connection
+        // therefore holds the database in-place until the pool is established.
+        let _conn = rusqlite::Connection::open(&database_path)?;
 
         let storage = Self::migrate(database_path, JournalMode::Rollback)?;
 
