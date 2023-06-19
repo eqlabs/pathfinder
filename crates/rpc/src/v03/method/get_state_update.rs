@@ -404,10 +404,6 @@ mod tests {
         use pathfinder_common::ChainId;
 
         let storage = pathfinder_storage::Storage::in_memory().unwrap();
-        // let mut connection = storage.connection().unwrap();
-        // let tx = connection.transaction().unwrap();
-        // let state_updates = pathfinder_storage::test_fixtures::init::with_n_state_updates(&tx, 3);
-        // tx.commit().unwrap();
 
         let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
             .into_iter()
@@ -442,7 +438,7 @@ mod tests {
     fn assert_ok(mut expected: types::StateUpdate) -> TestCaseHandler {
         expected.sort();
         Box::new(move |i: usize, result| {
-            assert_matches!(result, Ok(actual) => assert_eq!(
+            assert_matches!(result, Ok(actual) => pretty_assertions::assert_eq!(
                 *actual,
                 expected,
                 "test case {i}"

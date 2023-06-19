@@ -348,15 +348,15 @@ mod tests {
         use pathfinder_common::ChainId;
 
         let storage = pathfinder_storage::Storage::in_memory().unwrap();
-        // let mut connection = storage.connection().unwrap();
-        // let tx = connection.transaction().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
         // let state_updates = pathfinder_storage::test_fixtures::init::with_n_state_updates(&tx, 3);
         let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
             .into_iter()
             .map(|(_, _, x)| x.into())
             .collect();
 
-        // tx.commit().unwrap();
+        tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::SyncState::default());
         let sequencer = starknet_gateway_client::Client::new(Chain::Testnet).unwrap();

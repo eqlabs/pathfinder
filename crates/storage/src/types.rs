@@ -192,7 +192,7 @@ pub mod state_update {
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(feature = "test-utils", derive(Dummy, Ord, PartialOrd))]
     pub struct StorageEntry {
         pub key: StorageAddress,
         pub value: StorageValue,

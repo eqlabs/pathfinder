@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-test-utils = ["dep:fake", "dep:rand"]
+test-utils = ["dep:fake", "dep:rand", "starknet-gateway-client/test-utils"]
 
 [dependencies]
 anyhow = { workspace = true }
