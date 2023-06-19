@@ -194,7 +194,12 @@ where
         block_chain,
     ));
 
-    let mut consumer_handle = tokio::spawn(consumer(event_receiver, context.clone()));
+    let consumer_context = ConsumerContext {
+        storage: context.storage,
+        state: context.state,
+        pending_data: context.pending_data,
+    };
+    let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context));
 
     /// Delay before restarting L1 or L2 tasks if they fail. This delay helps prevent DoS if these
     /// tasks are crashing.
@@ -307,27 +312,17 @@ where
     }
 }
 
-async fn consumer<SequencerClient, Ethereum>(
-    mut events: Receiver<SyncEvent>,
-    context: SyncContext<SequencerClient, Ethereum>,
-) -> anyhow::Result<()>
-where
-    Ethereum: EthereumApi + Clone,
-    SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
-{
-    let SyncContext {
+struct ConsumerContext {
+    pub storage: Storage,
+    pub state: Arc<SyncState>,
+    pub pending_data: PendingData,
+}
+
+async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> anyhow::Result<()> {
+    let ConsumerContext {
         storage,
-        ethereum: _,
-        chain: _,
-        chain_id: _,
-        core_address: _,
-        sequencer: _,
         state,
         pending_data,
-        pending_poll_interval: _,
-        block_validation_mode: _,
-        websocket_txs: _,
-        block_cache_size: _,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -920,46 +915,18 @@ pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use super::l2;
-    use crate::state::sync::{consumer, SyncContext, SyncEvent};
+    use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
     use pathfinder_common::{
-        felt_bytes, BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassHash,
-        EventCommitment, SierraHash, StateCommitment, TransactionCommitment,
+        felt_bytes, BlockHash, BlockHeader, BlockNumber, CasmHash, ClassHash, EventCommitment,
+        SierraHash, StateCommitment, TransactionCommitment,
     };
-    use pathfinder_rpc::{websocket::types::WebsocketSenders, SyncState};
+    use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
-    use primitive_types::H160;
     use stark_hash::Felt;
-    use starknet_gateway_client::GatewayApi;
     use starknet_gateway_types::reply::state_update::StateDiff;
     use starknet_gateway_types::reply::{Block, StateUpdate};
     use starknet_gateway_types::{pending::PendingData, reply};
     use std::sync::Arc;
-
-    #[derive(Debug, Clone)]
-    struct FakeTransport;
-
-    #[async_trait::async_trait]
-    impl pathfinder_ethereum::EthereumApi for FakeTransport {
-        async fn get_starknet_state(
-            &self,
-            _: &H160,
-        ) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
-            unimplemented!()
-        }
-
-        async fn get_chain(&self) -> anyhow::Result<pathfinder_common::EthereumChain> {
-            unimplemented!()
-        }
-    }
-
-    // We need a simple clonable mock here. Satisfies the sync() internals,
-    // and is not really called anywhere in the tests except for status updates
-    // which we don't test against here.
-    #[derive(Debug, Clone)]
-    struct FakeSequencer;
-
-    #[async_trait::async_trait]
-    impl GatewayApi for FakeSequencer {}
 
     /// Generate some arbitrary block chain data from genesis onwards.
     ///
@@ -1028,7 +995,6 @@ mod tests {
     async fn block_updates() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
-        let websocket_txs = WebsocketSenders::for_test();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
@@ -1042,19 +1008,10 @@ mod tests {
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
 
-        let context = SyncContext {
+        let context = ConsumerContext {
             storage,
-            ethereum: FakeTransport,
-            chain: Chain::Testnet,
-            chain_id: ChainId::TESTNET,
-            core_address: H160::zero(),
-            sequencer: FakeSequencer,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            pending_poll_interval: None,
-            block_validation_mode: l2::BlockValidationMode::Strict,
-            websocket_txs,
-            block_cache_size: 100,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1079,7 +1036,6 @@ mod tests {
     async fn reorg() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
-        let websocket_txs = WebsocketSenders::for_test();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
@@ -1094,19 +1050,10 @@ mod tests {
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
 
-        let context = SyncContext {
+        let context = ConsumerContext {
             storage,
-            ethereum: FakeTransport,
-            chain: Chain::Testnet,
-            chain_id: ChainId::TESTNET,
-            core_address: H160::zero(),
-            sequencer: FakeSequencer,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            pending_poll_interval: None,
-            block_validation_mode: l2::BlockValidationMode::Strict,
-            websocket_txs,
-            block_cache_size: 100,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1130,7 +1077,6 @@ mod tests {
     async fn reorg_to_genesis() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
-        let websocket_txs = WebsocketSenders::for_test();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
 
@@ -1145,19 +1091,10 @@ mod tests {
         // Close the event channel which allows the consumer task to exit.
         drop(event_tx);
 
-        let context = SyncContext {
+        let context = ConsumerContext {
             storage,
-            ethereum: FakeTransport,
-            chain: Chain::Testnet,
-            chain_id: ChainId::TESTNET,
-            core_address: H160::zero(),
-            sequencer: FakeSequencer,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            pending_poll_interval: None,
-            block_validation_mode: l2::BlockValidationMode::Strict,
-            websocket_txs,
-            block_cache_size: 100,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1171,7 +1108,6 @@ mod tests {
     async fn new_cairo_contract() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
-        let websocket_txs = WebsocketSenders::for_test();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
 
@@ -1188,19 +1124,10 @@ mod tests {
         // This closes the event channel which ends the consumer task.
         drop(event_tx);
         // UUT
-        let context = SyncContext {
+        let context = ConsumerContext {
             storage,
-            ethereum: FakeTransport,
-            chain: Chain::Testnet,
-            chain_id: ChainId::TESTNET,
-            core_address: H160::zero(),
-            sequencer: FakeSequencer,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            pending_poll_interval: None,
-            block_validation_mode: l2::BlockValidationMode::Strict,
-            websocket_txs,
-            block_cache_size: 100,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1215,7 +1142,6 @@ mod tests {
     async fn new_sierra_contract() {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
-        let websocket_txs = WebsocketSenders::for_test();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
 
@@ -1234,19 +1160,10 @@ mod tests {
         // This closes the event channel which ends the consumer task.
         drop(event_tx);
 
-        let context = SyncContext {
+        let context = ConsumerContext {
             storage,
-            ethereum: FakeTransport,
-            chain: Chain::Testnet,
-            chain_id: ChainId::TESTNET,
-            core_address: H160::zero(),
-            sequencer: FakeSequencer,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            pending_poll_interval: None,
-            block_validation_mode: l2::BlockValidationMode::Strict,
-            websocket_txs,
-            block_cache_size: 100,
         };
 
         consumer(event_rx, context).await.unwrap();
