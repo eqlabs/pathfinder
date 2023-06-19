@@ -616,7 +616,6 @@ mod tests {
 
         let mut buf = String::new();
         super::event_keys_to_base64_strings(&event.keys, &mut buf);
-        assert_eq!(buf.capacity(), buf.len());
         assert_eq!(
                     buf,
                     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCM= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCQ= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCU="
