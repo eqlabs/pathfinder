@@ -110,7 +110,7 @@ impl StorageManager {
 }
 
 impl Storage {
-    /// Performs the database schema migration and returns two new connection pools with the given capacity.
+    /// Performs the database schema migration and returns a [storage manager](StorageManager).
     ///
     /// This should be called __once__ at the start of the application,
     /// and passed to the various components which require access to the database.
