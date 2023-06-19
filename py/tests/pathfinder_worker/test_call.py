@@ -2335,6 +2335,8 @@ def test_estimate_message_fee_direct_command():
     command = EstimateMessageFee(
         at_block="1",
         chain=call.Chain.TESTNET,
+        # sender_address=0x6f59999ae79bc593549918179454a47980a800e5,
+        sender_address=0x1,
         contract_address=contract_address,
         entry_point_selector=get_selector_from_name("deposit"),
         calldata=[
@@ -2369,6 +2371,7 @@ def test_estimate_message_fee_json():
         "verb": "ESTIMATE_MSG_FEE",
         "at_block": "1",
         "chain": "TESTNET",
+        "sender_address": "0x6f59999ae79bc593549918179454a47980a800e5",
         "contract_address": "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
         "entry_point_selector": "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01",
         "calldata": ["0x1", "0x2"],

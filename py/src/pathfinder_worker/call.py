@@ -59,7 +59,7 @@ try:
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.business_logic.transaction.fee import calculate_tx_fee
-    from starkware.starknet.business_logic.transaction.objects import InternalL1Handler
+    from starkware.starknet.business_logic.transaction.objects import InternalL1Handler # TODO(SM):remove
     from starkware.starknet.core.os.contract_class.utils import (
         ClassHashType,
         class_hash_cache_ctx_var,
@@ -84,6 +84,7 @@ try:
     from starkware.starknet.services.api.contract_class.contract_class_utils import (
         compile_contract_class,
     )
+    from starkware.starknet.services.api.feeder_gateway.request_objects import CallL1Handler
     from starkware.starknet.services.api.feeder_gateway.response_objects import (
         BaseResponseObject,
         FunctionInvocation,
@@ -251,6 +252,7 @@ class EstimateMessageFee(Command):
     # zero means to use the gas price from the current block.
     gas_price: int = field(metadata=fields.gas_price_metadata)
 
+    sender_address: int = field(metadata=fields.from_address_field_metadata)
     contract_address: int = field(metadata=fields.contract_address_metadata)
     calldata: List[int] = field(metadata=fields.calldata_as_hex_metadata)
     entry_point_selector: int = field(metadata=fields.entry_point_selector_metadata)
@@ -522,6 +524,7 @@ def loop_inner(
                 async_state,
                 general_config,
                 block_info,
+                command.sender_address,
                 command.contract_address,
                 command.calldata,
                 command.entry_point_selector,
@@ -839,19 +842,34 @@ async def do_estimate_message_fee(
     state: CachedState,
     general_config: StarknetGeneralConfig,
     block_info: BlockInfo,
+    sender_address: int,
     contract_address: int,
     calldata: List[int],
     entry_point_selector: int,
 ):
-    internal_tx = InternalL1Handler(
-        contract_address=contract_address,
-        entry_point_selector=entry_point_selector,
-        calldata=calldata,
-        nonce=1,
-        paid_fee_on_l1=None,
-        hash_value=0xDEADBEEF,
-    )
+    # internal_tx = InternalL1Handler(
+    #     contract_address=contract_address,
+    #     entry_point_selector=entry_point_selector,
+    #     # calldata=[calldata], # works
+    #     # calldata=[sender_address, *calldata], # fails
+    #     nonce=1,
+    #     paid_fee_on_l1=None,
+    #     hash_value=0xDEADBEEF,
+    # )
 
+    handler = CallL1Handler(
+        from_address=sender_address,
+        to_address=contract_address,
+        entry_point_selector=entry_point_selector,
+        payload=calldata,
+    )
+    internal_tx = handler.to_internal(chain_id=general_config.chain_id.value)
+
+    # TODO(SM): FIXME
+    # starkware.starkware_utils.error_handling.StarkException: (500, {
+    # 'code': <StarknetErrorCode.TRANSACTION_FAILED: 53>, 
+    # 'message': 'Error at pc=0:1358:\nAn ASSERT_EQ instruction failed: 11:2 != 11:3.'
+    # })
     execution_info = await internal_tx.apply_state_updates(
         state=state, general_config=general_config
     )

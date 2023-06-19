@@ -19,7 +19,7 @@ use crate::v02::types::reply::FeeEstimate;
 use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
-use pathfinder_common::{BlockTimestamp, CallResultValue, ClassHash};
+use pathfinder_common::{BlockTimestamp, CallResultValue, ClassHash, EthereumAddress};
 use starknet_gateway_types::{reply::PendingStateUpdate, request::add_transaction};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -130,6 +130,7 @@ impl Handle {
 
     pub async fn estimate_message_fee(
         &self,
+        sender_address: EthereumAddress,
         message: Call,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
@@ -144,6 +145,7 @@ impl Handle {
         self.command_tx
             .send((
                 Command::EstimateMessageFee {
+                    sender_address,
                     message,
                     at_block,
                     gas_price,
@@ -377,6 +379,7 @@ enum Command {
         response: oneshot::Sender<Result<Vec<FeeEstimate>, CallFailure>>,
     },
     EstimateMessageFee {
+        sender_address: EthereumAddress,
         message: Call,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
