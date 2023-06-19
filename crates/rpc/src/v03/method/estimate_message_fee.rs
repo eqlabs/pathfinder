@@ -129,8 +129,13 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_estimate_message_fee() {
+    enum Setup {
+        Full,
+        SkipBlock,
+        SkipContract,
+    }
+
+    async fn setup(mode: Setup) -> anyhow::Result<RpcContext> {
         let dir = tempdir().expect("tempdir");
         let mut db_path = dir.path().to_path_buf();
         db_path.push("db.sqlite");
@@ -148,21 +153,25 @@ mod tests {
                 .expect("insert class");
 
             let block_number = BlockNumber::GENESIS + 1;
-            let header = BlockHeader::builder()
-                .with_number(block_number)
-                .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_gas_price(GasPrice(1))
-                .finalize_with_hash(BlockHash::ZERO);
 
-            tx.insert_block_header(&header).unwrap();
+            if !matches!(mode, Setup::SkipBlock) {
+                let header = BlockHeader::builder()
+                    .with_number(block_number)
+                    .with_timestamp(BlockTimestamp::new_or_panic(1))
+                    .with_gas_price(GasPrice(1))
+                    .finalize_with_hash(BlockHash::ZERO);
 
-            let contract_address = ContractAddress::new_or_panic(felt!(
-                "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-            ));
+                tx.insert_block_header(&header).unwrap();
+            }
 
-            let state_diff =
-                StateDiff::default().add_deployed_contract(contract_address, class_hash);
-            tx.insert_state_diff(block_number, &state_diff).unwrap();
+            if !matches!(mode, Setup::SkipBlock | Setup::SkipContract) {
+                let contract_address = ContractAddress::new_or_panic(felt!(
+                    "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
+                ));
+                let state_diff =
+                    StateDiff::default().add_deployed_contract(contract_address, class_hash);
+                tx.insert_state_diff(block_number, &state_diff).unwrap();
+            }
 
             tx.commit().unwrap();
         }
@@ -180,7 +189,11 @@ mod tests {
             .with_storage(storage)
             .with_call_handling(call_handle);
 
-        let input = EstimateMessageFeeInput {
+        Ok(rpc)
+    }
+
+    fn input() -> EstimateMessageFeeInput {
+        EstimateMessageFeeInput {
             message: FunctionCall {
                 contract_address: ContractAddress::new_or_panic(felt!(
                     "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
@@ -192,8 +205,11 @@ mod tests {
             },
             sender_address: EthereumAddress(H160::zero()),
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
-        };
+        }
+    }
 
+    #[tokio::test]
+    async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
             gas_consumed: H256::from_str(
                 "0x000000000000000000000000000000000000000000000000000000000000479a",
@@ -209,182 +225,36 @@ mod tests {
             .unwrap(),
         };
 
-        let result = estimate_message_fee(rpc, input).await.expect("result");
+        let rpc = setup(Setup::Full).await.expect("RPC context");
+        let result = estimate_message_fee(rpc, input()).await.expect("result");
         assert_eq!(result, expected);
     }
 
     #[tokio::test]
     async fn test_error_missing_contract() {
-        let dir = tempdir().expect("tempdir");
-        let mut db_path = dir.path().to_path_buf();
-        db_path.push("db.sqlite");
-
-        let storage = Storage::migrate(db_path, JournalMode::WAL).expect("storage");
-
-        {
-            let mut db = storage.connection().expect("db connection");
-            let tx = db.transaction().expect("tx");
-
-            let hash = ClassHash(felt!(
-                "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
-            ));
-            tx.insert_cairo_class(hash, CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET)
-                .expect("insert class");
-
-            let header = BlockHeader::builder()
-                .with_number(BlockNumber::GENESIS + 1)
-                .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_gas_price(GasPrice(1))
-                .finalize_with_hash(BlockHash::ZERO);
-
-            tx.insert_block_header(&header).unwrap();
-
-            // NOTE: contract deployment is missing
-
-            tx.commit().unwrap();
-        }
-
-        let (call_handle, _join_handle) = crate::cairo::ext_py::start(
-            storage.path().into(),
-            std::num::NonZeroUsize::try_from(1).unwrap(),
-            futures::future::pending(),
-            Chain::Testnet,
-        )
-        .await
-        .unwrap();
-
-        let rpc = RpcContext::for_tests()
-            .with_storage(storage)
-            .with_call_handling(call_handle);
-
-        let input = EstimateMessageFeeInput {
-            message: FunctionCall {
-                contract_address: ContractAddress::new_or_panic(felt!(
-                    "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                )),
-                entry_point_selector: EntryPoint(felt!(
-                    "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
-                )),
-                calldata: vec![CallParam(felt!("0x1")), CallParam(felt!("0x2"))],
-            },
-            sender_address: EthereumAddress(H160::zero()),
-            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
-        };
-
+        let rpc = setup(Setup::SkipContract).await.expect("RPC context");
         assert_matches::assert_matches!(
-            estimate_message_fee(rpc, input).await,
+            estimate_message_fee(rpc, input()).await,
             Err(EstimateMessageFeeError::ContractNotFound)
         );
     }
 
     #[tokio::test]
     async fn test_error_missing_block() {
-        let dir = tempdir().expect("tempdir");
-        let mut db_path = dir.path().to_path_buf();
-        db_path.push("db.sqlite");
-
-        let storage = Storage::migrate(db_path, JournalMode::WAL).expect("storage");
-
-        // NOTE: block insertion is missing
-
-        let (call_handle, _join_handle) = crate::cairo::ext_py::start(
-            storage.path().into(),
-            std::num::NonZeroUsize::try_from(1).unwrap(),
-            futures::future::pending(),
-            Chain::Testnet,
-        )
-        .await
-        .unwrap();
-
-        let rpc = RpcContext::for_tests()
-            .with_storage(storage)
-            .with_call_handling(call_handle);
-
-        let input = EstimateMessageFeeInput {
-            message: FunctionCall {
-                contract_address: ContractAddress::new_or_panic(felt!(
-                    "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                )),
-                entry_point_selector: EntryPoint(felt!(
-                    "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
-                )),
-                calldata: vec![CallParam(felt!("0x1")), CallParam(felt!("0x2"))],
-            },
-            sender_address: EthereumAddress(H160::zero()),
-            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
-        };
-
+        let rpc = setup(Setup::SkipBlock).await.expect("RPC context");
         assert_matches::assert_matches!(
-            estimate_message_fee(rpc, input).await,
+            estimate_message_fee(rpc, input()).await,
             Err(EstimateMessageFeeError::BlockNotFound)
         );
     }
 
     #[tokio::test]
     async fn test_error_invalid_selector() {
-        let dir = tempdir().expect("tempdir");
-        let mut db_path = dir.path().to_path_buf();
-        db_path.push("db.sqlite");
+        let mut input = input();
+        let invalid_selector = EntryPoint(felt!("0xDEADBEEF"));
+        input.message.entry_point_selector = invalid_selector;
 
-        let storage = Storage::migrate(db_path, JournalMode::WAL).expect("storage");
-
-        {
-            let mut db = storage.connection().expect("db connection");
-            let tx = db.transaction().expect("tx");
-
-            let class_hash = ClassHash(felt!(
-                "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
-            ));
-            tx.insert_cairo_class(class_hash, CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET)
-                .expect("insert class");
-
-            let block_number = BlockNumber::GENESIS + 1;
-            let header = BlockHeader::builder()
-                .with_number(block_number)
-                .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_gas_price(GasPrice(1))
-                .finalize_with_hash(BlockHash::ZERO);
-
-            tx.insert_block_header(&header).unwrap();
-
-            let contract_address = ContractAddress::new_or_panic(felt!(
-                "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-            ));
-
-            let state_diff =
-                StateDiff::default().add_deployed_contract(contract_address, class_hash);
-            tx.insert_state_diff(block_number, &state_diff).unwrap();
-
-            tx.commit().unwrap();
-        }
-
-        let (call_handle, _join_handle) = crate::cairo::ext_py::start(
-            storage.path().into(),
-            std::num::NonZeroUsize::try_from(1).unwrap(),
-            futures::future::pending(),
-            Chain::Testnet,
-        )
-        .await
-        .unwrap();
-
-        let rpc = RpcContext::for_tests()
-            .with_storage(storage)
-            .with_call_handling(call_handle);
-
-        let input = EstimateMessageFeeInput {
-            message: FunctionCall {
-                contract_address: ContractAddress::new_or_panic(felt!(
-                    "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                )),
-                entry_point_selector: EntryPoint(felt!(
-                    "0xDEADBEEF" // NOTE: invalid selector
-                )),
-                calldata: vec![CallParam(felt!("0x1")), CallParam(felt!("0x2"))],
-            },
-            sender_address: EthereumAddress(H160::zero()),
-            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
-        };
-
+        let rpc = setup(Setup::Full).await.expect("RPC context");
         assert_matches::assert_matches!(
             estimate_message_fee(rpc, input).await,
             Err(EstimateMessageFeeError::ContractError)
