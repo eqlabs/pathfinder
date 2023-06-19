@@ -369,6 +369,7 @@ async fn process(
             transactions,
         },
         Command::EstimateMessageFee {
+            sender_address,
             message,
             at_block,
             gas_price,
@@ -386,6 +387,7 @@ async fn process(
                 pending_timestamp: block_timestamp.map(|t| t.get()).unwrap_or_default(),
             },
             gas_price: gas_price.as_price(),
+            sender_address: *sender_address,
             contract_address: &message.contract_address,
             calldata: &message.calldata,
             entry_point_selector: message.entry_point_selector.as_ref(),

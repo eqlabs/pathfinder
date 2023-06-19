@@ -1,8 +1,6 @@
 //! The json serializable types
 
-use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint,
-};
+use pathfinder_common::{BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, EthereumAddress};
 use starknet_gateway_types::{
     reply::{
         state_update::{DeployedContract, StorageDiff},
@@ -44,6 +42,7 @@ pub(crate) enum ChildCommand<'a> {
         #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
         gas_price: &'a primitive_types::H256,
 
+        sender_address: EthereumAddress,
         contract_address: &'a ContractAddress,
         calldata: &'a [CallParam],
         entry_point_selector: Option<&'a EntryPoint>,

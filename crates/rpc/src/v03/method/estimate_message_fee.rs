@@ -41,6 +41,7 @@ pub async fn estimate_message_fee(
 
     let result = handle
         .estimate_message_fee(
+            input.sender_address,
             input.message.into(),
             when,
             gas_price,
