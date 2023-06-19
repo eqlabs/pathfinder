@@ -23,9 +23,9 @@ pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
 primitive-types = "0.12.1"
-rand = { version = "0.8.5", optional = true }
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.21.0"
+rand = { version = "0.8.5", optional = true }
 rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
