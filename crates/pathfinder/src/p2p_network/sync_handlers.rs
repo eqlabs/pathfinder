@@ -553,7 +553,7 @@ mod tests {
         /// Fixtures for prop tests
         mod fixtures {
             use pathfinder_storage::{
-                fake2::{with_n_blocks_and_rng, StorageInitializer},
+                fake::{with_n_blocks_and_rng, StorageInitializer},
                 Storage,
             };
             pub const NUM_BLOCKS: u64 = super::super::super::MAX_HEADERS_COUNT * 2;
@@ -578,7 +578,7 @@ mod tests {
         mod overlapping {
             use super::super::super::MAX_HEADERS_COUNT;
             use super::fixtures::NUM_BLOCKS;
-            use pathfinder_storage::fake2::{StorageInitializer, StorageInitializerItem};
+            use pathfinder_storage::fake::{StorageInitializer, StorageInitializerItem};
 
             pub fn forward(
                 from_db: StorageInitializer,
