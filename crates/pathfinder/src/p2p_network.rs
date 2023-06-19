@@ -10,6 +10,7 @@ use stark_hash::Felt;
 use tokio::sync::RwLock;
 use tracing::Instrument;
 
+#[cfg(test)]
 mod client;
 mod sync_handlers;
 

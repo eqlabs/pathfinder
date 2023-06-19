@@ -63,13 +63,7 @@ pub mod init {
     ///     - block hashes
     ///     - old roots wrt previous state update, genesis' old root is `0`
     ///     
-    pub fn with_n_blocks(
-        n: usize,
-    ) -> Vec<(
-        BlockHeader,
-        Vec<(gateway::Transaction, gateway::Receipt)>,
-        StateUpdate,
-    )> {
+    pub fn with_n_blocks(n: usize) -> StorageInitializer {
         let mut rng = rand::thread_rng();
         with_n_blocks_and_rng(n, &mut rng)
     }
