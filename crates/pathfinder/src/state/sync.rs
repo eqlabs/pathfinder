@@ -110,7 +110,7 @@ where
     // Start L1 and L2 sync processes.
     let mut l1_handle = tokio::spawn(l1_sync(tx_l1, ethereum.clone(), chain, core_address));
 
-    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size)
+    let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
@@ -304,7 +304,7 @@ where
                     rx_l2 = new_rx;
 
 
-                    let latest_blocks = latest_n_blocks(storage.clone(), block_cache_size).await.context("Fetching latest blocks from storage")?;
+                    let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size).await.context("Fetching latest blocks from storage")?;
                     let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                     let fut = l2_sync(new_tx, websocket_txs.clone(), sequencer.clone(), l2_head, chain, chain_id, pending_poll_interval, block_validation_mode, block_chain, storage.clone());
 
@@ -320,13 +320,10 @@ where
 }
 
 async fn latest_n_blocks(
-    storage: Storage,
+    connection: &mut Connection,
     n: usize,
 ) -> anyhow::Result<Vec<(BlockNumber, BlockHash, StateCommitment)>> {
-    tokio::task::spawn_blocking(move || {
-        let mut connection = storage
-            .connection()
-            .context("Creating database connection")?;
+    tokio::task::block_in_place(|| {
         let tx = connection
             .transaction()
             .context("Creating database transaction")?;
@@ -354,8 +351,6 @@ async fn latest_n_blocks(
 
         Ok(blocks)
     })
-    .await
-    .context("Joining database task")?
 }
 
 /// Periodically updates sync state with the latest block height.
