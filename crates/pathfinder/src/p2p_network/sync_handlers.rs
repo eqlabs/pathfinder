@@ -491,22 +491,16 @@ fn get_next_block_number(
 // unfortunately cannot cover classes (ie cairo0/sierra)
 #[cfg(test)]
 mod tests {
-    use super::super::client::conv;
-    use super::*;
-    use super::{block_headers, get_next_block_number};
-    use ::fake::Dummy;
+    use super::block_headers;
     use fake::{Fake, Faker};
-    use http::request;
     use p2p_proto::sync::Direction;
-    use p2p_proto::sync::GetBlockHeaders;
-    use pathfinder_common::{BlockHeader, BlockNumber};
-    use pathfinder_storage::{fake2, Storage};
-    use proptest::prelude::*;
-    use quickcheck::Arbitrary;
-    use quickcheck_macros::quickcheck;
+    use pathfinder_common::BlockNumber;
+    use pathfinder_storage::Storage;
 
     #[test]
-    fn test_get_next_block_number() {
+    fn get_next_block_number() {
+        use super::get_next_block_number;
+
         let genesis = BlockNumber::new_or_panic(0);
         assert_eq!(get_next_block_number(genesis, Direction::Backward), None);
         assert_eq!(
@@ -524,454 +518,239 @@ mod tests {
         );
     }
 
-    /*
-        const NUM_BLOCKS_IN_DB: u64 = super::MAX_HEADERS_COUNT * 2;
+    #[test]
+    fn zero_count_yields_empty_reply() {
+        let request = p2p_proto::sync::GetBlockHeaders {
+            start_block: (i64::MAX as u64 + 1),
+            count: Faker.fake(),
+            size_limit: Faker.fake(),
+            direction: Faker.fake(),
+        };
 
-        #[derive(Clone, Debug)]
-        struct ValidGetBlockHeadersFixture(p2p_proto::sync::GetBlockHeaders);
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+        assert!(block_headers(tx, request).is_err());
+    }
 
-        impl Arbitrary for ValidGetBlockHeadersFixture {
-            fn arbitrary(_: &mut quickcheck::Gen) -> Self {
-                // Include values beyond highest block in DB
-                let start_block = (0..(NUM_BLOCKS_IN_DB * 2)).fake();
-                // Include values beyond the max allowed number of elements in reply
-                let count = (0..NUM_BLOCKS_IN_DB).fake();
+    #[test]
+    fn start_block_larger_than_i64max_yields_error() {
+        let request = p2p_proto::sync::GetBlockHeaders {
+            start_block: (i64::MAX as u64 + 1),
+            count: Faker.fake(),
+            size_limit: Faker.fake(),
+            direction: Faker.fake(),
+        };
 
-                Self(p2p_proto::sync::GetBlockHeaders {
-                    start_block,
-                    count,
-                    size_limit: Faker.fake(), // FIXME once this field matters
-                    direction: Faker.fake(),
-                })
-            }
-        }
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+        assert!(block_headers(tx, request).is_err());
+    }
 
-        #[quickcheck]
-        fn requested_block_headers_match_storage(request: ValidGetBlockHeadersFixture) -> bool {
-            let request = request.0;
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
+    /// Property tests, grouped to be immediately visible when executed
+    mod prop {
+        /// Fixtures for prop tests
+        mod fixtures {
+            use pathfinder_storage::{
+                fake2::{with_n_blocks_and_rng, StorageInitializer},
+                Storage,
+            };
+            pub const NUM_BLOCKS: u64 = super::super::super::MAX_HEADERS_COUNT * 2;
+            pub const I64_MAX: u64 = i64::MAX as u64;
+            pub type SeededStorage = once_cell::sync::OnceCell<(Storage, StorageInitializer)>;
 
-            let backward = request.direction == Direction::Backward;
-            let start: usize = request.start_block.try_into().unwrap();
-            let capped_len = std::cmp::min(request.count, super::MAX_HEADERS_COUNT)
-                .try_into()
-                .unwrap();
-
-            let from_db = fake2::with_n_blocks(&storage, NUM_BLOCKS_IN_DB.try_into().unwrap())
-                .into_iter()
-                .map(|(header, _, _)| header);
-
-            let from_proto = block_headers(tx, request)
-                .unwrap()
-                .headers
-                .into_iter()
-                .map(|header| super::super::client::conv::header::from_p2p(header));
-
-            if backward {
-                from_db
-                    .skip(start.saturating_sub(capped_len))
-                    .take(capped_len)
-                    .eq(from_proto.rev())
-            } else {
-                from_db.skip(start).take(capped_len).eq(from_proto)
-            }
-        }
-    */
-
-    const NUM_BLOCKS: u64 = super::MAX_HEADERS_COUNT * 2;
-
-    mod block_headers {
-        use super::super::MAX_HEADERS_COUNT;
-        use super::*;
-        use crate::p2p_network::client::conv::header;
-
-        proptest! {
-            // FIXME pick a value that allows to run sufficient number of iterations
-            // but what about test execution time?
-            // run them separately?
-            #![proptest_config(ProptestConfig::with_cases(50))]
-
-            #[test]
-            fn block_headers_forward(start_block in 0..(NUM_BLOCKS * 2), count in 0..(NUM_BLOCKS * 2)) {
+            /// Generate reusable fake storage from seed. Use with [`OnceCell`] to
+            /// seed storage once for the entire property test, which will greatly increase performance,
+            /// since populating the DB is the most time consuming part.
+            pub fn storage_with_seed(seed: u64) -> (Storage, StorageInitializer) {
+                use rand::SeedableRng;
                 let storage = Storage::in_memory().unwrap();
+                // Explicitly choose RNG to make sure seeded storage is always reproducible
+                let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
+                let initializer =
+                    with_n_blocks_and_rng(&storage, NUM_BLOCKS.try_into().unwrap(), &mut rng);
+                (storage, initializer)
+            }
+        }
 
-                let from_db = fake2::with_n_blocks(&storage, NUM_BLOCKS.try_into().unwrap())
+        /// Find overlapping range between the DB and the request
+        mod overlapping {
+            use super::super::super::MAX_HEADERS_COUNT;
+            use super::fixtures::NUM_BLOCKS;
+            use pathfinder_storage::fake2::{StorageInitializer, StorageInitializerItem};
+
+            pub fn forward(
+                from_db: StorageInitializer,
+                start_block: u64,
+                count: u64,
+            ) -> impl Iterator<Item = StorageInitializerItem> {
+                from_db
                     .into_iter()
                     .skip(start_block.try_into().unwrap())
                     .take(std::cmp::min(count, MAX_HEADERS_COUNT).try_into().unwrap())
-                    .map(|(header, _, _)| header).collect::<Vec<_>>();
-
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-
-                let request = p2p_proto::sync::GetBlockHeaders {
-                    start_block,
-                    count,
-                    // FIXME once size_limit is really used
-                    size_limit: Faker.fake(),
-                    direction: Direction::Forward
-                };
-
-                let from_p2p = block_headers(tx, request)
-                    .unwrap()
-                    .headers
-                    .into_iter()
-                    .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
-
-                prop_assert_eq!(from_p2p, from_db)
             }
 
-            #[test]
-            fn block_headers_backward(start_block in 0..(NUM_BLOCKS * 2), count in 0..(NUM_BLOCKS * 2)) {
-                let storage = Storage::in_memory().unwrap();
+            pub fn backward(
+                mut from_db: StorageInitializer,
+                start_block: u64,
+                count: u64,
+            ) -> impl Iterator<Item = StorageInitializerItem> {
+                if start_block >= NUM_BLOCKS {
+                    // The is no overlapping range and we want to keep the iterator type in this
+                    // branch consistent
+                    from_db.clear();
+                }
 
-                let from_db = fake2::with_n_blocks(&storage, NUM_BLOCKS.try_into().unwrap())
+                from_db
                     .into_iter()
                     .take((start_block + 1).try_into().unwrap())
                     .rev()
                     .take(std::cmp::min(count, MAX_HEADERS_COUNT).try_into().unwrap())
-                    .map(|(header, _, _)| header).collect::<Vec<_>>();
-
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-
-                let request = p2p_proto::sync::GetBlockHeaders {
-                    start_block,
-                    count,
-                    // FIXME once size_limit is really used
-                    size_limit: Faker.fake(),
-                    direction: Direction::Backward
-                };
-
-                let from_p2p = block_headers(tx, request)
-                    .unwrap()
-                    .headers
-                    .into_iter()
-                    .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
-
-                if start_block >= NUM_BLOCKS {
-                    prop_assert!(from_p2p.is_empty())
-                } else {
-                    prop_assert_eq!(from_p2p, from_db)
-                }
             }
         }
 
-        #[test]
-        fn unsupported_start_block_value() {
-            let request = p2p_proto::sync::GetBlockHeaders {
-                start_block: (i64::MAX as u64 + 1),
-                count: Faker.fake(),
-                size_limit: Faker.fake(),
-                direction: Faker.fake(),
-            };
+        /// Strategies used in tests
+        mod strategy {
+            use super::fixtures::{I64_MAX, NUM_BLOCKS};
+            use proptest::prelude::*;
 
-            let storage = Storage::in_memory().unwrap();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
-            assert!(block_headers(tx, request).is_err());
-        }
-    }
+            prop_compose! {
+                pub fn reasonable_count()(count in 1..=NUM_BLOCKS) -> u64 {
+                    count
+                }
+            }
 
-    #[test]
-    fn requested_block_headers_match_storage2() {
-        let storage = Storage::in_memory().unwrap();
-        let from_db = fake2::with_n_blocks(&storage, 3)
-            .into_iter()
-            .map(|(header, _, _)| header)
-            .collect::<Vec<_>>();
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-        let from_proto = block_headers(
-            tx,
-            p2p_proto::sync::GetBlockHeaders {
-                start_block: 0,
-                count: 100,
-                size_limit: 1000000,
-                direction: Direction::Forward,
-            },
-        )
-        .unwrap()
-        .headers
-        .into_iter()
-        .map(|proto_header| super::super::client::conv::header::from_p2p(proto_header))
-        .collect::<Vec<_>>();
-        pretty_assertions::assert_eq!(from_db, from_proto);
-    }
+            prop_compose! {
+                pub fn crazy_count()(count in NUM_BLOCKS + 1..) -> u64 {
+                    count
+                }
+            }
 
-    #[cfg(DISABLED)]
-    mod disabled {
+            pub fn count() -> BoxedStrategy<u64> {
+                prop_oneof![
+                    // Occurance 4:1
+                    4 => reasonable_count(),
+                    1 => crazy_count(),
+                ]
+                .boxed()
+            }
 
-        #[test]
-        fn test_fetch_block_headers_forward() {
-            let (storage, test_data) = pathfinder_storage::test_utils::setup_test_storage();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
+            prop_compose! {
+                pub fn disjoint_forward()(start in NUM_BLOCKS..I64_MAX, count in count()) -> (u64, u64) {
+                    (start, count)
+                }
+            }
 
-            const COUNT: usize = 3;
-            let headers = fetch_block_headers(
-                tx,
-                GetBlockHeaders {
-                    start_block: test_data.headers[0].number.get(),
-                    count: COUNT as u64,
-                    size_limit: 100,
-                    direction: Direction::Forward,
-                },
-            )
-            .unwrap();
+            prop_compose! {
+                pub fn overlapping_forward()(start in 0..NUM_BLOCKS, count in count()) -> (u64, u64) {
+                    (start, count)
+                }
+            }
 
-            assert_eq!(
-                headers.iter().map(|h| h.number).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .take(COUNT)
-                    .map(|b| b.number.get())
-                    .collect::<Vec<_>>()
-            );
-            assert_eq!(
-                headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .take(COUNT)
-                    .map(|b| b.timestamp.get())
-                    .collect::<Vec<_>>()
-            );
+            pub fn forward() -> BoxedStrategy<(u64, u64)> {
+                prop_oneof![
+                    // Occurance 4:1
+                    4 => overlapping_forward(),
+                    1 => disjoint_forward(),
+                ]
+                .boxed()
+            }
 
-            // check that the parent hashes are correct
-            assert_eq!(
-                headers
-                    .iter()
-                    .skip(1)
-                    .map(|h| h.parent_hash)
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .take(COUNT - 1)
-                    .map(|b| b.hash.0)
-                    .collect::<Vec<_>>()
-            );
+            pub fn disjoint_backward() -> BoxedStrategy<(u64, u64)> {
+                (NUM_BLOCKS..I64_MAX as u64)
+                    .prop_perturb(|start, mut rng| {
+                        (
+                            start,
+                            rng.gen_range(1..=start.saturating_sub(NUM_BLOCKS - 1)),
+                        )
+                    })
+                    .boxed()
+            }
 
-            // check that event & transaction commitments match
-            assert_eq!(
-                headers
-                    .iter()
-                    .map(|h| (h.event_commitment, h.transaction_commitment))
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .take(COUNT)
-                    .map(|b| (b.event_commitment.0, b.transaction_commitment.0))
-                    .collect::<Vec<_>>()
-            );
+            prop_compose! {
+                pub fn overlapping_backward()(start in 0..NUM_BLOCKS, count in 1u64..) -> (u64, u64) {
+                    (start, count)
+                }
+            }
+
+            pub fn backward() -> BoxedStrategy<(u64, u64)> {
+                prop_oneof![
+                    // Occurance 4:1
+                    4 => overlapping_backward(),
+                    1 => disjoint_backward(),
+                ]
+                .boxed()
+            }
         }
 
-        #[test]
-        fn test_fetch_block_headers_forward_all_blocks() {
-            let (storage, test_data) = pathfinder_storage::test_utils::setup_test_storage();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
+        mod headers {
+            use super::super::{block_headers, Direction};
+            use super::fixtures::{storage_with_seed, SeededStorage};
+            use super::overlapping;
+            use crate::p2p_network::client::conv::header;
+            use once_cell::sync::OnceCell;
+            use proptest::prelude::*;
 
-            let headers = fetch_block_headers(
-                tx,
-                GetBlockHeaders {
-                    start_block: test_data.headers[0].number.get(),
-                    count: test_data.headers.len() as u64 + 10,
-                    size_limit: 100,
-                    direction: Direction::Forward,
-                },
-            )
-            .unwrap();
+            proptest! {
+                #[test]
+                fn forward(inputs in super::strategy::forward(), seed in any::<u64>()) {
+                    let (start_block, count) = inputs;
+                    // Initialize storage once for this proptest, greatly increases performance
+                    static STORAGE: SeededStorage = OnceCell::new();
+                    let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
 
-            assert_eq!(
-                headers.iter().map(|h| h.number).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .map(|b| b.number.get())
-                    .collect::<Vec<_>>()
-            );
-            assert_eq!(
-                headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .map(|b| b.timestamp.get())
-                    .collect::<Vec<_>>()
-            );
+                    let from_db = overlapping::forward(from_db, start_block, count).map(|(header, _, _)| header).collect::<Vec<_>>();
 
-            // check that the parent hashes are correct
-            assert_eq!(
-                headers
-                    .iter()
-                    .skip(1)
-                    .map(|h| h.parent_hash)
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .take(test_data.headers.len() - 1)
-                    .map(|b| b.hash.0)
-                    .collect::<Vec<_>>()
-            );
+                    let request = p2p_proto::sync::GetBlockHeaders {
+                        start_block,
+                        count,
+                        // FIXME unused for now, will likely trigger a failure once it is really used in prod code
+                        size_limit: 0,
+                        direction: Direction::Forward
+                    };
 
-            // check that event & transaction commitments match
-            assert_eq!(
-                headers
-                    .iter()
-                    .map(|h| (h.event_commitment, h.transaction_commitment))
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .map(|b| (b.event_commitment.0, b.transaction_commitment.0))
-                    .collect::<Vec<_>>()
-            );
-        }
+                    let mut connection = storage.connection().unwrap();
+                    let tx = connection.transaction().unwrap();
 
-        #[test]
-        fn test_fetch_block_headers_backward() {
-            let (storage, test_data) = pathfinder_storage::test_utils::setup_test_storage();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
+                    let from_p2p = block_headers(tx, request)
+                        .unwrap()
+                        .headers
+                        .into_iter()
+                        .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
 
-            const COUNT: usize = 3;
-            let headers = fetch_block_headers(
-                tx,
-                GetBlockHeaders {
-                    start_block: test_data.headers[3].number.get(),
-                    count: COUNT as u64,
-                    size_limit: 100,
-                    direction: Direction::Backward,
-                },
-            )
-            .unwrap();
+                    prop_assert_eq!(from_p2p, from_db)
+                }
 
-            assert_eq!(
-                headers.iter().map(|h| h.number).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .take(COUNT)
-                    .map(|b| b.number.get())
-                    .collect::<Vec<_>>()
-            );
-            assert_eq!(
-                headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .take(COUNT)
-                    .map(|b| b.timestamp.get())
-                    .collect::<Vec<_>>()
-            );
+                #[test]
+                fn backward(inputs in super::strategy::backward(), seed in any::<u64>()) {
+                    let (start_block, count) = inputs;
+                    // Initialize storage once for this proptest, greatly increases performance
+                    static STORAGE: SeededStorage = OnceCell::new();
+                    let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
 
-            // check that the parent hashes are correct
-            assert_eq!(
-                headers
-                    .iter()
-                    .take(COUNT - 1)
-                    .map(|h| h.parent_hash)
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .take(COUNT - 1)
-                    .map(|b| b.hash.0)
-                    .collect::<Vec<_>>()
-            );
+                    let from_db = overlapping::backward(from_db, start_block, count).map(|(header, _, _)| header).collect::<Vec<_>>();
 
-            // check that event & transaction commitments match
-            assert_eq!(
-                headers
-                    .iter()
-                    .map(|h| (h.event_commitment, h.transaction_commitment))
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .take(COUNT)
-                    .map(|b| (b.event_commitment.0, b.transaction_commitment.0))
-                    .collect::<Vec<_>>()
-            );
-        }
+                    let request = p2p_proto::sync::GetBlockHeaders {
+                        start_block,
+                        count,
+                        // FIXME unused for now, will likely trigger a failure once it is really used in prod code
+                        size_limit: 0,
+                        direction: Direction::Backward
+                    };
 
-        #[test]
-        fn test_fetch_block_headers_backward_all_blocks() {
-            let (storage, test_data) = pathfinder_storage::test_utils::setup_test_storage();
-            let mut connection = storage.connection().unwrap();
-            let tx = connection.transaction().unwrap();
+                    let mut connection = storage.connection().unwrap();
+                    let tx = connection.transaction().unwrap();
 
-            let headers = fetch_block_headers(
-                tx,
-                GetBlockHeaders {
-                    start_block: test_data.headers[3].number.get(),
-                    count: test_data.headers.len() as u64 + 10,
-                    size_limit: 100,
-                    direction: Direction::Backward,
-                },
-            )
-            .unwrap();
+                    let from_p2p = block_headers(tx, request)
+                        .unwrap()
+                        .headers
+                        .into_iter()
+                        .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
 
-            assert_eq!(
-                headers.iter().map(|h| h.number).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .map(|b| b.number.get())
-                    .collect::<Vec<_>>()
-            );
-            assert_eq!(
-                headers.iter().map(|h| h.timestamp).collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .map(|b| b.timestamp.get())
-                    .collect::<Vec<_>>()
-            );
-
-            // check that the parent hashes are correct
-            assert_eq!(
-                headers
-                    .iter()
-                    .take(test_data.headers.len() - 1)
-                    .map(|h| h.parent_hash)
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .take(test_data.headers.len() - 1)
-                    .map(|b| b.hash.0)
-                    .collect::<Vec<_>>()
-            );
-
-            // check that event & transaction commitments match
-            assert_eq!(
-                headers
-                    .iter()
-                    .map(|h| (h.event_commitment, h.transaction_commitment))
-                    .collect::<Vec<_>>(),
-                test_data
-                    .headers
-                    .iter()
-                    .rev()
-                    .map(|b| (b.event_commitment.0, b.transaction_commitment.0))
-                    .collect::<Vec<_>>()
-            );
+                    prop_assert_eq!(from_p2p, from_db)
+                }
+            }
         }
     }
 }
