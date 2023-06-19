@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ClassHash, StateCommitment};
@@ -46,7 +47,9 @@ async fn serve() -> anyhow::Result<()> {
     let storage = pathfinder_storage::Storage::migrate(
         database_path.into(),
         pathfinder_storage::JournalMode::WAL,
-    )?;
+    )?
+    .create_pool(NonZeroU32::new(10).unwrap())
+    .unwrap();
 
     let chain = {
         let mut connection = storage.connection()?;

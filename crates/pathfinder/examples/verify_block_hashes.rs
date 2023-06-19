@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, Chain, ChainId, StarknetVersion};
 use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
@@ -23,7 +25,9 @@ fn main() -> anyhow::Result<()> {
     };
 
     let database_path = std::env::args().nth(2).unwrap();
-    let storage = Storage::migrate(database_path.into(), JournalMode::WAL)?;
+    let storage = Storage::migrate(database_path.into(), JournalMode::WAL)?
+        .create_pool(NonZeroU32::new(1).unwrap())
+        .unwrap();
     let mut db = storage
         .connection()
         .context("Opening database connection")?;
