@@ -209,6 +209,12 @@ pub mod class_definitions {
     // A Sierra class for compiler v1.1.0-rc0 introduced in v0.11.2.
     // https://external.integration.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x1338d85d3e579f6944ba06c005238d145920afeb32f94e3a1e234d21e1e9292
     pub const CAIRO_1_1_0_RC0_SIERRA: &[u8] = bytes_fixture!("contracts/sierra-1.1.0.rc0.json");
+
+    // https://testnet.starkscan.co/contract/0x04b4e6d2b66287bd98f6c46daff06cba10942c7d7fe517825f0d3761cac36225
+    pub const CAIRO_1_1_0_BALANCE_SIERRA_JSON: &[u8] =
+        bytes_fixture!("contracts/sierra-1.1.0-balance.json");
+    pub const CAIRO_1_1_0_BALANCE_CASM_JSON: &[u8] =
+        bytes_fixture!("contracts/sierra-1.1.0-balance.casm.json");
 }
 
 pub mod testnet {
