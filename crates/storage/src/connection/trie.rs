@@ -17,9 +17,7 @@ macro_rules! insert_trie {
         /// Stores the node data for this trie in the `$table` table and returns the number of
         /// new nodes that were added i.e. the nodes not already present in the database.
         ///
-        /// Inserts nodes starting from the root. If the node already exists, its reference count
-        /// is incremented. If it does not exist, it is inserted and we repeat the process with its
-        /// children.
+        /// Inserts nodes starting from the root.
         ///
         /// **NOTE**: since [TrieNode] does not identify leaf nodes explicitly, this function assumes that
         /// any node definition not present in the hash map is in fact a leaf node. This means we recurse through
@@ -35,26 +33,25 @@ macro_rules! insert_trie {
 
             let mut stmt = tx
                 .prepare_cached(concat!(
-                    "INSERT INTO ",
+                    "INSERT OR IGNORE INTO ",
                     stringify!($table),
-                    "(hash, data, ref_count) VALUES(?, ?, 1) ",
-                    "ON CONFLICT(hash) DO UPDATE SET ref_count=ref_count+1 ",
-                    "RETURNING ref_count"
+                    "(hash, data) VALUES(?, ?) ",
                 ))
                 .context("Creating insert statement")?;
 
             let mut count = 0;
+
+            // cargo fmt misbehaves on the let some else expression.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
             while let Some(hash) = to_insert.pop() {
                 let Some(node) = nodes.get(&hash) else {
-                                                                                    continue;
-                                                                                };
-                let ref_count: u64 = stmt
-                    .query_row(params![&hash.as_be_bytes().as_slice(), node], |row| {
-                        row.get(0)
-                    })
+                    continue;
+                };
+                let inserted = stmt
+                    .execute(params![&hash.as_be_bytes().as_slice(), node])
                     .context("Inserting node")?;
 
-                if ref_count == 1 {
+                if inserted == 1 {
                     count += 1;
 
                     match node {
@@ -80,7 +77,8 @@ macro_rules! insert_trie {
             pub fn get(&self, node: &stark_hash::Felt) -> anyhow::Result<Option<TrieNode>> {
                 // We rely on sqlite caching the statement here. Storing the statement would be nice,
                 // however that leads to &mut requirements or interior mutable work-arounds.
-                let mut stmt = self.0
+                let mut stmt = self
+                    .0
                     .inner()
                     .prepare_cached(concat!(
                         "SELECT data FROM ",
@@ -184,30 +182,9 @@ mod tests {
         assert_eq!(count, 5);
         assert_eq!(count, db_count);
 
-        // Reference count should be 1 except for duplicate which should be 2.
-        let query_count = |hash: Felt| -> usize {
-            tx.query_row(
-                "SELECT ref_count FROM tree_test WHERE hash = ?",
-                [hash.as_be_bytes()],
-                |row| row.get(0),
-            )
-            .unwrap()
-        };
-        assert_eq!(query_count(root), 1);
-        assert_eq!(query_count(l_child), 1);
-        assert_eq!(query_count(r_child), 1);
-        assert_eq!(query_count(edge), 1);
-        assert_eq!(query_count(duplicate), 2);
-
-        // Inserting the same trie again should only increment the root node.
+        // Inserting the same trie again should do nothing
         let count = insert_test(&tx, root, &nodes).unwrap();
         assert_eq!(count, 0);
-
-        assert_eq!(query_count(root), 2);
-        assert_eq!(query_count(l_child), 1);
-        assert_eq!(query_count(r_child), 1);
-        assert_eq!(query_count(edge), 1);
-        assert_eq!(query_count(duplicate), 2);
 
         let tx = Transaction::from_inner(tx);
 
