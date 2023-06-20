@@ -59,7 +59,6 @@ try:
     )
     from starkware.starknet.business_logic.state.state import BlockInfo, CachedState
     from starkware.starknet.business_logic.transaction.fee import calculate_tx_fee
-    from starkware.starknet.business_logic.transaction.objects import InternalL1Handler # TODO(SM):remove
     from starkware.starknet.core.os.contract_class.utils import (
         ClassHashType,
         class_hash_cache_ctx_var,
@@ -84,7 +83,9 @@ try:
     from starkware.starknet.services.api.contract_class.contract_class_utils import (
         compile_contract_class,
     )
-    from starkware.starknet.services.api.feeder_gateway.request_objects import CallL1Handler
+    from starkware.starknet.services.api.feeder_gateway.request_objects import (
+        CallL1Handler,
+    )
     from starkware.starknet.services.api.feeder_gateway.response_objects import (
         BaseResponseObject,
         FunctionInvocation,
@@ -847,16 +848,6 @@ async def do_estimate_message_fee(
     calldata: List[int],
     entry_point_selector: int,
 ):
-    # internal_tx = InternalL1Handler(
-    #     contract_address=contract_address,
-    #     entry_point_selector=entry_point_selector,
-    #     # calldata=[calldata], # works
-    #     # calldata=[sender_address, *calldata], # fails
-    #     nonce=1,
-    #     paid_fee_on_l1=None,
-    #     hash_value=0xDEADBEEF,
-    # )
-
     handler = CallL1Handler(
         from_address=sender_address,
         to_address=contract_address,
@@ -865,11 +856,6 @@ async def do_estimate_message_fee(
     )
     internal_tx = handler.to_internal(chain_id=general_config.chain_id.value)
 
-    # TODO(SM): FIXME
-    # starkware.starkware_utils.error_handling.StarkException: (500, {
-    # 'code': <StarknetErrorCode.TRANSACTION_FAILED: 53>, 
-    # 'message': 'Error at pc=0:1358:\nAn ASSERT_EQ instruction failed: 11:2 != 11:3.'
-    # })
     execution_info = await internal_tx.apply_state_updates(
         state=state, general_config=general_config
     )
