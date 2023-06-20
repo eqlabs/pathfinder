@@ -247,16 +247,13 @@ pub(super) fn get_events<K: KeyFilter>(
 }
 
 fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
-    // base64 of 3 bytes == 4 base64 digits == 8 bytes in the string buf
-    // Felt == 32 bytes == ceil(32/3) * 4 = 44 base64 digits = 88 bytest in the string
-    // Padding is a single ascii char, which is 2 bytes
+    // with padding it seems 44 bytes are needed for each
+    let needed = (keys.len() * (" ".len() + 44)).saturating_sub(" ".len());
 
-    let needed = (keys.len() * 90).saturating_sub(2);
     if let Some(more) = needed.checked_sub(out.capacity() - out.len()) {
+        // This is a wish which is not always fulfilled
         out.reserve(more);
     }
-
-    let _capacity = out.capacity();
 
     keys.iter().enumerate().for_each(|(i, x)| {
         encode_event_key_to_base64(x, out);
@@ -265,8 +262,6 @@ fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
             out.push(' ');
         }
     });
-
-    debug_assert_eq!(_capacity, out.capacity(), "pre-reservation was not enough");
 }
 
 fn encode_event_key_to_base64(key: &EventKey, buf: &mut String) {
@@ -688,7 +683,7 @@ mod tests {
 
         let mut buf = String::new();
         super::event_keys_to_base64_strings(&event.keys, &mut buf);
-        assert_eq!(buf.capacity(), buf.len() * 2);
+        assert_eq!(buf.capacity(), buf.len());
         assert_eq!(
                     buf,
                     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCM= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCQ= AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACQGCU="
