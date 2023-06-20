@@ -1,6 +1,9 @@
 //! The json serializable types
 
-use pathfinder_common::{BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint, EthereumAddress};
+use pathfinder_common::{
+    BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint,
+    EthereumAddress,
+};
 use starknet_gateway_types::{
     reply::{
         state_update::{DeployedContract, StorageDiff},
