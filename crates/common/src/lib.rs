@@ -3,7 +3,7 @@
 //!
 //! This includes many trivial wrappers around [Felt] which help by providing additional type safety.
 use anyhow::Context;
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 use fake::Dummy;
 use primitive_types::{H160, H256};
 use serde::{Deserialize, Serialize};
@@ -120,7 +120,7 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 
 /// Starknet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 pub struct GasPrice(pub u128);
 
 /// Starknet transaction version.
@@ -216,7 +216,7 @@ impl std::ops::SubAssign<u64> for BlockNumber {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EthereumAddress(pub H160);
 
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self(H160::random_using(rng))
@@ -324,7 +324,7 @@ impl std::fmt::Display for Chain {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 pub struct StarknetVersion(String);
 
 impl StarknetVersion {

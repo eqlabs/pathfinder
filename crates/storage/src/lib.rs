@@ -19,7 +19,6 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-#[cfg(any(feature = "test-utils", test))]
 pub use connection::*;
 
 use pathfinder_common::{BlockHash, BlockNumber};

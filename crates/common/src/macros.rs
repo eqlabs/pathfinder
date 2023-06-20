@@ -40,7 +40,7 @@ pub(super) mod i64_backed_u64 {
                 }
             }
 
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(feature = "test-utils", test))]
             impl<T> fake::Dummy<T> for $target {
                 fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
                     Self(rng.gen_range(0..i64::MAX as u64))

@@ -184,7 +184,7 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(feature = "test-utils", test))]
     use fake::Dummy;
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
@@ -203,7 +203,7 @@ pub mod transaction {
     /// Represents deserialized L2 transaction entry point values.
     #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
         External,
@@ -214,7 +214,7 @@ pub mod transaction {
     /// Represents execution resources for L2 transaction.
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct ExecutionResources {
         pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
         pub n_steps: u64,
@@ -223,7 +223,7 @@ pub mod transaction {
 
     /// Types used when deserializing L2 execution resources related data.
     pub mod execution_resources {
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(feature = "test-utils", test))]
         use fake::Dummy;
         use serde::{Deserialize, Serialize};
 
@@ -231,7 +231,7 @@ pub mod transaction {
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(untagged)]
         #[serde(deny_unknown_fields)]
-        #[cfg_attr(feature = "test-utils", derive(Dummy))]
+        #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
         pub enum BuiltinInstanceCounter {
             Normal(NormalBuiltinInstanceCounter),
             Empty(EmptyBuiltinInstanceCounter),
@@ -245,7 +245,7 @@ pub mod transaction {
 
         #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(deny_unknown_fields)]
-        #[cfg_attr(feature = "test-utils", derive(Dummy))]
+        #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
         pub struct NormalBuiltinInstanceCounter {
             pub bitwise_builtin: u64,
             pub ecdsa_builtin: u64,
@@ -256,7 +256,7 @@ pub mod transaction {
         }
 
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[cfg_attr(feature = "test-utils", derive(Dummy))]
+        #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
         pub struct EmptyBuiltinInstanceCounter {}
     }
 
@@ -264,7 +264,7 @@ pub mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct L1ToL2Message {
         #[serde_as(as = "EthereumAddressAsHexStr")]
         pub from_address: EthereumAddress,
@@ -280,7 +280,7 @@ pub mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
         #[serde_as(as = "Vec<L2ToL1MessagePayloadElemAsDecimalStr>")]
@@ -292,7 +292,7 @@ pub mod transaction {
     /// Represents deserialized L2 transaction receipt data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct Receipt {
         #[serde(default)]
         pub actual_fee: Option<Fee>,
@@ -309,7 +309,7 @@ pub mod transaction {
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum Transaction {
         #[serde(rename = "DECLARE")]
         Declare(DeclareTransaction),
@@ -433,7 +433,7 @@ pub mod transaction {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "version")]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum DeclareTransaction {
         #[serde(rename = "0x0")]
         V0(DeclareTransactionV0V1),
@@ -502,7 +502,7 @@ pub mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct DeclareTransactionV0V1 {
         pub class_hash: ClassHash,
         pub max_fee: Fee,
@@ -518,7 +518,7 @@ pub mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct DeclareTransactionV2 {
         pub class_hash: ClassHash,
         pub max_fee: Fee,
@@ -551,7 +551,7 @@ pub mod transaction {
         pub version: TransactionVersion,
     }
 
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for DeployTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             use fake::{Fake, Faker};
@@ -587,7 +587,7 @@ pub mod transaction {
         pub class_hash: ClassHash,
     }
 
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for DeployAccountTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             use fake::{Fake, Faker};
@@ -609,7 +609,7 @@ pub mod transaction {
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "version")]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum InvokeTransaction {
         #[serde(rename = "0x0")]
         V0(InvokeTransactionV0),
@@ -664,7 +664,7 @@ pub mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
@@ -687,7 +687,7 @@ pub mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct InvokeTransactionV1 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
@@ -720,7 +720,7 @@ pub mod transaction {
         pub version: TransactionVersion,
     }
 
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for L1HandlerTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             use fake::{Fake, Faker};

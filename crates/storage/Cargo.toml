@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-test-utils = ["dep:fake", "dep:rand", "starknet-gateway-client/test-utils"]
+test-utils = ["dep:fake", "dep:rand", "pathfinder-common/test-utils", "starknet-gateway-client/test-utils", "starknet-gateway-types/test-utils"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -41,4 +41,8 @@ zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = { workspace = true }
+fake = { version = "2.5.0", features = ["derive"] }
+pathfinder-common = { path = "../common", features = ["test-utils"] }
+rand = { version = "0.8.5" }
+starknet-gateway-types = { path = "../gateway-types", features = ["test-utils"] }
 tempfile = "3.4"

@@ -150,7 +150,9 @@ pub mod init {
             ));
         }
 
+        //
         // "Fix" block headers and state updates
+        //
         let (header, _, state_update) = init.get_mut(0).unwrap();
         header.parent_hash = BlockHash::ZERO;
         header.state_commitment =

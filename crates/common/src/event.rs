@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 use fake::Dummy;
 use num_bigint::BigUint;
 use serde_with::serde_conv;
@@ -11,7 +11,7 @@ use crate::{ContractAddress, EventData, EventKey};
 #[serde_with::serde_as]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 pub struct Event {
     #[serde_as(as = "Vec<EventDataAsDecimalStr>")]
     pub data: Vec<EventData>,
