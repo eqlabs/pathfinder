@@ -1,6 +1,10 @@
+use pathfinder_common::Chain;
+use pathfinder_storage::Storage;
 use starknet_gateway_types::reply::{Block, StateUpdate};
 
-/// Poll's the Sequencer's pending block and emits [Event::Pending](super::l2::Event::Pending)
+use crate::state::sync::SyncEvent;
+
+/// Poll's the Sequencer's pending block and emits [pending events](SyncEvent::Pending)
 /// until the pending block is no longer connected to our current head.
 ///
 /// This disconnect is detected whenever
@@ -10,13 +14,15 @@ use starknet_gateway_types::reply::{Block, StateUpdate};
 ///
 /// A full block or full state update can be returned from this function if it is encountered during polling.
 pub async fn poll_pending(
-    tx_event: tokio::sync::mpsc::Sender<super::l2::Event>,
+    tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: &impl starknet_gateway_client::GatewayApi,
     head: (
         pathfinder_common::BlockHash,
         pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
+    chain: Chain,
+    storage: Storage,
 ) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
     use anyhow::Context;
     use pathfinder_common::BlockId;
@@ -25,7 +31,7 @@ pub async fn poll_pending(
     loop {
         use starknet_gateway_types::reply::{MaybePendingBlock, MaybePendingStateUpdate};
 
-        let pending_block = match sequencer
+        let block = match sequencer
             .block(BlockId::Pending)
             .await
             .context("Download pending block")?
@@ -70,7 +76,7 @@ pub async fn poll_pending(
         }
         .context("Downloading pending state update")?;
 
-        match state_update {
+        let state_update = match state_update {
             MaybePendingStateUpdate::StateUpdate(state_update) => {
                 tracing::trace!("Found full state update, exiting pending mode.");
                 return Ok((None, Some(state_update)));
@@ -81,30 +87,43 @@ pub async fn poll_pending(
                     return Ok((None, None));
                 }
 
-                // Emit new pending data.
-                use crate::state::l2::Event::Pending;
-                tx_event
-                    .send(Pending(
-                        Arc::new(pending_block),
-                        Arc::new(pending_state_update),
-                    ))
-                    .await
-                    .context("Event channel closed")?;
-
-                tokio::time::sleep(poll_interval).await;
+                pending_state_update
             }
-        }
+        };
+
+        // Download, process and emit all missing classes.
+        super::l2::download_new_classes(
+            &state_update.state_diff,
+            sequencer,
+            &tx_event,
+            chain,
+            &block.starknet_version,
+            storage.clone(),
+        )
+        .await
+        .context("Handling newly declared classes for pending block")?;
+
+        // Emit new block.
+        tx_event
+            .send(SyncEvent::Pending(Arc::new(block), Arc::new(state_update)))
+            .await
+            .context("Event channel closed")?;
+
+        tokio::time::sleep(poll_interval).await;
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::state::sync::SyncEvent;
+
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress,
-        StarknetVersion, StateCommitment,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice,
+        SequencerAddress, StarknetVersion, StateCommitment,
     };
+    use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::{
         state_update::StateDiff, Block, MaybePendingBlock, MaybePendingStateUpdate, PendingBlock,
@@ -176,6 +195,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -217,6 +238,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -250,6 +273,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -282,6 +307,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -311,6 +338,8 @@ mod tests {
                 &sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
             )
             .await
         });
@@ -320,7 +349,6 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        use crate::state::l2::Event::Pending;
-        assert_matches!(result, Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_DIFF);
+        assert_matches!(result, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_DIFF);
     }
 }

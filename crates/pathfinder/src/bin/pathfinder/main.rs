@@ -4,6 +4,7 @@ use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
+use pathfinder_lib::state::SyncContext;
 use pathfinder_lib::{
     monitoring::{self},
     state,
@@ -138,22 +139,22 @@ async fn main() -> anyhow::Result<()> {
         None => rpc_server,
     };
 
-    let sync_handle = tokio::spawn(state::sync(
-        sync_storage,
-        ethereum.client,
-        pathfinder_context.network,
-        pathfinder_context.network_id,
-        pathfinder_context.l1_core_address,
-        pathfinder_context.gateway,
-        sync_state.clone(),
-        state::l1::sync,
-        state::l2::sync,
-        pending_state,
-        pending_interval,
-        state::l2::BlockValidationMode::Strict,
-        rpc_server.get_ws_senders(),
-        1_000,
-    ));
+    let sync_context = SyncContext {
+        storage: sync_storage,
+        ethereum: ethereum.client,
+        chain: pathfinder_context.network,
+        chain_id: pathfinder_context.network_id,
+        core_address: pathfinder_context.l1_core_address,
+        sequencer: pathfinder_context.gateway,
+        state: sync_state.clone(),
+        pending_data: pending_state,
+        pending_poll_interval: pending_interval,
+        block_validation_mode: state::l2::BlockValidationMode::Strict,
+        websocket_txs: rpc_server.get_ws_senders(),
+        block_cache_size: 1_000,
+    };
+
+    let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));
 
     let (rpc_handle, local_addr) = rpc_server
         .with_logger(RpcMetricsLogger)
