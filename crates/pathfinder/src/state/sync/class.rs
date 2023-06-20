@@ -31,22 +31,26 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let hash = compute_class_hash(&definition).context("Computing class hash")?;
 
-        anyhow::ensure!(
-            class_hash == hash.hash(),
-            "Class hash mismatch, {} instead of {}",
-            hash.hash(),
-            class_hash.0
-        );
-
         use starknet_gateway_types::class_hash::ComputedClassHash;
         match hash {
             ComputedClassHash::Cairo(hash) => {
+                if class_hash != hash {
+                    tracing::warn!(expected=%class_hash, computed=%hash, "Cairo 0 class hash mismatch");
+                }
+
                 Ok(DownloadedClass::Cairo {
                     definition,
                     hash,
                 })
             }
             starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
+                anyhow::ensure!(
+                    class_hash == hash,
+                    "Class hash mismatch, {} instead of {}",
+                    hash,
+                    class_hash.0
+                );
+
                 // FIXME(integration reset): work-around for integration containing Sierra classes
                 // that are incompatible with production compiler. This will get "fixed" in the future
                 // by resetting integration to remove these classes at which point we can revert this.
