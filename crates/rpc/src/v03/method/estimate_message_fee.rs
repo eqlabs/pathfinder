@@ -58,12 +58,14 @@ mod tests {
     use std::str::FromStr;
 
     use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, Chain, ClassHash,
-        ContractAddress, EntryPoint, GasPrice,
+        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, Chain,
+        ClassHash, ContractAddress, EntryPoint, GasPrice, SierraHash,
     };
     use pathfinder_storage::{types::state_update::StateDiff, JournalMode, Storage};
     use primitive_types::{H160, H256};
-    use starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET;
+    use starknet_gateway_test_fixtures::class_definitions::{
+        CAIRO_1_1_0_BALANCE_CASM_JSON, CAIRO_1_1_0_BALANCE_SIERRA_JSON,
+    };
     use tempfile::tempdir;
 
     use super::*;
@@ -150,8 +152,18 @@ mod tests {
             let class_hash = ClassHash(felt!(
                 "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
             ));
-            tx.insert_cairo_class(class_hash, CAIRO_0_11_WITH_DECIMAL_ENTRY_POINT_OFFSET)
-                .expect("insert class");
+            tx.insert_sierra_class(
+                &SierraHash(felt!(
+                    "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
+                )),
+                CAIRO_1_1_0_BALANCE_SIERRA_JSON,
+                &CasmHash(felt!(
+                    "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
+                )),
+                CAIRO_1_1_0_BALANCE_CASM_JSON,
+                "cairo-lang-starknet 1.1.0",
+            )
+            .expect("insert class");
 
             let block_number = BlockNumber::GENESIS + 1;
 
@@ -200,9 +212,9 @@ mod tests {
                     "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                 )),
                 entry_point_selector: EntryPoint(felt!(
-                    "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
+                    "0x31ee153a27e249dc4bade6b861b37ef1e1ea0a4c0bf73b7405a02e9e72f7be3"
                 )),
-                calldata: vec![CallParam(felt!("0x1")), CallParam(felt!("0x2"))],
+                calldata: vec![CallParam(felt!("0x1"))],
             },
             sender_address: EthereumAddress(H160::zero()),
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
@@ -213,7 +225,7 @@ mod tests {
     async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
             gas_consumed: H256::from_str(
-                "0x000000000000000000000000000000000000000000000000000000000000479a",
+                "0x0000000000000000000000000000000000000000000000000000000000004798",
             )
             .unwrap(),
             gas_price: H256::from_str(
@@ -221,7 +233,7 @@ mod tests {
             )
             .unwrap(),
             overall_fee: H256::from_str(
-                "0x000000000000000000000000000000000000000000000000000000000000479a",
+                "0x0000000000000000000000000000000000000000000000000000000000004798",
             )
             .unwrap(),
         };
