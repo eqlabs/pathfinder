@@ -214,7 +214,7 @@ mod conv {
                 gas_price: header.gas_price.0.into(),
                 transaction_count,
                 transaction_commitment: header.transaction_commitment.0,
-                // FIXME
+                // FIXME whoopsie, Chris fix it!
                 event_count: 0,
                 event_commitment: header.event_commitment.0,
                 starknet_version: header.starknet_version.take_inner(),
@@ -491,11 +491,15 @@ fn get_next_block_number(
 // unfortunately cannot cover classes (ie cairo0/sierra)
 #[cfg(test)]
 mod tests {
-    use super::block_headers;
+    use super::{block_bodies, block_headers, state_diffs};
+    use assert_matches::assert_matches;
     use fake::{Fake, Faker};
-    use p2p_proto::sync::Direction;
+    use p2p_proto::sync::{
+        Direction, GetBlockBodies, GetBlockHeaders, GetStateDiffs, Request, Response,
+    };
     use pathfinder_common::BlockNumber;
-    use pathfinder_storage::Storage;
+    use pathfinder_storage::{Storage, Transaction};
+    use rstest::rstest;
 
     #[test]
     fn get_next_block_number() {
@@ -518,28 +522,56 @@ mod tests {
         );
     }
 
-    #[test]
-    fn zero_count_yields_empty_reply() {
-        let request = p2p_proto::sync::GetBlockHeaders {
-            start_block: (i64::MAX as u64 + 1),
-            count: Faker.fake(),
-            size_limit: Faker.fake(),
-            direction: Faker.fake(),
-        };
+    fn run_request(
+        tx: Transaction<'_>,
+        request: p2p_proto::sync::Request,
+    ) -> anyhow::Result<p2p_proto::sync::Response> {
+        match request {
+            Request::GetBlockHeaders(r) => block_headers(tx, r).map(Response::BlockHeaders),
+            Request::GetBlockBodies(r) => block_bodies(tx, r).map(Response::BlockBodies),
+            Request::GetStateDiffs(r) => state_diffs(tx, r).map(Response::StateDiffs),
+            _ => unimplemented!(),
+        }
+    }
 
+    #[rstest]
+    #[case(Request::GetBlockBodies(GetBlockBodies {
+        count: 0,
+        ..Faker.fake()
+    }))]
+    #[case(Request::GetBlockHeaders(GetBlockHeaders {
+        count: 0,
+        start_block: Faker.fake::<u64>() >> 1,
+        ..Faker.fake()
+    }))]
+    #[case(Request::GetStateDiffs(GetStateDiffs {
+        count: 0,
+        ..Faker.fake()
+    }))]
+    fn zero_count_yields_empty_reply(#[case] request: Request) {
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        assert!(block_headers(tx, request).is_err());
+        let response = run_request(tx, request.clone()).unwrap();
+        match request {
+            Request::GetBlockBodies(_) => {
+                assert_matches!(response, Response::BlockBodies(r) => assert!(r.block_bodies.is_empty()));
+            }
+            Request::GetBlockHeaders(_) => {
+                assert_matches!(response, Response::BlockHeaders(r) => assert!(r.headers.is_empty()));
+            }
+            Request::GetStateDiffs(_) => {
+                assert_matches!(response, Response::StateDiffs(r) => assert!(r.block_state_updates.is_empty()));
+            }
+            _ => panic!("Request and reply type mismatch"),
+        };
     }
 
     #[test]
     fn start_block_larger_than_i64max_yields_error() {
         let request = p2p_proto::sync::GetBlockHeaders {
             start_block: (i64::MAX as u64 + 1),
-            count: Faker.fake(),
-            size_limit: Faker.fake(),
-            direction: Faker.fake(),
+            ..Faker.fake()
         };
 
         let storage = Storage::in_memory().unwrap();
