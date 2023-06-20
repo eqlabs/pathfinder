@@ -185,7 +185,7 @@ pub struct TransactionStatus {
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
     #[cfg(any(feature = "test-utils", test))]
-    use fake::Dummy;
+    use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
         EntryPoint, EthereumAddress, Fee, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
@@ -224,14 +224,14 @@ pub mod transaction {
     /// Types used when deserializing L2 execution resources related data.
     pub mod execution_resources {
         #[cfg(any(feature = "test-utils", test))]
-        use fake::Dummy;
+        use fake::{Dummy, Fake, Faker};
         use serde::{Deserialize, Serialize};
 
         /// Sometimes `builtin_instance_counter` JSON object is returned empty.
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(untagged)]
         #[serde(deny_unknown_fields)]
-        #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
+        // #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
         pub enum BuiltinInstanceCounter {
             Normal(NormalBuiltinInstanceCounter),
             Empty(EmptyBuiltinInstanceCounter),
@@ -240,6 +240,15 @@ pub mod transaction {
         impl Default for BuiltinInstanceCounter {
             fn default() -> Self {
                 Self::Normal(Default::default())
+            }
+        }
+
+        #[cfg(any(feature = "test-utils", test))]
+        impl<T> Dummy<T> for BuiltinInstanceCounter {
+            fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+                // We don't care about the other variant which was a patch
+                // over some old receipts missing this data
+                BuiltinInstanceCounter::Normal(Faker.fake_with_rng(rng))
             }
         }
 
@@ -256,7 +265,6 @@ pub mod transaction {
         }
 
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
         pub struct EmptyBuiltinInstanceCounter {}
     }
 
@@ -264,7 +272,6 @@ pub mod transaction {
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct L1ToL2Message {
         #[serde_as(as = "EthereumAddressAsHexStr")]
         pub from_address: EthereumAddress,
@@ -274,6 +281,20 @@ pub mod transaction {
         pub to_address: ContractAddress,
         #[serde(default)]
         pub nonce: Option<L1ToL2MessageNonce>,
+    }
+
+    #[cfg(any(feature = "test-utils", test))]
+    impl<T> Dummy<T> for L1ToL2Message {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            // Nonces were missing in very old messages, we don't care about it
+            Self {
+                from_address: Faker.fake_with_rng(rng),
+                payload: Faker.fake_with_rng(rng),
+                selector: Faker.fake_with_rng(rng),
+                to_address: Faker.fake_with_rng(rng),
+                nonce: Some(Faker.fake_with_rng(rng)),
+            }
+        }
     }
 
     /// Represents deserialized L2 to L1 message.
@@ -292,7 +313,6 @@ pub mod transaction {
     /// Represents deserialized L2 transaction receipt data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct Receipt {
         #[serde(default)]
         pub actual_fee: Option<Fee>,
@@ -303,6 +323,22 @@ pub mod transaction {
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: TransactionHash,
         pub transaction_index: TransactionIndex,
+    }
+
+    #[cfg(any(feature = "test-utils", test))]
+    impl<T> Dummy<T> for Receipt {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            // Those fields that were missing in very old receipts are always present
+            Self {
+                actual_fee: Some(Faker.fake_with_rng(rng)),
+                execution_resources: Some(Faker.fake_with_rng(rng)),
+                events: Faker.fake_with_rng(rng),
+                l1_to_l2_consumed_message: Faker.fake_with_rng(rng),
+                l2_to_l1_messages: Faker.fake_with_rng(rng),
+                transaction_hash: Faker.fake_with_rng(rng),
+                transaction_index: Faker.fake_with_rng(rng),
+            }
+        }
     }
 
     /// Represents deserialized L2 transaction data.
@@ -554,7 +590,6 @@ pub mod transaction {
     #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for DeployTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            use fake::{Fake, Faker};
             use primitive_types::H256;
             Self {
                 version: TransactionVersion(H256::from_low_u64_be(rng.gen_range(0..=1))),
@@ -590,7 +625,6 @@ pub mod transaction {
     #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for DeployAccountTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            use fake::{Fake, Faker};
             Self {
                 // TODO verify this is the only realistic value
                 version: TransactionVersion::ONE,
@@ -723,7 +757,6 @@ pub mod transaction {
     #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for L1HandlerTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            use fake::{Fake, Faker};
             Self {
                 // TODO verify this is the only realistic value
                 version: TransactionVersion::ZERO,

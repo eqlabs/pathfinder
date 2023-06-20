@@ -1,4 +1,19 @@
 //! Various test utils used in other pathfinder related crates
+use fake::{Dummy, Fake, Faker};
+use rand::Rng;
+
+/// In order to provide some basic consistency guarantees some vectors just cannot be empty
+pub fn fake_non_empty_with_rng<C, T>(rng: &mut impl Rng) -> C
+where
+    C: std::iter::FromIterator<T>,
+    T: Dummy<Faker>,
+{
+    let len = rng.gen_range(1..10);
+
+    std::iter::repeat_with(|| Faker.fake_with_rng(rng))
+        .take(len)
+        .collect()
+}
 
 /// Metrics related test aids
 pub mod metrics {
