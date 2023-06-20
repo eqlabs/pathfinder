@@ -1314,9 +1314,20 @@ def test_nonce_with_dummy():
 
 
 def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, int]:
+    return setup_account_and_sierra_contract(
+        cur,
+        "dummy_account.json",
+        "sierra-1.0.0.alpha5-starknet-format.json",
+        "sierra-1.0.0.alpha5-starknet-format-compiled-casm.json",
+    )
+
+
+def setup_account_and_sierra_contract(
+    cur: sqlite3.Cursor, account_name, contract_name, casm_name
+) -> Tuple[int, int]:
     # declare classes
     sierra_class_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format.json"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/" + contract_name
     )
     sierra_class_hash = (
         0x4E70B19333AE94BD958625F7B61CE9EEC631653597E68645E13780061B2136C
@@ -1324,7 +1335,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
     declare_class(cur, sierra_class_hash, sierra_class_path, 1)
 
     dummy_account_contract_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/dummy_account.json"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/" + account_name
     )
     dummy_account_contract_class_hash = (
         0x00AF5F6EE1C2AD961F0B1CD3FA4285CEFAD65A418DD105719FAA5D47583EB0A8
@@ -1335,7 +1346,7 @@ def setup_dummy_account_and_sierra_contract(cur: sqlite3.Cursor) -> Tuple[int, i
 
     # CASM class
     compiled_class_path = test_relative_path(
-        "../../../crates/gateway-test-fixtures/fixtures/contracts/sierra-1.0.0.alpha5-starknet-format-compiled-casm.json"
+        "../../../crates/gateway-test-fixtures/fixtures/contracts/" + casm_name
     )
     compiled_class_hash = (
         0x00711C0C3E56863E29D3158804AAC47F424241EDA64DB33E2CC2999D60EE5105
@@ -2326,23 +2337,25 @@ def deploy_contract(con, name, contract_address, class_hash):
 
 def test_estimate_message_fee_direct_command():
     con = inmemory_with_tables()
-
-    contract_address = 0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
-    class_hash = 0x1002E3DD34DAD22590DD348D10754311102F03F4FC517F1C2018DDF77C7A614
-    name = "cairo-0.11.0-decimal-entry-point-offset.json"
-    deploy_contract(con, name, contract_address, class_hash)
+    cur = con.execute("BEGIN")
+    (
+        account_contract_address,
+        sierra_contract_address,
+    ) = setup_account_and_sierra_contract(
+        cur,
+        "dummy_account.json",
+        "sierra-1.1.0-balance.json",
+        "sierra-1.1.0-balance.casm.json",
+    )
+    con.commit()
 
     command = EstimateMessageFee(
         at_block="1",
         chain=call.Chain.TESTNET,
-        # sender_address=0x6f59999ae79bc593549918179454a47980a800e5,
-        sender_address=0x1,
-        contract_address=contract_address,
-        entry_point_selector=get_selector_from_name("deposit"),
-        calldata=[
-            0x1,
-            0x2,
-        ],
+        sender_address=0xDE29D060D45901FB19ED6C6E959EB22D8626708E,
+        contract_address=sierra_contract_address,
+        entry_point_selector=get_selector_from_name("my_l1_handler"),
+        calldata=[0x1],
         gas_price=1,
         pending_updates={},
         pending_deployed=[],
@@ -2354,16 +2367,22 @@ def test_estimate_message_fee_direct_command():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == FeeEstimation(gas_consumed=18330, gas_price=1, overall_fee=18330)
+    assert output == FeeEstimation(gas_consumed=18328, gas_price=1, overall_fee=18328)
 
 
 def test_estimate_message_fee_json():
     con = inmemory_with_tables()
-
-    contract_address = 0x57DDE83C18C0EFE7123C36A52D704CF27D5C38CDF0B1E1EDC3B0DAE3EE4E374
-    class_hash = 0x1002E3DD34DAD22590DD348D10754311102F03F4FC517F1C2018DDF77C7A614
-    name = "cairo-0.11.0-decimal-entry-point-offset.json"
-    deploy_contract(con, name, contract_address, class_hash)
+    cur = con.execute("BEGIN")
+    (
+        account_contract_address,
+        sierra_contract_address,
+    ) = setup_account_and_sierra_contract(
+        cur,
+        "dummy_account.json",
+        "sierra-1.1.0-balance.json",
+        "sierra-1.1.0-balance.casm.json",
+    )
+    con.commit()
 
     command = Command.Schema().loads(
         """
@@ -2371,10 +2390,10 @@ def test_estimate_message_fee_json():
         "verb": "ESTIMATE_MSG_FEE",
         "at_block": "1",
         "chain": "TESTNET",
-        "sender_address": "0x6f59999ae79bc593549918179454a47980a800e5",
+        "sender_address": "0xde29d060d45901fb19ed6c6e959eb22d8626708e",
         "contract_address": "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374",
-        "entry_point_selector": "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01",
-        "calldata": ["0x1", "0x2"],
+        "entry_point_selector": "0x31ee153a27e249dc4bade6b861b37ef1e1ea0a4c0bf73b7405a02e9e72f7be3",
+        "calldata": ["0x1"],
         "pending_updates": {},
         "pending_deployed": [],
         "pending_nonces": {},
@@ -2387,11 +2406,11 @@ def test_estimate_message_fee_json():
     con.execute("BEGIN")
 
     (verb, output, _timings) = loop_inner(con, command)
-    assert output == FeeEstimation(gas_consumed=18330, gas_price=1, overall_fee=18330)
+    assert output == FeeEstimation(gas_consumed=18328, gas_price=1, overall_fee=18328)
 
     result = render(command.verb, output)
     assert result == {
-        "gas_consumed": "0x479a",
+        "gas_consumed": "0x4798",
         "gas_price": "0x1",
-        "overall_fee": "0x479a",
+        "overall_fee": "0x4798",
     }
