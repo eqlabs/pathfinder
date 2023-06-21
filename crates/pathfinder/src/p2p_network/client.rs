@@ -337,7 +337,7 @@ pub mod conv {
                 block_hash: BlockHash(su.block_hash),
                 new_root: StateCommitment(su.state_commitment),
                 old_root: StateCommitment(su.parent_state_commitment),
-                state_diff: gw::StateDiff {
+                state_diff: gw::state_update::StateDiff {
                     storage_diffs: su
                         .state_update
                         .contract_diffs
@@ -348,7 +348,7 @@ pub mod conv {
                                 contract_diff
                                     .storage_diffs
                                     .iter()
-                                    .map(|x| gw::StorageDiff {
+                                    .map(|x| gw::state_update::StorageDiff {
                                         key: StorageAddress::new_or_panic(x.key),
                                         value: StorageValue(x.value),
                                     })
@@ -360,7 +360,7 @@ pub mod conv {
                         .state_update
                         .deployed_contracts
                         .into_iter()
-                        .map(|x| gw::DeployedContract {
+                        .map(|x| gw::state_update::DeployedContract {
                             address: ContractAddress::new_or_panic(x.contract_address),
                             class_hash: ClassHash(x.class_hash),
                         })
@@ -375,7 +375,7 @@ pub mod conv {
                         .state_update
                         .declared_classes
                         .into_iter()
-                        .map(|x| gw::DeclaredSierraClass {
+                        .map(|x| gw::state_update::DeclaredSierraClass {
                             class_hash: SierraHash(x.sierra_hash),
                             compiled_class_hash: CasmHash(x.casm_hash),
                         })
@@ -395,7 +395,7 @@ pub mod conv {
                         .state_update
                         .replaced_classes
                         .into_iter()
-                        .map(|x| gw::ReplacedClass {
+                        .map(|x| gw::state_update::ReplacedClass {
                             address: ContractAddress::new_or_panic(x.contract_address),
                             class_hash: ClassHash(x.class_hash),
                         })

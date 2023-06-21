@@ -1,6 +1,5 @@
 //! Create fake blockchain data for test purposes
 use crate::Storage;
-use fake::{Fake, Faker};
 use pathfinder_common::{BlockHeader, StateUpdate};
 use rand::Rng;
 use starknet_gateway_types::reply::transaction as gw;
@@ -58,14 +57,15 @@ pub fn with_n_blocks_and_rng(
 
 /// Raw _fake state initializers_
 pub mod init {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::{HashMap, HashSet};
 
     use super::StorageInitializer;
     use fake::{Fake, Faker};
+    use pathfinder_common::state_update::ContractUpdate;
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
     use pathfinder_common::{
-        state_update::ContractClassUpdate, BlockHash, BlockHeader, BlockNumber, ClassHash,
-        ContractAddress, StateCommitment, StateUpdate, TransactionIndex,
+        state_update::ContractClassUpdate, BlockHash, BlockHeader, BlockNumber, StateCommitment,
+        StateUpdate, TransactionIndex,
     };
     use rand::Rng;
     use starknet_gateway_types::reply::transaction as gw;
@@ -78,10 +78,13 @@ pub mod init {
     /// - block bodies:
     ///     - transaction indices within a block
     ///     - transaction hashes in respective receipts
+    ///     - at least 1 transaction with receipt per block
     /// - state updates:
     ///     - block hashes
-    ///     - old roots wrt previous state update, genesis' old root is `0`\
+    ///     - old roots wrt previous state update, genesis' old root is `0`
     ///     - replaced classes for block N point to some deployed contracts from block N-1
+    ///     - each storage diff has its respective nonce update
+    ///     - storage entries contrain at least 1 element
     ///     
     pub fn with_n_blocks(n: usize) -> StorageInitializer {
         let mut rng = rand::thread_rng();
@@ -129,23 +132,25 @@ pub mod init {
                     state_commitment,
                     // Will be fixed in the next loop
                     parent_state_commitment: StateCommitment::ZERO,
-                    ..Faker.fake_with_rng(rng) // state_diff: StateDiff {
-                                               //     storage_diffs: {
-                                               //         Faker
-                                               //             .fake_with_rng::<BTreeMap<ContractAddress, BTreeSet<StorageEntry>>, _>(
-                                               //                 rng,
-                                               //             )
-                                               //             .into_iter()
-                                               //             .map(|(address, entries)| StorageDiff {
-                                               //                 address,
-                                               //                 storage_entries: entries.into_iter().collect(),
-                                               //             })
-                                               //             .collect()
-                                               //     },
-                                               //     // Will be fixed in the next loop
-                                               //     replaced_classes: vec![],
-                                               //     ..Faker.fake_with_rng(rng)
-                                               // },
+                    declared_cairo_classes: Faker.fake_with_rng::<HashSet<_>, _>(rng),
+                    declared_sierra_classes: Faker.fake_with_rng::<HashMap<_, _>, _>(rng),
+                    system_contract_updates: Faker.fake_with_rng::<HashMap<_, _>, _>(rng),
+                    contract_updates: {
+                        let mut x = Faker.fake_with_rng::<HashMap<_, ContractUpdate>, _>(rng);
+                        x.iter_mut().for_each(|(_, u)| {
+                            // Initially generate deploys only
+                            u.class = u
+                                .class
+                                .as_ref()
+                                .map(|x| ContractClassUpdate::Deploy(x.class_hash()));
+                            // Disallow empty storage entries
+                            if u.storage.is_empty() {
+                                u.storage
+                                    .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
+                            }
+                        });
+                        x
+                    },
                 },
             ));
         }

@@ -4,8 +4,6 @@ use p2p_proto as proto;
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use pathfinder_storage::{Storage, Transaction, V03KeyFilter};
 
-use crate::state;
-
 #[cfg(not(test))]
 const MAX_HEADERS_COUNT: u64 = 1000;
 #[cfg(not(test))]
@@ -514,8 +512,6 @@ fn get_next_block_number(
     }
 }
 
-// TODO rework to iterate over all types of requests (headers, bodies, state diffs)
-// unfortunately cannot cover classes (ie cairo0/sierra)
 #[cfg(test)]
 mod tests {
     use super::{block_bodies, block_headers, state_diffs};
@@ -617,22 +613,8 @@ mod tests {
             };
             pub const MAX_NUM_BLOCKS: u64 = super::super::super::MAX_COUNT_IN_TESTS * 2;
             pub const I64_MAX: u64 = i64::MAX as u64;
-            pub type SeededStorage = once_cell::sync::OnceCell<(Storage, StorageInitializer)>;
 
-            /// Generate reusable fake storage from seed. Use with [`OnceCell`] to
-            /// seed storage once for the entire property test, which will greatly increase performance,
-            /// since populating the DB is the most time consuming part.
-            pub fn storage_with_seed(seed: u64) -> (Storage, StorageInitializer) {
-                use rand::SeedableRng;
-                let storage = Storage::in_memory().unwrap();
-                // Explicitly choose RNG to make sure seeded storage is always reproducible
-                let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-                let initializer =
-                    with_n_blocks_and_rng(&storage, MAX_NUM_BLOCKS.try_into().unwrap(), &mut rng);
-                (storage, initializer)
-            }
-
-            pub fn storage_with_seed2(seed: u64, num_blocks: u64) -> (Storage, StorageInitializer) {
+            pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, StorageInitializer) {
                 use rand::SeedableRng;
                 let storage = Storage::in_memory().unwrap();
                 // Explicitly choose RNG to make sure seeded storage is always reproducible
@@ -646,7 +628,6 @@ mod tests {
         /// Find overlapping range between the DB and the request
         mod overlapping {
             use super::super::super::MAX_COUNT_IN_TESTS;
-            use super::fixtures::MAX_NUM_BLOCKS;
             use pathfinder_storage::fake::{StorageInitializer, StorageInitializerItem};
 
             pub fn forward(
@@ -718,7 +699,7 @@ mod tests {
                 }
             }
 
-            pub fn forward() -> BoxedStrategy<(u64, u64)> {
+            fn any_forward() -> BoxedStrategy<(u64, u64)> {
                 prop_oneof![
                     // Occurance 4:1
                     4 => overlapping_forward(),
@@ -728,7 +709,8 @@ mod tests {
             }
 
             prop_compose! {
-                pub fn forward2()((start, count) in forward(), storage_seed in any::<u64>(), num_blocks in 0..MAX_NUM_BLOCKS) -> (u64, u64, u64, u64) {
+                pub fn forward()(
+                    (start, count) in any_forward(), storage_seed in any::<u64>(), num_blocks in 0..MAX_NUM_BLOCKS) -> (u64, u64, u64, u64) {
                     (start, count, storage_seed, num_blocks)
                 }
             }
@@ -750,7 +732,7 @@ mod tests {
                 }
             }
 
-            pub fn backward() -> BoxedStrategy<(u64, u64)> {
+            pub fn any_backward() -> BoxedStrategy<(u64, u64)> {
                 prop_oneof![
                     // Occurance 4:1
                     4 => overlapping_backward(),
@@ -760,7 +742,7 @@ mod tests {
             }
 
             prop_compose! {
-                pub fn backward2()((start, count) in backward(), storage_seed in any::<u64>(), num_blocks in 0..MAX_NUM_BLOCKS) -> (u64, u64, u64, u64) {
+                pub fn backward()((start, count) in any_backward(), storage_seed in any::<u64>(), num_blocks in 0..MAX_NUM_BLOCKS) -> (u64, u64, u64, u64) {
                     (start, count, storage_seed, num_blocks)
                 }
             }
@@ -768,17 +750,16 @@ mod tests {
 
         mod headers {
             use super::super::{block_headers, Direction};
-            use super::fixtures::{storage_with_seed, storage_with_seed2, SeededStorage};
+            use super::fixtures::storage_with_seed;
             use super::overlapping;
             use crate::p2p_network::client::conv::header;
-            use once_cell::sync::OnceCell;
             use proptest::prelude::*;
 
             proptest! {
                 #[test]
-                fn forward((start, count, seed, num_blocks) in super::strategy::forward2()) {
+                fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
                     // Initialize storage once for this proptest, greatly increases performance
-                    let (storage, from_db) = storage_with_seed2(seed, num_blocks);
+                    let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
                     let from_db = overlapping::forward(from_db, start, count).map(|(header, _, _)| header).collect::<Vec<_>>();
 
@@ -803,8 +784,8 @@ mod tests {
                 }
 
                 #[test]
-                fn backward((start, count, seed, num_blocks) in super::strategy::backward2()) {
-                    let (storage, from_db) = storage_with_seed2(seed, num_blocks);
+                fn backward((start, count, seed, num_blocks) in super::strategy::backward()) {
+                    let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
                     let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(header, _, _)| header).collect::<Vec<_>>();
 
@@ -832,12 +813,9 @@ mod tests {
 
         mod bodies {
             use super::super::{block_bodies, Direction};
-            use super::fixtures::{
-                storage_with_seed, storage_with_seed2, SeededStorage, MAX_NUM_BLOCKS,
-            };
+            use super::fixtures::storage_with_seed;
             use super::overlapping;
             use crate::p2p_network::client::conv::body;
-            use once_cell::sync::OnceCell;
             use pathfinder_common::{TransactionNonce, TransactionVersion};
             use proptest::prelude::*;
             use starknet_gateway_types::reply::transaction as gw;
@@ -862,48 +840,12 @@ mod tests {
             }
 
             proptest! {
-                // #[test]
-                // fn forward1(inputs in super::strategy::forward(), seed in any::<u64>()) {
-                //     let (start, count) = inputs;
-                //     // Initialize storage once for this proptest, greatly increases performance
-                //     static STORAGE: SeededStorage = OnceCell::new();
-                //     let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
-                //     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
-                //         Some(h) => h,
-                //         None => {
-                //             // Assume default as an invalid hash but make sure it really is
-                //             prop_assume!(from_db.iter().all(|x| x.0.hash != Default::default()));
-                //             Default::default()
-                //         },
-                //     };
-                //     let from_db = overlapping::forward(from_db, start, count).map(|(_, body, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
-
-                //     let request = p2p_proto::sync::GetBlockBodies {
-                //         start_block: start_hash.0,
-                //         count,
-                //         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
-                //         size_limit: 0,
-                //         direction: Direction::Forward
-                //     };
-
-                //     let mut connection = storage.connection().unwrap();
-                //     let tx = connection.transaction().unwrap();
-
-                //     let from_p2p = block_bodies(tx, request)
-                //         .unwrap()
-                //         .block_bodies
-                //         .into_iter()
-                //         .map(|body| body::try_from_p2p(body).unwrap()).collect::<Vec<_>>();
-
-                //     prop_assert_eq!(from_p2p, from_db)
-                // }
-
                 #[test]
-                fn forward((start, count, seed, num_blocks) in super::strategy::forward2()) {
+                fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
                     // Initialize storage once for this proptest, greatly increases performance
                     // static STORAGE: SeededStorage = OnceCell::new();
                     // let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
-                    let (storage, from_db) = storage_with_seed2(seed, num_blocks);
+                    let (storage, from_db) = storage_with_seed(seed, num_blocks);
                     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
                         Some(h) => h,
                         None => {
@@ -935,9 +877,9 @@ mod tests {
                 }
 
                 #[test]
-                fn backward((start, count, seed, num_blocks) in super::strategy::backward2()) {
+                fn backward((start, count, seed, num_blocks) in super::strategy::backward()) {
                     // Initialize storage once for this proptest, greatly increases performance
-                    let (storage, from_db) = storage_with_seed2(seed, num_blocks);
+                    let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
                     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
                         Some(h) => h,
@@ -969,48 +911,12 @@ mod tests {
 
                     prop_assert_eq!(from_p2p, from_db)
                 }
-
-                // #[test]
-                // fn backward1(inputs in super::strategy::backward(), seed in any::<u64>()) {
-                //     let (start, count) = inputs;
-                //     // Initialize storage once for this proptest, greatly increases performance
-                //     static STORAGE: SeededStorage = OnceCell::new();
-                //     let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
-                //     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
-                //         Some(h) => h,
-                //         None => {
-                //             // Assume default as an invalid hash but make sure it really is
-                //             prop_assume!(from_db.iter().all(|x| x.0.hash != Default::default()));
-                //             Default::default()
-                //         },
-                //     };
-                //     let from_db = overlapping::backward(from_db, start, count).map(|(_, body, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
-
-                //     let request = p2p_proto::sync::GetBlockBodies {
-                //         start_block: start_hash.0,
-                //         count,
-                //         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
-                //         size_limit: 0,
-                //         direction: Direction::Backward
-                //     };
-
-                //     let mut connection = storage.connection().unwrap();
-                //     let tx = connection.transaction().unwrap();
-
-                //     let from_p2p = block_bodies(tx, request)
-                //         .unwrap()
-                //         .block_bodies
-                //         .into_iter()
-                //         .map(|body| body::try_from_p2p(body).unwrap()).collect::<Vec<_>>();
-
-                //     prop_assert_eq!(from_p2p, from_db)
-                // }
             }
         }
 
         mod state_diffs {
             use super::super::{state_diffs, Direction};
-            use super::fixtures::storage_with_seed2;
+            use super::fixtures::storage_with_seed;
             use super::overlapping;
             use crate::p2p_network::client::conv::state_update;
             use pathfinder_common::StateUpdate;
@@ -1018,8 +924,8 @@ mod tests {
 
             proptest! {
                 #[test]
-                fn forward((start, count, seed, num_blocks) in super::strategy::forward2()) {
-                    let (storage, from_db) = storage_with_seed2(seed, num_blocks);
+                fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
+                    let (storage, from_db) = storage_with_seed(seed, num_blocks);
                     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
                         Some(h) => h,
                         None => {
@@ -1050,14 +956,13 @@ mod tests {
                         }).collect::<Vec<_>>();
 
                     prop_assert_eq!(from_p2p, from_db)
-                    // pretty_assertions::assert_eq!(from_p2p, from_db)
                 }
             }
 
             proptest! {
                 #[test]
-                fn backward((start, count, seed, num_blocks) in super::strategy::backward2()) {
-                    let (storage, from_db) = storage_with_seed2(seed, num_blocks);
+                fn backward((start, count, seed, num_blocks) in super::strategy::backward()) {
+                    let (storage, from_db) = storage_with_seed(seed, num_blocks);
                     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
                         Some(h) => h,
                         None => {
@@ -1088,7 +993,6 @@ mod tests {
                         }).collect::<Vec<_>>();
 
                     prop_assert_eq!(from_p2p, from_db)
-                    // pretty_assertions::assert_eq!(from_p2p, from_db)
                 }
             }
         }
