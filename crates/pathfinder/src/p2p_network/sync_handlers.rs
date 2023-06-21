@@ -218,7 +218,7 @@ fn classes(
     Ok(p2p_proto::sync::Classes { classes })
 }
 
-/// Workaround for the orphan rule - implement conversion traits for types ourside our crate.
+/// Workaround for the orphan rule - implement conversion fns for types ourside our crate.
 mod conv {
     pub(super) mod header {
         use pathfinder_common::BlockHeader;
@@ -716,7 +716,7 @@ mod tests {
             }
 
             fn disjoint_backward() -> BoxedStrategy<(u64, u64)> {
-                (MAX_NUM_BLOCKS..I64_MAX as u64)
+                (MAX_NUM_BLOCKS..I64_MAX)
                     .prop_perturb(|start, mut rng| {
                         (
                             start,
@@ -778,7 +778,7 @@ mod tests {
                         .unwrap()
                         .headers
                         .into_iter()
-                        .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
+                        .map(header::from_p2p).collect::<Vec<_>>();
 
                     prop_assert_eq!(from_p2p, from_db)
                 }
@@ -804,7 +804,7 @@ mod tests {
                         .unwrap()
                         .headers
                         .into_iter()
-                        .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
+                        .map(header::from_p2p).collect::<Vec<_>>();
 
                     prop_assert_eq!(from_p2p, from_db)
                 }

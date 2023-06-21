@@ -2,7 +2,7 @@
 
 // TODO temporary hybrid p2p/gw client goes here
 
-/// Workaround for the orphan rule - implement conversion traits for types ourside our crate.
+/// Workaround for the orphan rule - implement conversion fns for types ourside our crate.
 pub mod conv {
     pub mod header {
         use pathfinder_common::{
@@ -369,7 +369,7 @@ pub mod conv {
                         .state_update
                         .declared_cairo_classes
                         .into_iter()
-                        .map(|x| ClassHash(x))
+                        .map(ClassHash)
                         .collect(),
                     declared_classes: su
                         .state_update

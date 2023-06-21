@@ -64,22 +64,18 @@ fake = { version = "2.5.0", features = ["derive"] }
 flate2 = "1.0.25"
 http = "0.2.8"
 mockall = "0.11.3"
-once_cell = "1.18.0"
 p2p_proto = { path = "../p2p_proto", features = ["test-utils"] }
 pathfinder-common = { path = "../common", features = ["full-serde", "test-utils"] }
 pathfinder-rpc = { path = "../rpc", features = ["test-utils"] }
 pathfinder-storage = { path = "../storage", features = ["test-utils"] }
 pretty_assertions = "1.3.0"
 proptest = "1.2.0"
-quickcheck = "1.0.3"
-quickcheck_macros = "1.0.0"
 rand = "0.8"
 rand_chacha = "0.3.1"
 rstest = "0.17.0"
 serde_with = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-static_assertions = "1.1.0"
 tokio = { workspace = true, features = ["test-util"] }
 zstd = "0.12"
 

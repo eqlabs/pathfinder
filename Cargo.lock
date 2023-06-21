@@ -2920,16 +2920,6 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a19187fea3ac7e84da7dacf48de0c45d63c6a76f9490dae389aead16c243fce3"
-dependencies = [
- "log",
- "regex",
-]
-
-[[package]]
-name = "env_logger"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
@@ -5936,7 +5926,6 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
- "once_cell",
  "p2p",
  "p2p_proto",
  "pathfinder-common",
@@ -5949,8 +5938,6 @@ dependencies = [
  "pretty_assertions",
  "primitive-types",
  "proptest",
- "quickcheck",
- "quickcheck_macros",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "reqwest",
@@ -5963,7 +5950,6 @@ dependencies = [
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
- "static_assertions",
  "tempfile",
  "thiserror",
  "time 0.3.21",
@@ -6630,28 +6616,6 @@ dependencies = [
  "quick-protobuf",
  "thiserror",
  "unsigned-varint",
-]
-
-[[package]]
-name = "quickcheck"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "588f6378e4dd99458b60ec275b4477add41ce4fa9f64dcba6f15adccb19b50d6"
-dependencies = [
- "env_logger 0.8.4",
- "log",
- "rand 0.8.5",
-]
-
-[[package]]
-name = "quickcheck_macros"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b22a693222d716a9587786f37ac3f6b4faedb5b80c23914e7303ff5a1d8016e9"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

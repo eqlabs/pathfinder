@@ -231,7 +231,6 @@ pub mod transaction {
         #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
         #[serde(untagged)]
         #[serde(deny_unknown_fields)]
-        // #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
         pub enum BuiltinInstanceCounter {
             Normal(NormalBuiltinInstanceCounter),
             Empty(EmptyBuiltinInstanceCounter),
