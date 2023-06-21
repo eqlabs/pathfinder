@@ -859,34 +859,41 @@ mod tests {
                     prop_assert_eq!(from_p2p, from_db)
                 }
 
-                // #[test]
-                // fn backward(inputs in super::strategy::backward(), seed in any::<u64>()) {
-                //     let (start_block, count) = inputs;
-                //     // Initialize storage once for this proptest, greatly increases performance
-                //     static STORAGE: SeededStorage = OnceCell::new();
-                //     let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
+                #[test]
+                fn backward(inputs in super::strategy::backward(), seed in any::<u64>()) {
+                    let (start, count) = inputs;
+                    // Initialize storage once for this proptest, greatly increases performance
+                    static STORAGE: SeededStorage = OnceCell::new();
+                    let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
+                    let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
+                        Some(h) => h,
+                        None => {
+                            // Assume default as an invalid hash but make sure it really is
+                            prop_assume!(from_db.iter().all(|x| x.0.hash != Default::default()));
+                            Default::default()
+                        },
+                    };
+                    let from_db = overlapping::backward(from_db, start, count).map(|(_, body, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
 
-                //     let from_db = overlapping::backward(from_db, start_block, count).map(|(header, _, _)| header).collect::<Vec<_>>();
+                    let request = p2p_proto::sync::GetBlockBodies {
+                        start_block: start_hash.0,
+                        count,
+                        // FIXME unused for now, will likely trigger a failure once it is really used in prod code
+                        size_limit: 0,
+                        direction: Direction::Backward
+                    };
 
-                //     let request = p2p_proto::sync::GetBlockHeaders {
-                //         start_block,
-                //         count,
-                //         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
-                //         size_limit: 0,
-                //         direction: Direction::Backward
-                //     };
+                    let mut connection = storage.connection().unwrap();
+                    let tx = connection.transaction().unwrap();
 
-                //     let mut connection = storage.connection().unwrap();
-                //     let tx = connection.transaction().unwrap();
+                    let from_p2p = block_bodies(tx, request)
+                        .unwrap()
+                        .block_bodies
+                        .into_iter()
+                        .map(|body| body::try_from_p2p(body).unwrap()).collect::<Vec<_>>();
 
-                //     let from_p2p = block_headers(tx, request)
-                //         .unwrap()
-                //         .headers
-                //         .into_iter()
-                //         .map(|header| header::from_p2p(header)).collect::<Vec<_>>();
-
-                //     prop_assert_eq!(from_p2p, from_db)
-                // }
+                    prop_assert_eq!(from_p2p, from_db)
+                }
             }
         }
     }
