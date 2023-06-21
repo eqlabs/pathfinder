@@ -153,88 +153,91 @@ pub mod init {
         //
         // "Fix" block headers and state updates
         //
-        let (header, _, state_update) = init.get_mut(0).unwrap();
-        header.parent_hash = BlockHash::ZERO;
-        header.state_commitment =
-            StateCommitment::calculate(header.storage_commitment, header.class_commitment);
-        state_update.block_hash = header.hash;
-        state_update.parent_state_commitment = StateCommitment::ZERO;
+        if !init.is_empty() {
+            let (header, _, state_update) = init.get_mut(0).unwrap();
+            header.parent_hash = BlockHash::ZERO;
+            header.state_commitment =
+                StateCommitment::calculate(header.storage_commitment, header.class_commitment);
+            state_update.block_hash = header.hash;
+            state_update.parent_state_commitment = StateCommitment::ZERO;
 
-        // Disallow empty storage entries
-        state_update.contract_updates.iter_mut().for_each(|(_, x)| {
-            if x.storage.is_empty() {
-                x.storage
-                    .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
-            }
-        });
-
-        state_update
-            .system_contract_updates
-            .iter_mut()
-            .for_each(|(_, x)| {
+            // Disallow empty storage entries
+            state_update.contract_updates.iter_mut().for_each(|(_, x)| {
                 if x.storage.is_empty() {
                     x.storage
                         .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
                 }
             });
 
-        for i in 1..n {
-            let (parent_hash, parent_state_commitment, deployed_in_parent) = init
-                .get(i - 1)
-                .map(|(h, _, state_update)| {
-                    (
-                        h.hash,
-                        h.state_commitment,
-                        state_update
-                            .contract_updates
-                            .iter()
-                            .filter_map(|(&address, update)| match update.class {
-                                Some(ContractClassUpdate::Deploy(class_hash)) => {
-                                    Some((address, class_hash))
-                                }
-                                Some(_) | None => None,
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .unwrap();
-            let (header, _, state_update) = init.get_mut(i).unwrap();
+            state_update
+                .system_contract_updates
+                .iter_mut()
+                .for_each(|(_, x)| {
+                    if x.storage.is_empty() {
+                        x.storage
+                            .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
+                    }
+                });
 
-            header.parent_hash = parent_hash;
-            header.state_commitment =
-                StateCommitment::calculate(header.storage_commitment, header.class_commitment);
-            state_update.block_hash = header.hash;
-
-            //
-            // Fix state updates
-            //
-            state_update.parent_state_commitment = parent_state_commitment;
-
-            // Disallow empty storage entries
-            state_update.contract_updates.iter_mut().for_each(|(_, u)| {
-                if u.storage.is_empty() {
-                    u.storage
-                        .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
-                }
-            });
-
-            let num_deployed_in_parent = deployed_in_parent.len();
-
-            if num_deployed_in_parent > 0 {
-                // Add some replaced classes
-                let num_replaced = rng.gen_range(1..=num_deployed_in_parent);
-                use rand::seq::SliceRandom;
-
-                deployed_in_parent
-                    .choose_multiple(rng, num_replaced)
-                    .for_each(|(address, _)| {
-                        state_update
-                            .contract_updates
-                            .entry(*address)
-                            // It's ulikely rng has generated an update to the previously deployed class but it is still possible
-                            .or_default()
-                            .class = Some(ContractClassUpdate::Replace(Faker.fake_with_rng(rng)))
+            for i in 1..n {
+                let (parent_hash, parent_state_commitment, deployed_in_parent) = init
+                    .get(i - 1)
+                    .map(|(h, _, state_update)| {
+                        (
+                            h.hash,
+                            h.state_commitment,
+                            state_update
+                                .contract_updates
+                                .iter()
+                                .filter_map(|(&address, update)| match update.class {
+                                    Some(ContractClassUpdate::Deploy(class_hash)) => {
+                                        Some((address, class_hash))
+                                    }
+                                    Some(_) | None => None,
+                                })
+                                .collect::<Vec<_>>(),
+                        )
                     })
+                    .unwrap();
+                let (header, _, state_update) = init.get_mut(i).unwrap();
+
+                header.parent_hash = parent_hash;
+                header.state_commitment =
+                    StateCommitment::calculate(header.storage_commitment, header.class_commitment);
+                state_update.block_hash = header.hash;
+
+                //
+                // Fix state updates
+                //
+                state_update.parent_state_commitment = parent_state_commitment;
+
+                // Disallow empty storage entries
+                state_update.contract_updates.iter_mut().for_each(|(_, u)| {
+                    if u.storage.is_empty() {
+                        u.storage
+                            .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
+                    }
+                });
+
+                let num_deployed_in_parent = deployed_in_parent.len();
+
+                if num_deployed_in_parent > 0 {
+                    // Add some replaced classes
+                    let num_replaced = rng.gen_range(1..=num_deployed_in_parent);
+                    use rand::seq::SliceRandom;
+
+                    deployed_in_parent
+                        .choose_multiple(rng, num_replaced)
+                        .for_each(|(address, _)| {
+                            state_update
+                                .contract_updates
+                                .entry(*address)
+                                // It's ulikely rng has generated an update to the previously deployed class but it is still possible
+                                .or_default()
+                                .class =
+                                Some(ContractClassUpdate::Replace(Faker.fake_with_rng(rng)))
+                        })
+                }
             }
         }
 
