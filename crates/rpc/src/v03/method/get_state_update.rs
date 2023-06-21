@@ -220,7 +220,7 @@ mod types {
 
     /// L2 storage diff of a contract.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageDiff {
@@ -231,7 +231,7 @@ mod types {
 
     /// A key-value entry of a storage diff.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageEntry {
