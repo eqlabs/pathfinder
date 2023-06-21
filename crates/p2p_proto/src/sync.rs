@@ -289,6 +289,8 @@ pub struct StateDiffs {
 pub struct BlockStateUpdateWithHash {
     pub block_hash: Felt,
     pub state_update: super::propagation::BlockStateUpdate,
+    pub state_commitment: Felt,
+    pub parent_state_commitment: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]

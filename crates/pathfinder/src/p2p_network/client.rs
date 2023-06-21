@@ -321,4 +321,87 @@ pub mod conv {
             }
         }
     }
+
+    pub mod state_update {
+        use std::collections::HashMap;
+
+        use p2p_proto::sync::BlockStateUpdateWithHash;
+        use pathfinder_common::{
+            BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
+            StateCommitment, StorageAddress, StorageValue,
+        };
+        use starknet_gateway_types::reply as gw;
+
+        pub fn from_p2p(su: BlockStateUpdateWithHash) -> gw::StateUpdate {
+            gw::StateUpdate {
+                block_hash: BlockHash(su.block_hash),
+                new_root: StateCommitment(su.state_commitment),
+                old_root: StateCommitment(su.parent_state_commitment),
+                state_diff: gw::StateDiff {
+                    storage_diffs: su
+                        .state_update
+                        .contract_diffs
+                        .iter()
+                        .map(|contract_diff| {
+                            (
+                                ContractAddress::new_or_panic(contract_diff.contract_address),
+                                contract_diff
+                                    .storage_diffs
+                                    .iter()
+                                    .map(|x| gw::StorageDiff {
+                                        key: StorageAddress::new_or_panic(x.key),
+                                        value: StorageValue(x.value),
+                                    })
+                                    .collect(),
+                            )
+                        })
+                        .collect::<HashMap<_, _>>(),
+                    deployed_contracts: su
+                        .state_update
+                        .deployed_contracts
+                        .into_iter()
+                        .map(|x| gw::DeployedContract {
+                            address: ContractAddress::new_or_panic(x.contract_address),
+                            class_hash: ClassHash(x.class_hash),
+                        })
+                        .collect(),
+                    old_declared_contracts: su
+                        .state_update
+                        .declared_cairo_classes
+                        .into_iter()
+                        .map(|x| ClassHash(x))
+                        .collect(),
+                    declared_classes: su
+                        .state_update
+                        .declared_classes
+                        .into_iter()
+                        .map(|x| gw::DeclaredSierraClass {
+                            class_hash: SierraHash(x.sierra_hash),
+                            compiled_class_hash: CasmHash(x.casm_hash),
+                        })
+                        .collect(),
+                    nonces: su
+                        .state_update
+                        .contract_diffs
+                        .iter()
+                        .map(|contract_diff| {
+                            (
+                                ContractAddress::new_or_panic(contract_diff.contract_address),
+                                ContractNonce(contract_diff.nonce),
+                            )
+                        })
+                        .collect::<HashMap<_, _>>(),
+                    replaced_classes: su
+                        .state_update
+                        .replaced_classes
+                        .into_iter()
+                        .map(|x| gw::ReplacedClass {
+                            address: ContractAddress::new_or_panic(x.contract_address),
+                            class_hash: ClassHash(x.class_hash),
+                        })
+                        .collect(),
+                },
+            }
+        }
+    }
 }

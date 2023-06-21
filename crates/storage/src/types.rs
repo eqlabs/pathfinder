@@ -141,6 +141,33 @@ pub mod state_update {
             }
             self
         }
+
+        #[cfg(any(feature = "test-utils", test))]
+        pub fn sort(self) -> Self {
+            use std::collections::BTreeSet;
+
+            Self {
+                storage_diffs: self
+                    .storage_diffs
+                    .into_iter()
+                    .map(|mut x| {
+                        x.storage_entries.sort_unstable();
+                        StorageDiff {
+                            address: x.address,
+                            storage_entries: x.storage_entries,
+                        }
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+                nonces: {
+                    let mut x = self.nonces;
+                    x.sort_unstable();
+                    x
+                },
+                ..self
+            }
+        }
     }
 
     impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
@@ -184,7 +211,7 @@ pub mod state_update {
     /// L2 storage diff of a contract.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy, Ord, PartialOrd))]
     pub struct StorageDiff {
         pub address: ContractAddress,
         pub storage_entries: Vec<StorageEntry>,
@@ -225,7 +252,7 @@ pub mod state_update {
     }
 
     /// L2 state diff nonce item.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
     #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct Nonce {
