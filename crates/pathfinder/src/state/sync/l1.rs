@@ -1,4 +1,4 @@
-use std::num::NonZeroU64;
+use std::{num::NonZeroU64, time::Duration};
 
 use pathfinder_common::Chain;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
@@ -8,14 +8,13 @@ use tokio::sync::mpsc;
 
 use crate::state::sync::SyncEvent;
 
-use super::head_poll_interval;
-
 #[derive(Clone)]
 pub struct L1SyncContext<EthereumClient> {
     pub ethereum: EthereumClient,
     pub chain: Chain,
     /// The Starknet core contract address on Ethereum
     pub core_address: H160,
+    pub poll_interval: Duration,
 }
 
 /// Syncs L1 state update logs. Emits [Ethereum state update](EthereumStateUpdate)
@@ -29,11 +28,11 @@ where
 {
     let L1SyncContext {
         ethereum,
-        chain,
+        chain: _,
         core_address,
+        poll_interval,
     } = context;
 
-    let head_poll_interval = head_poll_interval(chain);
     let mut previous = EthereumStateUpdate::default();
 
     loop {
@@ -42,7 +41,7 @@ where
             NonZeroU64::new(1).unwrap(),
         )
         .factor(NonZeroU64::new(2).unwrap())
-        .max_delay(head_poll_interval / 2)
+        .max_delay(poll_interval / 2)
         .when(|_| true)
         .await?;
 
@@ -51,6 +50,6 @@ where
             tx_event.send(SyncEvent::L1Update(state_update)).await?;
         }
 
-        tokio::time::sleep(head_poll_interval).await;
+        tokio::time::sleep(poll_interval).await;
     }
 }

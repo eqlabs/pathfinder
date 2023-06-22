@@ -133,6 +133,20 @@ Examples:
         default_value = "1024"
     )]
     max_rpc_connections: std::num::NonZeroU32,
+
+    #[arg(
+        long = "head-poll-interval-seconds",
+        long_help = "Selected chain head poll interval in seconds",
+        env = "PATHFINDER_HEAD_POLL_INTERVAL_SECONDS"
+    )]
+    head_poll_interval: Option<std::num::NonZeroU64>,
+
+    #[arg(
+        long = "pending-poll-interval-seconds",
+        long_help = "Pending block poll interval in seconds (if enabled)",
+        env = "PATHFINDER_PENDING_POLL_INTERVAL_SECONDS"
+    )]
+    pending_poll_interval: Option<std::num::NonZeroU64>,
 }
 
 #[derive(clap::Args)]
@@ -279,6 +293,8 @@ pub struct Config {
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroU32,
+    pub head_poll_interval: std::time::Duration,
+    pub pending_poll_interval: Option<std::time::Duration>,
 }
 
 pub struct WebSocket {
@@ -290,6 +306,7 @@ pub struct Ethereum {
     pub password: Option<String>,
 }
 
+#[derive(Clone)]
 pub enum NetworkConfig {
     Mainnet,
     Testnet,
@@ -346,6 +363,8 @@ impl NetworkConfig {
 }
 
 impl Config {
+    const DEFAULT_HEAD_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
     pub fn parse() -> Self {
         let cli = Cli::parse();
 
@@ -363,7 +382,7 @@ impl Config {
                 capacity: cli.ws_capacity,
             }),
             monitor_address: cli.monitor_address,
-            network,
+            network: network.clone(),
             poll_pending: cli.poll_pending,
             python_subprocesses: cli.python_subprocesses,
             sqlite_wal: match cli.sqlite_wal {
@@ -371,6 +390,19 @@ impl Config {
                 false => JournalMode::Rollback,
             },
             max_rpc_connections: cli.max_rpc_connections,
+            head_poll_interval: cli
+                .head_poll_interval
+                .map(|non_zero| non_zero.get())
+                .or(network.map(|net| match net {
+                    NetworkConfig::Mainnet => 300,
+                    _ => 30,
+                }))
+                .map(std::time::Duration::from_secs)
+                .unwrap_or(Self::DEFAULT_HEAD_POLL_INTERVAL),
+            pending_poll_interval: cli
+                .pending_poll_interval
+                .map(|non_zero| non_zero.get())
+                .map(std::time::Duration::from_secs),
         }
     }
 }
