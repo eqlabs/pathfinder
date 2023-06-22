@@ -160,13 +160,22 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         None => rpc_server,
     };
 
+    let (p2p_handle, sequencer) = start_p2p(
+        pathfinder_context.network_id,
+        p2p_storage,
+        sync_state.clone(),
+        config.p2p_boot,
+        pathfinder_context.gateway,
+    )
+    .await?;
+
     let sync_context = SyncContext {
         storage: sync_storage,
         ethereum: ethereum.client,
         chain: pathfinder_context.network,
         chain_id: pathfinder_context.network_id,
         core_address: pathfinder_context.l1_core_address,
-        sequencer: pathfinder_context.gateway,
+        sequencer,
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
         pending_data: pending_state,
@@ -188,8 +197,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         .context("Starting the RPC server")?;
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
-
-    let p2p_handle = start_p2p(pathfinder_context.network_id, p2p_storage, sync_state).await?;
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
@@ -282,38 +289,56 @@ async fn start_p2p(
     chain_id: ChainId,
     storage: Storage,
     sync_state: Arc<SyncState>,
-) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    i_am_boot: bool,
+    sequencer: starknet_gateway_client::Client,
+) -> anyhow::Result<(
+    tokio::task::JoinHandle<()>,
+    pathfinder_lib::p2p_network::client::Client,
+)> {
+    use pathfinder_lib::p2p_network;
+
     let p2p_listen_address = std::env::var("PATHFINDER_P2P_LISTEN_ADDRESS")
-        .unwrap_or_else(|_| "/ip4/0.0.0.0/tcp/4001".to_owned());
+        .unwrap_or_else(|_| "/ip4/0.0.0.0/tcp/0".to_owned());
     let listen_on: p2p::libp2p::Multiaddr = p2p_listen_address.parse()?;
 
-    let p2p_bootstrap_addresses = std::env::var("PATHFINDER_P2P_BOOTSTRAP_MULTIADDRESSES")?;
-    let bootstrap_addresses = p2p_bootstrap_addresses
-        .split_ascii_whitespace()
-        .map(|a| a.parse::<p2p::libp2p::Multiaddr>())
-        .collect::<Result<Vec<_>, _>>()?;
+    let bootstrap_addresses = if i_am_boot {
+        Vec::new()
+    } else {
+        let p2p_bootstrap_addresses =
+            std::env::var("PATHFINDER_P2P_BOOTSTRAP_MULTIADDRESSES").unwrap_or_default();
+        p2p_bootstrap_addresses
+            .split_ascii_whitespace()
+            .map(|a| a.parse::<p2p::libp2p::Multiaddr>())
+            .collect::<Result<Vec<_>, _>>()?
+    };
 
-    let (_p2p_peers, _p2p_client, p2p_handle) = pathfinder_lib::p2p_network::start(
-        chain_id,
-        storage,
-        sync_state,
-        listen_on,
-        &bootstrap_addresses,
-    )
-    .await?;
+    let (_p2p_peers, p2p_client, p2p_head_receiver, p2p_handle) =
+        pathfinder_lib::p2p_network::start(
+            chain_id,
+            storage,
+            sync_state,
+            listen_on,
+            &bootstrap_addresses,
+        )
+        .await?;
 
-    Ok(p2p_handle)
+    Ok((
+        p2p_handle,
+        p2p_network::client::Client::new(i_am_boot, p2p_client, sequencer, p2p_head_receiver),
+    ))
 }
 
 #[cfg(not(feature = "p2p"))]
 async fn start_p2p(
-    _chain_id: ChainId,
-    _storage: Storage,
-    _sync_state: Arc<SyncState>,
-) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    _: ChainId,
+    _: Storage,
+    _: Arc<SyncState>,
+    _: bool,
+    sequencer: starknet_gateway_client::Client,
+) -> anyhow::Result<(tokio::task::JoinHandle<()>, starknet_gateway_client::Client)> {
     let join_handle = tokio::task::spawn(async move { futures::future::pending().await });
 
-    Ok(join_handle)
+    Ok((join_handle, sequencer))
 }
 
 /// Spawns the monitoring task at the given address.

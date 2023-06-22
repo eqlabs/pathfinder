@@ -23,12 +23,12 @@ pub enum Client {
     /// Ofc bootstrapping can be split from proxying but let's keep two types
     /// of nodes for PoC
     Bootstrap {
-        p2p_client: (), // TODO
+        p2p_client: p2p::Client,
         sequencer: starknet_gateway_client::Client,
     },
-    /// Syncs from the p2p network
+    /// Syncs from p2p network
     NonPropagating {
-        p2p_client: (), // TODO
+        p2p_client: p2p::Client,
         sequencer: starknet_gateway_client::Client,
         head_receiver: (), // TODO
     },
@@ -37,7 +37,7 @@ pub enum Client {
 impl Client {
     pub fn new(
         i_am_boot: bool,
-        p2p_client: (), // TODO
+        p2p_client: p2p::Client,
         sequencer: starknet_gateway_client::Client,
         head_receiver: (), // TODO
     ) -> Self {
