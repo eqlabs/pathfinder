@@ -7,8 +7,8 @@
 
 use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
-    ContractAddressSalt, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+    ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
@@ -140,10 +140,7 @@ impl GatewayApi for Client {
         self.as_sequencer().transaction(transaction_hash).await
     }
 
-    async fn state_update(
-        &self,
-        block: BlockId,
-    ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
+    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
         match self {
             Client::Bootstrap { sequencer, .. } => sequencer.state_update(block).await,
             Client::NonPropagating { p2p_client, .. } => match block {

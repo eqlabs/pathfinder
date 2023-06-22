@@ -100,12 +100,16 @@ Examples:
     #[clap(flatten)]
     network: NetworkCli,
 
-    #[arg(
-        long = "poll-pending",
-        long_help = "Enable polling pending block",
-        action = clap::ArgAction::Set,
-        default_value = "false",
-        env = "PATHFINDER_POLL_PENDING", 
+    /// poll_pending and p2p_boot are mutually exclusive
+    #[cfg_attr(
+        not(feature = "p2p"),
+        arg(
+            long = "poll-pending",
+            long_help = "Enable polling pending block",
+            action = clap::ArgAction::Set,
+            default_value = "false",
+            env = "PATHFINDER_POLL_PENDING",
+        )
     )]
     poll_pending: bool,
 
@@ -150,6 +154,20 @@ Examples:
         value_name = "WHEN"
     )]
     color: Color,
+
+    /// poll_pending and p2p_boot are mutually exclusive
+    #[cfg_attr(
+        feature = "p2p",
+        arg(
+            short = 'b',
+            long = "p2p.bootstrap",
+            long_help = "Configure as P2P bootstrap node",
+            default_value = "false",
+            hide = true
+        )
+    )]
+    #[cfg(feature = "p2p")]
+    p2p_boot: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -318,6 +336,7 @@ pub struct Config {
     pub max_rpc_connections: std::num::NonZeroU32,
     pub poll_interval: std::time::Duration,
     pub color: Color,
+    pub p2p_boot: bool,
 }
 
 pub struct WebSocket {
@@ -403,7 +422,14 @@ impl Config {
             }),
             monitor_address: cli.monitor_address,
             network,
-            poll_pending: cli.poll_pending,
+            poll_pending: {
+                #[cfg(feature = "p2p")]
+                {
+                    false
+                }
+                #[cfg(not(feature = "p2p"))]
+                cli.poll_pending
+            },
             python_subprocesses: cli.python_subprocesses,
             sqlite_wal: match cli.sqlite_wal {
                 true => JournalMode::WAL,
@@ -412,6 +438,14 @@ impl Config {
             max_rpc_connections: cli.max_rpc_connections,
             poll_interval: std::time::Duration::from_secs(cli.poll_interval.get()),
             color: cli.color,
+            p2p_boot: {
+                #[cfg(feature = "p2p")]
+                {
+                    cli.p2p_boot
+                }
+                #[cfg(not(feature = "p2p"))]
+                false
+            },
         }
     }
 }
