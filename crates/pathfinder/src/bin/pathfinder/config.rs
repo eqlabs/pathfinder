@@ -307,7 +307,6 @@ pub struct Ethereum {
     pub password: Option<String>,
 }
 
-#[derive(Clone)]
 pub enum NetworkConfig {
     Mainnet,
     Testnet,
@@ -381,7 +380,7 @@ impl Config {
                 capacity: cli.ws_capacity,
             }),
             monitor_address: cli.monitor_address,
-            network: network.clone(),
+            network,
             poll_pending: cli.poll_pending,
             python_subprocesses: cli.python_subprocesses,
             sqlite_wal: match cli.sqlite_wal {
