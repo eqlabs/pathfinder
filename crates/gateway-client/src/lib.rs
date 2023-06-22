@@ -112,7 +112,7 @@ pub trait GatewayApi: Sync {
     /// This is a **temporary** measure to keep the sync logic unchanged
     ///
     /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
-    async fn propagate_block_header(&self, _block: Block) {
+    async fn propagate_block_header(&self, _block: &Block) {
         // Intentionally does nothing for default impl
     }
 

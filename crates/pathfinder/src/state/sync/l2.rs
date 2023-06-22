@@ -161,18 +161,20 @@ where
                     }
                 }
                 DownloadBlock::Reorg => {
-                    let some_head = head.unwrap();
-                    head = reorg(
-                        some_head,
-                        chain,
-                        chain_id,
-                        &tx_event,
-                        &sequencer,
-                        block_validation_mode,
-                        &blocks,
-                    )
-                    .await
-                    .context("L2 reorg")?;
+                    let head = match head {
+                        Some(some_head) => reorg(
+                            some_head,
+                            chain,
+                            chain_id,
+                            &tx_event,
+                            &sequencer,
+                            block_validation_mode,
+                            &blocks,
+                        )
+                        .await
+                        .context("L2 reorg")?,
+                        None => None,
+                    };
 
                     match head {
                         Some((number, hash, commitment)) => blocks.push(number, hash, commitment),
@@ -207,6 +209,9 @@ where
                 continue 'outer;
             }
         }
+
+        // TODO use a header struct, avoid cloning
+        sequencer.propagate_block_header(&block).await;
 
         // Unwrap in both block and state update is safe as the block hash always exists (unless we query for pending).
         let block_hash = block.block_hash;
@@ -420,7 +425,6 @@ async fn download_block(
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
-    use pathfinder_common::BlockId;
     use starknet_gateway_types::{
         error::KnownStarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
     };
@@ -471,18 +475,16 @@ async fn download_block(
             // This would occur if we queried past the head of the chain. We now need to check that
             // a reorg hasn't put us too far in the future. This does run into race conditions with
             // the sequencer but this is the best we can do I think.
-            let latest = sequencer
-                .block(BlockId::Latest)
+            let (latest_block_number, latest_block_hash) = sequencer
+                .head()
                 .await
-                .context("Query sequencer for latest block")?
-                .as_block()
-                .context("Latest block is `pending`")?;
+                .context("Query sequencer for latest block")?;
 
-            if latest.block_number + 1 == block_number {
+            if latest_block_number + 1 == block_number {
                 match prev_block_hash {
                     // We are definitely still at the head and it's just that a new block
                     // has not been published yet
-                    Some(parent_block_hash) if parent_block_hash == latest.block_hash => {
+                    Some(parent_block_hash) if parent_block_hash == latest_block_hash => {
                         Ok(DownloadBlock::AtHead)
                     }
                     // Our head is not valid anymore so there must have been a reorg only at this height

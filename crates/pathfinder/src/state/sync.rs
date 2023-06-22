@@ -22,10 +22,7 @@ use primitive_types::H160;
 use stark_hash::Felt;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::PendingBlock;
-use starknet_gateway_types::{
-    pending::PendingData,
-    reply::{Block, MaybePendingBlock},
-};
+use starknet_gateway_types::{pending::PendingData, reply::Block};
 
 use std::future::Future;
 use std::{sync::Arc, time::Duration};
@@ -545,19 +542,13 @@ async fn update_sync_status_latest(
     starting_block_num: BlockNumber,
     poll_interval: Duration,
 ) -> anyhow::Result<()> {
-    use pathfinder_common::BlockId;
-
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     loop {
-        match sequencer.block(BlockId::Latest).await {
-            Ok(MaybePendingBlock::Block(block)) => {
-                let latest = {
-                    let latest_hash = block.block_hash;
-                    let latest_num = block.block_number;
-                    NumberedBlock::from((latest_hash, latest_num))
-                };
-                // Update the sync status.
+        match sequencer.head().await {
+            Ok((block_number, block_hash)) => {
+                let latest = NumberedBlock::from((block_hash, block_number));
+
                 match &mut *state.status.write().await {
                     sync_status @ Syncing::False(_) => {
                         *sync_status = Syncing::Status(syncing::Status {
@@ -586,9 +577,6 @@ async fn update_sync_status_latest(
                         }
                     }
                 }
-            }
-            Ok(MaybePendingBlock::Pending(_)) => {
-                tracing::error!("Latest block returned 'pending'");
             }
             Err(e) => {
                 tracing::error!(error=%e, "Failed to fetch latest block");
