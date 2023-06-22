@@ -135,15 +135,16 @@ Examples:
     max_rpc_connections: std::num::NonZeroU32,
 
     #[arg(
-        long = "head-poll-interval-seconds",
-        long_help = "Selected chain head poll interval in seconds",
+        long = "sync.poll-interval",
+        long_help = "New block poll interval in seconds",
+        default_value = "30",
         env = "PATHFINDER_HEAD_POLL_INTERVAL_SECONDS"
     )]
-    head_poll_interval: Option<std::num::NonZeroU64>,
+    head_poll_interval: std::num::NonZeroU64,
 
     #[arg(
-        long = "pending-poll-interval-seconds",
-        long_help = "Pending block poll interval in seconds (if enabled)",
+        long = "sync.pending-poll-interval",
+        long_help = "Pending block poll interval in seconds",
         env = "PATHFINDER_PENDING_POLL_INTERVAL_SECONDS"
     )]
     pending_poll_interval: Option<std::num::NonZeroU64>,
@@ -363,8 +364,6 @@ impl NetworkConfig {
 }
 
 impl Config {
-    const DEFAULT_HEAD_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
-
     pub fn parse() -> Self {
         let cli = Cli::parse();
 
@@ -390,15 +389,7 @@ impl Config {
                 false => JournalMode::Rollback,
             },
             max_rpc_connections: cli.max_rpc_connections,
-            head_poll_interval: cli
-                .head_poll_interval
-                .map(|non_zero| non_zero.get())
-                .or(network.map(|net| match net {
-                    NetworkConfig::Mainnet => 300,
-                    _ => 30,
-                }))
-                .map(std::time::Duration::from_secs)
-                .unwrap_or(Self::DEFAULT_HEAD_POLL_INTERVAL),
+            head_poll_interval: std::time::Duration::from_secs(cli.head_poll_interval.get()),
             pending_poll_interval: cli
                 .pending_poll_interval
                 .map(|non_zero| non_zero.get())

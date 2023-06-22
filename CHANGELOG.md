@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `block_download`: time taken to download current block's data excluding classes
   - `block_processing`: time taken to process and store the current block
 - Optional CLI args `head-poll-interval-seconds` & `pending-poll-interval-seconds` to make head and pending poll intervals configurable, while preservin existing values as defaults.
+- configuration for new block polling interval
+- configuration for sync pending block polling interval
 
 ### Fixed
 
