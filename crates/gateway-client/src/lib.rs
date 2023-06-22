@@ -1,13 +1,13 @@
 //! Starknet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
+    BlockHash, BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
     ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
-    error::SequencerError,
-    reply,
+    error::{KnownStarknetErrorCode, SequencerError, StarknetError, StarknetErrorCode},
+    reply::{self, Block},
     request::add_transaction::{
         AddTransaction, ContractDefinition, Declare, DeployAccount, InvokeFunction,
     },
@@ -105,6 +105,33 @@ pub trait GatewayApi: Sync {
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         unimplemented!();
+    }
+
+    /// TODO hide behind a p2p feature flag?
+    /// TODO move to a GatewayApiExt trait?
+    /// This is a **temporary** measure to keep the sync logic unchanged
+    ///
+    /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
+    async fn propagate_block_header(&self, _block: Block) {
+        // Intentionally does nothing for default impl
+    }
+
+    /// TODO hide behind a p2p feature flag?
+    /// TODO move to a GatewayApiExt trait?
+    /// This is a **temporary** measure to keep the sync logic unchanged
+    ///
+    /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
+    async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
+        match self.block(BlockId::Latest).await? {
+            reply::MaybePendingBlock::Block(b) => Ok((b.block_number, b.block_hash)),
+            reply::MaybePendingBlock::Pending(_) => {
+                // Let's say it sort of suits the situation
+                Err(SequencerError::StarknetError(StarknetError {
+                    code: StarknetErrorCode::Known(KnownStarknetErrorCode::BlockNotFound),
+                    message: "Sequencer client got a pending block instead of latest".into(),
+                }))
+            }
+        }
     }
 }
 
