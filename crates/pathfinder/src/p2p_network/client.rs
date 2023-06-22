@@ -1,6 +1,257 @@
 //! Sync related data retrieval from other peers
+//!
+//! This is a temporary wrapper around proper p2p sync|propagation api that fits into
+//! current sequential sync logic and will be removed when __proper__ sync algo is
+//! integrated. What it does is just split methods between a bootstrap node
+//! that syncs from the gateway and a "proper" p2p node which only syncs via p2p.
 
-// TODO temporary hybrid p2p/gw client goes here
+use pathfinder_common::{
+    BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
+    ContractAddressSalt, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
+    TransactionVersion,
+};
+use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::reply::{self, Block};
+use starknet_gateway_types::request::add_transaction::ContractDefinition;
+
+#[derive(Clone, Debug)]
+pub enum Client {
+    /// Syncs from the feeder gateway, propagates new headers via p2p
+    /// Proxies blockchain data to non propagating nodes via p2p
+    ///
+    /// Ofc bootstrapping can be split from proxying but let's keep two types
+    /// of nodes for PoC
+    Bootstrap {
+        p2p_client: (), // TODO
+        sequencer: starknet_gateway_client::Client,
+    },
+    /// Syncs from the p2p network
+    NonPropagating {
+        p2p_client: (), // TODO
+        sequencer: starknet_gateway_client::Client,
+        head_receiver: (), // TODO
+    },
+}
+
+impl Client {
+    pub fn new(
+        i_am_boot: bool,
+        p2p_client: (), // TODO
+        sequencer: starknet_gateway_client::Client,
+        head_receiver: (), // TODO
+    ) -> Self {
+        if i_am_boot {
+            Self::Bootstrap {
+                p2p_client,
+                sequencer,
+            }
+        } else {
+            Self::NonPropagating {
+                p2p_client,
+                sequencer,
+                head_receiver,
+            }
+        }
+    }
+
+    fn as_sequencer(&self) -> &starknet_gateway_client::Client {
+        match self {
+            Client::Bootstrap { sequencer, .. } => sequencer,
+            Client::NonPropagating { sequencer, .. } => sequencer,
+        }
+    }
+}
+
+/// A hacky temporary way to wrap p2p related errors
+mod error {
+    use starknet_gateway_types::error::{
+        KnownStarknetErrorCode, SequencerError, StarknetError, StarknetErrorCode,
+    };
+
+    pub fn block_not_found(message: impl ToString) -> SequencerError {
+        SequencerError::StarknetError(StarknetError {
+            code: StarknetErrorCode::Known(KnownStarknetErrorCode::BlockNotFound),
+            message: message.to_string(),
+        })
+    }
+
+    pub fn class_not_found(message: impl ToString) -> SequencerError {
+        SequencerError::StarknetError(StarknetError {
+            code: StarknetErrorCode::Known(KnownStarknetErrorCode::UndeclaredClass),
+            message: message.to_string(),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl GatewayApi for Client {
+    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
+        match self {
+            Client::Bootstrap { sequencer, .. } => sequencer.block(block).await,
+            Client::NonPropagating { p2p_client, .. } => match block {
+                BlockId::Number(_n) => todo!(),
+                BlockId::Latest => {
+                    unreachable!("GatewayApi.head() is used in sync and sync status instead")
+                }
+                BlockId::Hash(_) => unreachable!("not used in sync"),
+                BlockId::Pending => {
+                    unreachable!("pending should be disabled when p2p is enabled")
+                }
+            },
+        }
+    }
+
+    async fn block_without_retry(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        match self {
+            Client::Bootstrap { sequencer, .. } => sequencer.block_without_retry(block).await,
+            Client::NonPropagating { .. } => unreachable!("used for gas price and not in sync"),
+        }
+    }
+
+    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+        match self {
+            Client::Bootstrap { sequencer, .. } => sequencer.class_by_hash(class_hash).await,
+            Client::NonPropagating { p2p_client, .. } => todo!(),
+        }
+    }
+
+    async fn pending_class_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        match self {
+            Client::Bootstrap { sequencer, .. } => {
+                sequencer.pending_class_by_hash(class_hash).await
+            }
+            Client::NonPropagating { .. } => {
+                unreachable!("pending should be disabled when p2p is enabled")
+            }
+        }
+    }
+
+    async fn transaction(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<reply::Transaction, SequencerError> {
+        self.as_sequencer().transaction(transaction_hash).await
+    }
+
+    async fn state_update(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
+        match self {
+            Client::Bootstrap { sequencer, .. } => sequencer.state_update(block).await,
+            Client::NonPropagating { p2p_client, .. } => match block {
+                BlockId::Hash(hash) => todo!(),
+                _ => unreachable!("not used in sync"),
+            },
+        }
+    }
+
+    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
+        self.as_sequencer().eth_contract_addresses().await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_invoke_transaction(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_address: ContractAddress,
+        calldata: Vec<CallParam>,
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+        self.as_sequencer()
+            .add_invoke_transaction(
+                version,
+                max_fee,
+                signature,
+                nonce,
+                contract_address,
+                calldata,
+            )
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_declare_transaction(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_definition: ContractDefinition,
+        sender_address: ContractAddress,
+        compiled_class_hash: Option<CasmHash>,
+        token: Option<String>,
+    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
+        self.as_sequencer()
+            .add_declare_transaction(
+                version,
+                max_fee,
+                signature,
+                nonce,
+                contract_definition,
+                sender_address,
+                compiled_class_hash,
+                token,
+            )
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_deploy_account(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_address_salt: ContractAddressSalt,
+        class_hash: ClassHash,
+        calldata: Vec<CallParam>,
+    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
+        self.as_sequencer()
+            .add_deploy_account(
+                version,
+                max_fee,
+                signature,
+                nonce,
+                contract_address_salt,
+                class_hash,
+                calldata,
+            )
+            .await
+    }
+
+    /// This is a **temporary** measure to keep the sync logic unchanged
+    ///
+    /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
+    /// TODO use a block header type which should be in pathfinder_common (?)
+    async fn propagate_block_header(&self, _block: &Block) {
+        match self {
+            Client::Bootstrap { p2p_client, .. } => todo!(),
+            Client::NonPropagating { .. } => {
+                // This is why it's called non-propagating
+            }
+        }
+    }
+
+    /// This is a **temporary** measure to keep the sync logic unchanged
+    ///
+    /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
+    async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
+        match self {
+            Client::Bootstrap { sequencer, .. } => Ok(sequencer.head().await?),
+            Client::NonPropagating { head_receiver, .. } => todo!(),
+        }
+    }
+}
 
 /// Workaround for the orphan rule - implement conversion fns for types ourside our crate.
 pub mod conv {
