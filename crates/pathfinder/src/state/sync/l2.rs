@@ -85,6 +85,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub sequencer: GatewayClient,
     pub chain: Chain,
     pub chain_id: ChainId,
+    pub head_poll_interval: Duration,
     pub pending_poll_interval: Option<Duration>,
     pub block_validation_mode: BlockValidationMode,
     pub storage: Storage,
@@ -99,13 +100,12 @@ pub async fn sync<GatewayClient>(
 where
     GatewayClient: GatewayApi,
 {
-    use crate::state::sync::head_poll_interval;
-
     let L2SyncContext {
         websocket_txs,
         sequencer,
         chain,
         chain_id,
+        head_poll_interval,
         pending_poll_interval,
         block_validation_mode,
         storage,
@@ -155,9 +155,8 @@ where
                             .context("Polling pending block")?;
                         }
                         None => {
-                            let poll_interval = head_poll_interval(chain);
-                            tracing::info!(poll_interval=?poll_interval, "At head of chain");
-                            tokio::time::sleep(poll_interval).await;
+                            tracing::info!(poll_interval=?head_poll_interval, "At head of chain");
+                            tokio::time::sleep(head_poll_interval).await;
                         }
                     }
                 }
@@ -600,7 +599,7 @@ mod tests {
             error::{KnownStarknetErrorCode, SequencerError, StarknetError},
             reply,
         };
-        use std::collections::HashMap;
+        use std::{collections::HashMap, time::Duration};
         use tokio::{sync::mpsc, task::JoinHandle};
 
         const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;
@@ -637,6 +636,7 @@ mod tests {
                 sequencer,
                 chain: Chain::Testnet,
                 chain_id: ChainId::TESTNET,
+                head_poll_interval: Duration::ZERO,
                 pending_poll_interval: None,
                 block_validation_mode: MODE,
                 storage,
@@ -1060,6 +1060,7 @@ mod tests {
                     sequencer: mock,
                     chain: Chain::Testnet,
                     chain_id: ChainId::TESTNET,
+                    head_poll_interval: Duration::ZERO,
                     pending_poll_interval: None,
                     block_validation_mode: MODE,
                     storage: Storage::in_memory().unwrap(),

@@ -29,8 +29,8 @@ use starknet_gateway_types::{
     reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
 };
 
-use std::sync::Arc;
 use std::{collections::HashMap, future::Future};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, Receiver};
 
 use crate::state::l1::L1SyncContext;
@@ -74,8 +74,9 @@ pub struct SyncContext<G, E> {
     pub core_address: H160,
     pub sequencer: G,
     pub state: Arc<SyncState>,
+    pub head_poll_interval: Duration,
     pub pending_data: PendingData,
-    pub pending_poll_interval: Option<std::time::Duration>,
+    pub pending_poll_interval: Option<Duration>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: WebsocketSenders,
     pub block_cache_size: usize,
@@ -87,6 +88,7 @@ impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
             ethereum: value.ethereum,
             chain: value.chain,
             core_address: value.core_address,
+            poll_interval: value.head_poll_interval,
         }
     }
 }
@@ -98,6 +100,7 @@ impl<G, E> From<SyncContext<G, E>> for L2SyncContext<G> {
             sequencer: value.sequencer,
             chain: value.chain,
             chain_id: value.chain_id,
+            head_poll_interval: value.head_poll_interval,
             pending_poll_interval: value.pending_poll_interval,
             block_validation_mode: value.block_validation_mode,
             storage: value.storage,
@@ -132,11 +135,12 @@ where
     let SyncContext {
         storage,
         ethereum: _,
-        chain,
+        chain: _,
         chain_id: _,
         core_address: _,
         sequencer,
         state,
+        head_poll_interval,
         pending_data,
         pending_poll_interval: _,
         block_validation_mode: _,
@@ -173,7 +177,7 @@ where
         sequencer.clone(),
         starting_block_hash,
         starting_block_num,
-        chain,
+        head_poll_interval,
     ));
 
     // Start L1 producer task. Clone the event sender so that the channel remains open
@@ -542,11 +546,9 @@ async fn update_sync_status_latest(
     sequencer: impl GatewayApi,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
-    chain: Chain,
+    poll_interval: Duration,
 ) -> anyhow::Result<()> {
     use pathfinder_common::BlockId;
-
-    let poll_interval = head_poll_interval(chain);
 
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
@@ -930,24 +932,6 @@ fn deploy_contract(
     transaction
         .insert_contract_state(state_hash, class_hash, contract_root, contract_nonce)
         .context("Insert constract state hash into contracts state table")
-}
-
-/// Interval at which poll for new data when at the head of chain.
-///
-/// Returns the interval to be used when polling while at the head of the chain. The
-/// interval is chosen to provide a good balance between spamming and getting new
-/// block information as it is available. The interval is based on the block creation
-/// time, which is 2 minutes for Goerlie and 2 hours for Mainnet.
-pub fn head_poll_interval(chain: Chain) -> std::time::Duration {
-    use pathfinder_common::Chain::*;
-    use std::time::Duration;
-
-    match chain {
-        // 5 minute interval for a 30 minute block time.
-        Mainnet => Duration::from_secs(60 * 5),
-        // 30 second interval for a 2 minute block time.
-        Testnet | Testnet2 | Integration | Custom => Duration::from_secs(30),
-    }
 }
 
 #[cfg(test)]
