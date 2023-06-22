@@ -1602,11 +1602,11 @@ mod tests {
 
         #[tokio::test]
         async fn integration() {
-            version_check!(Integration == 0 - 11 - 2);
+            version_check!(Integration == 0 - 12 - 0);
             let actual = get_latest_version(&Client::integration()).await.unwrap();
             assert_eq!(
                 actual,
-                StarknetVersion::new(0, 11, 2),
+                StarknetVersion::new(0, 12, 0),
                 "Integration gateway version has changed, update version_check"
             );
         }
