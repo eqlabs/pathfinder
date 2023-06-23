@@ -391,6 +391,10 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     }
                 }
 
+                let now_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
+                let latency = now_timestamp.saturating_sub(block_timestamp.get());
+
+                metrics::gauge!("block_latency", latency as f64, "number" => format!("{}", block_number));
                 metrics::gauge!("block_time", (block_timestamp.get() - latest_timestamp.get()) as f64, "number" => format!("{}", block_number));
                 latest_timestamp = block_timestamp;
 
