@@ -638,7 +638,7 @@ async fn l2_update(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
-
+        let t = std::time::Instant::now();
         let (storage_commitment, class_commitment) =
             update_starknet_state(&transaction, &state_update)
                 .context("Updating Starknet state")?;
@@ -649,7 +649,10 @@ async fn l2_update(
             state_commitment == block.state_commitment,
             "State root mismatch"
         );
+        let t = t.elapsed().as_secs_f64();
+        metrics::gauge!("time_state_trie", t);
 
+        let t = std::time::Instant::now();
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
         // None for pending queries to the sequencer, but we aren't using those here.
@@ -697,6 +700,8 @@ async fn l2_update(
         transaction
             .insert_state_diff(block.block_number, &rpc_state_update.state_diff)
             .context("Insert state update into database")?;
+        let t = t.elapsed().as_secs_f64();
+        metrics::gauge!("time_db_insert_block_data", t);
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
