@@ -29,6 +29,7 @@ libp2p = { version = "0.51.3", default-features = false, features = [
     "macros",
 ] }
 p2p_proto = { path = "../p2p_proto" }
+pathfinder-common = { path = "../common" }
 prost = "0.11.2"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

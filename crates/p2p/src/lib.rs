@@ -14,6 +14,7 @@ use libp2p::request_response::{self, RequestId, ResponseChannel};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Multiaddr;
 use libp2p::{identify, PeerId};
+use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 mod behaviour;
@@ -83,6 +84,185 @@ impl Default for PeriodicTaskConfig {
     }
 }
 
+/// _High level_ client for p2p interaction.
+/// Frees the caller from managing peers manually.
+#[derive(Clone, Debug)]
+pub struct SyncClient {
+    client: Client,
+    block_propagation_topic: String,
+    peers: Arc<RwLock<peers::Peers>>,
+}
+
+pub type HeadSender = tokio::sync::mpsc::Sender<(BlockNumber, BlockHash)>;
+pub type HeadReceiver = tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>;
+
+// FIXME make sure the api looks reasonable from the perspective of
+// the __user__, which is the sync driving algo/entity
+impl SyncClient {
+    pub fn new(
+        client: Client,
+        block_propagation_topic: String,
+        peers: Arc<RwLock<peers::Peers>>,
+    ) -> Self {
+        Self {
+            client,
+            block_propagation_topic,
+            peers,
+        }
+    }
+
+    // Propagate new L2 head header
+    pub async fn propagate_new_header(
+        &self,
+        header: p2p_proto::common::BlockHeader,
+    ) -> anyhow::Result<()> {
+        self.client
+            .publish_propagation_message(
+                &self.block_propagation_topic,
+                p2p_proto::propagation::Message::NewBlockHeader(
+                    p2p_proto::propagation::NewBlockHeader { header },
+                ),
+            )
+            .await
+    }
+
+    // FIXME Pick the first connected for the time being
+    // :( not the best algo to pick a peer
+    async fn first_connected_peer(&self) -> Option<PeerId> {
+        let peers = self.peers.read().await;
+        let mut connected = peers.connected();
+        connected.next().map(Clone::clone)
+    }
+
+    pub async fn block_headers(
+        &self,
+        // start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
+        start_block: BlockNumber, // TODO number or hash
+        num_blocks: usize,        // FIXME, use range?
+    ) -> anyhow::Result<Vec<p2p_proto::common::BlockHeader>> {
+        if num_blocks == 0 {
+            return Ok(Vec::new());
+        }
+
+        let peer_id = match self.first_connected_peer().await {
+            Some(x) => x,
+            None => return Ok(Vec::new()),
+        };
+
+        let response = self
+            .client
+            .send_sync_request(
+                peer_id,
+                p2p_proto::sync::Request::GetBlockHeaders(p2p_proto::sync::GetBlockHeaders {
+                    start_block: start_block.get(),
+                    count: num_blocks.try_into().expect("Can it go wrong here?"),
+                    size_limit: u64::MAX, // FIXME
+                    direction: p2p_proto::sync::Direction::Forward,
+                }),
+            )
+            .await?;
+        match response {
+            p2p_proto::sync::Response::BlockHeaders(x) => Ok(x.headers),
+            _ => anyhow::bail!("Response variant does not match request"),
+        }
+    }
+
+    pub async fn block_bodies(
+        &self,
+        start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
+        num_blocks: usize,           // FIXME, use range?
+    ) -> anyhow::Result<Vec<p2p_proto::common::BlockBody>> {
+        if num_blocks == 0 {
+            return Ok(Vec::new());
+        }
+
+        let peer_id = match self.first_connected_peer().await {
+            Some(x) => x,
+            None => return Ok(Vec::new()),
+        };
+
+        let response = self
+            .client
+            .send_sync_request(
+                peer_id,
+                p2p_proto::sync::Request::GetBlockBodies(p2p_proto::sync::GetBlockBodies {
+                    start_block: start_block_hash.0,
+                    count: num_blocks.try_into().expect("Can it go wrong here?"),
+                    size_limit: u64::MAX, // FIXME
+                    direction: p2p_proto::sync::Direction::Forward,
+                }),
+            )
+            .await?;
+        match response {
+            p2p_proto::sync::Response::BlockBodies(x) => Ok(x.block_bodies),
+            _ => anyhow::bail!("Response variant does not match request"),
+        }
+    }
+
+    pub async fn state_updates(
+        &self,
+        start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
+        num_blocks: usize,           // FIXME, use range?
+    ) -> anyhow::Result<Vec<p2p_proto::sync::BlockStateUpdateWithHash>> {
+        if num_blocks == 0 {
+            return Ok(Vec::new());
+        }
+
+        let peer_id = match self.first_connected_peer().await {
+            Some(x) => x,
+            None => return Ok(Vec::new()),
+        };
+
+        let response = self
+            .client
+            .send_sync_request(
+                peer_id, // FIXME
+                p2p_proto::sync::Request::GetStateDiffs(p2p_proto::sync::GetStateDiffs {
+                    start_block: start_block_hash.0,
+                    count: num_blocks.try_into()?,
+                    size_limit: u64::MAX, // FIXME
+                    direction: p2p_proto::sync::Direction::Forward,
+                }),
+            )
+            .await?;
+        match response {
+            p2p_proto::sync::Response::StateDiffs(x) => Ok(x.block_state_updates),
+            _ => anyhow::bail!("Response variant does not match request"),
+        }
+    }
+
+    pub async fn contract_classes(
+        &self,
+        class_hashes: Vec<ClassHash>,
+    ) -> anyhow::Result<p2p_proto::sync::Classes> {
+        let peer_id = match self.first_connected_peer().await {
+            Some(x) => x,
+            None => {
+                return Ok(p2p_proto::sync::Classes {
+                    classes: Vec::new(),
+                })
+            }
+        };
+
+        let response = self
+            .client
+            .send_sync_request(
+                peer_id,
+                p2p_proto::sync::Request::GetClasses(p2p_proto::sync::GetClasses {
+                    class_hashes: class_hashes.into_iter().map(|x| x.0).collect(),
+                    size_limit: u64::MAX, // FIXME
+                }),
+            )
+            .await?;
+        match response {
+            p2p_proto::sync::Response::Classes(x) => Ok(x),
+            _ => anyhow::bail!("Response variant does not match request"),
+        }
+    }
+}
+
+/// _Low level_ client for p2p interaction.
+/// For syncing use [`SyncClient`] instead.
 #[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<Command>,
@@ -171,7 +351,7 @@ impl Client {
         self.sender
             .send(Command::PublishPropagationMessage {
                 topic,
-                message: Box::new(message),
+                message,
                 sender,
             })
             .await
@@ -185,6 +365,18 @@ impl Client {
             .await
             .expect("Command receiver not to be dropped");
     }
+
+    // pub fn sync_handle(
+    //     &self,
+    //     block_propagation_topic: String,
+    //     peers: Arc<RwLock<peers::Peers>>,
+    // ) -> SyncClient {
+    //     SyncClient {
+    //         client: self.clone(),
+    //         block_propagation_topic,
+    //         peers,
+    //     }
+    // }
 
     #[cfg(test)]
     pub(crate) fn for_test(&self) -> test_utils::Client {
@@ -228,7 +420,7 @@ enum Command {
     },
     PublishPropagationMessage {
         topic: IdentTopic,
-        message: Box<p2p_proto::propagation::Message>,
+        message: p2p_proto::propagation::Message,
         sender: EmptyResultSender,
     },
     /// For testing purposes only
@@ -257,7 +449,10 @@ pub enum Event {
         request: p2p_proto::sync::Request,
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
-    BlockPropagation(p2p_proto::propagation::Message),
+    BlockPropagation {
+        from: PeerId,
+        message: p2p_proto::propagation::Message,
+    },
     /// For testing purposes only
     Test(TestEvent),
 }
@@ -414,6 +609,10 @@ impl MainLoop {
                 tracing::debug!(%peer_id, "Dialing peer");
                 Ok(())
             }
+            SwarmEvent::NewListenAddr { address, .. } => {
+                tracing::debug!(%address, "New listen");
+                Ok(())
+            }
             // ===========================
             // Identify
             // ===========================
@@ -469,16 +668,19 @@ impl MainLoop {
             })) => {
                 match p2p_proto::propagation::Message::from_protobuf_encoding(message.data.as_ref())
                 {
-                    Ok(event) => {
+                    Ok(decoded_message) => {
                         tracing::debug!(
                             "Gossipsub Event Message: [id={}][peer={}] {:?} ({} bytes)",
                             id,
                             peer_id,
-                            event,
+                            decoded_message,
                             message.data.len()
                         );
                         self.event_sender
-                            .send(Event::BlockPropagation(event))
+                            .send(Event::BlockPropagation {
+                                from: peer_id,
+                                message: decoded_message,
+                            })
                             .await?;
                     }
                     Err(e) => {
@@ -579,7 +781,7 @@ impl MainLoop {
                         request_id,
                         response,
                     } => {
-                        tracing::debug!(?response, %peer, "Received block sync response");
+                        // tracing::trace!(?response, %peer, "Received block sync response");
                         if self.pending_block_sync_status_requests.remove(&request_id) {
                             // this was a status response, handle this internally
                             if let p2p_proto::sync::Response::Status(status) = response {

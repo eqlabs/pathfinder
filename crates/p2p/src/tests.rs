@@ -267,7 +267,7 @@ async fn subscription_and_propagation() {
     });
 
     let mut propagated_to_peer2 = filter_events(peer2.event_receiver, |event| match event {
-        Event::BlockPropagation(message) => Some(message),
+        Event::BlockPropagation { message, .. } => Some(message),
         _ => None,
     });
 
