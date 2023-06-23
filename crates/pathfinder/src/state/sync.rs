@@ -333,6 +333,20 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
         .connection()
         .context("Creating database connection")?;
 
+    let mut latest_timestamp = tokio::task::block_in_place(|| {
+        let tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
+        let latest = tx
+            .block_header(pathfinder_storage::BlockId::Latest)
+            .context("Fetching latest block header")?
+            .map(|b| b.timestamp)
+            .unwrap_or_default();
+
+        anyhow::Ok(latest)
+    })
+    .context("Fetching latest block time")?;
+
     while let Some(event) = events.recv().await {
         use SyncEvent::*;
         match event {
@@ -343,6 +357,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
             Block((block, (tx_comm, ev_comm)), state_update, timings) => {
                 let block_number = block.block_number;
                 let block_hash = block.block_hash;
+                let block_timestamp = block.timestamp;
                 let storage_updates: usize = state_update
                     .state_diff
                     .storage_diffs
@@ -370,11 +385,31 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     Syncing::Status(status) => {
                         status.current = NumberedBlock::from((block_hash, block_number));
 
+                        metrics::counter!("current_block", block_number.get());
+
                         if status.highest.number <= block_number {
                             status.highest = status.current;
+                            metrics::counter!("highest_block", block_number.get());
                         }
                     }
                 }
+
+                let now_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
+                let latency = now_timestamp.saturating_sub(block_timestamp.get());
+
+                let download_time = (timings.block_download
+                    + timings.class_declaration
+                    + timings.state_diff_download)
+                    .as_secs_f64();
+
+                metrics::gauge!("block_download", download_time);
+                metrics::gauge!("block_processing", update_t.as_secs_f64());
+                metrics::gauge!("block_latency", latency as f64);
+                metrics::gauge!(
+                    "block_time",
+                    (block_timestamp.get() - latest_timestamp.get()) as f64
+                );
+                latest_timestamp = block_timestamp;
 
                 // Give a simple log under INFO level, and a more verbose log
                 // with timing information under DEBUG+ level.
@@ -532,6 +567,9 @@ async fn update_sync_status_latest(
                             highest: latest,
                         });
 
+                        metrics::counter!("current_block", starting.number.get());
+                        metrics::counter!("highest_block", latest.number.get());
+
                         tracing::debug!(
                             status=%sync_status,
                             "Updated sync status",
@@ -540,6 +578,7 @@ async fn update_sync_status_latest(
                     Syncing::Status(status) => {
                         if status.highest.hash != latest.hash {
                             status.highest = latest;
+                            metrics::counter!("highest_block", latest.number.get());
 
                             tracing::debug!(
                                 %status,
@@ -609,7 +648,6 @@ async fn l2_update(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
-
         let (storage_commitment, class_commitment) =
             update_starknet_state(&transaction, &state_update)
                 .context("Updating Starknet state")?;
