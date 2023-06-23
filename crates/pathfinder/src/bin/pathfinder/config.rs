@@ -140,14 +140,7 @@ Examples:
         default_value = "30",
         env = "PATHFINDER_HEAD_POLL_INTERVAL_SECONDS"
     )]
-    head_poll_interval: std::num::NonZeroU64,
-
-    #[arg(
-        long = "sync.pending-poll-interval",
-        long_help = "Pending block poll interval in seconds",
-        env = "PATHFINDER_PENDING_POLL_INTERVAL_SECONDS"
-    )]
-    pending_poll_interval: Option<std::num::NonZeroU64>,
+    poll_interval: std::num::NonZeroU64,
 }
 
 #[derive(clap::Args)]
@@ -294,8 +287,7 @@ pub struct Config {
     pub python_subprocesses: std::num::NonZeroUsize,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroU32,
-    pub head_poll_interval: std::time::Duration,
-    pub pending_poll_interval: Option<std::time::Duration>,
+    pub poll_interval: std::time::Duration,
 }
 
 pub struct WebSocket {
@@ -388,11 +380,7 @@ impl Config {
                 false => JournalMode::Rollback,
             },
             max_rpc_connections: cli.max_rpc_connections,
-            head_poll_interval: std::time::Duration::from_secs(cli.head_poll_interval.get()),
-            pending_poll_interval: cli
-                .pending_poll_interval
-                .map(|non_zero| non_zero.get())
-                .map(std::time::Duration::from_secs),
+            poll_interval: std::time::Duration::from_secs(cli.poll_interval.get()),
         }
     }
 }
