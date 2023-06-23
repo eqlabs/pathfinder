@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `starknet_estimateMessageFee` for JSON-RPC v0.3.1 to estimate message fee from L1 handler.
+- sync-related metrics
+  - `current_block`: the currently sync'd block height of the node
+  - `highest_block`: the height of the block chain
+  - `block_time`: timestamp difference between the current block and its parent
+  - `block_latency`: delay between current block being published and sync'd locally
+  - `block_download`: time taken to download current block's data excluding classes
+  - `block_processing`: time taken to process and store the current block
 
 ### Fixed
 

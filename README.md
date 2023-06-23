@@ -293,6 +293,15 @@ These __will not work__:
 - `gateway_requests_total{method="get_transaction", tag="latest"}`, `tag` is not supported for that `method`
 - `gateway_requests_total{method="get_transaction", reason="decode"}`, `reason` is only supported for failures.
 
+### Sync related metrics
+
+- `current_block` currently sync'd block height of the node
+- `highest_block` height of the block chain
+- `block_time` timestamp difference between the current block and its parent
+- `block_latency` delay between current block being published and sync'd locally
+- `block_download` time taken to download current block's data excluding classes
+- `block_prxocessing` time taken to process and store the current block
+
 ## License
 
 Licensed under either of
