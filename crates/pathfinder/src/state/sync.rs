@@ -394,6 +394,13 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 let now_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
                 let latency = now_timestamp.saturating_sub(block_timestamp.get());
 
+                let download_time = (timings.block_download
+                    + timings.class_declaration
+                    + timings.state_diff_download)
+                    .as_secs_f64();
+
+                metrics::gauge!("block_download", download_time, "number" => format!("{}", block_number));
+                metrics::gauge!("block_processing", update_t.as_secs_f64(), "number" => format!("{}", block_number));
                 metrics::gauge!("block_latency", latency as f64, "number" => format!("{}", block_number));
                 metrics::gauge!("block_time", (block_timestamp.get() - latest_timestamp.get()) as f64, "number" => format!("{}", block_number));
                 latest_timestamp = block_timestamp;
@@ -650,7 +657,7 @@ async fn l2_update(
             "State root mismatch"
         );
         let t = t.elapsed().as_secs_f64();
-        metrics::gauge!("time_state_trie", t);
+        metrics::gauge!("time_state_commitment", t);
 
         let t = std::time::Instant::now();
         // Update L2 database. These types shouldn't be options at this level,
