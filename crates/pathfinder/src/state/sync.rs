@@ -333,6 +333,20 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
         .connection()
         .context("Creating database connection")?;
 
+    let mut latest_timestamp = tokio::task::block_in_place(|| {
+        let tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
+        let latest = tx
+            .block_header(pathfinder_storage::BlockId::Latest)
+            .context("Fetching latest block header")?
+            .map(|b| b.timestamp)
+            .unwrap_or_default();
+
+        anyhow::Ok(latest)
+    })
+    .context("Fetching latest block time")?;
+
     while let Some(event) = events.recv().await {
         use SyncEvent::*;
         match event {
@@ -343,6 +357,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
             Block((block, (tx_comm, ev_comm)), state_update, timings) => {
                 let block_number = block.block_number;
                 let block_hash = block.block_hash;
+                let block_timestamp = block.timestamp;
                 let storage_updates: usize = state_update
                     .state_diff
                     .storage_diffs
@@ -375,6 +390,9 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                         }
                     }
                 }
+
+                metrics::gauge!("block_time", (block_timestamp.get() - latest_timestamp.get()) as f64, "number" => format!("{}", block_number));
+                latest_timestamp = block_timestamp;
 
                 // Give a simple log under INFO level, and a more verbose log
                 // with timing information under DEBUG+ level.
