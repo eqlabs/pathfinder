@@ -97,6 +97,11 @@ async fn main() -> anyhow::Result<()> {
 
     let sync_state = Arc::new(SyncState::default());
     let pending_state = PendingData::default();
+    let pending_interval = if config.poll_pending {
+        Some(std::time::Duration::from_secs(5))
+    } else {
+        None
+    };
 
     let (call_handle, cairo_handle) = cairo::ext_py::start(
         rpc_storage.path().into(),
@@ -143,9 +148,9 @@ async fn main() -> anyhow::Result<()> {
         core_address: pathfinder_context.l1_core_address,
         sequencer: pathfinder_context.gateway,
         state: sync_state.clone(),
-        head_poll_interval: config.head_poll_interval,
+        head_poll_interval: config.poll_interval,
         pending_data: pending_state,
-        pending_poll_interval: config.pending_poll_interval,
+        pending_poll_interval: pending_interval,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_ws_senders(),
         block_cache_size: 1_000,
