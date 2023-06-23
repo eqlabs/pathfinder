@@ -441,6 +441,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 }
             }
             CairoClass { definition, hash } => {
+                let t = std::time::Instant::now();
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()
@@ -451,6 +452,9 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 })
                 .with_context(|| format!("Insert Cairo contract definition with hash: {hash}"))?;
 
+                let t = t.elapsed().as_secs_f64();
+                metrics::gauge!("db_insert_cairo_class", t, "hash" => format!("{}", hash));
+
                 tracing::debug!(%hash, "Inserted new Cairo class");
             }
             SierraClass {
@@ -459,6 +463,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 casm_definition,
                 casm_hash,
             } => {
+                let t = std::time::Instant::now();
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()
@@ -477,6 +482,8 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     format!("Insert Sierra contract definition with hash: {sierra_hash}")
                 })?;
 
+                let t = t.elapsed().as_secs_f64();
+                metrics::gauge!("db_insert_sierra_class", t, "hash" => format!("{}", sierra_hash));
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
             Pending(block, state_update) => {
