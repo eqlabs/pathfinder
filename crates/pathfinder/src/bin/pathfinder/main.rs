@@ -4,11 +4,10 @@ use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
+#[cfg(feature = "p2p")]
+use pathfinder_lib::p2p_network::client::HybridClient;
 use pathfinder_lib::state::SyncContext;
-use pathfinder_lib::{
-    monitoring::{self},
-    state,
-};
+use pathfinder_lib::{monitoring, state};
 use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
@@ -291,12 +290,7 @@ async fn start_p2p(
     sync_state: Arc<SyncState>,
     i_am_boot: bool,
     sequencer: starknet_gateway_client::Client,
-) -> anyhow::Result<(
-    tokio::task::JoinHandle<()>,
-    pathfinder_lib::p2p_network::client::Client,
-)> {
-    use pathfinder_lib::p2p_network;
-
+) -> anyhow::Result<(tokio::task::JoinHandle<()>, HybridClient)> {
     let p2p_listen_address = std::env::var("PATHFINDER_P2P_LISTEN_ADDRESS")
         .unwrap_or_else(|_| "/ip4/0.0.0.0/tcp/0".to_owned());
     let listen_on: p2p::libp2p::Multiaddr = p2p_listen_address.parse()?;
@@ -324,7 +318,7 @@ async fn start_p2p(
 
     Ok((
         p2p_handle,
-        p2p_network::client::Client::new(i_am_boot, p2p_client, sequencer, p2p_head_receiver),
+        HybridClient::new(i_am_boot, p2p_client, sequencer, p2p_head_receiver),
     ))
 }
 

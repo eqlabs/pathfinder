@@ -15,8 +15,10 @@ use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{self, Block};
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
 
+/// Hybrid, as it uses either p2p or the gateway depending on role
+/// and api call
 #[derive(Clone, Debug)]
-pub enum Client {
+pub enum HybridClient {
     /// Syncs from the feeder gateway, propagates new headers via p2p
     /// Proxies blockchain data to non propagating nodes via p2p
     ///
@@ -34,7 +36,7 @@ pub enum Client {
     },
 }
 
-impl Client {
+impl HybridClient {
     pub fn new(
         i_am_boot: bool,
         p2p_client: p2p::Client,
@@ -57,8 +59,8 @@ impl Client {
 
     fn as_sequencer(&self) -> &starknet_gateway_client::Client {
         match self {
-            Client::Bootstrap { sequencer, .. } => sequencer,
-            Client::NonPropagating { sequencer, .. } => sequencer,
+            HybridClient::Bootstrap { sequencer, .. } => sequencer,
+            HybridClient::NonPropagating { sequencer, .. } => sequencer,
         }
     }
 }
@@ -85,11 +87,11 @@ mod error {
 }
 
 #[async_trait::async_trait]
-impl GatewayApi for Client {
+impl GatewayApi for HybridClient {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         match self {
-            Client::Bootstrap { sequencer, .. } => sequencer.block(block).await,
-            Client::NonPropagating { p2p_client, .. } => match block {
+            HybridClient::Bootstrap { sequencer, .. } => sequencer.block(block).await,
+            HybridClient::NonPropagating { p2p_client, .. } => match block {
                 BlockId::Number(_n) => todo!(),
                 BlockId::Latest => {
                     unreachable!("GatewayApi.head() is used in sync and sync status instead")
@@ -107,15 +109,17 @@ impl GatewayApi for Client {
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
         match self {
-            Client::Bootstrap { sequencer, .. } => sequencer.block_without_retry(block).await,
-            Client::NonPropagating { .. } => unreachable!("used for gas price and not in sync"),
+            HybridClient::Bootstrap { sequencer, .. } => sequencer.block_without_retry(block).await,
+            HybridClient::NonPropagating { .. } => {
+                unreachable!("used for gas price and not in sync")
+            }
         }
     }
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
         match self {
-            Client::Bootstrap { sequencer, .. } => sequencer.class_by_hash(class_hash).await,
-            Client::NonPropagating { p2p_client, .. } => todo!(),
+            HybridClient::Bootstrap { sequencer, .. } => sequencer.class_by_hash(class_hash).await,
+            HybridClient::NonPropagating { p2p_client, .. } => todo!(),
         }
     }
 
@@ -124,10 +128,10 @@ impl GatewayApi for Client {
         class_hash: ClassHash,
     ) -> Result<bytes::Bytes, SequencerError> {
         match self {
-            Client::Bootstrap { sequencer, .. } => {
+            HybridClient::Bootstrap { sequencer, .. } => {
                 sequencer.pending_class_by_hash(class_hash).await
             }
-            Client::NonPropagating { .. } => {
+            HybridClient::NonPropagating { .. } => {
                 unreachable!("pending should be disabled when p2p is enabled")
             }
         }
@@ -142,8 +146,8 @@ impl GatewayApi for Client {
 
     async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
         match self {
-            Client::Bootstrap { sequencer, .. } => sequencer.state_update(block).await,
-            Client::NonPropagating { p2p_client, .. } => match block {
+            HybridClient::Bootstrap { sequencer, .. } => sequencer.state_update(block).await,
+            HybridClient::NonPropagating { p2p_client, .. } => match block {
                 BlockId::Hash(hash) => todo!(),
                 _ => unreachable!("not used in sync"),
             },
@@ -232,8 +236,8 @@ impl GatewayApi for Client {
     /// TODO use a block header type which should be in pathfinder_common (?)
     async fn propagate_block_header(&self, _block: &Block) {
         match self {
-            Client::Bootstrap { p2p_client, .. } => todo!(),
-            Client::NonPropagating { .. } => {
+            HybridClient::Bootstrap { p2p_client, .. } => todo!(),
+            HybridClient::NonPropagating { .. } => {
                 // This is why it's called non-propagating
             }
         }
@@ -244,8 +248,8 @@ impl GatewayApi for Client {
     /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         match self {
-            Client::Bootstrap { sequencer, .. } => Ok(sequencer.head().await?),
-            Client::NonPropagating { head_receiver, .. } => todo!(),
+            HybridClient::Bootstrap { sequencer, .. } => Ok(sequencer.head().await?),
+            HybridClient::NonPropagating { head_receiver, .. } => todo!(),
         }
     }
 }
