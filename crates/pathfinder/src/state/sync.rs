@@ -399,10 +399,13 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     + timings.state_diff_download)
                     .as_secs_f64();
 
-                metrics::gauge!("block_download", download_time, "number" => format!("{}", block_number));
-                metrics::gauge!("block_processing", update_t.as_secs_f64(), "number" => format!("{}", block_number));
-                metrics::gauge!("block_latency", latency as f64, "number" => format!("{}", block_number));
-                metrics::gauge!("block_time", (block_timestamp.get() - latest_timestamp.get()) as f64, "number" => format!("{}", block_number));
+                metrics::gauge!("block_download", download_time);
+                metrics::gauge!("block_processing", update_t.as_secs_f64());
+                metrics::gauge!("block_latency", latency as f64);
+                metrics::gauge!(
+                    "block_time",
+                    (block_timestamp.get() - latest_timestamp.get()) as f64
+                );
                 latest_timestamp = block_timestamp;
 
                 // Give a simple log under INFO level, and a more verbose log
@@ -448,7 +451,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 }
             }
             CairoClass { definition, hash } => {
-                let t = std::time::Instant::now();
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()
@@ -459,9 +461,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 })
                 .with_context(|| format!("Insert Cairo contract definition with hash: {hash}"))?;
 
-                let t = t.elapsed().as_secs_f64();
-                metrics::gauge!("db_insert_cairo_class", t, "hash" => format!("{}", hash));
-
                 tracing::debug!(%hash, "Inserted new Cairo class");
             }
             SierraClass {
@@ -470,7 +469,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 casm_definition,
                 casm_hash,
             } => {
-                let t = std::time::Instant::now();
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()
@@ -489,8 +487,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     format!("Insert Sierra contract definition with hash: {sierra_hash}")
                 })?;
 
-                let t = t.elapsed().as_secs_f64();
-                metrics::gauge!("db_insert_sierra_class", t, "hash" => format!("{}", sierra_hash));
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
             Pending(block, state_update) => {
@@ -645,7 +641,6 @@ async fn l2_update(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
-        let t = std::time::Instant::now();
         let (storage_commitment, class_commitment) =
             update_starknet_state(&transaction, &state_update)
                 .context("Updating Starknet state")?;
@@ -656,10 +651,7 @@ async fn l2_update(
             state_commitment == block.state_commitment,
             "State root mismatch"
         );
-        let t = t.elapsed().as_secs_f64();
-        metrics::gauge!("time_state_commitment", t);
 
-        let t = std::time::Instant::now();
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
         // None for pending queries to the sequencer, but we aren't using those here.
@@ -707,8 +699,6 @@ async fn l2_update(
         transaction
             .insert_state_diff(block.block_number, &rpc_state_update.state_diff)
             .context("Insert state update into database")?;
-        let t = t.elapsed().as_secs_f64();
-        metrics::gauge!("time_db_insert_block_data", t);
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
