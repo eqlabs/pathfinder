@@ -1,4 +1,6 @@
-# Mainnet outage post-mortem (17 June 2023)
+# Mainnet outage post-mortem 
+
+###### Posted on 26 June 2023
 
 On Saturday, 17 June 2023, 18h05 UTC, Pathfinder nodes stopped syncing on mainnet causing an ecosystem wide outage. The cause was a disagreement between Pathfinder and the sequencer about a class hash. A fix was published the following morning at 08h30 UTC.
 
