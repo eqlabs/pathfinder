@@ -4,4 +4,4 @@
 
 # Blog
 
-- [2023-05-17 Mainnet incident](./blog/2023-05-17_mainnet_incident.md)
+- [2023-06-17 Mainnet incident](./blog/2023-06-17_mainnet_incident.md)
