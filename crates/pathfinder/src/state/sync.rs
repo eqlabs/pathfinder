@@ -389,11 +389,11 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     Syncing::Status(status) => {
                         status.current = NumberedBlock::from((block_hash, block_number));
 
-                        metrics::counter!("current_block", block_number.get());
+                        metrics::gauge!("current_block", block_number.get() as f64);
 
                         if status.highest.number <= block_number {
                             status.highest = status.current;
-                            metrics::counter!("highest_block", block_number.get());
+                            metrics::gauge!("highest_block", block_number.get() as f64);
                         }
                     }
                 }
@@ -569,8 +569,8 @@ async fn update_sync_status_latest(
                             highest: latest,
                         });
 
-                        metrics::counter!("current_block", starting.number.get());
-                        metrics::counter!("highest_block", latest.number.get());
+                        metrics::gauge!("current_block", starting.number.get() as f64);
+                        metrics::gauge!("highest_block", latest.number.get() as f64);
 
                         tracing::debug!(
                             status=%sync_status,
@@ -580,7 +580,7 @@ async fn update_sync_status_latest(
                     Syncing::Status(status) => {
                         if status.highest.hash != latest.hash {
                             status.highest = latest;
-                            metrics::counter!("highest_block", latest.number.get());
+                            metrics::gauge!("highest_block", latest.number.get() as f64);
 
                             tracing::debug!(
                                 %status,
