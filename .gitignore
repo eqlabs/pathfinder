@@ -23,3 +23,5 @@ pathfinder-var.env
 # VS Code
 .vscode/
 
+# mdbook compilation
+**/book/
