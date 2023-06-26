@@ -288,7 +288,7 @@ async fn subscription_and_propagation() {
             .await
             .unwrap();
 
-        let msg = propagated_to_peer2.recv().await.unwrap();
+        let msg = *propagated_to_peer2.recv().await.unwrap();
 
         assert_eq!(msg, expected);
     }

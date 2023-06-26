@@ -351,7 +351,7 @@ impl Client {
         self.sender
             .send(Command::PublishPropagationMessage {
                 topic,
-                message,
+                message: message.into(),
                 sender,
             })
             .await
@@ -420,7 +420,7 @@ enum Command {
     },
     PublishPropagationMessage {
         topic: IdentTopic,
-        message: p2p_proto::propagation::Message,
+        message: Box<p2p_proto::propagation::Message>,
         sender: EmptyResultSender,
     },
     /// For testing purposes only
@@ -451,7 +451,7 @@ pub enum Event {
     },
     BlockPropagation {
         from: PeerId,
-        message: p2p_proto::propagation::Message,
+        message: Box<p2p_proto::propagation::Message>,
     },
     /// For testing purposes only
     Test(TestEvent),
@@ -679,7 +679,7 @@ impl MainLoop {
                         self.event_sender
                             .send(Event::BlockPropagation {
                                 from: peer_id,
-                                message: decoded_message,
+                                message: decoded_message.into(),
                             })
                             .await?;
                     }

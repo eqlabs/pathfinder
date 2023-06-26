@@ -13,6 +13,13 @@ use tracing::Instrument;
 pub mod client;
 mod sync_handlers;
 
+pub type P2PNetworkHandle = (
+    Arc<RwLock<Peers>>,
+    SyncClient,
+    HeadReceiver,
+    tokio::task::JoinHandle<()>,
+);
+
 #[tracing::instrument(name = "p2p", skip_all)]
 pub async fn start(
     chain_id: ChainId,
@@ -20,12 +27,7 @@ pub async fn start(
     sync_state: Arc<SyncState>,
     listen_on: Multiaddr,
     bootstrap_addresses: &[Multiaddr],
-) -> anyhow::Result<(
-    Arc<RwLock<Peers>>,
-    SyncClient,
-    HeadReceiver,
-    tokio::task::JoinHandle<()>,
-)> {
+) -> anyhow::Result<P2PNetworkHandle> {
     let keypair = Keypair::generate_ed25519();
 
     let peer_id = keypair.public().to_peer_id();
@@ -150,16 +152,13 @@ async fn handle_p2p_event(
         }
         p2p::Event::BlockPropagation { from, message } => {
             tracing::info!(%from, ?message, "Block Propagation");
-            match message {
-                p2p_proto::propagation::Message::NewBlockHeader(h) => {
-                    _ = tx
-                        .send((
-                            BlockNumber::new_or_panic(h.header.number),
-                            BlockHash(h.header.hash),
-                        ))
-                        .await
-                }
-                _ => {}
+            if let p2p_proto::propagation::Message::NewBlockHeader(h) = *message {
+                _ = tx
+                    .send((
+                        BlockNumber::new_or_panic(h.header.number),
+                        BlockHash(h.header.hash),
+                    ))
+                    .await
             }
         }
         p2p::Event::Test(_) => { /* Ignore me */ }

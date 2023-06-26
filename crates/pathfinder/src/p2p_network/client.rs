@@ -8,10 +8,10 @@
 use p2p::HeadReceiver;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
-    ContractAddressSalt, Fee, SequencerAddress, StateCommitment, StateUpdate, TransactionHash,
-    TransactionNonce, TransactionSignatureElem, TransactionVersion,
+    ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
-use starknet_gateway_client::GatewayApi;
+use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{self, Block};
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
@@ -325,35 +325,32 @@ impl GatewayApi for HybridClient {
     /// This is a **temporary** measure to keep the sync logic unchanged
     ///
     /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
-    /// TODO use a block header type which should be in pathfinder_common (?)
-    async fn propagate_block_header(
+    async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
+        match self {
+            HybridClient::Bootstrap { sequencer, .. } => Ok(sequencer.head().await?),
+            HybridClient::NonPropagating { head_receiver, .. } => (*head_receiver.borrow()).ok_or(
+                error::block_not_found("Haven't received any gossiped block headers yet"),
+            ),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GossipApi for HybridClient {
+    async fn propagate_block_header2(
         &self,
-        header: &BlockHeader,
-        transaction_count: usize,
-        event_count: usize,
+        header: BlockHeader,
+        transaction_count: u32,
+        event_count: u32,
     ) {
         match self {
             HybridClient::Bootstrap { p2p_client, .. } => {
                 match p2p_client
-                    .propagate_new_header(p2p_proto::common::BlockHeader {
-                        hash: header.hash.0,
-                        parent_hash: header.parent_hash.0,
-                        number: header.number.get(),
-                        state_commitment: header.state_commitment.0,
-                        class_commitment: header.class_commitment.0,
-                        storage_commitment: header.storage_commitment.0,
-                        sequencer_address: header.sequencer_address.0,
-                        timestamp: header.timestamp.get(),
-                        gas_price: header.gas_price.0.into(),
-                        // FIXME
-                        transaction_count: todo!(),
-                        transaction_commitment: header.state_commitment.0,
-
-                        // FIXME
-                        event_count: todo!(),
-                        event_commitment: header.event_commitment.0,
-                        starknet_version: header.starknet_version.take_inner(),
-                    })
+                    .propagate_new_header(super::sync_handlers::conv::header::from(
+                        header,
+                        transaction_count,
+                        event_count,
+                    ))
                     .await
                 {
                     Ok(_) => {}
@@ -363,18 +360,6 @@ impl GatewayApi for HybridClient {
             HybridClient::NonPropagating { .. } => {
                 // This is why it's called non-propagating
             }
-        }
-    }
-
-    /// This is a **temporary** measure to keep the sync logic unchanged
-    ///
-    /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
-    async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
-        match self {
-            HybridClient::Bootstrap { sequencer, .. } => Ok(sequencer.head().await?),
-            HybridClient::NonPropagating { head_receiver, .. } => (*head_receiver.borrow()).ok_or(
-                error::block_not_found("Haven't received any gossiped block headers yet"),
-            ),
         }
     }
 }

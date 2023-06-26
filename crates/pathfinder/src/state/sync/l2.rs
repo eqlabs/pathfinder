@@ -210,11 +210,6 @@ where
             }
         }
 
-        // TODO use a header struct, avoid cloning
-        // TODO
-        todo!();
-        // sequencer.propagate_block_header(&block, 0, 0).await;
-
         // Unwrap in both block and state update is safe as the block hash always exists (unless we query for pending).
         let block_hash = block.block_hash;
         let t_update = std::time::Instant::now();

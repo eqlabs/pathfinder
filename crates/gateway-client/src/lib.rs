@@ -112,20 +112,6 @@ pub trait GatewayApi: Sync {
     /// This is a **temporary** measure to keep the sync logic unchanged
     ///
     /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
-    async fn propagate_block_header(
-        &self,
-        header: &BlockHeader,
-        transaction_count: usize,
-        event_count: usize,
-    ) {
-        // Intentionally does nothing for default impl
-    }
-
-    /// TODO hide behind a p2p feature flag?
-    /// TODO move to a GatewayApiExt trait?
-    /// This is a **temporary** measure to keep the sync logic unchanged
-    ///
-    /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         match self.block(BlockId::Latest).await? {
             reply::MaybePendingBlock::Block(b) => Ok((b.block_number, b.block_hash)),
@@ -256,6 +242,20 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
                 calldata,
             )
             .await
+    }
+}
+
+#[allow(unused_variables)]
+#[cfg_attr(feature = "test-utils", mockall::automock)]
+#[async_trait::async_trait]
+pub trait GossipApi: Sync {
+    async fn propagate_block_header2(
+        &self,
+        header: BlockHeader,
+        transaction_count: u32,
+        event_count: u32,
+    ) {
+        // Intentionally does nothing for default impl
     }
 }
 
@@ -572,6 +572,12 @@ impl GatewayApi for Client {
             .await
     }
 }
+
+#[async_trait::async_trait]
+impl GossipApi for Client {}
+
+#[async_trait::async_trait]
+impl GossipApi for () {}
 
 pub mod test_utils {
     use super::Client;

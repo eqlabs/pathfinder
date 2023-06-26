@@ -219,8 +219,8 @@ fn classes(
 }
 
 /// Workaround for the orphan rule - implement conversion fns for types ourside our crate.
-mod conv {
-    pub(super) mod header {
+pub(crate) mod conv {
+    pub(crate) mod header {
         use pathfinder_common::BlockHeader;
 
         pub fn from(
