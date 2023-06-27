@@ -522,9 +522,21 @@ fn select_query_strategy(
     contract_address: Option<&ContractAddress>,
     keys: &dyn KeyFilter,
 ) -> anyhow::Result<QueryStrategy> {
+    // evaluate key filter first as that is roughly constant time
+    let events_by_key_filter = number_of_events_by_key_filter(tx, keys)?;
+    if let Some(events_by_key_filter) = events_by_key_filter {
+        // shortcut if the key filter is specific enough
+        if events_by_key_filter < 100_000 {
+            tracing::trace!(
+                %events_by_key_filter,
+                "Partial queries for number of events done"
+            );
+            return Ok(QueryStrategy::KeysFirst);
+        }
+    }
+
     let events_in_block_range =
         number_of_events_in_block_range(tx, from_block, to_block, contract_address)?;
-    let events_by_key_filter = number_of_events_by_key_filter(tx, keys)?;
 
     tracing::trace!(
         ?events_in_block_range,
