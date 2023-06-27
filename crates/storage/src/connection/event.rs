@@ -87,6 +87,35 @@ pub(super) fn insert_events(
     Ok(())
 }
 
+pub fn event_count(
+    tx: &Transaction<'_>,
+    from_block: Option<BlockNumber>,
+    to_block: Option<BlockNumber>,
+    contract_address: Option<ContractAddress>,
+    keys: &dyn KeyFilter,
+) -> anyhow::Result<usize> {
+    let mut key_fts_expression = String::new();
+    let (query, params) = event_query(
+        "SELECT COUNT(1) FROM starknet_events",
+        from_block.as_ref(),
+        to_block.as_ref(),
+        contract_address.as_ref(),
+        keys,
+        &mut key_fts_expression,
+    );
+
+    let params = params
+        .iter()
+        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
+        .collect::<Vec<_>>();
+
+    let count: usize = tx
+        .inner()
+        .query_row(&query, params.as_slice(), |row| row.get(0))?;
+
+    Ok(count)
+}
+
 pub(super) fn get_events<K: KeyFilter>(
     tx: &Transaction<'_>,
     filter: &EventFilter<K>,
@@ -271,35 +300,6 @@ impl KeyFilter for V02KeyFilter {
             None
         }
     }
-}
-
-pub fn event_count(
-    tx: &Transaction<'_>,
-    from_block: Option<BlockNumber>,
-    to_block: Option<BlockNumber>,
-    contract_address: Option<ContractAddress>,
-    keys: &dyn KeyFilter,
-) -> anyhow::Result<usize> {
-    let mut key_fts_expression = String::new();
-    let (query, params) = event_query(
-        "SELECT COUNT(1) FROM starknet_events",
-        from_block.as_ref(),
-        to_block.as_ref(),
-        contract_address.as_ref(),
-        keys,
-        &mut key_fts_expression,
-    );
-
-    let params = params
-        .iter()
-        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
-        .collect::<Vec<_>>();
-
-    let count: usize = tx
-        .inner()
-        .query_row(&query, params.as_slice(), |row| row.get(0))?;
-
-    Ok(count)
 }
 
 fn encode_event_key_and_index_to_base32(index: u8, key: &EventKey, output: &mut String) {
