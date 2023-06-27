@@ -43,7 +43,7 @@ pub struct PageOfEvents {
 }
 
 pub trait KeyFilter {
-    fn apply<'a>(&self, key_fts_expression: &'a mut String) -> Option<KeyFilterResult<'a>>;
+    fn apply<'a>(&self, key_fts_expression: &'a mut String, strategy: QueryStrategy) -> Option<KeyFilterResult<'a>>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -94,6 +94,8 @@ pub fn event_count(
     contract_address: Option<ContractAddress>,
     keys: &dyn KeyFilter,
 ) -> anyhow::Result<usize> {
+    let strategy = select_query_strategy(tx, from_block.as_ref(), to_block.as_ref(), contract_address.as_ref())?;
+
     let mut key_fts_expression = String::new();
     let (query, params) = event_query(
         "SELECT COUNT(1) FROM starknet_events",
@@ -102,6 +104,7 @@ pub fn event_count(
         contract_address.as_ref(),
         keys,
         &mut key_fts_expression,
+        strategy,
     );
 
     let params = params
@@ -128,6 +131,8 @@ pub(super) fn get_events<K: KeyFilter>(
         anyhow::bail!("Invalid page size");
     }
 
+    let strategy = select_query_strategy(tx, filter.from_block.as_ref(), filter.to_block.as_ref(), filter.contract_address.as_ref())?;
+
     let base_query = r#"SELECT
               block_number,
               starknet_blocks.hash as block_hash,
@@ -149,6 +154,7 @@ pub(super) fn get_events<K: KeyFilter>(
         filter.contract_address.as_ref(),
         &filter.keys,
         &mut key_fts_expression,
+        strategy,
     );
 
     // We have to be able to decide if there are more events. We request one extra event
@@ -264,7 +270,7 @@ fn encode_event_data_to_bytes(data: &[EventData], buffer: &mut Vec<u8>) {
 pub struct V02KeyFilter(pub Vec<EventKey>);
 
 impl KeyFilter for V02KeyFilter {
-    fn apply<'arg>(&self, key_fts_expression: &'arg mut String) -> Option<KeyFilterResult<'arg>> {
+    fn apply<'arg>(&self, key_fts_expression: &'arg mut String, strategy: QueryStrategy) -> Option<KeyFilterResult<'arg>> {
         let keys = &self.0;
         if !keys.is_empty() {
             let needed =
@@ -291,8 +297,13 @@ impl KeyFilter for V02KeyFilter {
                 "pre-reservation was not enough"
             );
 
+            let base_query = match strategy {
+                QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
+                QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
+            };
+
             Some(KeyFilterResult {
-                base_query: " CROSS JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
+                base_query,
                 where_statement: "starknet_events_keys.keys MATCH :events_match",
                 param: (":events_match", key_fts_expression),
             })
@@ -320,7 +331,7 @@ fn encode_event_key_and_index_to_base32(index: u8, key: &EventKey, output: &mut 
 pub struct V03KeyFilter(pub Vec<Vec<EventKey>>);
 
 impl KeyFilter for V03KeyFilter {
-    fn apply<'a>(&self, key_fts_expression: &'a mut String) -> Option<KeyFilterResult<'a>> {
+    fn apply<'a>(&self, key_fts_expression: &'a mut String, strategy: QueryStrategy) -> Option<KeyFilterResult<'a>> {
         let filter_count = self.0.iter().flatten().count();
 
         if filter_count > 0 {
@@ -343,8 +354,14 @@ impl KeyFilter for V03KeyFilter {
                     key_fts_expression.push(')');
                 }
             });
+
+            let base_query = match strategy {
+                QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+            };
+
             Some(KeyFilterResult {
-                base_query: " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                base_query,
                 where_statement: "starknet_events_keys_03.keys MATCH :events_match",
                 param: (":events_match", key_fts_expression),
             })
@@ -361,6 +378,7 @@ fn event_query<'query, 'arg>(
     contract_address: Option<&'arg ContractAddress>,
     keys: &dyn KeyFilter,
     key_fts_expression: &'arg mut String,
+    strategy: QueryStrategy,
 ) -> (
     std::borrow::Cow<'query, str>,
     Vec<(&'static str, rusqlite::types::ToSqlOutput<'arg>)>,
@@ -397,7 +415,7 @@ fn event_query<'query, 'arg>(
     // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
     // The idea is that we convert keys to a space-separated list of Bas64 encoded string
     // representation and then use the full-text index to find events matching the events.
-    if let Some(result) = keys.apply(key_fts_expression) {
+    if let Some(result) = keys.apply(key_fts_expression, strategy) {
         base_query.to_mut().push_str(result.base_query);
         where_statement_parts.push(result.where_statement);
         params.push((result.param.0, key_fts_expression.to_sql()));
@@ -433,6 +451,61 @@ fn event_query<'query, 'arg>(
     }
 
     (base_query, params)
+}
+
+pub enum QueryStrategy {
+    BlockRangeFirst,
+    KeysFirst,
+}
+
+fn select_query_strategy(
+    tx: &Transaction<'_>,
+    from_block: Option<&BlockNumber>,
+    to_block: Option<&BlockNumber>,
+    contract_address: Option<&ContractAddress>,
+) -> anyhow::Result<QueryStrategy> {
+    let mut query = "SELECT COUNT(1) FROM starknet_events WHERE ".to_owned();
+    let mut params: Vec<(&str, rusqlite::types::ToSqlOutput<'_>)> = Vec::new();
+
+    match (from_block, to_block) {
+        (Some(from_block), Some(to_block)) => {
+            query.push_str("block_number BETWEEN :from_block AND :to_block ");
+            params.push((":from_block", from_block.to_sql()));
+            params.push((":to_block", to_block.to_sql()));
+        }
+        (Some(from_block), None) => {
+            query.push_str("block_number >= :from_block ");
+            params.push((":from_block", from_block.to_sql()));
+        }
+        (None, Some(to_block)) => {
+            query.push_str("block_number <= :to_block ");
+            params.push((":to_block", to_block.to_sql()));
+        }
+        (None, None) => return Ok(QueryStrategy::KeysFirst)
+    }
+
+    // on contract address
+    if let Some(contract_address) = contract_address {
+        query.push_str("AND from_address = :contract_address");
+        params.push((":contract_address", contract_address.to_sql()));
+    }    
+
+    let params = params
+        .iter()
+        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
+        .collect::<Vec<_>>();
+
+    let count: usize = tx
+        .inner()
+        .query_row(&query, params.as_slice(), |row| row.get(0))?;
+
+    tracing::warn!(%count, "Number of events in range");
+
+    if count > 80000 {
+        Ok(QueryStrategy::KeysFirst)
+    } else {
+        Ok(QueryStrategy::BlockRangeFirst)
+    }
 }
 
 #[cfg(test)]
@@ -1188,7 +1261,8 @@ mod tests {
     fn check_v03_filter(filter: Vec<Vec<EventKey>>, expected_fts_expression: Option<&str>) {
         let mut fts_expression = String::new();
         let filter = V03KeyFilter(filter);
-        let result = filter.apply(&mut fts_expression);
+
+        let result = filter.apply(&mut fts_expression, QueryStrategy::KeysFirst);
 
         match expected_fts_expression {
             Some(expected_fts_expression) => assert_matches!(
@@ -1198,5 +1272,18 @@ mod tests {
             ),
             None => assert_eq!(result, None),
         }
+
+        fts_expression.clear();
+        let result = filter.apply(&mut fts_expression, QueryStrategy::BlockRangeFirst);
+
+        match expected_fts_expression {
+            Some(expected_fts_expression) => assert_matches!(
+                result,
+                Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                 where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression) })}
+            ),
+            None => assert_eq!(result, None),
+        }
     }
+
 }
