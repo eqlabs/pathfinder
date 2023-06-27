@@ -47,12 +47,12 @@ impl EthereumClient {
         })
     }
 
-    async fn get_latest_block_hash(&self) -> anyhow::Result<H256> {
+    async fn get_finalized_block_hash(&self) -> anyhow::Result<H256> {
         self.call_ethereum(serde_json::json!({
             "jsonrpc": "2.0",
             "method": "eth_getBlockByNumber",
             "params": [
-                "latest",
+                "finalized",
                 false
             ],
             "id": 0
@@ -102,7 +102,7 @@ impl EthereumClient {
 #[async_trait::async_trait]
 impl EthereumApi for EthereumClient {
     async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
-        let hash = self.get_latest_block_hash().await?;
+        let hash = self.get_finalized_block_hash().await?;
         let hash = format!("0x{}", hex::encode(hash.as_bytes()));
         let addr = format!("0x{}", hex::encode(address.as_bytes()));
         Ok(EthereumStateUpdate {
@@ -245,7 +245,7 @@ mod tests {
             when.path("/")
                 .method(POST)
                 .header("Content-type", "application/json")
-                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",false]}"#);
+                .body(r#"{"id":0,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["finalized",false]}"#);
             then.status(200)
                 .header("Content-type", "application/json")
                 .body(r#"{"jsonrpc":"2.0","id":0,"result":{"number":"0x1048e0e","hash":"0x9921984fd976f261e0d70618b51e3db3724b9f4d28d0534c3483dd2162f13fff"}}"#);
