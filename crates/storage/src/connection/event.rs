@@ -43,6 +43,7 @@ pub struct PageOfEvents {
 }
 
 pub trait KeyFilter {
+    fn count(&self, tx: &Transaction<'_>) -> anyhow::Result<Option<usize>>;
     fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>>;
 }
 
@@ -99,6 +100,7 @@ pub fn event_count(
         from_block.as_ref(),
         to_block.as_ref(),
         contract_address.as_ref(),
+        keys,
     )?;
 
     let (query, params) = event_query(
@@ -139,6 +141,7 @@ pub(super) fn get_events<K: KeyFilter>(
         filter.from_block.as_ref(),
         filter.to_block.as_ref(),
         filter.contract_address.as_ref(),
+        &filter.keys,
     )?;
 
     let base_query = r#"SELECT
@@ -301,6 +304,20 @@ impl V02KeyFilter {
 }
 
 impl KeyFilter for V02KeyFilter {
+    fn count(&self, tx: &Transaction<'_>) -> anyhow::Result<Option<usize>> {
+        match &self.key_fts_expression {
+            None => Ok(None),
+            Some(key_fts_expression) => {
+                let count: usize = tx.inner().query_row(
+                    "SELECT COUNT(1) FROM starknet_events_keys WHERE keys MATCH :events_match",
+                    [&key_fts_expression],
+                    |row| row.get(0),
+                )?;
+                Ok(Some(count))
+            }
+        }
+    }
+
     fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>> {
         match self.key_fts_expression.as_ref() {
             None => None,
@@ -375,6 +392,20 @@ impl V03KeyFilter {
 }
 
 impl KeyFilter for V03KeyFilter {
+    fn count(&self, tx: &Transaction<'_>) -> anyhow::Result<Option<usize>> {
+        match &self.key_fts_expression {
+            None => Ok(None),
+            Some(key_fts_expression) => {
+                let count: usize = tx.inner().query_row(
+                    "SELECT COUNT(1) FROM starknet_events_keys_03 WHERE keys MATCH :events_match",
+                    [&key_fts_expression],
+                    |row| row.get(0),
+                )?;
+                Ok(Some(count))
+            }
+        }
+    }
+
     fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>> {
         match self.key_fts_expression.as_ref() {
             None => None,
@@ -485,7 +516,37 @@ fn select_query_strategy(
     from_block: Option<&BlockNumber>,
     to_block: Option<&BlockNumber>,
     contract_address: Option<&ContractAddress>,
+    keys: &dyn KeyFilter,
 ) -> anyhow::Result<QueryStrategy> {
+    let events_in_block_range =
+        number_of_events_in_block_range(tx, from_block, to_block, contract_address)?;
+
+    let events_by_key_filter = number_of_events_by_key_filter(tx, keys)?;
+
+    let strategy = match (events_in_block_range, events_by_key_filter) {
+        (None, None) => QueryStrategy::BlockRangeFirst,
+        (None, Some(_)) => QueryStrategy::KeysFirst,
+        (Some(_), None) => QueryStrategy::BlockRangeFirst,
+        (Some(events_in_block_range), Some(events_by_key_filter)) => {
+            tracing::trace!(%events_in_block_range, %events_by_key_filter, "Partial queries for number of events done");
+
+            if events_in_block_range > events_by_key_filter {
+                QueryStrategy::KeysFirst
+            } else {
+                QueryStrategy::BlockRangeFirst
+            }
+        }
+    };
+
+    Ok(strategy)
+}
+
+fn number_of_events_in_block_range(
+    tx: &Transaction<'_>,
+    from_block: Option<&BlockNumber>,
+    to_block: Option<&BlockNumber>,
+    contract_address: Option<&ContractAddress>,
+) -> anyhow::Result<Option<usize>> {
     let mut query = "SELECT COUNT(1) FROM starknet_events WHERE ".to_owned();
     let mut params: Vec<(&str, rusqlite::types::ToSqlOutput<'_>)> = Vec::new();
 
@@ -503,8 +564,8 @@ fn select_query_strategy(
             query.push_str("block_number <= :to_block ");
             params.push((":to_block", to_block.to_sql()));
         }
-        (None, None) => return Ok(QueryStrategy::KeysFirst),
-    }
+        (None, None) => return Ok(None),
+    };
 
     // on contract address
     if let Some(contract_address) = contract_address {
@@ -521,13 +582,14 @@ fn select_query_strategy(
         .inner()
         .query_row(&query, params.as_slice(), |row| row.get(0))?;
 
-    tracing::warn!(%count, "Number of events in range");
+    Ok(Some(count))
+}
 
-    if count > 80000 {
-        Ok(QueryStrategy::KeysFirst)
-    } else {
-        Ok(QueryStrategy::BlockRangeFirst)
-    }
+fn number_of_events_by_key_filter(
+    tx: &Transaction<'_>,
+    keys: &dyn KeyFilter,
+) -> anyhow::Result<Option<usize>> {
+    keys.count(tx)
 }
 
 #[cfg(test)]
