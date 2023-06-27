@@ -43,14 +43,14 @@ pub struct PageOfEvents {
 }
 
 pub trait KeyFilter {
-    fn apply<'a>(&self, key_fts_expression: &'a mut String, strategy: QueryStrategy) -> Option<KeyFilterResult<'a>>;
+    fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>>;
 }
 
 #[derive(Debug, PartialEq)]
 pub struct KeyFilterResult<'a> {
     pub base_query: &'static str,
     pub where_statement: &'static str,
-    pub param: (&'static str, &'a str),
+    pub param: (&'static str, rusqlite::types::ToSqlOutput<'a>),
 }
 
 pub(super) fn insert_events(
@@ -94,16 +94,19 @@ pub fn event_count(
     contract_address: Option<ContractAddress>,
     keys: &dyn KeyFilter,
 ) -> anyhow::Result<usize> {
-    let strategy = select_query_strategy(tx, from_block.as_ref(), to_block.as_ref(), contract_address.as_ref())?;
+    let strategy = select_query_strategy(
+        tx,
+        from_block.as_ref(),
+        to_block.as_ref(),
+        contract_address.as_ref(),
+    )?;
 
-    let mut key_fts_expression = String::new();
     let (query, params) = event_query(
         "SELECT COUNT(1) FROM starknet_events",
         from_block.as_ref(),
         to_block.as_ref(),
         contract_address.as_ref(),
         keys,
-        &mut key_fts_expression,
         strategy,
     );
 
@@ -131,7 +134,12 @@ pub(super) fn get_events<K: KeyFilter>(
         anyhow::bail!("Invalid page size");
     }
 
-    let strategy = select_query_strategy(tx, filter.from_block.as_ref(), filter.to_block.as_ref(), filter.contract_address.as_ref())?;
+    let strategy = select_query_strategy(
+        tx,
+        filter.from_block.as_ref(),
+        filter.to_block.as_ref(),
+        filter.contract_address.as_ref(),
+    )?;
 
     let base_query = r#"SELECT
               block_number,
@@ -145,15 +153,12 @@ pub(super) fn get_events<K: KeyFilter>(
            INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
            INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#;
 
-    let mut key_fts_expression = String::new();
-
     let (mut base_query, mut params) = event_query(
         base_query,
         filter.from_block.as_ref(),
         filter.to_block.as_ref(),
         filter.contract_address.as_ref(),
         &filter.keys,
-        &mut key_fts_expression,
         strategy,
     );
 
@@ -267,23 +272,20 @@ fn encode_event_data_to_bytes(data: &[EventData], buffer: &mut Vec<u8>) {
 ///
 /// In these API versions events are matched against a list of keys. An event
 /// matches the filter if _any_ key matches.
-pub struct V02KeyFilter(pub Vec<EventKey>);
+pub struct V02KeyFilter {
+    key_fts_expression: Option<String>,
+}
 
-impl KeyFilter for V02KeyFilter {
-    fn apply<'arg>(&self, key_fts_expression: &'arg mut String, strategy: QueryStrategy) -> Option<KeyFilterResult<'arg>> {
-        let keys = &self.0;
-        if !keys.is_empty() {
-            let needed =
-                (keys.len() * (" OR ".len() + "\"\"".len() + 44)).saturating_sub(" OR ".len());
-            if let Some(more) = needed.checked_sub(key_fts_expression.capacity()) {
-                key_fts_expression.reserve(more);
-            }
-
-            let _capacity = key_fts_expression.capacity();
+impl V02KeyFilter {
+    pub fn new(keys: Vec<EventKey>) -> Self {
+        let key_fts_expression = if keys.is_empty() {
+            None
+        } else {
+            let mut key_fts_expression = String::with_capacity(100);
 
             keys.iter().enumerate().for_each(|(i, key)| {
                 key_fts_expression.push('"');
-                encode_event_key_to_base64(key, key_fts_expression);
+                encode_event_key_to_base64(key, &mut key_fts_expression);
                 key_fts_expression.push('"');
 
                 if i != keys.len() - 1 {
@@ -291,24 +293,29 @@ impl KeyFilter for V02KeyFilter {
                 }
             });
 
-            debug_assert_eq!(
-                _capacity,
-                key_fts_expression.capacity(),
-                "pre-reservation was not enough"
-            );
+            Some(key_fts_expression)
+        };
 
-            let base_query = match strategy {
-                QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
-                QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
-            };
+        Self { key_fts_expression }
+    }
+}
 
-            Some(KeyFilterResult {
-                base_query,
-                where_statement: "starknet_events_keys.keys MATCH :events_match",
-                param: (":events_match", key_fts_expression),
-            })
-        } else {
-            None
+impl KeyFilter for V02KeyFilter {
+    fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>> {
+        match self.key_fts_expression.as_ref() {
+            None => None,
+            Some(key_fts_expression) => {
+                let base_query = match strategy {
+                    QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
+                    QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
+                };
+
+                Some(KeyFilterResult {
+                    base_query,
+                    where_statement: "starknet_events_keys.keys MATCH :events_match",
+                    param: (":events_match", key_fts_expression.to_sql()),
+                })
+            }
         }
     }
 }
@@ -328,14 +335,19 @@ fn encode_event_key_and_index_to_base32(index: u8, key: &EventKey, output: &mut 
 ///
 /// [["key1_value1", "key1_value2"], [], ["key3_value1"]] means:
 /// ((key1 == "key1_value1" OR key1 == "key1_value2") AND (key3 == "key3_value1")).
-pub struct V03KeyFilter(pub Vec<Vec<EventKey>>);
+pub struct V03KeyFilter {
+    key_fts_expression: Option<String>,
+}
 
-impl KeyFilter for V03KeyFilter {
-    fn apply<'a>(&self, key_fts_expression: &'a mut String, strategy: QueryStrategy) -> Option<KeyFilterResult<'a>> {
-        let filter_count = self.0.iter().flatten().count();
+impl V03KeyFilter {
+    pub fn new(keys: Vec<Vec<EventKey>>) -> Self {
+        let filter_count = keys.iter().flatten().count();
 
-        if filter_count > 0 {
-            self.0.iter().enumerate().for_each(|(i, values)| {
+        let key_fts_expression = if filter_count == 0 {
+            None
+        } else {
+            let mut key_fts_expression = String::with_capacity(100);
+            keys.iter().enumerate().for_each(|(i, values)| {
                 if !values.is_empty() {
                     if key_fts_expression.ends_with(')') {
                         key_fts_expression.push_str(" AND ");
@@ -344,7 +356,7 @@ impl KeyFilter for V03KeyFilter {
                     key_fts_expression.push('(');
                     values.iter().enumerate().for_each(|(j, key)| {
                         key_fts_expression.push('"');
-                        encode_event_key_and_index_to_base32(i as u8, key, key_fts_expression);
+                        encode_event_key_and_index_to_base32(i as u8, key, &mut key_fts_expression);
                         key_fts_expression.push('"');
 
                         if j != values.len() - 1 {
@@ -355,18 +367,29 @@ impl KeyFilter for V03KeyFilter {
                 }
             });
 
-            let base_query = match strategy {
-                QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-                QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-            };
+            Some(key_fts_expression)
+        };
 
-            Some(KeyFilterResult {
-                base_query,
-                where_statement: "starknet_events_keys_03.keys MATCH :events_match",
-                param: (":events_match", key_fts_expression),
-            })
-        } else {
-            None
+        Self { key_fts_expression }
+    }
+}
+
+impl KeyFilter for V03KeyFilter {
+    fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>> {
+        match self.key_fts_expression.as_ref() {
+            None => None,
+            Some(key_fts_expression) => {
+                let base_query = match strategy {
+                    QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                    QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                };
+
+                Some(KeyFilterResult {
+                    base_query,
+                    where_statement: "starknet_events_keys_03.keys MATCH :events_match",
+                    param: (":events_match", key_fts_expression.to_sql()),
+                })
+            }
         }
     }
 }
@@ -376,8 +399,7 @@ fn event_query<'query, 'arg>(
     from_block: Option<&'arg BlockNumber>,
     to_block: Option<&'arg BlockNumber>,
     contract_address: Option<&'arg ContractAddress>,
-    keys: &dyn KeyFilter,
-    key_fts_expression: &'arg mut String,
+    keys: &'arg (dyn KeyFilter + 'arg),
     strategy: QueryStrategy,
 ) -> (
     std::borrow::Cow<'query, str>,
@@ -413,12 +435,12 @@ fn event_query<'query, 'arg>(
     }
 
     // Filter on keys: this is using an FTS5 full-text index (virtual table) on the keys.
-    // The idea is that we convert keys to a space-separated list of Bas64 encoded string
+    // The idea is that we convert keys to a space-separated list of Base64/Base32 encoded string
     // representation and then use the full-text index to find events matching the events.
-    if let Some(result) = keys.apply(key_fts_expression, strategy) {
+    if let Some(result) = keys.apply(strategy) {
         base_query.to_mut().push_str(result.base_query);
         where_statement_parts.push(result.where_statement);
-        params.push((result.param.0, key_fts_expression.to_sql()));
+        params.push((result.param.0, result.param.1));
     }
 
     if !where_statement_parts.is_empty() {
@@ -481,14 +503,14 @@ fn select_query_strategy(
             query.push_str("block_number <= :to_block ");
             params.push((":to_block", to_block.to_sql()));
         }
-        (None, None) => return Ok(QueryStrategy::KeysFirst)
+        (None, None) => return Ok(QueryStrategy::KeysFirst),
     }
 
     // on contract address
     if let Some(contract_address) = contract_address {
         query.push_str("AND from_address = :contract_address");
         params.push((":contract_address", contract_address.to_sql()));
-    }    
+    }
 
     let params = params
         .iter()
@@ -579,7 +601,7 @@ mod tests {
             to_block: Some(expected_event.block_number),
             contract_address: Some(expected_event.from_address),
             // we're using a key which is present in _all_ events
-            keys: V02KeyFilter(vec![EventKey(felt!("0xdeadbeef"))]),
+            keys: V02KeyFilter::new(vec![EventKey(felt!("0xdeadbeef"))]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -702,7 +724,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: V02KeyFilter(vec![]),
+                keys: V02KeyFilter::new(vec![]),
                 page_size: 1024,
                 offset: 0,
             },
@@ -733,7 +755,7 @@ mod tests {
             from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
             to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -762,7 +784,7 @@ mod tests {
             from_block: None,
             to_block: Some(BlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -791,7 +813,7 @@ mod tests {
             from_block: Some(BlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -820,7 +842,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: Some(expected_event.from_address),
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -847,7 +869,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![expected_event.keys[0]]),
+            keys: V02KeyFilter::new(vec![expected_event.keys[0]]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -874,7 +896,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V03KeyFilter(vec![
+            keys: V03KeyFilter::new(vec![
                 vec![expected_event.keys[0]],
                 vec![expected_event.keys[1]],
             ]),
@@ -893,7 +915,7 @@ mod tests {
 
         // try event keys in the wrong order, should not match
         let filter = EventFilter {
-            keys: V03KeyFilter(vec![
+            keys: V03KeyFilter::new(vec![
                 vec![expected_event.keys[1]],
                 vec![expected_event.keys[0]],
             ]),
@@ -920,7 +942,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -946,7 +968,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: 10,
             offset: 0,
         };
@@ -963,7 +985,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: 10,
             offset: 10,
         };
@@ -980,7 +1002,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: 10,
             offset: 30,
         };
@@ -1005,7 +1027,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: PAGE_SIZE,
             // _after_ the last one
             offset: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK,
@@ -1030,7 +1052,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: 0,
             offset: 0,
         };
@@ -1042,7 +1064,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter(vec![]),
+            keys: V02KeyFilter::new(vec![]),
             page_size: PAGE_SIZE_LIMIT + 1,
             offset: 0,
         };
@@ -1063,7 +1085,7 @@ mod tests {
 
         let expected_events = &emitted_events[27..32];
         let keys_for_expected_events =
-            V02KeyFilter(expected_events.iter().map(|e| e.keys[0]).collect());
+            V02KeyFilter::new(expected_events.iter().map(|e| e.keys[0]).collect());
 
         let filter = EventFilter {
             from_block: None,
@@ -1125,7 +1147,7 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         let expected_events = &emitted_events[27..32];
-        let keys_for_expected_events = V03KeyFilter(vec![
+        let keys_for_expected_events = V03KeyFilter::new(vec![
             expected_events.iter().map(|e| e.keys[0]).collect(),
             expected_events.iter().map(|e| e.keys[1]).collect(),
         ]);
@@ -1190,7 +1212,7 @@ mod tests {
 
         let block = Some(BlockNumber::new_or_panic(2));
 
-        let count = event_count(&tx, block, block, None, &V02KeyFilter(vec![])).unwrap();
+        let count = event_count(&tx, block, block, None, &V02KeyFilter::new(vec![])).unwrap();
         assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
     }
 
@@ -1212,7 +1234,7 @@ mod tests {
             Some(BlockNumber::GENESIS),
             Some(BlockNumber::MAX),
             Some(addr),
-            &V02KeyFilter(vec![]),
+            &V02KeyFilter::new(vec![]),
         )
         .unwrap();
         assert_eq!(count, expected);
@@ -1236,7 +1258,7 @@ mod tests {
             Some(BlockNumber::GENESIS),
             Some(BlockNumber::MAX),
             None,
-            &V02KeyFilter(vec![key]),
+            &V02KeyFilter::new(vec![key]),
         )
         .unwrap();
         assert_eq!(count, expected);
@@ -1259,31 +1281,26 @@ mod tests {
     }
 
     fn check_v03_filter(filter: Vec<Vec<EventKey>>, expected_fts_expression: Option<&str>) {
-        let mut fts_expression = String::new();
-        let filter = V03KeyFilter(filter);
+        let filter = V03KeyFilter::new(filter);
 
-        let result = filter.apply(&mut fts_expression, QueryStrategy::KeysFirst);
-
-        match expected_fts_expression {
-            Some(expected_fts_expression) => assert_matches!(
-                result,
-                Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-                 where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression) })}
-            ),
-            None => assert_eq!(result, None),
-        }
-
-        fts_expression.clear();
-        let result = filter.apply(&mut fts_expression, QueryStrategy::BlockRangeFirst);
-
+        let result = filter.apply(QueryStrategy::KeysFirst);
         match expected_fts_expression {
             Some(expected_fts_expression) => assert_matches!(
                 result,
                 Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " INNER JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
-                 where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression) })}
+                 where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression.to_sql()) })}
+            ),
+            None => assert_eq!(result, None),
+        }
+
+        let result = filter.apply(QueryStrategy::BlockRangeFirst);
+        match expected_fts_expression {
+            Some(expected_fts_expression) => assert_matches!(
+                result,
+                Some(result) => {assert_eq!(result, KeyFilterResult { base_query: " CROSS JOIN starknet_events_keys_03 ON starknet_events.rowid = starknet_events_keys_03.rowid",
+                 where_statement: "starknet_events_keys_03.keys MATCH :events_match", param: (":events_match", expected_fts_expression.to_sql()) })}
             ),
             None => assert_eq!(result, None),
         }
     }
-
 }

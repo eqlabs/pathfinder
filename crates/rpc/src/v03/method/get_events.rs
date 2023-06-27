@@ -159,7 +159,7 @@ pub async fn get_events(
     }
 
     let storage = context.storage.clone();
-    let keys = V03KeyFilter(request.keys.clone());
+    let keys = V03KeyFilter::new(request.keys.clone());
 
     // blocking task to perform database event query and optionally, the event count
     // required for (4d).
