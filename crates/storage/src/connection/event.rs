@@ -564,12 +564,16 @@ fn number_of_events_in_block_range(
             query.push_str("block_number <= :to_block ");
             params.push((":to_block", to_block.to_sql()));
         }
-        (None, None) => return Ok(None),
+        (None, None) => {}
     };
 
     // on contract address
     if let Some(contract_address) = contract_address {
-        query.push_str("AND from_address = :contract_address");
+        if params.is_empty() {
+            query.push_str("from_address = :contract_address");
+        } else {
+            query.push_str("AND from_address = :contract_address");
+        }
         params.push((":contract_address", contract_address.to_sql()));
     }
 
@@ -577,6 +581,10 @@ fn number_of_events_in_block_range(
         .iter()
         .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
         .collect::<Vec<_>>();
+
+    if params.is_empty() {
+        return Ok(None);
+    }
 
     let count: usize = tx
         .inner()
