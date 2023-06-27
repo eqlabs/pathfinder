@@ -11,6 +11,8 @@ use stark_hash::Felt;
 pub const PAGE_SIZE_LIMIT: usize = 1_024;
 pub const KEY_FILTER_LIMIT: usize = 256;
 
+const KEY_FILTER_COST_LIMIT: usize = 1_000_000;
+
 pub struct EventFilter<K: KeyFilter> {
     pub from_block: Option<BlockNumber>,
     pub to_block: Option<BlockNumber>,
@@ -34,6 +36,8 @@ pub struct EmittedEvent {
 pub enum EventFilterError {
     #[error("requested page size is too big, supported maximum is {0}")]
     PageSizeTooBig(usize),
+    #[error("Event query too broad. Reduce the block range or add more keys.")]
+    TooManyMatches,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -520,17 +524,36 @@ fn select_query_strategy(
 ) -> anyhow::Result<QueryStrategy> {
     let events_in_block_range =
         number_of_events_in_block_range(tx, from_block, to_block, contract_address)?;
-
     let events_by_key_filter = number_of_events_by_key_filter(tx, keys)?;
+
+    tracing::trace!(
+        ?events_in_block_range,
+        ?events_by_key_filter,
+        "Partial queries for number of events done"
+    );
+
+    const KEY_FILTER_WEIGHT: usize = 50;
+    let weighted_events_by_key_filter =
+        events_by_key_filter.map(|n| n.saturating_mul(KEY_FILTER_WEIGHT));
+
+    let cost = std::cmp::min(
+        events_in_block_range.unwrap_or(usize::MAX),
+        weighted_events_by_key_filter.unwrap_or(usize::MAX),
+    );
+
+    if cost > KEY_FILTER_COST_LIMIT {
+        return Err(EventFilterError::TooManyMatches.into());
+    }
 
     let strategy = match (events_in_block_range, events_by_key_filter) {
         (None, None) => QueryStrategy::BlockRangeFirst,
         (None, Some(_)) => QueryStrategy::KeysFirst,
         (Some(_), None) => QueryStrategy::BlockRangeFirst,
-        (Some(events_in_block_range), Some(events_by_key_filter)) => {
-            tracing::trace!(%events_in_block_range, %events_by_key_filter, "Partial queries for number of events done");
-
-            if events_in_block_range > events_by_key_filter {
+        (Some(events_in_block_range), Some(_)) => {
+            if events_in_block_range
+                > weighted_events_by_key_filter
+                    .expect("Unwrap is safe because events_by_key_filter is some")
+            {
                 QueryStrategy::KeysFirst
             } else {
                 QueryStrategy::BlockRangeFirst

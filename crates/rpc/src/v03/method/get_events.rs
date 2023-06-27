@@ -189,8 +189,11 @@ pub async fn get_events(
         // own context to the errors. This way we get meaningful error information
         // for errors related to query parameters.
         let page = transaction.events(&filter).map_err(|e| {
-            if e.downcast_ref::<EventFilterError>().is_some() {
-                GetEventsError::PageSizeTooBig
+            if let Some(event_filter_error) = e.downcast_ref::<EventFilterError>() {
+                match event_filter_error {
+                    EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
+                    EventFilterError::TooManyMatches => GetEventsError::from(e),
+                }
             } else {
                 GetEventsError::from(e)
             }
