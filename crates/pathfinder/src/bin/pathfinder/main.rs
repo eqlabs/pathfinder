@@ -147,7 +147,7 @@ async fn main() -> anyhow::Result<()> {
         pending_data: pending_state,
         pending_poll_interval: config
             .poll_pending
-            .then_some(std::time::Duration::from_secs(5)),
+            .then_some(std::time::Duration::from_secs(2)),
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_ws_senders(),
         block_cache_size: 1_000,
