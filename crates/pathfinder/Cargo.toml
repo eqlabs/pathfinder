@@ -21,7 +21,7 @@ async-trait = "0.1.59"
 bitvec = "0.20.4"
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
-casm-compiler-v1_1_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.1.0-rc0" }
+casm-compiler-v2_0_0-rc6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v2.0.0-rc6" }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
 futures = { version = "0.3", default-features = false, features = ["std"] }

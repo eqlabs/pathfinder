@@ -24,7 +24,7 @@ pub fn compile_to_casm(
         .parse_as_semver()
         .context("Deciding on compiler version")?
     {
-        Some(v) if v >= V_0_11_2 => v1_1_0_rc0::compile(definition),
+        Some(v) if v >= V_0_11_2 => v2_0_0_rc6::compile(definition),
         Some(v) if v >= V_0_11_1 => v1_0_0_rc0::compile(definition),
         _ => v1_0_0_alpha6::compile(definition),
     }
@@ -122,13 +122,14 @@ mod v1_0_0_rc0 {
     }
 }
 
-mod v1_1_0_rc0 {
+// This compiler is backwards compatible with v1.1.
+mod v2_0_0_rc6 {
     use anyhow::Context;
-    use casm_compiler_v1_1_0_rc0::allowed_libfuncs::{
+    use casm_compiler_v2_0_0_rc6::allowed_libfuncs::{
         validate_compatible_sierra_version, ListSelector,
     };
-    use casm_compiler_v1_1_0_rc0::casm_contract_class::CasmContractClass;
-    use casm_compiler_v1_1_0_rc0::contract_class::ContractClass;
+    use casm_compiler_v2_0_0_rc6::casm_contract_class::CasmContractClass;
+    use casm_compiler_v2_0_0_rc6::contract_class::ContractClass;
 
     use crate::sierra::FeederGatewayContractClass;
 
@@ -154,7 +155,7 @@ mod v1_1_0_rc0 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
-                casm_compiler_v1_0_0_rc0::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
+                casm_compiler_v2_0_0_rc6::allowed_libfuncs::BUILTIN_EXPERIMENTAL_LIBFUNCS_LIST
                     .to_string(),
             ),
         )
