@@ -79,8 +79,13 @@ async fn main() -> anyhow::Result<()> {
     let sync_storage = storage_manager
         .create_pool(NonZeroU32::new(5).unwrap())
         .context("Creating database connection pool for sync")?;
+    // Set the rpc file connection limit to a fraction of the RPC connections.
+    // Having this be too large is counter productive as disk IO will then slow down
+    // all queries.
+    let rpc_storage = std::cmp::max(10, config.max_rpc_connections.get() / 8);
+    let rpc_storage = NonZeroU32::new(rpc_storage).expect("A non-zero minimum is set");
     let rpc_storage = storage_manager
-        .create_pool(config.max_rpc_connections)
+        .create_pool(rpc_storage)
         .context("Creating database connection pool for sync")?;
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
