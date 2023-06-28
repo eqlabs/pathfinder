@@ -60,9 +60,15 @@ pub fn update_contract_state(
     };
 
     // Calculate contract state hash, update global state tree and persist pre-image.
-    let class_hash = new_class_hash
-        .or(old_class_hash)
-        .context("Class hash is unknown for new contract")?;
+    //
+    // The contract at address 0x1 is special. It was never deployed and doesn't have a class.
+    let class_hash = if contract_address == ContractAddress::ONE {
+        ClassHash::ZERO
+    } else {
+        new_class_hash
+            .or(old_class_hash)
+            .context("Class hash is unknown for new contract")?
+    };
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
 
     transaction
