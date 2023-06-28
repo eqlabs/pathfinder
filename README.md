@@ -300,7 +300,7 @@ These __will not work__:
 - `block_time` timestamp difference between the current block and its parent
 - `block_latency` delay between current block being published and sync'd locally
 - `block_download` time taken to download current block's data excluding classes
-- `block_prxocessing` time taken to process and store the current block
+- `block_processing` time taken to process and store the current block
 
 ## License
 
