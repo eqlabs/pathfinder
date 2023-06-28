@@ -12,9 +12,12 @@ pub mod event;
 pub mod hash;
 mod header;
 mod macros;
+mod state_update;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 pub mod trie;
+
+pub use state_update::{ContractUpdate, StateUpdate, SystemContractUpdate};
 
 pub use header::{BlockHeader, BlockHeaderBuilder};
 
@@ -133,7 +136,7 @@ pub struct ConstructorParam(pub Felt);
 pub struct CallResultValue(pub Felt);
 
 /// The address of a storage element for a Starknet contract.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord, Hash)]
 pub struct StorageAddress(Felt);
 
 macros::starkhash251::newtype!(StorageAddress);
