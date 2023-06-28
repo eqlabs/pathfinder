@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - dropped upgrade support for pathfinder v0.4 and earlier
 - separate db connection pools rpc, sync and storage
+- rpc db connection limit now matches the max rpc connection limit
 
 ## [0.6.1] - 2023-06-18
 

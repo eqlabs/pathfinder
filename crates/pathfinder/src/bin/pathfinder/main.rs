@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
         .create_pool(NonZeroU32::new(5).unwrap())
         .context("Creating database connection pool for sync")?;
     let rpc_storage = storage_manager
-        .create_pool(NonZeroU32::new(20).unwrap())
+        .create_pool(config.max_rpc_connections)
         .context("Creating database connection pool for sync")?;
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
