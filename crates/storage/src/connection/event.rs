@@ -548,13 +548,18 @@ fn select_query_strategy(
     let weighted_events_by_key_filter =
         events_by_key_filter.map(|n| n.saturating_mul(KEY_FILTER_WEIGHT));
 
-    let cost = std::cmp::min(
-        events_in_block_range.unwrap_or(usize::MAX),
-        weighted_events_by_key_filter.unwrap_or(usize::MAX),
-    );
+    if events_in_block_range
+        .or(weighted_events_by_key_filter)
+        .is_some()
+    {
+        let cost = std::cmp::min(
+            events_in_block_range.unwrap_or(usize::MAX),
+            weighted_events_by_key_filter.unwrap_or(usize::MAX),
+        );
 
-    if cost > KEY_FILTER_COST_LIMIT {
-        return Err(EventFilterError::TooManyMatches.into());
+        if cost > KEY_FILTER_COST_LIMIT {
+            return Err(EventFilterError::TooManyMatches.into());
+        }
     }
 
     let strategy = match (events_in_block_range, events_by_key_filter) {
