@@ -25,6 +25,15 @@ pub struct ContractAddress(Felt);
 macros::starkhash251::newtype!(ContractAddress);
 macros::starkhash251::deserialization!(ContractAddress);
 
+impl ContractAddress {
+    /// The contract at 0x1 is special. It was never deployed and therefore
+    /// has no class hash. It does however receive storage changes.
+    ///
+    /// It is used by starknet to store values for smart contracts to access
+    /// using syscalls. For example the block hash.
+    pub const ONE: ContractAddress = ContractAddress(felt!("0x1"));
+}
+
 /// A nonce that is associated with a particular deployed Starknet contract
 /// distinguishing it from other contracts that use the same contract class.
 #[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
