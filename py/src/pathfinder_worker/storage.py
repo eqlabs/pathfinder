@@ -4,6 +4,7 @@ from typing import Optional
 
 import zstandard
 from starkware.starknet.business_logic.state.state_api import StateReader
+from starkware.starknet.business_logic.state.storage_domain import StorageDomain
 from starkware.starknet.definitions import fields
 from starkware.starknet.definitions.error_codes import StarknetErrorCode
 from starkware.starknet.services.api.contract_class.contract_class import (
@@ -93,7 +94,9 @@ class SqliteStateReader(StateReader):
 
         return class_hash
 
-    async def get_nonce_at(self, contract_address: int) -> int:
+    async def get_nonce_at(
+        self, storage_domain: StorageDomain, contract_address: int
+    ) -> int:
         cursor = self.connection.cursor()
         res = cursor.execute(
             """
@@ -120,7 +123,9 @@ class SqliteStateReader(StateReader):
 
         return nonce
 
-    async def get_storage_at(self, contract_address: int, key: int) -> int:
+    async def get_storage_at(
+        self, storage_domain: StorageDomain, contract_address: int, key: int
+    ) -> int:
         cursor = self.connection.cursor()
         res = cursor.execute(
             """
