@@ -406,9 +406,9 @@ mod tests {
             SimulatedTransaction {
                 fee_estimation: Some(
                     FeeEstimate {
-                        gas_consumed: H256::from_low_u64_be(0x0c18),
+                        gas_consumed: H256::from_low_u64_be(0x0c19),
                         gas_price: H256::from_low_u64_be(0x01),
-                        overall_fee: H256::from_low_u64_be(0x0c18),
+                        overall_fee: H256::from_low_u64_be(0x0c19),
                     }
                 ),
                 transaction_trace: Some(
