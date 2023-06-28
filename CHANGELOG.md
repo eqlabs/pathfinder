@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `block_download`: time taken to download current block's data excluding classes
   - `block_processing`: time taken to process and store the current block
 - configuration for new block polling interval: `--sync.poll-interval <seconds>`
-- sierra v2.0.0 support
+- Starknet v0.12.0 support
+  - sierra v2.0.0 support
+  - `cairo-lang` upgraded to 0.12.0a0
 
 ### Fixed
 
