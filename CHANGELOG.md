@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - reorgs fail if a class declaration is included in the reorg
 - sync can fail if db connection pool is held saturated by rpc queries
-- uses latest L1 state instead of finalized state
+- uses `finalized` (reorg-safe) L1 state instead of `latest`
 
 ## Changed
 
