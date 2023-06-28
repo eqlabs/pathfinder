@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
         .create_pool(NonZeroU32::new(5).unwrap())
         .context("Creating database connection pool for sync")?;
     let rpc_storage = storage_manager
-        .create_pool(NonZeroU32::new(20).unwrap())
+        .create_pool(config.max_rpc_connections)
         .context("Creating database connection pool for sync")?;
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
@@ -147,7 +147,7 @@ async fn main() -> anyhow::Result<()> {
         pending_data: pending_state,
         pending_poll_interval: config
             .poll_pending
-            .then_some(std::time::Duration::from_secs(5)),
+            .then_some(std::time::Duration::from_secs(2)),
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_ws_senders(),
         block_cache_size: 1_000,
