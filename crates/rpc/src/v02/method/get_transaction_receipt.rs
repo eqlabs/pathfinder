@@ -392,8 +392,6 @@ mod types {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub enum TransactionStatus {
-        #[serde(rename = "PENDING")]
-        Pending,
         #[serde(rename = "ACCEPTED_ON_L2")]
         AcceptedOnL2,
         #[serde(rename = "ACCEPTED_ON_L1")]
@@ -405,7 +403,7 @@ mod types {
     impl From<BlockStatus> for TransactionStatus {
         fn from(status: BlockStatus) -> Self {
             match status {
-                BlockStatus::Pending => TransactionStatus::Pending,
+                BlockStatus::Pending => TransactionStatus::AcceptedOnL2,
                 BlockStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
                 BlockStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
                 BlockStatus::Rejected => TransactionStatus::Rejected,
