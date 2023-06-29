@@ -209,28 +209,6 @@ fn compute_cairo_class_hash(
         add_extra_space_to_cairo_named_tuples(&mut contract_definition.program.reference_manager);
     }
 
-    // Temporary hack here because Python only emits ASCII to JSON.
-    fn unicode_encode(s: &str) -> String {
-        use std::fmt::Write;
-
-        let mut output = String::with_capacity(s.len());
-        let mut buf = [0, 0];
-
-        for c in s.chars() {
-            if c.is_ascii() {
-                output.push(c);
-            } else {
-                let buf = c.encode_utf16(&mut buf);
-                for i in buf {
-                    // Unwrapping should be safe here
-                    write!(output, r"\u{:4x}", i).unwrap();
-                }
-            }
-        }
-
-        output
-    }
-
     let truncated_keccak = {
         use std::io::Write;
 
@@ -249,11 +227,9 @@ fn compute_cairo_class_hash(
             String::from_utf8_unchecked(string_buffer)
         };
 
-        let unicode_encoded_json_output = unicode_encode(&raw_json_output);
-
         let mut keccak_writer = KeccakWriter::default();
         keccak_writer
-            .write_all(unicode_encoded_json_output.as_bytes())
+            .write_all(raw_json_output.as_bytes())
             .expect("writing to KeccakWriter never fails");
 
         let KeccakWriter(hash) = keccak_writer;
@@ -462,6 +438,28 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
         W: ?Sized + std::io::Write,
     {
         writer.write_all(b": ")
+    }
+
+    // Credit: Jonathan Lei from starknet-rs (https://github.com/xJonathanLEI/starknet-rs)`
+    #[inline]
+    fn write_string_fragment<W>(&mut self, writer: &mut W, fragment: &str) -> std::io::Result<()>
+    where
+        W: ?Sized + std::io::Write,
+    {
+        let mut buf = [0, 0];
+
+        for c in fragment.chars() {
+            if c.is_ascii() {
+                writer.write_all(&[c as u8])?;
+            } else {
+                let buf = c.encode_utf16(&mut buf);
+                for i in buf {
+                    write!(writer, r"\u{:4x}", i)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
