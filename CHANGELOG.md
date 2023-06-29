@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.3] - 2023-06-29
+
+### Fixed
+
+- Sierra class hash not in declared classes sync bug
+
 ## [0.6.2] - 2023-06-29
 
 ### Added
