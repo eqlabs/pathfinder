@@ -155,8 +155,7 @@ mod v2_0_0_rc6 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
-                casm_compiler_v2_0_0_rc6::allowed_libfuncs::BUILTIN_EXPERIMENTAL_LIBFUNCS_LIST
-                    .to_string(),
+                casm_compiler_v2_0_0_rc6::allowed_libfuncs::BUILTIN_ALL_LIBFUNCS_LIST.to_string(),
             ),
         )
         .context("Validating Sierra class")?;

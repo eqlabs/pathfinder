@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Sierra class hash not in declared classes sync bug
 
+## Changed
+
+- use all libfunc list instead of experimental for sierra compilation
+
 ## [0.6.2] - 2023-06-29
 
 ### Added
