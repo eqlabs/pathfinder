@@ -366,7 +366,7 @@ pub async fn download_new_classes(
             } => {
                 // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
                 // since that's what has been added to the class commitment tree.
-                let casm_hash = state_diff
+                let Some(casm_hash) = state_diff
                     .declared_classes
                     .iter()
                     .find_map(|declared_class| {
@@ -375,8 +375,11 @@ pub async fn download_new_classes(
                         } else {
                             None
                         }
-                    })
-                    .context("Sierra class hash not in declared classes")?;
+                    }) else {
+                        // This can occur if the sierra was in here as a deploy contract, if the class was
+                        // declared in a previous block but not yet persisted by the database.
+                        continue;
+                    };
                 tx_event
                     .send(SyncEvent::SierraClass {
                         sierra_definition,
