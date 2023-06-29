@@ -722,9 +722,9 @@ mod tests {
         assert_eq!(
             at_block_fee,
             vec![crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0xc18),
+                gas_consumed: H256::from_low_u64_be(0xc19),
                 gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0xc18),
+                overall_fee: H256::from_low_u64_be(0xc19),
             }]
         );
 

@@ -112,7 +112,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 35
-EXPECTED_CAIRO_VERSION = "0.11.2a0"
+EXPECTED_CAIRO_VERSION = "0.12.0a0"
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
 DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
@@ -791,7 +791,9 @@ async def simulate_account_tx(
     if isinstance(transaction, Declare):
         compiled_class = compile_contract_class(
             transaction.contract_class,
-            allowed_libfuncs_list_name="experimental_v0.1.0",
+            allowed_libfuncs_list_file=allowed_libfuncs_file_for_chain_id(
+                general_config.chain_id
+            ),
         )
         state.compiled_classes[transaction.compiled_class_hash] = compiled_class
     elif isinstance(transaction, DeprecatedDeclare):
@@ -800,6 +802,17 @@ async def simulate_account_tx(
         ] = transaction.contract_class
 
     return tx_info
+
+
+def allowed_libfuncs_file_for_chain_id(chain_id: StarknetChainId) -> str:
+    if chain_id == StarknetChainId.MAINNET:
+        return "mainnet_libfuncs"
+    elif chain_id == StarknetChainId.TESTNET:
+        return "testnet_libfuncs"
+    elif chain_id == StarknetChainId.TESTNET2:
+        return "testnet2_libfuncs"
+    else:
+        raise ValueError("Invalid chain id")
 
 
 async def do_estimate_fee(

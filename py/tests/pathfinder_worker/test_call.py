@@ -679,9 +679,9 @@ def test_estimate_fee_for_positive_directly():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=1258,
+            gas_consumed=1259,
             gas_price=1,
-            overall_fee=1258,
+            overall_fee=1259,
         )
     ]
 
@@ -730,9 +730,9 @@ def test_estimate_fee_for_declare_transaction_directly():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=1251,
+            gas_consumed=1252,
             gas_price=1,
-            overall_fee=1251,
+            overall_fee=1252,
         )
     ]
 
@@ -806,9 +806,9 @@ def test_estimate_fee_for_positive():
         "status": "ok",
         "output": [
             {
-                "gas_consumed": "0x4ea",
+                "gas_consumed": "0x4eb",
                 "gas_price": "0xa",
-                "overall_fee": "0x3124",
+                "overall_fee": "0x312e",
             },
         ],
     }
@@ -1567,9 +1567,9 @@ def test_estimate_fee_for_sierra_invoke_function_through_account():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=3716,
+            gas_consumed=3717,
             gas_price=1,
-            overall_fee=3716,
+            overall_fee=3717,
         )
     ]
 
@@ -1619,9 +1619,9 @@ def test_estimate_fee_for_sierra_declare_through_account():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=1251,
+            gas_consumed=1252,
             gas_price=1,
-            overall_fee=1251,
+            overall_fee=1252,
         )
     ]
 
@@ -1694,15 +1694,15 @@ def test_estimate_fee_for_deploy_account():
     assert output == [
         # DEPLOY_ACCOUNT
         FeeEstimation(
-            gas_consumed=3096,
+            gas_consumed=3097,
             gas_price=1,
-            overall_fee=3096,
+            overall_fee=3097,
         ),
         # INVOKE_FUNCTION through deployed account
         FeeEstimation(
-            gas_consumed=3716,
+            gas_consumed=3717,
             gas_price=1,
-            overall_fee=3716,
+            overall_fee=3717,
         ),
     ]
 
@@ -1785,9 +1785,9 @@ def test_estimate_fee_for_deploy_newly_declared_account():
 
     assert output == [
         # DECLARE an account contract class
-        FeeEstimation(overall_fee=1251, gas_price=1, gas_consumed=1251),
+        FeeEstimation(overall_fee=1252, gas_price=1, gas_consumed=1252),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
-        FeeEstimation(overall_fee=3096, gas_price=1, gas_consumed=3096),
+        FeeEstimation(overall_fee=3097, gas_price=1, gas_consumed=3097),
     ]
 
 
@@ -1874,7 +1874,7 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
 
     assert output == [
         # DECLARE an account contract class
-        FeeEstimation(overall_fee=1251, gas_price=1, gas_consumed=1251),
+        FeeEstimation(overall_fee=1252, gas_price=1, gas_consumed=1252),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
         FeeEstimation(overall_fee=3099, gas_price=1, gas_consumed=3099),
     ]
@@ -2286,8 +2286,8 @@ def test_simulate_transaction_succeeds():
             ]
         },
         "fee_estimation": {
-            "gas_consumed": "0xc18",
-            "overall_fee": "0xc18",
+            "gas_consumed": "0xc19",
+            "overall_fee": "0xc19",
             "gas_price": "0x1"
         }
     }
@@ -2367,7 +2367,7 @@ def test_estimate_message_fee_direct_command():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == FeeEstimation(gas_consumed=18328, gas_price=1, overall_fee=18328)
+    assert output == FeeEstimation(gas_consumed=18329, gas_price=1, overall_fee=18329)
 
 
 def test_estimate_message_fee_json():
@@ -2406,11 +2406,11 @@ def test_estimate_message_fee_json():
     con.execute("BEGIN")
 
     (verb, output, _timings) = loop_inner(con, command)
-    assert output == FeeEstimation(gas_consumed=18328, gas_price=1, overall_fee=18328)
+    assert output == FeeEstimation(gas_consumed=18329, gas_price=1, overall_fee=18329)
 
     result = render(command.verb, output)
     assert result == {
-        "gas_consumed": "0x4798",
+        "gas_consumed": "0x4799",
         "gas_price": "0x1",
-        "overall_fee": "0x4798",
+        "overall_fee": "0x4799",
     }
