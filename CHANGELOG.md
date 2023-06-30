@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Sierra class hash not in declared classes sync bug
 
-## Changed
+### Changed
 
 - use all libfunc list instead of experimental for sierra compilation
 
@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - uses `finalized` (reorg-safe) L1 state instead of `latest`
 - `starknet_getEvents` times out for queries involving a large block range
 
-## Changed
+### Changed
 
 - dropped upgrade support for pathfinder v0.4 and earlier
 - separate db connection pools rpc, sync and storage
