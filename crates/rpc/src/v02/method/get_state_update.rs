@@ -107,14 +107,9 @@ mod types {
         pub state_diff: StateDiff,
     }
 
-    impl From<starknet_gateway_types::reply::PendingStateUpdate> for StateUpdate {
-        fn from(x: starknet_gateway_types::reply::PendingStateUpdate) -> Self {
-            Self {
-                block_hash: None,
-                new_root: None,
-                old_root: x.old_root,
-                state_diff: x.state_diff.into(),
-            }
+    impl From<pathfinder_common::StateUpdate> for StateUpdate {
+        fn from(_value: pathfinder_common::StateUpdate) -> Self {
+            todo!()
         }
     }
 

@@ -1,11 +1,11 @@
-use crate::reply::{PendingBlock, PendingStateUpdate};
-use pathfinder_common::{BlockHash, BlockTimestamp};
+use crate::reply::PendingBlock;
+use pathfinder_common::{BlockHash, BlockTimestamp, StateUpdate};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 struct PendingInner {
     pub block: Arc<PendingBlock>,
-    pub state_update: Arc<PendingStateUpdate>,
+    pub state_update: Arc<StateUpdate>,
 }
 
 #[derive(Default, Clone)]
@@ -14,7 +14,7 @@ pub struct PendingData {
 }
 
 impl PendingData {
-    pub async fn set(&self, block: Arc<PendingBlock>, state_update: Arc<PendingStateUpdate>) {
+    pub async fn set(&self, block: Arc<PendingBlock>, state_update: Arc<StateUpdate>) {
         *self.inner.write().await = Some(PendingInner {
             block,
             state_update,
@@ -33,7 +33,7 @@ impl PendingData {
             .map(|inner| inner.block.clone())
     }
 
-    pub async fn state_update(&self) -> Option<Arc<PendingStateUpdate>> {
+    pub async fn state_update(&self) -> Option<Arc<StateUpdate>> {
         self.inner
             .read()
             .await
@@ -43,7 +43,7 @@ impl PendingData {
 
     pub async fn state_update_on_parent_block(
         &self,
-    ) -> Option<(BlockHash, BlockTimestamp, Arc<PendingStateUpdate>)> {
+    ) -> Option<(BlockHash, BlockTimestamp, Arc<StateUpdate>)> {
         let g = self.inner.read().await;
         let inner = g.as_ref()?;
 

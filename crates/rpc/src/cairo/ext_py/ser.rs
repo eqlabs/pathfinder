@@ -2,13 +2,10 @@
 
 use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint,
-    EthereumAddress,
+    EthereumAddress, StateUpdate,
 };
 use starknet_gateway_types::{
-    reply::{
-        state_update::{DeployedContract, StorageDiff},
-        PendingStateUpdate,
-    },
+    reply::state_update::{DeployedContract, StorageDiff},
     request::{BlockHashOrTag, BlockNumberOrTag, Tag},
 };
 use std::{collections::HashMap, fmt::Display};
@@ -104,10 +101,9 @@ impl From<Chain> for UsedChain {
 #[derive(Debug)]
 pub struct ContractUpdatesWrapper<'a>(Option<&'a HashMap<ContractAddress, Vec<StorageDiff>>>);
 
-impl<'a> From<Option<&'a PendingStateUpdate>> for ContractUpdatesWrapper<'a> {
-    fn from(u: Option<&'a PendingStateUpdate>) -> Self {
-        let map = u.map(|x| &x.state_diff.storage_diffs);
-        ContractUpdatesWrapper(map)
+impl<'a> From<Option<&'a StateUpdate>> for ContractUpdatesWrapper<'a> {
+    fn from(_u: Option<&'a StateUpdate>) -> Self {
+        todo!();
     }
 }
 
@@ -168,10 +164,9 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 #[derive(Debug)]
 pub struct DeployedContractsWrapper<'a>(Option<&'a [DeployedContract]>);
 
-impl<'a> From<Option<&'a PendingStateUpdate>> for DeployedContractsWrapper<'a> {
-    fn from(u: Option<&'a PendingStateUpdate>) -> Self {
-        let cs = u.map(|u| u.state_diff.deployed_contracts.as_slice());
-        DeployedContractsWrapper(cs)
+impl<'a> From<Option<&'a StateUpdate>> for DeployedContractsWrapper<'a> {
+    fn from(_u: Option<&'a StateUpdate>) -> Self {
+        todo!();
     }
 }
 
@@ -215,10 +210,9 @@ impl<'a> serde::Serialize for DeployedContractElement<'a> {
 #[derive(Debug)]
 pub struct NoncesWrapper<'a>(Option<&'a HashMap<ContractAddress, ContractNonce>>);
 
-impl<'a> From<Option<&'a PendingStateUpdate>> for NoncesWrapper<'a> {
-    fn from(u: Option<&'a PendingStateUpdate>) -> Self {
-        let ns = u.map(|u| &u.state_diff.nonces);
-        NoncesWrapper(ns)
+impl<'a> From<Option<&'a StateUpdate>> for NoncesWrapper<'a> {
+    fn from(_u: Option<&'a StateUpdate>) -> Self {
+        todo!();
     }
 }
 

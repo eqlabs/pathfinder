@@ -7,11 +7,11 @@ use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
     ContractNonce, ContractRoot, EventCommitment, GasPrice, SequencerAddress, SierraHash,
-    StateCommitment, StorageCommitment, TransactionCommitment,
+    StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::{
-    contract_state::{calculate_contract_state_hash, update_contract_state},
+    contract_state::{calculate_contract_state_hash},
     ClassCommitmentTree, StorageCommitmentTree,
 };
 use pathfinder_rpc::{
@@ -23,13 +23,13 @@ use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use stark_hash::Felt;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::{PendingBlock, PendingStateUpdate};
+use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::{
     pending::PendingData,
-    reply::{state_update::DeployedContract, Block, MaybePendingBlock, StateUpdate},
+    reply::{state_update::DeployedContract, Block, MaybePendingBlock},
 };
 
-use std::{collections::HashMap, future::Future};
+use std::{future::Future};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -62,7 +62,7 @@ pub enum SyncEvent {
         casm_hash: CasmHash,
     },
     /// A new L2 pending update was polled.
-    Pending(Arc<PendingBlock>, Arc<PendingStateUpdate>),
+    Pending(Arc<PendingBlock>, Arc<StateUpdate>),
 }
 
 #[derive(Clone)]
@@ -363,10 +363,9 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 let block_hash = block.block_hash;
                 let block_timestamp = block.timestamp;
                 let storage_updates: usize = state_update
-                    .state_diff
-                    .storage_diffs
-                    .values()
-                    .map(|storage_diffs| storage_diffs.len())
+                    .contract_updates
+                    .iter()
+                    .map(|x| x.1.storage.len())
                     .sum();
                 let update_t = std::time::Instant::now();
                 l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
@@ -686,7 +685,7 @@ async fn l2_update(
             .insert_block_header(&header)
             .context("Inserting block header into database")?;
 
-        let rpc_state_update: pathfinder_storage::types::StateUpdate = state_update.into();
+        let rpc_state_update: pathfinder_storage::types::StateUpdate = todo!();
 
         // Insert the transactions.
         anyhow::ensure!(
@@ -798,82 +797,84 @@ fn update_starknet_state(
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
         .context("Loading storage trie")?;
 
-    for contract in &state_update.state_diff.deployed_contracts {
-        deploy_contract(transaction, &mut storage_commitment_tree, contract)
-            .context("Deploying contract")?;
-    }
+    todo!();
+
+    // for contract in &state_update.state_diff.deployed_contracts {
+    //     deploy_contract(transaction, &mut storage_commitment_tree, contract)
+    //         .context("Deploying contract")?;
+    // }
 
     // Copied so we can mutate the map. This lets us remove used nonces from the list.
-    let mut nonces = state_update.state_diff.nonces.clone();
+    // let mut nonces = state_update.state_diff.nonces.clone();
 
-    let mut replaced_classes = state_update
-        .state_diff
-        .replaced_classes
-        .iter()
-        .map(|r| (r.address, r.class_hash))
-        .collect::<HashMap<_, _>>();
+    // let mut replaced_classes = state_update
+    //     .state_diff
+    //     .replaced_classes
+    //     .iter()
+    //     .map(|r| (r.address, r.class_hash))
+    //     .collect::<HashMap<_, _>>();
 
-    // Apply contract storage updates.
-    for (contract_address, updates) in &state_update.state_diff.storage_diffs {
-        // Remove the nonce so we don't update it again in the next stage.
-        let nonce = nonces.remove(contract_address);
-        // Remove from replaced classes so we don't update it again in the next stage.
-        let replaced_class_hash = replaced_classes.remove(contract_address);
+    // // Apply contract storage updates.
+    // for (contract_address, updates) in &state_update.state_diff.storage_diffs {
+    //     // Remove the nonce so we don't update it again in the next stage.
+    //     let nonce = nonces.remove(contract_address);
+    //     // Remove from replaced classes so we don't update it again in the next stage.
+    //     let replaced_class_hash = replaced_classes.remove(contract_address);
 
-        let contract_state_hash = update_contract_state(
-            *contract_address,
-            updates,
-            nonce,
-            replaced_class_hash,
-            &storage_commitment_tree,
-            transaction,
-        )
-        .context("Update contract state")?;
+    //     let contract_state_hash = update_contract_state(
+    //         *contract_address,
+    //         updates,
+    //         nonce,
+    //         replaced_class_hash,
+    //         &storage_commitment_tree,
+    //         transaction,
+    //     )
+    //     .context("Update contract state")?;
 
-        // Update the global state tree.
-        storage_commitment_tree
-            .set(*contract_address, contract_state_hash)
-            .context("Updating storage commitment tree")?;
-    }
+    //     // Update the global state tree.
+    //     storage_commitment_tree
+    //         .set(*contract_address, contract_state_hash)
+    //         .context("Updating storage commitment tree")?;
+    // }
 
-    // Apply all remaining nonces (without storage updates).
-    for (contract_address, nonce) in nonces {
-        // Remove from replaced classes so we don't update it again in the next stage.
-        let replaced_class_hash = replaced_classes.remove(&contract_address);
+    // // Apply all remaining nonces (without storage updates).
+    // for (contract_address, nonce) in nonces {
+    //     // Remove from replaced classes so we don't update it again in the next stage.
+    //     let replaced_class_hash = replaced_classes.remove(&contract_address);
 
-        let contract_state_hash = update_contract_state(
-            contract_address,
-            &[],
-            Some(nonce),
-            replaced_class_hash,
-            &storage_commitment_tree,
-            transaction,
-        )
-        .context("Update contract nonce")?;
+    //     let contract_state_hash = update_contract_state(
+    //         contract_address,
+    //         &[],
+    //         Some(nonce),
+    //         replaced_class_hash,
+    //         &storage_commitment_tree,
+    //         transaction,
+    //     )
+    //     .context("Update contract nonce")?;
 
-        // Update the global state tree.
-        storage_commitment_tree
-            .set(contract_address, contract_state_hash)
-            .context("Updating storage commitment tree")?;
-    }
+    //     // Update the global state tree.
+    //     storage_commitment_tree
+    //         .set(contract_address, contract_state_hash)
+    //         .context("Updating storage commitment tree")?;
+    // }
 
-    // Apply all remaining replaced classes.
-    for (contract_address, new_class_hash) in replaced_classes {
-        let contract_state_hash = update_contract_state(
-            contract_address,
-            &[],
-            None,
-            Some(new_class_hash),
-            &storage_commitment_tree,
-            transaction,
-        )
-        .context("Update contract nonce")?;
+    // // Apply all remaining replaced classes.
+    // for (contract_address, new_class_hash) in replaced_classes {
+    //     let contract_state_hash = update_contract_state(
+    //         contract_address,
+    //         &[],
+    //         None,
+    //         Some(new_class_hash),
+    //         &storage_commitment_tree,
+    //         transaction,
+    //     )
+    //     .context("Update contract nonce")?;
 
-        // Update the global state tree.
-        storage_commitment_tree
-            .set(contract_address, contract_state_hash)
-            .context("Updating storage commitment tree")?;
-    }
+    //     // Update the global state tree.
+    //     storage_commitment_tree
+    //         .set(contract_address, contract_state_hash)
+    //         .context("Updating storage commitment tree")?;
+    // }
 
     // Apply storage commitment tree changes.
     let (new_storage_commitment, nodes) = storage_commitment_tree
@@ -887,19 +888,19 @@ fn update_starknet_state(
     // Add new Sierra classes to class commitment tree.
     let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment);
 
-    for sierra_class in &state_update.state_diff.declared_classes {
-        let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(
-            sierra_class.compiled_class_hash,
-        );
+    // for sierra_class in &state_update.state_diff.declared_classes {
+    //     let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(
+    //         sierra_class.compiled_class_hash,
+    //     );
 
-        transaction
-            .insert_class_commitment_leaf(&leaf_hash, &sierra_class.compiled_class_hash)
-            .context("Adding class commitment leaf")?;
+    //     transaction
+    //         .insert_class_commitment_leaf(&leaf_hash, &sierra_class.compiled_class_hash)
+    //         .context("Adding class commitment leaf")?;
 
-        class_commitment_tree
-            .set(sierra_class.class_hash, leaf_hash)
-            .context("Update class commitment tree")?;
-    }
+    //     class_commitment_tree
+    //         .set(sierra_class.class_hash, leaf_hash)
+    //         .context("Update class commitment tree")?;
+    // }
 
     // Apply all class commitment tree changes.
     let (class_commitment, nodes) = class_commitment_tree
@@ -940,13 +941,13 @@ mod tests {
     use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
     use pathfinder_common::{
         felt_bytes, BlockHash, BlockHeader, BlockNumber, CasmHash, ClassHash, EventCommitment,
-        SierraHash, StateCommitment, TransactionCommitment,
+        SierraHash, StateCommitment, StateUpdate, TransactionCommitment,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
     use stark_hash::Felt;
     use starknet_gateway_types::reply::state_update::StateDiff;
-    use starknet_gateway_types::reply::{Block, StateUpdate};
+    use starknet_gateway_types::reply::Block;
     use starknet_gateway_types::{pending::PendingData, reply};
     use std::sync::Arc;
 
@@ -977,12 +978,12 @@ mod tests {
         let timings = l2::Timings::default();
         let mut parent_state_commitment = StateCommitment::ZERO;
         for header in headers {
-            let state_update = Box::new(StateUpdate {
-                block_hash: header.hash,
-                new_root: header.state_commitment,
-                old_root: parent_state_commitment,
-                state_diff: StateDiff::default(),
-            });
+            let state_update = Box::new(
+                StateUpdate::default()
+                    .with_block_hash(header.hash)
+                    .with_parent_state_commitment(parent_state_commitment)
+                    .with_state_commitment(header.state_commitment),
+            );
 
             let block = Box::new(reply::Block {
                 block_hash: header.hash,

@@ -165,8 +165,8 @@ pub mod test_utils {
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash,
         ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData,
-        EventKey, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StorageAddress,
-        StorageCommitment, TransactionHash, TransactionIndex, TransactionVersion,
+        EventKey, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateCommitment,
+        StorageAddress, StorageCommitment, TransactionHash, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
@@ -617,10 +617,8 @@ pub mod test_utils {
         let state_diff = starknet_gateway_types::reply::state_update::StateDiff {
             storage_diffs,
             deployed_contracts,
-            old_declared_contracts: Vec::new(),
-            declared_classes: Vec::new(),
-            nonces: std::collections::HashMap::new(),
             replaced_classes,
+            ..Default::default()
         };
 
         // The class definitions must be inserted into the database.
@@ -640,14 +638,16 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        let state_update = starknet_gateway_types::reply::PendingStateUpdate {
+        let state_update = starknet_gateway_types::reply::StateUpdate {
             old_root: latest.state_commitment,
             state_diff,
+            block_hash: BlockHash::default(),
+            new_root: StateCommitment::default(),
         };
 
         let pending_data = PendingData::default();
         pending_data
-            .set(Arc::new(block), Arc::new(state_update))
+            .set(Arc::new(block), Arc::new(state_update.into()))
             .await;
         pending_data
     }

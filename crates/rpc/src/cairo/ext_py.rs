@@ -19,8 +19,8 @@ use crate::v02::types::reply::FeeEstimate;
 use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
-use pathfinder_common::{BlockTimestamp, CallResultValue, ClassHash, EthereumAddress};
-use starknet_gateway_types::{reply::PendingStateUpdate, request::add_transaction};
+use pathfinder_common::{BlockTimestamp, CallResultValue, ClassHash, EthereumAddress, StateUpdate};
+use starknet_gateway_types::request::add_transaction;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -56,7 +56,7 @@ impl Handle {
         &self,
         call: Call,
         at_block: BlockHashNumberOrLatest,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
     ) -> Result<Vec<CallResultValue>, CallFailure> {
         use tracing::field::Empty;
@@ -93,7 +93,7 @@ impl Handle {
         transactions: Vec<BroadcastedTransaction>,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
     ) -> Result<Vec<FeeEstimate>, CallFailure> {
         use tracing::field::Empty;
@@ -134,7 +134,7 @@ impl Handle {
         message: Call,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
     ) -> Result<FeeEstimate, CallFailure> {
         use tracing::field::Empty;
@@ -169,7 +169,7 @@ impl Handle {
         &self,
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
         transactions: Vec<BroadcastedTransaction>,
         skip_validate: bool,
@@ -365,7 +365,7 @@ enum Command {
         call: Call,
         at_block: BlockHashNumberOrLatest,
         chain: UsedChain,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<Vec<CallResultValue>, CallFailure>>,
     },
@@ -374,7 +374,7 @@ enum Command {
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         chain: UsedChain,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<Vec<FeeEstimate>, CallFailure>>,
     },
@@ -384,7 +384,7 @@ enum Command {
         at_block: BlockHashNumberOrLatest,
         gas_price: GasPriceSource,
         chain: UsedChain,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<FeeEstimate, CallFailure>>,
     },
@@ -394,7 +394,7 @@ enum Command {
         skip_validate: bool,
         gas_price: GasPriceSource,
         chain: UsedChain,
-        diffs: Option<Arc<PendingStateUpdate>>,
+        diffs: Option<Arc<StateUpdate>>,
         block_timestamp: Option<BlockTimestamp>,
         response: oneshot::Sender<Result<Vec<TransactionSimulation>, CallFailure>>,
     },
@@ -508,7 +508,7 @@ mod tests {
         felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam,
         CallResultValue, Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
         ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice, StateCommitment,
-        StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
+        StateUpdate, StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{
@@ -794,7 +794,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn call_with_pending_updates() {
-        use starknet_gateway_types::{reply::PendingStateUpdate, request::Tag};
+        use starknet_gateway_types::request::Tag;
 
         let db_file = tempfile::NamedTempFile::new().unwrap();
 
@@ -847,27 +847,12 @@ mod tests {
 
         assert_eq!(res, &[CallResultValue(Felt::from(3u64))]);
 
-        let update = std::sync::Arc::new(PendingStateUpdate {
-            old_root: StateCommitment(Felt::ZERO),
-            state_diff: starknet_gateway_types::reply::state_update::StateDiff {
-                storage_diffs: {
-                    let mut map = std::collections::HashMap::new();
-                    map.insert(
-                        target_contract,
-                        vec![starknet_gateway_types::reply::state_update::StorageDiff {
-                            key: StorageAddress::new_or_panic(storage_address),
-                            value: StorageValue(felt!("0x4")),
-                        }],
-                    );
-                    map
-                },
-                deployed_contracts: vec![],
-                old_declared_contracts: vec![],
-                declared_classes: vec![],
-                nonces: std::collections::HashMap::new(),
-                replaced_classes: vec![],
-            },
-        });
+        let update = StateUpdate::default().with_storage_update(
+            target_contract,
+            StorageAddress::new_or_panic(storage_address),
+            StorageValue(felt!("0x4")),
+        );
+        let update = std::sync::Arc::new(update);
 
         let res = handle
             .call(call, Tag::Latest.try_into().unwrap(), Some(update), None)

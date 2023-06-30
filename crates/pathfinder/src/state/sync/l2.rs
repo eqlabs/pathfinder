@@ -4,14 +4,14 @@ use crate::state::sync::{pending, SyncEvent};
 use anyhow::{anyhow, Context};
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
-    StateCommitment, TransactionCommitment,
+    StateCommitment, StateUpdate, TransactionCommitment,
 };
 use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
     error::SequencerError,
-    reply::{state_update::StateDiff, Block, MaybePendingStateUpdate, Status},
+    reply::{Block, Status},
     transaction_hash::verify,
 };
 use std::collections::HashMap;
@@ -214,9 +214,7 @@ where
 
         let state_update = match next_state_update {
             // Reuse the next full state update if we got it for free when polling pending
-            Some(state_update) if state_update.block_hash == block_hash => {
-                MaybePendingStateUpdate::StateUpdate(state_update)
-            }
+            Some(state_update) if state_update.block_hash == block_hash => state_update,
             // We were unlucky or poll pending is disabled
             Some(_) | None => sequencer
                 .state_update(block_hash.into())
@@ -224,12 +222,10 @@ where
                 .with_context(|| format!("Fetch state diff for block {next:?} from sequencer"))?,
         };
 
-        let state_update = match state_update {
-            MaybePendingStateUpdate::StateUpdate(su) => su,
-            MaybePendingStateUpdate::Pending(_) => {
-                anyhow::bail!("Sequencer returned `pending` state update")
-            }
-        };
+        anyhow::ensure!(
+            state_update.block_hash != BlockHash::ZERO,
+            "Gateway returned `pending` state update"
+        );
 
         // An extra sanity check for the state update API.
         anyhow::ensure!(
@@ -243,7 +239,7 @@ where
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
         download_new_classes(
-            &state_update.state_diff,
+            &state_update,
             &sequencer,
             &tx_event,
             chain,
@@ -254,8 +250,8 @@ where
         .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
 
-        head = Some((next, block_hash, state_update.new_root));
-        blocks.push(next, block_hash, state_update.new_root);
+        head = Some((next, block_hash, state_update.state_commitment));
+        blocks.push(next, block_hash, state_update.state_commitment);
 
         let timings = Timings {
             block_download: t_block,
@@ -292,25 +288,26 @@ where
 /// that were _failing_ but the sequencer has still added the class to its list of
 /// known classes...
 pub async fn download_new_classes(
-    state_diff: &StateDiff,
+    state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
     tx_event: &mpsc::Sender<SyncEvent>,
     chain: Chain,
     version: &StarknetVersion,
     storage: Storage,
 ) -> Result<(), anyhow::Error> {
-    let deployed_classes = state_diff.deployed_contracts.iter().map(|x| x.class_hash);
-    let declared_cairo_classes = state_diff.old_declared_contracts.iter().cloned();
-    let declared_sierra_classes = state_diff
-        .declared_classes
+    let deployed_classes = state_update
+        .contract_updates
         .iter()
-        .map(|x| ClassHash(x.class_hash.0));
-    let replaced_classes = state_diff.replaced_classes.iter().map(|x| x.class_hash);
+        .filter_map(|x| x.1.class);
+    let declared_cairo_classes = state_update.declared_cairo_classes.iter().cloned();
+    let declared_sierra_classes = state_update
+        .declared_sierra_classes
+        .keys()
+        .map(|x| ClassHash(x.0));
 
     let new_classes = deployed_classes
         .chain(declared_cairo_classes)
         .chain(declared_sierra_classes)
-        .chain(replaced_classes)
         // Get unique class hashes only. Its unlikely they would have dupes here, but rather safe than sorry.
         .collect::<HashSet<_>>()
         .into_iter()
@@ -366,15 +363,11 @@ pub async fn download_new_classes(
             } => {
                 // NOTE: we _have_ to use the same compiled_class_class hash as returned by the feeder gateway,
                 // since that's what has been added to the class commitment tree.
-                let Some(casm_hash) = state_diff
-                    .declared_classes
+                let Some(casm_hash) = state_update
+                    .declared_sierra_classes
                     .iter()
-                    .find_map(|declared_class| {
-                        if declared_class.class_hash.0 == class_hash.0 {
-                            Some(declared_class.compiled_class_hash)
-                        } else {
-                            None
-                        }
+                    .find_map(|(sierra, casm)| {
+                        (sierra.0 == class_hash.0).then_some(*casm)
                     }) else {
                         // This can occur if the sierra was in here as a deploy contract, if the class was
                         // declared in a previous block but not yet persisted by the database.
@@ -586,6 +579,7 @@ async fn reorg(
 mod tests {
     mod sync {
         use crate::state::l2::{BlockChain, L2SyncContext};
+        use pathfinder_common::StateUpdate;
 
         use super::super::{sync, BlockValidationMode, SyncEvent};
         use assert_matches::assert_matches;
@@ -602,7 +596,7 @@ mod tests {
             error::{KnownStarknetErrorCode, SequencerError, StarknetError},
             reply,
         };
-        use std::{collections::HashMap, time::Duration};
+        use std::{time::Duration};
         use tokio::{sync::mpsc, task::JoinHandle};
 
         const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;
@@ -757,126 +751,53 @@ mod tests {
                 starknet_version: StarknetVersion::new(0, 9, 2),
             };
 
-            static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {
-                block_hash: *BLOCK0_HASH,
-                new_root: *GLOBAL_ROOT0,
-                old_root: StateCommitment(Felt::ZERO),
-                state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::DeployedContract {
-                        address: *CONTRACT0_ADDR,
-                        class_hash: *CONTRACT0_HASH,
-                    }],
-                    storage_diffs: HashMap::from([(
-                     *CONTRACT0_ADDR,
-                        vec![reply::state_update::StorageDiff {
-                            key: *STORAGE_KEY0,
-                            value: *STORAGE_VAL0,
-                        }],
-                    )]),
-                    old_declared_contracts: vec![],
-                    declared_classes: vec![],
-                    nonces: HashMap::new(),
-                    replaced_classes: vec![],
-                },
+            static ref STATE_UPDATE0: StateUpdate = {
+                StateUpdate::default()
+                    .with_block_hash(*BLOCK0_HASH)
+                    .with_state_commitment(*GLOBAL_ROOT0)
+                    .with_deployed_contract(*CONTRACT0_ADDR, *CONTRACT0_HASH)
+                    .with_storage_update(*CONTRACT0_ADDR, *STORAGE_KEY0, *STORAGE_VAL0)
             };
-            static ref STATE_UPDATE0_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: *BLOCK0_HASH_V2,
-                new_root: *GLOBAL_ROOT0_V2,
-                old_root: StateCommitment(Felt::ZERO),
-                state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::DeployedContract {
-                        address: *CONTRACT0_ADDR_V2,
-                        class_hash: *CONTRACT0_HASH_V2,
-                    }],
-                    storage_diffs: HashMap::new(),
-                    old_declared_contracts: vec![],
-                    declared_classes: vec![],
-                    nonces: HashMap::new(),
-                    replaced_classes: vec![],
-                },
+            static ref STATE_UPDATE0_V2: StateUpdate = {
+                StateUpdate::default()
+                    .with_block_hash(*BLOCK0_HASH_V2)
+                    .with_state_commitment(*GLOBAL_ROOT0_V2)
+                    .with_deployed_contract(*CONTRACT0_ADDR_V2, *CONTRACT0_HASH_V2)
             };
-            static ref STATE_UPDATE1: reply::StateUpdate = reply::StateUpdate {
-                block_hash: *BLOCK1_HASH,
-                new_root: *GLOBAL_ROOT1,
-                old_root: *GLOBAL_ROOT0,
-                state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![reply::state_update::DeployedContract {
-                        address: *CONTRACT1_ADDR,
-                        class_hash: *CONTRACT1_HASH,
-                    }],
-                    storage_diffs: HashMap::from([
-                        (
-                            *CONTRACT0_ADDR,
-                            vec![reply::state_update::StorageDiff {
-                                key: *STORAGE_KEY0,
-                                value: *STORAGE_VAL0_V2,
-                            }],
-                        ),
-                        (
-                            *CONTRACT1_ADDR,
-                            vec![reply::state_update::StorageDiff {
-                                key: *STORAGE_KEY1,
-                                value: *STORAGE_VAL1,
-                            }],
-                        ),
-                    ]),
-                    old_declared_contracts: vec![],
-                    declared_classes: vec![],
-                    nonces: HashMap::new(),
-                    replaced_classes: vec![],
-                },
+
+            static ref STATE_UPDATE1: StateUpdate = {
+                StateUpdate::default()
+                    .with_block_hash(*BLOCK1_HASH)
+                    .with_state_commitment(*GLOBAL_ROOT1)
+                    .with_parent_state_commitment(*GLOBAL_ROOT0)
+                    .with_deployed_contract(*CONTRACT1_ADDR, *CONTRACT1_HASH)
+                    .with_storage_update(*CONTRACT0_ADDR, *STORAGE_KEY0, *STORAGE_VAL0_V2)
+                    .with_storage_update(*CONTRACT1_ADDR, *STORAGE_KEY1, *STORAGE_VAL1)
             };
-            static ref STATE_UPDATE1_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: *BLOCK1_HASH_V2,
-                new_root: *GLOBAL_ROOT1_V2,
-                old_root: *GLOBAL_ROOT0_V2,
-                state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![],
-                    storage_diffs: HashMap::new(),
-                    old_declared_contracts: vec![],
-                    declared_classes: vec![],
-                    nonces: HashMap::new(),
-                    replaced_classes: vec![],
-                },
+
+            static ref STATE_UPDATE1_V2: StateUpdate = {
+                StateUpdate::default()
+                    .with_block_hash(*BLOCK1_HASH_V2)
+                    .with_state_commitment(*GLOBAL_ROOT1_V2)
+                    .with_parent_state_commitment(*GLOBAL_ROOT0_V2)
             };
-            static ref STATE_UPDATE2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: *BLOCK2_HASH,
-                new_root: *GLOBAL_ROOT2,
-                old_root: *GLOBAL_ROOT1,
-                state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![],
-                    storage_diffs: HashMap::new(),
-                    old_declared_contracts: vec![],
-                    declared_classes: vec![],
-                    nonces: HashMap::new(),
-                    replaced_classes: vec![],
-                },
+            static ref STATE_UPDATE2: StateUpdate = {
+                StateUpdate::default()
+                    .with_block_hash(*BLOCK2_HASH)
+                    .with_state_commitment(*GLOBAL_ROOT2)
+                    .with_parent_state_commitment(*GLOBAL_ROOT1)
             };
-            static ref STATE_UPDATE2_V2: reply::StateUpdate = reply::StateUpdate {
-                block_hash: *BLOCK2_HASH_V2,
-                new_root: *GLOBAL_ROOT2_V2,
-                old_root: *GLOBAL_ROOT1_V2,
-                state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![],
-                    storage_diffs: HashMap::new(),
-                    old_declared_contracts: vec![],
-                    declared_classes: vec![],
-                    nonces: HashMap::new(),
-                    replaced_classes: vec![],
-                },
+            static ref STATE_UPDATE2_V2: StateUpdate = {
+                StateUpdate::default()
+                    .with_block_hash(*BLOCK2_HASH_V2)
+                    .with_state_commitment(*GLOBAL_ROOT2_V2)
+                    .with_parent_state_commitment(*GLOBAL_ROOT1_V2)
             };
-            static ref STATE_UPDATE3: reply::StateUpdate = reply::StateUpdate {
-                block_hash: *BLOCK3_HASH,
-                new_root: *GLOBAL_ROOT3,
-                old_root: *GLOBAL_ROOT2,
-                state_diff: reply::state_update::StateDiff {
-                    deployed_contracts: vec![],
-                    storage_diffs: HashMap::new(),
-                    old_declared_contracts: vec![],
-                    declared_classes: vec![],
-                    nonces: HashMap::new(),
-                    replaced_classes: vec![],
-                },
+            static ref STATE_UPDATE3: StateUpdate = {
+                StateUpdate::default()
+                    .with_block_hash(*BLOCK3_HASH)
+                    .with_state_commitment(*GLOBAL_ROOT3)
+                    .with_parent_state_commitment(*GLOBAL_ROOT2)
             };
         }
 
@@ -901,7 +822,7 @@ mod tests {
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
             block: BlockId,
-            returned_result: Result<reply::StateUpdate, SequencerError>,
+            returned_result: Result<StateUpdate, SequencerError>,
         ) {
             use mockall::predicate::eq;
 
@@ -909,7 +830,7 @@ mod tests {
                 .with(eq(block))
                 .times(1)
                 .in_sequence(seq)
-                .return_once(|_| returned_result.map(reply::MaybePendingStateUpdate::StateUpdate));
+                .return_once(|_| returned_result);
         }
 
         /// Convenience wrapper
@@ -1430,8 +1351,7 @@ mod tests {
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _) => {
                     assert_eq!(*block, block1_v2);
-                    assert!(state_update.state_diff.deployed_contracts.is_empty());
-                    assert!(state_update.state_diff.storage_diffs.is_empty());
+                    assert!(state_update.contract_updates.is_empty());
                 });
             }
 

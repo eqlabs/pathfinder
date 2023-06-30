@@ -13,8 +13,8 @@ pub(crate) use simulate_transaction::simulate_transaction;
 pub(crate) mod common {
     use std::sync::Arc;
 
-    use pathfinder_common::{BlockId, BlockTimestamp};
-    use starknet_gateway_types::{pending::PendingData, reply::PendingStateUpdate};
+    use pathfinder_common::{BlockId, BlockTimestamp, StateUpdate};
+    use starknet_gateway_types::pending::PendingData;
 
     use crate::{
         cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource, Handle},
@@ -30,7 +30,7 @@ pub(crate) mod common {
             GasPriceSource,
             BlockHashNumberOrLatest,
             Option<BlockTimestamp>,
-            Option<Arc<PendingStateUpdate>>,
+            Option<Arc<StateUpdate>>,
         ),
         anyhow::Error,
     > {
@@ -75,7 +75,7 @@ pub(crate) mod common {
         (
             BlockHashNumberOrLatest,
             Option<BlockTimestamp>,
-            Option<Arc<starknet_gateway_types::reply::PendingStateUpdate>>,
+            Option<Arc<StateUpdate>>,
         ),
         anyhow::Error,
     > {

@@ -1,6 +1,6 @@
-use pathfinder_common::Chain;
+use pathfinder_common::{Chain, StateUpdate};
 use pathfinder_storage::Storage;
-use starknet_gateway_types::reply::{Block, StateUpdate};
+use starknet_gateway_types::reply::Block;
 
 use crate::state::sync::SyncEvent;
 
@@ -29,7 +29,7 @@ pub async fn poll_pending(
     use std::sync::Arc;
 
     loop {
-        use starknet_gateway_types::reply::{MaybePendingBlock, MaybePendingStateUpdate};
+        use starknet_gateway_types::reply::MaybePendingBlock;
 
         let block = match sequencer
             .block(BlockId::Pending)
@@ -76,24 +76,17 @@ pub async fn poll_pending(
         }
         .context("Downloading pending state update")?;
 
-        let state_update = match state_update {
-            MaybePendingStateUpdate::StateUpdate(state_update) => {
-                tracing::trace!("Found full state update, exiting pending mode.");
-                return Ok((None, Some(state_update)));
-            }
-            MaybePendingStateUpdate::Pending(pending_state_update) => {
-                if pending_state_update.old_root != head.1 {
-                    tracing::trace!(pending=%pending_state_update.old_root, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
-                    return Ok((None, None));
-                }
-
-                pending_state_update
-            }
-        };
+        if state_update.block_hash != pathfinder_common::BlockHash::ZERO {
+            tracing::trace!("Found full state update, exiting pending mode.");
+            return Ok((None, Some(state_update)));
+        } else if state_update.parent_state_commitment != head.1 {
+            tracing::trace!(pending=%state_update.parent_state_commitment, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
+            return Ok((None, None));
+        }
 
         // Download, process and emit all missing classes.
         super::l2::download_new_classes(
-            &state_update.state_diff,
+            &state_update,
             sequencer,
             &tx_event,
             chain,
@@ -121,14 +114,11 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice,
-        SequencerAddress, StarknetVersion, StateCommitment,
+        SequencerAddress, StarknetVersion, StateCommitment, StateUpdate,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
-    use starknet_gateway_types::reply::{
-        state_update::StateDiff, Block, MaybePendingBlock, MaybePendingStateUpdate, PendingBlock,
-        PendingStateUpdate, StateUpdate, Status,
-    };
+    use starknet_gateway_types::reply::{Block, MaybePendingBlock, PendingBlock, Status};
 
     lazy_static::lazy_static!(
         pub static ref PARENT_HASH: BlockHash =  BlockHash(felt!("0x1234"));
@@ -148,16 +138,8 @@ mod tests {
             starknet_version: StarknetVersion::default(),
         };
 
-        pub static ref PENDING_DIFF: PendingStateUpdate = PendingStateUpdate {
-            old_root: *PARENT_ROOT,
-            state_diff: StateDiff {
-                storage_diffs: std::collections::HashMap::new(),
-                deployed_contracts: Vec::new(),
-                old_declared_contracts: Vec::new(),
-                declared_classes: Vec::new(),
-                nonces: std::collections::HashMap::new(),
-                replaced_classes: Vec::new(),
-            }
+        pub static ref PENDING_UPDATE: StateUpdate = {
+            StateUpdate::default().with_parent_state_commitment(*PARENT_ROOT)
         };
 
         pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
@@ -187,7 +169,7 @@ mod tests {
             .returning(move |_| Ok(MaybePendingBlock::Block(NEXT_BLOCK.clone())));
         sequencer
             .expect_state_update()
-            .returning(move |_| Ok(MaybePendingStateUpdate::Pending(PENDING_DIFF.clone())));
+            .returning(move |_| Ok(PENDING_UPDATE.clone()));
 
         let jh = tokio::spawn(async move {
             poll_pending(
@@ -216,21 +198,18 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         // Construct some full diff
-        let pending_diff = PENDING_DIFF.clone();
-        let full_diff = StateUpdate {
-            block_hash: NEXT_BLOCK.block_hash,
-            new_root: StateCommitment(felt!("0x12")),
-            old_root: pending_diff.old_root,
-            state_diff: pending_diff.state_diff,
-        };
-        let full_diff0 = full_diff.clone();
+        let full_diff = PENDING_UPDATE
+            .clone()
+            .with_block_hash(NEXT_BLOCK.block_hash)
+            .with_state_commitment(StateCommitment(felt!("0x12")));
+        let full_diff_copy = full_diff.clone();
 
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
-            .returning(move |_| Ok(MaybePendingStateUpdate::StateUpdate(full_diff0.clone())));
+            .returning(move |_| Ok(full_diff_copy.clone()));
 
         let jh = tokio::spawn(async move {
             poll_pending(
@@ -265,7 +244,7 @@ mod tests {
             .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));
         sequencer
             .expect_state_update()
-            .returning(move |_| Ok(MaybePendingStateUpdate::Pending(PENDING_DIFF.clone())));
+            .returning(move |_| Ok(PENDING_UPDATE.clone()));
 
         let jh = tokio::spawn(async move {
             poll_pending(
@@ -295,11 +274,12 @@ mod tests {
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
-        let mut disconnected_diff = PENDING_DIFF.clone();
-        disconnected_diff.old_root = StateCommitment(felt_bytes!(b"different old root"));
+        let disconnected_diff = PENDING_UPDATE
+            .clone()
+            .with_parent_state_commitment(StateCommitment(felt_bytes!(b"different old root")));
         sequencer
             .expect_state_update()
-            .returning(move |_| Ok(MaybePendingStateUpdate::Pending(disconnected_diff.clone())));
+            .returning(move |_| Ok(disconnected_diff.clone()));
 
         let jh = tokio::spawn(async move {
             poll_pending(
@@ -330,7 +310,7 @@ mod tests {
             .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
-            .returning(move |_| Ok(MaybePendingStateUpdate::Pending(PENDING_DIFF.clone())));
+            .returning(move |_| Ok(PENDING_UPDATE.clone()));
 
         let _jh = tokio::spawn(async move {
             poll_pending(
@@ -349,6 +329,6 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_DIFF);
+        assert_matches!(result, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_UPDATE);
     }
 }
