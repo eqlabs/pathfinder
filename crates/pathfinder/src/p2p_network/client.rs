@@ -194,12 +194,28 @@ impl GatewayApi for HybridClient {
         &self,
         class_hash: ClassHash,
     ) -> Result<bytes::Bytes, SequencerError> {
+        use error::class_not_found;
+
         match self {
             HybridClient::Bootstrap { sequencer, .. } => {
                 sequencer.pending_class_by_hash(class_hash).await
             }
-            HybridClient::NonPropagating { .. } => {
-                unreachable!("pending should be disabled when p2p is enabled")
+            HybridClient::NonPropagating { p2p_client, .. } => {
+                let mut classes = p2p_client
+                    .contract_classes(vec![class_hash])
+                    .await
+                    .map_err(class_not_found)?
+                    .classes;
+
+                if classes.len() != 1 {
+                    return Err(class_not_found(format!(
+                        "Classes len is {}, expected 1",
+                        classes.len()
+                    )));
+                }
+
+                let p2p_proto::common::RawClass { class } = classes.swap_remove(0);
+                Ok(class.into())
             }
         }
     }

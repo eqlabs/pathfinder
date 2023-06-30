@@ -13,6 +13,7 @@ use tracing::Instrument;
 pub mod client;
 mod sync_handlers;
 
+// Silence clippy
 pub type P2PNetworkHandle = (
     Arc<RwLock<Peers>>,
     SyncClient,
