@@ -62,6 +62,7 @@ fn get_state_update_from_storage(
 
 mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
+    use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::{
         BlockHash, ClassHash, ContractAddress, ContractNonce, StateCommitment, StorageAddress,
         StorageValue,
@@ -89,8 +90,81 @@ mod types {
     }
 
     impl From<pathfinder_common::StateUpdate> for StateUpdate {
-        fn from(_value: pathfinder_common::StateUpdate) -> Self {
-            todo!()
+        fn from(value: pathfinder_common::StateUpdate) -> Self {
+            let mut storage_diffs = Vec::new();
+            let mut deployed_contracts = Vec::new();
+            let mut nonces = Vec::new();
+
+            for (contract_address, update) in value.contract_updates {
+                if let Some(nonce) = update.nonce {
+                    nonces.push(Nonce {
+                        contract_address,
+                        nonce,
+                    });
+                }
+
+                if let Some(ContractClassUpdate::Deploy(class_hash)) = update.class {
+                    deployed_contracts.push(DeployedContract {
+                        address: contract_address,
+                        class_hash,
+                    });
+                }
+
+                let storage_entries = update
+                    .storage
+                    .into_iter()
+                    .map(|(key, value)| StorageEntry { key, value })
+                    .collect();
+
+                storage_diffs.push(StorageDiff {
+                    address: contract_address,
+                    storage_entries,
+                });
+            }
+
+            for (address, update) in value.system_contract_updates {
+                let storage_entries = update
+                    .storage
+                    .into_iter()
+                    .map(|(key, value)| StorageEntry { key, value })
+                    .collect();
+
+                storage_diffs.push(StorageDiff {
+                    address,
+                    storage_entries,
+                });
+            }
+
+            let declared_contract_hashes = value
+                .declared_sierra_classes
+                .into_iter()
+                .map(|(class_hash, _)| ClassHash(class_hash.0))
+                .chain(value.declared_cairo_classes.iter().copied())
+                .collect();
+
+            let state_diff = StateDiff {
+                storage_diffs,
+                declared_contract_hashes,
+                deployed_contracts,
+                nonces,
+            };
+
+            let block_hash = match value.block_hash {
+                BlockHash::ZERO => None,
+                other => Some(other),
+            };
+
+            let new_root = match value.state_commitment {
+                StateCommitment::ZERO => None,
+                other => Some(other),
+            };
+
+            StateUpdate {
+                block_hash,
+                new_root,
+                old_root: value.parent_state_commitment,
+                state_diff,
+            }
         }
     }
 

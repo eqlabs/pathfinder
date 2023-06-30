@@ -358,6 +358,16 @@ fn storage_to_gateway(
         storage_diffs.insert(address, storage);
     }
 
+    for (address, update) in state_update.system_contract_updates {
+        let storage = update
+            .storage
+            .into_iter()
+            .map(|(key, value)| StorageDiff { key, value })
+            .collect();
+
+        storage_diffs.insert(address, storage);
+    }
+
     let declared_classes = state_update
         .declared_sierra_classes
         .into_iter()
