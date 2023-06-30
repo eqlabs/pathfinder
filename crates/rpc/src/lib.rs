@@ -624,7 +624,7 @@ pub mod test_utils {
 
         let pending_data = PendingData::default();
         pending_data
-            .set(Arc::new(block), Arc::new(state_update.into()))
+            .set(Arc::new(block), Arc::new(state_update))
             .await;
         pending_data
     }

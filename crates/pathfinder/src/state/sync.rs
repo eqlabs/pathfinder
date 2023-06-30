@@ -799,7 +799,7 @@ fn update_starknet_state(
             &update.storage,
             update.nonce,
             update.class.as_ref().map(|x| x.class_hash()),
-            &mut storage_commitment_tree,
+            &storage_commitment_tree,
             transaction,
         )
         .context("Update contract state")?;

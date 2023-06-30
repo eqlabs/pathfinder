@@ -104,7 +104,7 @@ pub mod init {
             deployed_contract = state_update
                 .contract_updates
                 .iter()
-                .filter_map(|(a, u)| u.class.clone().and_then(|x| Some((*a, x.class_hash()))))
+                .filter_map(|(a, u)| u.class.clone().map(|x| (*a, x.class_hash())))
                 .last();
 
             updates.push(state_update);

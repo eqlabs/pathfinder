@@ -59,9 +59,7 @@ pub(super) fn insert_state_update(
     // to state update inserts. However, since the class insertion does not know with which block number to
     // associate with the class definition, we need to fill it in here.
     let sierra = state_update
-        .declared_sierra_classes
-        .iter()
-        .map(|(sierra, _casm)| ClassHash(sierra.0));
+        .declared_sierra_classes.keys().map(|sierra| ClassHash(sierra.0));
     let cairo = state_update.declared_cairo_classes.iter().copied();
     // Older cairo 0 classes were never declared, but instead got implicitly declared on first deployment.
     // Until such classes dissappear we need to cater for them here. This works even because the sql only
@@ -89,12 +87,12 @@ fn block_details(
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
     use const_format::formatcp;
 
-    const PREFIX: &'static str = r"SELECT b1.number, b1.hash, b1.root, b2.root FROM starknet_blocks b1 
+    const PREFIX: &str = r"SELECT b1.number, b1.hash, b1.root, b2.root FROM starknet_blocks b1 
             LEFT OUTER JOIN starknet_blocks b2 ON b2.number = b1.number - 1";
 
-    const LATEST: &'static str = formatcp!("{PREFIX} ORDER BY b1.number DESC LIMIT 1");
-    const NUMBER: &'static str = formatcp!("{PREFIX} AND b1.number = ?");
-    const HASH: &'static str = formatcp!("{PREFIX} AND b1.hash = ?");
+    const LATEST: &str = formatcp!("{PREFIX} ORDER BY b1.number DESC LIMIT 1");
+    const NUMBER: &str = formatcp!("{PREFIX} AND b1.number = ?");
+    const HASH: &str = formatcp!("{PREFIX} AND b1.hash = ?");
 
     let handle_row = |row: &rusqlite::Row<'_>| {
         let number = row.get_block_number(0)?;
@@ -570,7 +568,7 @@ mod tests {
             let (contract, expected) = state_update
                 .contract_updates
                 .iter()
-                .filter_map(|(addr, update)| update.nonce.and_then(|n| Some((*addr, n))))
+                .filter_map(|(addr, update)| update.nonce.map(|n| (*addr, n)))
                 .next()
                 .unwrap();
 
