@@ -90,7 +90,6 @@ mod types {
     use pathfinder_serde::EthereumAddressAsHexStr;
     use serde::Serialize;
     use serde_with::serde_as;
-    use stark_hash::Felt;
     use starknet_gateway_types::reply::transaction::{L1ToL2Message, L2ToL1Message};
 
     /// L2 transaction receipt as returned by the RPC API.
@@ -328,12 +327,12 @@ mod types {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct MessageToL1 {
-        // In RPC spec v0.3 MSG_TO_L1 has mandatory `from_address` field.
-        // This way it can be supported for both v0.2 and v0.3 versions.
-        #[serde_as(as = "Option<RpcFelt>")]
+        // RPC spec v0.3: `MSG_TO_L1` has a new mandatory `from_address` field.
+        // This way it works for both versions without copying much code around.
+        #[serde_as(as = "Option<RpcFelt251>")]
         #[serde(default)]
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub from_address: Option<Felt>,
+        pub from_address: Option<ContractAddress>,
         #[serde_as(as = "EthereumAddressAsHexStr")]
         pub to_address: EthereumAddress,
         #[serde_as(as = "Vec<RpcFelt>")]
@@ -343,7 +342,7 @@ mod types {
     impl From<L2ToL1Message> for MessageToL1 {
         fn from(msg: L2ToL1Message) -> Self {
             Self {
-                from_address: Some(msg.from_address.0),
+                from_address: Some(msg.from_address),
                 to_address: msg.to_address,
                 payload: msg.payload,
             }
