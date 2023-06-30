@@ -137,7 +137,7 @@ mod tests {
     async fn test_latest() {
         let context = RpcContext::for_tests();
         let block_id = BlockId::Latest;
-        check_count(context, block_id, 3).await;
+        check_count(context, block_id, 4).await;
     }
 
     #[tokio::test]
