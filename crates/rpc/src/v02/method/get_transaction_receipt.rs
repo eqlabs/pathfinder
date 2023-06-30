@@ -28,9 +28,8 @@ pub async fn get_transaction_receipt(
         });
 
         if let Some((receipt, transaction)) = receipt_transaction {
-            return Ok(types::MaybePendingTransactionReceipt::Pending(
-                types::PendingTransactionReceipt::from(receipt, &transaction),
-            ));
+            let pending = types::PendingTransactionReceipt::from(receipt, &transaction, context.version);
+            return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
         };
     }
 
@@ -73,6 +72,7 @@ pub async fn get_transaction_receipt(
                 block_hash,
                 block_number,
                 transaction,
+                context.version,
             ),
         ))
     });
@@ -81,6 +81,7 @@ pub async fn get_transaction_receipt(
 }
 
 mod types {
+    use crate::context::RpcVersion;
     use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
@@ -184,6 +185,7 @@ mod types {
             block_hash: BlockHash,
             block_number: BlockNumber,
             transaction: starknet_gateway_types::reply::transaction::Transaction,
+            rpc_version: RpcVersion,
         ) -> Self {
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -196,7 +198,7 @@ mod types {
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
-                    .map(MessageToL1::from)
+                    .map(|msg| MessageToL1::from(msg, rpc_version))
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
             };
@@ -290,6 +292,7 @@ mod types {
         pub fn from(
             receipt: starknet_gateway_types::reply::transaction::Receipt,
             transaction: &starknet_gateway_types::reply::transaction::Transaction,
+            rpc_version: RpcVersion,
         ) -> Self {
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -299,7 +302,7 @@ mod types {
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
-                    .map(MessageToL1::from)
+                    .map(|msg| MessageToL1::from(msg, rpc_version))
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
             };
@@ -339,10 +342,10 @@ mod types {
         pub payload: Vec<L2ToL1MessagePayloadElem>,
     }
 
-    impl From<L2ToL1Message> for MessageToL1 {
-        fn from(msg: L2ToL1Message) -> Self {
+    impl MessageToL1 {
+        fn from(msg: L2ToL1Message, rpc_version: RpcVersion) -> Self {
             Self {
-                from_address: Some(msg.from_address),
+                from_address: (!matches!(rpc_version, RpcVersion::V02)).then_some(msg.from_address),
                 to_address: msg.to_address,
                 payload: msg.payload,
             }
@@ -556,10 +559,8 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, ContractAddress, EventData, EventKey, Fee,
-        TransactionHash,
-    };
+    use pathfinder_common::{BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee, L2ToL1MessagePayloadElem, TransactionHash, felt, felt_bytes};
+    use primitive_types::H160;
 
     mod parsing {
         use super::*;
@@ -645,6 +646,80 @@ mod tests {
                             )),
                             keys: vec![EventKey(felt_bytes!(b"event 0 key"))],
                         }],
+                    }
+                }
+            ))
+        )
+    }
+
+    #[tokio::test]
+    async fn success_v02() {
+        let context = RpcContext::for_tests().with_version("v0.2");
+        let input = GetTransactionReceiptInput {
+            transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+        };
+
+        let result = get_transaction_receipt(context, input).await.unwrap();
+        use types::*;
+        assert_eq!(
+            result,
+            MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
+                InvokeTransactionReceipt {
+                    common: CommonTransactionReceiptProperties {
+                        transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+                        actual_fee: Fee::ZERO,
+                        status: TransactionStatus::AcceptedOnL2,
+                        block_hash: BlockHash(felt_bytes!(b"latest")),
+                        block_number: BlockNumber::new_or_panic(2),
+                        messages_sent: vec![
+                            MessageToL1 { 
+                                from_address: None, // RPC v0.2 does not have this field 
+                                to_address: EthereumAddress(H160::zero()), 
+                                payload: vec![
+                                    L2ToL1MessagePayloadElem(felt!("0x1")),
+                                    L2ToL1MessagePayloadElem(felt!("0x2")),
+                                    L2ToL1MessagePayloadElem(felt!("0x3")),
+                                ],
+                            }
+                        ],
+                        events: vec![],
+                    }
+                }
+            ))
+        )
+    }
+
+    #[tokio::test]
+    async fn success_v03() {
+        let context = RpcContext::for_tests().with_version("v0.3");
+        let input = GetTransactionReceiptInput {
+            transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+        };
+
+        let result = get_transaction_receipt(context, input).await.unwrap();
+        use types::*;
+        assert_eq!(
+            result,
+            MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
+                InvokeTransactionReceipt {
+                    common: CommonTransactionReceiptProperties {
+                        transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+                        actual_fee: Fee::ZERO,
+                        status: TransactionStatus::AcceptedOnL2,
+                        block_hash: BlockHash(felt_bytes!(b"latest")),
+                        block_number: BlockNumber::new_or_panic(2),
+                        messages_sent: vec![
+                            MessageToL1 { 
+                                from_address: Some(ContractAddress(felt!("0xcafebabe"))), 
+                                to_address: EthereumAddress(H160::zero()), 
+                                payload: vec![
+                                    L2ToL1MessagePayloadElem(felt!("0x1")),
+                                    L2ToL1MessagePayloadElem(felt!("0x2")),
+                                    L2ToL1MessagePayloadElem(felt!("0x3")),
+                                ],
+                            }
+                        ],
+                        events: vec![],
                     }
                 }
             ))
