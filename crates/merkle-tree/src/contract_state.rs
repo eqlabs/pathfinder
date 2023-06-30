@@ -1,17 +1,19 @@
+use std::collections::HashMap;
+
 use crate::{ContractsStorageTree, StorageCommitmentTree};
 use anyhow::Context;
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, StorageAddress,
+    StorageValue,
 };
 use pathfinder_storage::Transaction;
 use stark_hash::{stark_hash, Felt};
-use starknet_gateway_types::reply::state_update::StorageDiff;
 
 /// Updates a contract's state with the given [`StorageDiff`]. It returns the
 /// [ContractStateHash] of the new state.
 pub fn update_contract_state(
     contract_address: ContractAddress,
-    updates: &[StorageDiff],
+    updates: &HashMap<StorageAddress, StorageValue>,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
     storage_commitment_tree: &StorageCommitmentTree<'_>,
@@ -41,9 +43,9 @@ pub fn update_contract_state(
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
         let mut contract_tree = ContractsStorageTree::load(transaction, old_root);
-        for storage_diff in updates {
+        for (key, value) in updates {
             contract_tree
-                .set(storage_diff.key, storage_diff.value)
+                .set(*key, *value)
                 .context("Update contract storage tree")?;
         }
         let (contract_root, nodes) = contract_tree

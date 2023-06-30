@@ -6,13 +6,12 @@ mod pending;
 use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-    ContractNonce, ContractRoot, EventCommitment, GasPrice, SequencerAddress, SierraHash,
-    StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
+    EventCommitment, GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate,
+    StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
-use pathfinder_merkle_tree::{
-    contract_state::calculate_contract_state_hash, ClassCommitmentTree, StorageCommitmentTree,
-};
+use pathfinder_merkle_tree::contract_state::update_contract_state;
+use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
     websocket::types::WebsocketSenders,
@@ -25,7 +24,7 @@ use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::{
     pending::PendingData,
-    reply::{state_update::DeployedContract, Block, MaybePendingBlock},
+    reply::{Block, MaybePendingBlock},
 };
 
 use std::future::Future;
@@ -794,84 +793,21 @@ fn update_starknet_state(
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
         .context("Loading storage trie")?;
 
-    todo!();
+    for (contract, update) in &state_update.contract_updates {
+        let state_hash = update_contract_state(
+            *contract,
+            &update.storage,
+            update.nonce,
+            update.class.as_ref().map(|x| x.class_hash()),
+            &mut storage_commitment_tree,
+            transaction,
+        )
+        .context("Update contract state")?;
 
-    // for contract in &state_update.state_diff.deployed_contracts {
-    //     deploy_contract(transaction, &mut storage_commitment_tree, contract)
-    //         .context("Deploying contract")?;
-    // }
-
-    // Copied so we can mutate the map. This lets us remove used nonces from the list.
-    // let mut nonces = state_update.state_diff.nonces.clone();
-
-    // let mut replaced_classes = state_update
-    //     .state_diff
-    //     .replaced_classes
-    //     .iter()
-    //     .map(|r| (r.address, r.class_hash))
-    //     .collect::<HashMap<_, _>>();
-
-    // // Apply contract storage updates.
-    // for (contract_address, updates) in &state_update.state_diff.storage_diffs {
-    //     // Remove the nonce so we don't update it again in the next stage.
-    //     let nonce = nonces.remove(contract_address);
-    //     // Remove from replaced classes so we don't update it again in the next stage.
-    //     let replaced_class_hash = replaced_classes.remove(contract_address);
-
-    //     let contract_state_hash = update_contract_state(
-    //         *contract_address,
-    //         updates,
-    //         nonce,
-    //         replaced_class_hash,
-    //         &storage_commitment_tree,
-    //         transaction,
-    //     )
-    //     .context("Update contract state")?;
-
-    //     // Update the global state tree.
-    //     storage_commitment_tree
-    //         .set(*contract_address, contract_state_hash)
-    //         .context("Updating storage commitment tree")?;
-    // }
-
-    // // Apply all remaining nonces (without storage updates).
-    // for (contract_address, nonce) in nonces {
-    //     // Remove from replaced classes so we don't update it again in the next stage.
-    //     let replaced_class_hash = replaced_classes.remove(&contract_address);
-
-    //     let contract_state_hash = update_contract_state(
-    //         contract_address,
-    //         &[],
-    //         Some(nonce),
-    //         replaced_class_hash,
-    //         &storage_commitment_tree,
-    //         transaction,
-    //     )
-    //     .context("Update contract nonce")?;
-
-    //     // Update the global state tree.
-    //     storage_commitment_tree
-    //         .set(contract_address, contract_state_hash)
-    //         .context("Updating storage commitment tree")?;
-    // }
-
-    // // Apply all remaining replaced classes.
-    // for (contract_address, new_class_hash) in replaced_classes {
-    //     let contract_state_hash = update_contract_state(
-    //         contract_address,
-    //         &[],
-    //         None,
-    //         Some(new_class_hash),
-    //         &storage_commitment_tree,
-    //         transaction,
-    //     )
-    //     .context("Update contract nonce")?;
-
-    //     // Update the global state tree.
-    //     storage_commitment_tree
-    //         .set(contract_address, contract_state_hash)
-    //         .context("Updating storage commitment tree")?;
-    // }
+        storage_commitment_tree
+            .set(*contract, state_hash)
+            .context("Updating storage commitment tree")?;
+    }
 
     // Apply storage commitment tree changes.
     let (new_storage_commitment, nodes) = storage_commitment_tree
@@ -885,19 +821,17 @@ fn update_starknet_state(
     // Add new Sierra classes to class commitment tree.
     let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment);
 
-    // for sierra_class in &state_update.state_diff.declared_classes {
-    //     let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(
-    //         sierra_class.compiled_class_hash,
-    //     );
+    for (sierra, casm) in &state_update.declared_sierra_classes {
+        let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(*casm);
 
-    //     transaction
-    //         .insert_class_commitment_leaf(&leaf_hash, &sierra_class.compiled_class_hash)
-    //         .context("Adding class commitment leaf")?;
+        transaction
+            .insert_class_commitment_leaf(&leaf_hash, casm)
+            .context("Adding class commitment leaf")?;
 
-    //     class_commitment_tree
-    //         .set(sierra_class.class_hash, leaf_hash)
-    //         .context("Update class commitment tree")?;
-    // }
+        class_commitment_tree
+            .set(*sierra, leaf_hash)
+            .context("Update class commitment tree")?;
+    }
 
     // Apply all class commitment tree changes.
     let (class_commitment, nodes) = class_commitment_tree
@@ -911,27 +845,6 @@ fn update_starknet_state(
     Ok((new_storage_commitment, class_commitment))
 }
 
-fn deploy_contract(
-    transaction: &Transaction<'_>,
-    storage_commitment_tree: &mut StorageCommitmentTree<'_>,
-    contract: &DeployedContract,
-) -> anyhow::Result<()> {
-    // Add a new contract to global tree, the contract root is initialized to ZERO.
-    let contract_root = ContractRoot::ZERO;
-    // The initial value of a contract nonce is ZERO.
-    let contract_nonce = ContractNonce::ZERO;
-    // sequencer::reply::state_update::Contract::contract_hash is the old (pre cairo 0.9.0)
-    // name for `class_hash`.
-    let class_hash = contract.class_hash;
-    let state_hash = calculate_contract_state_hash(class_hash, contract_root, contract_nonce);
-    storage_commitment_tree
-        .set(contract.address, state_hash)
-        .context("Adding deployed contract to global state tree")?;
-    transaction
-        .insert_contract_state(state_hash, class_hash, contract_root, contract_nonce)
-        .context("Insert constract state hash into contracts state table")
-}
-
 #[cfg(test)]
 mod tests {
     use super::l2;
@@ -943,7 +856,6 @@ mod tests {
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
     use stark_hash::Felt;
-    use starknet_gateway_types::reply::state_update::StateDiff;
     use starknet_gateway_types::reply::Block;
     use starknet_gateway_types::{pending::PendingData, reply};
     use std::sync::Arc;

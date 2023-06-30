@@ -174,15 +174,13 @@ pub mod test_utils {
     use stark_hash::Felt;
     use starknet_gateway_types::{
         pending::PendingData,
-        reply::{
-            state_update::StorageDiff,
-            transaction::{
-                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
-                InvokeTransactionV0, Receipt, Transaction,
-            },
+        reply::transaction::{
+            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+            DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
+            InvokeTransactionV0, Receipt, Transaction,
         },
     };
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     // Creates storage for tests
@@ -231,21 +229,15 @@ pub mod test_utils {
                 StorageValue(felt_bytes!(b"storage value 2")),
             );
 
-        let contract0_update = vec![];
+        let contract0_update = HashMap::new();
 
         let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
-        let contract1_update0 = vec![StorageDiff {
-            key: storage_addr,
-            value: StorageValue(felt_bytes!(b"storage value 0")),
-        }];
-        let contract1_update1 = vec![StorageDiff {
-            key: storage_addr,
-            value: StorageValue(felt_bytes!(b"storage value 1")),
-        }];
-        let contract1_update2 = vec![StorageDiff {
-            key: storage_addr,
-            value: StorageValue(felt_bytes!(b"storage value 2")),
-        }];
+        let contract1_update0 =
+            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 0")))]);
+        let contract1_update1 =
+            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 1")))]);
+        let contract1_update2 =
+            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 2")))]);
 
         let class0_definition =
             starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION.to_vec();
@@ -338,7 +330,7 @@ pub mod test_utils {
             .unwrap();
         let contract_state_hash = update_contract_state(
             contract2_addr,
-            &[],
+            &HashMap::new(),
             Some(ContractNonce(felt!("0xfeed"))),
             Some(class2_hash),
             &storage_commitment_tree,
