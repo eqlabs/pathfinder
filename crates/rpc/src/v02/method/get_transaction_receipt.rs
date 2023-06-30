@@ -28,7 +28,8 @@ pub async fn get_transaction_receipt(
         });
 
         if let Some((receipt, transaction)) = receipt_transaction {
-            let pending = types::PendingTransactionReceipt::from(receipt, &transaction, context.version);
+            let pending =
+                types::PendingTransactionReceipt::from(receipt, &transaction, context.version);
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
         };
     }
@@ -559,7 +560,10 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee, L2ToL1MessagePayloadElem, TransactionHash, felt, felt_bytes};
+    use pathfinder_common::{
+        felt, felt_bytes, BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData,
+        EventKey, Fee, L2ToL1MessagePayloadElem, TransactionHash,
+    };
     use primitive_types::H160;
 
     mod parsing {
@@ -671,17 +675,15 @@ mod tests {
                         status: TransactionStatus::AcceptedOnL2,
                         block_hash: BlockHash(felt_bytes!(b"latest")),
                         block_number: BlockNumber::new_or_panic(2),
-                        messages_sent: vec![
-                            MessageToL1 { 
-                                from_address: None, // RPC v0.2 does not have this field 
-                                to_address: EthereumAddress(H160::zero()), 
-                                payload: vec![
-                                    L2ToL1MessagePayloadElem(felt!("0x1")),
-                                    L2ToL1MessagePayloadElem(felt!("0x2")),
-                                    L2ToL1MessagePayloadElem(felt!("0x3")),
-                                ],
-                            }
-                        ],
+                        messages_sent: vec![MessageToL1 {
+                            from_address: None, // RPC v0.2 does not have this field
+                            to_address: EthereumAddress(H160::zero()),
+                            payload: vec![
+                                L2ToL1MessagePayloadElem(felt!("0x1")),
+                                L2ToL1MessagePayloadElem(felt!("0x2")),
+                                L2ToL1MessagePayloadElem(felt!("0x3")),
+                            ],
+                        }],
                         events: vec![],
                     }
                 }
@@ -708,17 +710,15 @@ mod tests {
                         status: TransactionStatus::AcceptedOnL2,
                         block_hash: BlockHash(felt_bytes!(b"latest")),
                         block_number: BlockNumber::new_or_panic(2),
-                        messages_sent: vec![
-                            MessageToL1 { 
-                                from_address: Some(ContractAddress(felt!("0xcafebabe"))), 
-                                to_address: EthereumAddress(H160::zero()), 
-                                payload: vec![
-                                    L2ToL1MessagePayloadElem(felt!("0x1")),
-                                    L2ToL1MessagePayloadElem(felt!("0x2")),
-                                    L2ToL1MessagePayloadElem(felt!("0x3")),
-                                ],
-                            }
-                        ],
+                        messages_sent: vec![MessageToL1 {
+                            from_address: Some(ContractAddress(felt!("0xcafebabe"))),
+                            to_address: EthereumAddress(H160::zero()),
+                            payload: vec![
+                                L2ToL1MessagePayloadElem(felt!("0x1")),
+                                L2ToL1MessagePayloadElem(felt!("0x2")),
+                                L2ToL1MessagePayloadElem(felt!("0x3")),
+                            ],
+                        }],
                         events: vec![],
                     }
                 }

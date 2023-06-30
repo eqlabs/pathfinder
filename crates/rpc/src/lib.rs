@@ -438,17 +438,15 @@ pub mod test_utils {
         let mut receipt4 = receipt0.clone();
         let mut receipt5 = receipt0.clone();
         let mut receipt6 = Receipt {
-            l2_to_l1_messages: vec![
-                L2ToL1Message { 
-                    from_address: ContractAddress(felt!("0xcafebabe")), 
-                    payload: vec![
-                        L2ToL1MessagePayloadElem(felt!("0x1")),
-                        L2ToL1MessagePayloadElem(felt!("0x2")),
-                        L2ToL1MessagePayloadElem(felt!("0x3")),
-                    ], 
-                    to_address: EthereumAddress(H160::zero()),
-                }
-            ],
+            l2_to_l1_messages: vec![L2ToL1Message {
+                from_address: ContractAddress(felt!("0xcafebabe")),
+                payload: vec![
+                    L2ToL1MessagePayloadElem(felt!("0x1")),
+                    L2ToL1MessagePayloadElem(felt!("0x2")),
+                    L2ToL1MessagePayloadElem(felt!("0x3")),
+                ],
+                to_address: EthereumAddress(H160::zero()),
+            }],
             ..receipt0.clone()
         };
         receipt0.events = vec![Event {
@@ -464,7 +462,12 @@ pub mod test_utils {
         receipt6.transaction_hash = txn6_hash;
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
-        let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5), (txn6, receipt6)];
+        let transaction_data2 = [
+            (txn3, receipt3),
+            (txn4, receipt4),
+            (txn5, receipt5),
+            (txn6, receipt6),
+        ];
         db_txn
             .insert_transaction_data(header0.hash, header0.number, &transaction_data0)
             .unwrap();
