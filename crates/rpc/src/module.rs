@@ -57,14 +57,15 @@ impl Module {
         let (version, metric_method_name) = split_version_prefix(method_name)
             .with_context(|| format!("Cannot register unprefixed method name: {method_name}"))?;
         metrics::register_counter!("rpc_method_calls_total", "method" => metric_method_name.clone(), "version" => version.clone());
-        metrics::register_counter!("rpc_method_calls_failed_total", "method" => metric_method_name, "version" => version);
+        metrics::register_counter!("rpc_method_calls_failed_total", "method" => metric_method_name, "version" => version.clone());
 
         let method_callback = move |params: Params<'static>, context: Arc<RpcContext>| {
             // why info here? it's the same used in warp tracing filter for example.
             let span = tracing::info_span!("rpc_method", name = method_name);
+            let context = (*context).clone().with_version(&version);
             async move {
                 let input = params.parse::<Input>()?;
-                method((*context).clone(), input).await.map_err(|err| {
+                method(context, input).await.map_err(|err| {
                     let rpc_err: RpcError = err.into();
                     jsonrpsee::core::Error::from(rpc_err)
                 })

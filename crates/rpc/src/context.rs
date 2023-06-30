@@ -8,6 +8,26 @@ use std::sync::Arc;
 
 type SequencerClient = starknet_gateway_client::Client;
 
+#[derive(Copy, Clone, Default)]
+pub enum RpcVersion {
+    #[default]
+    Undefined,
+    V01,
+    V02,
+    V03,
+}
+
+impl RpcVersion {
+    fn parse(s: &str) -> Self {
+        match s {
+            "v0.1" => Self::V01,
+            "v0.2" => Self::V02,
+            "v0.3" => Self::V03,
+            _ => Self::default(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
@@ -17,6 +37,7 @@ pub struct RpcContext {
     pub call_handle: Option<ext_py::Handle>,
     pub eth_gas_price: Option<gas_price::Cached>,
     pub sequencer: SequencerClient,
+    pub version: RpcVersion,
 }
 
 impl RpcContext {
@@ -34,6 +55,14 @@ impl RpcContext {
             call_handle: None,
             eth_gas_price: None,
             sequencer,
+            version: RpcVersion::default(),
+        }
+    }
+
+    pub(crate) fn with_version(self, version: &str) -> Self {
+        Self {
+            version: RpcVersion::parse(version),
+            ..self
         }
     }
 
