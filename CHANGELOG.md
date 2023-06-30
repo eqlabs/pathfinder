@@ -75,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Starknet v0.11.2 support
   - Sierra compiler v1.1.0-rc0
   - `cairo-lang` upgraded to 0.11.2a0
-- Subscription to `newHead` events via websocket using the method `starknet_subscribe_newHeads`, which can
+- Subscription to `newHead` events via websocket using the method `pathfinder_subscribe_newHeads`, which can
   be managed by the following command line options
   - `rpc.websocket`, which enables websocket transport
   - `rpc.websocket.capacity`, which sets the maximum number of websocket subscriptions per subscription type
