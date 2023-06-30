@@ -136,7 +136,9 @@ mod types {
             }
 
             let declared_contract_hashes = value
-                .declared_sierra_classes.into_keys().map(|class_hash| ClassHash(class_hash.0))
+                .declared_sierra_classes
+                .into_keys()
+                .map(|class_hash| ClassHash(class_hash.0))
                 .chain(value.declared_cairo_classes.iter().copied())
                 .collect();
 

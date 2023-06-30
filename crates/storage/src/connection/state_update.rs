@@ -2,7 +2,7 @@ use anyhow::Context;
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
     BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
-    StateUpdate, StorageAddress, StorageValue,
+    StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
 
 use crate::{prelude::*, BlockId};
@@ -59,7 +59,9 @@ pub(super) fn insert_state_update(
     // to state update inserts. However, since the class insertion does not know with which block number to
     // associate with the class definition, we need to fill it in here.
     let sierra = state_update
-        .declared_sierra_classes.keys().map(|sierra| ClassHash(sierra.0));
+        .declared_sierra_classes
+        .keys()
+        .map(|sierra| ClassHash(sierra.0));
     let cairo = state_update.declared_cairo_classes.iter().copied();
     // Older cairo 0 classes were never declared, but instead got implicitly declared on first deployment.
     // Until such classes dissappear we need to cater for them here. This works even because the sql only
@@ -87,7 +89,7 @@ fn block_details(
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
     use const_format::formatcp;
 
-    const PREFIX: &str = r"SELECT b1.number, b1.hash, b1.root, b2.root FROM starknet_blocks b1 
+    const PREFIX: &str = r"SELECT b1.number, b1.hash, b1.root, b1.class_commitment, b2.root, b2.class_commitment FROM starknet_blocks b1 
             LEFT OUTER JOIN starknet_blocks b2 ON b2.number = b1.number - 1";
 
     const LATEST: &str = formatcp!("{PREFIX} ORDER BY b1.number DESC LIMIT 1");
@@ -97,9 +99,18 @@ fn block_details(
     let handle_row = |row: &rusqlite::Row<'_>| {
         let number = row.get_block_number(0)?;
         let hash = row.get_block_hash(1)?;
-        let state_commitment = row.get_state_commitment(2)?;
+        let storage_commitment = row.get_storage_commitment(2)?;
+        let class_commitment = row.get_class_commitment(3)?;
         // The genesis block would not have a value.
-        let parent_state_commitment = row.get_optional_state_commitment(3)?.unwrap_or_default();
+        let parent_storage_commitment = row.get_optional_storage_commitment(4)?.unwrap_or_default();
+        let parent_class_commitment = row.get_optional_class_commitment(5)?.unwrap_or_default();
+
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let parent_state_commitment = if parent_storage_commitment == StorageCommitment::ZERO {
+            StateCommitment::ZERO
+        } else {
+            StateCommitment::calculate(parent_storage_commitment, parent_class_commitment)
+        };
 
         Ok((number, hash, state_commitment, parent_state_commitment))
     };

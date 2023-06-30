@@ -1,6 +1,6 @@
 //! Basic test fixtures for storage.
 
-use crate::{Storage, Transaction};
+use crate::Transaction;
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassHash, ContractAddress, ContractNonce,
     GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate, StorageAddress,
@@ -112,17 +112,4 @@ pub mod init {
 
         updates
     }
-}
-
-/// Creates test storage in memory that contains N state updates,
-/// referring to blocks with numbers (0..N) and ("0x0".."0xN") hashes respectively.
-pub fn with_n_state_updates<F>(n: u8, f: F)
-where
-    F: FnOnce(&Storage, &Transaction<'_>, Vec<StateUpdate>),
-{
-    let storage = Storage::in_memory().unwrap();
-    let mut connection = storage.connection().unwrap();
-    let tx = connection.transaction().unwrap();
-
-    f(&storage, &tx, init::with_n_state_updates(&tx, n))
 }

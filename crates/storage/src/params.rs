@@ -168,11 +168,18 @@ pub trait RowExt {
         Ok(self.get_optional_felt(index)?.map(CasmHash))
     }
 
-    fn get_optional_state_commitment<Index: RowIndex>(
+    fn get_optional_storage_commitment<Index: RowIndex>(
         &self,
         index: Index,
-    ) -> rusqlite::Result<Option<StateCommitment>> {
-        Ok(self.get_optional_felt(index)?.map(StateCommitment))
+    ) -> rusqlite::Result<Option<StorageCommitment>> {
+        Ok(self.get_optional_felt(index)?.map(StorageCommitment))
+    }
+
+    fn get_optional_class_commitment<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<ClassCommitment>> {
+        Ok(self.get_optional_felt(index)?.map(ClassCommitment))
     }
 
     fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {

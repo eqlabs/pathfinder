@@ -576,7 +576,7 @@ pub mod test_utils {
 
         let contract1 = ContractAddress::new_or_panic(felt_bytes!(b"pending contract 1 address"));
         let state_update = StateUpdate::default()
-            .with_state_commitment(latest.state_commitment)
+            .with_parent_state_commitment(latest.state_commitment)
             .with_declared_cairo_class(ClassHash(felt_bytes!(b"pending class 0 hash")))
             .with_declared_cairo_class(ClassHash(felt_bytes!(b"pending class 1 hash")))
             .with_deployed_contract(
