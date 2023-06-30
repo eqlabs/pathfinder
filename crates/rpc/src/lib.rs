@@ -170,8 +170,9 @@ pub mod test_utils {
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
-    use primitive_types::H256;
+    use primitive_types::{H160, H256};
     use stark_hash::Felt;
+    use starknet_gateway_types::reply::transaction::L2ToL1Message;
     use starknet_gateway_types::{
         pending::PendingData,
         reply::transaction::{
@@ -405,10 +406,12 @@ pub mod test_utils {
         let txn3_hash = TransactionHash(felt_bytes!(b"txn 3"));
         let txn4_hash = TransactionHash(felt_bytes!(b"txn 4 "));
         let txn5_hash = TransactionHash(felt_bytes!(b"txn 5"));
+        let txn6_hash = TransactionHash(felt_bytes!(b"txn 6"));
         let mut txn1 = txn0.clone();
         let mut txn2 = txn0.clone();
         let mut txn3 = txn0.clone();
         let mut txn4 = txn0.clone();
+        let mut txn6 = txn0.clone();
         txn1.transaction_hash = txn1_hash;
         txn1.sender_address = contract1_addr;
         txn2.transaction_hash = txn2_hash;
@@ -416,6 +419,8 @@ pub mod test_utils {
         txn3.transaction_hash = txn3_hash;
         txn3.sender_address = contract1_addr;
         txn4.transaction_hash = txn4_hash;
+        txn6.sender_address = contract1_addr;
+        txn6.transaction_hash = txn6_hash;
 
         txn4.sender_address = ContractAddress::new_or_panic(Felt::ZERO);
         let mut txn5 = txn4.clone();
@@ -426,11 +431,26 @@ pub mod test_utils {
         let txn3 = Transaction::Invoke(txn3.into());
         let txn4 = Transaction::Invoke(txn4.into());
         let txn5 = Transaction::Invoke(txn5.into());
+        let txn6 = Transaction::Invoke(txn6.into());
         let mut receipt1 = receipt0.clone();
         let mut receipt2 = receipt0.clone();
         let mut receipt3 = receipt0.clone();
         let mut receipt4 = receipt0.clone();
         let mut receipt5 = receipt0.clone();
+        let mut receipt6 = Receipt {
+            l2_to_l1_messages: vec![
+                L2ToL1Message { 
+                    from_address: ContractAddress(felt!("0xcafebabe")), 
+                    payload: vec![
+                        L2ToL1MessagePayloadElem(felt!("0x1")),
+                        L2ToL1MessagePayloadElem(felt!("0x2")),
+                        L2ToL1MessagePayloadElem(felt!("0x3")),
+                    ], 
+                    to_address: EthereumAddress(H160::zero()),
+                }
+            ],
+            ..receipt0.clone()
+        };
         receipt0.events = vec![Event {
             data: vec![EventData(felt_bytes!(b"event 0 data"))],
             from_address: ContractAddress::new_or_panic(felt_bytes!(b"event 0 from addr")),
@@ -441,9 +461,10 @@ pub mod test_utils {
         receipt3.transaction_hash = txn3_hash;
         receipt4.transaction_hash = txn4_hash;
         receipt5.transaction_hash = txn5_hash;
+        receipt6.transaction_hash = txn6_hash;
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
-        let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5)];
+        let transaction_data2 = [(txn3, receipt3), (txn4, receipt4), (txn5, receipt5), (txn6, receipt6)];
         db_txn
             .insert_transaction_data(header0.hash, header0.number, &transaction_data0)
             .unwrap();
