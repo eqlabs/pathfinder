@@ -93,8 +93,8 @@ fn block_details(
             LEFT OUTER JOIN starknet_blocks b2 ON b2.number = b1.number - 1";
 
     const LATEST: &str = formatcp!("{PREFIX} ORDER BY b1.number DESC LIMIT 1");
-    const NUMBER: &str = formatcp!("{PREFIX} AND b1.number = ?");
-    const HASH: &str = formatcp!("{PREFIX} AND b1.hash = ?");
+    const NUMBER: &str = formatcp!("{PREFIX} WHERE b1.number = ?");
+    const HASH: &str = formatcp!("{PREFIX} WHERE b1.hash = ?");
 
     let handle_row = |row: &rusqlite::Row<'_>| {
         let number = row.get_block_number(0)?;
@@ -130,6 +130,8 @@ pub(super) fn state_update(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<StateUpdate>> {
+    dbg!(block);
+
     let Some((
         block_number,
         block_hash,
@@ -138,6 +140,8 @@ pub(super) fn state_update(
     )) = block_details(tx, block).context("Querying block header")? else {
         return Ok(None);
     };
+
+    dbg!(block_number);
 
     let mut state_update = StateUpdate::default()
         .with_block_hash(block_hash)

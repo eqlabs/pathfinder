@@ -89,6 +89,17 @@ mod types {
         pub state_diff: StateDiff,
     }
 
+    #[cfg(test)]
+    impl StateUpdate {
+        // Sorts its vectors so that they can be equated.
+        pub fn sort(&mut self) {
+            self.state_diff.deployed_contracts.sort_by_key(|x| x.address);
+            self.state_diff.declared_contract_hashes.sort();
+            self.state_diff.nonces.sort_by_key(|x| x.contract_address);
+            self.state_diff.storage_diffs.sort_by_key(|x| x.address);
+        }
+    }
+
     impl From<pathfinder_common::StateUpdate> for StateUpdate {
         fn from(value: pathfinder_common::StateUpdate) -> Self {
             let mut storage_diffs = Vec::new();
@@ -355,18 +366,22 @@ mod tests {
     /// Execute a single test case and check its outcome.
     async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
         let (context, block_id, f) = test_case;
-        let result = get_state_update(
+        let mut result = get_state_update(
             context.clone(),
             GetStateUpdateInput {
                 block_id: *block_id,
             },
         )
         .await;
+        if let Ok(r) = result.as_mut() {
+            r.sort();
+        }
         f(test_case_idx, &result);
     }
 
     /// Common assertion type for most of the test cases
-    fn assert_ok(expected: types::StateUpdate) -> TestCaseHandler {
+    fn assert_ok(mut expected: types::StateUpdate) -> TestCaseHandler {
+        expected.sort();
         use pretty_assertions::assert_eq;
         Box::new(move |i: usize, result| {
             assert_matches!(result, Ok(actual) => assert_eq!(
