@@ -245,6 +245,8 @@ pub mod dto {
         pub payload: Vec<Felt>,
         #[serde_as(as = "RpcFelt")]
         pub to_address: Felt,
+        #[serde_as(as = "RpcFelt")]
+        pub from_address: Felt,
     }
 
     #[serde_with::serde_as]
