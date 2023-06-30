@@ -1,6 +1,7 @@
 use crate::{
     BlockHash, BlockNumber, BlockTimestamp, ClassCommitment, EventCommitment, GasPrice,
-    SequencerAddress, StarknetVersion, StateCommitment, StorageCommitment, TransactionCommitment,
+    SequencerAddress, StarknetVersion, StateCommitment, StateUpdate, StorageCommitment,
+    TransactionCommitment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -33,6 +34,14 @@ impl BlockHeader {
         BlockHeaderBuilder(BlockHeader::default())
             .with_number(self.number + 1)
             .with_parent_hash(self.hash)
+    }
+
+    /// Creates a [StateUpdate] with the block hash and state commitment fields intialized
+    /// to match this header.
+    pub fn init_state_update(&self) -> StateUpdate {
+        StateUpdate::default()
+            .with_block_hash(self.hash)
+            .with_state_commitment(self.state_commitment)
     }
 }
 

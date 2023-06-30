@@ -161,7 +161,6 @@ pub(crate) mod tests {
         use pathfinder_common::{
             felt_bytes, BlockNumber, CasmHash, ContractNonce, ContractRoot, GasPrice,
         };
-        use pathfinder_storage::types::state_update::{DeployedContract, StateDiff};
         use pathfinder_storage::Storage;
 
         // Mainnet block number 5
@@ -372,20 +371,12 @@ pub(crate) mod tests {
                 .finalize_with_hash(BlockHash(felt_bytes!(b"latest block")));
             db_txn.insert_block_header(&new_header).unwrap();
 
-            let state_diff = StateDiff {
-                storage_diffs: vec![],
-                declared_contracts: vec![],
-                deployed_contracts: vec![DeployedContract {
-                    address: contract_address,
-                    class_hash,
-                }],
-                nonces: vec![],
-                declared_sierra_classes: vec![],
-                replaced_classes: vec![],
-            };
+            let state_update = new_header
+                .init_state_update()
+                .with_deployed_contract(contract_address, class_hash);
 
             db_txn
-                .insert_state_diff(new_header.number, &state_diff)
+                .insert_state_update(new_header.number, &state_update)
                 .unwrap();
 
             // Persist

@@ -74,7 +74,7 @@ async fn get_pending_class_hash(
         state_update
             .contract_updates
             .get(&address)
-            .and_then(|x| x.class)
+            .and_then(|x| x.class.as_ref().map(|x| x.class_hash()))
     })
 }
 

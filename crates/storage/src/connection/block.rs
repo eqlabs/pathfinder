@@ -262,11 +262,10 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 mod tests {
     use pathfinder_common::{
         felt, felt_bytes, BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice,
-        SequencerAddress, StorageCommitment, TransactionCommitment,
+        SequencerAddress, StateUpdate, StorageCommitment, TransactionCommitment,
     };
 
     use super::*;
-    use crate::types::state_update::StateDiff;
     use crate::Connection;
 
     // Create test database filled with block headers.
@@ -415,9 +414,9 @@ mod tests {
         // Add a class to test that purging a block unsets its block number;
         let cairo_hash = ClassHash(felt!("0x1234"));
         tx.insert_cairo_class(cairo_hash, &[]).unwrap();
-        tx.insert_state_diff(
+        tx.insert_state_update(
             latest.number,
-            &StateDiff::default().add_declared_cairo_class(cairo_hash),
+            &StateUpdate::default().with_declared_cairo_class(cairo_hash),
         )
         .unwrap();
 

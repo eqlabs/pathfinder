@@ -11,8 +11,7 @@ use pathfinder_common::{
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::{
-    contract_state::{calculate_contract_state_hash},
-    ClassCommitmentTree, StorageCommitmentTree,
+    contract_state::calculate_contract_state_hash, ClassCommitmentTree, StorageCommitmentTree,
 };
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
@@ -29,7 +28,7 @@ use starknet_gateway_types::{
     reply::{state_update::DeployedContract, Block, MaybePendingBlock},
 };
 
-use std::{future::Future};
+use std::future::Future;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -685,8 +684,6 @@ async fn l2_update(
             .insert_block_header(&header)
             .context("Inserting block header into database")?;
 
-        let rpc_state_update: pathfinder_storage::types::StateUpdate = todo!();
-
         // Insert the transactions.
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),
@@ -705,7 +702,7 @@ async fn l2_update(
 
         // Insert state updates
         transaction
-            .insert_state_diff(block.block_number, &rpc_state_update.state_diff)
+            .insert_state_update(block.block_number, &state_update)
             .context("Insert state update into database")?;
 
         // Track combined L1 and L2 state.

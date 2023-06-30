@@ -2,6 +2,7 @@ use crate::state::block_hash::{verify_block_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::{pending, SyncEvent};
 use anyhow::{anyhow, Context};
+use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, StateUpdate, TransactionCommitment,
@@ -298,7 +299,10 @@ pub async fn download_new_classes(
     let deployed_classes = state_update
         .contract_updates
         .iter()
-        .filter_map(|x| x.1.class);
+        .filter_map(|x| match x.1.class {
+            Some(ContractClassUpdate::Deploy(hash)) => Some(hash),
+            _ => None,
+        });
     let declared_cairo_classes = state_update.declared_cairo_classes.iter().cloned();
     let declared_sierra_classes = state_update
         .declared_sierra_classes
@@ -596,7 +600,7 @@ mod tests {
             error::{KnownStarknetErrorCode, SequencerError, StarknetError},
             reply,
         };
-        use std::{time::Duration};
+        use std::time::Duration;
         use tokio::{sync::mpsc, task::JoinHandle};
 
         const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;

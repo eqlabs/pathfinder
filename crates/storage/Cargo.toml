@@ -13,6 +13,7 @@ test-utils = []
 anyhow = { workspace = true }
 base64 = "0.13.1"
 bitvec = "0.20.4"
+const_format.workspace = true
 data-encoding = "2.3.3"
 flate2 = "1.0.25"
 hex = "0.4.3"

@@ -24,13 +24,12 @@ use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash,
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, SierraHash,
-    StorageAddress, StorageCommitment, StorageValue, TransactionHash,
+    StateUpdate, StorageAddress, StorageCommitment, StorageValue, TransactionHash,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
 
-use crate::types::state_update::StateDiff;
 use crate::BlockId;
 
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -304,16 +303,16 @@ impl<'inner> Transaction<'inner> {
         ContractTrieReader::new(self)
     }
 
-    pub fn insert_state_diff(
+    pub fn insert_state_update(
         &self,
         block_number: BlockNumber,
-        state_diff: &StateDiff,
+        state_update: &StateUpdate,
     ) -> anyhow::Result<()> {
-        state_update::insert_canonical_state_diff(self, block_number, state_diff)
+        state_update::insert_state_update(self, block_number, state_update)
     }
 
-    pub fn state_diff(&self, block: BlockId) -> anyhow::Result<Option<StateDiff>> {
-        state_update::state_diff(self, block)
+    pub fn state_update(&self, block: BlockId) -> anyhow::Result<Option<StateUpdate>> {
+        state_update::state_update(self, block)
     }
 
     pub fn storage_value(

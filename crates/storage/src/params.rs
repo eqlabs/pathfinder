@@ -168,6 +168,13 @@ pub trait RowExt {
         Ok(self.get_optional_felt(index)?.map(CasmHash))
     }
 
+    fn get_optional_state_commitment<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<StateCommitment>> {
+        Ok(self.get_optional_felt(index)?.map(StateCommitment))
+    }
+
     fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {
         let num = self.get_i64(index)?;
         // Always safe since we are fetching an i64

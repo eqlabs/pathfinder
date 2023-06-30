@@ -12,7 +12,6 @@ mod schema;
 pub mod test_fixtures;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
-pub mod types;
 
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};

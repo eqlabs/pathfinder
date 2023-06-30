@@ -12,12 +12,12 @@ pub mod event;
 pub mod hash;
 mod header;
 mod macros;
-mod state_update;
+pub mod state_update;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 pub mod trie;
 
-pub use state_update::{ContractUpdate, StateUpdate, SystemContractUpdate};
+pub use state_update::StateUpdate;
 
 pub use header::{BlockHeader, BlockHeaderBuilder};
 

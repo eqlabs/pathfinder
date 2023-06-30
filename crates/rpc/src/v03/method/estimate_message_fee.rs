@@ -59,9 +59,9 @@ mod tests {
 
     use pathfinder_common::{
         felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, Chain,
-        ClassHash, ContractAddress, EntryPoint, GasPrice, SierraHash,
+        ClassHash, ContractAddress, EntryPoint, GasPrice, SierraHash, StateUpdate,
     };
-    use pathfinder_storage::{types::state_update::StateDiff, JournalMode, Storage};
+    use pathfinder_storage::{JournalMode, Storage};
     use primitive_types::{H160, H256};
     use starknet_gateway_test_fixtures::class_definitions::{
         CAIRO_1_1_0_BALANCE_CASM_JSON, CAIRO_1_1_0_BALANCE_SIERRA_JSON,
@@ -184,9 +184,9 @@ mod tests {
                 let contract_address = ContractAddress::new_or_panic(felt!(
                     "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
                 ));
-                let state_diff =
-                    StateDiff::default().add_deployed_contract(contract_address, class_hash);
-                tx.insert_state_diff(block_number, &state_diff).unwrap();
+                let state_update =
+                    StateUpdate::default().with_deployed_contract(contract_address, class_hash);
+                tx.insert_state_update(block_number, &state_update).unwrap();
             }
 
             tx.commit().unwrap();

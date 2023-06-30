@@ -511,10 +511,7 @@ mod tests {
         StateUpdate, StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
-    use pathfinder_storage::{
-        types::state_update::{DeployedContract, StateDiff, StorageDiff},
-        JournalMode, Storage, Transaction,
-    };
+    use pathfinder_storage::{JournalMode, Storage, Transaction};
     use stark_hash::Felt;
     use std::num::NonZeroU32;
     use std::path::PathBuf;
@@ -905,26 +902,19 @@ mod tests {
             .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
         tx.insert_block_header(&header).unwrap();
 
-        let state_diff = StateDiff {
-            storage_diffs: storage_updates
-                .iter()
-                .map(|(storage_address, value)| StorageDiff {
-                    address: test_contract_address,
-                    key: *storage_address,
-                    value: *value,
-                })
-                .collect(),
-            declared_contracts: vec![],
-            deployed_contracts: vec![DeployedContract {
-                address: test_contract_address,
-                class_hash: test_contract_class_hash,
-            }],
-            nonces: vec![],
-            declared_sierra_classes: vec![],
-            replaced_classes: vec![],
-        };
+        let state_update = StateUpdate::default()
+            .with_block_hash(header.hash)
+            // The parent commitment is not set, but it shouldn't matter for this.
+            .with_state_commitment(header.state_commitment)
+            .with_storage_update(
+                test_contract_address,
+                storage_updates[0].0,
+                storage_updates[0].1,
+            )
+            .with_deployed_contract(test_contract_address, test_contract_class_hash);
 
-        tx.insert_state_diff(header.number, &state_diff).unwrap();
+        tx.insert_state_update(header.number, &state_update)
+            .unwrap();
 
         test_contract_class_hash
     }
@@ -962,19 +952,14 @@ mod tests {
             .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
         tx.insert_block_header(&header).unwrap();
 
-        let state_diff = StateDiff {
-            storage_diffs: vec![],
-            declared_contracts: vec![],
-            deployed_contracts: vec![DeployedContract {
-                address: account_contract_address,
-                class_hash: account_contract_class_hash,
-            }],
-            nonces: vec![],
-            declared_sierra_classes: vec![],
-            replaced_classes: vec![],
-        };
+        let state_update = StateUpdate::default()
+            .with_block_hash(header.hash)
+            // The parent commitment is not set, but it shouldn't matter for this.
+            .with_state_commitment(header.state_commitment)
+            .with_deployed_contract(account_contract_address, account_contract_class_hash);
 
-        tx.insert_state_diff(header.number, &state_diff).unwrap();
+        tx.insert_state_update(header.number, &state_update)
+            .unwrap();
 
         account_contract_class_hash
     }

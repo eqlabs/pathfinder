@@ -20,13 +20,28 @@ pub struct StateUpdate {
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
     /// The class associated with this update as the result of either a deploy or class replacement transaction.
-    pub class: Option<ClassHash>,
+    pub class: Option<ContractClassUpdate>,
     pub nonce: Option<ContractNonce>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct SystemContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContractClassUpdate {
+    Deploy(ClassHash),
+    Replace(ClassHash),
+}
+
+impl ContractClassUpdate {
+    pub fn class_hash(&self) -> ClassHash {
+        match self {
+            ContractClassUpdate::Deploy(x) => *x,
+            ContractClassUpdate::Replace(x) => *x,
+        }
+    }
 }
 
 impl StateUpdate {
@@ -50,7 +65,6 @@ impl StateUpdate {
 
     pub fn with_contract_nonce(mut self, contract: ContractAddress, nonce: ContractNonce) -> Self {
         self.contract_updates.entry(contract).or_default().nonce = Some(nonce);
-
         self
     }
 
@@ -65,13 +79,42 @@ impl StateUpdate {
             .or_default()
             .storage
             .insert(key, value);
+        self
+    }
 
+    pub fn with_system_storage_update(
+        mut self,
+        contract: ContractAddress,
+        key: StorageAddress,
+        value: StorageValue,
+    ) -> Self {
+        self.system_contract_updates
+            .entry(contract)
+            .or_default()
+            .storage
+            .insert(key, value);
         self
     }
 
     pub fn with_deployed_contract(mut self, contract: ContractAddress, class: ClassHash) -> Self {
-        self.contract_updates.entry(contract).or_default().class = Some(class);
+        self.contract_updates.entry(contract).or_default().class =
+            Some(ContractClassUpdate::Deploy(class));
+        self
+    }
 
+    pub fn with_replaced_class(mut self, contract: ContractAddress, class: ClassHash) -> Self {
+        self.contract_updates.entry(contract).or_default().class =
+            Some(ContractClassUpdate::Replace(class));
+        self
+    }
+
+    pub fn with_declared_sierra_class(mut self, sierra: SierraHash, casm: CasmHash) -> Self {
+        self.declared_sierra_classes.insert(sierra, casm);
+        self
+    }
+
+    pub fn with_declared_cairo_class(mut self, cairo: ClassHash) -> Self {
+        self.declared_cairo_classes.insert(cairo);
         self
     }
 }

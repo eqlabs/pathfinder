@@ -77,7 +77,9 @@ async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> boo
 
     let cairo = state_diff.declared_cairo_classes.iter().cloned();
     let sierra = state_diff
-        .declared_sierra_classes.keys().map(|sierra| ClassHash(sierra.0));
+        .declared_sierra_classes
+        .keys()
+        .map(|sierra| ClassHash(sierra.0));
 
     cairo.chain(sierra).any(|item| item == hash)
 }

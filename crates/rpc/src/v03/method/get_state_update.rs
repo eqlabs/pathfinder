@@ -52,29 +52,12 @@ fn get_state_update_from_storage(
     tx: &pathfinder_storage::Transaction<'_>,
     block: pathfinder_storage::BlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let header = tx
-        .block_header(block)
-        .context("Fetching block header")?
-        .ok_or(GetStateUpdateError::BlockNotFound)?;
-    let parent_state_commitment = tx
-        .block_header(header.parent_hash.into())
-        .context("Fetching parent block header")?
-        .map(|header| header.state_commitment)
-        .unwrap_or_default();
-
-    let state_diff = tx
-        .state_diff(block)
+    let state_update = tx
+        .state_update(block)
         .context("Fetching state diff")?
-        .context("State diff missing from database")?;
+        .ok_or(GetStateUpdateError::BlockNotFound)?;
 
-    let state_update = types::StateUpdate {
-        block_hash: Some(header.hash),
-        new_root: Some(header.state_commitment),
-        old_root: parent_state_commitment,
-        state_diff: types::StateDiff::from(state_diff),
-    };
-
-    Ok(state_update)
+    Ok(state_update.into())
 }
 
 mod types {
@@ -85,7 +68,6 @@ mod types {
     };
     use serde::Serialize;
     use serde_with::skip_serializing_none;
-    use std::collections::HashMap;
 
     #[serde_with::serde_as]
     #[skip_serializing_none]
@@ -112,23 +94,6 @@ mod types {
         }
     }
 
-    impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
-        fn from(_value: starknet_gateway_types::reply::StateUpdate) -> Self {
-            todo!()
-        }
-    }
-
-    impl From<pathfinder_storage::types::StateUpdate> for StateUpdate {
-        fn from(x: pathfinder_storage::types::StateUpdate) -> Self {
-            Self {
-                block_hash: x.block_hash,
-                new_root: Some(x.new_root),
-                old_root: x.old_root,
-                state_diff: x.state_diff.into(),
-            }
-        }
-    }
-
     /// L2 state diff.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -142,105 +107,6 @@ mod types {
         pub deployed_contracts: Vec<DeployedContract>,
         pub replaced_classes: Vec<ReplacedClass>,
         pub nonces: Vec<Nonce>,
-    }
-
-    impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
-        fn from(state_diff: starknet_gateway_types::reply::state_update::StateDiff) -> Self {
-            let storage_diffs: Vec<StorageDiff> = state_diff
-                .storage_diffs
-                .into_iter()
-                .map(|(address, storage_diffs)| StorageDiff {
-                    address,
-                    storage_entries: storage_diffs.into_iter().map(StorageEntry::from).collect(),
-                })
-                .collect();
-            Self {
-                storage_diffs,
-                deprecated_declared_classes: state_diff
-                    .old_declared_contracts
-                    .into_iter()
-                    .collect(),
-                declared_classes: state_diff
-                    .declared_classes
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                deployed_contracts: state_diff
-                    .deployed_contracts
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                replaced_classes: state_diff
-                    .replaced_classes
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                nonces: state_diff
-                    .nonces
-                    .into_iter()
-                    .map(|(contract_address, nonce)| Nonce {
-                        contract_address,
-                        nonce,
-                    })
-                    .collect(),
-            }
-        }
-    }
-
-    /// Convert from the v0.1.0 representation we have in the storage to the new one.
-    ///
-    /// We need this conversion because the representation of storage diffs have changed
-    /// in v0.2.0 of the JSON-RPC specification and we're storing v0.1.0 formatted JSONs
-    /// in our storage.
-    /// Storage updates are now grouped per-contract and individual update entries no
-    /// longer contain the contract address.
-    impl From<pathfinder_storage::types::state_update::StateDiff> for StateDiff {
-        fn from(diff: pathfinder_storage::types::state_update::StateDiff) -> Self {
-            let mut per_contract_diff: HashMap<ContractAddress, Vec<StorageEntry>> = HashMap::new();
-            for storage_diff in diff.storage_diffs {
-                per_contract_diff
-                    .entry(storage_diff.address)
-                    .and_modify(|entries| {
-                        entries.push(StorageEntry {
-                            key: storage_diff.key,
-                            value: storage_diff.value,
-                        })
-                    })
-                    .or_insert_with(|| {
-                        vec![StorageEntry {
-                            key: storage_diff.key,
-                            value: storage_diff.value,
-                        }]
-                    });
-            }
-            let storage_diffs: Vec<StorageDiff> = per_contract_diff
-                .into_iter()
-                .map(|(address, storage_entries)| StorageDiff {
-                    address,
-                    storage_entries,
-                })
-                .collect();
-            Self {
-                storage_diffs,
-                deprecated_declared_classes: diff
-                    .declared_contracts
-                    .into_iter()
-                    .map(|d| d.class_hash)
-                    .collect(),
-                declared_classes: diff
-                    .declared_sierra_classes
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                deployed_contracts: diff
-                    .deployed_contracts
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                replaced_classes: diff.replaced_classes.into_iter().map(Into::into).collect(),
-                nonces: diff.nonces.into_iter().map(Into::into).collect(),
-            }
-        }
     }
 
     /// L2 storage diff of a contract.
@@ -287,26 +153,6 @@ mod types {
         pub compiled_class_hash: CasmHash,
     }
 
-    impl From<starknet_gateway_types::reply::state_update::DeclaredSierraClass>
-        for DeclaredSierraClass
-    {
-        fn from(d: starknet_gateway_types::reply::state_update::DeclaredSierraClass) -> Self {
-            Self {
-                class_hash: d.class_hash,
-                compiled_class_hash: d.compiled_class_hash,
-            }
-        }
-    }
-
-    impl From<pathfinder_storage::types::state_update::DeclaredSierraClass> for DeclaredSierraClass {
-        fn from(d: pathfinder_storage::types::state_update::DeclaredSierraClass) -> Self {
-            Self {
-                class_hash: d.class_hash,
-                compiled_class_hash: d.compiled_class_hash,
-            }
-        }
-    }
-
     /// L2 state diff deployed contract item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -317,24 +163,6 @@ mod types {
         pub address: ContractAddress,
         #[serde_as(as = "RpcFelt")]
         pub class_hash: ClassHash,
-    }
-
-    impl From<starknet_gateway_types::reply::state_update::DeployedContract> for DeployedContract {
-        fn from(d: starknet_gateway_types::reply::state_update::DeployedContract) -> Self {
-            Self {
-                address: d.address,
-                class_hash: d.class_hash,
-            }
-        }
-    }
-
-    impl From<pathfinder_storage::types::state_update::DeployedContract> for DeployedContract {
-        fn from(c: pathfinder_storage::types::state_update::DeployedContract) -> Self {
-            Self {
-                address: c.address,
-                class_hash: c.class_hash,
-            }
-        }
     }
 
     /// L2 state diff replaced class item.
@@ -349,24 +177,6 @@ mod types {
         pub class_hash: ClassHash,
     }
 
-    impl From<starknet_gateway_types::reply::state_update::ReplacedClass> for ReplacedClass {
-        fn from(r: starknet_gateway_types::reply::state_update::ReplacedClass) -> Self {
-            Self {
-                contract_address: r.address,
-                class_hash: r.class_hash,
-            }
-        }
-    }
-
-    impl From<pathfinder_storage::types::state_update::ReplacedClass> for ReplacedClass {
-        fn from(r: pathfinder_storage::types::state_update::ReplacedClass) -> Self {
-            Self {
-                contract_address: r.address,
-                class_hash: r.class_hash,
-            }
-        }
-    }
-
     /// L2 state diff nonce item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -377,15 +187,6 @@ mod types {
         pub contract_address: ContractAddress,
         #[serde_as(as = "RpcFelt")]
         pub nonce: ContractNonce,
-    }
-
-    impl From<pathfinder_storage::types::state_update::Nonce> for Nonce {
-        fn from(n: pathfinder_storage::types::state_update::Nonce) -> Self {
-            Self {
-                contract_address: n.contract_address,
-                nonce: n.nonce,
-            }
-        }
     }
 
     #[cfg(test)]

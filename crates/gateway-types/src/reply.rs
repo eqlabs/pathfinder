@@ -1,9 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
-use std::collections::HashMap;
-
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, ContractAddress, EthereumAddress, GasPrice,
-    SequencerAddress, StarknetVersion, StateCommitment, SystemContractUpdate,
+    SequencerAddress, StarknetVersion, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
@@ -706,6 +704,11 @@ pub struct StateUpdate {
 
 impl From<StateUpdate> for pathfinder_common::StateUpdate {
     fn from(mut gateway: StateUpdate) -> Self {
+        let mut state_update = pathfinder_common::StateUpdate::default()
+            .with_block_hash(gateway.block_hash)
+            .with_parent_state_commitment(gateway.old_root)
+            .with_state_commitment(gateway.new_root);
+
         // Extract the known system contract updates from the normal contract updates.
         // This must occur before we map the contract updates, since we want to first remove
         // the system contract updates.
@@ -714,48 +717,33 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
         //
         // As of starknet v0.12.0 these are embedded in this way, but in the future will be
         // a separate property in the state diff.
-        let system_contract_updates = gateway
+        if let Some((address, storage_updates)) = gateway
             .state_diff
             .storage_diffs
             .remove_entry(&ContractAddress::ONE)
-            .map(|(addr, storage_diffs)| {
-                let updates = SystemContractUpdate {
-                    storage: storage_diffs
-                        .into_iter()
-                        .map(|x| (x.key, x.value))
-                        .collect(),
-                };
-                (addr, updates)
-            })
-            .into_iter()
-            .collect();
+        {
+            for state_update::StorageDiff { key, value } in storage_updates {
+                state_update = state_update.with_system_storage_update(address, key, value);
+            }
+        }
 
         // Aggregate contract deployments, storage, nonce and class replacements into contract updates.
-        let mut contract_updates: HashMap<_, _> = gateway
-            .state_diff
-            .storage_diffs
-            .into_iter()
-            .map(|(addr, updates)| {
-                let storage = updates.into_iter().map(|x| (x.key, x.value)).collect();
-                let update = pathfinder_common::ContractUpdate {
-                    storage,
-                    ..Default::default()
-                };
-
-                (addr, update)
-            })
-            .collect();
+        for (address, storage_updates) in gateway.state_diff.storage_diffs {
+            for state_update::StorageDiff { key, value } in storage_updates {
+                state_update = state_update.with_storage_update(address, key, value);
+            }
+        }
 
         for state_update::DeployedContract {
             address,
             class_hash,
         } in gateway.state_diff.deployed_contracts
         {
-            contract_updates.entry(address).or_default().class = Some(class_hash);
+            state_update = state_update.with_deployed_contract(address, class_hash);
         }
 
-        for (addr, nonce) in gateway.state_diff.nonces {
-            contract_updates.entry(addr).or_default().nonce = Some(nonce);
+        for (address, nonce) in gateway.state_diff.nonces {
+            state_update = state_update.with_contract_nonce(address, nonce);
         }
 
         for state_update::ReplacedClass {
@@ -763,25 +751,18 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
             class_hash,
         } in gateway.state_diff.replaced_classes
         {
-            contract_updates.entry(address).or_default().class = Some(class_hash);
+            state_update = state_update.with_replaced_class(address, class_hash);
         }
 
-        let declared_sierra_classes = gateway
-            .state_diff
-            .declared_classes
-            .into_iter()
-            .map(|x| (x.class_hash, x.compiled_class_hash))
-            .collect();
-
-        pathfinder_common::StateUpdate {
-            block_hash: gateway.block_hash,
-            parent_state_commitment: gateway.old_root,
-            state_commitment: gateway.new_root,
-            declared_cairo_classes: gateway.state_diff.old_declared_contracts,
-            contract_updates,
-            system_contract_updates,
-            declared_sierra_classes,
+        for state_update::DeclaredSierraClass {
+            class_hash,
+            compiled_class_hash,
+        } in gateway.state_diff.declared_classes
+        {
+            state_update = state_update.with_declared_sierra_class(class_hash, compiled_class_hash);
         }
+
+        state_update
     }
 }
 
