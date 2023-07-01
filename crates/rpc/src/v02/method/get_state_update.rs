@@ -93,7 +93,9 @@ mod types {
     impl StateUpdate {
         // Sorts its vectors so that they can be equated.
         pub fn sort(&mut self) {
-            self.state_diff.deployed_contracts.sort_by_key(|x| x.address);
+            self.state_diff
+                .deployed_contracts
+                .sort_by_key(|x| x.address);
             self.state_diff.declared_contract_hashes.sort();
             self.state_diff.nonces.sort_by_key(|x| x.contract_address);
             self.state_diff.storage_diffs.sort_by_key(|x| x.address);

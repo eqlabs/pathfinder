@@ -9,8 +9,7 @@ use pathfinder_common::{
 use pathfinder_storage::Transaction;
 use stark_hash::{stark_hash, Felt};
 
-/// Updates a contract's state with the given [`StorageDiff`]. It returns the
-/// [ContractStateHash] of the new state.
+/// Updates a contract's state with and returns the resulting [ContractStateHash].
 pub fn update_contract_state(
     contract_address: ContractAddress,
     updates: &HashMap<StorageAddress, StorageValue>,
