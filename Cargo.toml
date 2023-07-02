@@ -33,7 +33,8 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = "1.0.66"
 assert_matches = "1.5.0"
-clap = { version = "4.1.13" }
+clap =  "4.1.13"
+criterion = "0.5.1"
 fake = { version = "2.5.0", features = ["derive"] }
 rand = "0.8.5"
 semver = "1.0.14"
