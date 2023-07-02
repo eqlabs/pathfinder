@@ -89,6 +89,25 @@ mod types {
         pub state_diff: StateDiff,
     }
 
+    #[cfg(test)]
+    impl StateUpdate {
+        // Sorts its vectors so that they can be equated.
+        pub fn sort(&mut self) {
+            self.state_diff
+                .deployed_contracts
+                .sort_by_key(|x| x.address);
+            self.state_diff
+                .declared_classes
+                .sort_by_key(|x| x.class_hash);
+            self.state_diff
+                .replaced_classes
+                .sort_by_key(|x| x.contract_address);
+            self.state_diff.deprecated_declared_classes.sort();
+            self.state_diff.nonces.sort_by_key(|x| x.contract_address);
+            self.state_diff.storage_diffs.sort_by_key(|x| x.address);
+        }
+    }
+
     impl From<pathfinder_common::StateUpdate> for StateUpdate {
         fn from(value: pathfinder_common::StateUpdate) -> Self {
             let mut storage_diffs = Vec::new();
@@ -342,17 +361,12 @@ mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::types::{
-        DeployedContract, ReplacedClass, StateDiff, StateUpdate, StorageDiff, StorageEntry,
-    };
+    use super::types::StateUpdate;
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, felt_bytes};
-    use pathfinder_common::{
-        BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
-        StorageValue,
-    };
+    use pathfinder_common::felt;
+    use pathfinder_common::{BlockHash, BlockNumber, Chain};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -407,18 +421,22 @@ mod tests {
     /// Execute a single test case and check its outcome.
     async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
         let (context, block_id, f) = test_case;
-        let result = get_state_update(
+        let mut result = get_state_update(
             context.clone(),
             GetStateUpdateInput {
                 block_id: *block_id,
             },
         )
         .await;
+        if let Ok(r) = result.as_mut() {
+            r.sort();
+        }
         f(test_case_idx, &result);
     }
 
     /// Common assertion type for most of the test cases
-    fn assert_ok(expected: types::StateUpdate) -> TestCaseHandler {
+    fn assert_ok(mut expected: types::StateUpdate) -> TestCaseHandler {
+        expected.sort();
         Box::new(move |i: usize, result| {
             assert_matches!(result, Ok(actual) => assert_eq!(
                 *actual,
@@ -504,59 +522,19 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
+        let expected: StateUpdate = context
+            .pending_data
+            .as_ref()
+            .unwrap()
+            .state_update()
+            .await
+            .unwrap()
+            .as_ref()
+            .to_owned()
+            .into();
+
         let result = get_state_update(context, input).await.unwrap();
 
-        let expected = StateUpdate {
-            block_hash: None,
-            new_root: None,
-            old_root: StateCommitment(felt!(
-                "0x057B695C82AF81429FDC8966088B0196105DFB5AA22B54CBC86FC95DC3B3ECE1"
-            )),
-            state_diff: StateDiff {
-                storage_diffs: vec![StorageDiff {
-                    address: ContractAddress::new_or_panic(felt_bytes!(
-                        b"pending contract 1 address"
-                    )),
-                    storage_entries: vec![
-                        StorageEntry {
-                            key: StorageAddress::new_or_panic(felt_bytes!(
-                                b"pending storage key 0"
-                            )),
-                            value: StorageValue(felt_bytes!(b"pending storage value 0")),
-                        },
-                        StorageEntry {
-                            key: StorageAddress::new_or_panic(felt_bytes!(
-                                b"pending storage key 1"
-                            )),
-                            value: StorageValue(felt_bytes!(b"pending storage value 1")),
-                        },
-                    ],
-                }],
-                deprecated_declared_classes: vec![],
-                declared_classes: vec![],
-                deployed_contracts: vec![
-                    DeployedContract {
-                        address: ContractAddress::new_or_panic(felt_bytes!(
-                            b"pending contract 0 address"
-                        )),
-                        class_hash: ClassHash(felt_bytes!(b"pending class 0 hash")),
-                    },
-                    DeployedContract {
-                        address: ContractAddress::new_or_panic(felt_bytes!(
-                            b"pending contract 1 address"
-                        )),
-                        class_hash: ClassHash(felt_bytes!(b"pending class 1 hash")),
-                    },
-                ],
-                replaced_classes: vec![ReplacedClass {
-                    contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                        b"pending contract 2 (replaced)"
-                    )),
-                    class_hash: ClassHash(felt_bytes!(b"pending class 2 hash (replaced)")),
-                }],
-                nonces: vec![],
-            },
-        };
         pretty_assertions::assert_eq!(result, expected);
     }
 }

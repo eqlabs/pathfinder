@@ -305,15 +305,12 @@ mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::types::{DeployedContract, StateDiff, StateUpdate, StorageDiff, StorageEntry};
+    use super::types::StateUpdate;
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, felt_bytes};
-    use pathfinder_common::{
-        BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
-        StorageValue,
-    };
+    use pathfinder_common::felt;
+    use pathfinder_common::{BlockHash, BlockNumber, Chain};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -470,52 +467,19 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
+        let expected: StateUpdate = context
+            .pending_data
+            .as_ref()
+            .unwrap()
+            .state_update()
+            .await
+            .unwrap()
+            .as_ref()
+            .to_owned()
+            .into();
+
         let result = get_state_update(context, input).await.unwrap();
 
-        let expected = StateUpdate {
-            block_hash: None,
-            new_root: None,
-            old_root: StateCommitment(felt!(
-                "0x057B695C82AF81429FDC8966088B0196105DFB5AA22B54CBC86FC95DC3B3ECE1"
-            )),
-            state_diff: StateDiff {
-                storage_diffs: vec![StorageDiff {
-                    address: ContractAddress::new_or_panic(felt_bytes!(
-                        b"pending contract 1 address"
-                    )),
-                    storage_entries: vec![
-                        StorageEntry {
-                            key: StorageAddress::new_or_panic(felt_bytes!(
-                                b"pending storage key 0"
-                            )),
-                            value: StorageValue(felt_bytes!(b"pending storage value 0")),
-                        },
-                        StorageEntry {
-                            key: StorageAddress::new_or_panic(felt_bytes!(
-                                b"pending storage key 1"
-                            )),
-                            value: StorageValue(felt_bytes!(b"pending storage value 1")),
-                        },
-                    ],
-                }],
-                declared_contract_hashes: vec![],
-                deployed_contracts: vec![
-                    DeployedContract {
-                        address: ContractAddress::new_or_panic(felt_bytes!(
-                            b"pending contract 0 address"
-                        )),
-                        class_hash: ClassHash(felt_bytes!(b"pending class 0 hash")),
-                    },
-                    DeployedContract {
-                        address: ContractAddress::new_or_panic(felt_bytes!(
-                            b"pending contract 1 address"
-                        )),
-                        class_hash: ClassHash(felt_bytes!(b"pending class 1 hash")),
-                    },
-                ],
-                nonces: vec![],
-            },
-        };
         pretty_assertions::assert_eq!(result, expected);
     }
 }
