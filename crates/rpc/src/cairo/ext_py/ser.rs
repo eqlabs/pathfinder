@@ -148,7 +148,7 @@ impl<'a> serde::Serialize for StorageUpdates<'a> {
         let count = updates.clone().count();
         let mut map = serializer.serialize_map(Some(count))?;
         for (address, update) in updates {
-            map.serialize_entry(address, &StorageUpdates(&update))?;
+            map.serialize_entry(address, &StorageUpdates(update))?;
         }
         map.end()
     }
@@ -383,7 +383,7 @@ mod tests {
                     StorageAddress::new_or_panic(felt!("0x123")),
                     StorageValue(felt!("0xdef")),
                 );
-            let s = serde_json::to_value(&StorageUpdates(Some(&update))).unwrap();
+            let s = serde_json::to_value(StorageUpdates(Some(&update))).unwrap();
             assert_eq!(expected, s);
         }
     }

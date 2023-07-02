@@ -64,7 +64,7 @@ pub(super) fn insert_state_update(
         .map(|sierra| ClassHash(sierra.0));
     let cairo = state_update.declared_cairo_classes.iter().copied();
     // Older cairo 0 classes were never declared, but instead got implicitly declared on first deployment.
-    // Until such classes dissappear we need to cater for them here. This works even because the sql only
+    // Until such classes dissappear we need to cater for them here. This works because the sql only
     // updates the row if it is null.
     let deployed = state_update
         .contract_updates
@@ -130,8 +130,6 @@ pub(super) fn state_update(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<StateUpdate>> {
-    dbg!(block);
-
     let Some((
         block_number,
         block_hash,
@@ -140,8 +138,6 @@ pub(super) fn state_update(
     )) = block_details(tx, block).context("Querying block header")? else {
         return Ok(None);
     };
-
-    dbg!(block_number);
 
     let mut state_update = StateUpdate::default()
         .with_block_hash(block_hash)
