@@ -1,13 +1,10 @@
 //! The json serializable types
 
 use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, CallParam, Chain, ContractAddress, ContractNonce, EntryPoint,
-    EthereumAddress, StateUpdate,
+    BlockHash, BlockId, BlockNumber, CallParam, Chain, ClassHash, ContractAddress, EntryPoint,
+    EthereumAddress, StateUpdate, StorageAddress, StorageValue,
 };
-use starknet_gateway_types::{
-    reply::state_update::{DeployedContract, StorageDiff},
-    request::{BlockHashOrTag, BlockNumberOrTag, Tag},
-};
+use starknet_gateway_types::request::{BlockHashOrTag, BlockNumberOrTag, Tag};
 use std::{collections::HashMap, fmt::Display};
 
 use super::TransactionAndClassHashHint;
@@ -66,9 +63,9 @@ pub(crate) struct CommonProperties<'a> {
     pub chain: UsedChain,
 
     // Pending state
-    pub pending_updates: ContractUpdatesWrapper<'a>,
-    pub pending_deployed: DeployedContractsWrapper<'a>,
-    pub pending_nonces: NoncesWrapper<'a>,
+    pub pending_updates: StorageUpdates<'a>,
+    pub pending_deployed: DeployedContracts<'a>,
+    pub pending_nonces: Nonces<'a>,
     pub pending_timestamp: u64,
 }
 
@@ -99,61 +96,50 @@ impl From<Chain> for UsedChain {
 ///
 /// In call.py this is `def maybe_pending_updates`.
 #[derive(Debug)]
-pub struct ContractUpdatesWrapper<'a>(Option<&'a HashMap<ContractAddress, Vec<StorageDiff>>>);
+pub struct StorageUpdates<'a>(Option<&'a StateUpdate>);
 
-impl<'a> From<Option<&'a StateUpdate>> for ContractUpdatesWrapper<'a> {
-    fn from(_u: Option<&'a StateUpdate>) -> Self {
-        todo!();
+impl<'a> From<Option<&'a StateUpdate>> for StorageUpdates<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
+        Self(u)
     }
 }
 
-impl<'a> serde::Serialize for ContractUpdatesWrapper<'a> {
+impl<'a> serde::Serialize for StorageUpdates<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeMap;
 
-        if let Some(diff) = self.0 {
-            let mut map = serializer.serialize_map(Some(diff.len()))?;
-            for (address, diffs) in diff {
-                map.serialize_entry(address, &DiffsWrapper(diffs))?;
+        struct StorageUpdates<'a>(&'a HashMap<StorageAddress, StorageValue>);
+
+        impl<'a> serde::Serialize for StorageUpdates<'a> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                use serde::ser::SerializeSeq;
+
+                #[derive(serde::Serialize)]
+                struct Element<'a> {
+                    key: &'a StorageAddress,
+                    value: &'a StorageValue,
+                }
+
+                let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+                for (key, value) in self.0 {
+                    seq.serialize_element(&Element { key, value })?;
+                }
+                seq.end()
             }
-            map.end()
-        } else {
-            let map = serializer.serialize_map(Some(0))?;
-            map.end()
         }
-    }
-}
 
-struct DiffsWrapper<'a>(&'a [StorageDiff]);
-
-impl<'a> serde::Serialize for DiffsWrapper<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeSeq;
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for one in self.0 {
-            seq.serialize_element(&DiffElement(one))?;
+        let updates = self.0.iter().flat_map(|x| x.contract_updates.iter());
+        let count = updates.clone().count();
+        let mut map = serializer.serialize_map(Some(count))?;
+        for (address, update) in updates {
+            map.serialize_entry(address, &StorageUpdates(&update.storage))?;
         }
-        seq.end()
-    }
-}
-
-struct DiffElement<'a>(&'a StorageDiff);
-
-impl<'a> serde::Serialize for DiffElement<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry("key", &self.0.key.get())?;
-        map.serialize_entry("value", &self.0.value.0)?;
         map.end()
     }
 }
@@ -162,72 +148,81 @@ impl<'a> serde::Serialize for DiffElement<'a> {
 ///
 /// In call.py this is read by `def maybe_pending_deployed`.
 #[derive(Debug)]
-pub struct DeployedContractsWrapper<'a>(Option<&'a [DeployedContract]>);
+pub struct DeployedContracts<'a>(Option<&'a StateUpdate>);
 
-impl<'a> From<Option<&'a StateUpdate>> for DeployedContractsWrapper<'a> {
-    fn from(_u: Option<&'a StateUpdate>) -> Self {
-        todo!();
+impl<'a> From<Option<&'a StateUpdate>> for DeployedContracts<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
+        Self(u)
     }
 }
 
-impl<'a> serde::Serialize for DeployedContractsWrapper<'a> {
+impl<'a> serde::Serialize for DeployedContracts<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeSeq;
-        if let Some(cs) = self.0 {
-            let mut seq = serializer.serialize_seq(Some(cs.len()))?;
-            for contract in cs {
-                seq.serialize_element(&DeployedContractElement(contract))?;
-            }
-            seq.end()
-        } else {
-            let seq = serializer.serialize_seq(Some(0))?;
-            seq.end()
+
+        #[derive(serde::Serialize)]
+        struct DeployedContract {
+            address: ContractAddress,
+            contract_hash: ClassHash,
         }
-    }
-}
 
-struct DeployedContractElement<'a>(&'a DeployedContract);
+        let contracts = self
+            .0
+            .iter()
+            .flat_map(|x| x.contract_updates.iter())
+            // Note that this includes both deployed and replaced classes.
+            .filter_map(|(addr, update)| update.class.as_ref().map(|c| (*addr, c.class_hash())));
 
-impl<'a> serde::Serialize for DeployedContractElement<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(2))?;
-        // there is no need from python side to use this huge construction,
-        // could be just addr => hash
-        map.serialize_entry("address", &self.0.address)?;
-        map.serialize_entry("contract_hash", &self.0.class_hash)?;
-        map.end()
+        let count = contracts.clone().count();
+
+        let mut seq = serializer.serialize_seq(Some(count))?;
+
+        for (address, class) in contracts {
+            let contract = DeployedContract {
+                address,
+                contract_hash: class,
+            };
+
+            seq.serialize_element(&contract)?;
+        }
+
+        seq.end()
     }
 }
 
 /// On python side these are handled by `def maybe_pending_nonces`
 #[derive(Debug)]
-pub struct NoncesWrapper<'a>(Option<&'a HashMap<ContractAddress, ContractNonce>>);
+pub struct Nonces<'a>(Option<&'a StateUpdate>);
 
-impl<'a> From<Option<&'a StateUpdate>> for NoncesWrapper<'a> {
-    fn from(_u: Option<&'a StateUpdate>) -> Self {
-        todo!();
+impl<'a> From<Option<&'a StateUpdate>> for Nonces<'a> {
+    fn from(u: Option<&'a StateUpdate>) -> Self {
+        Self(u)
     }
 }
 
-impl<'a> serde::Serialize for NoncesWrapper<'a> {
+impl<'a> serde::Serialize for Nonces<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeMap;
 
-        let mut map = serializer.serialize_map(Some(self.0.map(|x| x.len()).unwrap_or(0)))?;
-        self.0
+        let nonces = self
+            .0
             .iter()
-            .flat_map(|x| x.iter())
-            .try_for_each(|(addr, nonce)| map.serialize_entry(addr, nonce))?;
+            .flat_map(|x| x.contract_updates.iter())
+            .filter_map(|(addr, update)| update.nonce.as_ref().map(|n| (addr, n)));
+
+        let count = nonces.clone().count();
+
+        let mut map = serializer.serialize_map(Some(count))?;
+
+        for (addr, nonce) in nonces {
+            map.serialize_entry(addr, nonce)?;
+        }
 
         map.end()
     }
@@ -333,124 +328,131 @@ impl TryFrom<BlockId> for BlockHashNumberOrLatest {
 
 #[cfg(test)]
 mod tests {
-    use crate::cairo::ext_py::ser::NoncesWrapper;
+    use super::*;
+    use crate::cairo::ext_py::ser::Nonces;
     use pathfinder_common::{
         felt, {ContractAddress, ContractNonce},
     };
-    use std::collections::HashMap;
 
-    #[test]
-    fn serialize_some_updates() {
-        use super::{ContractUpdatesWrapper, StorageDiff};
-        use pathfinder_common::{StorageAddress, StorageValue};
-        use std::collections::HashMap;
+    mod storage_updates {
+        use super::*;
 
-        let expected = r#"{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]}"#;
-        let map = {
-            let mut map = HashMap::new();
-            map.insert(
+        #[test]
+        fn none() {
+            let result = serde_json::to_string(&StorageUpdates(None)).unwrap();
+            assert_eq!(result, "{}");
+        }
+
+        #[test]
+        fn empty() {
+            let result = serde_json::to_string(&StorageUpdates(None)).unwrap();
+            assert_eq!(result, "{}");
+        }
+
+        #[test]
+        fn with_updates() {
+            use pathfinder_common::{StorageAddress, StorageValue};
+
+            let expected = r#"{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]}"#;
+            let update = StateUpdate::default().with_storage_update(
                 ContractAddress::new_or_panic(felt!(
                     "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
                 )),
-                vec![StorageDiff {
-                    key: StorageAddress::new_or_panic(felt!("0x5")),
-                    value: StorageValue(felt!("0x0")),
-                }],
+                StorageAddress::new_or_panic(felt!("0x5")),
+                StorageValue(felt!("0x0")),
             );
-            map
-        };
-        let s = serde_json::to_string(&ContractUpdatesWrapper(Some(&map))).unwrap();
-        assert_eq!(expected, s);
-    }
-
-    /// It is important this outcome is different from the empty list or dict, because the None and
-    /// non-None values now carry a difference at the python side.
-    ///
-    /// See python test `test_call.py::test_call_on_reorgged_pending_block`.
-    #[test]
-    fn serialize_none_updates() {
-        use super::ContractUpdatesWrapper;
-
-        let expected = "{}";
-        let s = serde_json::to_string(&ContractUpdatesWrapper(None)).unwrap();
-        assert_eq!(expected, s);
-    }
-
-    #[test]
-    fn serialize_some_deployed_contracts() {
-        use super::{DeployedContract, DeployedContractsWrapper};
-        use pathfinder_common::ClassHash;
-
-        let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
-        let contracts = vec![DeployedContract {
-            address: ContractAddress::new_or_panic(felt!(
-                "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
-            )),
-            class_hash: ClassHash(felt!(
-                "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
-            )),
-        }];
-        let s = serde_json::to_string(&DeployedContractsWrapper(Some(&contracts))).unwrap();
-        assert_eq!(expected, s);
-
-        // this again could be null or []; it doesn't really have any meaning over at python side,
-        // nor is it coupled to the updated contracts value in any way
-        let s = serde_json::to_string(&DeployedContractsWrapper(Some(&[]))).unwrap();
-        assert_eq!("[]", s);
-    }
-
-    /// It is important that this is not `[]` or `{}`, see [`serialize_none_updates`].
-    #[test]
-    fn serialize_none_deployed_contracts() {
-        use super::DeployedContractsWrapper;
-
-        let expected = r#"[]"#;
-        let s = serde_json::to_string(&DeployedContractsWrapper(None)).unwrap();
-        assert_eq!(expected, s);
-    }
-
-    #[test]
-    fn serialize_block_hash_num_latest() {
-        use super::BlockHashNumberOrLatest;
-        use pathfinder_common::{BlockHash, BlockNumber};
-        use stark_hash::Felt;
-
-        let data = &[
-            (BlockHash(Felt::ZERO).into(), "\"0x0\""),
-            (BlockNumber::GENESIS.into(), "\"0\""),
-            (BlockHashNumberOrLatest::Latest, "\"latest\""),
-        ];
-
-        for (input, output) in data {
-            assert_eq!(output, &serde_json::to_string(input).unwrap())
+            let s = serde_json::to_string(&StorageUpdates(Some(&update))).unwrap();
+            assert_eq!(expected, s);
         }
     }
 
-    #[test]
-    fn serialize_pending_nonces() {
-        let data = [
-            // this could just as well be none or just left out
-            (None, "{}"),
-            (Some(Default::default()), "{}"),
-            (
-                {
-                    let mut map = HashMap::new();
-                    map.insert(
-                        ContractAddress::new(felt!("0x123")).unwrap(),
-                        ContractNonce(felt!("0x1")),
-                    );
-                    // cannot have multiple in this test because ordering
-                    Some(map)
-                },
-                "{\"0x123\":\"0x1\"}",
-            ),
-        ];
+    mod deployed_contracts {
+        use super::*;
+        use pathfinder_common::ClassHash;
 
-        for (maybe_map, expected) in data {
-            assert_eq!(
-                expected,
-                &serde_json::to_string(&NoncesWrapper(maybe_map.as_ref())).unwrap()
-            );
+        #[test]
+        fn none() {
+            let result = serde_json::to_string(&DeployedContracts(None)).unwrap();
+            assert_eq!(result, "[]");
+        }
+
+        #[test]
+        fn empty() {
+            let result = serde_json::to_string(&DeployedContracts(None)).unwrap();
+            assert_eq!(result, "[]");
+        }
+
+        #[test]
+        fn with_deployed_contract() {
+            let expected = r#"[{"address":"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451","contract_hash":"0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"}]"#;
+
+            let result = serde_json::to_string(&DeployedContracts(Some(
+                &StateUpdate::default().with_deployed_contract(
+                    ContractAddress::new_or_panic(felt!(
+                        "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
+                    )),
+                    ClassHash(felt!(
+                        "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                    )),
+                ),
+            )))
+            .unwrap();
+            assert_eq!(result, expected);
+        }
+    }
+
+    mod block_hash_num_latest {
+        use super::*;
+
+        #[test]
+        fn hash() {
+            let result = serde_json::to_string::<BlockHashNumberOrLatest>(
+                &BlockHash(felt!("0x1234")).into(),
+            )
+            .unwrap();
+            assert_eq!(result, r#""0x1234""#);
+        }
+
+        #[test]
+        fn number() {
+            let result = serde_json::to_string::<BlockHashNumberOrLatest>(
+                &BlockNumber::new_or_panic(1234).into(),
+            )
+            .unwrap();
+            assert_eq!(result, r#""1234""#);
+        }
+
+        #[test]
+        fn latest() {
+            let result = serde_json::to_string(&BlockHashNumberOrLatest::Latest).unwrap();
+            assert_eq!(result, r#""latest""#);
+        }
+    }
+
+    mod nonces {
+        use super::*;
+
+        #[test]
+        fn none() {
+            let result = serde_json::to_string(&Nonces(None)).unwrap();
+            assert_eq!(result, "{}");
+        }
+
+        #[test]
+        fn empty() {
+            let result = serde_json::to_string(&Nonces(Some(&Default::default()))).unwrap();
+            assert_eq!(result, "{}");
+        }
+
+        #[test]
+        fn with_nonce_update() {
+            let result =
+                serde_json::to_string(&Nonces(Some(&StateUpdate::default().with_contract_nonce(
+                    ContractAddress::new_or_panic(felt!("0x123")),
+                    ContractNonce(felt!("0x1")),
+                ))))
+                .unwrap();
+            assert_eq!(result, r#"{"0x123":"0x1"}"#);
         }
     }
 }
