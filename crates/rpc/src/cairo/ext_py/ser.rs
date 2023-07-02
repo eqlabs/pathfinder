@@ -134,11 +134,21 @@ impl<'a> serde::Serialize for StorageUpdates<'a> {
             }
         }
 
-        let updates = self.0.iter().flat_map(|x| x.contract_updates.iter());
+        let system_updates = self
+            .0
+            .iter()
+            .flat_map(|x| x.system_contract_updates.iter())
+            .map(|(addr, update)| (addr, &update.storage));
+        let storage_updates = self
+            .0
+            .iter()
+            .flat_map(|x| x.contract_updates.iter())
+            .map(|(addr, update)| (addr, &update.storage));
+        let updates = system_updates.chain(storage_updates);
         let count = updates.clone().count();
         let mut map = serializer.serialize_map(Some(count))?;
         for (address, update) in updates {
-            map.serialize_entry(address, &StorageUpdates(&update.storage))?;
+            map.serialize_entry(address, &StorageUpdates(&update))?;
         }
         map.end()
     }
@@ -353,15 +363,27 @@ mod tests {
         fn with_updates() {
             use pathfinder_common::{StorageAddress, StorageValue};
 
-            let expected = r#"{"0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0x0"}]}"#;
-            let update = StateUpdate::default().with_storage_update(
-                ContractAddress::new_or_panic(felt!(
-                    "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
-                )),
-                StorageAddress::new_or_panic(felt!("0x5")),
-                StorageValue(felt!("0x0")),
-            );
-            let s = serde_json::to_string(&StorageUpdates(Some(&update))).unwrap();
+            let expected = r#"{
+                "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0xabc"}],
+                "0x1":[{"key":"0x123","value":"0xdef"}]
+            }"#;
+            // Use Value so we don't run into ordering issues.
+            let expected: serde_json::Value = serde_json::from_str(expected).unwrap();
+
+            let update = StateUpdate::default()
+                .with_storage_update(
+                    ContractAddress::new_or_panic(felt!(
+                        "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
+                    )),
+                    StorageAddress::new_or_panic(felt!("0x5")),
+                    StorageValue(felt!("0xabc")),
+                )
+                .with_system_storage_update(
+                    ContractAddress::ONE,
+                    StorageAddress::new_or_panic(felt!("0x123")),
+                    StorageValue(felt!("0xdef")),
+                );
+            let s = serde_json::to_value(&StorageUpdates(Some(&update))).unwrap();
             assert_eq!(expected, s);
         }
     }
