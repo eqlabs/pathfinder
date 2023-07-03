@@ -1,8 +1,8 @@
 //! Starknet L2 sequencer client.
 use pathfinder_common::{
     BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
-    ContractAddressSalt, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
-    TransactionVersion,
+    ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
+    TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
@@ -52,10 +52,7 @@ pub trait GatewayApi: Sync {
         unimplemented!();
     }
 
-    async fn state_update(
-        &self,
-        block: BlockId,
-    ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
+    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
         unimplemented!();
     }
 
@@ -288,16 +285,16 @@ impl GatewayApi for Client {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn state_update(
-        &self,
-        block: BlockId,
-    ) -> Result<reply::MaybePendingStateUpdate, SequencerError> {
-        self.feeder_gateway_request()
+    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
+        let state_update: reply::StateUpdate = self
+            .feeder_gateway_request()
             .get_state_update()
             .with_block(block)
             .with_retry(Self::RETRY)
             .get()
-            .await
+            .await?;
+
+        Ok(state_update.into())
     }
 
     /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
@@ -901,54 +898,9 @@ mod tests {
     }
 
     mod state_update_matches_by_hash_on {
-        use super::{
-            reply::state_update::{DeployedContract, StorageDiff},
-            *,
-        };
-        use pathfinder_common::{felt, ContractAddress, StateCommitment};
+        use super::*;
+        use pathfinder_common::felt;
         use pretty_assertions::assert_eq;
-        use starknet_gateway_types::reply::MaybePendingStateUpdate;
-        use std::collections::{BTreeSet, HashMap};
-
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        pub struct OrderedStateDiff {
-            pub storage_diffs: HashMap<ContractAddress, BTreeSet<StorageDiff>>,
-            pub deployed_contracts: BTreeSet<DeployedContract>,
-        }
-
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        pub struct OrderedStateUpdate {
-            pub block_hash: BlockHash,
-            pub new_root: StateCommitment,
-            pub old_root: StateCommitment,
-            pub state_diff: OrderedStateDiff,
-        }
-
-        impl From<MaybePendingStateUpdate> for OrderedStateUpdate {
-            fn from(s: MaybePendingStateUpdate) -> Self {
-                match s {
-                    MaybePendingStateUpdate::StateUpdate(s) => Self {
-                        block_hash: s.block_hash,
-                        new_root: s.new_root,
-                        old_root: s.old_root,
-                        state_diff: OrderedStateDiff {
-                            storage_diffs: s
-                                .state_diff
-                                .storage_diffs
-                                .into_iter()
-                                .map(|(addr, diffs)| (addr, diffs.into_iter().collect()))
-                                .collect(),
-                            deployed_contracts: s
-                                .state_diff
-                                .deployed_contracts
-                                .into_iter()
-                                .collect(),
-                        },
-                    },
-                    MaybePendingStateUpdate::Pending(_) => unreachable!(),
-                }
-            }
-        }
 
         #[tokio::test]
         async fn genesis() {
@@ -962,16 +914,14 @@ mod tests {
                     (v0_11_0::state_update::GENESIS, 200),
                 ),
             ]);
-            let by_number: OrderedStateUpdate = client
+            let by_number = client
                 .state_update(BlockId::from(GENESIS_BLOCK_NUMBER))
                 .await
-                .unwrap()
-                .into();
-            let by_hash: OrderedStateUpdate = client
+                .unwrap();
+            let by_hash = client
                 .state_update(BlockId::from(GENESIS_BLOCK_HASH))
                 .await
-                .unwrap()
-                .into();
+                .unwrap();
 
             assert_eq!(by_number, by_hash);
         }
@@ -988,12 +938,11 @@ mod tests {
                     (v0_11_0::state_update::NUMBER_315700, 200)
                 ),
             ]);
-            let by_number: OrderedStateUpdate = client
+            let by_number = client
                 .state_update(BlockNumber::new_or_panic(315700).into())
                 .await
-                .unwrap()
-                .into();
-            let by_hash: OrderedStateUpdate = client
+                .unwrap();
+            let by_hash = client
                 .state_update(
                     BlockHash(felt!(
                         "017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03"
@@ -1001,8 +950,7 @@ mod tests {
                     .into(),
                 )
                 .await
-                .unwrap()
-                .into();
+                .unwrap();
 
             assert_eq!(by_number, by_hash);
         }

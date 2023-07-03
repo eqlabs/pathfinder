@@ -65,7 +65,7 @@ pub async fn get_class(
     jh.await.context("Reading class from database")?
 }
 
-/// Returns true if the class is declared or deployed in the pending state.
+/// Returns true if the class is declared in the pending state.
 async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> bool {
     let state_diff = match pending {
         Some(pending) => match pending.state_update().await {
@@ -75,14 +75,13 @@ async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> boo
         None => return false,
     };
 
-    let declared = state_diff.state_diff.old_declared_contracts.iter().cloned();
-    let deployed = state_diff
-        .state_diff
-        .deployed_contracts
-        .iter()
-        .map(|contract| contract.class_hash);
+    let cairo = state_diff.declared_cairo_classes.iter().cloned();
+    let sierra = state_diff
+        .declared_sierra_classes
+        .keys()
+        .map(|sierra| ClassHash(sierra.0));
 
-    deployed.chain(declared).any(|item| item == hash)
+    cairo.chain(sierra).any(|item| item == hash)
 }
 
 #[cfg(test)]

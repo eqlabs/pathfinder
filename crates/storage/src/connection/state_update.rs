@@ -1,21 +1,17 @@
 use anyhow::Context;
+use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
-    BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
-    StorageValue,
+    BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
+    StateUpdate, StorageAddress, StorageCommitment, StorageValue,
 };
 
 use crate::{prelude::*, BlockId};
 
-use crate::types::state_update::{
-    DeclaredCairoClass, DeclaredSierraClass, DeployedContract, Nonce, ReplacedClass, StateDiff,
-    StorageDiff,
-};
-
-/// Inserts a canonical [StateDiff] into storage.
-pub(super) fn insert_canonical_state_diff(
+/// Inserts a canonical [StateUpdate] into storage.
+pub(super) fn insert_state_update(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    state_diff: &StateDiff,
+    state_update: &StateUpdate,
 ) -> anyhow::Result<()> {
     let mut insert_nonce = tx
         .inner()
@@ -39,64 +35,46 @@ pub(super) fn insert_canonical_state_diff(
         )
         .context("Preparing class definition block number update statement")?;
 
-    // Insert contract deployments. Doing this first ensures that subsequent sections will be
-    // guaranteed to have the contract address already interned (saving one insert).
-    for DeployedContract {
-        address,
-        class_hash,
-    } in &state_diff.deployed_contracts
-    {
-        insert_contract
-            .execute(params![&block_number, address, class_hash])
-            .context("Inserting deployed contract")?;
-    }
+    for (address, update) in &state_update.contract_updates {
+        if let Some(class_update) = &update.class {
+            insert_contract
+                .execute(params![&block_number, address, &class_update.class_hash()])
+                .context("Inserting deployed contract")?;
+        }
 
-    // Insert replaced class hashes
-    for ReplacedClass {
-        address,
-        class_hash,
-    } in &state_diff.replaced_classes
-    {
-        insert_contract
-            .execute(params![&block_number, address, class_hash])
-            .context("Inserting replaced class")?;
-    }
+        if let Some(nonce) = &update.nonce {
+            insert_nonce
+                .execute(params![&block_number, address, nonce])
+                .context("Inserting nonce update")?;
+        }
 
-    // Insert nonce updates
-    for Nonce {
-        contract_address,
-        nonce,
-    } in &state_diff.nonces
-    {
-        insert_nonce
-            .execute(params![&block_number, contract_address, nonce])
-            .context("Inserting nonce update")?;
-    }
-
-    // Insert storage updates
-    for StorageDiff {
-        address,
-        key,
-        value,
-    } in &state_diff.storage_diffs
-    {
-        insert_storage
-            .execute(params![&block_number, address, key, value])
-            .context("Inserting storage update")?;
+        for (key, value) in &update.storage {
+            insert_storage
+                .execute(params![&block_number, address, key, value])
+                .context("Inserting storage update")?;
+        }
     }
 
     // Set all declared classes block numbers. Class definitions are inserted by a separate mechanism, prior
     // to state update inserts. However, since the class insertion does not know with which block number to
     // associate with the class definition, we need to fill it in here.
-    let declared_classes = state_diff
+    let sierra = state_update
         .declared_sierra_classes
+        .keys()
+        .map(|sierra| ClassHash(sierra.0));
+    let cairo = state_update.declared_cairo_classes.iter().copied();
+    // Older cairo 0 classes were never declared, but instead got implicitly declared on first deployment.
+    // Until such classes dissappear we need to cater for them here. This works because the sql only
+    // updates the row if it is null.
+    let deployed = state_update
+        .contract_updates
         .iter()
-        .map(|d| d.class_hash.0)
-        .chain(state_diff.declared_contracts.iter().map(|d| d.class_hash.0))
-        // Some old state updates did not have declared contracts, but instead any deployed contract could
-        // be a new class declaration + deployment.
-        .chain(state_diff.deployed_contracts.iter().map(|d| d.class_hash.0))
-        .map(pathfinder_common::ClassHash);
+        .filter_map(|(_, update)| match update.class {
+            Some(ContractClassUpdate::Deploy(x)) => Some(x),
+            _ => None,
+        });
+
+    let declared_classes = sierra.chain(cairo).chain(deployed);
 
     for class in declared_classes {
         update_class_defs.execute(params![&block_number, &class])?;
@@ -105,55 +83,115 @@ pub(super) fn insert_canonical_state_diff(
     Ok(())
 }
 
-pub(super) fn state_diff(
+fn block_details(
     tx: &Transaction<'_>,
     block: BlockId,
-) -> anyhow::Result<Option<StateDiff>> {
-    // Simplify the following queries by only relying on block number and not hash etc as well.
-    let block_number = tx.block_id(block).context("Querying block number")?;
-    let Some((block_number, _)) = block_number else {
+) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
+    use const_format::formatcp;
+
+    const PREFIX: &str = r"SELECT b1.number, b1.hash, b1.root, b1.class_commitment, b2.root, b2.class_commitment FROM starknet_blocks b1 
+            LEFT OUTER JOIN starknet_blocks b2 ON b2.number = b1.number - 1";
+
+    const LATEST: &str = formatcp!("{PREFIX} ORDER BY b1.number DESC LIMIT 1");
+    const NUMBER: &str = formatcp!("{PREFIX} WHERE b1.number = ?");
+    const HASH: &str = formatcp!("{PREFIX} WHERE b1.hash = ?");
+
+    let handle_row = |row: &rusqlite::Row<'_>| {
+        let number = row.get_block_number(0)?;
+        let hash = row.get_block_hash(1)?;
+        let storage_commitment = row.get_storage_commitment(2)?;
+        let class_commitment = row.get_class_commitment(3)?;
+        // The genesis block would not have a value.
+        let parent_storage_commitment = row.get_optional_storage_commitment(4)?.unwrap_or_default();
+        let parent_class_commitment = row.get_optional_class_commitment(5)?.unwrap_or_default();
+
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let parent_state_commitment = if parent_storage_commitment == StorageCommitment::ZERO {
+            StateCommitment::ZERO
+        } else {
+            StateCommitment::calculate(parent_storage_commitment, parent_class_commitment)
+        };
+
+        Ok((number, hash, state_commitment, parent_state_commitment))
+    };
+
+    let tx = tx.inner();
+
+    match block {
+        BlockId::Latest => tx.query_row(LATEST, [], handle_row),
+        BlockId::Number(number) => tx.query_row(NUMBER, params![&number], handle_row),
+        BlockId::Hash(hash) => tx.query_row(HASH, params![&hash], handle_row),
+    }
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(super) fn state_update(
+    tx: &Transaction<'_>,
+    block: BlockId,
+) -> anyhow::Result<Option<StateUpdate>> {
+    let Some((
+        block_number,
+        block_hash,
+        state_commitment,
+        parent_state_commitment
+    )) = block_details(tx, block).context("Querying block header")? else {
         return Ok(None);
     };
+
+    let mut state_update = StateUpdate::default()
+        .with_block_hash(block_hash)
+        .with_state_commitment(state_commitment)
+        .with_parent_state_commitment(parent_state_commitment);
 
     let mut stmt = tx
         .inner()
         .prepare_cached("SELECT contract_address, nonce FROM nonce_updates WHERE block_number = ?")
         .context("Preparing nonce update query statement")?;
 
-    let nonces = stmt
+    let mut nonces = stmt
         .query_map(params![&block_number], |row| {
             let contract_address = row.get_contract_address(0)?;
             let nonce = row.get_contract_nonce(1)?;
 
-            Ok(Nonce {
-                contract_address,
-                nonce,
-            })
+            Ok((contract_address, nonce))
         })
-        .context("Querying nonce updates")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over nonce query rows")?;
+        .context("Querying nonce updates")?;
+
+    while let Some((address, nonce)) = nonces
+        .next()
+        .transpose()
+        .context("Iterating over nonce query rows")?
+    {
+        state_update = state_update.with_contract_nonce(address, nonce);
+    }
 
     let mut stmt = tx
         .inner().prepare_cached(
             "SELECT contract_address, storage_address, storage_value FROM storage_updates WHERE block_number = ?"
         )
         .context("Preparing storage update query statement")?;
-    let storage_diffs = stmt
+    let mut storage_diffs = stmt
         .query_map(params![&block_number], |row| {
             let address: ContractAddress = row.get_contract_address(0)?;
             let key: StorageAddress = row.get_storage_address(1)?;
             let value: StorageValue = row.get_storage_value(2)?;
 
-            Ok(StorageDiff {
-                address,
-                key,
-                value,
-            })
+            Ok((address, key, value))
         })
-        .context("Querying storage updates")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over storage query rows")?;
+        .context("Querying storage updates")?;
+
+    while let Some((address, key, value)) = storage_diffs
+        .next()
+        .transpose()
+        .context("Iterating over storage query rows")?
+    {
+        state_update = if address == ContractAddress::ONE {
+            state_update.with_system_storage_update(address, key, value)
+        } else {
+            state_update.with_storage_update(address, key, value)
+        };
+    }
 
     let mut stmt = tx
         .inner()
@@ -170,35 +208,25 @@ pub(super) fn state_diff(
         )
         .context("Preparing class declaration query statement")?;
 
-    let declared_classes = stmt
+    let mut declared_classes = stmt
         .query_map(params![&block_number], |row| {
             let class_hash: ClassHash = row.get_class_hash(0)?;
             let casm_hash = row.get_optional_casm_hash(1)?;
 
             Ok((class_hash, casm_hash))
         })
-        .context("Querying class declarations")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over class declaration query rows")?;
+        .context("Querying class declarations")?;
 
-    let declared_sierra_classes = declared_classes
-        .iter()
-        .filter_map(|(sierra_hash, casm_hash)| {
-            casm_hash.map(|casm| DeclaredSierraClass {
-                class_hash: SierraHash(sierra_hash.0),
-                compiled_class_hash: casm,
-            })
-        })
-        .collect();
-
-    let declared_contracts = declared_classes
-        .into_iter()
-        .filter_map(|(class_hash, casm_hash)| {
-            casm_hash
-                .is_none()
-                .then_some(DeclaredCairoClass { class_hash })
-        })
-        .collect();
+    while let Some((class_hash, casm)) = declared_classes
+        .next()
+        .transpose()
+        .context("Iterating over class declaration query rows")?
+    {
+        state_update = match casm {
+            Some(casm) => state_update.with_declared_sierra_class(SierraHash(class_hash.0), casm),
+            None => state_update.with_declared_cairo_class(class_hash),
+        };
+    }
 
     let mut stmt = tx
         .inner().prepare_cached(
@@ -215,7 +243,7 @@ pub(super) fn state_diff(
         )
         .context("Preparing contract update query statement")?;
 
-    let deployed_and_replaced_contracts = stmt
+    let mut deployed_and_replaced_contracts = stmt
         .query_map(params![&block_number], |row| {
             let address: ContractAddress = row.get_contract_address(0)?;
             let class_hash: ClassHash = row.get_class_hash(1)?;
@@ -223,40 +251,21 @@ pub(super) fn state_diff(
 
             Ok((address, class_hash, is_replaced))
         })
-        .context("Querying contract deployments")?
-        .collect::<Result<Vec<_>, _>>()
-        .context("Iterating over contract deployment query rows")?;
+        .context("Querying contract deployments")?;
 
-    let replaced_classes = deployed_and_replaced_contracts
-        .iter()
-        .filter_map(|(address, class_hash, is_replaced)| {
-            is_replaced.then_some(ReplacedClass {
-                address: *address,
-                class_hash: *class_hash,
-            })
-        })
-        .collect();
+    while let Some((address, class_hash, is_replaced)) = deployed_and_replaced_contracts
+        .next()
+        .transpose()
+        .context("Iterating over contract deployment query rows")?
+    {
+        state_update = if is_replaced {
+            state_update.with_replaced_class(address, class_hash)
+        } else {
+            state_update.with_deployed_contract(address, class_hash)
+        };
+    }
 
-    let deployed_contracts = deployed_and_replaced_contracts
-        .iter()
-        .filter_map(|(address, class_hash, is_replaced)| {
-            (!is_replaced).then_some(DeployedContract {
-                address: *address,
-                class_hash: *class_hash,
-            })
-        })
-        .collect();
-
-    let diff = StateDiff {
-        storage_diffs,
-        declared_contracts,
-        deployed_contracts,
-        nonces,
-        declared_sierra_classes,
-        replaced_classes,
-    };
-
-    Ok(Some(diff))
+    Ok(Some(state_update))
 }
 
 pub(super) fn storage_value(
@@ -416,11 +425,11 @@ mod tests {
             .child_builder()
             .finalize_with_hash(BlockHash(felt!("0xa111123")));
 
-        let diff_0 = StateDiff::default();
-        let diff_1 = StateDiff::default()
-            .add_declared_cairo_class(original_class)
-            .add_deployed_contract(contract, original_class);
-        let diff_2 = StateDiff::default().add_replaced_class(contract, replaced_class);
+        let diff_0 = StateUpdate::default();
+        let diff_1 = StateUpdate::default()
+            .with_declared_cairo_class(original_class)
+            .with_deployed_contract(contract, original_class);
+        let diff_2 = StateUpdate::default().with_replaced_class(contract, replaced_class);
 
         tx.insert_cairo_class(original_class, definition).unwrap();
         tx.insert_cairo_class(replaced_class, definition).unwrap();
@@ -429,9 +438,9 @@ mod tests {
         tx.insert_block_header(&header_1).unwrap();
         tx.insert_block_header(&header_2).unwrap();
 
-        tx.insert_state_diff(header_0.number, &diff_0).unwrap();
-        tx.insert_state_diff(header_1.number, &diff_1).unwrap();
-        tx.insert_state_diff(header_2.number, &diff_2).unwrap();
+        tx.insert_state_update(header_0.number, &diff_0).unwrap();
+        tx.insert_state_update(header_1.number, &diff_1).unwrap();
+        tx.insert_state_update(header_2.number, &diff_2).unwrap();
 
         let not_deployed_yet =
             super::contract_class_hash(&tx, header_0.number.into(), contract).unwrap();
@@ -490,57 +499,47 @@ mod tests {
         // Create genesis block with a deployed contract so we can replace it in the
         // next block and test against it.
         let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"contract addr"));
-        let genesis_diff = StateDiff::default()
-            .add_declared_cairo_class(cairo_hash)
-            .add_deployed_contract(contract_address, cairo_hash);
+        let genesis_state_update = StateUpdate::default()
+            .with_declared_cairo_class(cairo_hash)
+            .with_deployed_contract(contract_address, cairo_hash);
         let header = BlockHeader::builder().finalize_with_hash(BlockHash(felt!("0xabc")));
         tx.insert_block_header(&header).unwrap();
-        tx.insert_state_diff(header.number, &genesis_diff).unwrap();
+        tx.insert_state_update(header.number, &genesis_state_update)
+            .unwrap();
 
         // The actual data we want to query.
-        // Note: create without builder to ensure we cover all the fields (and add new ones) in this test.
-        let diff = StateDiff {
-            storage_diffs: vec![StorageDiff {
-                address: contract_address,
-                key: StorageAddress::new_or_panic(felt_bytes!(b"storage key")),
-                value: StorageValue(felt_bytes!(b"storage value")),
-            }],
-            declared_contracts: vec![DeclaredCairoClass {
-                class_hash: cairo_hash2,
-            }],
-            deployed_contracts: vec![DeployedContract {
-                address: ContractAddress::new_or_panic(felt_bytes!(b"contract addr 2")),
-                class_hash: ClassHash(sierra_hash.0),
-            }],
-            nonces: vec![Nonce {
-                contract_address,
-                nonce: ContractNonce(felt_bytes!(b"nonce")),
-            }],
-            declared_sierra_classes: vec![DeclaredSierraClass {
-                class_hash: SierraHash(felt_bytes!(b"sierra hash")),
-                compiled_class_hash: CasmHash(felt_bytes!(b"casm hash")),
-            }],
-            replaced_classes: vec![
-                // Replace the contract from the previous block.
-                ReplacedClass {
-                    address: contract_address,
-                    class_hash: ClassHash(sierra_hash.0),
-                },
-            ],
-        };
-
         let header = header
             .child_builder()
             .finalize_with_hash(BlockHash(felt!("0xabcdef")));
-        tx.insert_block_header(&header).unwrap();
-        tx.insert_state_diff(header.number, &diff).unwrap();
+        let state_update = StateUpdate::default()
+            .with_block_hash(header.hash)
+            .with_storage_update(
+                contract_address,
+                StorageAddress::new_or_panic(felt_bytes!(b"storage key")),
+                StorageValue(felt_bytes!(b"storage value")),
+            )
+            .with_deployed_contract(
+                ContractAddress::new_or_panic(felt_bytes!(b"contract addr 2")),
+                ClassHash(sierra_hash.0),
+            )
+            .with_declared_cairo_class(cairo_hash2)
+            .with_declared_sierra_class(
+                SierraHash(felt_bytes!(b"sierra hash")),
+                CasmHash(felt_bytes!(b"casm hash")),
+            )
+            .with_contract_nonce(contract_address, ContractNonce(felt_bytes!(b"nonce")))
+            .with_replaced_class(contract_address, ClassHash(sierra_hash.0));
 
-        let result = super::state_diff(&tx, header.number.into())
+        tx.insert_block_header(&header).unwrap();
+        tx.insert_state_update(header.number, &state_update)
+            .unwrap();
+
+        let result = super::state_update(&tx, header.number.into())
             .unwrap()
             .unwrap();
-        assert_eq!(result, diff);
+        assert_eq!(result, state_update);
 
-        let non_existent = super::state_diff(&tx, (header.number + 1).into()).unwrap();
+        let non_existent = super::state_update(&tx, (header.number + 1).into()).unwrap();
         assert_eq!(non_existent, None);
     }
 
@@ -549,37 +548,39 @@ mod tests {
         use super::*;
 
         /// Create and inserts a basic state diff for testing.
-        fn setup() -> (crate::Connection, StateDiff, BlockHeader) {
+        fn setup() -> (crate::Connection, StateUpdate, BlockHeader) {
             let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
             let tx = db.transaction().unwrap();
 
             let header = BlockHeader::builder().finalize_with_hash(BlockHash(felt_bytes!(b"hash")));
             let contract_adress = ContractAddress::new_or_panic(felt_bytes!(b"contract address"));
-            let diff = StateDiff::default()
-                .add_nonce_update(contract_adress, ContractNonce(felt_bytes!(b"nonce value")))
-                .add_storage_update(
+            let state_update = StateUpdate::default()
+                .with_contract_nonce(contract_adress, ContractNonce(felt_bytes!(b"nonce value")))
+                .with_storage_update(
                     contract_adress,
                     StorageAddress::new_or_panic(felt_bytes!(b"storage address")),
                     StorageValue(felt_bytes!(b"storage value")),
                 );
 
             tx.insert_block_header(&header).unwrap();
-            tx.insert_state_diff(header.number, &diff).unwrap();
+            tx.insert_state_update(header.number, &state_update)
+                .unwrap();
             tx.commit().unwrap();
 
-            (db, diff, header)
+            (db, state_update, header)
         }
 
         #[test]
         fn get_contract_nonce() {
-            let (mut db, diff, header) = setup();
+            let (mut db, state_update, header) = setup();
             let tx = db.transaction().unwrap();
 
             // Valid contract nonce
-            let (contract, expected) = diff
-                .nonces
-                .first()
-                .map(|x| (x.contract_address, x.nonce))
+            let (contract, expected) = state_update
+                .contract_updates
+                .iter()
+                .filter_map(|(addr, update)| update.nonce.map(|n| (*addr, n)))
+                .next()
                 .unwrap();
 
             let latest = contract_nonce(&tx, contract, BlockId::Latest)
@@ -615,13 +616,17 @@ mod tests {
 
         #[test]
         fn get_storage_value() {
-            let (mut db, diff, header) = setup();
+            let (mut db, state_update, header) = setup();
             let tx = db.transaction().unwrap();
 
-            let (contract, key, expected) = diff
-                .storage_diffs
-                .first()
-                .map(|x| (x.address, x.key, x.value))
+            let (contract, key, expected) = state_update
+                .contract_updates
+                .iter()
+                .next()
+                .map(|(addr, update)| {
+                    let (key, value) = update.storage.iter().next().unwrap();
+                    (*addr, *key, *value)
+                })
                 .unwrap();
 
             // Valid key and contract.

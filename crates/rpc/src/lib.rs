@@ -165,8 +165,8 @@ pub mod test_utils {
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash,
         ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData,
-        EventKey, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StorageAddress,
-        StorageCommitment, TransactionHash, TransactionIndex, TransactionVersion,
+        EventKey, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateUpdate,
+        StorageAddress, StorageCommitment, TransactionHash, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
@@ -174,22 +174,19 @@ pub mod test_utils {
     use stark_hash::Felt;
     use starknet_gateway_types::{
         pending::PendingData,
-        reply::{
-            state_update::{ReplacedClass, StorageDiff},
-            transaction::{
-                execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-                DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
-                InvokeTransactionV0, Receipt, Transaction,
-            },
+        reply::transaction::{
+            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+            DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
+            InvokeTransactionV0, Receipt, Transaction,
         },
     };
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
         use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
-        use pathfinder_storage::types::state_update::StateDiff;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
@@ -210,43 +207,37 @@ pub mod test_utils {
 
         let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
 
-        let state_diff0 = StateDiff::default()
-            .add_deployed_contract(contract0_addr, class0_hash)
-            .add_nonce_update(contract0_addr, ContractNonce(felt!("0x1")));
+        let state_update0 = StateUpdate::default()
+            .with_deployed_contract(contract0_addr, class0_hash)
+            .with_contract_nonce(contract0_addr, ContractNonce(felt!("0x1")));
 
-        let state_diff1 = StateDiff::default()
-            .add_deployed_contract(contract1_addr, class1_hash)
-            .add_storage_update(
+        let state_update1 = StateUpdate::default()
+            .with_deployed_contract(contract1_addr, class1_hash)
+            .with_storage_update(
                 contract1_addr,
                 storage_addr,
                 StorageValue(felt_bytes!(b"storage value 1")),
             );
 
-        let state_diff2 = StateDiff::default()
-            .add_deployed_contract(contract2_addr, class2_hash)
-            .add_nonce_update(contract1_addr, ContractNonce(felt!("0x10")))
-            .add_nonce_update(contract2_addr, ContractNonce(felt!("0xfeed")))
-            .add_storage_update(
+        let state_update2 = StateUpdate::default()
+            .with_deployed_contract(contract2_addr, class2_hash)
+            .with_contract_nonce(contract1_addr, ContractNonce(felt!("0x10")))
+            .with_contract_nonce(contract2_addr, ContractNonce(felt!("0xfeed")))
+            .with_storage_update(
                 contract1_addr,
                 storage_addr,
                 StorageValue(felt_bytes!(b"storage value 2")),
             );
 
-        let contract0_update = vec![];
+        let contract0_update = HashMap::new();
 
         let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
-        let contract1_update0 = vec![StorageDiff {
-            key: storage_addr,
-            value: StorageValue(felt_bytes!(b"storage value 0")),
-        }];
-        let contract1_update1 = vec![StorageDiff {
-            key: storage_addr,
-            value: StorageValue(felt_bytes!(b"storage value 1")),
-        }];
-        let contract1_update2 = vec![StorageDiff {
-            key: storage_addr,
-            value: StorageValue(felt_bytes!(b"storage value 2")),
-        }];
+        let contract1_update0 =
+            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 0")))]);
+        let contract1_update1 =
+            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 1")))]);
+        let contract1_update2 =
+            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 2")))]);
 
         let class0_definition =
             starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION.to_vec();
@@ -339,7 +330,7 @@ pub mod test_utils {
             .unwrap();
         let contract_state_hash = update_contract_state(
             contract2_addr,
-            &[],
+            &HashMap::new(),
             Some(ContractNonce(felt!("0xfeed"))),
             Some(class2_hash),
             &storage_commitment_tree,
@@ -464,13 +455,13 @@ pub mod test_utils {
             .unwrap();
 
         db_txn
-            .insert_state_diff(header0.number, &state_diff0)
+            .insert_state_update(header0.number, &state_update0)
             .unwrap();
         db_txn
-            .insert_state_diff(header1.number, &state_diff1)
+            .insert_state_update(header1.number, &state_update1)
             .unwrap();
         db_txn
-            .insert_state_diff(header2.number, &state_diff2)
+            .insert_state_update(header2.number, &state_update2)
             .unwrap();
 
         // Mark block 0 as L1 accepted.
@@ -583,67 +574,53 @@ pub mod test_utils {
             starknet_version: StarknetVersion::new(0, 11, 0),
         };
 
-        use starknet_gateway_types::reply as seq_reply;
-        let deployed_contracts = vec![
-            seq_reply::state_update::DeployedContract {
-                address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 0 address")),
-                class_hash: ClassHash(felt_bytes!(b"pending class 0 hash")),
-            },
-            seq_reply::state_update::DeployedContract {
-                address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 1 address")),
-                class_hash: ClassHash(felt_bytes!(b"pending class 1 hash")),
-            },
-        ];
-        let storage_diffs = [(
-            deployed_contracts[1].address,
-            vec![
-                seq_reply::state_update::StorageDiff {
-                    key: StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 0")),
-                    value: StorageValue(felt_bytes!(b"pending storage value 0")),
-                },
-                seq_reply::state_update::StorageDiff {
-                    key: StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 1")),
-                    value: StorageValue(felt_bytes!(b"pending storage value 1")),
-                },
-            ],
-        )]
-        .into_iter()
-        .collect();
-        let replaced_classes = vec![ReplacedClass {
-            address: ContractAddress::new_or_panic(felt_bytes!(b"pending contract 2 (replaced)")),
-            class_hash: ClassHash(felt_bytes!(b"pending class 2 hash (replaced)")),
-        }];
-
-        let state_diff = starknet_gateway_types::reply::state_update::StateDiff {
-            storage_diffs,
-            deployed_contracts,
-            old_declared_contracts: Vec::new(),
-            declared_classes: Vec::new(),
-            nonces: std::collections::HashMap::new(),
-            replaced_classes,
-        };
+        let contract1 = ContractAddress::new_or_panic(felt_bytes!(b"pending contract 1 address"));
+        let state_update = StateUpdate::default()
+            .with_parent_state_commitment(latest.state_commitment)
+            .with_declared_cairo_class(ClassHash(felt_bytes!(b"pending class 0 hash")))
+            .with_declared_cairo_class(ClassHash(felt_bytes!(b"pending class 1 hash")))
+            .with_deployed_contract(
+                ContractAddress::new_or_panic(felt_bytes!(b"pending contract 0 address")),
+                ClassHash(felt_bytes!(b"pending class 0 hash")),
+            )
+            .with_deployed_contract(contract1, ClassHash(felt_bytes!(b"pending class 1 hash")))
+            .with_storage_update(
+                contract1,
+                StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 0")),
+                StorageValue(felt_bytes!(b"pending storage value 0")),
+            )
+            .with_storage_update(
+                contract1,
+                StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 1")),
+                StorageValue(felt_bytes!(b"pending storage value 1")),
+            )
+            // This is not a real contract and should be re-worked..
+            .with_replaced_class(
+                ContractAddress::new_or_panic(felt_bytes!(b"pending contract 2 (replaced)")),
+                ClassHash(felt_bytes!(b"pending class 2 hash (replaced)")),
+            );
 
         // The class definitions must be inserted into the database.
-        let deployed_contracts = state_diff.deployed_contracts.clone();
-        let deploy_storage = storage.clone();
+        let state_update_copy = state_update.clone();
         tokio::task::spawn_blocking(move || {
-            let mut db = deploy_storage.connection().unwrap();
+            let mut db = storage.connection().unwrap();
             let tx = db.transaction().unwrap();
             let class_definition =
                 starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
-            for deployed in deployed_contracts {
-                tx.insert_cairo_class(deployed.class_hash, class_definition)
+
+            for cairo in state_update_copy.declared_cairo_classes {
+                tx.insert_cairo_class(cairo, class_definition).unwrap();
+            }
+
+            for (sierra, casm) in state_update_copy.declared_sierra_classes {
+                tx.insert_sierra_class(&sierra, b"sierra def", &casm, b"casm def", "test version")
                     .unwrap();
             }
+
             tx.commit().unwrap();
         })
         .await
         .unwrap();
-
-        let state_update = starknet_gateway_types::reply::PendingStateUpdate {
-            old_root: latest.state_commitment,
-            state_diff,
-        };
 
         let pending_data = PendingData::default();
         pending_data

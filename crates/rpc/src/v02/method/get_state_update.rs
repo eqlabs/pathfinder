@@ -52,41 +52,23 @@ fn get_state_update_from_storage(
     tx: &pathfinder_storage::Transaction<'_>,
     block: pathfinder_storage::BlockId,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let header = tx
-        .block_header(block)
-        .context("Fetching block header")?
+    let state_update = tx
+        .state_update(block)
+        .context("Fetching state diff")?
         .ok_or(GetStateUpdateError::BlockNotFound)?;
 
-    let parent_state_commitment = tx
-        .block_header(pathfinder_storage::BlockId::Hash(header.parent_hash))
-        .context("Fetching parent block header")?
-        .map(|header| header.state_commitment)
-        .unwrap_or_default();
-
-    let state_diff = tx
-        .state_diff(block)
-        .context("Fetching state diff")?
-        .context("State diff missing from database")?;
-
-    let state_update = types::StateUpdate {
-        block_hash: Some(header.hash),
-        new_root: Some(header.state_commitment),
-        old_root: parent_state_commitment,
-        state_diff: types::StateDiff::from(state_diff),
-    };
-
-    Ok(state_update)
+    Ok(state_update.into())
 }
 
 mod types {
     use crate::felt::{RpcFelt, RpcFelt251};
+    use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::{
         BlockHash, ClassHash, ContractAddress, ContractNonce, StateCommitment, StorageAddress,
         StorageValue,
     };
     use serde::Serialize;
     use serde_with::skip_serializing_none;
-    use std::collections::HashMap;
 
     #[serde_with::serde_as]
     #[skip_serializing_none]
@@ -107,24 +89,94 @@ mod types {
         pub state_diff: StateDiff,
     }
 
-    impl From<starknet_gateway_types::reply::PendingStateUpdate> for StateUpdate {
-        fn from(x: starknet_gateway_types::reply::PendingStateUpdate) -> Self {
-            Self {
-                block_hash: None,
-                new_root: None,
-                old_root: x.old_root,
-                state_diff: x.state_diff.into(),
-            }
+    #[cfg(test)]
+    impl StateUpdate {
+        // Sorts its vectors so that they can be equated.
+        pub fn sort(&mut self) {
+            self.state_diff
+                .deployed_contracts
+                .sort_by_key(|x| x.address);
+            self.state_diff.declared_contract_hashes.sort();
+            self.state_diff.nonces.sort_by_key(|x| x.contract_address);
+            self.state_diff.storage_diffs.sort_by_key(|x| x.address);
         }
     }
 
-    impl From<pathfinder_storage::types::StateUpdate> for StateUpdate {
-        fn from(x: pathfinder_storage::types::StateUpdate) -> Self {
-            Self {
-                block_hash: x.block_hash,
-                new_root: Some(x.new_root),
-                old_root: x.old_root,
-                state_diff: x.state_diff.into(),
+    impl From<pathfinder_common::StateUpdate> for StateUpdate {
+        fn from(value: pathfinder_common::StateUpdate) -> Self {
+            let mut storage_diffs = Vec::new();
+            let mut deployed_contracts = Vec::new();
+            let mut nonces = Vec::new();
+
+            for (contract_address, update) in value.contract_updates {
+                if let Some(nonce) = update.nonce {
+                    nonces.push(Nonce {
+                        contract_address,
+                        nonce,
+                    });
+                }
+
+                if let Some(ContractClassUpdate::Deploy(class_hash)) = update.class {
+                    deployed_contracts.push(DeployedContract {
+                        address: contract_address,
+                        class_hash,
+                    });
+                }
+
+                let storage_entries = update
+                    .storage
+                    .into_iter()
+                    .map(|(key, value)| StorageEntry { key, value })
+                    .collect();
+
+                storage_diffs.push(StorageDiff {
+                    address: contract_address,
+                    storage_entries,
+                });
+            }
+
+            for (address, update) in value.system_contract_updates {
+                let storage_entries = update
+                    .storage
+                    .into_iter()
+                    .map(|(key, value)| StorageEntry { key, value })
+                    .collect();
+
+                storage_diffs.push(StorageDiff {
+                    address,
+                    storage_entries,
+                });
+            }
+
+            let declared_contract_hashes = value
+                .declared_sierra_classes
+                .into_keys()
+                .map(|class_hash| ClassHash(class_hash.0))
+                .chain(value.declared_cairo_classes.iter().copied())
+                .collect();
+
+            let state_diff = StateDiff {
+                storage_diffs,
+                declared_contract_hashes,
+                deployed_contracts,
+                nonces,
+            };
+
+            let block_hash = match value.block_hash {
+                BlockHash::ZERO => None,
+                other => Some(other),
+            };
+
+            let new_root = match value.state_commitment {
+                StateCommitment::ZERO => None,
+                other => Some(other),
+            };
+
+            StateUpdate {
+                block_hash,
+                new_root,
+                old_root: value.parent_state_commitment,
+                state_diff,
             }
         }
     }
@@ -140,102 +192,6 @@ mod types {
         pub declared_contract_hashes: Vec<ClassHash>,
         pub deployed_contracts: Vec<DeployedContract>,
         pub nonces: Vec<Nonce>,
-    }
-
-    impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
-        fn from(state_diff: starknet_gateway_types::reply::state_update::StateDiff) -> Self {
-            let storage_diffs: Vec<StorageDiff> = state_diff
-                .storage_diffs
-                .into_iter()
-                .map(|(address, storage_diffs)| StorageDiff {
-                    address,
-                    storage_entries: storage_diffs.into_iter().map(StorageEntry::from).collect(),
-                })
-                .collect();
-            Self {
-                storage_diffs,
-                // For the v02 API we're returning  Cairo _and_ Sierra class hashes here
-                declared_contract_hashes: state_diff
-                    .old_declared_contracts
-                    .into_iter()
-                    .chain(
-                        state_diff
-                            .declared_classes
-                            .into_iter()
-                            .map(|d| ClassHash(d.class_hash.0)),
-                    )
-                    .collect(),
-                deployed_contracts: state_diff
-                    .deployed_contracts
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                nonces: state_diff
-                    .nonces
-                    .into_iter()
-                    .map(|(contract_address, nonce)| Nonce {
-                        contract_address,
-                        nonce,
-                    })
-                    .collect(),
-            }
-        }
-    }
-
-    /// Convert from the v0.1.0 representation we have in the storage to the new one.
-    ///
-    /// We need this conversion because the representation of storage diffs have changed
-    /// in v0.2.0 of the JSON-RPC specification and we're storing v0.1.0 formatted JSONs
-    /// in our storage.
-    /// Storage updates are now grouped per-contract and individual update entries no
-    /// longer contain the contract address.
-    impl From<pathfinder_storage::types::state_update::StateDiff> for StateDiff {
-        fn from(diff: pathfinder_storage::types::state_update::StateDiff) -> Self {
-            let mut per_contract_diff: HashMap<ContractAddress, Vec<StorageEntry>> = HashMap::new();
-            for storage_diff in diff.storage_diffs {
-                per_contract_diff
-                    .entry(storage_diff.address)
-                    .and_modify(|entries| {
-                        entries.push(StorageEntry {
-                            key: storage_diff.key,
-                            value: storage_diff.value,
-                        })
-                    })
-                    .or_insert_with(|| {
-                        vec![StorageEntry {
-                            key: storage_diff.key,
-                            value: storage_diff.value,
-                        }]
-                    });
-            }
-            let storage_diffs: Vec<StorageDiff> = per_contract_diff
-                .into_iter()
-                .map(|(address, storage_entries)| StorageDiff {
-                    address,
-                    storage_entries,
-                })
-                .collect();
-            Self {
-                storage_diffs,
-                // For the v02 API we're returning  Cairo _and_ Sierra class hashes here
-                declared_contract_hashes: diff
-                    .declared_contracts
-                    .into_iter()
-                    .map(|d| d.class_hash)
-                    .chain(
-                        diff.declared_sierra_classes
-                            .into_iter()
-                            .map(|d| ClassHash(d.class_hash.0)),
-                    )
-                    .collect(),
-                deployed_contracts: diff
-                    .deployed_contracts
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
-                nonces: diff.nonces.into_iter().map(Into::into).collect(),
-            }
-        }
     }
 
     /// L2 storage diff of a contract.
@@ -282,24 +238,6 @@ mod types {
         pub class_hash: ClassHash,
     }
 
-    impl From<starknet_gateway_types::reply::state_update::DeployedContract> for DeployedContract {
-        fn from(d: starknet_gateway_types::reply::state_update::DeployedContract) -> Self {
-            Self {
-                address: d.address,
-                class_hash: d.class_hash,
-            }
-        }
-    }
-
-    impl From<pathfinder_storage::types::state_update::DeployedContract> for DeployedContract {
-        fn from(c: pathfinder_storage::types::state_update::DeployedContract) -> Self {
-            Self {
-                address: c.address,
-                class_hash: c.class_hash,
-            }
-        }
-    }
-
     /// L2 state diff nonce item.
     #[serde_with::serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -310,15 +248,6 @@ mod types {
         pub contract_address: ContractAddress,
         #[serde_as(as = "RpcFelt")]
         pub nonce: ContractNonce,
-    }
-
-    impl From<pathfinder_storage::types::state_update::Nonce> for Nonce {
-        fn from(n: pathfinder_storage::types::state_update::Nonce) -> Self {
-            Self {
-                contract_address: n.contract_address,
-                nonce: n.nonce,
-            }
-        }
     }
 
     #[cfg(test)]
@@ -376,15 +305,12 @@ mod types {
 
 #[cfg(test)]
 mod tests {
-    use super::types::{DeployedContract, StateDiff, StateUpdate, StorageDiff, StorageEntry};
+    use super::types::StateUpdate;
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, felt_bytes};
-    use pathfinder_common::{
-        BlockHash, BlockNumber, Chain, ClassHash, ContractAddress, StateCommitment, StorageAddress,
-        StorageValue,
-    };
+    use pathfinder_common::felt;
+    use pathfinder_common::{BlockHash, BlockNumber, Chain};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -439,18 +365,22 @@ mod tests {
     /// Execute a single test case and check its outcome.
     async fn check(test_case_idx: usize, test_case: &(RpcContext, BlockId, TestCaseHandler)) {
         let (context, block_id, f) = test_case;
-        let result = get_state_update(
+        let mut result = get_state_update(
             context.clone(),
             GetStateUpdateInput {
                 block_id: *block_id,
             },
         )
         .await;
+        if let Ok(r) = result.as_mut() {
+            r.sort();
+        }
         f(test_case_idx, &result);
     }
 
     /// Common assertion type for most of the test cases
-    fn assert_ok(expected: types::StateUpdate) -> TestCaseHandler {
+    fn assert_ok(mut expected: types::StateUpdate) -> TestCaseHandler {
+        expected.sort();
         use pretty_assertions::assert_eq;
         Box::new(move |i: usize, result| {
             assert_matches!(result, Ok(actual) => assert_eq!(
@@ -537,52 +467,19 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
+        let expected: StateUpdate = context
+            .pending_data
+            .as_ref()
+            .unwrap()
+            .state_update()
+            .await
+            .unwrap()
+            .as_ref()
+            .to_owned()
+            .into();
+
         let result = get_state_update(context, input).await.unwrap();
 
-        let expected = StateUpdate {
-            block_hash: None,
-            new_root: None,
-            old_root: StateCommitment(felt!(
-                "0x057B695C82AF81429FDC8966088B0196105DFB5AA22B54CBC86FC95DC3B3ECE1"
-            )),
-            state_diff: StateDiff {
-                storage_diffs: vec![StorageDiff {
-                    address: ContractAddress::new_or_panic(felt_bytes!(
-                        b"pending contract 1 address"
-                    )),
-                    storage_entries: vec![
-                        StorageEntry {
-                            key: StorageAddress::new_or_panic(felt_bytes!(
-                                b"pending storage key 0"
-                            )),
-                            value: StorageValue(felt_bytes!(b"pending storage value 0")),
-                        },
-                        StorageEntry {
-                            key: StorageAddress::new_or_panic(felt_bytes!(
-                                b"pending storage key 1"
-                            )),
-                            value: StorageValue(felt_bytes!(b"pending storage value 1")),
-                        },
-                    ],
-                }],
-                declared_contract_hashes: vec![],
-                deployed_contracts: vec![
-                    DeployedContract {
-                        address: ContractAddress::new_or_panic(felt_bytes!(
-                            b"pending contract 0 address"
-                        )),
-                        class_hash: ClassHash(felt_bytes!(b"pending class 0 hash")),
-                    },
-                    DeployedContract {
-                        address: ContractAddress::new_or_panic(felt_bytes!(
-                            b"pending contract 1 address"
-                        )),
-                        class_hash: ClassHash(felt_bytes!(b"pending class 1 hash")),
-                    },
-                ],
-                nonces: vec![],
-            },
-        };
         pretty_assertions::assert_eq!(result, expected);
     }
 }

@@ -32,13 +32,13 @@ pub async fn get_storage_at(
             {
                 Some(update) => {
                     let pending_value = update
-                        .state_diff
-                        .storage_diffs
+                        .contract_updates
                         .get(&input.contract_address)
-                        .and_then(|storage| {
-                            storage.iter().find_map(|update| {
-                                (update.key == input.key).then_some(update.value)
-                            })
+                        .and_then(|update| {
+                            update
+                                .storage
+                                .iter()
+                                .find_map(|(key, value)| (key == &input.key).then_some(*value))
                         });
 
                     match pending_value {

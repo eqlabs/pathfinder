@@ -1,7 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, EthereumAddress, GasPrice, SequencerAddress,
-    StarknetVersion, StateCommitment,
+    BlockHash, BlockNumber, BlockTimestamp, ContractAddress, EthereumAddress, GasPrice,
+    SequencerAddress, StarknetVersion, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
@@ -688,53 +688,81 @@ pub mod transaction {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum MaybePendingStateUpdate {
-    /// Always has a `block_hash` and a `new_root`
-    StateUpdate(StateUpdate),
-    /// Does not contain `block_hash` and `new_root`
-    Pending(PendingStateUpdate),
-}
-
-/// Used to deserialize replies to StarkNet state update requests except for the pending one.
+/// Used to deserialize replies to StarkNet state update requests.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
+    /// Gets default value for pending state updates.
+    #[serde(default)]
     pub block_hash: BlockHash,
+    /// Gets default value for pending state updates.
+    #[serde(default)]
     pub new_root: StateCommitment,
     pub old_root: StateCommitment,
     pub state_diff: state_update::StateDiff,
 }
 
-/// Used to deserialize replies to Starknet pending state update requests.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PendingStateUpdate {
-    pub old_root: StateCommitment,
-    pub state_diff: state_update::StateDiff,
-}
+impl From<StateUpdate> for pathfinder_common::StateUpdate {
+    fn from(mut gateway: StateUpdate) -> Self {
+        let mut state_update = pathfinder_common::StateUpdate::default()
+            .with_block_hash(gateway.block_hash)
+            .with_parent_state_commitment(gateway.old_root)
+            .with_state_commitment(gateway.new_root);
 
-// FIXME: move to a simple derive once mainnet moves to 0.11.0 and we don't have to care for new_root anymore
-impl<'de> Deserialize<'de> for PendingStateUpdate {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        pub struct BackwardCompatiblePendingStateUpdate {
-            /// Unused but present for backwards compatibility as long as mainnet remains on 0.10.3
-            #[serde(default, rename = "new_root")]
-            pub _unused: Option<StateCommitment>,
-            pub old_root: StateCommitment,
-            pub state_diff: state_update::StateDiff,
+        // Extract the known system contract updates from the normal contract updates.
+        // This must occur before we map the contract updates, since we want to first remove
+        // the system contract updates.
+        //
+        // Currently this is only the contract at address 0x1.
+        //
+        // As of starknet v0.12.0 these are embedded in this way, but in the future will be
+        // a separate property in the state diff.
+        if let Some((address, storage_updates)) = gateway
+            .state_diff
+            .storage_diffs
+            .remove_entry(&ContractAddress::ONE)
+        {
+            for state_update::StorageDiff { key, value } in storage_updates {
+                state_update = state_update.with_system_storage_update(address, key, value);
+            }
         }
 
-        let psu = BackwardCompatiblePendingStateUpdate::deserialize(deserializer)?;
-        Ok(PendingStateUpdate {
-            old_root: psu.old_root,
-            state_diff: psu.state_diff,
-        })
+        // Aggregate contract deployments, storage, nonce and class replacements into contract updates.
+        for (address, storage_updates) in gateway.state_diff.storage_diffs {
+            for state_update::StorageDiff { key, value } in storage_updates {
+                state_update = state_update.with_storage_update(address, key, value);
+            }
+        }
+
+        for state_update::DeployedContract {
+            address,
+            class_hash,
+        } in gateway.state_diff.deployed_contracts
+        {
+            state_update = state_update.with_deployed_contract(address, class_hash);
+        }
+
+        for (address, nonce) in gateway.state_diff.nonces {
+            state_update = state_update.with_contract_nonce(address, nonce);
+        }
+
+        for state_update::ReplacedClass {
+            address,
+            class_hash,
+        } in gateway.state_diff.replaced_classes
+        {
+            state_update = state_update.with_replaced_class(address, class_hash);
+        }
+
+        for state_update::DeclaredSierraClass {
+            class_hash,
+            compiled_class_hash,
+        } in gateway.state_diff.declared_classes
+        {
+            state_update = state_update.with_declared_sierra_class(class_hash, compiled_class_hash);
+        }
+
+        state_update
     }
 }
 
@@ -746,7 +774,7 @@ pub mod state_update {
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     /// L2 state diff.
     #[serde_as]
@@ -756,7 +784,7 @@ pub mod state_update {
         #[serde_as(as = "HashMap<_, Vec<_>>")]
         pub storage_diffs: HashMap<ContractAddress, Vec<StorageDiff>>,
         pub deployed_contracts: Vec<DeployedContract>,
-        pub old_declared_contracts: Vec<ClassHash>,
+        pub old_declared_contracts: HashSet<ClassHash>,
         pub declared_classes: Vec<DeclaredSierraClass>,
         pub nonces: HashMap<ContractAddress, ContractNonce>,
         pub replaced_classes: Vec<ReplacedClass>,
@@ -921,7 +949,7 @@ mod tests {
     /// previous version of cairo while at the same time the goerli sequencer is
     /// already using a newer version.
     mod backward_compatibility {
-        use super::super::{MaybePendingStateUpdate, Transaction};
+        use super::super::{StateUpdate, Transaction};
         use starknet_gateway_test_fixtures::*;
 
         #[test]
@@ -944,15 +972,9 @@ mod tests {
         #[test]
         fn state_update() {
             // This is from integration starknet_version 0.11 and contains the new declared_classes field.
-            serde_json::from_str::<MaybePendingStateUpdate>(
-                integration::state_update::NUMBER_283364,
-            )
-            .unwrap();
+            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283364).unwrap();
             // This is from integration starknet_version 0.11 and contains the new replaced_classes field.
-            serde_json::from_str::<MaybePendingStateUpdate>(
-                integration::state_update::NUMBER_283428,
-            )
-            .unwrap();
+            serde_json::from_str::<StateUpdate>(integration::state_update::NUMBER_283428).unwrap();
         }
 
         #[test]

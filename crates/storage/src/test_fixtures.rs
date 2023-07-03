@@ -1,16 +1,10 @@
 //! Basic test fixtures for storage.
 
 use crate::Transaction;
-use crate::{
-    types::{
-        state_update::{DeclaredSierraClass, DeployedContract, StateDiff},
-        StateUpdate,
-    },
-    Storage,
-};
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassHash, ContractAddress, ContractNonce,
-    GasPrice, SequencerAddress, SierraHash, StateCommitment, StorageAddress, StorageValue,
+    GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate, StorageAddress,
+    StorageValue,
 };
 use stark_hash::Felt;
 
@@ -64,76 +58,58 @@ pub mod init {
         let mut updates = Vec::new();
 
         let mut parent_state_commitment = StateCommitment::ZERO;
-        let mut deployed_contract: Option<DeployedContract> = None;
+        let mut deployed_contract: Option<(ContractAddress, ClassHash)> = None;
 
         for (i, header) in headers.iter().enumerate() {
             let i = i as u8;
-            let mut state_diff = StateDiff::default()
-                .add_storage_update(
+            let mut state_update = StateUpdate::default()
+                .with_block_hash(header.hash)
+                .with_state_commitment(header.state_commitment)
+                .with_parent_state_commitment(parent_state_commitment)
+                .with_storage_update(
                     ContractAddress::new_or_panic(hash!(3, i)),
                     StorageAddress::new_or_panic(hash!(4, i)),
                     StorageValue(hash!(5, i)),
                 )
-                .add_declared_cairo_class(ClassHash(hash!(6, i)))
-                .add_deployed_contract(
+                .with_declared_cairo_class(ClassHash(hash!(6, i)))
+                .with_deployed_contract(
                     ContractAddress::new_or_panic(hash!(7, i)),
                     ClassHash(hash!(8, i)),
                 )
-                .add_nonce_update(
+                .with_contract_nonce(
                     ContractAddress::new_or_panic(hash!(9, i)),
                     ContractNonce(hash!(10, i)),
                 )
-                .add_declared_sierra_class(SierraHash(hash!(11, i)), CasmHash(hash!(12, i)));
+                .with_declared_sierra_class(SierraHash(hash!(11, i)), CasmHash(hash!(12, i)));
 
-            // Replace the last deployed contract.
+            // Replace the last deployed contract with itself - this doesn't make much sense and should be improved.
             if let Some(deployed) = deployed_contract {
-                state_diff = state_diff.add_replaced_class(deployed.address, deployed.class_hash);
+                state_update = state_update.with_replaced_class(deployed.0, deployed.1);
             };
 
-            let update = StateUpdate {
-                block_hash: Some(header.hash),
-                new_root: header.state_commitment,
-                old_root: parent_state_commitment,
-                state_diff,
-            };
-
-            for declared_class in &update.state_diff.declared_contracts {
-                tx.insert_cairo_class(declared_class.class_hash, b"")
-                    .unwrap();
+            for declared_class in &state_update.declared_cairo_classes {
+                tx.insert_cairo_class(*declared_class, b"").unwrap();
             }
 
-            for DeclaredSierraClass {
-                class_hash,
-                compiled_class_hash,
-            } in &update.state_diff.declared_sierra_classes
-            {
+            for (class_hash, compiled_class_hash) in &state_update.declared_sierra_classes {
                 tx.insert_sierra_class(class_hash, &[], compiled_class_hash, &[], "1.0.alpha6")
                     .unwrap();
             }
 
             tx.insert_block_header(header).unwrap();
-            tx.insert_state_diff(header.number, &update.state_diff)
+            tx.insert_state_update(header.number, &state_update)
                 .unwrap();
 
             parent_state_commitment = header.state_commitment;
-            deployed_contract = update.state_diff.deployed_contracts.last().cloned();
+            deployed_contract = state_update
+                .contract_updates
+                .iter()
+                .filter_map(|(a, u)| u.class.clone().map(|x| (*a, x.class_hash())))
+                .last();
 
-            updates.push(update);
+            updates.push(state_update);
         }
 
         updates
     }
-}
-
-/// Creates test storage in memory that contains N state updates,
-/// referring to blocks with numbers (0..N) and ("0x0".."0xN") hashes respectively.
-pub fn with_n_state_updates<F>(n: u8, f: F)
-where
-    F: FnOnce(&Storage, &Transaction<'_>, Vec<StateUpdate>),
-{
-    let storage = Storage::in_memory().unwrap();
-    let mut connection = storage.connection().unwrap();
-    let tx = connection.transaction().unwrap();
-
-    f(&storage, &tx, init::with_n_state_updates(&tx, n))
 }

@@ -61,15 +61,9 @@ async fn get_pending_class_hash(
 ) -> Option<ClassHash> {
     pending?.state_update().await.and_then(|state_update| {
         state_update
-            .state_diff
-            .deployed_contracts
-            .iter()
-            .find_map(|contract| (contract.address == address).then_some(contract.class_hash))
-            .or(state_update
-                .state_diff
-                .replaced_classes
-                .iter()
-                .find_map(|contract| (contract.address == address).then_some(contract.class_hash)))
+            .contract_updates
+            .get(&address)
+            .and_then(|x| x.class.as_ref().map(|x| x.class_hash()))
     })
 }
 

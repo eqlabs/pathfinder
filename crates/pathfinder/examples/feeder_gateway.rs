@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockNumber, Chain, ClassHash, StateCommitment};
+use pathfinder_common::state_update::ContractClassUpdate;
+use pathfinder_common::{BlockHash, BlockNumber, Chain, ClassHash};
 use pathfinder_storage::BlockId;
 use primitive_types::H160;
 use serde::Deserialize;
@@ -299,96 +300,10 @@ fn resolve_state_update(
     tx: &pathfinder_storage::Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
-    use starknet_gateway_types::reply::{state_update::StateDiff, StateUpdate};
-
-    let header = tx
-        .block_header(block)
-        .context("Fetching block header")?
-        .context("Block header is missing")?;
-
-    let parent_state_commmitment = if header.number - 1 == BlockNumber::GENESIS {
-        StateCommitment::default()
-    } else {
-        tx.block_header(header.parent_hash.into())
-            .context("Fetching parent block header")?
-            .context("Parent block header is missing")?
-            .state_commitment
-    };
-
-    let state_diff = tx
-        .state_diff(block)
-        .context("Fetching state diff")?
-        .context("State diff missing")?;
-
-    let mut storage_diffs: HashMap<_, Vec<StorageDiff>> = HashMap::new();
-    for pathfinder_storage::types::state_update::StorageDiff {
-        address,
-        key,
-        value,
-    } in state_diff.storage_diffs
-    {
-        storage_diffs
-            .entry(address)
-            .or_default()
-            .push(StorageDiff { key, value });
-    }
-
-    let deployed_contracts = state_diff
-        .deployed_contracts
-        .into_iter()
-        .map(|x| DeployedContract {
-            address: x.address,
-            class_hash: x.class_hash,
-        })
-        .collect();
-
-    let old_declared_contracts = state_diff
-        .declared_contracts
-        .into_iter()
-        .map(|x| x.class_hash)
-        .collect();
-
-    let declared_classes = state_diff
-        .declared_sierra_classes
-        .into_iter()
-        .map(|x| DeclaredSierraClass {
-            class_hash: x.class_hash,
-            compiled_class_hash: x.compiled_class_hash,
-        })
-        .collect();
-
-    let nonces = state_diff
-        .nonces
-        .into_iter()
-        .map(|x| (x.contract_address, x.nonce))
-        .collect();
-
-    let replaced_classes = state_diff
-        .replaced_classes
-        .into_iter()
-        .map(|x| ReplacedClass {
-            address: x.address,
-            class_hash: x.class_hash,
-        })
-        .collect();
-
-    let state_diff = StateDiff {
-        storage_diffs,
-        deployed_contracts,
-        old_declared_contracts,
-        declared_classes,
-        nonces,
-        replaced_classes,
-    };
-
-    let state_update = StateUpdate {
-        block_hash: header.hash,
-        new_root: header.state_commitment,
-        old_root: parent_state_commmitment,
-        state_diff,
-    };
-
-    Ok(state_update)
+    tx.state_update(block)
+        .context("Fetching state update")?
+        .context("State update missing")
+        .map(storage_to_gateway)
 }
 
 fn resolve_class(
@@ -403,4 +318,78 @@ fn resolve_class(
         .ok_or_else(|| anyhow::anyhow!("No such class found"))?;
 
     Ok(definition)
+}
+
+fn storage_to_gateway(
+    state_update: pathfinder_common::StateUpdate,
+) -> starknet_gateway_types::reply::StateUpdate {
+    let mut storage_diffs = HashMap::new();
+    let mut deployed_contracts = Vec::new();
+    let mut nonces = HashMap::new();
+    let mut replaced_classes = Vec::new();
+
+    for (address, update) in state_update.contract_updates {
+        if let Some(nonce) = update.nonce {
+            nonces.insert(address, nonce);
+        }
+
+        match update.class {
+            Some(ContractClassUpdate::Deploy(class_hash)) => {
+                deployed_contracts.push(DeployedContract {
+                    address,
+                    class_hash,
+                })
+            }
+            Some(ContractClassUpdate::Replace(class_hash)) => {
+                replaced_classes.push(ReplacedClass {
+                    address,
+                    class_hash,
+                })
+            }
+            None => {}
+        }
+
+        let storage = update
+            .storage
+            .into_iter()
+            .map(|(key, value)| StorageDiff { key, value })
+            .collect();
+
+        storage_diffs.insert(address, storage);
+    }
+
+    for (address, update) in state_update.system_contract_updates {
+        let storage = update
+            .storage
+            .into_iter()
+            .map(|(key, value)| StorageDiff { key, value })
+            .collect();
+
+        storage_diffs.insert(address, storage);
+    }
+
+    let declared_classes = state_update
+        .declared_sierra_classes
+        .into_iter()
+        .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
+            class_hash,
+            compiled_class_hash,
+        })
+        .collect();
+
+    let state_diff = starknet_gateway_types::reply::state_update::StateDiff {
+        storage_diffs,
+        deployed_contracts,
+        old_declared_contracts: state_update.declared_cairo_classes,
+        declared_classes,
+        nonces,
+        replaced_classes,
+    };
+
+    starknet_gateway_types::reply::StateUpdate {
+        block_hash: state_update.block_hash,
+        new_root: state_update.state_commitment,
+        old_root: state_update.parent_state_commitment,
+        state_diff,
+    }
 }

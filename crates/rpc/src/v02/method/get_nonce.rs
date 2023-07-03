@@ -79,10 +79,12 @@ async fn get_pending_nonce(
     contract_address: ContractAddress,
 ) -> Option<ContractNonce> {
     match pending {
-        Some(pending) => pending
-            .state_update()
-            .await
-            .and_then(|update| update.state_diff.nonces.get(&contract_address).copied()),
+        Some(pending) => pending.state_update().await.and_then(|update| {
+            update
+                .contract_updates
+                .get(&contract_address)
+                .and_then(|x| x.nonce)
+        }),
         None => None,
     }
 }
@@ -94,7 +96,7 @@ mod tests {
     use pathfinder_common::{felt, felt_bytes, StarknetVersion};
     use pathfinder_common::{
         BlockHash, BlockId, BlockNumber, BlockTimestamp, ContractAddress, ContractNonce, GasPrice,
-        SequencerAddress, StateCommitment,
+        SequencerAddress,
     };
 
     mod parsing {
@@ -253,20 +255,9 @@ mod tests {
         };
         let block = Arc::new(block);
 
-        // We only care about the nonce data, but the rest is required for setting up pending data.
-        let state_update = starknet_gateway_types::reply::PendingStateUpdate {
-            old_root: StateCommitment(felt_bytes!(b"dont care")),
-            state_diff: starknet_gateway_types::reply::state_update::StateDiff {
-                storage_diffs: std::collections::HashMap::new(),
-                deployed_contracts: Vec::new(),
-                old_declared_contracts: Vec::new(),
-                declared_classes: Vec::new(),
-                nonces: [(valid_1, nonce_1), (valid_2, nonce_2)]
-                    .into_iter()
-                    .collect(),
-                replaced_classes: Vec::new(),
-            },
-        };
+        let state_update = pathfinder_common::StateUpdate::default()
+            .with_contract_nonce(valid_1, nonce_1)
+            .with_contract_nonce(valid_2, nonce_2);
         let state_update = Arc::new(state_update);
 
         let pending_data = starknet_gateway_types::pending::PendingData::default();
