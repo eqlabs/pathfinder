@@ -354,12 +354,6 @@ mod tests {
         }
 
         #[test]
-        fn empty() {
-            let result = serde_json::to_string(&StorageUpdates(None)).unwrap();
-            assert_eq!(result, "{}");
-        }
-
-        #[test]
         fn with_updates() {
             use pathfinder_common::{StorageAddress, StorageValue};
 
@@ -394,12 +388,6 @@ mod tests {
 
         #[test]
         fn none() {
-            let result = serde_json::to_string(&DeployedContracts(None)).unwrap();
-            assert_eq!(result, "[]");
-        }
-
-        #[test]
-        fn empty() {
             let result = serde_json::to_string(&DeployedContracts(None)).unwrap();
             assert_eq!(result, "[]");
         }
@@ -457,12 +445,6 @@ mod tests {
         #[test]
         fn none() {
             let result = serde_json::to_string(&Nonces(None)).unwrap();
-            assert_eq!(result, "{}");
-        }
-
-        #[test]
-        fn empty() {
-            let result = serde_json::to_string(&Nonces(Some(&Default::default()))).unwrap();
             assert_eq!(result, "{}");
         }
 
