@@ -164,9 +164,10 @@ pub mod test_utils {
     use pathfinder_common::event::Event;
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash,
-        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, EventData,
-        EventKey, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateUpdate,
-        StorageAddress, StorageCommitment, TransactionHash, TransactionIndex, TransactionVersion,
+        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
+        EthereumAddress, EventData, EventKey, GasPrice, L2ToL1MessagePayloadElem, SequencerAddress,
+        SierraHash, StarknetVersion, StateUpdate, StorageAddress, StorageCommitment,
+        TransactionHash, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
