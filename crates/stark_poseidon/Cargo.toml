@@ -19,7 +19,7 @@ stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
 
 [dev-dependencies]
-criterion = "0.4"
+criterion = { workspace = true }
 rand = "0.8"
 
 [[bench]]
