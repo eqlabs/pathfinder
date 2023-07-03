@@ -439,7 +439,7 @@ pub mod test_utils {
         let mut receipt5 = receipt0.clone();
         let mut receipt6 = Receipt {
             l2_to_l1_messages: vec![L2ToL1Message {
-                from_address: ContractAddress(felt!("0xcafebabe")),
+                from_address: ContractAddress::new_or_panic(felt!("0xcafebabe")),
                 payload: vec![
                     L2ToL1MessagePayloadElem(felt!("0x1")),
                     L2ToL1MessagePayloadElem(felt!("0x2")),
