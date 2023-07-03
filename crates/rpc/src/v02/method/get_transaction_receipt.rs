@@ -711,7 +711,7 @@ mod tests {
                         block_hash: BlockHash(felt_bytes!(b"latest")),
                         block_number: BlockNumber::new_or_panic(2),
                         messages_sent: vec![MessageToL1 {
-                            from_address: Some(ContractAddress(felt!("0xcafebabe"))),
+                            from_address: Some(ContractAddress::new_or_panic(felt!("0xcafebabe"))),
                             to_address: EthereumAddress(H160::zero()),
                             payload: vec![
                                 L2ToL1MessagePayloadElem(felt!("0x1")),
