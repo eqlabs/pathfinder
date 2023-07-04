@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Handle Starknet errors with HTTP status code 400. This fixes poll pending and polling
+  in general.
+
 ## [0.6.3] - 2023-06-29
 
 ### Fixed
