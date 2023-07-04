@@ -809,6 +809,22 @@ fn update_starknet_state(
             .context("Updating storage commitment tree")?;
     }
 
+    for (contract, update) in &state_update.system_contract_updates {
+        let state_hash = update_contract_state(
+            *contract,
+            &update.storage,
+            None,
+            None,
+            &storage_commitment_tree,
+            transaction,
+        )
+        .context("Update system contract state")?;
+
+        storage_commitment_tree
+            .set(*contract, state_hash)
+            .context("Updating system contract storage commitment tree")?;
+    }
+
     // Apply storage commitment tree changes.
     let (new_storage_commitment, nodes) = storage_commitment_tree
         .commit()
