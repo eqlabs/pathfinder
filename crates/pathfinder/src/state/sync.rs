@@ -263,7 +263,7 @@ where
                         tracing::debug!("Sync consumer task exited gracefully");
                     },
                     Ok(Err(e)) => {
-                        tracing::error!(reason=%e, "Sync consumer task terminated with an error");
+                        tracing::error!(reason=?e, "Sync consumer task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
                         tracing::debug!("Sync consumer task cancelled succesfully");
@@ -283,7 +283,7 @@ where
                         tracing::debug!("L1 sync task exited gracefully");
                     },
                     Ok(Err(e)) => {
-                        tracing::error!(reason=%e, "L1 sync task terminated with an error");
+                        tracing::error!(reason=?e, "L1 sync task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
                         tracing::debug!("L1 sync task cancelled succesfully");
@@ -298,7 +298,7 @@ where
                         tracing::debug!("L2 sync task exited gracefully");
                     },
                     Ok(Err(e)) => {
-                        tracing::error!(reason=%e, "L2 sync task terminated with an error");
+                        tracing::error!(reason=?e, "L2 sync task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
                         tracing::debug!("L2 sync task cancelled succesfully");
