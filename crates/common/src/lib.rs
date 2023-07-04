@@ -34,7 +34,7 @@ impl ContractAddress {
     ///
     /// It is used by starknet to store values for smart contracts to access
     /// using syscalls. For example the block hash.
-    pub const ONE: ContractAddress = ContractAddress(felt!("0x1"));
+    pub const ONE: ContractAddress = contract_address!("0x1");
 }
 
 /// A nonce that is associated with a particular deployed Starknet contract
@@ -513,39 +513,44 @@ impl From<String> for StarknetVersion {
     }
 }
 
-macros::starkhash::common_newtype!(
-    ByteCodeOffset,
-    CallParam,
-    CallResultValue,
-    CasmHash,
-    ClassCommitment,
-    ClassCommitmentLeafHash,
-    ClassHash,
-    ConstructorParam,
-    ContractAddress,
-    ContractAddressSalt,
-    ContractNonce,
-    ContractStateHash,
-    ContractRoot,
-    EntryPoint,
-    EventCommitment,
-    EventData,
-    EventKey,
-    Fee,
-    L1ToL2MessageNonce,
-    L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem,
-    SequencerAddress,
-    SierraHash,
-    BlockHash,
-    TransactionHash,
-    StateCommitment,
-    StorageAddress,
-    StorageCommitment,
-    StorageValue,
-    TransactionCommitment,
-    TransactionNonce,
-    TransactionSignatureElem,
+macros::felt_newtypes!(
+    [
+        ByteCodeOffset,
+        CallParam,
+        CallResultValue,
+        CasmHash,
+        ClassCommitment,
+        ClassCommitmentLeafHash,
+        ClassHash,
+        ConstructorParam,
+        ContractAddress,
+        ContractAddressSalt,
+        ContractNonce,
+        ContractStateHash,
+        ContractRoot,
+        EntryPoint,
+        EventCommitment,
+        EventData,
+        EventKey,
+        Fee,
+        L1ToL2MessageNonce,
+        L1ToL2MessagePayloadElem,
+        L2ToL1MessagePayloadElem,
+        SequencerAddress,
+        SierraHash,
+        BlockHash,
+        TransactionHash,
+        StateCommitment,
+        StorageAddress,
+        StorageCommitment,
+        StorageValue,
+        TransactionCommitment,
+        TransactionNonce,
+        TransactionSignatureElem,
+    ]; 
+    [
+        // TODO: populate felt251 wrappers
+    ]
 );
 
 macros::fmt::thin_display!(BlockNumber);

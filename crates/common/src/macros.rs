@@ -82,32 +82,76 @@ pub(super) mod i64_backed_u64 {
     pub(crate) use {new_get_partialeq, serdes};
 }
 
-/// Macros for general StarkHash newtypes.
-pub(super) mod starkhash {
-    /// Common trait implementations for *[stark_hash::Felt]* newtypes, meaning tuple structs
-    /// with single field.
-    macro_rules! common_newtype {
-        ($target:ty) => {
-            crate::macros::fmt::thin_debug!($target);
-            crate::macros::fmt::thin_display!($target);
+/// Generates felt newtype-wrappers and the `macro_prelude` module.
+/// 
+/// Note that this is a sinlge-use macro as it generates a module.
+/// 
+/// Usage:
+///     `felt_newtypes!([x1, x2, ..]; [y1, y2, ..])`
+/// where `x` is the set of `Felt` wrapper types and `y` the `Felt251` wrappers.
+macro_rules! felt_newtypes {
+    ([$($felt:ident),* $(,)?]; [$($felt251:ident),* $(,)?]) => {
+        pub mod macro_prelude {
+            pub use super::felt;
+            pub use super::felt_bytes;
 
+            crate::macros::felt_newtypes!(@generate_felt_macro $($felt),*);
+            // TODO: felt251 wrapper
+
+            crate::macros::felt_newtypes!(@generate_use $($felt),*);
+        }
+    };
+
+    (@generate_use $head:ident, $($tail:ident),+ $(,)?) => {
+        crate::macros::felt_newtypes!(@generate_use $head);
+        crate::macros::felt_newtypes!(@generate_use $($tail),+);
+    };
+
+    (@generate_use $target:ident) => {
+        paste::paste! {
+            pub use [<$target:snake>];
+        }
+    };
+
+    (@generate_felt_macro $head:ident, $($tail:ident),+ $(,)?) => {
+        crate::macros::felt_newtypes!(@generate_felt_macro $head);
+        crate::macros::felt_newtypes!(@generate_felt_macro $($tail),+);
+    };
+
+    (@generate_felt_macro $target:ident) => {
+        paste::paste! {
+            use $crate::$target;
+
+            #[macro_export]
+            macro_rules! [<$target:snake>] {
+                ($hex:expr) => {
+                    $target($crate::felt!($hex))
+                };
+            }
+            // pub(super) use [<$target:snake>];
+
+            #[macro_export]
+            macro_rules! [<$target:snake _bytes>] {
+                ($bytes:expr) => {
+                    $target($crate::felt_bytes!($bytes))
+                };
+            }
+
+            #[allow(unused)]
             impl $target {
-                pub const ZERO: Self = Self(Felt::ZERO);
+                pub const ZERO: Self = Self(stark_hash::Felt::ZERO);
 
-                pub fn as_inner(&self) -> &Felt {
+                pub fn as_inner(&self) -> &stark_hash::Felt {
                     &self.0
                 }
             }
-        };
 
-        ($head:ty, $($tail:ty),+ $(,)?) => {
-            crate::macros::starkhash::common_newtype!($head);
-            crate::macros::starkhash::common_newtype!($($tail),+);
-        };
-    }
-
-    pub(crate) use common_newtype;
+            $crate::macros::fmt::thin_debug!($target);
+            $crate::macros::fmt::thin_display!($target);
+        }
+    };
 }
+pub(super) use felt_newtypes;
 
 pub(super) mod starkhash251 {
     macro_rules! newtype {

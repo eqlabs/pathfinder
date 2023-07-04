@@ -5959,6 +5959,7 @@ dependencies = [
  "bitvec 0.20.4",
  "metrics",
  "num-bigint 0.4.3",
+ "paste",
  "primitive-types",
  "semver",
  "serde",
