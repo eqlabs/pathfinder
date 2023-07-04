@@ -263,7 +263,7 @@ where
                         tracing::debug!("Sync consumer task exited gracefully");
                     },
                     Ok(Err(e)) => {
-                        tracing::error!(reason=%e, "Sync consumer task terminated with an error");
+                        tracing::error!(reason=?e, "Sync consumer task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
                         tracing::debug!("Sync consumer task cancelled succesfully");
@@ -283,7 +283,7 @@ where
                         tracing::debug!("L1 sync task exited gracefully");
                     },
                     Ok(Err(e)) => {
-                        tracing::error!(reason=%e, "L1 sync task terminated with an error");
+                        tracing::error!(reason=?e, "L1 sync task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
                         tracing::debug!("L1 sync task cancelled succesfully");
@@ -298,7 +298,7 @@ where
                         tracing::debug!("L2 sync task exited gracefully");
                     },
                     Ok(Err(e)) => {
-                        tracing::error!(reason=%e, "L2 sync task terminated with an error");
+                        tracing::error!(reason=?e, "L2 sync task terminated with an error");
                     }
                     Err(e) if e.is_cancelled() => {
                         tracing::debug!("L2 sync task cancelled succesfully");
@@ -807,6 +807,22 @@ fn update_starknet_state(
         storage_commitment_tree
             .set(*contract, state_hash)
             .context("Updating storage commitment tree")?;
+    }
+
+    for (contract, update) in &state_update.system_contract_updates {
+        let state_hash = update_contract_state(
+            *contract,
+            &update.storage,
+            None,
+            None,
+            &storage_commitment_tree,
+            transaction,
+        )
+        .context("Update system contract state")?;
+
+        storage_commitment_tree
+            .set(*contract, state_hash)
+            .context("Updating system contract storage commitment tree")?;
     }
 
     // Apply storage commitment tree changes.
