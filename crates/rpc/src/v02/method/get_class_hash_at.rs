@@ -71,6 +71,7 @@ async fn get_pending_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{felt, felt_bytes};
 
     mod parsing {
@@ -88,7 +89,7 @@ mod tests {
 
             let input = positional.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
+                block_id: block_hash!("0xabcde").into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -104,7 +105,7 @@ mod tests {
 
             let input = named.parse::<GetClassHashAtInput>().unwrap();
             let expected = GetClassHashAtInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
+                block_id: block_hash!("0xabcde").into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);

@@ -63,6 +63,7 @@ pub async fn estimate_fee(
 pub(crate) mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, BlockHash, CallParam, Chain, ContractAddress, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
@@ -77,9 +78,9 @@ pub(crate) mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 crate::v02::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    max_fee: Fee(felt!("0x6")),
+                    max_fee: fee!("0x6"),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                    nonce: TransactionNonce(felt!("0x8")),
+                    nonce: transaction_nonce!("0x8"),
                     sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
                     calldata: vec![CallParam(felt!("0xff"))],
                 },
@@ -111,7 +112,7 @@ pub(crate) mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -141,7 +142,7 @@ pub(crate) mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -164,9 +165,9 @@ pub(crate) mod tests {
         use pathfinder_storage::Storage;
 
         // Mainnet block number 5
-        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(BlockHash(felt!(
+        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
-        )));
+        ));
 
         pub(crate) fn valid_invoke_v1(account_address: ContractAddress) -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(

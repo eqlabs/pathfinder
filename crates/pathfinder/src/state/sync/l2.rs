@@ -1992,6 +1992,7 @@ mod tests {
     }
 
     mod block_chain {
+        use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{felt, BlockHash, BlockNumber, StateCommitment};
 
         use crate::state::l2::BlockChain;
@@ -2024,8 +2025,8 @@ mod tests {
             assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
             uut.push(
                 BlockNumber::new_or_panic(4),
-                BlockHash(felt!("0x17")),
-                StateCommitment(felt!("0x81")),
+                block_hash!("0x17"),
+                state_commitment!("0x81"),
             );
 
             assert!(uut.get(&BlockNumber::new_or_panic(1)).is_none());

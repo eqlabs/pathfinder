@@ -562,6 +562,7 @@ mod json {
     #[cfg(test)]
     mod test_vectors {
         use super::super::{compute_class_hash, ComputedClassHash};
+        use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{felt, ClassHash};
         use starknet_gateway_test_fixtures::class_definitions::*;
 
@@ -605,11 +606,11 @@ mod json {
         async fn cairo_0_8() {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
-            use felt;
+            
 
-            let expected = ComputedClassHash::Cairo(ClassHash(felt!(
+            let expected = ComputedClassHash::Cairo(class_hash!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
-            )));
+            ));
 
             // Known contract which triggered a hash mismatch failure.
             let extract = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {

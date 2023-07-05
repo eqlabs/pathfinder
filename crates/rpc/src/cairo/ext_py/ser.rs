@@ -340,6 +340,7 @@ impl TryFrom<BlockId> for BlockHashNumberOrLatest {
 mod tests {
     use super::*;
     use crate::cairo::ext_py::ser::Nonces;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, {ContractAddress, ContractNonce},
     };
@@ -370,12 +371,12 @@ mod tests {
                         "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
                     )),
                     StorageAddress::new_or_panic(felt!("0x5")),
-                    StorageValue(felt!("0xabc")),
+                    storage_value!("0xabc"),
                 )
                 .with_system_storage_update(
                     ContractAddress::ONE,
                     StorageAddress::new_or_panic(felt!("0x123")),
-                    StorageValue(felt!("0xdef")),
+                    storage_value!("0xdef"),
                 );
             let s = serde_json::to_value(StorageUpdates(Some(&update))).unwrap();
             assert_eq!(expected, s);
@@ -401,9 +402,7 @@ mod tests {
                     ContractAddress::new_or_panic(felt!(
                         "07c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451"
                     )),
-                    ClassHash(felt!(
-                        "010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
-                    )),
+                    class_hash!("010455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"),
                 ),
             )))
             .unwrap();
@@ -416,10 +415,9 @@ mod tests {
 
         #[test]
         fn hash() {
-            let result = serde_json::to_string::<BlockHashNumberOrLatest>(
-                &BlockHash(felt!("0x1234")).into(),
-            )
-            .unwrap();
+            let result =
+                serde_json::to_string::<BlockHashNumberOrLatest>(&block_hash!("0x1234").into())
+                    .unwrap();
             assert_eq!(result, r#""0x1234""#);
         }
 
@@ -453,7 +451,7 @@ mod tests {
             let result =
                 serde_json::to_string(&Nonces(Some(&StateUpdate::default().with_contract_nonce(
                     ContractAddress::new_or_panic(felt!("0x123")),
-                    ContractNonce(felt!("0x1")),
+                    contract_nonce!("0x1"),
                 ))))
                 .unwrap();
             assert_eq!(result, r#"{"0x123":"0x1"}"#);

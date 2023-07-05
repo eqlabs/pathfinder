@@ -194,11 +194,12 @@ pub(super) fn insert_class_commitment_leaf(
 mod tests {
     use super::*;
     use crate::Storage;
-    use pathfinder_common::{felt, felt_bytes};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{felt_bytes};
     use stark_hash::Felt;
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
-        let hash = ClassHash(felt!("0x123"));
+        let hash = class_hash!("0x123");
 
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
 
@@ -217,7 +218,7 @@ mod tests {
         let transaction = connection.transaction().unwrap();
 
         let (hash, _, _) = setup_class(&transaction);
-        let non_existent = ClassHash(felt!("0x456"));
+        let non_existent = class_hash!("0x456");
 
         let result = super::classes_exist(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];

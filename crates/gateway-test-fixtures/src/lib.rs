@@ -163,13 +163,13 @@ pub mod integration {
 }
 
 pub mod class_definitions {
-    use pathfinder_common::{felt, ClassHash};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{ClassHash};
 
     pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json");
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json");
-    pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash = ClassHash(felt!(
-        "0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf"
-    ));
+    pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash =
+        class_hash!("0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf");
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc
     pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3
@@ -218,38 +218,34 @@ pub mod class_definitions {
 }
 
 pub mod testnet {
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, CallParam, ClassHash, ContractAddress, EntryPoint, StorageAddress, TransactionHash,
     };
     use stark_hash::Felt;
 
-    pub const VALID_TX_HASH: TransactionHash = TransactionHash(felt!(
-        "0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
-    ));
-    pub const INVALID_TX_HASH: TransactionHash = TransactionHash(felt!(
-        "0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24"
-    ));
+    pub const VALID_TX_HASH: TransactionHash =
+        transaction_hash!("0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24");
+    pub const INVALID_TX_HASH: TransactionHash =
+        transaction_hash!("0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24");
     pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(felt!(
         "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
     ));
     pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(felt!(
         "05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
     ));
-    pub const VALID_ENTRY_POINT: EntryPoint = EntryPoint(felt!(
-        "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-    ));
+    pub const VALID_ENTRY_POINT: EntryPoint =
+        entry_point!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320");
     pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(Felt::ZERO);
     pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(felt!(
         "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
     ));
     pub const VALID_KEY_DEC: &str =
         "916907772491729262376534102982219947830828984996257231353398618781993312401";
-    pub const VALID_CALL_DATA: [CallParam; 1] = [CallParam(felt!("0x4d2"))];
+    pub const VALID_CALL_DATA: [CallParam; 1] = [call_param!("0x4d2")];
     /// Class hash for VALID_CONTRACT_ADDR
-    pub const VALID_CLASS_HASH: ClassHash = ClassHash(felt!(
-        "021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
-    ));
-    pub const INVALID_CLASS_HASH: ClassHash = ClassHash(felt!(
-        "031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2"
-    ));
+    pub const VALID_CLASS_HASH: ClassHash =
+        class_hash!("021a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2");
+    pub const INVALID_CLASS_HASH: ClassHash =
+        class_hash!("031a7f43387573b68666669a0ed764252ce5367708e696e31967764a90b429c2");
 }

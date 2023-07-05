@@ -83,9 +83,9 @@ pub(super) mod i64_backed_u64 {
 }
 
 /// Generates felt newtype-wrappers and the `macro_prelude` module.
-/// 
+///
 /// Note that this is a sinlge-use macro as it generates a module.
-/// 
+///
 /// Usage:
 ///     `felt_newtypes!([x1, x2, ..]; [y1, y2, ..])`
 /// where `x` is the set of `Felt` wrapper types and `y` the `Felt251` wrappers.

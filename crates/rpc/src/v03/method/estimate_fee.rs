@@ -58,6 +58,7 @@ pub async fn estimate_fee(
 mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
@@ -70,9 +71,9 @@ mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 crate::v02::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    max_fee: Fee(felt!("0x6")),
+                    max_fee: fee!("0x6"),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                    nonce: TransactionNonce(felt!("0x8")),
+                    nonce: transaction_nonce!("0x8"),
                     sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
                     calldata: vec![CallParam(felt!("0xff"))],
                 },
@@ -106,7 +107,7 @@ mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -138,7 +139,7 @@ mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -201,7 +202,7 @@ mod tests {
             let transaction0 = valid_invoke_v1(account_address);
             let transaction1 = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 BroadcastedInvokeTransactionV1 {
-                    nonce: TransactionNonce(felt!("0x1")),
+                    nonce: transaction_nonce!("0x1"),
                     ..transaction0
                         .clone()
                         .into_invoke()

@@ -83,6 +83,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
 mod tests {
     use super::*;
     use pathfinder_common::felt;
+    use pathfinder_common::macro_prelude::*;
 
     mod parsing {
         use super::*;
@@ -101,10 +102,10 @@ mod tests {
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: ContractAddress::new_or_panic(felt!("0xabcde")),
-                    entry_point_selector: EntryPoint(felt!("0xee")),
+                    entry_point_selector: entry_point!("0xee"),
                     calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },
-                block_id: BlockHash(felt!("0xbbbbbbbb")).into(),
+                block_id: block_hash!("0xbbbbbbbb").into(),
             };
             assert_eq!(input, expected);
         }
@@ -121,10 +122,10 @@ mod tests {
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: ContractAddress::new_or_panic(felt!("0xabcde")),
-                    entry_point_selector: EntryPoint(felt!("0xee")),
+                    entry_point_selector: entry_point!("0xee"),
                     calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
                 },
-                block_id: BlockHash(felt!("0xbbbbbbbb")).into(),
+                block_id: block_hash!("0xbbbbbbbb").into(),
             };
             assert_eq!(input, expected);
         }
@@ -139,9 +140,9 @@ mod tests {
         use std::sync::Arc;
 
         // Mainnet block number 5
-        const BLOCK_5: BlockId = BlockId::Hash(BlockHash(felt!(
+        const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
-        )));
+        ));
 
         // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
         fn valid_mainnet_call() -> FunctionCall {
@@ -149,9 +150,9 @@ mod tests {
                 contract_address: ContractAddress::new_or_panic(felt!(
                     "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
                 )),
-                entry_point_selector: EntryPoint(felt!(
+                entry_point_selector: entry_point!(
                     "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
-                )),
+                ),
                 calldata: vec![
                     CallParam(felt!(
                         "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"

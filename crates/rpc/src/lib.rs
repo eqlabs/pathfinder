@@ -187,6 +187,7 @@ pub mod test_utils {
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
+        use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
@@ -211,7 +212,7 @@ pub mod test_utils {
 
         let state_update0 = StateUpdate::default()
             .with_deployed_contract(contract0_addr, class0_hash)
-            .with_contract_nonce(contract0_addr, ContractNonce(felt!("0x1")));
+            .with_contract_nonce(contract0_addr, contract_nonce!("0x1"));
 
         let state_update1 = StateUpdate::default()
             .with_deployed_contract(contract1_addr, class1_hash)
@@ -223,8 +224,8 @@ pub mod test_utils {
 
         let state_update2 = StateUpdate::default()
             .with_deployed_contract(contract2_addr, class2_hash)
-            .with_contract_nonce(contract1_addr, ContractNonce(felt!("0x10")))
-            .with_contract_nonce(contract2_addr, ContractNonce(felt!("0xfeed")))
+            .with_contract_nonce(contract1_addr, contract_nonce!("0x10"))
+            .with_contract_nonce(contract2_addr, contract_nonce!("0xfeed"))
             .with_storage_update(
                 contract1_addr,
                 storage_addr,
@@ -271,7 +272,7 @@ pub mod test_utils {
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
-            Some(ContractNonce(felt!("0x1"))),
+            Some(contract_nonce!("0x1")),
             Some(class0_hash),
             &storage_commitment_tree,
             &db_txn,
@@ -321,7 +322,7 @@ pub mod test_utils {
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
-            Some(ContractNonce(felt!("0x10"))),
+            Some(contract_nonce!("0x10")),
             None,
             &storage_commitment_tree,
             &db_txn,
@@ -333,7 +334,7 @@ pub mod test_utils {
         let contract_state_hash = update_contract_state(
             contract2_addr,
             &HashMap::new(),
-            Some(ContractNonce(felt!("0xfeed"))),
+            Some(contract_nonce!("0xfeed")),
             Some(class2_hash),
             &storage_commitment_tree,
             &db_txn,

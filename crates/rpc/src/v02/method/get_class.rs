@@ -89,11 +89,12 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use pathfinder_common::felt_bytes;
+    use pathfinder_common::macro_prelude::*;
 
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::felt;
+        
         use pathfinder_common::BlockHash;
 
         #[test]
@@ -106,8 +107,8 @@ mod tests {
 
             let input = positional.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
-                class_hash: ClassHash(felt!("0x12345")),
+                block_id: block_hash!("0xabcde").into(),
+                class_hash: class_hash!("0x12345"),
             };
             assert_eq!(input, expected);
         }
@@ -122,8 +123,8 @@ mod tests {
 
             let input = named.parse::<GetClassInput>().unwrap();
             let expected = GetClassInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
-                class_hash: ClassHash(felt!("0x12345")),
+                block_id: block_hash!("0xabcde").into(),
+                class_hash: class_hash!("0x12345"),
             };
             assert_eq!(input, expected);
         }

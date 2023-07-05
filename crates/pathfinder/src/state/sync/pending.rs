@@ -164,6 +164,7 @@ mod tests {
 
     use super::poll_pending;
     use assert_matches::assert_matches;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, ContractAddress,
         ContractNonce, EntryPoint, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
@@ -269,7 +270,7 @@ mod tests {
         let full_diff = PENDING_UPDATE
             .clone()
             .with_block_hash(NEXT_BLOCK.block_hash)
-            .with_state_commitment(StateCommitment(felt!("0x12")));
+            .with_state_commitment(state_commitment!("0x12"));
         let full_diff_copy = full_diff.clone();
 
         sequencer
@@ -307,7 +308,7 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
-        pending_block.parent_hash = BlockHash(felt!("0xFFFFFF"));
+        pending_block.parent_hash = block_hash!("0xFFFFFF");
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));

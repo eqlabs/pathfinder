@@ -504,6 +504,7 @@ mod tests {
         cairo::ext_py::GasPriceSource,
         v02::types::request::{BroadcastedDeployAccountTransaction, BroadcastedTransaction},
     };
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam,
         CallResultValue, Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
@@ -847,7 +848,7 @@ mod tests {
         let update = StateUpdate::default().with_storage_update(
             target_contract,
             StorageAddress::new_or_panic(storage_address),
-            StorageValue(felt!("0x4")),
+            storage_value!("0x4"),
         );
         let update = std::sync::Arc::new(update);
 
@@ -872,7 +873,7 @@ mod tests {
 
         let storage_updates = [(
             StorageAddress::new_or_panic(felt!("0x84")),
-            StorageValue(felt!("0x3")),
+            storage_value!("0x3"),
         )];
 
         let (test_contract_state_hash, test_contract_class_hash) =

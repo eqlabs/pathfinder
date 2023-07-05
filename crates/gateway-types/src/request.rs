@@ -319,7 +319,8 @@ pub mod add_transaction {
         }
 
         mod byte_code_offset {
-            use pathfinder_common::{felt, ByteCodeOffset, EntryPoint};
+            use pathfinder_common::macro_prelude::*;
+            use pathfinder_common::{ByteCodeOffset, EntryPoint};
             use stark_hash::Felt;
 
             use crate::request::contract::SelectorAndOffset;
@@ -334,8 +335,8 @@ pub mod add_transaction {
                 let result = serde_json::from_str::<SelectorAndOffset>(json).unwrap();
 
                 let expected = SelectorAndOffset {
-                    selector: EntryPoint(felt!("0x12345")),
-                    offset: ByteCodeOffset(felt!("0xabcdef")),
+                    selector: entry_point!("0x12345"),
+                    offset: byte_code_offset!("0xabcdef"),
                 };
 
                 assert_eq!(result, expected);
@@ -351,7 +352,7 @@ pub mod add_transaction {
                 let result = serde_json::from_str::<SelectorAndOffset>(json).unwrap();
 
                 let expected = SelectorAndOffset {
-                    selector: EntryPoint(felt!("0x12345")),
+                    selector: entry_point!("0x12345"),
                     offset: ByteCodeOffset(Felt::from_u64(199128127)),
                 };
 

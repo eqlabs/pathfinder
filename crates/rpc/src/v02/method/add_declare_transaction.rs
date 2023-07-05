@@ -117,6 +117,7 @@ mod tests {
         BroadcastedDeclareTransactionV2,
     };
     use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
     };
@@ -160,7 +161,7 @@ mod tests {
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V1(
                     BroadcastedDeclareTransactionV1 {
-                        max_fee: Fee(felt!("0x1")),
+                        max_fee: fee!("0x1"),
                         version: TransactionVersion::ONE,
                         signature: vec![],
                         nonce: TransactionNonce(Felt::ZERO),
@@ -235,7 +236,7 @@ mod tests {
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(
                     BroadcastedDeclareTransactionV2 {
-                        max_fee: Fee(felt!("0x1")),
+                        max_fee: fee!("0x1"),
                         version: TransactionVersion::TWO,
                         signature: vec![],
                         nonce: TransactionNonce(Felt::ZERO),
@@ -385,7 +386,7 @@ mod tests {
         let declare_transaction = Transaction::Declare(BroadcastedDeclareTransaction::V1(
             BroadcastedDeclareTransactionV1 {
                 version: TransactionVersion::ONE,
-                max_fee: Fee(felt!("0xfffffffffff")),
+                max_fee: fee!("0xfffffffffff"),
                 signature: vec![],
                 nonce: TransactionNonce(Default::default()),
                 contract_class: CONTRACT_CLASS_WITH_INVALID_PRIME.clone(),

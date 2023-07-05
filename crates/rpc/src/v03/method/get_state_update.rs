@@ -302,13 +302,14 @@ mod types {
     mod tests {
         use super::*;
         use pathfinder_common::felt;
+        use pathfinder_common::macro_prelude::*;
 
         #[test]
         fn receipt() {
             let state_update = StateUpdate {
-                block_hash: Some(BlockHash(felt!("0xdeadbeef"))),
-                new_root: Some(StateCommitment(felt!("0x1"))),
-                old_root: StateCommitment(felt!("0x2")),
+                block_hash: Some(block_hash!("0xdeadbeef")),
+                new_root: Some(state_commitment!("0x1")),
+                old_root: state_commitment!("0x2"),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
                         address: ContractAddress::new_or_panic(felt!("0xadc")),
@@ -365,14 +366,15 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::felt;
+    
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, BlockNumber, Chain};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
         let number = BlockId::Number(BlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(BlockHash(felt!("0xbeef")));
+        let hash = BlockId::Hash(block_hash!("0xbeef"));
 
         [
             (r#"["pending"]"#, BlockId::Pending),

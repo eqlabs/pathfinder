@@ -646,6 +646,7 @@ mod tests {
 
     use crate::test_utils;
     use assert_matches::assert_matches;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, BlockHeader, BlockTimestamp, EntryPoint, EventData, Fee, SequencerAddress,
         StateCommitment,
@@ -655,11 +656,7 @@ mod tests {
 
     #[test]
     fn event_data_serialization() {
-        let data = [
-            EventData(felt!("0x1")),
-            EventData(felt!("0x2")),
-            EventData(felt!("0x3")),
-        ];
+        let data = [event_data!("0x1"), event_data!("0x2"), event_data!("0x3")];
 
         let mut buffer = Vec::new();
         encode_event_data_to_bytes(&data, &mut buffer);
@@ -746,10 +743,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         let header = BlockHeader::builder()
-            .with_sequencer_address(SequencerAddress(felt!("0x1234")))
+            .with_sequencer_address(sequencer_address!("0x1234"))
             .with_timestamp(BlockTimestamp::new_or_panic(0))
-            .with_state_commitment(StateCommitment(felt!("0x1234")))
-            .finalize_with_hash(BlockHash(felt!("0x1234")));
+            .with_state_commitment(state_commitment!("0x1234"))
+            .finalize_with_hash(block_hash!("0x1234"));
 
         // Note: hashes are reverse ordered to trigger the sorting bug.
         let transactions = vec![

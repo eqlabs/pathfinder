@@ -425,6 +425,7 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{
             felt, EthereumAddress, EventData, EventKey, L2ToL1MessagePayloadElem,
         };
@@ -434,10 +435,10 @@ mod types {
             impl CommonTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: TransactionHash(felt!("0xdeadbeef")),
-                        actual_fee: Fee(felt!("0x1")),
+                        transaction_hash: transaction_hash!("0xdeadbeef"),
+                        actual_fee: fee!("0x1"),
                         status: TransactionStatus::AcceptedOnL1,
-                        block_hash: BlockHash(felt!("0xaaa")),
+                        block_hash: block_hash!("0xaaa"),
                         block_number: BlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
                             from_address: None,
@@ -458,8 +459,8 @@ mod types {
             impl CommonPendingTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: TransactionHash(felt!("0xfeedfeed")),
-                        actual_fee: Fee(felt!("0x2")),
+                        transaction_hash: transaction_hash!("0xfeedfeed"),
+                        actual_fee: fee!("0x2"),
                         messages_sent: vec![MessageToL1 {
                             from_address: None,
                             to_address: EthereumAddress(primitive_types::H160::from_low_u64_be(

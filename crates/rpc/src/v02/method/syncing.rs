@@ -70,6 +70,7 @@ pub struct SyncingStatus {
 mod tests {
     use super::SyncingOuput;
     use crate::context::RpcContext;
+    use pathfinder_common::macro_prelude::*;
     mod serde {
         use super::super::{SyncingOuput, SyncingStatus};
 
@@ -81,15 +82,16 @@ mod tests {
 
         #[test]
         fn syncing() {
-            use pathfinder_common::{felt, BlockHash, BlockNumber};
+            use super::*;
+            use pathfinder_common::{BlockHash, BlockNumber};
 
             let status = SyncingStatus {
                 starting_block_num: BlockNumber::new_or_panic(0x12),
                 current_block_num: BlockNumber::new_or_panic(0x45),
                 highest_block_num: BlockNumber::new_or_panic(0x772),
-                starting_block_hash: BlockHash(felt!("0xabcdef")),
-                current_block_hash: BlockHash(felt!("0x12345677")),
-                highest_block_hash: BlockHash(felt!("0x1144ffaacc")),
+                starting_block_hash: block_hash!("0xabcdef"),
+                current_block_hash: block_hash!("0x12345677"),
+                highest_block_hash: block_hash!("0x1144ffaacc"),
             };
             let value = SyncingOuput::Status(status);
             let json = serde_json::to_value(value).unwrap();

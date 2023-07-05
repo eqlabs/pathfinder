@@ -403,6 +403,7 @@ pub(super) fn contract_class_hash(
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{felt, felt_bytes, BlockHash, BlockHeader, CasmHash};
 
     use super::*;
@@ -412,18 +413,18 @@ mod tests {
         let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
         let tx = db.transaction().unwrap();
 
-        let original_class = ClassHash(felt!("0xdeadbeef"));
-        let replaced_class = ClassHash(felt!("0xdeadbeefabcdef"));
+        let original_class = class_hash!("0xdeadbeef");
+        let replaced_class = class_hash!("0xdeadbeefabcdef");
         let definition = b"example definition";
         let contract = ContractAddress::new_or_panic(felt!("0x12345"));
 
-        let header_0 = BlockHeader::builder().finalize_with_hash(BlockHash(felt!("0xabc")));
+        let header_0 = BlockHeader::builder().finalize_with_hash(block_hash!("0xabc"));
         let header_1 = header_0
             .child_builder()
-            .finalize_with_hash(BlockHash(felt!("0xabcdef")));
+            .finalize_with_hash(block_hash!("0xabcdef"));
         let header_2 = header_1
             .child_builder()
-            .finalize_with_hash(BlockHash(felt!("0xa111123")));
+            .finalize_with_hash(block_hash!("0xa111123"));
 
         let diff_0 = StateUpdate::default();
         let diff_1 = StateUpdate::default()
@@ -502,7 +503,7 @@ mod tests {
         let genesis_state_update = StateUpdate::default()
             .with_declared_cairo_class(cairo_hash)
             .with_deployed_contract(contract_address, cairo_hash);
-        let header = BlockHeader::builder().finalize_with_hash(BlockHash(felt!("0xabc")));
+        let header = BlockHeader::builder().finalize_with_hash(block_hash!("0xabc"));
         tx.insert_block_header(&header).unwrap();
         tx.insert_state_update(header.number, &genesis_state_update)
             .unwrap();
@@ -510,7 +511,7 @@ mod tests {
         // The actual data we want to query.
         let header = header
             .child_builder()
-            .finalize_with_hash(BlockHash(felt!("0xabcdef")));
+            .finalize_with_hash(block_hash!("0xabcdef"));
         let state_update = StateUpdate::default()
             .with_block_hash(header.hash)
             .with_storage_update(

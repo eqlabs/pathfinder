@@ -93,6 +93,7 @@ async fn get_pending_nonce(
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
     use crate::context::RpcContext;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{felt, felt_bytes, StarknetVersion};
     use pathfinder_common::{
         BlockHash, BlockId, BlockNumber, BlockTimestamp, ContractAddress, ContractNonce, GasPrice,
@@ -114,7 +115,7 @@ mod tests {
 
             let input = positional.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
+                block_id: block_hash!("0xabcde").into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);
@@ -132,7 +133,7 @@ mod tests {
 
             let input = named.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
+                block_id: block_hash!("0xabcde").into(),
                 contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
             };
             assert_eq!(input, expected);

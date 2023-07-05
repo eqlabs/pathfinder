@@ -259,13 +259,14 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, BlockHash, BlockNumber};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockHash, BlockNumber};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
         let number = BlockId::Number(BlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(BlockHash(felt!("0xbeef")));
+        let hash = BlockId::Hash(block_hash!("0xbeef"));
 
         [
             (r#"["pending"]"#, BlockId::Pending),

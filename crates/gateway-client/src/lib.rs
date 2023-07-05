@@ -695,7 +695,8 @@ pub mod test_utils {
 mod tests {
     use super::{test_utils::*, *};
     use assert_matches::assert_matches;
-    use pathfinder_common::{felt, BlockHash, BlockNumber, StarknetVersion};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::{testnet::*, *};
     use starknet_gateway_types::error::KnownStarknetErrorCode;
@@ -704,12 +705,12 @@ mod tests {
     pub const GENESIS_BLOCK_NUMBER: BlockNumberOrTag =
         BlockNumberOrTag::Number(BlockNumber::GENESIS);
     pub const INVALID_BLOCK_NUMBER: BlockNumberOrTag = BlockNumberOrTag::Number(BlockNumber::MAX);
-    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
+    pub const GENESIS_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(block_hash!(
         "07d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
-    )));
-    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(BlockHash(felt!(
+    ));
+    pub const INVALID_BLOCK_HASH: BlockHashOrTag = BlockHashOrTag::Hash(block_hash!(
         "06d328a71faf48c5c3857e99f20a77b18522480956d1cd5bff1ff2df3c8b427b"
-    )));
+    ));
 
     #[test_log::test(tokio::test)]
     async fn client_user_agent() {
@@ -760,7 +761,7 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
-        use pathfinder_common::felt;
+        
 
         #[tokio::test]
         async fn genesis() {
@@ -799,10 +800,8 @@ mod tests {
             ]);
             let by_hash = client
                 .block(
-                    BlockHash(felt!(
-                        "040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746"
-                    ))
-                    .into(),
+                    block_hash!("040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746")
+                        .into(),
                 )
                 .await
                 .unwrap();
@@ -1011,7 +1010,7 @@ mod tests {
 
     mod state_update_matches_by_hash_on {
         use super::*;
-        use pathfinder_common::felt;
+        
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1056,10 +1055,8 @@ mod tests {
                 .unwrap();
             let by_hash = client
                 .state_update(
-                    BlockHash(felt!(
-                        "017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03"
-                    ))
-                    .into(),
+                    block_hash!("017e4297ba605d22babb8c4e59a965b00e0487cd1e3ff63f99dbc7fe33e4fd03")
+                        .into(),
                 )
                 .await
                 .unwrap();
@@ -1156,7 +1153,7 @@ mod tests {
             ) {
                 (
                     TransactionVersion::ONE,
-                    Fee(felt!("4F388496839")),
+                    fee!("4F388496839"),
                     vec![
                         TransactionSignatureElem(felt!(
                             "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
@@ -1165,7 +1162,7 @@ mod tests {
                             "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
                         )),
                     ],
-                    TransactionNonce(felt!("0x1")),
+                    transaction_nonce!("0x1"),
                     ContractAddress::new_or_panic(felt!(
                         "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
                     )),
@@ -1269,7 +1266,7 @@ mod tests {
                 client
                     .add_declare_transaction(
                         TransactionVersion::ONE,
-                        Fee(felt!("0xFFFF")),
+                        fee!("0xFFFF"),
                         vec![],
                         TransactionNonce(Felt::ZERO),
                         ContractDefinition::Cairo(cairo_contract_class_from_fixture()),
@@ -1345,7 +1342,7 @@ mod tests {
                 client
                     .add_declare_transaction(
                         TransactionVersion::TWO,
-                        Fee(felt!("0xffff")),
+                        fee!("0xffff"),
                         vec![],
                         TransactionNonce(Felt::ZERO),
                         ContractDefinition::Sierra(sierra_contract_class_from_fixture()),

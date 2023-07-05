@@ -831,10 +831,11 @@ pub mod state_update {
         fn contract_field_backward_compatibility() {
             use super::{ClassHash, ContractAddress, DeployedContract};
             use pathfinder_common::felt;
+            use pathfinder_common::macro_prelude::*;
 
             let expected = DeployedContract {
                 address: ContractAddress::new_or_panic(felt!("0x1")),
-                class_hash: ClassHash(felt!("0x2")),
+                class_hash: class_hash!("0x2"),
             };
 
             // cario <0.9.0
@@ -912,15 +913,16 @@ pub mod add_transaction {
     mod serde_test {
         use super::*;
         use pathfinder_common::felt;
+        use pathfinder_common::macro_prelude::*;
 
         #[test]
         fn test_invoke_response() {
             let result = serde_json::from_str::<InvokeResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"}"#).unwrap();
             let expected = InvokeResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: TransactionHash(felt!(
+                transaction_hash: transaction_hash!(
                     "0389dd0629f42176cc8b6c43acefc0713d0064ecdfc0470e0fc179f53421a38b"
-                )),
+                ),
             };
             assert_eq!(expected, result);
         }
@@ -930,9 +932,9 @@ pub mod add_transaction {
             let result = serde_json::from_str::<DeployResponse>(r#"{"code": "TRANSACTION_RECEIVED", "transaction_hash": "0x296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f", "address": "0x677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"}"#).unwrap();
             let expected = DeployResponse {
                 code: "TRANSACTION_RECEIVED".to_owned(),
-                transaction_hash: TransactionHash(felt!(
+                transaction_hash: transaction_hash!(
                     "0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
-                )),
+                ),
                 address: ContractAddress::new_or_panic(felt!(
                     "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
                 )),

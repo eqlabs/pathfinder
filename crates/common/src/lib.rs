@@ -547,7 +547,7 @@ macros::felt_newtypes!(
         TransactionCommitment,
         TransactionNonce,
         TransactionSignatureElem,
-    ]; 
+    ];
     [
         // TODO: populate felt251 wrappers
     ]
