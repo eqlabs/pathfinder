@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.4] - 2023-07-05
+
 ### Fixed
 
-- Handle Starknet errors with HTTP status code 400. This fixes poll pending and polling
-  in general.
+- Pending data is not polled for starknet v0.12 due to an HTTP error code change from the gateway.
+- Transaction receipts missing `from_address` in `MSG_TO_L1`.
 
 ## [0.6.3] - 2023-06-29
 
