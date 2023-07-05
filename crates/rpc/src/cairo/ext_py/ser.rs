@@ -341,9 +341,7 @@ mod tests {
     use super::*;
     use crate::cairo::ext_py::ser::Nonces;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        {ContractAddress, ContractNonce},
-    };
+    use pathfinder_common::{ContractAddress, ContractNonce};
 
     mod storage_updates {
         use super::*;

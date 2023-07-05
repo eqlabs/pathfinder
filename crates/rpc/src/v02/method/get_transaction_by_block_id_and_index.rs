@@ -91,7 +91,7 @@ async fn get_transaction_from_pending(
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt_bytes, BlockHash, BlockNumber, TransactionHash};
+    use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
     use stark_hash::Felt;
 
     mod parsing {
@@ -163,7 +163,7 @@ mod tests {
         async fn invalid_index() {
             let context = RpcContext::for_tests();
             let input = GetTransactionByBlockIdAndIndexInput {
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"genesis"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"genesis")),
                 index: TransactionIndex::new_or_panic(123),
             };
 
@@ -187,21 +187,21 @@ mod tests {
         let result = get_transaction_by_block_id_and_index(context, input)
             .await
             .unwrap();
-        assert_eq!(result.hash(), TransactionHash(felt_bytes!(b"txn 0")));
+        assert_eq!(result.hash(), transaction_hash_bytes!(b"txn 0"));
     }
 
     #[tokio::test]
     async fn by_block_hash() {
         let context = RpcContext::for_tests();
         let input = GetTransactionByBlockIdAndIndexInput {
-            block_id: BlockId::Hash(BlockHash(felt_bytes!(b"genesis"))),
+            block_id: BlockId::Hash(block_hash_bytes!(b"genesis")),
             index: TransactionIndex::new_or_panic(0),
         };
 
         let result = get_transaction_by_block_id_and_index(context, input)
             .await
             .unwrap();
-        assert_eq!(result.hash(), TransactionHash(felt_bytes!(b"txn 0")));
+        assert_eq!(result.hash(), transaction_hash_bytes!(b"txn 0"));
     }
 
     #[tokio::test]
@@ -215,7 +215,7 @@ mod tests {
         let result = get_transaction_by_block_id_and_index(context, input)
             .await
             .unwrap();
-        assert_eq!(result.hash(), TransactionHash(felt_bytes!(b"txn 3")));
+        assert_eq!(result.hash(), transaction_hash_bytes!(b"txn 3"));
     }
 
     #[tokio::test]

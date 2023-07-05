@@ -59,8 +59,8 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, Chain,
-        ClassHash, ContractAddress, EntryPoint, GasPrice, SierraHash, StateUpdate,
+        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, Chain, ClassHash,
+        ContractAddress, EntryPoint, GasPrice, SierraHash, StateUpdate,
     };
     use pathfinder_storage::{JournalMode, Storage};
     use primitive_types::{H160, H256};

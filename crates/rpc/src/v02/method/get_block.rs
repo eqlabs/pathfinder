@@ -323,7 +323,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(block) => assert_eq!(
                 block.block_hash,
-                Some(BlockHash(pathfinder_common::felt_bytes!(expected))),
+                Some(block_hash_bytes!(expected)),
                 "test case {i}"
             ));
         })
@@ -360,7 +360,7 @@ mod tests {
                 Box::new(|i, result| {
                     assert_matches!(result, Ok(block) => assert_eq!(
                         block.parent_hash,
-                        BlockHash(pathfinder_common::felt_bytes!(b"latest")),
+                        block_hash_bytes!(b"latest"),
                         "test case {i}"
                     ), "test case {i}")
                 }),
@@ -386,7 +386,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"genesis"))),
+                BlockId::Hash(block_hash_bytes!(b"genesis")),
                 assert_hash(b"genesis"),
             ),
             (
@@ -396,7 +396,7 @@ mod tests {
             ),
             (
                 ctx,
-                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"non-existent"))),
+                BlockId::Hash(block_hash_bytes!(b"non-existent")),
                 assert_error(GetBlockError::BlockNotFound),
             ),
         ];

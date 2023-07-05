@@ -166,25 +166,25 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice, SequencerAddress,
-        StarknetVersion, StateCommitment, StateUpdate, TransactionVersion,
+        BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice, SequencerAddress, StarknetVersion,
+        StateCommitment, StateUpdate, TransactionVersion,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::transaction::L1HandlerTransaction;
     use starknet_gateway_types::reply::{Block, MaybePendingBlock, PendingBlock, Status};
 
-    lazy_static::lazy_static!(
-        pub static ref PARENT_HASH: BlockHash =  block_hash!("0x1234");
-        pub static ref PARENT_ROOT: StateCommitment = StateCommitment(felt_bytes!(b"parent root"));
+    const PARENT_HASH: BlockHash = block_hash!("0x1234");
+    const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
 
+    lazy_static::lazy_static!(
         pub static ref NEXT_BLOCK: Block = Block{
             block_hash: block_hash!("0xabcd"),
             block_number: BlockNumber::new_or_panic(1),
             gas_price: None,
-            parent_block_hash: *PARENT_HASH,
+            parent_block_hash: PARENT_HASH,
             sequencer_address: None,
-            state_commitment: *PARENT_ROOT,
+            state_commitment: PARENT_ROOT,
             status: Status::AcceptedOnL2,
             timestamp: BlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),
@@ -193,13 +193,13 @@ mod tests {
         };
 
         pub static ref PENDING_UPDATE: StateUpdate = {
-            StateUpdate::default().with_parent_state_commitment(*PARENT_ROOT)
+            StateUpdate::default().with_parent_state_commitment(PARENT_ROOT)
         };
 
         pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
             gas_price: GasPrice(11),
             parent_hash: NEXT_BLOCK.parent_block_hash,
-            sequencer_address: SequencerAddress(felt_bytes!(b"seqeunecer address")),
+            sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
             status: Status::Pending,
             timestamp: BlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
@@ -242,7 +242,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -283,7 +283,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -319,7 +319,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -345,7 +345,7 @@ mod tests {
 
         let disconnected_diff = PENDING_UPDATE
             .clone()
-            .with_parent_state_commitment(StateCommitment(felt_bytes!(b"different old root")));
+            .with_parent_state_commitment(state_commitment_bytes!(b"different old root"));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(disconnected_diff.clone()));
@@ -355,7 +355,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -387,7 +387,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -466,7 +466,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -505,10 +505,9 @@ mod tests {
         );
         let b0_copy = b0.clone();
 
-        let b1 = b0.clone().with_contract_nonce(
-            contract_address!("0x1"),
-            contract_nonce!("0x99"),
-        );
+        let b1 = b0
+            .clone()
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x99"));
         let b1_copy = b1.clone();
 
         lazy_static::lazy_static!(
@@ -534,7 +533,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),

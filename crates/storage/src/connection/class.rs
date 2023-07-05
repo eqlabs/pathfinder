@@ -194,7 +194,7 @@ pub(super) fn insert_class_commitment_leaf(
 mod tests {
     use super::*;
     use crate::Storage;
-    use pathfinder_common::felt_bytes;
+
     use pathfinder_common::macro_prelude::*;
     use stark_hash::Felt;
 
@@ -253,7 +253,7 @@ mod tests {
         let mut connection = Storage::in_memory().unwrap().connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        let cairo_hash = ClassHash(felt_bytes!(b"cairo hash"));
+        let cairo_hash = class_hash_bytes!(b"cairo hash");
         let cairo_definition = b"example cairo program";
 
         insert_cairo_class(&tx, cairo_hash, cairo_definition).unwrap();
@@ -268,8 +268,8 @@ mod tests {
         let mut connection = Storage::in_memory().unwrap().connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        let sierra_hash = SierraHash(felt_bytes!(b"sierra hash"));
-        let casm_hash = CasmHash(felt_bytes!(b"casm hash"));
+        let sierra_hash = sierra_hash_bytes!(b"sierra hash");
+        let casm_hash = casm_hash_bytes!(b"casm hash");
         let sierra_definition = b"example sierra program";
         let casm_definition = b"compiled sierra program";
         let version = "compiler version";

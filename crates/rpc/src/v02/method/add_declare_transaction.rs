@@ -118,9 +118,7 @@ mod tests {
     };
     use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
-    };
+    use pathfinder_common::{CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion};
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::class_definitions::{
         CAIRO_1_0_0_ALPHA6_SIERRA, CONTRACT_DEFINITION,

@@ -301,7 +301,7 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-        
+
         use pathfinder_common::macro_prelude::*;
 
         #[test]
@@ -491,7 +491,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"non-existent"))),
+                BlockId::Hash(block_hash_bytes!(b"non-existent")),
                 assert_error(GetStateUpdateError::BlockNotFound),
             ),
             (

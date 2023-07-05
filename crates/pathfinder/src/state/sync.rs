@@ -865,6 +865,7 @@ fn update_starknet_state(
 mod tests {
     use super::l2;
     use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt_bytes, BlockHash, BlockHeader, BlockNumber, CasmHash, ClassHash, EventCommitment,
         SierraHash, StateCommitment, StateUpdate, TransactionCommitment,
@@ -885,8 +886,8 @@ mod tests {
         Box<StateUpdate>,
         l2::Timings,
     )> {
-        let genesis_header = BlockHeader::builder()
-            .finalize_with_hash(BlockHash(felt_bytes!(b"genesis block hash")));
+        let genesis_header =
+            BlockHeader::builder().finalize_with_hash(block_hash_bytes!(b"genesis block hash"));
         let mut headers = vec![genesis_header];
         for i in 1..3 {
             let block_hash =
@@ -1059,7 +1060,7 @@ mod tests {
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
 
-        let class_hash = ClassHash(felt_bytes!(b"class hash"));
+        let class_hash = class_hash_bytes!(b"class hash");
         let expected_definition = b"cairo class definition".to_vec();
 
         event_tx
@@ -1101,7 +1102,7 @@ mod tests {
                 sierra_definition: expected_definition.clone(),
                 sierra_hash: SierraHash(class_hash),
                 casm_definition: b"casm definition".to_vec(),
-                casm_hash: CasmHash(felt_bytes!(b"casm hash")),
+                casm_hash: casm_hash_bytes!(b"casm hash"),
             })
             .await
             .unwrap();

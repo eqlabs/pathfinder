@@ -3,9 +3,9 @@ use crate::EmittedEvent;
 use super::Storage;
 use pathfinder_common::macro_prelude::*;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment,
-    ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment,
-    EventData, EventKey, Fee, GasPrice, SequencerAddress, StorageCommitment, TransactionCommitment,
+    BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment, ClassHash,
+    ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment, EventData,
+    EventKey, Fee, GasPrice, SequencerAddress, StorageCommitment, TransactionCommitment,
     TransactionHash, TransactionIndex, TransactionNonce, TransactionSignatureElem,
     TransactionVersion,
 };

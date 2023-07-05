@@ -82,7 +82,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use pathfinder_common::macro_prelude::*;
 
     mod parsing {
@@ -133,7 +133,7 @@ mod tests {
 
     mod ext_py {
         use super::*;
-        use pathfinder_common::{felt_bytes, BlockHash, Chain};
+        use pathfinder_common::{BlockHash, Chain};
         use pathfinder_storage::JournalMode;
         use std::num::NonZeroU32;
         use std::path::PathBuf;
@@ -203,7 +203,7 @@ mod tests {
 
             let input = CallInput {
                 request: valid_mainnet_call(),
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"nonexistent")),
             };
             let error = call(context, input).await;
             assert_matches::assert_matches!(error, Err(CallError::BlockNotFound));

@@ -71,8 +71,8 @@ async fn get_pending_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt_bytes};
 
     mod parsing {
         use super::*;
@@ -121,7 +121,7 @@ mod tests {
 
             let input = GetClassHashAtInput {
                 block_id: BlockId::Latest,
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(b"invalid")),
+                contract_address: contract_address_bytes!(b"invalid"),
             };
             let result = get_class_hash_at(context, input).await;
             assert_matches!(result, Err(GetClassHashAtError::ContractNotFound));
@@ -134,9 +134,9 @@ mod tests {
             let context = RpcContext::for_tests();
 
             let input = GetClassHashAtInput {
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"invalid"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"invalid")),
                 // This contract does exist and is added in block 0.
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+                contract_address: contract_address_bytes!(b"contract 0"),
             };
             let result = get_class_hash_at(context, input).await;
             assert_matches!(result, Err(GetClassHashAtError::BlockNotFound));
@@ -146,11 +146,11 @@ mod tests {
     #[tokio::test]
     async fn latest() {
         let context = RpcContext::for_tests();
-        let expected = ClassHash(felt_bytes!(b"class 0 hash"));
+        let expected = class_hash_bytes!(b"class 0 hash");
 
         let input = GetClassHashAtInput {
             block_id: BlockId::Latest,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+            contract_address: contract_address_bytes!(b"contract 0"),
         };
         let result = get_class_hash_at(context, input).await.unwrap();
         assert_eq!(result.0, expected);
@@ -162,7 +162,7 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // This contract is deployed in block 1.
-        let address = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
+        let address = contract_address_bytes!(b"contract 1");
 
         let input = GetClassHashAtInput {
             block_id: BlockNumber::new_or_panic(0).into(),
@@ -171,7 +171,7 @@ mod tests {
         let result = get_class_hash_at(context.clone(), input).await;
         assert_matches!(result, Err(GetClassHashAtError::ContractNotFound));
 
-        let expected = ClassHash(felt_bytes!(b"class 1 hash"));
+        let expected = class_hash_bytes!(b"class 1 hash");
         let input = GetClassHashAtInput {
             block_id: BlockNumber::new_or_panic(1).into(),
             contract_address: address,
@@ -190,11 +190,11 @@ mod tests {
     #[tokio::test]
     async fn pending_defaults_to_latest() {
         let context = RpcContext::for_tests();
-        let expected = ClassHash(felt_bytes!(b"class 0 hash"));
+        let expected = class_hash_bytes!(b"class 0 hash");
 
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+            contract_address: contract_address_bytes!(b"contract 0"),
         };
         let result = get_class_hash_at(context, input).await.unwrap();
         assert_eq!(result.0, expected);
@@ -205,32 +205,28 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
 
         // This should still work even though it was deployed in an actual block.
-        let expected = ClassHash(felt_bytes!(b"class 0 hash"));
+        let expected = class_hash_bytes!(b"class 0 hash");
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+            contract_address: contract_address_bytes!(b"contract 0"),
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
         assert_eq!(result.0, expected);
 
         // This is an actual pending deployed contract.
-        let expected = ClassHash(felt_bytes!(b"pending class 0 hash"));
+        let expected = class_hash_bytes!(b"pending class 0 hash");
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                b"pending contract 0 address"
-            )),
+            contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
         assert_eq!(result.0, expected);
 
         // Replaced class in pending should also work.
-        let expected = ClassHash(felt_bytes!(b"pending class 2 hash (replaced)"));
+        let expected = class_hash_bytes!(b"pending class 2 hash (replaced)");
         let input = GetClassHashAtInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                b"pending contract 2 (replaced)"
-            )),
+            contract_address: contract_address_bytes!(b"pending contract 2 (replaced)"),
         };
         let result = get_class_hash_at(context.clone(), input).await.unwrap();
         assert_eq!(result.0, expected);
@@ -238,7 +234,7 @@ mod tests {
         // This one remains missing.
         let input = GetClassHashAtInput {
             block_id: BlockId::Latest,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"invalid")),
+            contract_address: contract_address_bytes!(b"invalid"),
         };
         let result = get_class_hash_at(context, input).await;
         assert_matches!(result, Err(GetClassHashAtError::ContractNotFound));

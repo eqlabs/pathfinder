@@ -113,8 +113,8 @@ impl From<starknet_gateway_types::reply::Status> for TransactionStatus {
 
 #[cfg(test)]
 mod tests {
+
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt_bytes};
 
     use super::*;
 
@@ -122,7 +122,7 @@ mod tests {
     async fn l1_accepted() {
         let context = RpcContext::for_tests();
         // This transaction is in block 0 which is L1 accepted.
-        let tx_hash = TransactionHash(felt_bytes!(b"txn 0"));
+        let tx_hash = transaction_hash_bytes!(b"txn 0");
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
@@ -135,7 +135,7 @@ mod tests {
     async fn l2_accepted() {
         let context = RpcContext::for_tests();
         // This transaction is in block 1 which is not L1 accepted.
-        let tx_hash = TransactionHash(felt_bytes!(b"txn 1"));
+        let tx_hash = transaction_hash_bytes!(b"txn 1");
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
@@ -147,7 +147,7 @@ mod tests {
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
-        let tx_hash = TransactionHash(felt_bytes!(b"pending tx hash 0"));
+        let tx_hash = transaction_hash_bytes!(b"pending tx hash 0");
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };

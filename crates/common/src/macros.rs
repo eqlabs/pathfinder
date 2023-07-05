@@ -215,6 +215,7 @@ macro_rules! felt_newtypes {
     (@generate_use $target:ident) => {
         paste::paste! {
             pub use [<$target:snake>];
+            pub use [<$target:snake _bytes>];
         }
     };
 

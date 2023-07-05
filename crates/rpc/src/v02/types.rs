@@ -866,7 +866,7 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            
+
             use pathfinder_common::macro_prelude::*;
             use pretty_assertions::assert_eq;
 

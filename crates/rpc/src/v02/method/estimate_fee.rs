@@ -159,9 +159,7 @@ pub(crate) mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{
-            felt_bytes, BlockNumber, CasmHash, ContractNonce, ContractRoot, GasPrice,
-        };
+        use pathfinder_common::{BlockNumber, CasmHash, ContractNonce, ContractRoot, GasPrice};
         use pathfinder_storage::Storage;
 
         // Mainnet block number 5
@@ -325,7 +323,7 @@ pub(crate) mod tests {
             //
             // "Deploy"
             //
-            let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"account"));
+            let contract_address = contract_address_bytes!(b"account");
             let contract_root = ContractRoot::ZERO;
             let contract_nonce = ContractNonce::ZERO;
             let contract_state_hash =
@@ -369,7 +367,7 @@ pub(crate) mod tests {
                 .with_storage_commitment(new_storage_commitment)
                 .with_gas_price(gas_price)
                 .with_calculated_state_commitment()
-                .finalize_with_hash(BlockHash(felt_bytes!(b"latest block")));
+                .finalize_with_hash(block_hash_bytes!(b"latest block"));
             db_txn.insert_block_header(&new_header).unwrap();
 
             let state_update = new_header
@@ -393,7 +391,7 @@ pub(crate) mod tests {
 
             let input = EstimateFeeInput {
                 request: valid_invoke_v1(account_address),
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"nonexistent")),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));

@@ -258,7 +258,7 @@ pub async fn get_proof(
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{ContractAddress};
+    use pathfinder_common::ContractAddress;
 
     use super::*;
 

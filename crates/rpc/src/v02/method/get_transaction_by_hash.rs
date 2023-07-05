@@ -54,9 +54,7 @@ pub async fn get_transaction_by_hash(
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        felt_bytes, ContractAddress, EntryPoint, Fee, TransactionHash, TransactionNonce,
-    };
+    use pathfinder_common::{ContractAddress, EntryPoint, Fee, TransactionHash, TransactionNonce};
     use stark_hash::Felt;
 
     mod parsing {
@@ -104,7 +102,7 @@ mod tests {
         async fn hash_not_found() {
             let context = RpcContext::for_tests();
             let input = GetTransactionByHashInput {
-                transaction_hash: TransactionHash(felt_bytes!(b"non_existent")),
+                transaction_hash: transaction_hash_bytes!(b"non_existent"),
             };
 
             let result = get_transaction_by_hash(context, input).await;
@@ -120,7 +118,7 @@ mod tests {
     async fn success() {
         let context = RpcContext::for_tests();
         let input = GetTransactionByHashInput {
-            transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
+            transaction_hash: transaction_hash_bytes!(b"txn 0"),
         };
 
         let result = get_transaction_by_hash(context, input).await.unwrap();
@@ -129,12 +127,12 @@ mod tests {
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonDeclareInvokeTransactionProperties {
-                    hash: TransactionHash(felt_bytes!(b"txn 0")),
+                    hash: transaction_hash_bytes!(b"txn 0"),
                     max_fee: Fee::ZERO,
                     signature: vec![],
                     nonce: TransactionNonce(Felt::ZERO),
                 },
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+                contract_address: contract_address_bytes!(b"contract 0"),
                 entry_point_selector: EntryPoint(Felt::ZERO),
                 calldata: vec![],
             }))
@@ -146,7 +144,7 @@ mod tests {
         let context = RpcContext::for_tests_with_pending().await;
 
         let input = GetTransactionByHashInput {
-            transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
+            transaction_hash: transaction_hash_bytes!(b"pending tx hash 0"),
         };
 
         let result = get_transaction_by_hash(context, input).await.unwrap();
@@ -155,15 +153,13 @@ mod tests {
             result,
             Transaction::Invoke(reply::InvokeTransaction::V0(reply::InvokeTransactionV0 {
                 common: reply::CommonDeclareInvokeTransactionProperties {
-                    hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
+                    hash: transaction_hash_bytes!(b"pending tx hash 0"),
                     max_fee: Fee::ZERO,
                     signature: vec![],
                     nonce: TransactionNonce(Felt::ZERO),
                 },
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"pending contract addr 0"
-                )),
-                entry_point_selector: EntryPoint(felt_bytes!(b"entry point 0")),
+                contract_address: contract_address_bytes!(b"pending contract addr 0"),
+                entry_point_selector: entry_point_bytes!(b"entry point 0"),
                 calldata: vec![],
             }))
         )

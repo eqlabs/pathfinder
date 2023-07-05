@@ -130,7 +130,7 @@ mod tests {
     #[tokio::test]
     async fn test_genesis() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"genesis")));
+        let block_id = BlockId::Hash(block_hash_bytes!(b"genesis"));
         check_count(context, block_id, 1).await;
     }
 

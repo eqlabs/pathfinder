@@ -234,8 +234,9 @@ pub(super) fn transaction_block_hash(
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt_bytes, BlockHeader, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
+        BlockHeader, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
         ContractAddressSalt, EntryPoint, Fee, TransactionIndex, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
@@ -251,135 +252,116 @@ mod tests {
         BlockHeader,
         Vec<(gateway::Transaction, gateway::Receipt)>,
     ) {
-        let header =
-            BlockHeader::builder().finalize_with_hash(BlockHash(felt_bytes!(b"block hash")));
+        let header = BlockHeader::builder().finalize_with_hash(block_hash_bytes!(b"block hash"));
 
         // Create one of each transaction type.
         let transactions = vec![
             gateway::Transaction::Declare(gateway::DeclareTransaction::V0(
                 DeclareTransactionV0V1 {
-                    class_hash: ClassHash(felt_bytes!(b"declare v0 class hash")),
-                    max_fee: Fee(felt_bytes!(b"declare v0 max fee")),
-                    nonce: TransactionNonce(felt_bytes!(b"declare v0 tx nonce")),
-                    sender_address: ContractAddress::new_or_panic(felt_bytes!(
-                        b"declare v0 contract address"
-                    )),
+                    class_hash: class_hash_bytes!(b"declare v0 class hash"),
+                    max_fee: fee_bytes!(b"declare v0 max fee"),
+                    nonce: transaction_nonce_bytes!(b"declare v0 tx nonce"),
+                    sender_address: contract_address_bytes!(b"declare v0 contract address"),
                     signature: vec![
-                        TransactionSignatureElem(felt_bytes!(b"declare v0 tx sig 0")),
-                        TransactionSignatureElem(felt_bytes!(b"declare v0 tx sig 1")),
+                        transaction_signature_elem_bytes!(b"declare v0 tx sig 0"),
+                        transaction_signature_elem_bytes!(b"declare v0 tx sig 1"),
                     ],
-                    transaction_hash: TransactionHash(felt_bytes!(b"declare v0 tx hash")),
+                    transaction_hash: transaction_hash_bytes!(b"declare v0 tx hash"),
                 },
             )),
             gateway::Transaction::Declare(gateway::DeclareTransaction::V1(
                 DeclareTransactionV0V1 {
-                    class_hash: ClassHash(felt_bytes!(b"declare v1 class hash")),
-                    max_fee: Fee(felt_bytes!(b"declare v1 max fee")),
-                    nonce: TransactionNonce(felt_bytes!(b"declare v1 tx nonce")),
-                    sender_address: ContractAddress::new_or_panic(felt_bytes!(
-                        b"declare v1 contract address"
-                    )),
+                    class_hash: class_hash_bytes!(b"declare v1 class hash"),
+                    max_fee: fee_bytes!(b"declare v1 max fee"),
+                    nonce: transaction_nonce_bytes!(b"declare v1 tx nonce"),
+                    sender_address: contract_address_bytes!(b"declare v1 contract address"),
                     signature: vec![
-                        TransactionSignatureElem(felt_bytes!(b"declare v1 tx sig 0")),
-                        TransactionSignatureElem(felt_bytes!(b"declare v1 tx sig 1")),
+                        transaction_signature_elem_bytes!(b"declare v1 tx sig 0"),
+                        transaction_signature_elem_bytes!(b"declare v1 tx sig 1"),
                     ],
-                    transaction_hash: TransactionHash(felt_bytes!(b"declare v1 tx hash")),
+                    transaction_hash: transaction_hash_bytes!(b"declare v1 tx hash"),
                 },
             )),
             gateway::Transaction::Declare(gateway::DeclareTransaction::V2(DeclareTransactionV2 {
-                class_hash: ClassHash(felt_bytes!(b"declare v2 class hash")),
-                max_fee: Fee(felt_bytes!(b"declare v2 max fee")),
-                nonce: TransactionNonce(felt_bytes!(b"declare v2 tx nonce")),
-                sender_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"declare v2 contract address"
-                )),
+                class_hash: class_hash_bytes!(b"declare v2 class hash"),
+                max_fee: fee_bytes!(b"declare v2 max fee"),
+                nonce: transaction_nonce_bytes!(b"declare v2 tx nonce"),
+                sender_address: contract_address_bytes!(b"declare v2 contract address"),
                 signature: vec![
-                    TransactionSignatureElem(felt_bytes!(b"declare v2 tx sig 0")),
-                    TransactionSignatureElem(felt_bytes!(b"declare v2 tx sig 1")),
+                    transaction_signature_elem_bytes!(b"declare v2 tx sig 0"),
+                    transaction_signature_elem_bytes!(b"declare v2 tx sig 1"),
                 ],
-                transaction_hash: TransactionHash(felt_bytes!(b"declare v2 tx hash")),
-                compiled_class_hash: CasmHash(felt_bytes!(b"declare v2 casm hash")),
+                transaction_hash: transaction_hash_bytes!(b"declare v2 tx hash"),
+                compiled_class_hash: casm_hash_bytes!(b"declare v2 casm hash"),
             })),
             gateway::Transaction::Deploy(DeployTransaction {
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"deploy contract address"
-                )),
-                contract_address_salt: ContractAddressSalt(felt_bytes!(
+                contract_address: contract_address_bytes!(b"deploy contract address"),
+                contract_address_salt: contract_address_salt_bytes!(
                     b"deploy contract address salt"
-                )),
-                class_hash: ClassHash(felt_bytes!(b"deploy class hash")),
+                ),
+                class_hash: class_hash_bytes!(b"deploy class hash"),
                 constructor_calldata: vec![
-                    ConstructorParam(felt_bytes!(b"deploy call data 0")),
-                    ConstructorParam(felt_bytes!(b"deploy call data 1")),
+                    constructor_param_bytes!(b"deploy call data 0"),
+                    constructor_param_bytes!(b"deploy call data 1"),
                 ],
-                transaction_hash: TransactionHash(felt_bytes!(b"deploy tx hash")),
+                transaction_hash: transaction_hash_bytes!(b"deploy tx hash"),
                 version: TransactionVersion::ZERO,
             }),
             gateway::Transaction::DeployAccount(DeployAccountTransaction {
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"deploy account contract address"
-                )),
-                transaction_hash: TransactionHash(felt_bytes!(b"deploy account tx hash")),
-                max_fee: Fee(felt_bytes!(b"deploy account max fee")),
+                contract_address: contract_address_bytes!(b"deploy account contract address"),
+                transaction_hash: transaction_hash_bytes!(b"deploy account tx hash"),
+                max_fee: fee_bytes!(b"deploy account max fee"),
                 version: TransactionVersion::ZERO,
                 signature: vec![
-                    TransactionSignatureElem(felt_bytes!(b"deploy account tx sig 0")),
-                    TransactionSignatureElem(felt_bytes!(b"deploy account tx sig 1")),
+                    transaction_signature_elem_bytes!(b"deploy account tx sig 0"),
+                    transaction_signature_elem_bytes!(b"deploy account tx sig 1"),
                 ],
-                nonce: TransactionNonce(felt_bytes!(b"deploy account tx nonce")),
-                contract_address_salt: ContractAddressSalt(felt_bytes!(
-                    b"deploy account address salt"
-                )),
+                nonce: transaction_nonce_bytes!(b"deploy account tx nonce"),
+                contract_address_salt: contract_address_salt_bytes!(b"deploy account address salt"),
                 constructor_calldata: vec![
-                    CallParam(felt_bytes!(b"deploy account call data 0")),
-                    CallParam(felt_bytes!(b"deploy account call data 1")),
+                    call_param_bytes!(b"deploy account call data 0"),
+                    call_param_bytes!(b"deploy account call data 1"),
                 ],
-                class_hash: ClassHash(felt_bytes!(b"deploy account class hash")),
+                class_hash: class_hash_bytes!(b"deploy account class hash"),
             }),
             gateway::Transaction::Invoke(gateway::InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![
-                    CallParam(felt_bytes!(b"invoke v0 call data 0")),
-                    CallParam(felt_bytes!(b"invoke v0 call data 1")),
+                    call_param_bytes!(b"invoke v0 call data 0"),
+                    call_param_bytes!(b"invoke v0 call data 1"),
                 ],
-                sender_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"invoke v0 contract address"
-                )),
-                entry_point_selector: EntryPoint(felt_bytes!(b"invoke v0 entry point")),
+                sender_address: contract_address_bytes!(b"invoke v0 contract address"),
+                entry_point_selector: entry_point_bytes!(b"invoke v0 entry point"),
                 entry_point_type: None,
-                max_fee: Fee(felt_bytes!(b"invoke v0 max fee")),
+                max_fee: fee_bytes!(b"invoke v0 max fee"),
                 signature: vec![
-                    TransactionSignatureElem(felt_bytes!(b"invoke v0 tx sig 0")),
-                    TransactionSignatureElem(felt_bytes!(b"invoke v0 tx sig 1")),
+                    transaction_signature_elem_bytes!(b"invoke v0 tx sig 0"),
+                    transaction_signature_elem_bytes!(b"invoke v0 tx sig 1"),
                 ],
-                transaction_hash: TransactionHash(felt_bytes!(b"invoke v0 tx hash")),
+                transaction_hash: transaction_hash_bytes!(b"invoke v0 tx hash"),
             })),
             gateway::Transaction::Invoke(gateway::InvokeTransaction::V1(InvokeTransactionV1 {
                 calldata: vec![
-                    CallParam(felt_bytes!(b"invoke v1 call data 0")),
-                    CallParam(felt_bytes!(b"invoke v1 call data 1")),
+                    call_param_bytes!(b"invoke v1 call data 0"),
+                    call_param_bytes!(b"invoke v1 call data 1"),
                 ],
-                sender_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"invoke v1 contract address"
-                )),
-                max_fee: Fee(felt_bytes!(b"invoke v1 max fee")),
+                sender_address: contract_address_bytes!(b"invoke v1 contract address"),
+                max_fee: fee_bytes!(b"invoke v1 max fee"),
                 signature: vec![
-                    TransactionSignatureElem(felt_bytes!(b"invoke v1 tx sig 0")),
-                    TransactionSignatureElem(felt_bytes!(b"invoke v1 tx sig 1")),
+                    transaction_signature_elem_bytes!(b"invoke v1 tx sig 0"),
+                    transaction_signature_elem_bytes!(b"invoke v1 tx sig 1"),
                 ],
-                nonce: TransactionNonce(felt_bytes!(b"invoke v1 tx nonce")),
-                transaction_hash: TransactionHash(felt_bytes!(b"invoke v1 tx hash")),
+                nonce: transaction_nonce_bytes!(b"invoke v1 tx nonce"),
+                transaction_hash: transaction_hash_bytes!(b"invoke v1 tx hash"),
             })),
             gateway::Transaction::L1Handler(gateway::L1HandlerTransaction {
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"L1 handler contract address"
-                )),
-                entry_point_selector: EntryPoint(felt_bytes!(b"L1 handler entry point")),
-                nonce: TransactionNonce(felt_bytes!(b"L1 handler tx nonce")),
+                contract_address: contract_address_bytes!(b"L1 handler contract address"),
+                entry_point_selector: entry_point_bytes!(b"L1 handler entry point"),
+                nonce: transaction_nonce_bytes!(b"L1 handler tx nonce"),
                 calldata: vec![
-                    CallParam(felt_bytes!(b"L1 handler call data 0")),
-                    CallParam(felt_bytes!(b"L1 handler call data 1")),
+                    call_param_bytes!(b"L1 handler call data 0"),
+                    call_param_bytes!(b"L1 handler call data 1"),
                 ],
-                transaction_hash: TransactionHash(felt_bytes!(b"L1 handler tx hash")),
+                transaction_hash: transaction_hash_bytes!(b"L1 handler tx hash"),
                 version: TransactionVersion::ZERO,
             }),
         ];
@@ -430,7 +412,7 @@ mod tests {
         let result = super::transaction(&tx, expected.hash()).unwrap().unwrap();
         assert_eq!(result, expected);
 
-        let invalid = super::transaction(&tx, TransactionHash(felt_bytes!(b"invalid"))).unwrap();
+        let invalid = super::transaction(&tx, transaction_hash_bytes!(b"invalid")).unwrap();
         assert_eq!(invalid, None);
     }
 
@@ -449,7 +431,7 @@ mod tests {
         assert_eq!(result.2, header.hash);
 
         let invalid =
-            super::transaction_with_receipt(&tx, TransactionHash(felt_bytes!(b"invalid"))).unwrap();
+            super::transaction_with_receipt(&tx, transaction_hash_bytes!(b"invalid")).unwrap();
         assert_eq!(invalid, None);
     }
 
@@ -518,8 +500,7 @@ mod tests {
         assert_eq!(valid, header.hash);
 
         let invalid =
-            super::transaction_block_hash(&tx, TransactionHash(felt_bytes!(b"invalid hash")))
-                .unwrap();
+            super::transaction_block_hash(&tx, transaction_hash_bytes!(b"invalid hash")).unwrap();
         assert_eq!(invalid, None);
     }
 }

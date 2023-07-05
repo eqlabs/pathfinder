@@ -830,7 +830,7 @@ pub mod state_update {
         #[test]
         fn contract_field_backward_compatibility() {
             use super::{ClassHash, ContractAddress, DeployedContract};
-            
+
             use pathfinder_common::macro_prelude::*;
 
             let expected = DeployedContract {
@@ -912,7 +912,7 @@ pub mod add_transaction {
     #[cfg(test)]
     mod serde_test {
         use super::*;
-        
+
         use pathfinder_common::macro_prelude::*;
 
         #[test]

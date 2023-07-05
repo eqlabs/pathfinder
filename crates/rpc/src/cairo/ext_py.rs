@@ -506,10 +506,10 @@ mod tests {
     };
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam,
-        CallResultValue, Chain, ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt,
-        ContractNonce, ContractRoot, ContractStateHash, EntryPoint, GasPrice, StateCommitment,
-        StateUpdate, StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
+        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CallResultValue, Chain,
+        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, ContractNonce,
+        ContractRoot, ContractStateHash, EntryPoint, GasPrice, StateCommitment, StateUpdate,
+        StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{JournalMode, Storage, Transaction};
@@ -889,7 +889,7 @@ mod tests {
             .with_gas_price(GasPrice(1))
             .with_storage_commitment(storage_commitment)
             .with_class_commitment(class_commitment)
-            .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
+            .finalize_with_hash(block_hash_bytes!(b"some blockhash somewhere"));
         tx.insert_block_header(&header).unwrap();
 
         let state_update = StateUpdate::default()
@@ -939,7 +939,7 @@ mod tests {
             .with_gas_price(GasPrice(1))
             .with_storage_commitment(storage_commitment)
             .with_class_commitment(class_commitment)
-            .finalize_with_hash(BlockHash(felt_bytes!(b"some blockhash somewhere")));
+            .finalize_with_hash(block_hash_bytes!(b"some blockhash somewhere"));
         tx.insert_block_header(&header).unwrap();
 
         let state_update = StateUpdate::default()

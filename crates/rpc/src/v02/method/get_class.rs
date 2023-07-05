@@ -88,7 +88,7 @@ async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> boo
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::felt_bytes;
+
     use pathfinder_common::macro_prelude::*;
 
     mod parsing {
@@ -135,7 +135,7 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // Cairo v0.x class
-        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
+        let valid_v0 = class_hash_bytes!(b"class 0 hash");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -146,7 +146,7 @@ mod tests {
         .await
         .unwrap();
         // Cairo v1.x class (Sierra)
-        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
+        let valid_v1 = class_hash_bytes!(b"class 2 hash (sierra)");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -157,7 +157,7 @@ mod tests {
         .await
         .unwrap();
 
-        let invalid = ClassHash(felt_bytes!(b"invalid"));
+        let invalid = class_hash_bytes!(b"invalid");
         let error = super::get_class(
             context,
             GetClassInput {
@@ -176,7 +176,7 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // Cairo v0.x class
-        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
+        let valid_v0 = class_hash_bytes!(b"class 0 hash");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -188,7 +188,7 @@ mod tests {
         .unwrap();
 
         // Cairo v1.x class (Sierra)
-        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
+        let valid_v1 = class_hash_bytes!(b"class 2 hash (sierra)");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -199,7 +199,7 @@ mod tests {
         .await
         .unwrap();
 
-        let invalid = ClassHash(felt_bytes!(b"invalid"));
+        let invalid = class_hash_bytes!(b"invalid");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -213,7 +213,7 @@ mod tests {
 
         // This class is defined, but is not declared in any canonical block, such
         // as what may occur for a pending class declaration.
-        let undeclared = ClassHash(felt_bytes!(b"class pending hash"));
+        let undeclared = class_hash_bytes!(b"class pending hash");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -234,7 +234,7 @@ mod tests {
 
         // Cairo v0.x class
         // This class is declared in block 0.
-        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
+        let valid_v0 = class_hash_bytes!(b"class 0 hash");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -247,7 +247,7 @@ mod tests {
 
         // Cairo v1.x class (Sierra)
         // This class is declared in block 2.
-        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
+        let valid_v1 = class_hash_bytes!(b"class 2 hash (sierra)");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -269,7 +269,7 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
-        let invalid = ClassHash(felt_bytes!(b"invalid"));
+        let invalid = class_hash_bytes!(b"invalid");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -283,7 +283,7 @@ mod tests {
 
         // This class is defined, but is not declared in any canonical block, such
         // as what may occur for a pending class declaration.
-        let undeclared = ClassHash(felt_bytes!(b"class pending hash"));
+        let undeclared = class_hash_bytes!(b"class pending hash");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -296,7 +296,7 @@ mod tests {
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // Class exists, but block number does not.
-        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
+        let valid = class_hash_bytes!(b"class 0 hash");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -317,8 +317,8 @@ mod tests {
 
         // Cairo v0.x class
         // This class is declared in block 1.
-        let valid_v0 = ClassHash(felt_bytes!(b"class 0 hash"));
-        let block1_hash = BlockHash(felt_bytes!(b"block 1"));
+        let valid_v0 = class_hash_bytes!(b"class 0 hash");
+        let block1_hash = block_hash_bytes!(b"block 1");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -331,8 +331,8 @@ mod tests {
 
         // Cairo v1.x class
         // This class is declared in block 2.
-        let valid_v1 = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
-        let block2_hash = BlockHash(felt_bytes!(b"latest"));
+        let valid_v1 = class_hash_bytes!(b"class 2 hash (sierra)");
+        let block2_hash = block_hash_bytes!(b"latest");
         super::get_class(
             context.clone(),
             GetClassInput {
@@ -343,7 +343,7 @@ mod tests {
         .await
         .unwrap();
 
-        let block0_hash = BlockHash(felt_bytes!(b"genesis"));
+        let block0_hash = block_hash_bytes!(b"genesis");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -355,8 +355,8 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
-        let invalid = ClassHash(felt_bytes!(b"invalid"));
-        let latest_hash = BlockHash(felt_bytes!(b"latest"));
+        let invalid = class_hash_bytes!(b"invalid");
+        let latest_hash = block_hash_bytes!(b"latest");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -369,8 +369,8 @@ mod tests {
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // This class is defined, but is not declared in any canonical block.
-        let undeclared = ClassHash(felt_bytes!(b"class pending hash"));
-        let latest_hash = BlockHash(felt_bytes!(b"latest"));
+        let undeclared = class_hash_bytes!(b"class pending hash");
+        let latest_hash = block_hash_bytes!(b"latest");
         let error = super::get_class(
             context.clone(),
             GetClassInput {
@@ -383,8 +383,8 @@ mod tests {
         assert_matches!(error, GetClassError::ClassHashNotFound);
 
         // Class exists, but block hash does not.
-        let valid = ClassHash(felt_bytes!(b"class 0 hash"));
-        let invalid_block = BlockHash(felt_bytes!(b"invalid"));
+        let valid = class_hash_bytes!(b"class 0 hash");
+        let invalid_block = block_hash_bytes!(b"invalid");
         let error = super::get_class(
             context.clone(),
             GetClassInput {

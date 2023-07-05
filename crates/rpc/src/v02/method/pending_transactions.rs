@@ -22,8 +22,9 @@ mod tests {
         CommonDeclareInvokeTransactionProperties, DeployTransaction, InvokeTransaction,
         InvokeTransactionV0,
     };
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt_bytes, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, TransactionHash,
+        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, TransactionHash,
         TransactionNonce, TransactionVersion,
     };
 
@@ -32,23 +33,21 @@ mod tests {
         // Transcribed from the `RpcContext::for_tests_with_pending` transactions.
         let tx0 = InvokeTransactionV0 {
             common: CommonDeclareInvokeTransactionProperties {
-                hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
+                hash: transaction_hash_bytes!(b"pending tx hash 0"),
                 max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
                 nonce: TransactionNonce::ZERO,
             },
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(
-                b"pending contract addr 0"
-            )),
-            entry_point_selector: EntryPoint(felt_bytes!(b"entry point 0")),
+            contract_address: contract_address_bytes!(b"pending contract addr 0"),
+            entry_point_selector: entry_point_bytes!(b"entry point 0"),
             calldata: vec![],
         };
 
         let tx1 = DeployTransaction {
-            hash: TransactionHash(felt_bytes!(b"pending tx hash 1")),
-            class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
+            hash: transaction_hash_bytes!(b"pending tx hash 1"),
+            class_hash: class_hash_bytes!(b"pending class hash 1"),
             version: TransactionVersion::ZERO,
-            contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),
+            contract_address_salt: contract_address_salt_bytes!(b"salty"),
             constructor_calldata: vec![],
         };
 

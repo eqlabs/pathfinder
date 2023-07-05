@@ -60,8 +60,8 @@ mod tests {
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        BlockHash, CallParam, ContractAddress, Fee, TransactionNonce, TransactionSignatureElem,
+        TransactionVersion,
     };
 
     mod parsing {
@@ -156,7 +156,7 @@ mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{felt_bytes, CasmHash};
+        use pathfinder_common::CasmHash;
 
         #[tokio::test]
         async fn no_such_block() {
@@ -165,7 +165,7 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: vec![valid_invoke_v1(account_address)],
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"nonexistent")),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));

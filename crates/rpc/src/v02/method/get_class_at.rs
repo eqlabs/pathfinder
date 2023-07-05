@@ -82,8 +82,8 @@ async fn get_pending_class_hash(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
+
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt_bytes};
 
     mod parsing {
         use super::*;
@@ -128,7 +128,7 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // Cairo class v0.x
-        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
+        let valid_v0 = contract_address_bytes!(b"contract 0");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -140,7 +140,7 @@ mod tests {
         .unwrap();
 
         // Cairo class v1.x
-        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -151,7 +151,7 @@ mod tests {
         .await
         .unwrap();
 
-        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
+        let invalid = contract_address_bytes!(b"invalid");
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -169,7 +169,7 @@ mod tests {
         let context = RpcContext::for_tests();
 
         // Cairo class v0.x
-        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
+        let valid_v0 = contract_address_bytes!(b"contract 0");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -181,7 +181,7 @@ mod tests {
         .unwrap();
 
         // Cairo class v1.x
-        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -192,7 +192,7 @@ mod tests {
         .await
         .unwrap();
 
-        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
+        let invalid = contract_address_bytes!(b"invalid");
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -213,7 +213,7 @@ mod tests {
 
         // Cairo v0.x class
         // This contract is declared in block 1.
-        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
+        let valid_v0 = contract_address_bytes!(b"contract 1");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -226,7 +226,7 @@ mod tests {
 
         // Cairo v1.x class (sierra)
         // This contract is declared in block 2.
-        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -248,7 +248,7 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
-        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
+        let invalid = contract_address_bytes!(b"invalid");
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -281,8 +281,8 @@ mod tests {
 
         // Cairo v0.x class
         // This class is declared in block 1.
-        let valid_v0 = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
-        let block1_hash = BlockHash(felt_bytes!(b"block 1"));
+        let valid_v0 = contract_address_bytes!(b"contract 1");
+        let block1_hash = block_hash_bytes!(b"block 1");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -295,8 +295,8 @@ mod tests {
 
         // Cairo v1.x class (sierra)
         // This class is declared in block 2.
-        let valid_v1 = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
-        let block2_hash = BlockHash(felt_bytes!(b"latest"));
+        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
+        let block2_hash = block_hash_bytes!(b"latest");
         super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -307,7 +307,7 @@ mod tests {
         .await
         .unwrap();
 
-        let block0_hash = BlockHash(felt_bytes!(b"genesis"));
+        let block0_hash = block_hash_bytes!(b"genesis");
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -319,8 +319,8 @@ mod tests {
         .unwrap_err();
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
-        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"invalid"));
-        let latest_hash = BlockHash(felt_bytes!(b"latest"));
+        let invalid = contract_address_bytes!(b"invalid");
+        let latest_hash = block_hash_bytes!(b"latest");
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {
@@ -333,7 +333,7 @@ mod tests {
         assert_matches!(error, GetClassAtError::ContractNotFound);
 
         // Class exists, but block hash does not.
-        let invalid_block = BlockHash(felt_bytes!(b"invalid"));
+        let invalid_block = block_hash_bytes!(b"invalid");
         let error = super::get_class_at(
             context.clone(),
             GetClassAtInput {

@@ -648,8 +648,7 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHeader, BlockTimestamp, EntryPoint, EventData, Fee, SequencerAddress,
-        StateCommitment,
+        BlockHeader, BlockTimestamp, EntryPoint, EventData, Fee, SequencerAddress, StateCommitment,
     };
 
     use starknet_gateway_types::reply::transaction as gateway_tx;

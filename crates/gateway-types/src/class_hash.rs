@@ -563,7 +563,7 @@ mod json {
     mod test_vectors {
         use super::super::{compute_class_hash, ComputedClassHash};
         use pathfinder_common::macro_prelude::*;
-        use pathfinder_common::{ClassHash};
+        use pathfinder_common::ClassHash;
         use starknet_gateway_test_fixtures::class_definitions::*;
 
         #[tokio::test]
