@@ -164,7 +164,7 @@ pub mod integration {
 
 pub mod class_definitions {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{ClassHash};
+    use pathfinder_common::ClassHash;
 
     pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json");
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json");
@@ -220,7 +220,7 @@ pub mod class_definitions {
 pub mod testnet {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, CallParam, ClassHash, ContractAddress, EntryPoint, StorageAddress, TransactionHash,
+        CallParam, ClassHash, ContractAddress, EntryPoint, StorageAddress, TransactionHash,
     };
     use stark_hash::Felt;
 
@@ -228,18 +228,15 @@ pub mod testnet {
         transaction_hash!("0493d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24");
     pub const INVALID_TX_HASH: TransactionHash =
         transaction_hash!("0393d8fab73af67e972788e603aee18130facd3c7685f16084ecd98b07153e24");
-    pub const VALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(felt!(
-        "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-    ));
-    pub const INVALID_CONTRACT_ADDR: ContractAddress = ContractAddress::new_or_panic(felt!(
-        "05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-    ));
+    pub const VALID_CONTRACT_ADDR: ContractAddress =
+        contract_address!("06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39");
+    pub const INVALID_CONTRACT_ADDR: ContractAddress =
+        contract_address!("05fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39");
     pub const VALID_ENTRY_POINT: EntryPoint =
         entry_point!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320");
     pub const INVALID_ENTRY_POINT: EntryPoint = EntryPoint(Felt::ZERO);
-    pub const VALID_KEY: StorageAddress = StorageAddress::new_or_panic(felt!(
-        "0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091"
-    ));
+    pub const VALID_KEY: StorageAddress =
+        storage_address!("0206F38F7E4F15E87567361213C28F235CCCDAA1D7FD34C9DB1DFE9489C6A091");
     pub const VALID_KEY_DEC: &str =
         "916907772491729262376534102982219947830828984996257231353398618781993312401";
     pub const VALID_CALL_DATA: [CallParam; 1] = [call_param!("0x4d2")];

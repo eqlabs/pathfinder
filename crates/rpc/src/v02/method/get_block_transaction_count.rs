@@ -63,6 +63,7 @@ pub async fn get_block_transaction_count(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, BlockNumber};
     use stark_hash::Felt;
 
@@ -98,7 +99,7 @@ mod tests {
         fn test_block_hash() {
             check(
                 "{ \"block_hash\": \"0xFACE\" }",
-                BlockId::Hash(BlockHash(pathfinder_common::felt!("0xface"))),
+                BlockId::Hash(block_hash!("0xface")),
             );
         }
     }

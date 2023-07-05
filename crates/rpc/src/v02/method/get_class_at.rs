@@ -83,7 +83,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt, felt_bytes};
+    use pathfinder_common::{felt_bytes};
 
     mod parsing {
         use super::*;
@@ -101,7 +101,7 @@ mod tests {
             let input = positional.parse::<GetClassAtInput>().unwrap();
             let expected = GetClassAtInput {
                 block_id: block_hash!("0xabcde").into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
+                contract_address: contract_address!("0x12345"),
             };
             assert_eq!(input, expected);
         }
@@ -117,7 +117,7 @@ mod tests {
             let input = named.parse::<GetClassAtInput>().unwrap();
             let expected = GetClassAtInput {
                 block_id: block_hash!("0xabcde").into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
+                contract_address: contract_address!("0x12345"),
             };
             assert_eq!(input, expected);
         }

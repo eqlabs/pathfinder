@@ -319,6 +319,7 @@ pub mod dto {
 mod tests {
     use std::num::NonZeroU32;
 
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, ContractAddress,
         GasPrice, TransactionVersion,
@@ -426,10 +427,8 @@ mod tests {
                                     events: Some(vec![]),
                                     function_call: FunctionCall {
                                         calldata: vec![],
-                                        contract_address: ContractAddress::new_or_panic(felt!(
-                                            "0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"
-                                        )),
-                                        entry_point_selector: EntryPoint(felt!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194")),
+                                        contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                        entry_point_selector: entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194"),
                                     },
                                     messages: Some(vec![]),
                                     result: Some(vec![]),
@@ -446,12 +445,10 @@ mod tests {
                                     function_call: FunctionCall {
                                         calldata: vec![
                                             CallParam(DUMMY_ACCOUNT_CLASS_HASH.0),
-                                            CallParam(felt!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971")),
+                                            call_param!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971"),
                                         ],
-                                        contract_address: ContractAddress::new_or_panic(felt!(
-                                            "0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"
-                                        )),
-                                        entry_point_selector: EntryPoint(felt!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895")),
+                                        contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                        entry_point_selector: entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895"),
                                     },
                                     messages: Some(vec![]),
                                     result: Some(vec![]),

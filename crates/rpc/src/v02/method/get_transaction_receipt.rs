@@ -427,7 +427,7 @@ mod types {
         use super::*;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{
-            felt, EthereumAddress, EventData, EventKey, L2ToL1MessagePayloadElem,
+            EthereumAddress, EventData, EventKey, L2ToL1MessagePayloadElem,
         };
 
         #[test]
@@ -445,12 +445,12 @@ mod types {
                             to_address: EthereumAddress(primitive_types::H160::from_low_u64_be(
                                 0x55,
                             )),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
+                            payload: vec![l2_to_l1_message_payload_elem!("0x6")],
                         }],
                         events: vec![Event {
-                            from_address: ContractAddress::new_or_panic(felt!("0xe6")),
-                            keys: vec![EventKey(felt!("0xe7"))],
-                            data: vec![EventData(felt!("0xe8"))],
+                            from_address: contract_address!("0xe6"),
+                            keys: vec![event_key!("0xe7")],
+                            data: vec![event_data!("0xe8")],
                         }],
                     }
                 }
@@ -466,12 +466,12 @@ mod types {
                             to_address: EthereumAddress(primitive_types::H160::from_low_u64_be(
                                 0x5,
                             )),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
+                            payload: vec![l2_to_l1_message_payload_elem!("0x6")],
                         }],
                         events: vec![Event {
-                            from_address: ContractAddress::new_or_panic(felt!("0xa6")),
-                            keys: vec![EventKey(felt!("0xa7"))],
-                            data: vec![EventData(felt!("0xa8"))],
+                            from_address: contract_address!("0xa6"),
+                            keys: vec![event_key!("0xa7")],
+                            data: vec![event_data!("0xa8")],
                         }],
                     }
                 }
@@ -494,27 +494,27 @@ mod types {
                 // Somewhat redundant, but want to exhaust the variants
                 Normal(TransactionReceipt::Declare(DeclareTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt!("0xdeaf01")),
+                        transaction_hash: transaction_hash!("0xdeaf01"),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::L1Handler(L1HandlerTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt!("0xdeaf02")),
+                        transaction_hash: transaction_hash!("0xdeaf02"),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::Deploy(DeployTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt!("0xdeaf03")),
+                        transaction_hash: transaction_hash!("0xdeaf03"),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
-                    contract_address: ContractAddress::new_or_panic(felt!("0xcc")),
+                    contract_address: contract_address!("0xcc"),
                 })),
                 Pending(PendingTransactionReceipt::Invoke(
                     PendingInvokeTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf11")),
+                            transaction_hash: transaction_hash!("0xdeaf11"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -522,7 +522,7 @@ mod types {
                 Pending(PendingTransactionReceipt::Declare(
                     PendingDeclareTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf12")),
+                            transaction_hash: transaction_hash!("0xdeaf12"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -530,7 +530,7 @@ mod types {
                 Pending(PendingTransactionReceipt::L1Handler(
                     PendingL1HandlerTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf13")),
+                            transaction_hash: transaction_hash!("0xdeaf13"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -538,10 +538,10 @@ mod types {
                 Pending(PendingTransactionReceipt::Deploy(
                     PendingDeployTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf14")),
+                            transaction_hash: transaction_hash!("0xdeaf14"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
-                        contract_address: ContractAddress::new_or_panic(felt!("0xdd")),
+                        contract_address: contract_address!("0xdd"),
                     },
                 )),
             ];
@@ -561,8 +561,9 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData,
+        felt_bytes, BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData,
         EventKey, Fee, L2ToL1MessagePayloadElem, TransactionHash,
     };
     use primitive_types::H160;
@@ -583,7 +584,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: transaction_hash!("0xdeadbeef")
                 }
             )
         }
@@ -599,7 +600,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: transaction_hash!("0xdeadbeef")
                 }
             )
         }
@@ -680,9 +681,9 @@ mod tests {
                             from_address: None, // RPC v0.2 does not have this field
                             to_address: EthereumAddress(H160::zero()),
                             payload: vec![
-                                L2ToL1MessagePayloadElem(felt!("0x1")),
-                                L2ToL1MessagePayloadElem(felt!("0x2")),
-                                L2ToL1MessagePayloadElem(felt!("0x3")),
+                                l2_to_l1_message_payload_elem!("0x1"),
+                                l2_to_l1_message_payload_elem!("0x2"),
+                                l2_to_l1_message_payload_elem!("0x3"),
                             ],
                         }],
                         events: vec![],
@@ -712,12 +713,12 @@ mod tests {
                         block_hash: BlockHash(felt_bytes!(b"latest")),
                         block_number: BlockNumber::new_or_panic(2),
                         messages_sent: vec![MessageToL1 {
-                            from_address: Some(ContractAddress::new_or_panic(felt!("0xcafebabe"))),
+                            from_address: Some(contract_address!("0xcafebabe")),
                             to_address: EthereumAddress(H160::zero()),
                             payload: vec![
-                                L2ToL1MessagePayloadElem(felt!("0x1")),
-                                L2ToL1MessagePayloadElem(felt!("0x2")),
-                                L2ToL1MessagePayloadElem(felt!("0x3")),
+                                l2_to_l1_message_payload_elem!("0x1"),
+                                l2_to_l1_message_payload_elem!("0x2"),
+                                l2_to_l1_message_payload_elem!("0x3"),
                             ],
                         }],
                         events: vec![],
@@ -746,17 +747,17 @@ mod tests {
                         events: vec![
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
+                                from_address: contract_address!("0xabcddddddd"),
                                 keys: vec![EventKey(felt_bytes!(b"pending key"))],
                             },
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
+                                from_address: contract_address!("0xabcddddddd"),
                                 keys: vec![EventKey(felt_bytes!(b"pending key"))],
                             },
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("0xabcaaaaaaa")),
+                                from_address: contract_address!("0xabcaaaaaaa"),
                                 keys: vec![EventKey(felt_bytes!(b"pending key 2"))],
                             },
                         ],

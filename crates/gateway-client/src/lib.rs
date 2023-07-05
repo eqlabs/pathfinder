@@ -761,7 +761,6 @@ mod tests {
 
     mod block_matches_by_hash_on {
         use super::*;
-        
 
         #[tokio::test]
         async fn genesis() {
@@ -935,7 +934,6 @@ mod tests {
 
     mod transaction {
         use super::{reply::Status, *};
-        use pathfinder_common::felt;
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -946,9 +944,9 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(TransactionHash(felt!(
+                    .transaction(transaction_hash!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                    )))
+                    ))
                     .await
                     .unwrap()
                     .status,
@@ -964,9 +962,9 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(TransactionHash(felt!(
+                    .transaction(transaction_hash!(
                         "03d7623443283d9a0cec946492db78b06d57642a551745ddfac8d3f1f4fcc2a8"
-                    )))
+                    ))
                     .await
                     .unwrap()
                     .status,
@@ -982,9 +980,9 @@ mod tests {
             )]);
             assert_eq!(
                 client
-                    .transaction(TransactionHash(felt!(
+                    .transaction(transaction_hash!(
                         "0587d93f2339b7f2beda040187dbfcb9e076ce4a21eb8d15ae64819718817fbe"
-                    )))
+                    ))
                     .await
                     .unwrap()
                     .status,
@@ -1010,7 +1008,7 @@ mod tests {
 
     mod state_update_matches_by_hash_on {
         use super::*;
-        
+
         use pretty_assertions::assert_eq;
 
         #[tokio::test]
@@ -1133,7 +1131,7 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use pathfinder_common::{felt, ByteCodeOffset, ContractAddress};
+        use pathfinder_common::{ByteCodeOffset, ContractAddress};
         use starknet_gateway_types::request::{
             add_transaction::CairoContractDefinition,
             contract::{EntryPointType, SelectorAndOffset},
@@ -1155,29 +1153,29 @@ mod tests {
                     TransactionVersion::ONE,
                     fee!("4F388496839"),
                     vec![
-                        TransactionSignatureElem(felt!(
+                        transaction_signature_elem!(
                             "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                        )),
-                        TransactionSignatureElem(felt!(
+                        ),
+                        transaction_signature_elem!(
                             "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                        )),
+                        ),
                     ],
                     transaction_nonce!("0x1"),
-                    ContractAddress::new_or_panic(felt!(
+                    contract_address!(
                         "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
-                    )),
+                    ),
                     vec![
-                        CallParam(felt!("0x1")),
-                        CallParam(felt!(
+                        call_param!("0x1"),
+                        call_param!(
                             "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                        )),
-                        CallParam(felt!(
+                        ),
+                        call_param!(
                             "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-                        )),
+                        ),
                         CallParam(Felt::ZERO),
-                        CallParam(felt!("0x1")),
-                        CallParam(felt!("0x1")),
-                        CallParam(felt!("0x2b")),
+                        call_param!("0x1"),
+                        call_param!("0x1"),
+                        call_param!("0x2b"),
                         CallParam(Felt::ZERO),
                     ],
                 )
@@ -1239,7 +1237,7 @@ mod tests {
                         vec![],
                         TransactionNonce(Felt::ZERO),
                         ContractDefinition::Cairo(cairo_contract_class_from_fixture()),
-                        ContractAddress::new_or_panic(felt!("0x1")),
+                        contract_address!("0x1"),
                         None,
                         None,
                     )
@@ -1270,7 +1268,7 @@ mod tests {
                         vec![],
                         TransactionNonce(Felt::ZERO),
                         ContractDefinition::Cairo(cairo_contract_class_from_fixture()),
-                        ContractAddress::new_or_panic(felt!("0x1")),
+                        contract_address!("0x1"),
                         None,
                         None,
                     )
@@ -1346,10 +1344,10 @@ mod tests {
                         vec![],
                         TransactionNonce(Felt::ZERO),
                         ContractDefinition::Sierra(sierra_contract_class_from_fixture()),
-                        ContractAddress::new_or_panic(felt!("0x1")),
-                        Some(CasmHash::new_or_panic(felt!(
+                        contract_address!("0x1"),
+                        Some(casm_hash!(
                             "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
-                        ))),
+                        )),
                         None,
                     )
                     .await
@@ -1389,12 +1387,12 @@ mod tests {
 
             let expected = reply::add_transaction::DeployAccountResponse {
                 code: "TRANSACTION_RECEIVED".to_string(),
-                transaction_hash: TransactionHash(pathfinder_common::felt!(
+                transaction_hash: transaction_hash!(
                     "06dac1655b34e52a449cfe961188f7cc2b1496bcd36706cedf4935567be29d5b"
-                )),
-                address: ContractAddress::new_or_panic(pathfinder_common::felt!(
+                ),
+                address: contract_address!(
                     "04e574ea2abd76d3105b3d29de28af0c5a28b889aa465903080167f6b48b1acc"
-                )),
+                ),
             };
 
             assert_eq!(res, expected);
@@ -1422,16 +1420,12 @@ mod tests {
                         EntryPointType::External,
                         vec![
                             SelectorAndOffset {
-                                offset: ByteCodeOffset(felt!("0x3a")),
-                                selector: EntryPoint(felt!(
-                                    "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320")
-                                ),
+                                offset: byte_code_offset!("0x3a"),
+                                selector: entry_point!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"),
                             },
                             SelectorAndOffset {
-                                offset: ByteCodeOffset(felt!("0x5b")),
-                                selector: EntryPoint(felt!(
-                                    "039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"
-                                )),
+                                offset: byte_code_offset!("0x5b"),
+                                selector: entry_point!("039e11d48192e4333233c7eb19d10ad67c362bb28580c604d67884c85da39695"),
                             },
                         ],
                     ),

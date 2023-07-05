@@ -301,7 +301,7 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use pathfinder_common::felt;
+        
         use pathfinder_common::macro_prelude::*;
 
         #[test]
@@ -312,31 +312,28 @@ mod types {
                 old_root: state_commitment!("0x2"),
                 state_diff: StateDiff {
                     storage_diffs: vec![StorageDiff {
-                        address: ContractAddress::new_or_panic(felt!("0xadc")),
+                        address: contract_address!("0xadc"),
                         storage_entries: vec![StorageEntry {
-                            key: StorageAddress::new_or_panic(felt!("0xf0")),
-                            value: StorageValue(felt!("0x55")),
+                            key: storage_address!("0xf0"),
+                            value: storage_value!("0x55"),
                         }],
                     }],
-                    deprecated_declared_classes: vec![
-                        ClassHash(felt!("0xcdef")),
-                        ClassHash(felt!("0xcdee")),
-                    ],
+                    deprecated_declared_classes: vec![class_hash!("0xcdef"), class_hash!("0xcdee")],
                     declared_classes: vec![DeclaredSierraClass {
-                        class_hash: SierraHash(felt!("0xabcd")),
-                        compiled_class_hash: CasmHash(felt!("0xdcba")),
+                        class_hash: sierra_hash!("0xabcd"),
+                        compiled_class_hash: casm_hash!("0xdcba"),
                     }],
                     deployed_contracts: vec![DeployedContract {
-                        address: ContractAddress::new_or_panic(felt!("0xadd")),
-                        class_hash: ClassHash(felt!("0xcdef")),
+                        address: contract_address!("0xadd"),
+                        class_hash: class_hash!("0xcdef"),
                     }],
                     replaced_classes: vec![ReplacedClass {
-                        contract_address: ContractAddress::new_or_panic(felt!("0xcad")),
-                        class_hash: ClassHash(felt!("0xdac")),
+                        contract_address: contract_address!("0xcad"),
+                        class_hash: class_hash!("0xdac"),
                     }],
                     nonces: vec![Nonce {
-                        contract_address: ContractAddress::new_or_panic(felt!("0xca")),
-                        nonce: ContractNonce(felt!("0x404ce")),
+                        contract_address: contract_address!("0xca"),
+                        nonce: contract_nonce!("0x404ce"),
                     }],
                 },
             };
@@ -366,7 +363,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    
+
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, BlockNumber, Chain};
     use starknet_gateway_types::pending::PendingData;

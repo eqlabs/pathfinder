@@ -194,8 +194,8 @@ pub(super) fn insert_class_commitment_leaf(
 mod tests {
     use super::*;
     use crate::Storage;
+    use pathfinder_common::felt_bytes;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt_bytes};
     use stark_hash::Felt;
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {

@@ -162,8 +162,9 @@ impl Default for SyncState {
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     use pathfinder_common::event::Event;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash,
+        felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash,
         ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
         EthereumAddress, EventData, EventKey, GasPrice, L2ToL1MessagePayloadElem, SequencerAddress,
         SierraHash, StarknetVersion, StateUpdate, StorageAddress, StorageCommitment,
@@ -187,7 +188,6 @@ pub mod test_utils {
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
-        use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
@@ -441,11 +441,11 @@ pub mod test_utils {
         let mut receipt5 = receipt0.clone();
         let mut receipt6 = Receipt {
             l2_to_l1_messages: vec![L2ToL1Message {
-                from_address: ContractAddress::new_or_panic(felt!("0xcafebabe")),
+                from_address: contract_address!("0xcafebabe"),
                 payload: vec![
-                    L2ToL1MessagePayloadElem(felt!("0x1")),
-                    L2ToL1MessagePayloadElem(felt!("0x2")),
-                    L2ToL1MessagePayloadElem(felt!("0x3")),
+                    l2_to_l1_message_payload_elem!("0x1"),
+                    l2_to_l1_message_payload_elem!("0x2"),
+                    l2_to_l1_message_payload_elem!("0x3"),
                 ],
                 to_address: EthereumAddress(H160::zero()),
             }],
@@ -530,7 +530,7 @@ pub mod test_utils {
             })
             .into(),
             DeployTransaction {
-                contract_address: ContractAddress::new_or_panic(felt!("0x1122355")),
+                contract_address: contract_address!("0x1122355"),
                 contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),
                 class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
                 constructor_calldata: vec![],
@@ -546,17 +546,17 @@ pub mod test_utils {
                 events: vec![
                     Event {
                         data: vec![],
-                        from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
+                        from_address: contract_address!("0xabcddddddd"),
                         keys: vec![EventKey(felt_bytes!(b"pending key"))],
                     },
                     Event {
                         data: vec![],
-                        from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
+                        from_address: contract_address!("0xabcddddddd"),
                         keys: vec![EventKey(felt_bytes!(b"pending key"))],
                     },
                     Event {
                         data: vec![],
-                        from_address: ContractAddress::new_or_panic(felt!("0xabcaaaaaaa")),
+                        from_address: contract_address!("0xabcaaaaaaa"),
                         keys: vec![EventKey(felt_bytes!(b"pending key 2"))],
                     },
                 ],

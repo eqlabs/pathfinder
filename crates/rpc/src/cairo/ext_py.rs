@@ -559,14 +559,8 @@ mod tests {
                     async move {
                         handle.call(
                             super::Call {
-                                contract_address: ContractAddress::new_or_panic(
-                                    felt!(
-                                        "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                                    )
-                                ),
-                                calldata: vec![CallParam(
-                                    felt!("0x84"),
-                                )],
+                                contract_address: contract_address!("057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"),
+                                calldata: vec![call_param!("0x84")],
                                 entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
                                 signature: Default::default(),
                                 max_fee: super::Call::DEFAULT_MAX_FEE,
@@ -762,11 +756,11 @@ mod tests {
         .unwrap();
 
         let call = super::Call {
-            contract_address: ContractAddress::new_or_panic(felt!(
-                // this is one bit off from other examples
+            // this is one bit off from other examples
+            contract_address: contract_address!(
                 "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e375"
-            )),
-            calldata: vec![CallParam(felt!("0x84"))],
+            ),
+            calldata: vec![call_param!("0x84")],
             entry_point_selector: Some(EntryPoint::hashed(&b"get_value"[..])),
             signature: Default::default(),
             max_fee: super::Call::DEFAULT_MAX_FEE,
@@ -822,9 +816,8 @@ mod tests {
         .await
         .unwrap();
 
-        let target_contract = ContractAddress::new_or_panic(felt!(
-            "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-        ));
+        let target_contract =
+            contract_address!("057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374");
 
         let storage_address = felt!("0x84");
 
@@ -867,14 +860,10 @@ mod tests {
     fn deploy_test_contract_in_block_one(tx: &Transaction<'_>) -> ClassHash {
         let test_contract_definition =
             starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
-        let test_contract_address = ContractAddress::new_or_panic(felt!(
-            "057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-        ));
+        let test_contract_address =
+            contract_address!("057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374");
 
-        let storage_updates = [(
-            StorageAddress::new_or_panic(felt!("0x84")),
-            storage_value!("0x3"),
-        )];
+        let storage_updates = [(storage_address!("0x84"), storage_value!("0x3"))];
 
         let (test_contract_state_hash, test_contract_class_hash) =
             deploy_contract(tx, test_contract_definition, &storage_updates);
@@ -924,7 +913,7 @@ mod tests {
         let account_contract_definition =
             starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
-        let account_contract_address = ContractAddress::new_or_panic(felt!("0x123"));
+        let account_contract_address = contract_address!("0x123");
 
         let (account_contract_state_hash, account_contract_class_hash) =
             deploy_contract(tx, account_contract_definition, &[]);

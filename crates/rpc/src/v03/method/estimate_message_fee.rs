@@ -59,7 +59,7 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, Chain,
+        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CasmHash, Chain,
         ClassHash, ContractAddress, EntryPoint, GasPrice, SierraHash, StateUpdate,
     };
     use pathfinder_storage::{JournalMode, Storage};
@@ -88,13 +88,13 @@ mod tests {
             input,
             EstimateMessageFeeInput {
                 message: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!(
+                    contract_address: contract_address!(
                         "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                    )),
-                    entry_point_selector: EntryPoint(felt!(
+                    ),
+                    entry_point_selector: entry_point!(
                         "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
-                    )),
-                    calldata: vec![CallParam(felt!("0x1")), CallParam(felt!("0x2")),],
+                    ),
+                    calldata: vec![call_param!("0x1"), call_param!("0x2"),],
                 },
                 sender_address: EthereumAddress(H160::zero()),
                 block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
@@ -119,13 +119,13 @@ mod tests {
             input,
             EstimateMessageFeeInput {
                 message: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!(
+                    contract_address: contract_address!(
                         "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                    )),
-                    entry_point_selector: EntryPoint(felt!(
+                    ),
+                    entry_point_selector: entry_point!(
                         "0xc73f681176fc7b3f9693986fd7b14581e8d540519e27400e88b8713932be01"
-                    )),
-                    calldata: vec![CallParam(felt!("0x1")), CallParam(felt!("0x2")),],
+                    ),
+                    calldata: vec![call_param!("0x1"), call_param!("0x2"),],
                 },
                 sender_address: EthereumAddress(H160::zero()),
                 block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
@@ -177,9 +177,9 @@ mod tests {
             }
 
             if !matches!(mode, Setup::SkipBlock | Setup::SkipContract) {
-                let contract_address = ContractAddress::new_or_panic(felt!(
+                let contract_address = contract_address!(
                     "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                ));
+                );
                 let state_update =
                     StateUpdate::default().with_deployed_contract(contract_address, class_hash);
                 tx.insert_state_update(block_number, &state_update).unwrap();
@@ -207,13 +207,13 @@ mod tests {
     fn input() -> EstimateMessageFeeInput {
         EstimateMessageFeeInput {
             message: FunctionCall {
-                contract_address: ContractAddress::new_or_panic(felt!(
+                contract_address: contract_address!(
                     "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e374"
-                )),
+                ),
                 entry_point_selector: entry_point!(
                     "0x31ee153a27e249dc4bade6b861b37ef1e1ea0a4c0bf73b7405a02e9e72f7be3"
                 ),
-                calldata: vec![CallParam(felt!("0x1"))],
+                calldata: vec![call_param!("0x1")],
             },
             sender_address: EthereumAddress(H160::zero()),
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),

@@ -1,8 +1,9 @@
 use crate::EmittedEvent;
 
 use super::Storage;
+use pathfinder_common::macro_prelude::*;
 use pathfinder_common::{
-    felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment,
+    BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ClassCommitment,
     ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt, EntryPoint, EventCommitment,
     EventData, EventKey, Fee, GasPrice, SequencerAddress, StorageCommitment, TransactionCommitment,
     TransactionHash, TransactionIndex, TransactionNonce, TransactionSignatureElem,
@@ -119,7 +120,7 @@ pub(crate) fn create_transactions_and_receipts(
                     data: vec![EventData(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap())],
                     keys: vec![
                         EventKey(Felt::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                        EventKey(felt!("0xdeadbeef")),
+                        event_key!("0xdeadbeef"),
                     ],
                 }]
             } else {

@@ -830,11 +830,11 @@ pub mod state_update {
         #[test]
         fn contract_field_backward_compatibility() {
             use super::{ClassHash, ContractAddress, DeployedContract};
-            use pathfinder_common::felt;
+            
             use pathfinder_common::macro_prelude::*;
 
             let expected = DeployedContract {
-                address: ContractAddress::new_or_panic(felt!("0x1")),
+                address: contract_address!("0x1"),
                 class_hash: class_hash!("0x2"),
             };
 
@@ -912,7 +912,7 @@ pub mod add_transaction {
     #[cfg(test)]
     mod serde_test {
         use super::*;
-        use pathfinder_common::felt;
+        
         use pathfinder_common::macro_prelude::*;
 
         #[test]
@@ -935,9 +935,9 @@ pub mod add_transaction {
                 transaction_hash: transaction_hash!(
                     "0296fb89b8a1c7487a1d4b27e1a1e33f440b05548e64980d06052bc089b1a51f"
                 ),
-                address: ContractAddress::new_or_panic(felt!(
+                address: contract_address!(
                     "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                )),
+                ),
             };
             assert_eq!(expected, result);
         }

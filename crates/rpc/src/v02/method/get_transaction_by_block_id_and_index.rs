@@ -90,7 +90,8 @@ async fn get_transaction_from_pending(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{felt, felt_bytes, BlockHash, BlockNumber, TransactionHash};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{felt_bytes, BlockHash, BlockNumber, TransactionHash};
     use stark_hash::Felt;
 
     mod parsing {
@@ -112,7 +113,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {
-                    block_id: BlockId::Hash(BlockHash(felt!("0xdeadbeef"))),
+                    block_id: BlockId::Hash(block_hash!("0xdeadbeef")),
                     index: TransactionIndex::new_or_panic(1),
                 }
             )
@@ -132,7 +133,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {
-                    block_id: BlockId::Hash(BlockHash(felt!("0xdeadbeef"))),
+                    block_id: BlockId::Hash(block_hash!("0xdeadbeef")),
                     index: TransactionIndex::new_or_panic(1),
                 }
             )

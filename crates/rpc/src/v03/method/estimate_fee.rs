@@ -60,7 +60,7 @@ mod tests {
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
+        BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
 
@@ -72,10 +72,10 @@ mod tests {
                 crate::v02::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: fee!("0x6"),
-                    signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                    signature: vec![transaction_signature_elem!("0x7")],
                     nonce: transaction_nonce!("0x8"),
-                    sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                    calldata: vec![CallParam(felt!("0xff"))],
+                    sender_address: contract_address!("0xaaa"),
+                    calldata: vec![call_param!("0xff")],
                 },
             ))
         }
@@ -184,7 +184,7 @@ mod tests {
             let input = EstimateFeeInput {
                 request: vec![BroadcastedTransaction::Invoke(
                     BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
-                        sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+                        sender_address: contract_address!("0xdeadbeef"),
                         ..mainnet_invoke
                     }),
                 )],
@@ -275,9 +275,9 @@ mod tests {
                     sender_address: account_address,
                     // Taken from
                     // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=289143
-                    compiled_class_hash: CasmHash::new_or_panic(felt!(
+                    compiled_class_hash: casm_hash!(
                         "0xf2056a217cc9cabef54d4b1bceea5a3e8625457cb393698ba507259ed6f3c"
-                    )),
+                    ),
                 }),
             );
 

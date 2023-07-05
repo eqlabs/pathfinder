@@ -456,6 +456,7 @@ mod tests {
     };
     use jsonrpsee::types::Params;
     use pathfinder_common::felt;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_storage::test_utils;
     use pretty_assertions::assert_eq;
 
@@ -464,8 +465,8 @@ mod tests {
         let optional_present = InputFilter {
             from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
             to_block: Some(BlockId::Latest),
-            address: Some(ContractAddress::new_or_panic(felt!("0x1"))),
-            keys: vec![EventKey(felt!("0x2"))],
+            address: Some(contract_address!("0x1")),
+            keys: vec![event_key!("0x2")],
             chunk_size: 3,
             continuation_token: Some("4".to_string()),
         };
@@ -565,7 +566,7 @@ mod tests {
                 to_block: Some(expected_event.block_number.unwrap().into()),
                 address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
-                keys: vec![EventKey(felt!("0xdeadbeef"))],
+                keys: vec![event_key!("0xdeadbeef")],
                 chunk_size: test_utils::NUM_EVENTS,
                 continuation_token: None,
             },

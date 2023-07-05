@@ -82,7 +82,7 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::felt;
+    
     use pathfinder_common::macro_prelude::*;
 
     mod parsing {
@@ -101,9 +101,9 @@ mod tests {
             let input = positional.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("0xabcde")),
+                    contract_address: contract_address!("0xabcde"),
                     entry_point_selector: entry_point!("0xee"),
-                    calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
+                    calldata: vec![call_param!("0x1234"), call_param!("0x2345")],
                 },
                 block_id: block_hash!("0xbbbbbbbb").into(),
             };
@@ -121,9 +121,9 @@ mod tests {
             let input = named.parse::<CallInput>().unwrap();
             let expected = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("0xabcde")),
+                    contract_address: contract_address!("0xabcde"),
                     entry_point_selector: entry_point!("0xee"),
-                    calldata: vec![CallParam(felt!("0x1234")), CallParam(felt!("0x2345"))],
+                    calldata: vec![call_param!("0x1234"), call_param!("0x2345")],
                 },
                 block_id: block_hash!("0xbbbbbbbb").into(),
             };
@@ -147,19 +147,15 @@ mod tests {
         // Data from transaction 0xc52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5.
         fn valid_mainnet_call() -> FunctionCall {
             FunctionCall {
-                contract_address: ContractAddress::new_or_panic(felt!(
+                contract_address: contract_address!(
                     "020cfa74ee3564b4cd5435cdace0f9c4d43b939620e4a0bb5076105df0a626c6"
-                )),
+                ),
                 entry_point_selector: entry_point!(
                     "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
                 ),
                 calldata: vec![
-                    CallParam(felt!(
-                        "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
-                    )),
-                    CallParam(felt!(
-                        "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
-                    )),
+                    call_param!("e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"),
+                    call_param!("0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"),
                 ],
             }
         }
@@ -219,7 +215,7 @@ mod tests {
 
             let input = CallInput {
                 request: FunctionCall {
-                    contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+                    contract_address: contract_address!("0xdeadbeef"),
                     ..valid_mainnet_call()
                 },
                 block_id: BLOCK_5,

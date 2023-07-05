@@ -94,7 +94,7 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        
+
         use pathfinder_common::BlockHash;
 
         #[test]

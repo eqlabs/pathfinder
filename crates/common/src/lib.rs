@@ -21,13 +21,6 @@ pub use state_update::StateUpdate;
 
 pub use header::{BlockHeader, BlockHeaderBuilder};
 
-/// The address of a Starknet contract.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
-pub struct ContractAddress(Felt);
-
-macros::starkhash251::newtype!(ContractAddress);
-macros::starkhash251::deserialization!(ContractAddress);
-
 impl ContractAddress {
     /// The contract at 0x1 is special. It was never deployed and therefore
     /// has no class hash. It does however receive storage changes.
@@ -36,57 +29,6 @@ impl ContractAddress {
     /// using syscalls. For example the block hash.
     pub const ONE: ContractAddress = contract_address!("0x1");
 }
-
-/// A nonce that is associated with a particular deployed Starknet contract
-/// distinguishing it from other contracts that use the same contract class.
-#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ContractNonce(pub Felt);
-
-/// The salt of a Starknet contract address.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct ContractAddressSalt(pub Felt);
-
-/// The hash of a Starknet contract. This is a hash over a class'
-/// deployment properties e.g. code and ABI.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-pub struct ClassHash(pub Felt);
-
-/// The hash of a Starknet Sierra class.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
-pub struct SierraHash(pub Felt);
-
-macros::starkhash251::newtype!(SierraHash);
-macros::starkhash251::deserialization!(SierraHash);
-
-/// The hash of a Starknet Cairo assembly class.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
-pub struct CasmHash(pub Felt);
-
-macros::starkhash251::newtype!(CasmHash);
-macros::starkhash251::deserialization!(CasmHash);
-
-/// The root of a class commitment tree.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Default)]
-pub struct ClassCommitment(pub Felt);
-
-macros::starkhash251::newtype!(ClassCommitment);
-macros::starkhash251::deserialization!(ClassCommitment);
-
-/// A Cairo 1.0 class' leaf hash. This is the value stored
-/// in the class commitment tree.
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub struct ClassCommitmentLeafHash(pub Felt);
-
-/// A Starknet contract's state hash. This is the value stored
-/// in the global state tree.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContractStateHash(pub Felt);
-
-/// A commitment root of a Starknet contract. This is the entry-point
-/// for a contract's state at a specific point in time via the contract
-/// state tree.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContractRoot(pub Felt);
 
 // Bytecode and entry point list of a class
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,10 +42,6 @@ pub struct ContractClass {
     pub entry_points_by_type: serde_json::Value,
 }
 
-/// Entry point of a Starknet `call`.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EntryPoint(pub Felt);
-
 impl EntryPoint {
     /// Returns a new EntryPoint which has been truncated to fit from Keccak256 digest of input.
     ///
@@ -115,42 +53,6 @@ impl EntryPoint {
         ))))
     }
 }
-
-/// Offset of an entry point into the bytecode of a Starknet contract.
-///
-/// This is a StarkHash because we use it directly for computing the
-/// class hashes.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ByteCodeOffset(pub Felt);
-
-/// A single parameter passed to a Starknet `call`.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct CallParam(pub Felt);
-
-/// A single parameter passed to a Starknet contract constructor.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ConstructorParam(pub Felt);
-
-/// A single result value of a Starknet `call`.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct CallResultValue(pub Felt);
-
-/// The address of a storage element for a Starknet contract.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, PartialOrd, Ord, Hash)]
-pub struct StorageAddress(Felt);
-
-macros::starkhash251::newtype!(StorageAddress);
-macros::starkhash251::deserialization!(StorageAddress);
-
-/// The value of a storage element for a Starknet contract.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd, Ord)]
-pub struct StorageValue(pub Felt);
-
-/// The commitment for the state of a Starknet block.
-///
-/// Before Starknet v0.11.0 this was equivalent to [StorageCommitment].
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
-pub struct StateCommitment(pub Felt);
 
 impl StateCommitment {
     /// Calculates  global state commitment by combining the storage and class commitment.
@@ -178,16 +80,6 @@ impl StateCommitment {
         }
     }
 }
-
-/// The commitment for all contracts' storage of a Starknet block.
-///
-/// Before Starknet v0.11.0 this was equivalent to [StateCommitment].
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
-pub struct StorageCommitment(pub Felt);
-
-/// A Starknet block hash.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Hash)]
-pub struct BlockHash(pub Felt);
 
 /// A Starknet block number.
 #[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
@@ -217,18 +109,6 @@ pub struct BlockTimestamp(u64);
 macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
 macros::i64_backed_u64::serdes!(BlockTimestamp);
 
-/// A Starknet events commitment of a block.
-#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EventCommitment(pub Felt);
-
-/// A Starknet transactions commitment of a block.
-#[derive(Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct TransactionCommitment(pub Felt);
-
-/// A Starknet transaction hash.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct TransactionHash(pub Felt);
-
 /// A Starknet transaction index.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TransactionIndex(u64);
@@ -236,45 +116,9 @@ pub struct TransactionIndex(u64);
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
 macros::i64_backed_u64::serdes!(TransactionIndex);
 
-/// A single element of a signature used to secure a Starknet transaction.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct TransactionSignatureElem(pub Felt);
-
-/// A nonce that is added to an L1 to L2 message in a Starknet transaction.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct L1ToL2MessageNonce(pub Felt);
-
-/// A single element of the payload of an L1 to L2 message in a Starknet transaction.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct L1ToL2MessagePayloadElem(pub Felt);
-
-/// A single element of the payload of an L2 to L1 message in a Starknet transaction.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct L2ToL1MessagePayloadElem(pub Felt);
-
-/// Starknet transaction event data.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EventData(pub Felt);
-
-/// Starknet transaction event key.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Hash)]
-pub struct EventKey(pub Felt);
-
-/// Starknet sequencer address.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
-pub struct SequencerAddress(pub Felt);
-
-/// Starknet fee value.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Fee(pub Felt);
-
 /// Starknet gas price.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct GasPrice(pub u128);
-
-// Starknet transaction nonce.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct TransactionNonce(pub Felt);
 
 /// Starknet transaction version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -518,12 +362,10 @@ macros::felt_newtypes!(
         ByteCodeOffset,
         CallParam,
         CallResultValue,
-        CasmHash,
         ClassCommitment,
         ClassCommitmentLeafHash,
         ClassHash,
         ConstructorParam,
-        ContractAddress,
         ContractAddressSalt,
         ContractNonce,
         ContractStateHash,
@@ -537,11 +379,9 @@ macros::felt_newtypes!(
         L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem,
         SequencerAddress,
-        SierraHash,
         BlockHash,
         TransactionHash,
         StateCommitment,
-        StorageAddress,
         StorageCommitment,
         StorageValue,
         TransactionCommitment,
@@ -549,7 +389,10 @@ macros::felt_newtypes!(
         TransactionSignatureElem,
     ];
     [
-        // TODO: populate felt251 wrappers
+        ContractAddress,
+        SierraHash,
+        CasmHash,
+        StorageAddress,
     ]
 );
 
@@ -648,11 +491,12 @@ mod tests {
 
         #[test]
         fn hash() {
-            use crate::felt;
+            use crate::macro_prelude::block_hash;
             use crate::BlockHash;
+
             let result =
                 serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
-            assert_eq!(result, BlockId::Hash(BlockHash(felt!("0xdeadbeef"))));
+            assert_eq!(result, BlockId::Hash(block_hash!("0xdeadbeef")));
         }
     }
 }

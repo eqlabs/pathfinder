@@ -469,19 +469,19 @@ mod tests {
         use pathfinder_common::{ContractAddress, EventData, EventKey};
 
         let event = Event {
-            from_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            from_address: contract_address!("0xdeadbeef"),
             data: vec![
-                EventData(felt!("0x5")),
-                EventData(felt!("0x6")),
-                EventData(felt!("0x7")),
-                EventData(felt!("0x8")),
-                EventData(felt!("0x9")),
+                event_data!("0x5"),
+                event_data!("0x6"),
+                event_data!("0x7"),
+                event_data!("0x8"),
+                event_data!("0x9"),
             ],
             keys: vec![
-                EventKey(felt!("0x1")),
-                EventKey(felt!("0x2")),
-                EventKey(felt!("0x3")),
-                EventKey(felt!("0x4")),
+                event_key!("0x1"),
+                event_key!("0x2"),
+                event_key!("0x3"),
+                event_key!("0x4"),
             ],
         };
 
@@ -499,13 +499,13 @@ mod tests {
 
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
-            sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            sender_address: contract_address!("0xdeadbeef"),
             entry_point_type: Some(EntryPointType::External),
             entry_point_selector: entry_point!("0xe"),
             max_fee: Fee::ZERO,
             signature: vec![
-                TransactionSignatureElem(felt!("0x2")),
-                TransactionSignatureElem(felt!("0x3")),
+                transaction_signature_elem!("0x2"),
+                transaction_signature_elem!("0x3"),
             ],
             transaction_hash: transaction_hash!("0x1"),
         }));

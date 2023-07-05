@@ -563,7 +563,7 @@ mod json {
     mod test_vectors {
         use super::super::{compute_class_hash, ComputedClassHash};
         use pathfinder_common::macro_prelude::*;
-        use pathfinder_common::{felt, ClassHash};
+        use pathfinder_common::{ClassHash};
         use starknet_gateway_test_fixtures::class_definitions::*;
 
         #[tokio::test]
@@ -572,9 +572,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Cairo(ClassHash(felt!(
+                ComputedClassHash::Cairo(class_hash!(
                     "0x031da92cf5f54bcb81b447e219e2b791b23f3052d12b6c9abd04ff2e5626576"
-                )))
+                ))
             );
         }
 
@@ -584,9 +584,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Cairo(ClassHash(felt!(
+                ComputedClassHash::Cairo(class_hash!(
                     "0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-                )))
+                ))
             );
         }
 
@@ -596,9 +596,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Cairo(ClassHash(felt!(
+                ComputedClassHash::Cairo(class_hash!(
                     "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
-                )))
+                ))
             );
         }
 
@@ -606,7 +606,6 @@ mod json {
         async fn cairo_0_8() {
             // Cairo 0.8 update broke our class hash calculation by adding new attribute fields (which
             // we now need to ignore if empty).
-            
 
             let expected = ComputedClassHash::Cairo(class_hash!(
                 "056b96c1d1bbfa01af44b465763d1b71150fa00c6c9d54c3947f57e979ff68c3"
@@ -629,9 +628,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Cairo(ClassHash(felt!(
+                ComputedClassHash::Cairo(class_hash!(
                     "0xa69700a89b1fa3648adff91c438b79c75f7dcb0f4798938a144cce221639d6"
-                )))
+                ))
             );
         }
 
@@ -643,9 +642,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Cairo(ClassHash(felt!(
+                ComputedClassHash::Cairo(class_hash!(
                     "0x542460935cea188d21e752d8459d82d60497866aaad21f873cbb61621d34f7f"
-                )))
+                ))
             );
         }
 
@@ -657,9 +656,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Cairo(ClassHash(felt!(
+                ComputedClassHash::Cairo(class_hash!(
                     "0x66af14b94491ba4e2aea1117acf0a3155c53d92fdfd9c1f1dcac90dc2d30157"
-                )))
+                ))
             );
         }
 
@@ -669,9 +668,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Sierra(ClassHash(felt!(
+                ComputedClassHash::Sierra(class_hash!(
                     "0x4e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c"
-                )))
+                ))
             )
         }
 
@@ -681,9 +680,9 @@ mod json {
 
             assert_eq!(
                 hash,
-                ComputedClassHash::Cairo(ClassHash(felt!(
+                ComputedClassHash::Cairo(class_hash!(
                     "0x0484c163658bcce5f9916f486171ac60143a92897533aa7ff7ac800b16c63311"
-                )))
+                ))
             )
         }
     }

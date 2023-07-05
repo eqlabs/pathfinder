@@ -94,7 +94,7 @@ mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
     use crate::context::RpcContext;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt, felt_bytes, StarknetVersion};
+    use pathfinder_common::{felt_bytes, StarknetVersion};
     use pathfinder_common::{
         BlockHash, BlockId, BlockNumber, BlockTimestamp, ContractAddress, ContractNonce, GasPrice,
         SequencerAddress,
@@ -116,7 +116,7 @@ mod tests {
             let input = positional.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
                 block_id: block_hash!("0xabcde").into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
+                contract_address: contract_address!("0x12345"),
             };
             assert_eq!(input, expected);
         }
@@ -134,7 +134,7 @@ mod tests {
             let input = named.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
                 block_id: block_hash!("0xabcde").into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
+                contract_address: contract_address!("0x12345"),
             };
             assert_eq!(input, expected);
         }
@@ -185,7 +185,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce.0, ContractNonce(felt!("0x1")));
+        assert_eq!(nonce.0, contract_nonce!("0x1"));
     }
 
     #[tokio::test]
@@ -199,7 +199,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce.0, ContractNonce(felt!("0x10")));
+        assert_eq!(nonce.0, contract_nonce!("0x10"));
     }
 
     #[tokio::test]
@@ -213,7 +213,7 @@ mod tests {
             contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce.0, ContractNonce(felt!("0x1")));
+        assert_eq!(nonce.0, contract_nonce!("0x1"));
     }
 
     #[tokio::test]

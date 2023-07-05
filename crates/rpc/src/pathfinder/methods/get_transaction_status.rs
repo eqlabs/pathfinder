@@ -113,7 +113,8 @@ impl From<starknet_gateway_types::reply::Status> for TransactionStatus {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, felt_bytes};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{felt_bytes};
 
     use super::*;
 
@@ -158,10 +159,10 @@ mod tests {
     #[tokio::test]
     async fn rejected() {
         let input = GetGatewayTransactionInput {
-            transaction_hash: TransactionHash(felt!(
-                // Transaction hash known to be rejected by the testnet gateway.
+            // Transaction hash known to be rejected by the testnet gateway.
+            transaction_hash: transaction_hash!(
                 "0x07c64b747bdb0831e7045925625bfa6309c422fded9527bacca91199a1c8d212"
-            )),
+            ),
         };
         let context = RpcContext::for_tests();
         let status = get_transaction_status(context, input).await.unwrap();

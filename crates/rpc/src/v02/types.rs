@@ -279,6 +279,7 @@ pub mod request {
                 SierraEntryPoints,
             };
             use pathfinder_common::felt;
+            use pathfinder_common::macro_prelude::*;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -295,25 +296,25 @@ pub mod request {
                 let txs = vec![
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(
                         BroadcastedDeclareTransactionV1 {
-                            max_fee: Fee(felt!("0x5")),
+                            max_fee: fee!("0x5"),
                             version: TransactionVersion(primitive_types::H256::from_low_u64_be(
                                 0x1,
                             )),
-                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                            nonce: TransactionNonce(felt!("0x8")),
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
                             contract_class,
-                            sender_address: ContractAddress::new_or_panic(felt!("0xa")),
+                            sender_address: contract_address!("0xa"),
                         },
                     )),
                     BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(
                         BroadcastedDeclareTransactionV2 {
-                            max_fee: Fee(felt!("0x51")),
+                            max_fee: fee!("0x51"),
                             version: TransactionVersion(primitive_types::H256::from_low_u64_be(
                                 0x2,
                             )),
-                            signature: vec![TransactionSignatureElem(felt!("0x71"))],
-                            nonce: TransactionNonce(felt!("0x81")),
-                            compiled_class_hash: CasmHash(felt!("0x91")),
+                            signature: vec![transaction_signature_elem!("0x71")],
+                            nonce: transaction_nonce!("0x81"),
+                            compiled_class_hash: casm_hash!("0x91"),
                             contract_class: SierraContractClass {
                                 sierra_program: vec![felt!("0x4"), felt!("0x5")],
                                 contract_class_version: "0.1.0".into(),
@@ -333,27 +334,27 @@ pub mod request {
                                 },
                                 abi: r#"[{"type":"function","name":"foo"}]"#.into(),
                             },
-                            sender_address: ContractAddress::new_or_panic(felt!("0xa1")),
+                            sender_address: contract_address!("0xa1"),
                         },
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
                             version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
-                            max_fee: Fee(felt!("0x6")),
-                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                            nonce: TransactionNonce(felt!("0x8")),
-                            sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                            calldata: vec![CallParam(felt!("0xff"))],
+                            max_fee: fee!("0x6"),
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
+                            sender_address: contract_address!("0xaaa"),
+                            calldata: vec![call_param!("0xff")],
                         },
                     )),
                     BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                         BroadcastedInvokeTransactionV1 {
                             version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                            max_fee: Fee(felt!("0x6")),
-                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                            nonce: TransactionNonce(felt!("0x8")),
-                            sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                            calldata: vec![CallParam(felt!("0xff"))],
+                            max_fee: fee!("0x6"),
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
+                            sender_address: contract_address!("0xaaa"),
+                            calldata: vec![call_param!("0xff")],
                         },
                     )),
                 ];
@@ -865,7 +866,8 @@ pub mod reply {
         /// - `*AsDecimalStr*` creeping in from `sequencer::reply` as opposed to spec.
         mod serde {
             use super::super::*;
-            use pathfinder_common::felt;
+            
+            use pathfinder_common::macro_prelude::*;
             use pretty_assertions::assert_eq;
 
             #[test]
@@ -873,60 +875,60 @@ pub mod reply {
                 let transactions = vec![
                     Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: TransactionHash(felt!("0x4")),
-                            max_fee: Fee(felt!("0x5")),
-                            signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                            nonce: TransactionNonce(felt!("0x8")),
+                            hash: transaction_hash!("0x4"),
+                            max_fee: fee!("0x5"),
+                            signature: vec![transaction_signature_elem!("0x7")],
+                            nonce: transaction_nonce!("0x8"),
                         },
-                        class_hash: ClassHash(felt!("0x9")),
-                        sender_address: ContractAddress::new_or_panic(felt!("0xa")),
+                        class_hash: class_hash!("0x9"),
+                        sender_address: contract_address!("0xa"),
                     })),
                     Transaction::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: TransactionHash(felt!("0x44")),
-                            max_fee: Fee(felt!("0x55")),
-                            signature: vec![TransactionSignatureElem(felt!("0x77"))],
-                            nonce: TransactionNonce(felt!("0x88")),
+                            hash: transaction_hash!("0x44"),
+                            max_fee: fee!("0x55"),
+                            signature: vec![transaction_signature_elem!("0x77")],
+                            nonce: transaction_nonce!("0x88"),
                         },
-                        class_hash: ClassHash(felt!("0x90")),
-                        sender_address: ContractAddress::new_or_panic(felt!("0xa0")),
-                        compiled_class_hash: CasmHash(felt!("0xb0")),
+                        class_hash: class_hash!("0x90"),
+                        sender_address: contract_address!("0xa0"),
+                        compiled_class_hash: casm_hash!("0xb0"),
                     })),
                     Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: TransactionHash(felt!("0xb")),
-                            max_fee: Fee(felt!("0x999")),
-                            signature: vec![TransactionSignatureElem(felt!("0x777"))],
-                            nonce: TransactionNonce(felt!("0xdd")),
+                            hash: transaction_hash!("0xb"),
+                            max_fee: fee!("0x999"),
+                            signature: vec![transaction_signature_elem!("0x777")],
+                            nonce: transaction_nonce!("0xdd"),
                         },
-                        contract_address: ContractAddress::new_or_panic(felt!("0xb")),
-                        entry_point_selector: EntryPoint(felt!("0xc")),
-                        calldata: vec![CallParam(felt!("0xd"))],
+                        contract_address: contract_address!("0xb"),
+                        entry_point_selector: entry_point!("0xc"),
+                        calldata: vec![call_param!("0xd")],
                     })),
                     Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
                         common: CommonDeclareInvokeTransactionProperties {
-                            hash: TransactionHash(felt!("0xbbb")),
-                            max_fee: Fee(felt!("0x9999")),
-                            signature: vec![TransactionSignatureElem(felt!("0xeee"))],
-                            nonce: TransactionNonce(felt!("0xde")),
+                            hash: transaction_hash!("0xbbb"),
+                            max_fee: fee!("0x9999"),
+                            signature: vec![transaction_signature_elem!("0xeee")],
+                            nonce: transaction_nonce!("0xde"),
                         },
-                        sender_address: ContractAddress::new_or_panic(felt!("0xc")),
-                        calldata: vec![CallParam(felt!("0xddd"))],
+                        sender_address: contract_address!("0xc"),
+                        calldata: vec![call_param!("0xddd")],
                     })),
                     Transaction::Deploy(DeployTransaction {
-                        hash: TransactionHash(felt!("0xe")),
-                        class_hash: ClassHash(felt!("0x10")),
+                        hash: transaction_hash!("0xe"),
+                        class_hash: class_hash!("0x10"),
                         version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
-                        contract_address_salt: ContractAddressSalt(felt!("0xee")),
-                        constructor_calldata: vec![ConstructorParam(felt!("0x11"))],
+                        contract_address_salt: contract_address_salt!("0xee"),
+                        constructor_calldata: vec![constructor_param!("0x11")],
                     }),
                     Transaction::L1Handler(L1HandlerTransaction {
-                        hash: TransactionHash(felt!("0xf")),
+                        hash: transaction_hash!("0xf"),
                         version: TransactionVersion(primitive_types::H256::from_low_u64_be(1)),
-                        nonce: TransactionNonce(felt!("0x8")),
-                        contract_address: ContractAddress::new_or_panic(felt!("0xfff")),
-                        entry_point_selector: EntryPoint(felt!("0xf")),
-                        calldata: vec![CallParam(felt!("0xf"))],
+                        nonce: transaction_nonce!("0x8"),
+                        contract_address: contract_address!("0xfff"),
+                        entry_point_selector: entry_point!("0xf"),
+                        calldata: vec![call_param!("0xf")],
                     }),
                 ];
 

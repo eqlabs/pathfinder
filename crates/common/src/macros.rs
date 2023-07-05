@@ -91,51 +91,30 @@ pub(super) mod i64_backed_u64 {
 /// where `x` is the set of `Felt` wrapper types and `y` the `Felt251` wrappers.
 macro_rules! felt_newtypes {
     ([$($felt:ident),* $(,)?]; [$($felt251:ident),* $(,)?]) => {
+        crate::macros::felt_newtypes!(@define_felt $($felt),*);
+        crate::macros::felt_newtypes!(@define_felt251 $($felt251),*);
+
         pub mod macro_prelude {
             pub use super::felt;
             pub use super::felt_bytes;
 
             crate::macros::felt_newtypes!(@generate_felt_macro $($felt),*);
-            // TODO: felt251 wrapper
+            crate::macros::felt_newtypes!(@generate_felt251_macro $($felt251),*);
 
             crate::macros::felt_newtypes!(@generate_use $($felt),*);
+            crate::macros::felt_newtypes!(@generate_use $($felt251),*);
         }
     };
 
-    (@generate_use $head:ident, $($tail:ident),+ $(,)?) => {
-        crate::macros::felt_newtypes!(@generate_use $head);
-        crate::macros::felt_newtypes!(@generate_use $($tail),+);
+    (@define_felt $head:ident, $($tail:ident),+ $(,)?) => {
+        crate::macros::felt_newtypes!(@define_felt $head);
+        crate::macros::felt_newtypes!(@define_felt $($tail),+);
     };
 
-    (@generate_use $target:ident) => {
+    (@define_felt $target:ident) => {
         paste::paste! {
-            pub use [<$target:snake>];
-        }
-    };
-
-    (@generate_felt_macro $head:ident, $($tail:ident),+ $(,)?) => {
-        crate::macros::felt_newtypes!(@generate_felt_macro $head);
-        crate::macros::felt_newtypes!(@generate_felt_macro $($tail),+);
-    };
-
-    (@generate_felt_macro $target:ident) => {
-        paste::paste! {
-            use $crate::$target;
-
-            #[macro_export]
-            macro_rules! [<$target:snake>] {
-                ($hex:expr) => {
-                    $target($crate::felt!($hex))
-                };
-            }
-            // pub(super) use [<$target:snake>];
-
-            #[macro_export]
-            macro_rules! [<$target:snake _bytes>] {
-                ($bytes:expr) => {
-                    $target($crate::felt_bytes!($bytes))
-                };
-            }
+            #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, PartialOrd, Ord)]
+            pub struct $target(pub stark_hash::Felt);
 
             #[allow(unused)]
             impl $target {
@@ -150,13 +129,27 @@ macro_rules! felt_newtypes {
             $crate::macros::fmt::thin_display!($target);
         }
     };
-}
-pub(super) use felt_newtypes;
 
-pub(super) mod starkhash251 {
-    macro_rules! newtype {
-        ($target:ty) => {
+    (@define_felt251 $head:ident, $($tail:ident),+ $(,)?) => {
+        crate::macros::felt_newtypes!(@define_felt251 $head);
+        crate::macros::felt_newtypes!(@define_felt251 $($tail),+);
+    };
+
+    (@define_felt251 $target:ident) => {
+        paste::paste! {
+            #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, PartialOrd, Ord)]
+            pub struct $target(pub stark_hash::Felt);
+
+            $crate::macros::fmt::thin_debug!($target);
+            $crate::macros::fmt::thin_display!($target);
+
             impl $target {
+                pub const ZERO: Self = Self(stark_hash::Felt::ZERO);
+
+                pub fn as_inner(&self) -> &stark_hash::Felt {
+                    &self.0
+                }
+
                 pub const fn new(hash: Felt) -> Option<Self> {
                     if hash.has_more_than_251_bits() {
                         None
@@ -180,37 +173,15 @@ pub(super) mod starkhash251 {
                     self.0.view_bits()
                 }
             }
-        };
-    }
-
-    // this seems a lot of code copypasted around, but it is only used by two types. if there would
-    // be a lot more types, I'd fully flesh out a separate StarkHash251 type (like the visitor is
-    // currently called), then first deserialize to it, then have a From<_> conversion to any other
-    // Starkhash251 newtype.
-    macro_rules! deserialization {
-        ($target:ty) => {
-            impl $target {
-                pub fn deserialize_value<E>(original: &str, raw: Felt) -> Result<Self, E>
-                where
-                    E: serde::de::Error,
-                {
-                    Self::new(raw).ok_or_else(|| {
-                        serde::de::Error::invalid_value(
-                            serde::de::Unexpected::Str(original),
-                            &"At most 251-bit value",
-                        )
-                    })
-                }
-            }
 
             impl<'de> serde::Deserialize<'de> for $target {
                 fn deserialize<D>(de: D) -> Result<Self, D::Error>
                 where
                     D: serde::Deserializer<'de>,
                 {
-                    struct StarkHash251;
+                    struct Felt251Vistitor;
 
-                    impl<'de> serde::de::Visitor<'de> for StarkHash251 {
+                    impl<'de> serde::de::Visitor<'de> for Felt251Vistitor {
                         type Value = $target;
 
                         fn expecting(
@@ -224,19 +195,76 @@ pub(super) mod starkhash251 {
                         where
                             E: serde::de::Error,
                         {
-                            let hash = Felt::from_hex_str(v).map_err(serde::de::Error::custom)?;
+                            let felt = Felt::from_hex_str(v).map_err(serde::de::Error::custom)?;
 
-                            <$target>::deserialize_value(v, hash)
+                            Self::Value::new(felt).context("Felt251 overflow").map_err(serde::de::Error::custom)
                         }
                     }
 
-                    de.deserialize_str(StarkHash251)
+                    de.deserialize_str(Felt251Vistitor)
                 }
             }
-        };
-    }
-    pub(crate) use {deserialization, newtype};
+        }
+    };
+
+    (@generate_use $head:ident, $($tail:ident),+ $(,)?) => {
+        crate::macros::felt_newtypes!(@generate_use $head);
+        crate::macros::felt_newtypes!(@generate_use $($tail),+);
+    };
+
+    (@generate_use $target:ident) => {
+        paste::paste! {
+            pub use [<$target:snake>];
+        }
+    };
+
+    (@generate_felt_macro $head:ident, $($tail:ident),+ $(,)?) => {
+        crate::macros::felt_newtypes!(@generate_felt_macro $head);
+        crate::macros::felt_newtypes!(@generate_felt_macro $($tail),+);
+    };
+
+    (@generate_felt_macro $target:ident) => {
+        paste::paste! {
+            #[macro_export]
+            macro_rules! [<$target:snake>] {
+                ($hex:expr) => {
+                    $target($crate::felt!($hex))
+                };
+            }
+
+            #[macro_export]
+            macro_rules! [<$target:snake _bytes>] {
+                ($bytes:expr) => {
+                    $target($crate::felt_bytes!($bytes))
+                };
+            }
+        }
+    };
+
+    (@generate_felt251_macro $head:ident, $($tail:ident),+ $(,)?) => {
+        crate::macros::felt_newtypes!(@generate_felt251_macro $head);
+        crate::macros::felt_newtypes!(@generate_felt251_macro $($tail),+);
+    };
+
+    (@generate_felt251_macro $target:ident) => {
+        paste::paste! {
+            #[macro_export]
+            macro_rules! [<$target:snake>] {
+                ($hex:expr) => {
+                    $target::new_or_panic($crate::felt!($hex))
+                };
+            }
+
+            #[macro_export]
+            macro_rules! [<$target:snake _bytes>] {
+                ($bytes:expr) => {
+                    $target::new_or_panic($crate::felt_bytes!($bytes))
+                };
+            }
+        }
+    };
 }
+pub(super) use felt_newtypes;
 
 pub(super) mod fmt {
 

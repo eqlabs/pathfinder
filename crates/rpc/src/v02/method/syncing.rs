@@ -126,9 +126,9 @@ mod tests {
             starting_block_num: BlockNumber::new_or_panic(1),
             current_block_num: BlockNumber::new_or_panic(2),
             highest_block_num: BlockNumber::new_or_panic(3),
-            starting_block_hash: BlockHash(pathfinder_common::felt!("0xaabb")),
-            current_block_hash: BlockHash(pathfinder_common::felt!("0xccddee")),
-            highest_block_hash: BlockHash(pathfinder_common::felt!("0xeeffaacc")),
+            starting_block_hash: block_hash!("0xaabb"),
+            current_block_hash: block_hash!("0xccddee"),
+            highest_block_hash: block_hash!("0xeeffaacc"),
         };
         let expected = SyncingOuput::Status(expected);
 

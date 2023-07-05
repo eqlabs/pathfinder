@@ -119,7 +119,7 @@ mod tests {
     use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
+        CasmHash, ContractAddress, Fee, TransactionNonce, TransactionVersion,
     };
     use stark_hash::Felt;
     use starknet_gateway_test_fixtures::class_definitions::{
@@ -357,9 +357,9 @@ mod tests {
                 sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
                 // Taken from
                 // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=283364
-                compiled_class_hash: CasmHash::new_or_panic(felt!(
+                compiled_class_hash: casm_hash!(
                     "0x711c0c3e56863e29d3158804aac47f424241eda64db33e2cc2999d60ee5105"
-                )),
+                ),
             },
         ));
 
@@ -426,12 +426,12 @@ mod tests {
         assert_eq!(
             result,
             AddDeclareTransactionOutput {
-                transaction_hash: TransactionHash(felt!(
+                transaction_hash: transaction_hash!(
                     "0xE32B5DC53B104DCC8487F8721A9AE26D038C5C667F83A15FD00E4BB87C4A6E"
-                )),
-                class_hash: ClassHash(felt!(
+                ),
+                class_hash: class_hash!(
                     "0x50b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b"
-                )),
+                ),
             }
         );
     }
@@ -451,9 +451,9 @@ mod tests {
                 sender_address: ContractAddress::new_or_panic(Felt::from_u64(1)),
                 // Taken from
                 // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=284544
-                compiled_class_hash: CasmHash::new_or_panic(felt!(
+                compiled_class_hash: casm_hash!(
                     "0x5bcd45099caf3dca6c0c0f6697698c90eebf02851acbbaf911186b173472fcc"
-                )),
+                ),
             },
         ));
 
@@ -465,12 +465,12 @@ mod tests {
         assert_eq!(
             result,
             AddDeclareTransactionOutput {
-                transaction_hash: TransactionHash(felt!(
+                transaction_hash: transaction_hash!(
                     "0x069B1F490F1E28458E7A22DBA1DE950F060036FAAE533592E2D5546A6347C892"
-                )),
-                class_hash: ClassHash(felt!(
+                ),
+                class_hash: class_hash!(
                     "0x04D7D2DDF396736D7CDBA26E178E30E3388D488984A94E03BC4AF4841E222920"
-                )),
+                ),
             }
         );
     }

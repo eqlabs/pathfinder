@@ -455,7 +455,7 @@ pub(crate) use {named_params, params};
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use pathfinder_common::macro_prelude::*;
 
     #[test]

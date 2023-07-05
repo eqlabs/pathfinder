@@ -65,7 +65,7 @@ pub(crate) mod tests {
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHash, CallParam, Chain, ContractAddress, Fee, TransactionNonce,
+        BlockHash, CallParam, Chain, ContractAddress, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_storage::JournalMode;
@@ -79,10 +79,10 @@ pub(crate) mod tests {
                 crate::v02::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: fee!("0x6"),
-                    signature: vec![TransactionSignatureElem(felt!("0x7"))],
+                    signature: vec![transaction_signature_elem!("0x7")],
                     nonce: transaction_nonce!("0x8"),
-                    sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                    calldata: vec![CallParam(felt!("0xff"))],
+                    sender_address: contract_address!("0xaaa"),
+                    calldata: vec![call_param!("0xff")],
                 },
             ))
         }
@@ -215,22 +215,22 @@ pub(crate) mod tests {
                         // )
                         //
                         // Called contract address, i.e. AccountCallArray::to
-                        CallParam(felt!(
+                        call_param!(
                             "05a02acdbf218464be3dd787df7a302f71fab586cad5588410ba88b3ed7b3a21"
-                        )),
+                        ),
                         // Entry point selector for the called contract, i.e. AccountCallArray::selector
-                        CallParam(felt!(
+                        call_param!(
                             "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
-                        )),
+                        ),
                         // Length of the call data for the called contract, i.e. AccountCallArray::data_len
-                        CallParam(felt!("2")),
+                        call_param!("2"),
                         // Proper calldata for this contract
-                        CallParam(felt!(
+                        call_param!(
                             "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
-                        )),
-                        CallParam(felt!(
+                        ),
+                        call_param!(
                             "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
-                        )),
+                        ),
                     ],
                 },
             ))
@@ -407,7 +407,7 @@ pub(crate) mod tests {
             let input = EstimateFeeInput {
                 request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                     BroadcastedInvokeTransactionV1 {
-                        sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+                        sender_address: contract_address!("0xdeadbeef"),
                         ..valid_invoke_v1(account_address)
                             .into_invoke()
                             .unwrap()
@@ -490,9 +490,9 @@ pub(crate) mod tests {
                     sender_address: account_address,
                     // Taken from
                     // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=289143
-                    compiled_class_hash: CasmHash::new_or_panic(felt!(
+                    compiled_class_hash: casm_hash!(
                         "0xf2056a217cc9cabef54d4b1bceea5a3e8625457cb393698ba507259ed6f3c"
-                    )),
+                    ),
                 }),
             );
 

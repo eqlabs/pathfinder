@@ -166,10 +166,8 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, ContractAddress,
-        ContractNonce, EntryPoint, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-        StateUpdate, StorageAddress, StorageValue, TransactionHash, TransactionNonce,
-        TransactionVersion,
+        felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice, SequencerAddress,
+        StarknetVersion, StateCommitment, StateUpdate, TransactionVersion,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
@@ -177,11 +175,11 @@ mod tests {
     use starknet_gateway_types::reply::{Block, MaybePendingBlock, PendingBlock, Status};
 
     lazy_static::lazy_static!(
-        pub static ref PARENT_HASH: BlockHash =  BlockHash(felt!("0x1234"));
+        pub static ref PARENT_HASH: BlockHash =  block_hash!("0x1234");
         pub static ref PARENT_ROOT: StateCommitment = StateCommitment(felt_bytes!(b"parent root"));
 
         pub static ref NEXT_BLOCK: Block = Block{
-            block_hash: BlockHash(felt!("0xabcd")),
+            block_hash: block_hash!("0xabcd"),
             block_number: BlockNumber::new_or_panic(1),
             gas_price: None,
             parent_block_hash: *PARENT_HASH,
@@ -208,11 +206,11 @@ mod tests {
             transactions: vec![
                 starknet_gateway_types::reply::transaction::Transaction::L1Handler(
                     L1HandlerTransaction {
-                        contract_address: ContractAddress::new_or_panic(felt!("0x1")),
-                        entry_point_selector: EntryPoint(felt!("0x55")),
-                        nonce: TransactionNonce(felt!("0x2")),
+                        contract_address: contract_address!("0x1"),
+                        entry_point_selector: entry_point!("0x55"),
+                        nonce: transaction_nonce!("0x2"),
                         calldata: Vec::new(),
-                        transaction_hash: TransactionHash(felt!("0x22")),
+                        transaction_hash: transaction_hash!("0x22"),
                         version: TransactionVersion::ONE,
                     },
                 )
@@ -419,11 +417,11 @@ mod tests {
         b0.transactions.push(
             starknet_gateway_types::reply::transaction::Transaction::L1Handler(
                 L1HandlerTransaction {
-                    contract_address: ContractAddress::new_or_panic(felt!("0x1")),
-                    entry_point_selector: EntryPoint(felt!("0x55")),
-                    nonce: TransactionNonce(felt!("0x2")),
+                    contract_address: contract_address!("0x1"),
+                    entry_point_selector: entry_point!("0x55"),
+                    nonce: transaction_nonce!("0x2"),
                     calldata: Vec::new(),
-                    transaction_hash: TransactionHash(felt!("0x22")),
+                    transaction_hash: transaction_hash!("0x22"),
                     version: TransactionVersion::ONE,
                 },
             ),
@@ -434,11 +432,11 @@ mod tests {
         b1.transactions.push(
             starknet_gateway_types::reply::transaction::Transaction::L1Handler(
                 L1HandlerTransaction {
-                    contract_address: ContractAddress::new_or_panic(felt!("0x1")),
-                    entry_point_selector: EntryPoint(felt!("0x55")),
-                    nonce: TransactionNonce(felt!("0x2")),
+                    contract_address: contract_address!("0x1"),
+                    entry_point_selector: entry_point!("0x55"),
+                    nonce: transaction_nonce!("0x2"),
                     calldata: Vec::new(),
-                    transaction_hash: TransactionHash(felt!("0x22")),
+                    transaction_hash: transaction_hash!("0x22"),
                     version: TransactionVersion::ONE,
                 },
             ),
@@ -501,15 +499,15 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         let b0 = PENDING_UPDATE.clone().with_storage_update(
-            ContractAddress::new_or_panic(felt!("0x1")),
-            StorageAddress::new_or_panic(felt!("0x2")),
-            StorageValue(felt!("0x123")),
+            contract_address!("0x1"),
+            storage_address!("0x2"),
+            storage_value!("0x123"),
         );
         let b0_copy = b0.clone();
 
         let b1 = b0.clone().with_contract_nonce(
-            ContractAddress::new_or_panic(felt!("0x1")),
-            ContractNonce(felt!("0x99")),
+            contract_address!("0x1"),
+            contract_nonce!("0x99"),
         );
         let b1_copy = b1.clone();
 

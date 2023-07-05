@@ -404,7 +404,7 @@ pub(super) fn contract_class_hash(
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt, felt_bytes, BlockHash, BlockHeader, CasmHash};
+    use pathfinder_common::{felt_bytes, BlockHash, BlockHeader, CasmHash};
 
     use super::*;
 
@@ -416,7 +416,7 @@ mod tests {
         let original_class = class_hash!("0xdeadbeef");
         let replaced_class = class_hash!("0xdeadbeefabcdef");
         let definition = b"example definition";
-        let contract = ContractAddress::new_or_panic(felt!("0x12345"));
+        let contract = contract_address!("0x12345");
 
         let header_0 = BlockHeader::builder().finalize_with_hash(block_hash!("0xabc"));
         let header_1 = header_0
@@ -465,7 +465,7 @@ mod tests {
         let is_replaced = super::contract_class_hash(&tx, header_2.hash.into(), contract).unwrap();
         assert_eq!(is_replaced, Some(replaced_class));
 
-        let non_existent = ContractAddress::new_or_panic(felt!("0xaaaaa"));
+        let non_existent = contract_address!("0xaaaaa");
         let non_existent =
             super::contract_class_hash(&tx, BlockNumber::GENESIS.into(), non_existent).unwrap();
         assert_eq!(non_existent, None);
