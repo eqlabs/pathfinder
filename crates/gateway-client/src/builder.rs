@@ -332,9 +332,11 @@ where
 async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, SequencerError> {
     use starknet_gateway_types::error::StarknetError;
 
-    // Starknet specific errors end with a 500 status code
+    // Starknet specific errors end with a 400 or 500 status code
     // but the body contains a JSON object with the error description
-    if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR {
+    if response.status() == reqwest::StatusCode::INTERNAL_SERVER_ERROR
+        || response.status() == reqwest::StatusCode::BAD_REQUEST
+    {
         let error = match response.json::<StarknetError>().await {
             Ok(e) => SequencerError::StarknetError(e),
             Err(e) if e.is_decode() => SequencerError::InvalidStarknetErrorVariant,
@@ -342,7 +344,7 @@ async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, Seq
         };
         return Err(error);
     }
-    // Status codes 400..499 and 501..599 are mapped to SequencerError::TransportError
+    // Status codes 401..499 and 501..599 are mapped to SequencerError::TransportError
     response.error_for_status_ref().map(|_| ())?;
     Ok(response)
 }
