@@ -1,5 +1,6 @@
 use pathfinder_common::{Chain, StateUpdate};
 use pathfinder_storage::Storage;
+use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::{Block, PendingBlock};
 
 use crate::state::sync::SyncEvent;
@@ -15,7 +16,7 @@ use crate::state::sync::SyncEvent;
 /// A full block or full state update can be returned from this function if it is encountered during polling.
 pub async fn poll_pending(
     tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
-    sequencer: &impl starknet_gateway_client::GatewayApi,
+    sequencer: impl GatewayApi + Clone + Send + 'static,
     head: (
         pathfinder_common::BlockHash,
         pathfinder_common::StateCommitment,
@@ -134,6 +135,8 @@ pub async fn poll_pending(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::state::sync::SyncEvent;
 
     use super::poll_pending;
@@ -211,10 +214,12 @@ mod tests {
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
 
+        let sequencer = Arc::new(sequencer);
+
         let jh = tokio::spawn(async move {
             poll_pending(
                 tx,
-                &sequencer,
+                sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
@@ -250,11 +255,12 @@ mod tests {
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(full_diff_copy.clone()));
+        let sequencer = Arc::new(sequencer);
 
         let jh = tokio::spawn(async move {
             poll_pending(
                 tx,
-                &sequencer,
+                sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
@@ -285,11 +291,12 @@ mod tests {
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
+        let sequencer = Arc::new(sequencer);
 
         let jh = tokio::spawn(async move {
             poll_pending(
                 tx,
-                &sequencer,
+                sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
@@ -320,11 +327,12 @@ mod tests {
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(disconnected_diff.clone()));
+        let sequencer = Arc::new(sequencer);
 
         let jh = tokio::spawn(async move {
             poll_pending(
                 tx,
-                &sequencer,
+                sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
@@ -352,10 +360,11 @@ mod tests {
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
 
+        let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
             poll_pending(
                 tx,
-                &sequencer,
+                sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
@@ -430,10 +439,11 @@ mod tests {
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
 
+        let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
             poll_pending(
                 tx,
-                &sequencer,
+                sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
@@ -497,10 +507,11 @@ mod tests {
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
+        let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
             poll_pending(
                 tx,
-                &sequencer,
+                sequencer,
                 (*PARENT_HASH, *PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,

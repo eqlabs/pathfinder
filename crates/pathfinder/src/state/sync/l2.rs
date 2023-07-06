@@ -99,7 +99,7 @@ pub async fn sync<GatewayClient>(
     mut blocks: BlockChain,
 ) -> anyhow::Result<()>
 where
-    GatewayClient: GatewayApi,
+    GatewayClient: GatewayApi + Clone + Send + 'static,
 {
     let L2SyncContext {
         websocket_txs,
@@ -146,7 +146,7 @@ where
                                 .expect("Head hash should exist when entering pending mode");
                             (next_block, next_state_update) = pending::poll_pending(
                                 tx_event.clone(),
-                                &sequencer,
+                                sequencer.clone(),
                                 (head.1, head.2),
                                 interval,
                                 chain,
@@ -632,6 +632,7 @@ mod tests {
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<()>> {
             let storage = Storage::in_memory().unwrap();
+            let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
                 websocket_txs: WebsocketSenders::for_test(),
                 sequencer,
@@ -983,6 +984,7 @@ mod tests {
                 );
 
                 // Let's run the UUT
+                let mock = std::sync::Arc::new(mock);
                 let context = L2SyncContext {
                     websocket_txs: WebsocketSenders::for_test(),
                     sequencer: mock,
