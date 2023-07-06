@@ -128,7 +128,7 @@ pub async fn poll_pending(
                     gateway_copy
                         .state_update(BlockId::Pending)
                         .await
-                        .context("Downloading pending block")
+                        .context("Downloading state update block")
                 });
             }
         }
