@@ -1,6 +1,6 @@
 use pathfinder_common::{Chain, StateUpdate};
 use pathfinder_storage::Storage;
-use starknet_gateway_types::reply::Block;
+use starknet_gateway_types::reply::{Block, PendingBlock};
 
 use crate::state::sync::SyncEvent;
 
@@ -28,60 +28,83 @@ pub async fn poll_pending(
     use pathfinder_common::BlockId;
     use std::sync::Arc;
 
+    let mut prev_block = Arc::new(PendingBlock {
+        gas_price: Default::default(),
+        parent_hash: Default::default(),
+        sequencer_address: Default::default(),
+        status: starknet_gateway_types::reply::Status::Pending,
+        timestamp: Default::default(),
+        transaction_receipts: Default::default(),
+        transactions: Default::default(),
+        starknet_version: Default::default(),
+    });
+
+    let mut prev_state_update = Arc::new(StateUpdate::default());
+
     loop {
         use starknet_gateway_types::reply::MaybePendingBlock;
 
-        let block = match sequencer
-            .block(BlockId::Pending)
-            .await
-            .context("Download pending block")?
-        {
-            MaybePendingBlock::Block(block) if block.block_hash == head.0 => {
-                // Sequencer `pending` may return the latest full block for quite some time, so ignore it.
-                tracing::trace!(hash=%block.block_hash, "Found current head from pending mode");
-                tokio::time::sleep(poll_interval).await;
-                continue;
+        let block = loop {
+            let block = match sequencer
+                .block(BlockId::Pending)
+                .await
+                .context("Download pending block")?
+            {
+                MaybePendingBlock::Block(block) if block.block_hash == head.0 => {
+                    // Sequencer `pending` may return the latest full block for quite some time, so ignore it.
+                    tracing::trace!(hash=%block.block_hash, "Found current head from pending mode");
+                    tokio::time::sleep(poll_interval).await;
+                    continue;
+                }
+                MaybePendingBlock::Block(block) => {
+                    tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
+                    return Ok((Some(block), None));
+                }
+                MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
+                    tracing::trace!(
+                        pending=%pending.parent_hash, head=%head.0,
+                        "Pending block's parent hash does not match head, exiting pending mode"
+                    );
+                    return Ok((None, None));
+                }
+                MaybePendingBlock::Pending(pending) => pending,
+            };
+
+            // The gateway can return inconsistent pending data, which means it will sometimes return
+            // stale data. Since the pending block should be monotinically increasing in size, we check
+            // to ensure that this block is actually more recent than the previous one.
+            if block.transactions.len() >= prev_block.transactions.len() {
+                break Arc::new(block);
             }
-            MaybePendingBlock::Block(block) => {
-                tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
-                return Ok((Some(block), None));
-            }
-            MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
-                tracing::trace!(
-                    pending=%pending.parent_hash, head=%head.0,
-                    "Pending block's parent hash does not match head, exiting pending mode"
-                );
-                return Ok((None, None));
-            }
-            MaybePendingBlock::Pending(pending) => pending,
         };
 
-        // Add a timeout to the pending state update query.
-        //
-        // This is work-around for the gateway constantly 503/502 on this query because
-        // it cannot calculate the state root on the fly quickly enough.
-        //
-        // Without this timeout, we can potentially sit here infinitely retrying this query internally.
-        let state_update = match tokio::time::timeout(
-            std::time::Duration::from_secs(3 * 60),
-            sequencer.state_update(BlockId::Pending),
-        )
-        .await
-        {
-            Ok(gateway_result) => gateway_result,
-            Err(_timeout) => {
-                tracing::debug!("Pending state update query timed out, exiting pending mode.");
+        let state_update = loop {
+            let state_update = sequencer
+                .state_update(BlockId::Pending)
+                .await
+                .context("Downloading pending state update")?;
+
+            if state_update.block_hash != pathfinder_common::BlockHash::ZERO {
+                tracing::trace!("Found full state update, exiting pending mode.");
+                return Ok((None, Some(state_update)));
+            } else if state_update.parent_state_commitment != head.1 {
+                tracing::trace!(pending=%state_update.parent_state_commitment, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
                 return Ok((None, None));
             }
-        }
-        .context("Downloading pending state update")?;
 
-        if state_update.block_hash != pathfinder_common::BlockHash::ZERO {
-            tracing::trace!("Found full state update, exiting pending mode.");
-            return Ok((None, Some(state_update)));
-        } else if state_update.parent_state_commitment != head.1 {
-            tracing::trace!(pending=%state_update.parent_state_commitment, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
-            return Ok((None, None));
+            // The gateway can return inconsistent pending data, which means it will sometimes return
+            // stale data. Since the pending block should be monotinically increasing in size, we check
+            // to ensure that this block is actually more recent than the previous one.
+            if state_update.change_count() >= prev_state_update.change_count() {
+                break Arc::new(state_update);
+            }
+        };
+
+        // Only emit if at least one of them has changed (currently still possible both are the same).
+        if block.transactions.len() == prev_block.transactions.len()
+            && state_update.change_count() == prev_state_update.change_count()
+        {
+            continue;
         }
 
         // Download, process and emit all missing classes.
@@ -96,9 +119,12 @@ pub async fn poll_pending(
         .await
         .context("Handling newly declared classes for pending block")?;
 
+        prev_block = block.clone();
+        prev_state_update = state_update.clone();
+
         // Emit new block.
         tx_event
-            .send(SyncEvent::Pending(Arc::new(block), Arc::new(state_update)))
+            .send(SyncEvent::Pending(block, state_update))
             .await
             .context("Event channel closed")?;
 
@@ -113,11 +139,14 @@ mod tests {
     use super::poll_pending;
     use assert_matches::assert_matches;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice,
-        SequencerAddress, StarknetVersion, StateCommitment, StateUpdate,
+        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, ContractAddress,
+        ContractNonce, EntryPoint, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
+        StateUpdate, StorageAddress, StorageValue, TransactionHash, TransactionNonce,
+        TransactionVersion,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
+    use starknet_gateway_types::reply::transaction::L1HandlerTransaction;
     use starknet_gateway_types::reply::{Block, MaybePendingBlock, PendingBlock, Status};
 
     lazy_static::lazy_static!(
@@ -330,5 +359,157 @@ mod tests {
             .unwrap();
 
         assert_matches!(result, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_UPDATE);
+    }
+
+    #[tokio::test]
+    async fn ignores_inconsistent_gateway_blocks() {
+        // In this test the gateway mock sends inconsistent block data.
+        //
+        // It first sends a block with 1 tx, then 0 and then 2.
+        // We expect the function to ignore the middle one since pending data
+        // should be monotonically growing.
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut sequencer = MockGatewayApi::new();
+
+        let mut b0 = PENDING_BLOCK.clone();
+        b0.transactions.push(
+            starknet_gateway_types::reply::transaction::Transaction::L1Handler(
+                L1HandlerTransaction {
+                    contract_address: ContractAddress::new_or_panic(felt!("0x1")),
+                    entry_point_selector: EntryPoint(felt!("0x55")),
+                    nonce: TransactionNonce(felt!("0x2")),
+                    calldata: Vec::new(),
+                    transaction_hash: TransactionHash(felt!("0x22")),
+                    version: TransactionVersion::ONE,
+                },
+            ),
+        );
+        let b0_copy = b0.clone();
+
+        let mut b1 = b0.clone();
+        b1.transactions.push(
+            starknet_gateway_types::reply::transaction::Transaction::L1Handler(
+                L1HandlerTransaction {
+                    contract_address: ContractAddress::new_or_panic(felt!("0x1")),
+                    entry_point_selector: EntryPoint(felt!("0x55")),
+                    nonce: TransactionNonce(felt!("0x2")),
+                    calldata: Vec::new(),
+                    transaction_hash: TransactionHash(felt!("0x22")),
+                    version: TransactionVersion::ONE,
+                },
+            ),
+        );
+        let b1_copy = b1.clone();
+
+        lazy_static::lazy_static!(
+            static ref COUNT: std::sync::Mutex<usize>  = Default::default();
+        );
+
+        sequencer.expect_block().returning(move |_| {
+            let mut count = COUNT.lock().unwrap();
+            *count += 1;
+
+            match *count {
+                1 => Ok(MaybePendingBlock::Pending(b0_copy.clone())),
+                2 => Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())),
+                _ => Ok(MaybePendingBlock::Pending(b1_copy.clone())),
+            }
+        });
+        sequencer
+            .expect_state_update()
+            .returning(move |_| Ok(PENDING_UPDATE.clone()));
+
+        let _jh = tokio::spawn(async move {
+            poll_pending(
+                tx,
+                &sequencer,
+                (*PARENT_HASH, *PARENT_ROOT),
+                std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
+            )
+            .await
+        });
+
+        let result1 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("Event should be emitted")
+            .unwrap();
+
+        assert_matches!(result1, SyncEvent::Pending(block, diff) if *block == b0 && *diff == *PENDING_UPDATE);
+
+        let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("Event should be emitted")
+            .unwrap();
+
+        assert_matches!(result2, SyncEvent::Pending(block, diff) if *block == b1 && *diff == *PENDING_UPDATE);
+    }
+
+    #[tokio::test]
+    async fn ignores_inconsistent_gateway_state_update() {
+        // In this test the gateway mock sends inconsistent state update data.
+        //
+        // It first sends a state update with 1 more update, then 0 then 2.
+        // We expect the middle one to be ignored.
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut sequencer = MockGatewayApi::new();
+
+        let b0 = PENDING_UPDATE.clone().with_storage_update(
+            ContractAddress::new_or_panic(felt!("0x1")),
+            StorageAddress::new_or_panic(felt!("0x2")),
+            StorageValue(felt!("0x123")),
+        );
+        let b0_copy = b0.clone();
+
+        let b1 = b0.clone().with_contract_nonce(
+            ContractAddress::new_or_panic(felt!("0x1")),
+            ContractNonce(felt!("0x99")),
+        );
+        let b1_copy = b1.clone();
+
+        lazy_static::lazy_static!(
+            static ref COUNT: std::sync::Mutex<usize>  = Default::default();
+        );
+
+        sequencer.expect_state_update().returning(move |_| {
+            let mut count = COUNT.lock().unwrap();
+            *count += 1;
+
+            match *count {
+                1 => Ok(b0_copy.clone()),
+                2 => Ok(PENDING_UPDATE.clone()),
+                _ => Ok(b1_copy.clone()),
+            }
+        });
+        sequencer
+            .expect_block()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+
+        let _jh = tokio::spawn(async move {
+            poll_pending(
+                tx,
+                &sequencer,
+                (*PARENT_HASH, *PARENT_ROOT),
+                std::time::Duration::ZERO,
+                Chain::Testnet,
+                Storage::in_memory().unwrap(),
+            )
+            .await
+        });
+
+        let result1 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("Event should be emitted")
+            .unwrap();
+
+        assert_matches!(result1, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == b0);
+
+        let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("Event should be emitted")
+            .unwrap();
+
+        assert_matches!(result2, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == b1);
     }
 }
