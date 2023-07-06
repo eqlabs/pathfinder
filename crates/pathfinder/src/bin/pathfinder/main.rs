@@ -47,13 +47,6 @@ async fn main() -> anyhow::Result<()> {
     // A readiness flag which is used to indicate that pathfinder is ready via monitoring.
     let readiness = Arc::new(AtomicBool::new(false));
 
-    // Spawn monitoring if configured.
-    if let Some(address) = config.monitor_address {
-        spawn_monitoring(address, readiness.clone())
-            .await
-            .context("Starting monitoring task")?;
-    }
-
     let ethereum = EthereumContext::setup(config.ethereum.url, config.ethereum.password)
         .await
         .context("Creating Ethereum context")?;
@@ -65,6 +58,20 @@ async fn main() -> anyhow::Result<()> {
             .default_network()
             .context("Using default Starknet network based on Ethereum configuration")?,
     };
+
+    // Spawn monitoring if configured.
+    if let Some(address) = config.monitor_address {
+        let network_label = match &network {
+            NetworkConfig::Mainnet => "mainnet",
+            NetworkConfig::Testnet => "testnet",
+            NetworkConfig::Testnet2 => "testnet2",
+            NetworkConfig::Integration => "integration",
+            NetworkConfig::Custom { .. } => "custom",
+        };
+        spawn_monitoring(network_label, address, readiness.clone())
+            .await
+            .context("Starting monitoring task")?;
+    }
 
     let pathfinder_context =
         PathfinderContext::configure_and_proxy_check(network, config.data_directory)
@@ -296,10 +303,12 @@ async fn start_p2p(
 
 /// Spawns the monitoring task at the given address.
 async fn spawn_monitoring(
+    network: &str,
     address: SocketAddr,
     readiness: Arc<AtomicBool>,
 ) -> anyhow::Result<tokio::task::JoinHandle<()>> {
     let prometheus_handle = PrometheusBuilder::new()
+        .add_global_label("network", network)
         .install_recorder()
         .context("Creating Prometheus recorder")?;
 
