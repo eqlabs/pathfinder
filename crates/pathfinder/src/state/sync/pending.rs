@@ -1,7 +1,9 @@
 use pathfinder_common::{Chain, StateUpdate};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::reply::MaybePendingBlock;
 use starknet_gateway_types::reply::{Block, PendingBlock};
+use tokio::time::Instant;
 
 use crate::state::sync::SyncEvent;
 
@@ -29,107 +31,127 @@ pub async fn poll_pending(
     use pathfinder_common::BlockId;
     use std::sync::Arc;
 
-    let mut prev_block = Arc::new(PendingBlock {
-        gas_price: Default::default(),
-        parent_hash: Default::default(),
-        sequencer_address: Default::default(),
-        status: starknet_gateway_types::reply::Status::Pending,
-        timestamp: Default::default(),
-        transaction_receipts: Default::default(),
-        transactions: Default::default(),
-        starknet_version: Default::default(),
+    let mut prev_block: Option<Arc<PendingBlock>> = None;
+    let mut prev_state_update: Option<Arc<StateUpdate>> = None;
+
+    let gateway_copy = sequencer.clone();
+    let mut block_task = tokio::spawn(async move {
+        gateway_copy
+            .block(BlockId::Pending)
+            .await
+            .context("Downloading pending block")
+    });
+    let gateway_copy = sequencer.clone();
+    let mut update_task = tokio::spawn(async move {
+        gateway_copy
+            .state_update(BlockId::Pending)
+            .await
+            .context("Downloading pending block")
     });
 
-    let mut prev_state_update = Arc::new(StateUpdate::default());
-
     loop {
-        use starknet_gateway_types::reply::MaybePendingBlock;
+        let mut changed = false;
 
-        let block = loop {
-            let block = match sequencer
-                .block(BlockId::Pending)
-                .await
-                .context("Download pending block")?
-            {
-                MaybePendingBlock::Block(block) if block.block_hash == head.0 => {
-                    // Sequencer `pending` may return the latest full block for quite some time, so ignore it.
-                    tracing::trace!(hash=%block.block_hash, "Found current head from pending mode");
-                    tokio::time::sleep(poll_interval).await;
-                    continue;
+        tokio::select! {
+            block = &mut block_task => {
+                match block.context("Joining block download task")?? {
+                    MaybePendingBlock::Block(block) if block.block_hash == head.0 => {
+                        // Sequencer `pending` may return the latest full block for quite some time, so ignore it.
+                        tracing::trace!(hash=%block.block_hash, "Found current head from pending mode");
+                    }
+                    MaybePendingBlock::Block(block) => {
+                        tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
+                        return Ok((Some(block), None));
+                    }
+                    MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
+                        tracing::trace!(
+                            pending=%pending.parent_hash, head=%head.0,
+                            "Pending block's parent hash does not match head, exiting pending mode"
+                        );
+                        return Ok((None, None));
+                    }
+                    MaybePendingBlock::Pending(pending) => {
+                        let replace = match &prev_block {
+                            None => true,
+                            Some(prev) if pending.transactions.len() > prev.transactions.len() => true,
+                            _ => false,
+                        };
+
+                        if replace {
+                            prev_block = Some(Arc::new(pending));
+                            changed = true;
+                            tracing::trace!("Pending block data changed");
+                        } else {
+                            tracing::trace!("No change in pending block data");
+                        }
+                    },
                 }
-                MaybePendingBlock::Block(block) => {
-                    tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
-                    return Ok((Some(block), None));
-                }
-                MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
-                    tracing::trace!(
-                        pending=%pending.parent_hash, head=%head.0,
-                        "Pending block's parent hash does not match head, exiting pending mode"
-                    );
+
+                let gateway_copy = sequencer.clone();
+                block_task = tokio::spawn(async move {
+                    tokio::time::sleep_until(Instant::now() + poll_interval).await;
+                    gateway_copy
+                        .block(BlockId::Pending)
+                        .await
+                        .context("Downloading pending block")
+                });
+            },
+
+            state_update = &mut update_task => {
+                let  state_update = state_update.context("Joining state update download task")??;
+
+                if state_update.block_hash != pathfinder_common::BlockHash::ZERO {
+                    tracing::trace!("Found full state update, exiting pending mode.");
+                    return Ok((None, Some(state_update)));
+                } else if state_update.parent_state_commitment != head.1 {
+                    tracing::trace!(pending=%state_update.parent_state_commitment, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
                     return Ok((None, None));
                 }
-                MaybePendingBlock::Pending(pending) => pending,
-            };
 
-            // The gateway can return inconsistent pending data, which means it will sometimes return
-            // stale data. Since the pending block should be monotinically increasing in size, we check
-            // to ensure that this block is actually more recent than the previous one.
-            if block.transactions.len() >= prev_block.transactions.len() {
-                break Arc::new(block);
+                let replace = match &prev_state_update {
+                    None => true,
+                    Some(prev) if state_update.change_count() > prev.change_count() => true,
+                    _ => false,
+                };
+
+                if replace {
+                    prev_state_update = Some(Arc::new(state_update));
+                    changed = true;
+                    tracing::trace!("Pending state update changed");
+                } else {
+                    tracing::trace!("No change in pending state update");
+                }
+
+                let gateway_copy = sequencer.clone();
+                update_task = tokio::spawn(async move {
+                    tokio::time::sleep_until(Instant::now() + poll_interval).await;
+                    gateway_copy
+                        .state_update(BlockId::Pending)
+                        .await
+                        .context("Downloading pending block")
+                });
             }
-        };
-
-        let state_update = loop {
-            let state_update = sequencer
-                .state_update(BlockId::Pending)
-                .await
-                .context("Downloading pending state update")?;
-
-            if state_update.block_hash != pathfinder_common::BlockHash::ZERO {
-                tracing::trace!("Found full state update, exiting pending mode.");
-                return Ok((None, Some(state_update)));
-            } else if state_update.parent_state_commitment != head.1 {
-                tracing::trace!(pending=%state_update.parent_state_commitment, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
-                return Ok((None, None));
-            }
-
-            // The gateway can return inconsistent pending data, which means it will sometimes return
-            // stale data. Since the pending block should be monotinically increasing in size, we check
-            // to ensure that this block is actually more recent than the previous one.
-            if state_update.change_count() >= prev_state_update.change_count() {
-                break Arc::new(state_update);
-            }
-        };
-
-        // Only emit if at least one of them has changed (currently still possible both are the same).
-        if block.transactions.len() == prev_block.transactions.len()
-            && state_update.change_count() == prev_state_update.change_count()
-        {
-            continue;
         }
 
-        // Download, process and emit all missing classes.
-        super::l2::download_new_classes(
-            &state_update,
-            sequencer,
-            &tx_event,
-            chain,
-            &block.starknet_version,
-            storage.clone(),
-        )
-        .await
-        .context("Handling newly declared classes for pending block")?;
-
-        prev_block = block.clone();
-        prev_state_update = state_update.clone();
-
-        // Emit new block.
-        tx_event
-            .send(SyncEvent::Pending(block, state_update))
+        if let (true, Some(block), Some(update)) = (changed, &prev_block, &prev_state_update) {
+            tracing::trace!("Emitting a pending update");
+            // Download, process and emit all missing classes.
+            super::l2::download_new_classes(
+                update.as_ref(),
+                &sequencer,
+                &tx_event,
+                chain,
+                &block.starknet_version,
+                storage.clone(),
+            )
             .await
-            .context("Event channel closed")?;
+            .context("Handling newly declared classes for pending block")?;
 
-        tokio::time::sleep(poll_interval).await;
+            tx_event
+                .send(SyncEvent::Pending(block.clone(), update.clone()))
+                .await
+                .context("Event channel closed")?;
+        }
     }
 }
 
