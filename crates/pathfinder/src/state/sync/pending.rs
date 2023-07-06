@@ -178,7 +178,18 @@ mod tests {
             status: Status::Pending,
             timestamp: BlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
-            transactions: Vec::new(),
+            transactions: vec![
+                starknet_gateway_types::reply::transaction::Transaction::L1Handler(
+                    L1HandlerTransaction {
+                        contract_address: ContractAddress::new_or_panic(felt!("0x1")),
+                        entry_point_selector: EntryPoint(felt!("0x55")),
+                        nonce: TransactionNonce(felt!("0x2")),
+                        calldata: Vec::new(),
+                        transaction_hash: TransactionHash(felt!("0x22")),
+                        version: TransactionVersion::ONE,
+                    },
+                )
+            ],
             starknet_version: StarknetVersion::default(),
         };
     );
