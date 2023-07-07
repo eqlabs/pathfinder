@@ -13,9 +13,11 @@ pub mod hash;
 mod header;
 mod macros;
 pub mod prelude;
+pub mod receipt;
 pub mod state_update;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+pub mod transaction;
 pub mod trie;
 
 pub use state_update::StateUpdate;
