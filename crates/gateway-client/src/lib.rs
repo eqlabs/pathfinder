@@ -21,7 +21,11 @@ mod metrics;
 #[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
 pub trait GatewayApi: Sync {
-    async fn block(&self, block: BlockId, is_retry_enabled: bool) -> Result<reply::MaybePendingBlock, SequencerError>;
+    async fn block(
+        &self,
+        block: BlockId,
+        is_retry_enabled: bool,
+    ) -> Result<reply::MaybePendingBlock, SequencerError>;
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
@@ -35,7 +39,7 @@ pub trait GatewayApi: Sync {
         transaction_hash: TransactionHash,
     ) -> Result<reply::Transaction, SequencerError>;
 
-    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> ;
+    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError>;
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
 
@@ -307,7 +311,11 @@ impl Client {
 #[async_trait::async_trait]
 impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
-    async fn block(&self, block_id: BlockId, is_retry_enabled: bool) -> Result<reply::MaybePendingBlock, SequencerError> {
+    async fn block(
+        &self,
+        block_id: BlockId,
+        is_retry_enabled: bool,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.block(block_id, is_retry_enabled).await
     }
 
