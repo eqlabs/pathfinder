@@ -37,7 +37,7 @@ pub async fn poll_pending(
     let gateway_copy = sequencer.clone();
     let mut block_task = tokio::spawn(async move {
         gateway_copy
-            .block(BlockId::Pending)
+            .block(BlockId::Pending, false)
             .await
             .context("Downloading pending block")
     });
@@ -231,7 +231,7 @@ mod tests {
         // Give a pending state update and full block.
         sequencer
             .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Block(NEXT_BLOCK.clone())));
+            .returning(move |_, _| Ok(MaybePendingBlock::Block(NEXT_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
@@ -273,7 +273,7 @@ mod tests {
 
         sequencer
             .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(full_diff_copy.clone()));
@@ -309,7 +309,7 @@ mod tests {
         pending_block.parent_hash = block_hash!("0xFFFFFF");
         sequencer
             .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));
+            .returning(move |_, _| Ok(MaybePendingBlock::Pending(pending_block.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
@@ -341,7 +341,7 @@ mod tests {
 
         sequencer
             .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
         let disconnected_diff = PENDING_UPDATE
             .clone()
@@ -377,7 +377,7 @@ mod tests {
 
         sequencer
             .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));

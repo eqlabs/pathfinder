@@ -20,13 +20,6 @@ pub struct Request<'a, S: RequestState> {
     client: &'a reqwest::Client,
 }
 
-/// Describes the retry behavior of a [Request].
-#[allow(dead_code)]
-pub enum Retry {
-    Enabled,
-    Disabled,
-}
-
 pub mod stage {
     use crate::metrics::RequestMetadata;
 
@@ -60,7 +53,7 @@ pub mod stage {
     /// - [post_with_json](super::Request::post_with_json)
     pub struct Final {
         pub meta: RequestMetadata,
-        pub retry: super::Retry,
+        pub is_retry_enabled: bool,
     }
 
     impl super::RequestState for Init {}
@@ -200,13 +193,13 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     /// Sets the request retry behavior.
-    pub fn with_retry(self, retry: Retry) -> Request<'a, stage::Final> {
+    pub fn with_retry(self, is_retry_enabled: bool) -> Request<'a, stage::Final> {
         Request {
             url: self.url,
             client: self.client,
             state: stage::Final {
                 meta: self.state.meta,
-                retry,
+                is_retry_enabled,
             },
         }
     }
@@ -230,18 +223,17 @@ impl<'a> Request<'a, stage::Final> {
             .await
         }
 
-        match self.state.retry {
-            Retry::Disabled => send_request(self.url, self.client, self.state.meta).await,
-            Retry::Enabled => {
-                retry0(
-                    || async {
-                        let clone_url = self.url.clone();
-                        send_request(clone_url, self.client, self.state.meta).await
-                    },
-                    retry_condition,
-                )
-                .await
-            }
+        if self.state.is_retry_enabled {
+            do_retry(
+                || async {
+                    let clone_url = self.url.clone();
+                    send_request(clone_url, self.client, self.state.meta).await
+                },
+                retry_condition,
+            )
+            .await
+        } else {
+            send_request(self.url, self.client, self.state.meta).await
         }
     }
 
@@ -261,18 +253,17 @@ impl<'a> Request<'a, stage::Final> {
             .await
         }
 
-        match self.state.retry {
-            Retry::Disabled => get_as_bytes_inner(self.url, self.client, self.state.meta).await,
-            Retry::Enabled => {
-                retry0(
-                    || async {
-                        let clone_url = self.url.clone();
-                        get_as_bytes_inner(clone_url, self.client, self.state.meta).await
-                    },
-                    retry_condition,
-                )
-                .await
-            }
+        if self.state.is_retry_enabled {
+            do_retry(
+                || async {
+                    let clone_url = self.url.clone();
+                    get_as_bytes_inner(clone_url, self.client, self.state.meta).await
+                },
+                retry_condition,
+            )
+            .await
+        } else {
+            get_as_bytes_inner(self.url, self.client, self.state.meta).await
         }
     }
 
@@ -300,20 +291,17 @@ impl<'a> Request<'a, stage::Final> {
             .await
         }
 
-        match self.state.retry {
-            Retry::Disabled => {
-                post_with_json_inner(self.url, self.client, self.state.meta, json).await
-            }
-            Retry::Enabled => {
-                retry0(
-                    || async {
-                        let clone_url = self.url.clone();
-                        post_with_json_inner(clone_url, self.client, self.state.meta, json).await
-                    },
-                    retry_condition,
-                )
-                .await
-            }
+        if self.state.is_retry_enabled {
+            do_retry(
+                || async {
+                    let clone_url = self.url.clone();
+                    post_with_json_inner(clone_url, self.client, self.state.meta, json).await
+                },
+                retry_condition,
+            )
+            .await
+        } else {
+            post_with_json_inner(self.url, self.client, self.state.meta, json).await
         }
     }
 }
@@ -352,7 +340,7 @@ async fn parse_raw(response: reqwest::Response) -> Result<reqwest::Response, Seq
 pub trait RequestState {}
 
 /// Wrapper function to allow retrying sequencer queries in an exponential manner.
-async fn retry0<T, Fut, FutureFactory, Ret>(
+async fn do_retry<T, Fut, FutureFactory, Ret>(
     future_factory: FutureFactory,
     retry_condition: Ret,
 ) -> Result<T, SequencerError>
@@ -423,7 +411,7 @@ mod tests {
         use tokio::{sync::Mutex, task::JoinHandle};
         use warp::Filter;
 
-        use crate::builder::{retry0, retry_condition};
+        use crate::builder::{do_retry, retry_condition};
 
         // A test helper
         fn status_queue_server(
@@ -475,7 +463,7 @@ mod tests {
             ]);
 
             let (_jh, addr) = status_queue_server(statuses);
-            let result = retry0(
+            let result = do_retry(
                 || async {
                     let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                     url.set_port(Some(addr.port())).unwrap();
@@ -511,7 +499,7 @@ mod tests {
             ]);
 
             let (_jh, addr) = status_queue_server(statuses);
-            let error = retry0(
+            let error = do_retry(
                 || async {
                     let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                     url.set_port(Some(addr.port())).unwrap();
@@ -539,7 +527,7 @@ mod tests {
             let (_jh, addr) = slow_server();
             static CNT: AtomicUsize = AtomicUsize::new(0);
 
-            let fut = retry0(
+            let fut = do_retry(
                 || async {
                     let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                     url.set_port(Some(addr.port())).unwrap();

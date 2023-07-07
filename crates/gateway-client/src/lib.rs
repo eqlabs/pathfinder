@@ -14,8 +14,6 @@ use starknet_gateway_types::{
 };
 use std::{fmt::Debug, result::Result, time::Duration};
 
-use crate::builder::Retry;
-
 mod builder;
 mod metrics;
 
@@ -23,42 +21,23 @@ mod metrics;
 #[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
 pub trait GatewayApi: Sync {
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        unimplemented!();
-    }
+    async fn block(&self, block: BlockId, is_retry_enabled: bool) -> Result<reply::MaybePendingBlock, SequencerError>;
 
-    async fn block_without_retry(
-        &self,
-        block: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
-        unimplemented!()
-    }
-
-    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
-        unimplemented!();
-    }
+    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
     async fn pending_class_by_hash(
         &self,
         class_hash: ClassHash,
-    ) -> Result<bytes::Bytes, SequencerError> {
-        unimplemented!();
-    }
+    ) -> Result<bytes::Bytes, SequencerError>;
 
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
-    ) -> Result<reply::Transaction, SequencerError> {
-        unimplemented!();
-    }
+    ) -> Result<reply::Transaction, SequencerError>;
 
-    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
-        unimplemented!();
-    }
+    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> ;
 
-    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
-        unimplemented!();
-    }
+    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError>;
 
     #[allow(clippy::too_many_arguments)]
     async fn add_invoke_transaction(
@@ -69,9 +48,7 @@ pub trait GatewayApi: Sync {
         nonce: TransactionNonce,
         contract_address: ContractAddress,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
-        unimplemented!();
-    }
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError>;
 
     #[allow(clippy::too_many_arguments)]
     async fn add_declare_transaction(
@@ -84,9 +61,7 @@ pub trait GatewayApi: Sync {
         sender_address: ContractAddress,
         compiled_class_hash: Option<CasmHash>,
         token: Option<String>,
-    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
-        unimplemented!();
-    }
+    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError>;
 
     #[allow(clippy::too_many_arguments)]
     async fn add_deploy_account(
@@ -98,9 +73,7 @@ pub trait GatewayApi: Sync {
         contract_address_salt: ContractAddressSalt,
         class_hash: ClassHash,
         calldata: Vec<CallParam>,
-    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
-        unimplemented!();
-    }
+    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError>;
 }
 
 #[async_trait::async_trait]
@@ -227,22 +200,13 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 /// where `N` is the consecutive retry iteration number `{1, 2, ...}`.
 #[derive(Debug, Clone)]
 pub struct Client {
-    /// This client is internally refcounted
     inner: reqwest::Client,
-    /// Starknet gateway URL.
     gateway: Url,
-    /// Starknet feeder gateway URL.
     feeder_gateway: Url,
 }
 
 impl Client {
-    #[cfg(not(any(test, feature = "test-utils")))]
-    const RETRY: builder::Retry = builder::Retry::Enabled;
-    #[cfg(any(test, feature = "test-utils"))]
-    const RETRY: builder::Retry = builder::Retry::Disabled;
-
     /// Creates a new Sequencer client for the given chain.
-    #[cfg(any(test, feature = "test-utils"))]
     pub fn new(chain: Chain) -> anyhow::Result<Self> {
         match chain {
             Chain::Mainnet => Ok(Self::mainnet()),
@@ -303,15 +267,15 @@ impl Client {
         builder::Request::builder(&self.inner, self.feeder_gateway.clone())
     }
 
-    async fn block_with_retry_behaviour(
+    async fn block(
         &self,
-        block: BlockId,
-        retry: Retry,
+        block_id: BlockId,
+        is_retry_enabled: bool,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.feeder_gateway_request()
             .get_block()
-            .with_block(block)
-            .with_retry(retry)
+            .with_block(block_id)
+            .with_retry(is_retry_enabled)
             .get()
             .await
     }
@@ -324,7 +288,7 @@ impl Client {
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
-            .block(BlockNumber::GENESIS.into())
+            .block(BlockNumber::GENESIS.into(), false)
             .await?
             .as_block()
             .expect("Genesis block should not be pending")
@@ -343,17 +307,8 @@ impl Client {
 #[async_trait::async_trait]
 impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.block_with_retry_behaviour(block, Self::RETRY).await
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn block_without_retry(
-        &self,
-        block: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.block_with_retry_behaviour(block, Retry::Disabled)
-            .await
+    async fn block(&self, block_id: BlockId, is_retry_enabled: bool) -> Result<reply::MaybePendingBlock, SequencerError> {
+        self.block(block_id, is_retry_enabled).await
     }
 
     /// Gets class for a particular class hash.
@@ -362,7 +317,7 @@ impl GatewayApi for Client {
         self.feeder_gateway_request()
             .get_class_by_hash()
             .with_class_hash(class_hash)
-            .with_retry(Self::RETRY)
+            .with_retry(true)
             .get_as_bytes()
             .await
     }
@@ -377,7 +332,7 @@ impl GatewayApi for Client {
             .get_class_by_hash()
             .with_class_hash(class_hash)
             .with_block(BlockId::Pending)
-            .with_retry(Self::RETRY)
+            .with_retry(true)
             .get_as_bytes()
             .await
     }
@@ -391,7 +346,7 @@ impl GatewayApi for Client {
         self.feeder_gateway_request()
             .get_transaction()
             .with_transaction_hash(transaction_hash)
-            .with_retry(Self::RETRY)
+            .with_retry(true)
             .get()
             .await
     }
@@ -402,7 +357,7 @@ impl GatewayApi for Client {
             .feeder_gateway_request()
             .get_state_update()
             .with_block(block)
-            .with_retry(Self::RETRY)
+            .with_retry(true)
             .get()
             .await?;
 
@@ -414,7 +369,7 @@ impl GatewayApi for Client {
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         self.feeder_gateway_request()
             .get_contract_addresses()
-            .with_retry(Self::RETRY)
+            .with_retry(true)
             .get()
             .await
     }
@@ -445,7 +400,7 @@ impl GatewayApi for Client {
         // client instead.
         self.gateway_request()
             .add_transaction()
-            .with_retry(builder::Retry::Disabled)
+            .with_retry(false)
             .post_with_json(&req)
             .await
     }
@@ -481,7 +436,7 @@ impl GatewayApi for Client {
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
-            .with_retry(builder::Retry::Disabled)
+            .with_retry(false)
             .post_with_json(&req)
             .await
     }
@@ -514,7 +469,7 @@ impl GatewayApi for Client {
 
         self.gateway_request()
             .add_transaction()
-            .with_retry(builder::Retry::Disabled)
+            .with_retry(false)
             .post_with_json(&req)
             .await
     }
@@ -754,7 +709,7 @@ mod tests {
         let url = Url::parse(&url).unwrap();
         let client = Client::with_base_url(url).unwrap();
 
-        let _ = client.block(BlockId::Latest).await;
+        let _ = client.block(BlockId::Latest, false).await;
         shutdown_tx.send(()).unwrap();
         server_handle.await.unwrap();
     }
@@ -775,11 +730,11 @@ mod tests {
                 ),
             ]);
             let by_hash = client
-                .block(BlockId::from(GENESIS_BLOCK_HASH))
+                .block(BlockId::from(GENESIS_BLOCK_HASH), false)
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockId::from(GENESIS_BLOCK_NUMBER))
+                .block(BlockId::from(GENESIS_BLOCK_NUMBER), false)
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -801,11 +756,12 @@ mod tests {
                 .block(
                     block_hash!("040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746")
                         .into(),
+                    false
                 )
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockNumber::new_or_panic(231579).into())
+                .block(BlockNumber::new_or_panic(231579).into(), false)
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -823,7 +779,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=latest",
                 (v0_9_0::block::NUMBER_231579, 200),
             )]);
-            client.block(BlockId::Latest).await.unwrap();
+            client.block(BlockId::Latest, false).await.unwrap();
         }
 
         #[tokio::test]
@@ -832,7 +788,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=pending",
                 (v0_9_0::block::PENDING, 200),
             )]);
-            client.block(BlockId::Pending).await.unwrap();
+            client.block(BlockId::Pending, false).await.unwrap();
         }
 
         #[test_log::test(tokio::test)]
@@ -842,7 +798,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_HASH))
+                .block(BlockId::from(INVALID_BLOCK_HASH), false)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -858,7 +814,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_NUMBER))
+                .block(BlockId::from(INVALID_BLOCK_NUMBER), false)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -885,7 +841,7 @@ mod tests {
             let expected_version = StarknetVersion::new(0, 9, 1);
 
             let version = client
-                .block(BlockNumber::new_or_panic(300000).into())
+                .block(BlockNumber::new_or_panic(300000).into(), false)
                 .await
                 .unwrap()
                 .as_block()
@@ -893,7 +849,7 @@ mod tests {
                 .starknet_version;
             assert_eq!(version, expected_version);
 
-            let block = client.block(BlockId::Pending).await.unwrap();
+            let block = client.block(BlockId::Pending, false).await.unwrap();
             assert_matches!(block, MaybePendingBlock::Pending(_));
         }
     }

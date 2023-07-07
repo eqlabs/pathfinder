@@ -62,8 +62,7 @@ impl Cached {
                 tokio::spawn(async move {
                     use starknet_gateway_types::reply::MaybePendingBlock;
                     let gas_price = match gateway
-                        // Don't indefinitely retry as this could block the RPC request.
-                        .block_without_retry(pathfinder_common::BlockId::Pending)
+                        .block(pathfinder_common::BlockId::Pending, false)
                         .await
                     {
                         Ok(b) => match b {

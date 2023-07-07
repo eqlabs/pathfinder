@@ -432,7 +432,7 @@ async fn download_block(
         // Reuse a finalized block downloaded before pending mode exited
         Some(block) if block.block_number == block_number => Ok(MaybePendingBlock::Block(block)),
         // Bad luck or poll pending is disabled
-        Some(_) | None => sequencer.block(block_number.into()).await,
+        Some(_) | None => sequencer.block(block_number.into(), false).await,
     };
 
     let result = match result {
@@ -475,7 +475,7 @@ async fn download_block(
             // a reorg hasn't put us too far in the future. This does run into race conditions with
             // the sequencer but this is the best we can do I think.
             let latest = sequencer
-                .block(BlockId::Latest)
+                .block(BlockId::Latest, false)
                 .await
                 .context("Query sequencer for latest block")?
                 .as_block()
@@ -816,10 +816,10 @@ mod tests {
             use mockall::predicate::eq;
 
             mock.expect_block()
-                .with(eq(block))
+                .with(eq(block), eq(false))
                 .times(1)
                 .in_sequence(seq)
-                .return_once(move |_| returned_result);
+                .return_once(move |_, _| returned_result);
         }
 
         /// Convenience wrapper
