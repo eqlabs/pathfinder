@@ -113,7 +113,8 @@ impl From<starknet_gateway_types::reply::Status> for TransactionStatus {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, felt_bytes};
+
+    use pathfinder_common::macro_prelude::*;
 
     use super::*;
 
@@ -121,7 +122,7 @@ mod tests {
     async fn l1_accepted() {
         let context = RpcContext::for_tests();
         // This transaction is in block 0 which is L1 accepted.
-        let tx_hash = TransactionHash(felt_bytes!(b"txn 0"));
+        let tx_hash = transaction_hash_bytes!(b"txn 0");
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
@@ -134,7 +135,7 @@ mod tests {
     async fn l2_accepted() {
         let context = RpcContext::for_tests();
         // This transaction is in block 1 which is not L1 accepted.
-        let tx_hash = TransactionHash(felt_bytes!(b"txn 1"));
+        let tx_hash = transaction_hash_bytes!(b"txn 1");
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
@@ -146,7 +147,7 @@ mod tests {
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
-        let tx_hash = TransactionHash(felt_bytes!(b"pending tx hash 0"));
+        let tx_hash = transaction_hash_bytes!(b"pending tx hash 0");
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
@@ -158,10 +159,10 @@ mod tests {
     #[tokio::test]
     async fn rejected() {
         let input = GetGatewayTransactionInput {
-            transaction_hash: TransactionHash(felt!(
-                // Transaction hash known to be rejected by the testnet gateway.
+            // Transaction hash known to be rejected by the testnet gateway.
+            transaction_hash: transaction_hash!(
                 "0x07c64b747bdb0831e7045925625bfa6309c422fded9527bacca91199a1c8d212"
-            )),
+            ),
         };
         let context = RpcContext::for_tests();
         let status = get_transaction_status(context, input).await.unwrap();

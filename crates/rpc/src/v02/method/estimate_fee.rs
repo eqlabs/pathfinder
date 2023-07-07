@@ -63,9 +63,9 @@ pub async fn estimate_fee(
 pub(crate) mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHash, CallParam, Chain, ContractAddress, Fee, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        BlockHash, Chain, ContractAddress, Fee, TransactionNonce, TransactionVersion,
     };
     use pathfinder_storage::JournalMode;
     use std::path::PathBuf;
@@ -77,11 +77,11 @@ pub(crate) mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 crate::v02::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    max_fee: Fee(felt!("0x6")),
-                    signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                    nonce: TransactionNonce(felt!("0x8")),
-                    sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                    calldata: vec![CallParam(felt!("0xff"))],
+                    max_fee: fee!("0x6"),
+                    signature: vec![transaction_signature_elem!("0x7")],
+                    nonce: transaction_nonce!("0x8"),
+                    sender_address: contract_address!("0xaaa"),
+                    calldata: vec![call_param!("0xff")],
                 },
             ))
         }
@@ -111,7 +111,7 @@ pub(crate) mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -141,7 +141,7 @@ pub(crate) mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: test_invoke_txn(),
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -158,15 +158,13 @@ pub(crate) mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{
-            felt_bytes, BlockNumber, CasmHash, ContractNonce, ContractRoot, GasPrice,
-        };
+        use pathfinder_common::{BlockNumber, ContractNonce, ContractRoot, GasPrice};
         use pathfinder_storage::Storage;
 
         // Mainnet block number 5
-        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(BlockHash(felt!(
+        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
             "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
-        )));
+        ));
 
         pub(crate) fn valid_invoke_v1(account_address: ContractAddress) -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
@@ -214,22 +212,22 @@ pub(crate) mod tests {
                         // )
                         //
                         // Called contract address, i.e. AccountCallArray::to
-                        CallParam(felt!(
+                        call_param!(
                             "05a02acdbf218464be3dd787df7a302f71fab586cad5588410ba88b3ed7b3a21"
-                        )),
+                        ),
                         // Entry point selector for the called contract, i.e. AccountCallArray::selector
-                        CallParam(felt!(
+                        call_param!(
                             "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
-                        )),
+                        ),
                         // Length of the call data for the called contract, i.e. AccountCallArray::data_len
-                        CallParam(felt!("2")),
+                        call_param!("2"),
                         // Proper calldata for this contract
-                        CallParam(felt!(
+                        call_param!(
                             "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
-                        )),
-                        CallParam(felt!(
+                        ),
+                        call_param!(
                             "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
-                        )),
+                        ),
                     ],
                 },
             ))
@@ -324,7 +322,7 @@ pub(crate) mod tests {
             //
             // "Deploy"
             //
-            let contract_address = ContractAddress::new_or_panic(felt_bytes!(b"account"));
+            let contract_address = contract_address_bytes!(b"account");
             let contract_root = ContractRoot::ZERO;
             let contract_nonce = ContractNonce::ZERO;
             let contract_state_hash =
@@ -368,7 +366,7 @@ pub(crate) mod tests {
                 .with_storage_commitment(new_storage_commitment)
                 .with_gas_price(gas_price)
                 .with_calculated_state_commitment()
-                .finalize_with_hash(BlockHash(felt_bytes!(b"latest block")));
+                .finalize_with_hash(block_hash_bytes!(b"latest block"));
             db_txn.insert_block_header(&new_header).unwrap();
 
             let state_update = new_header
@@ -392,7 +390,7 @@ pub(crate) mod tests {
 
             let input = EstimateFeeInput {
                 request: valid_invoke_v1(account_address),
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"nonexistent")),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));
@@ -406,7 +404,7 @@ pub(crate) mod tests {
             let input = EstimateFeeInput {
                 request: BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                     BroadcastedInvokeTransactionV1 {
-                        sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+                        sender_address: contract_address!("0xdeadbeef"),
                         ..valid_invoke_v1(account_address)
                             .into_invoke()
                             .unwrap()
@@ -489,9 +487,9 @@ pub(crate) mod tests {
                     sender_address: account_address,
                     // Taken from
                     // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=289143
-                    compiled_class_hash: CasmHash::new_or_panic(felt!(
+                    compiled_class_hash: casm_hash!(
                         "0xf2056a217cc9cabef54d4b1bceea5a3e8625457cb393698ba507259ed6f3c"
-                    )),
+                    ),
                 }),
             );
 

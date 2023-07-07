@@ -164,28 +164,27 @@ mod tests {
 
     use super::poll_pending;
     use assert_matches::assert_matches;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, BlockTimestamp, Chain, ContractAddress,
-        ContractNonce, EntryPoint, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
-        StateUpdate, StorageAddress, StorageValue, TransactionHash, TransactionNonce,
-        TransactionVersion,
+        BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice, StarknetVersion, StateCommitment,
+        StateUpdate, TransactionVersion,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;
     use starknet_gateway_types::reply::transaction::L1HandlerTransaction;
     use starknet_gateway_types::reply::{Block, MaybePendingBlock, PendingBlock, Status};
 
-    lazy_static::lazy_static!(
-        pub static ref PARENT_HASH: BlockHash =  BlockHash(felt!("0x1234"));
-        pub static ref PARENT_ROOT: StateCommitment = StateCommitment(felt_bytes!(b"parent root"));
+    const PARENT_HASH: BlockHash = block_hash!("0x1234");
+    const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
 
+    lazy_static::lazy_static!(
         pub static ref NEXT_BLOCK: Block = Block{
-            block_hash: BlockHash(felt!("0xabcd")),
+            block_hash: block_hash!("0xabcd"),
             block_number: BlockNumber::new_or_panic(1),
             gas_price: None,
-            parent_block_hash: *PARENT_HASH,
+            parent_block_hash: PARENT_HASH,
             sequencer_address: None,
-            state_commitment: *PARENT_ROOT,
+            state_commitment: PARENT_ROOT,
             status: Status::AcceptedOnL2,
             timestamp: BlockTimestamp::new_or_panic(10),
             transaction_receipts: Vec::new(),
@@ -194,24 +193,24 @@ mod tests {
         };
 
         pub static ref PENDING_UPDATE: StateUpdate = {
-            StateUpdate::default().with_parent_state_commitment(*PARENT_ROOT)
+            StateUpdate::default().with_parent_state_commitment(PARENT_ROOT)
         };
 
         pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
             gas_price: GasPrice(11),
             parent_hash: NEXT_BLOCK.parent_block_hash,
-            sequencer_address: SequencerAddress(felt_bytes!(b"seqeunecer address")),
+            sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
             status: Status::Pending,
             timestamp: BlockTimestamp::new_or_panic(20),
             transaction_receipts: Vec::new(),
             transactions: vec![
                 starknet_gateway_types::reply::transaction::Transaction::L1Handler(
                     L1HandlerTransaction {
-                        contract_address: ContractAddress::new_or_panic(felt!("0x1")),
-                        entry_point_selector: EntryPoint(felt!("0x55")),
-                        nonce: TransactionNonce(felt!("0x2")),
+                        contract_address: contract_address!("0x1"),
+                        entry_point_selector: entry_point!("0x55"),
+                        nonce: transaction_nonce!("0x2"),
                         calldata: Vec::new(),
-                        transaction_hash: TransactionHash(felt!("0x22")),
+                        transaction_hash: transaction_hash!("0x22"),
                         version: TransactionVersion::ONE,
                     },
                 )
@@ -243,7 +242,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -269,7 +268,7 @@ mod tests {
         let full_diff = PENDING_UPDATE
             .clone()
             .with_block_hash(NEXT_BLOCK.block_hash)
-            .with_state_commitment(StateCommitment(felt!("0x12")));
+            .with_state_commitment(state_commitment!("0x12"));
         let full_diff_copy = full_diff.clone();
 
         sequencer
@@ -284,7 +283,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -307,7 +306,7 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         let mut pending_block = PENDING_BLOCK.clone();
-        pending_block.parent_hash = BlockHash(felt!("0xFFFFFF"));
+        pending_block.parent_hash = block_hash!("0xFFFFFF");
         sequencer
             .expect_block()
             .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));
@@ -320,7 +319,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -346,7 +345,7 @@ mod tests {
 
         let disconnected_diff = PENDING_UPDATE
             .clone()
-            .with_parent_state_commitment(StateCommitment(felt_bytes!(b"different old root")));
+            .with_parent_state_commitment(state_commitment_bytes!(b"different old root"));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(disconnected_diff.clone()));
@@ -356,7 +355,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -388,7 +387,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -418,11 +417,11 @@ mod tests {
         b0.transactions.push(
             starknet_gateway_types::reply::transaction::Transaction::L1Handler(
                 L1HandlerTransaction {
-                    contract_address: ContractAddress::new_or_panic(felt!("0x1")),
-                    entry_point_selector: EntryPoint(felt!("0x55")),
-                    nonce: TransactionNonce(felt!("0x2")),
+                    contract_address: contract_address!("0x1"),
+                    entry_point_selector: entry_point!("0x55"),
+                    nonce: transaction_nonce!("0x2"),
                     calldata: Vec::new(),
-                    transaction_hash: TransactionHash(felt!("0x22")),
+                    transaction_hash: transaction_hash!("0x22"),
                     version: TransactionVersion::ONE,
                 },
             ),
@@ -433,11 +432,11 @@ mod tests {
         b1.transactions.push(
             starknet_gateway_types::reply::transaction::Transaction::L1Handler(
                 L1HandlerTransaction {
-                    contract_address: ContractAddress::new_or_panic(felt!("0x1")),
-                    entry_point_selector: EntryPoint(felt!("0x55")),
-                    nonce: TransactionNonce(felt!("0x2")),
+                    contract_address: contract_address!("0x1"),
+                    entry_point_selector: entry_point!("0x55"),
+                    nonce: transaction_nonce!("0x2"),
                     calldata: Vec::new(),
-                    transaction_hash: TransactionHash(felt!("0x22")),
+                    transaction_hash: transaction_hash!("0x22"),
                     version: TransactionVersion::ONE,
                 },
             ),
@@ -467,7 +466,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),
@@ -500,16 +499,15 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         let b0 = PENDING_UPDATE.clone().with_storage_update(
-            ContractAddress::new_or_panic(felt!("0x1")),
-            StorageAddress::new_or_panic(felt!("0x2")),
-            StorageValue(felt!("0x123")),
+            contract_address!("0x1"),
+            storage_address!("0x2"),
+            storage_value!("0x123"),
         );
         let b0_copy = b0.clone();
 
-        let b1 = b0.clone().with_contract_nonce(
-            ContractAddress::new_or_panic(felt!("0x1")),
-            ContractNonce(felt!("0x99")),
-        );
+        let b1 = b0
+            .clone()
+            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x99"));
         let b1_copy = b1.clone();
 
         lazy_static::lazy_static!(
@@ -535,7 +533,7 @@ mod tests {
             poll_pending(
                 tx,
                 sequencer,
-                (*PARENT_HASH, *PARENT_ROOT),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Chain::Testnet,
                 Storage::in_memory().unwrap(),

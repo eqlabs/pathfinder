@@ -70,6 +70,7 @@ pub struct SyncingStatus {
 mod tests {
     use super::SyncingOuput;
     use crate::context::RpcContext;
+    use pathfinder_common::macro_prelude::*;
     mod serde {
         use super::super::{SyncingOuput, SyncingStatus};
 
@@ -81,15 +82,16 @@ mod tests {
 
         #[test]
         fn syncing() {
-            use pathfinder_common::{felt, BlockHash, BlockNumber};
+            use super::*;
+            use pathfinder_common::BlockNumber;
 
             let status = SyncingStatus {
                 starting_block_num: BlockNumber::new_or_panic(0x12),
                 current_block_num: BlockNumber::new_or_panic(0x45),
                 highest_block_num: BlockNumber::new_or_panic(0x772),
-                starting_block_hash: BlockHash(felt!("0xabcdef")),
-                current_block_hash: BlockHash(felt!("0x12345677")),
-                highest_block_hash: BlockHash(felt!("0x1144ffaacc")),
+                starting_block_hash: block_hash!("0xabcdef"),
+                current_block_hash: block_hash!("0x12345677"),
+                highest_block_hash: block_hash!("0x1144ffaacc"),
             };
             let value = SyncingOuput::Status(status);
             let json = serde_json::to_value(value).unwrap();
@@ -112,7 +114,7 @@ mod tests {
         use crate::v02::types::syncing::NumberedBlock;
         use crate::v02::types::syncing::Status as V2Status;
         use crate::v02::types::syncing::Syncing as V2Syncing;
-        use pathfinder_common::{BlockHash, BlockNumber};
+        use pathfinder_common::BlockNumber;
 
         let status = V2Syncing::Status(V2Status {
             starting: NumberedBlock::from(("aabb", 1)),
@@ -124,9 +126,9 @@ mod tests {
             starting_block_num: BlockNumber::new_or_panic(1),
             current_block_num: BlockNumber::new_or_panic(2),
             highest_block_num: BlockNumber::new_or_panic(3),
-            starting_block_hash: BlockHash(pathfinder_common::felt!("0xaabb")),
-            current_block_hash: BlockHash(pathfinder_common::felt!("0xccddee")),
-            highest_block_hash: BlockHash(pathfinder_common::felt!("0xeeffaacc")),
+            starting_block_hash: block_hash!("0xaabb"),
+            current_block_hash: block_hash!("0xccddee"),
+            highest_block_hash: block_hash!("0xeeffaacc"),
         };
         let expected = SyncingOuput::Status(expected);
 

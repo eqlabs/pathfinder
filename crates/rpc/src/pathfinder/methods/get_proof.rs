@@ -257,7 +257,7 @@ pub async fn get_proof(
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, ContractAddress};
+    use pathfinder_common::macro_prelude::*;
 
     use super::*;
 
@@ -266,7 +266,7 @@ mod tests {
         let context = RpcContext::for_tests();
         let input = GetProofInput {
             block_id: BlockId::Latest,
-            contract_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            contract_address: contract_address!("0xdeadbeef"),
             keys: (0..10_000)
                 .map(|idx| StorageAddress::new_or_panic(Felt::from_u64(idx)))
                 .collect(),

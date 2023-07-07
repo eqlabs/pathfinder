@@ -93,11 +93,9 @@ async fn get_pending_nonce(
 mod tests {
     use super::{get_nonce, GetNonceError, GetNonceInput};
     use crate::context::RpcContext;
-    use pathfinder_common::{felt, felt_bytes, StarknetVersion};
-    use pathfinder_common::{
-        BlockHash, BlockId, BlockNumber, BlockTimestamp, ContractAddress, ContractNonce, GasPrice,
-        SequencerAddress,
-    };
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::StarknetVersion;
+    use pathfinder_common::{BlockId, BlockNumber, BlockTimestamp, ContractNonce, GasPrice};
 
     mod parsing {
         use super::*;
@@ -114,8 +112,8 @@ mod tests {
 
             let input = positional.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
+                block_id: block_hash!("0xabcde").into(),
+                contract_address: contract_address!("0x12345"),
             };
             assert_eq!(input, expected);
         }
@@ -132,8 +130,8 @@ mod tests {
 
             let input = named.parse::<GetNonceInput>().unwrap();
             let expected = GetNonceInput {
-                block_id: BlockHash(felt!("0xabcde")).into(),
-                contract_address: ContractAddress::new_or_panic(felt!("0x12345")),
+                block_id: block_hash!("0xabcde").into(),
+                contract_address: contract_address!("0x12345"),
             };
             assert_eq!(input, expected);
         }
@@ -148,7 +146,7 @@ mod tests {
 
             let input = GetNonceInput {
                 block_id: BlockId::Latest,
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(b"invalid")),
+                contract_address: contract_address_bytes!(b"invalid"),
             };
 
             let result = get_nonce(context, input).await;
@@ -158,14 +156,12 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use pathfinder_common::BlockHash;
-
             let context = RpcContext::for_tests();
 
             let input = GetNonceInput {
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"invalid"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"invalid")),
                 // This contract does exist and is added in block 0.
-                contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+                contract_address: contract_address_bytes!(b"contract 0"),
             };
 
             let result = get_nonce(context, input).await;
@@ -181,10 +177,10 @@ mod tests {
         // This contract is created in `setup_storage` and has a nonce set to 0x1.
         let input = GetNonceInput {
             block_id: BlockId::Latest,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+            contract_address: contract_address_bytes!(b"contract 0"),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce.0, ContractNonce(felt!("0x1")));
+        assert_eq!(nonce.0, contract_nonce!("0x1"));
     }
 
     #[tokio::test]
@@ -195,10 +191,10 @@ mod tests {
         // but only gets nonce=0x10 explicitly set in block 2.
         let input = GetNonceInput {
             block_id: BlockNumber::new_or_panic(2).into(),
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
+            contract_address: contract_address_bytes!(b"contract 1"),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce.0, ContractNonce(felt!("0x10")));
+        assert_eq!(nonce.0, contract_nonce!("0x10"));
     }
 
     #[tokio::test]
@@ -209,10 +205,10 @@ mod tests {
         // overwritten in pending (since this test does not specify any pending data).
         let input = GetNonceInput {
             block_id: BlockId::Pending,
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 0")),
+            contract_address: contract_address_bytes!(b"contract 0"),
         };
         let nonce = get_nonce(context, input).await.unwrap();
-        assert_eq!(nonce.0, ContractNonce(felt!("0x1")));
+        assert_eq!(nonce.0, contract_nonce!("0x1"));
     }
 
     #[tokio::test]
@@ -223,7 +219,7 @@ mod tests {
         // but only gets a nonce explicitly set in block 2.
         let input = GetNonceInput {
             block_id: BlockNumber::new_or_panic(1).into(),
-            contract_address: ContractAddress::new_or_panic(felt_bytes!(b"contract 1")),
+            contract_address: contract_address_bytes!(b"contract 1"),
         };
         let nonce = get_nonce(context, input).await.unwrap();
 
@@ -236,17 +232,17 @@ mod tests {
         use std::sync::Arc;
 
         // The data this test actually cares about
-        let valid_1 = ContractAddress::new_or_panic(felt_bytes!(b"i am valid"));
-        let valid_2 = ContractAddress::new_or_panic(felt_bytes!(b"valid as well"));
-        let nonce_1 = ContractNonce(felt_bytes!(b"the nonce"));
-        let nonce_2 = ContractNonce(felt_bytes!(b"other nonce"));
-        let invalid = ContractAddress::new_or_panic(felt_bytes!(b"not valid"));
+        let valid_1 = contract_address_bytes!(b"i am valid");
+        let valid_2 = contract_address_bytes!(b"valid as well");
+        let nonce_1 = contract_nonce_bytes!(b"the nonce");
+        let nonce_2 = contract_nonce_bytes!(b"other nonce");
+        let invalid = contract_address_bytes!(b"not valid");
 
         // We don't care about this data, but it is required for setting up pending data.
         let block = starknet_gateway_types::reply::PendingBlock {
             gas_price: GasPrice(0),
-            parent_hash: BlockHash(felt_bytes!(b"dont care")),
-            sequencer_address: SequencerAddress(felt_bytes!(b"dont care")),
+            parent_hash: block_hash_bytes!(b"dont care"),
+            sequencer_address: sequencer_address_bytes!(b"dont care"),
             status: starknet_gateway_types::reply::Status::Pending,
             timestamp: BlockTimestamp::new_or_panic(1234),
             transaction_receipts: Vec::new(),

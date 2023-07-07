@@ -162,12 +162,11 @@ impl Default for SyncState {
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     use pathfinder_common::event::Event;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash,
-        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
-        EthereumAddress, EventData, EventKey, GasPrice, L2ToL1MessagePayloadElem, SequencerAddress,
-        SierraHash, StarknetVersion, StateUpdate, StorageAddress, StorageCommitment,
-        TransactionHash, TransactionIndex, TransactionVersion,
+        BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
+        GasPrice, SierraHash, StarknetVersion, StateUpdate, StorageCommitment, TransactionIndex,
+        TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
@@ -187,59 +186,58 @@ pub mod test_utils {
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
-        use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
         let storage = Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let db_txn = connection.transaction().unwrap();
 
-        let class_commitment0 = ClassCommitment(felt_bytes!(b"class commitment 0"));
-        let class_commitment1 = ClassCommitment(felt_bytes!(b"class commitment 1"));
-        let class_commitment2 = ClassCommitment(felt_bytes!(b"class commitment 2"));
+        let class_commitment0 = class_commitment_bytes!(b"class commitment 0");
+        let class_commitment1 = class_commitment_bytes!(b"class commitment 1");
+        let class_commitment2 = class_commitment_bytes!(b"class commitment 2");
 
-        let contract0_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 0"));
-        let contract1_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 1"));
-        let contract2_addr = ContractAddress::new_or_panic(felt_bytes!(b"contract 2 (sierra)"));
+        let contract0_addr = contract_address_bytes!(b"contract 0");
+        let contract1_addr = contract_address_bytes!(b"contract 1");
+        let contract2_addr = contract_address_bytes!(b"contract 2 (sierra)");
 
-        let class0_hash = ClassHash(felt_bytes!(b"class 0 hash"));
-        let class1_hash = ClassHash(felt_bytes!(b"class 1 hash"));
-        let class2_hash = ClassHash(felt_bytes!(b"class 2 hash (sierra)"));
-        let class_hash_pending = ClassHash(felt_bytes!(b"class pending hash"));
+        let class0_hash = class_hash_bytes!(b"class 0 hash");
+        let class1_hash = class_hash_bytes!(b"class 1 hash");
+        let class2_hash = class_hash_bytes!(b"class 2 hash (sierra)");
+        let class_hash_pending = class_hash_bytes!(b"class pending hash");
 
-        let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
+        let storage_addr = storage_address_bytes!(b"storage addr 0");
 
         let state_update0 = StateUpdate::default()
             .with_deployed_contract(contract0_addr, class0_hash)
-            .with_contract_nonce(contract0_addr, ContractNonce(felt!("0x1")));
+            .with_contract_nonce(contract0_addr, contract_nonce!("0x1"));
 
         let state_update1 = StateUpdate::default()
             .with_deployed_contract(contract1_addr, class1_hash)
             .with_storage_update(
                 contract1_addr,
                 storage_addr,
-                StorageValue(felt_bytes!(b"storage value 1")),
+                storage_value_bytes!(b"storage value 1"),
             );
 
         let state_update2 = StateUpdate::default()
             .with_deployed_contract(contract2_addr, class2_hash)
-            .with_contract_nonce(contract1_addr, ContractNonce(felt!("0x10")))
-            .with_contract_nonce(contract2_addr, ContractNonce(felt!("0xfeed")))
+            .with_contract_nonce(contract1_addr, contract_nonce!("0x10"))
+            .with_contract_nonce(contract2_addr, contract_nonce!("0xfeed"))
             .with_storage_update(
                 contract1_addr,
                 storage_addr,
-                StorageValue(felt_bytes!(b"storage value 2")),
+                storage_value_bytes!(b"storage value 2"),
             );
 
         let contract0_update = HashMap::new();
 
-        let storage_addr = StorageAddress::new_or_panic(felt_bytes!(b"storage addr 0"));
+        let storage_addr = storage_address_bytes!(b"storage addr 0");
         let contract1_update0 =
-            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 0")))]);
+            HashMap::from([(storage_addr, storage_value_bytes!(b"storage value 0"))]);
         let contract1_update1 =
-            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 1")))]);
+            HashMap::from([(storage_addr, storage_value_bytes!(b"storage value 1"))]);
         let contract1_update2 =
-            HashMap::from([(storage_addr, StorageValue(felt_bytes!(b"storage value 2")))]);
+            HashMap::from([(storage_addr, storage_value_bytes!(b"storage value 2"))]);
 
         let class0_definition =
             starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION.to_vec();
@@ -257,7 +255,7 @@ pub mod test_utils {
             .insert_sierra_class(
                 &SierraHash(class2_hash.0),
                 &sierra_class_definition,
-                &CasmHash(felt_bytes!(b"non-existent")),
+                &casm_hash_bytes!(b"non-existent"),
                 &[],
                 "compiler version 123",
             )
@@ -271,7 +269,7 @@ pub mod test_utils {
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
-            Some(ContractNonce(felt!("0x1"))),
+            Some(contract_nonce!("0x1")),
             Some(class0_hash),
             &storage_commitment_tree,
             &db_txn,
@@ -321,7 +319,7 @@ pub mod test_utils {
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
-            Some(ContractNonce(felt!("0x10"))),
+            Some(contract_nonce!("0x10")),
             None,
             &storage_commitment_tree,
             &db_txn,
@@ -333,7 +331,7 @@ pub mod test_utils {
         let contract_state_hash = update_contract_state(
             contract2_addr,
             &HashMap::new(),
-            Some(ContractNonce(felt!("0xfeed"))),
+            Some(contract_nonce!("0xfeed")),
             Some(class2_hash),
             &storage_commitment_tree,
             &db_txn,
@@ -352,7 +350,7 @@ pub mod test_utils {
             .with_storage_commitment(storage_commitment0)
             .with_class_commitment(class_commitment0)
             .with_calculated_state_commitment()
-            .finalize_with_hash(BlockHash(felt_bytes!(b"genesis")));
+            .finalize_with_hash(block_hash_bytes!(b"genesis"));
         let header1 = header0
             .child_builder()
             .with_timestamp(BlockTimestamp::new_or_panic(1))
@@ -360,8 +358,8 @@ pub mod test_utils {
             .with_class_commitment(class_commitment1)
             .with_calculated_state_commitment()
             .with_gas_price(GasPrice::from(1))
-            .with_sequencer_address(SequencerAddress(felt_bytes!(&[1u8])))
-            .finalize_with_hash(BlockHash(felt_bytes!(b"block 1")));
+            .with_sequencer_address(sequencer_address_bytes!(&[1u8]))
+            .finalize_with_hash(block_hash_bytes!(b"block 1"));
         let header2 = header1
             .child_builder()
             .with_timestamp(BlockTimestamp::new_or_panic(2))
@@ -369,14 +367,14 @@ pub mod test_utils {
             .with_class_commitment(class_commitment2)
             .with_calculated_state_commitment()
             .with_gas_price(GasPrice::from(2))
-            .with_sequencer_address(SequencerAddress(felt_bytes!(&[2u8])))
-            .finalize_with_hash(BlockHash(felt_bytes!(b"latest")));
+            .with_sequencer_address(sequencer_address_bytes!(&[2u8]))
+            .finalize_with_hash(block_hash_bytes!(b"latest"));
 
         db_txn.insert_block_header(&header0).unwrap();
         db_txn.insert_block_header(&header1).unwrap();
         db_txn.insert_block_header(&header2).unwrap();
 
-        let txn0_hash = TransactionHash(felt_bytes!(b"txn 0"));
+        let txn0_hash = transaction_hash_bytes!(b"txn 0");
         // TODO introduce other types of transactions too
         let txn0 = InvokeTransactionV0 {
             calldata: vec![],
@@ -402,12 +400,12 @@ pub mod test_utils {
             transaction_hash: txn0_hash,
             transaction_index: TransactionIndex::new_or_panic(0),
         };
-        let txn1_hash = TransactionHash(felt_bytes!(b"txn 1"));
-        let txn2_hash = TransactionHash(felt_bytes!(b"txn 2"));
-        let txn3_hash = TransactionHash(felt_bytes!(b"txn 3"));
-        let txn4_hash = TransactionHash(felt_bytes!(b"txn 4 "));
-        let txn5_hash = TransactionHash(felt_bytes!(b"txn 5"));
-        let txn6_hash = TransactionHash(felt_bytes!(b"txn 6"));
+        let txn1_hash = transaction_hash_bytes!(b"txn 1");
+        let txn2_hash = transaction_hash_bytes!(b"txn 2");
+        let txn3_hash = transaction_hash_bytes!(b"txn 3");
+        let txn4_hash = transaction_hash_bytes!(b"txn 4 ");
+        let txn5_hash = transaction_hash_bytes!(b"txn 5");
+        let txn6_hash = transaction_hash_bytes!(b"txn 6");
         let mut txn1 = txn0.clone();
         let mut txn2 = txn0.clone();
         let mut txn3 = txn0.clone();
@@ -440,20 +438,20 @@ pub mod test_utils {
         let mut receipt5 = receipt0.clone();
         let mut receipt6 = Receipt {
             l2_to_l1_messages: vec![L2ToL1Message {
-                from_address: ContractAddress::new_or_panic(felt!("0xcafebabe")),
+                from_address: contract_address!("0xcafebabe"),
                 payload: vec![
-                    L2ToL1MessagePayloadElem(felt!("0x1")),
-                    L2ToL1MessagePayloadElem(felt!("0x2")),
-                    L2ToL1MessagePayloadElem(felt!("0x3")),
+                    l2_to_l1_message_payload_elem!("0x1"),
+                    l2_to_l1_message_payload_elem!("0x2"),
+                    l2_to_l1_message_payload_elem!("0x3"),
                 ],
                 to_address: EthereumAddress(H160::zero()),
             }],
             ..receipt0.clone()
         };
         receipt0.events = vec![Event {
-            data: vec![EventData(felt_bytes!(b"event 0 data"))],
-            from_address: ContractAddress::new_or_panic(felt_bytes!(b"event 0 from addr")),
-            keys: vec![EventKey(felt_bytes!(b"event 0 key"))],
+            data: vec![event_data_bytes!(b"event 0 data")],
+            from_address: contract_address_bytes!(b"event 0 from addr"),
+            keys: vec![event_key_bytes!(b"event 0 key")],
         }];
         receipt1.transaction_hash = txn1_hash;
         receipt2.transaction_hash = txn2_hash;
@@ -501,8 +499,6 @@ pub mod test_utils {
     /// i.e. the pending block's parent hash will be the latest block's hash from storage,
     /// and similarly for the pending state diffs state root.
     pub async fn create_pending_data(storage: Storage) -> PendingData {
-        use pathfinder_common::StorageValue;
-
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
             let mut db = storage2.connection().unwrap();
@@ -518,22 +514,20 @@ pub mod test_utils {
         let transactions: Vec<Transaction> = vec![
             InvokeTransaction::V0(InvokeTransactionV0 {
                 calldata: vec![],
-                sender_address: ContractAddress::new_or_panic(felt_bytes!(
-                    b"pending contract addr 0"
-                )),
-                entry_point_selector: EntryPoint(felt_bytes!(b"entry point 0")),
+                sender_address: contract_address_bytes!(b"pending contract addr 0"),
+                entry_point_selector: entry_point_bytes!(b"entry point 0"),
                 entry_point_type: Some(EntryPointType::External),
                 max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
                 signature: vec![],
-                transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 0")),
+                transaction_hash: transaction_hash_bytes!(b"pending tx hash 0"),
             })
             .into(),
             DeployTransaction {
-                contract_address: ContractAddress::new_or_panic(felt!("0x1122355")),
-                contract_address_salt: ContractAddressSalt(felt_bytes!(b"salty")),
-                class_hash: ClassHash(felt_bytes!(b"pending class hash 1")),
+                contract_address: contract_address!("0x1122355"),
+                contract_address_salt: contract_address_salt_bytes!(b"salty"),
+                class_hash: class_hash_bytes!(b"pending class hash 1"),
                 constructor_calldata: vec![],
-                transaction_hash: TransactionHash(felt_bytes!(b"pending tx hash 1")),
+                transaction_hash: transaction_hash_bytes!(b"pending tx hash 1"),
                 version: TransactionVersion(H256::zero()),
             }
             .into(),
@@ -545,18 +539,18 @@ pub mod test_utils {
                 events: vec![
                     Event {
                         data: vec![],
-                        from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
-                        keys: vec![EventKey(felt_bytes!(b"pending key"))],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![event_key_bytes!(b"pending key")],
                     },
                     Event {
                         data: vec![],
-                        from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
-                        keys: vec![EventKey(felt_bytes!(b"pending key"))],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![event_key_bytes!(b"pending key")],
                     },
                     Event {
                         data: vec![],
-                        from_address: ContractAddress::new_or_panic(felt!("0xabcaaaaaaa")),
-                        keys: vec![EventKey(felt_bytes!(b"pending key 2"))],
+                        from_address: contract_address!("0xabcaaaaaaa"),
+                        keys: vec![event_key_bytes!(b"pending key 2")],
                     },
                 ],
                 execution_resources: Some(ExecutionResources {
@@ -591,7 +585,7 @@ pub mod test_utils {
         let block = starknet_gateway_types::reply::PendingBlock {
             gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
             parent_hash: latest.hash,
-            sequencer_address: SequencerAddress(felt_bytes!(b"pending sequencer address")),
+            sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
             status: starknet_gateway_types::reply::Status::Pending,
             timestamp: BlockTimestamp::new_or_panic(1234567),
             transaction_receipts,
@@ -599,30 +593,30 @@ pub mod test_utils {
             starknet_version: StarknetVersion::new(0, 11, 0),
         };
 
-        let contract1 = ContractAddress::new_or_panic(felt_bytes!(b"pending contract 1 address"));
+        let contract1 = contract_address_bytes!(b"pending contract 1 address");
         let state_update = StateUpdate::default()
             .with_parent_state_commitment(latest.state_commitment)
-            .with_declared_cairo_class(ClassHash(felt_bytes!(b"pending class 0 hash")))
-            .with_declared_cairo_class(ClassHash(felt_bytes!(b"pending class 1 hash")))
+            .with_declared_cairo_class(class_hash_bytes!(b"pending class 0 hash"))
+            .with_declared_cairo_class(class_hash_bytes!(b"pending class 1 hash"))
             .with_deployed_contract(
-                ContractAddress::new_or_panic(felt_bytes!(b"pending contract 0 address")),
-                ClassHash(felt_bytes!(b"pending class 0 hash")),
+                contract_address_bytes!(b"pending contract 0 address"),
+                class_hash_bytes!(b"pending class 0 hash"),
             )
-            .with_deployed_contract(contract1, ClassHash(felt_bytes!(b"pending class 1 hash")))
+            .with_deployed_contract(contract1, class_hash_bytes!(b"pending class 1 hash"))
             .with_storage_update(
                 contract1,
-                StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 0")),
-                StorageValue(felt_bytes!(b"pending storage value 0")),
+                storage_address_bytes!(b"pending storage key 0"),
+                storage_value_bytes!(b"pending storage value 0"),
             )
             .with_storage_update(
                 contract1,
-                StorageAddress::new_or_panic(felt_bytes!(b"pending storage key 1")),
-                StorageValue(felt_bytes!(b"pending storage value 1")),
+                storage_address_bytes!(b"pending storage key 1"),
+                storage_value_bytes!(b"pending storage value 1"),
             )
             // This is not a real contract and should be re-worked..
             .with_replaced_class(
-                ContractAddress::new_or_panic(felt_bytes!(b"pending contract 2 (replaced)")),
-                ClassHash(felt_bytes!(b"pending class 2 hash (replaced)")),
+                contract_address_bytes!(b"pending contract 2 (replaced)"),
+                class_hash_bytes!(b"pending class 2 hash (replaced)"),
             );
 
         // The class definitions must be inserted into the database.

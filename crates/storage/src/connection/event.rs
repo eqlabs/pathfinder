@@ -646,20 +646,14 @@ mod tests {
 
     use crate::test_utils;
     use assert_matches::assert_matches;
-    use pathfinder_common::{
-        felt, BlockHeader, BlockTimestamp, EntryPoint, EventData, Fee, SequencerAddress,
-        StateCommitment,
-    };
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockHeader, BlockTimestamp, EntryPoint, Fee};
 
     use starknet_gateway_types::reply::transaction as gateway_tx;
 
     #[test]
     fn event_data_serialization() {
-        let data = [
-            EventData(felt!("0x1")),
-            EventData(felt!("0x2")),
-            EventData(felt!("0x3")),
-        ];
+        let data = [event_data!("0x1"), event_data!("0x2"), event_data!("0x3")];
 
         let mut buffer = Vec::new();
         encode_event_data_to_bytes(&data, &mut buffer);
@@ -678,14 +672,14 @@ mod tests {
     #[test]
     fn event_keys_to_base64_strings() {
         let event = Event {
-            from_address: ContractAddress::new_or_panic(felt!(
+            from_address: contract_address!(
                 "06fbd460228d843b7fbef670ff15607bf72e19fa94de21e29811ada167b4ca39"
-            )),
+            ),
             data: vec![],
             keys: vec![
-                EventKey(felt!("0x901823")),
-                EventKey(felt!("0x901824")),
-                EventKey(felt!("0x901825")),
+                event_key!("0x901823"),
+                event_key!("0x901824"),
+                event_key!("0x901825"),
             ],
         };
 
@@ -711,7 +705,7 @@ mod tests {
             to_block: Some(expected_event.block_number),
             contract_address: Some(expected_event.from_address),
             // we're using a key which is present in _all_ events
-            keys: V02KeyFilter::new(vec![EventKey(felt!("0xdeadbeef"))]),
+            keys: V02KeyFilter::new(vec![event_key!("0xdeadbeef")]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -732,7 +726,6 @@ mod tests {
         // instead of transaction index.
         //
         // Events should be ordered by block number, transaction index, event index.
-        use pathfinder_common::TransactionHash;
 
         // All events we are storing, arbitrarily use from_address to distinguish them.
         let expected_events = (0u8..5)
@@ -746,10 +739,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         let header = BlockHeader::builder()
-            .with_sequencer_address(SequencerAddress(felt!("0x1234")))
+            .with_sequencer_address(sequencer_address!("0x1234"))
             .with_timestamp(BlockTimestamp::new_or_panic(0))
-            .with_state_commitment(StateCommitment(felt!("0x1234")))
-            .finalize_with_hash(BlockHash(felt!("0x1234")));
+            .with_state_commitment(state_commitment!("0x1234"))
+            .finalize_with_hash(block_hash!("0x1234"));
 
         // Note: hashes are reverse ordered to trigger the sorting bug.
         let transactions = vec![
@@ -762,7 +755,7 @@ mod tests {
                     entry_point_selector: EntryPoint(Felt::ZERO),
                     max_fee: Fee::ZERO,
                     signature: vec![],
-                    transaction_hash: TransactionHash(felt!("0xF")),
+                    transaction_hash: transaction_hash!("0xF"),
                 },
             )),
             gateway_tx::Transaction::Invoke(gateway_tx::InvokeTransaction::V0(
@@ -774,7 +767,7 @@ mod tests {
                     entry_point_selector: EntryPoint(Felt::ZERO),
                     max_fee: Fee::ZERO,
                     signature: vec![],
-                    transaction_hash: TransactionHash(felt!("0x1")),
+                    transaction_hash: transaction_hash!("0x1"),
                 },
             )),
         ];
@@ -1381,9 +1374,9 @@ mod tests {
         check_v03_filter(
                     vec![
                         vec![],
-                        vec![EventKey(felt!("01")), EventKey(felt!("02"))],
+                        vec![event_key!("01"), event_key!("02")],
                         vec![],
-                        vec![EventKey(felt!("01")), EventKey(felt!("03"))],
+                        vec![event_key!("01"), event_key!("03")],
                         vec![],
                     ],
                     Some("(\"AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC\" OR \"AEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE\") AND (\"AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC\" OR \"AMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG\")"),

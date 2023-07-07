@@ -63,6 +63,7 @@ pub async fn get_block_transaction_count(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHash, BlockNumber};
     use stark_hash::Felt;
 
@@ -98,7 +99,7 @@ mod tests {
         fn test_block_hash() {
             check(
                 "{ \"block_hash\": \"0xFACE\" }",
-                BlockId::Hash(BlockHash(pathfinder_common::felt!("0xface"))),
+                BlockId::Hash(block_hash!("0xface")),
             );
         }
     }
@@ -129,7 +130,7 @@ mod tests {
     #[tokio::test]
     async fn test_genesis() {
         let context = RpcContext::for_tests();
-        let block_id = BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"genesis")));
+        let block_id = BlockId::Hash(block_hash_bytes!(b"genesis"));
         check_count(context, block_id, 1).await;
     }
 

@@ -55,41 +55,35 @@ pub async fn add_invoke_transaction(
 mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransactionV1;
-    use pathfinder_common::{
-        felt, CallParam, ContractAddress, Fee, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
-    };
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::TransactionVersion;
 
     fn test_invoke_txn() -> Transaction {
         Transaction::Invoke(BroadcastedInvokeTransaction::V1(
             BroadcastedInvokeTransactionV1 {
                 version: TransactionVersion::ONE,
-                max_fee: Fee(felt!("0x4F388496839")),
+                max_fee: fee!("0x4F388496839"),
                 signature: vec![
-                    TransactionSignatureElem(felt!(
+                    transaction_signature_elem!(
                         "07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5"
-                    )),
-                    TransactionSignatureElem(felt!(
+                    ),
+                    transaction_signature_elem!(
                         "071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                    )),
+                    ),
                 ],
-                nonce: TransactionNonce(felt!("0x1")),
-                sender_address: ContractAddress::new_or_panic(felt!(
+                nonce: transaction_nonce!("0x1"),
+                sender_address: contract_address!(
                     "023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd"
-                )),
+                ),
                 calldata: vec![
-                    CallParam(felt!("0x1")),
-                    CallParam(felt!(
-                        "0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"
-                    )),
-                    CallParam(felt!(
-                        "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-                    )),
-                    CallParam(felt!("0x0")),
-                    CallParam(felt!("0x1")),
-                    CallParam(felt!("0x1")),
-                    CallParam(felt!("0x2b")),
-                    CallParam(felt!("0x0")),
+                    call_param!("0x1"),
+                    call_param!("0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1"),
+                    call_param!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"),
+                    call_param!("0x0"),
+                    call_param!("0x1"),
+                    call_param!("0x1"),
+                    call_param!("0x2b"),
+                    call_param!("0x0"),
                 ],
             },
         ))
@@ -179,31 +173,27 @@ mod tests {
         let context = RpcContext::for_tests();
         let input = BroadcastedInvokeTransactionV1 {
             version: TransactionVersion::ONE,
-            max_fee: Fee(felt!("0x630a0aff77")),
+            max_fee: fee!("0x630a0aff77"),
             signature: vec![
-                TransactionSignatureElem(felt!(
+                transaction_signature_elem!(
                     "07ccc81b438581c9360120e0ba0ef52c7d031bdf20a4c2bc3820391b29a8945f"
-                )),
-                TransactionSignatureElem(felt!(
+                ),
+                transaction_signature_elem!(
                     "02c11c60d11daaa0043eccdc824bb44f87bc7eb2e9c2437e1654876ab8fa7cad"
-                )),
+                ),
             ],
-            nonce: TransactionNonce(felt!("0x2")),
-            sender_address: ContractAddress::new_or_panic(felt!(
+            nonce: transaction_nonce!("0x2"),
+            sender_address: contract_address!(
                 "03fdcbeb68e607c8febf01d7ef274cbf68091a0bd1556c0b8f8e80d732f7850f"
-            )),
+            ),
             calldata: vec![
-                CallParam(felt!("0x1")),
-                CallParam(felt!(
-                    "01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"
-                )),
-                CallParam(felt!(
-                    "0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"
-                )),
-                CallParam(felt!("0x0")),
-                CallParam(felt!("0x1")),
-                CallParam(felt!("0x1")),
-                CallParam(felt!("0x1")),
+                call_param!("0x1"),
+                call_param!("01d809111da75d5e735b6f9573a1ddff78fb6ff7633a0b34273e0c5ddeae349a"),
+                call_param!("0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320"),
+                call_param!("0x0"),
+                call_param!("0x1"),
+                call_param!("0x1"),
+                call_param!("0x1"),
             ],
         };
 
@@ -211,9 +201,9 @@ mod tests {
             invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V1(input)),
         };
         let expected = AddInvokeTransactionOutput {
-            transaction_hash: TransactionHash(felt!(
+            transaction_hash: transaction_hash!(
                 "040397a2e590c9707d73cc63ec54683c2d155b65d2e990d6f53d48a395eb3997"
-            )),
+            ),
         };
 
         let result = add_invoke_transaction(context, input).await.unwrap();

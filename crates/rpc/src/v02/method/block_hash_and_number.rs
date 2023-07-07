@@ -48,6 +48,7 @@ pub async fn block_number(context: RpcContext) -> Result<BlockNumber, BlockNumbe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pathfinder_common::macro_prelude::*;
 
     #[tokio::test]
     async fn test_block_hash_and_number() {
@@ -55,9 +56,6 @@ mod tests {
         let result = block_hash_and_number(context).await.unwrap();
 
         assert_eq!(result.block_number, BlockNumber::new_or_panic(2));
-        assert_eq!(
-            result.block_hash,
-            BlockHash(pathfinder_common::felt_bytes!(b"latest"))
-        );
+        assert_eq!(result.block_hash, block_hash_bytes!(b"latest"));
     }
 }

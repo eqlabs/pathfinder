@@ -80,7 +80,8 @@ mod tests {
     use super::*;
 
     use crate::Storage;
-    use pathfinder_common::{felt, BlockHash, StateCommitment};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockHash, StateCommitment};
     use pathfinder_ethereum::EthereumStateUpdate;
     use stark_hash::Felt;
 
@@ -152,16 +153,16 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         let original = EthereumStateUpdate {
-            state_root: StateCommitment(felt!("0x1234")),
+            state_root: state_commitment!("0x1234"),
             block_number: BlockNumber::new_or_panic(10),
-            block_hash: BlockHash(felt!("0xabdd")),
+            block_hash: block_hash!("0xabdd"),
         };
         upsert_l1_state(&tx, &original).unwrap();
 
         let new_value = EthereumStateUpdate {
-            state_root: StateCommitment(felt!("0xabcdef")),
+            state_root: state_commitment!("0xabcdef"),
             block_number: original.block_number,
-            block_hash: BlockHash(felt!("0xccdd22")),
+            block_hash: block_hash!("0xccdd22"),
         };
         upsert_l1_state(&tx, &new_value).unwrap();
 

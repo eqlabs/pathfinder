@@ -20,7 +20,8 @@ pub(crate) use hash;
 /// Initializers for storage test fixtures.
 pub mod init {
     use super::*;
-    use pathfinder_common::{felt, BlockHeader, ClassCommitment, StorageCommitment};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockHeader, ClassCommitment, StorageCommitment};
 
     /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
@@ -37,7 +38,7 @@ pub mod init {
             .with_gas_price(GasPrice(2000))
             .with_sequencer_address(SequencerAddress(hash!(2, 0)))
             .with_calculated_state_commitment()
-            .finalize_with_hash(BlockHash(felt!("0xabcd")));
+            .finalize_with_hash(block_hash!("0xabcd"));
 
         let mut headers = vec![genesis];
         for i in 1..n {

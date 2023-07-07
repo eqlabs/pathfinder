@@ -194,11 +194,12 @@ pub(super) fn insert_class_commitment_leaf(
 mod tests {
     use super::*;
     use crate::Storage;
-    use pathfinder_common::{felt, felt_bytes};
+
+    use pathfinder_common::macro_prelude::*;
     use stark_hash::Felt;
 
     fn setup_class(transaction: &Transaction<'_>) -> (ClassHash, &'static [u8], serde_json::Value) {
-        let hash = ClassHash(felt!("0x123"));
+        let hash = class_hash!("0x123");
 
         let definition = br#"{"abi":{"see":"above"},"program":{"huge":"hash"},"entry_points_by_type":{"this might be a":"hash"}}"#;
 
@@ -217,7 +218,7 @@ mod tests {
         let transaction = connection.transaction().unwrap();
 
         let (hash, _, _) = setup_class(&transaction);
-        let non_existent = ClassHash(felt!("0x456"));
+        let non_existent = class_hash!("0x456");
 
         let result = super::classes_exist(&transaction, &[hash, non_existent]).unwrap();
         let expected = vec![true, false];
@@ -252,7 +253,7 @@ mod tests {
         let mut connection = Storage::in_memory().unwrap().connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        let cairo_hash = ClassHash(felt_bytes!(b"cairo hash"));
+        let cairo_hash = class_hash_bytes!(b"cairo hash");
         let cairo_definition = b"example cairo program";
 
         insert_cairo_class(&tx, cairo_hash, cairo_definition).unwrap();
@@ -267,8 +268,8 @@ mod tests {
         let mut connection = Storage::in_memory().unwrap().connection().unwrap();
         let tx = connection.transaction().unwrap();
 
-        let sierra_hash = SierraHash(felt_bytes!(b"sierra hash"));
-        let casm_hash = CasmHash(felt_bytes!(b"casm hash"));
+        let sierra_hash = sierra_hash_bytes!(b"sierra hash");
+        let casm_hash = casm_hash_bytes!(b"casm hash");
         let sierra_definition = b"example sierra program";
         let casm_definition = b"compiled sierra program";
         let version = "compiler version";

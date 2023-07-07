@@ -425,31 +425,30 @@ mod types {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use pathfinder_common::{
-            felt, EthereumAddress, EventData, EventKey, L2ToL1MessagePayloadElem,
-        };
+        use pathfinder_common::macro_prelude::*;
+        use pathfinder_common::EthereumAddress;
 
         #[test]
         fn receipt() {
             impl CommonTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: TransactionHash(felt!("0xdeadbeef")),
-                        actual_fee: Fee(felt!("0x1")),
+                        transaction_hash: transaction_hash!("0xdeadbeef"),
+                        actual_fee: fee!("0x1"),
                         status: TransactionStatus::AcceptedOnL1,
-                        block_hash: BlockHash(felt!("0xaaa")),
+                        block_hash: block_hash!("0xaaa"),
                         block_number: BlockNumber::new_or_panic(3),
                         messages_sent: vec![MessageToL1 {
                             from_address: None,
                             to_address: EthereumAddress(primitive_types::H160::from_low_u64_be(
                                 0x55,
                             )),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
+                            payload: vec![l2_to_l1_message_payload_elem!("0x6")],
                         }],
                         events: vec![Event {
-                            from_address: ContractAddress::new_or_panic(felt!("0xe6")),
-                            keys: vec![EventKey(felt!("0xe7"))],
-                            data: vec![EventData(felt!("0xe8"))],
+                            from_address: contract_address!("0xe6"),
+                            keys: vec![event_key!("0xe7")],
+                            data: vec![event_data!("0xe8")],
                         }],
                     }
                 }
@@ -458,19 +457,19 @@ mod types {
             impl CommonPendingTransactionReceiptProperties {
                 pub fn test_data() -> Self {
                     Self {
-                        transaction_hash: TransactionHash(felt!("0xfeedfeed")),
-                        actual_fee: Fee(felt!("0x2")),
+                        transaction_hash: transaction_hash!("0xfeedfeed"),
+                        actual_fee: fee!("0x2"),
                         messages_sent: vec![MessageToL1 {
                             from_address: None,
                             to_address: EthereumAddress(primitive_types::H160::from_low_u64_be(
                                 0x5,
                             )),
-                            payload: vec![L2ToL1MessagePayloadElem(felt!("0x6"))],
+                            payload: vec![l2_to_l1_message_payload_elem!("0x6")],
                         }],
                         events: vec![Event {
-                            from_address: ContractAddress::new_or_panic(felt!("0xa6")),
-                            keys: vec![EventKey(felt!("0xa7"))],
-                            data: vec![EventData(felt!("0xa8"))],
+                            from_address: contract_address!("0xa6"),
+                            keys: vec![event_key!("0xa7")],
+                            data: vec![event_data!("0xa8")],
                         }],
                     }
                 }
@@ -493,27 +492,27 @@ mod types {
                 // Somewhat redundant, but want to exhaust the variants
                 Normal(TransactionReceipt::Declare(DeclareTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt!("0xdeaf01")),
+                        transaction_hash: transaction_hash!("0xdeaf01"),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::L1Handler(L1HandlerTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt!("0xdeaf02")),
+                        transaction_hash: transaction_hash!("0xdeaf02"),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
                 })),
                 Normal(TransactionReceipt::Deploy(DeployTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt!("0xdeaf03")),
+                        transaction_hash: transaction_hash!("0xdeaf03"),
                         ..CommonTransactionReceiptProperties::test_data()
                     },
-                    contract_address: ContractAddress::new_or_panic(felt!("0xcc")),
+                    contract_address: contract_address!("0xcc"),
                 })),
                 Pending(PendingTransactionReceipt::Invoke(
                     PendingInvokeTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf11")),
+                            transaction_hash: transaction_hash!("0xdeaf11"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -521,7 +520,7 @@ mod types {
                 Pending(PendingTransactionReceipt::Declare(
                     PendingDeclareTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf12")),
+                            transaction_hash: transaction_hash!("0xdeaf12"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -529,7 +528,7 @@ mod types {
                 Pending(PendingTransactionReceipt::L1Handler(
                     PendingL1HandlerTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf13")),
+                            transaction_hash: transaction_hash!("0xdeaf13"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
                     },
@@ -537,10 +536,10 @@ mod types {
                 Pending(PendingTransactionReceipt::Deploy(
                     PendingDeployTransactionReceipt {
                         common: CommonPendingTransactionReceiptProperties {
-                            transaction_hash: TransactionHash(felt!("0xdeaf14")),
+                            transaction_hash: transaction_hash!("0xdeaf14"),
                             ..CommonPendingTransactionReceiptProperties::test_data()
                         },
-                        contract_address: ContractAddress::new_or_panic(felt!("0xdd")),
+                        contract_address: contract_address!("0xdd"),
                     },
                 )),
             ];
@@ -560,10 +559,8 @@ mod types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::{
-        felt, felt_bytes, BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData,
-        EventKey, Fee, L2ToL1MessagePayloadElem, TransactionHash,
-    };
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{BlockNumber, EthereumAddress, Fee};
     use primitive_types::H160;
 
     mod parsing {
@@ -582,7 +579,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: transaction_hash!("0xdeadbeef")
                 }
             )
         }
@@ -598,7 +595,7 @@ mod tests {
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
-                    transaction_hash: TransactionHash(felt!("0xdeadbeef"))
+                    transaction_hash: transaction_hash!("0xdeadbeef")
                 }
             )
         }
@@ -611,7 +608,7 @@ mod tests {
         async fn hash_not_found() {
             let context = RpcContext::for_tests();
             let input = GetTransactionReceiptInput {
-                transaction_hash: TransactionHash(felt_bytes!(b"non_existent")),
+                transaction_hash: transaction_hash_bytes!(b"non_existent"),
             };
 
             let result = get_transaction_receipt(context, input).await;
@@ -627,7 +624,7 @@ mod tests {
     async fn success() {
         let context = RpcContext::for_tests();
         let input = GetTransactionReceiptInput {
-            transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
+            transaction_hash: transaction_hash_bytes!(b"txn 0"),
         };
 
         let result = get_transaction_receipt(context, input).await.unwrap();
@@ -637,18 +634,16 @@ mod tests {
             MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt_bytes!(b"txn 0")),
+                        transaction_hash: transaction_hash_bytes!(b"txn 0"),
                         actual_fee: Fee::ZERO,
                         status: TransactionStatus::AcceptedOnL1,
-                        block_hash: BlockHash(felt_bytes!(b"genesis")),
+                        block_hash: block_hash_bytes!(b"genesis"),
                         block_number: BlockNumber::new_or_panic(0),
                         messages_sent: vec![],
                         events: vec![Event {
-                            data: vec![EventData(felt_bytes!(b"event 0 data"))],
-                            from_address: ContractAddress::new_or_panic(felt_bytes!(
-                                b"event 0 from addr"
-                            )),
-                            keys: vec![EventKey(felt_bytes!(b"event 0 key"))],
+                            data: vec![event_data_bytes!(b"event 0 data")],
+                            from_address: contract_address_bytes!(b"event 0 from addr"),
+                            keys: vec![event_key_bytes!(b"event 0 key")],
                         }],
                     }
                 }
@@ -660,7 +655,7 @@ mod tests {
     async fn success_v02() {
         let context = RpcContext::for_tests().with_version("v0.2");
         let input = GetTransactionReceiptInput {
-            transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+            transaction_hash: transaction_hash_bytes!(b"txn 6"),
         };
 
         let result = get_transaction_receipt(context, input).await.unwrap();
@@ -670,18 +665,18 @@ mod tests {
             MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+                        transaction_hash: transaction_hash_bytes!(b"txn 6"),
                         actual_fee: Fee::ZERO,
                         status: TransactionStatus::AcceptedOnL2,
-                        block_hash: BlockHash(felt_bytes!(b"latest")),
+                        block_hash: block_hash_bytes!(b"latest"),
                         block_number: BlockNumber::new_or_panic(2),
                         messages_sent: vec![MessageToL1 {
                             from_address: None, // RPC v0.2 does not have this field
                             to_address: EthereumAddress(H160::zero()),
                             payload: vec![
-                                L2ToL1MessagePayloadElem(felt!("0x1")),
-                                L2ToL1MessagePayloadElem(felt!("0x2")),
-                                L2ToL1MessagePayloadElem(felt!("0x3")),
+                                l2_to_l1_message_payload_elem!("0x1"),
+                                l2_to_l1_message_payload_elem!("0x2"),
+                                l2_to_l1_message_payload_elem!("0x3"),
                             ],
                         }],
                         events: vec![],
@@ -695,7 +690,7 @@ mod tests {
     async fn success_v03() {
         let context = RpcContext::for_tests().with_version("v0.3");
         let input = GetTransactionReceiptInput {
-            transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+            transaction_hash: transaction_hash_bytes!(b"txn 6"),
         };
 
         let result = get_transaction_receipt(context, input).await.unwrap();
@@ -705,18 +700,18 @@ mod tests {
             MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
                 InvokeTransactionReceipt {
                     common: CommonTransactionReceiptProperties {
-                        transaction_hash: TransactionHash(felt_bytes!(b"txn 6")),
+                        transaction_hash: transaction_hash_bytes!(b"txn 6"),
                         actual_fee: Fee::ZERO,
                         status: TransactionStatus::AcceptedOnL2,
-                        block_hash: BlockHash(felt_bytes!(b"latest")),
+                        block_hash: block_hash_bytes!(b"latest"),
                         block_number: BlockNumber::new_or_panic(2),
                         messages_sent: vec![MessageToL1 {
-                            from_address: Some(ContractAddress::new_or_panic(felt!("0xcafebabe"))),
+                            from_address: Some(contract_address!("0xcafebabe")),
                             to_address: EthereumAddress(H160::zero()),
                             payload: vec![
-                                L2ToL1MessagePayloadElem(felt!("0x1")),
-                                L2ToL1MessagePayloadElem(felt!("0x2")),
-                                L2ToL1MessagePayloadElem(felt!("0x3")),
+                                l2_to_l1_message_payload_elem!("0x1"),
+                                l2_to_l1_message_payload_elem!("0x2"),
+                                l2_to_l1_message_payload_elem!("0x3"),
                             ],
                         }],
                         events: vec![],
@@ -729,7 +724,7 @@ mod tests {
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests_with_pending().await;
-        let transaction_hash = TransactionHash(felt_bytes!(b"pending tx hash 0"));
+        let transaction_hash = transaction_hash_bytes!(b"pending tx hash 0");
         let input = GetTransactionReceiptInput { transaction_hash };
 
         let result = get_transaction_receipt(context, input).await.unwrap();
@@ -745,18 +740,18 @@ mod tests {
                         events: vec![
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
-                                keys: vec![EventKey(felt_bytes!(b"pending key"))],
+                                from_address: contract_address!("0xabcddddddd"),
+                                keys: vec![event_key_bytes!(b"pending key")],
                             },
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("0xabcddddddd")),
-                                keys: vec![EventKey(felt_bytes!(b"pending key"))],
+                                from_address: contract_address!("0xabcddddddd"),
+                                keys: vec![event_key_bytes!(b"pending key")],
                             },
                             Event {
                                 data: vec![],
-                                from_address: ContractAddress::new_or_panic(felt!("0xabcaaaaaaa")),
-                                keys: vec![EventKey(felt_bytes!(b"pending key 2"))],
+                                from_address: contract_address!("0xabcaaaaaaa"),
+                                keys: vec![event_key_bytes!(b"pending key 2")],
                             },
                         ],
                     }

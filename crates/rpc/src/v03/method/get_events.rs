@@ -492,6 +492,7 @@ mod tests {
     };
     use jsonrpsee::types::Params;
     use pathfinder_common::felt;
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_storage::test_utils;
     use pretty_assertions::assert_eq;
 
@@ -500,8 +501,8 @@ mod tests {
         let optional_present = EventFilter {
             from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
             to_block: Some(BlockId::Latest),
-            address: Some(ContractAddress::new_or_panic(felt!("0x1"))),
-            keys: vec![vec![EventKey(felt!("0x2"))], vec![]],
+            address: Some(contract_address!("0x1")),
+            keys: vec![vec![event_key!("0x2")], vec![]],
             chunk_size: 3,
             continuation_token: Some("4".to_string()),
         };
@@ -601,7 +602,7 @@ mod tests {
                 to_block: Some(expected_event.block_number.unwrap().into()),
                 address: Some(expected_event.from_address),
                 // we're using a key which is present in _all_ events
-                keys: vec![vec![], vec![EventKey(felt!("0xdeadbeef"))]],
+                keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
                 chunk_size: test_utils::NUM_EVENTS,
                 continuation_token: None,
             },
@@ -698,7 +699,7 @@ mod tests {
 
         let limit = pathfinder_storage::KEY_FILTER_LIMIT;
 
-        let keys = [vec![EventKey(felt!("01"))]]
+        let keys = [vec![event_key!("01")]]
             .iter()
             .cloned()
             .cycle()

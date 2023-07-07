@@ -1992,7 +1992,8 @@ mod tests {
     }
 
     mod block_chain {
-        use pathfinder_common::{felt, BlockHash, BlockNumber, StateCommitment};
+        use pathfinder_common::macro_prelude::*;
+        use pathfinder_common::BlockNumber;
 
         use crate::state::l2::BlockChain;
 
@@ -2003,18 +2004,18 @@ mod tests {
                 vec![
                     (
                         BlockNumber::new_or_panic(1),
-                        BlockHash(felt!("0x11")),
-                        StateCommitment(felt!("0x21")),
+                        block_hash!("0x11"),
+                        state_commitment!("0x21"),
                     ),
                     (
                         BlockNumber::new_or_panic(2),
-                        BlockHash(felt!("0x13")),
-                        StateCommitment(felt!("0x41")),
+                        block_hash!("0x13"),
+                        state_commitment!("0x41"),
                     ),
                     (
                         BlockNumber::new_or_panic(3),
-                        BlockHash(felt!("0x15")),
-                        StateCommitment(felt!("0x61")),
+                        block_hash!("0x15"),
+                        state_commitment!("0x61"),
                     ),
                 ],
             );
@@ -2024,8 +2025,8 @@ mod tests {
             assert!(uut.get(&BlockNumber::new_or_panic(3)).is_some());
             uut.push(
                 BlockNumber::new_or_panic(4),
-                BlockHash(felt!("0x17")),
-                StateCommitment(felt!("0x81")),
+                block_hash!("0x17"),
+                state_commitment!("0x81"),
             );
 
             assert!(uut.get(&BlockNumber::new_or_panic(1)).is_none());
@@ -2041,18 +2042,18 @@ mod tests {
                 vec![
                     (
                         BlockNumber::new_or_panic(1),
-                        BlockHash(felt!("0x11")),
-                        StateCommitment(felt!("0x21")),
+                        block_hash!("0x11"),
+                        state_commitment!("0x21"),
                     ),
                     (
                         BlockNumber::new_or_panic(2),
-                        BlockHash(felt!("0x13")),
-                        StateCommitment(felt!("0x41")),
+                        block_hash!("0x13"),
+                        state_commitment!("0x41"),
                     ),
                     (
                         BlockNumber::new_or_panic(3),
-                        BlockHash(felt!("0x15")),
-                        StateCommitment(felt!("0x61")),
+                        block_hash!("0x15"),
+                        state_commitment!("0x61"),
                     ),
                 ],
             );

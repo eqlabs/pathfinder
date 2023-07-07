@@ -455,13 +455,14 @@ pub(crate) use {named_params, params};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pathfinder_common::felt;
+
+    use pathfinder_common::macro_prelude::*;
 
     #[test]
     fn to_sql() {
         // Exercises to_sql! and params! in a roundtrip to and from storage trip.
 
-        let original = ClassHash(felt!("0xdeadbeef"));
+        let original = class_hash!("0xdeadbeef");
 
         let db = rusqlite::Connection::open_in_memory().unwrap();
         db.execute("CREATE TABLE test (data BLOB)", []).unwrap();

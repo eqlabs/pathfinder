@@ -58,10 +58,8 @@ pub async fn estimate_fee(
 mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
-    use pathfinder_common::{
-        felt, BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
-    };
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{Fee, TransactionNonce, TransactionVersion};
 
     mod parsing {
         use super::*;
@@ -70,11 +68,11 @@ mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 crate::v02::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    max_fee: Fee(felt!("0x6")),
-                    signature: vec![TransactionSignatureElem(felt!("0x7"))],
-                    nonce: TransactionNonce(felt!("0x8")),
-                    sender_address: ContractAddress::new_or_panic(felt!("0xaaa")),
-                    calldata: vec![CallParam(felt!("0xff"))],
+                    max_fee: fee!("0x6"),
+                    signature: vec![transaction_signature_elem!("0x7")],
+                    nonce: transaction_nonce!("0x8"),
+                    sender_address: contract_address!("0xaaa"),
+                    calldata: vec![call_param!("0xff")],
                 },
             ))
         }
@@ -106,7 +104,7 @@ mod tests {
             let input = positional.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -138,7 +136,7 @@ mod tests {
             let input = named_args.parse::<EstimateFeeInput>().unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
-                block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
+                block_id: BlockId::Hash(block_hash!("0xabcde")),
             };
             assert_eq!(input, expected);
         }
@@ -155,7 +153,6 @@ mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{felt_bytes, CasmHash};
 
         #[tokio::test]
         async fn no_such_block() {
@@ -164,7 +161,7 @@ mod tests {
 
             let input = EstimateFeeInput {
                 request: vec![valid_invoke_v1(account_address)],
-                block_id: BlockId::Hash(BlockHash(felt_bytes!(b"nonexistent"))),
+                block_id: BlockId::Hash(block_hash_bytes!(b"nonexistent")),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::BlockNotFound));
@@ -183,7 +180,7 @@ mod tests {
             let input = EstimateFeeInput {
                 request: vec![BroadcastedTransaction::Invoke(
                     BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
-                        sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+                        sender_address: contract_address!("0xdeadbeef"),
                         ..mainnet_invoke
                     }),
                 )],
@@ -201,7 +198,7 @@ mod tests {
             let transaction0 = valid_invoke_v1(account_address);
             let transaction1 = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 BroadcastedInvokeTransactionV1 {
-                    nonce: TransactionNonce(felt!("0x1")),
+                    nonce: transaction_nonce!("0x1"),
                     ..transaction0
                         .clone()
                         .into_invoke()
@@ -274,9 +271,9 @@ mod tests {
                     sender_address: account_address,
                     // Taken from
                     // https://external.integration.starknet.io/feeder_gateway/get_state_update?blockNumber=289143
-                    compiled_class_hash: CasmHash::new_or_panic(felt!(
+                    compiled_class_hash: casm_hash!(
                         "0xf2056a217cc9cabef54d4b1bceea5a3e8625457cb393698ba507259ed6f3c"
-                    )),
+                    ),
                 }),
             );
 

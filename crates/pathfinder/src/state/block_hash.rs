@@ -101,7 +101,7 @@ pub fn verify_block_hash(
 }
 
 mod meta {
-    use pathfinder_common::{felt, BlockNumber, Chain, SequencerAddress};
+    use pathfinder_common::{sequencer_address, BlockNumber, Chain, SequencerAddress};
     use std::ops::Range;
 
     /// Metadata about Starknet chains we use for block hash calculation
@@ -152,33 +152,33 @@ mod meta {
         not_verifiable_range: Some(
             BlockNumber::new_or_panic(119802)..BlockNumber::new_or_panic(148428),
         ),
-        fallback_sequencer_address: Some(SequencerAddress(felt!(
+        fallback_sequencer_address: Some(sequencer_address!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        ))),
+        )),
     };
 
     const TESTNET2_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(0),
         not_verifiable_range: None,
-        fallback_sequencer_address: Some(SequencerAddress(felt!(
+        fallback_sequencer_address: Some(sequencer_address!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        ))),
+        )),
     };
 
     const MAINNET_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(833),
         not_verifiable_range: None,
-        fallback_sequencer_address: Some(SequencerAddress(felt!(
+        fallback_sequencer_address: Some(sequencer_address!(
             "021f4b90b0377c82bf330b7b5295820769e72d79d8acd0effa0ebde6e9988bc5"
-        ))),
+        )),
     };
 
     const INTEGRATION_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
         first_0_7_block: BlockNumber::new_or_panic(110511),
         not_verifiable_range: Some(BlockNumber::new_or_panic(0)..BlockNumber::new_or_panic(110511)),
-        fallback_sequencer_address: Some(SequencerAddress(felt!(
+        fallback_sequencer_address: Some(sequencer_address!(
             "046a89ae102987331d369645031b49c27738ed096f2789c24449966da4c6de6b"
-        ))),
+        )),
     };
 
     const CUSTOM_METAINFO: BlockHashMetaInfo = BlockHashMetaInfo {
@@ -457,7 +457,8 @@ fn number_of_events_in_block(block: &Block) -> usize {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use pathfinder_common::{felt, EntryPoint, Fee};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{felt, Fee};
     use starknet_gateway_types::reply::{
         transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
         Block,
@@ -465,22 +466,20 @@ mod tests {
 
     #[test]
     fn test_event_hash() {
-        use pathfinder_common::{ContractAddress, EventData, EventKey};
-
         let event = Event {
-            from_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            from_address: contract_address!("0xdeadbeef"),
             data: vec![
-                EventData(felt!("0x5")),
-                EventData(felt!("0x6")),
-                EventData(felt!("0x7")),
-                EventData(felt!("0x8")),
-                EventData(felt!("0x9")),
+                event_data!("0x5"),
+                event_data!("0x6"),
+                event_data!("0x7"),
+                event_data!("0x8"),
+                event_data!("0x9"),
             ],
             keys: vec![
-                EventKey(felt!("0x1")),
-                EventKey(felt!("0x2")),
-                EventKey(felt!("0x3")),
-                EventKey(felt!("0x4")),
+                event_key!("0x1"),
+                event_key!("0x2"),
+                event_key!("0x3"),
+                event_key!("0x4"),
             ],
         };
 
@@ -494,19 +493,17 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use pathfinder_common::{ContractAddress, TransactionHash, TransactionSignatureElem};
-
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
-            sender_address: ContractAddress::new_or_panic(felt!("0xdeadbeef")),
+            sender_address: contract_address!("0xdeadbeef"),
             entry_point_type: Some(EntryPointType::External),
-            entry_point_selector: EntryPoint(felt!("0xe")),
+            entry_point_selector: entry_point!("0xe"),
             max_fee: Fee::ZERO,
             signature: vec![
-                TransactionSignatureElem(felt!("0x2")),
-                TransactionSignatureElem(felt!("0x3")),
+                transaction_signature_elem!("0x2"),
+                transaction_signature_elem!("0x3"),
             ],
-            transaction_hash: TransactionHash(felt!("0x1")),
+            transaction_hash: transaction_hash!("0x1"),
         }));
 
         // produced by the cairo-lang Python implementation:

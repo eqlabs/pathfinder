@@ -259,13 +259,14 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
-    use pathfinder_common::{felt, BlockHash, BlockNumber};
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::BlockNumber;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
         let number = BlockId::Number(BlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(BlockHash(felt!("0xbeef")));
+        let hash = BlockId::Hash(block_hash!("0xbeef"));
 
         [
             (r#"["pending"]"#, BlockId::Pending),
@@ -322,7 +323,7 @@ mod tests {
         Box::new(|i: usize, result| {
             assert_matches!(result, Ok(block) => assert_eq!(
                 block.block_hash,
-                Some(BlockHash(pathfinder_common::felt_bytes!(expected))),
+                Some(block_hash_bytes!(expected)),
                 "test case {i}"
             ));
         })
@@ -359,7 +360,7 @@ mod tests {
                 Box::new(|i, result| {
                     assert_matches!(result, Ok(block) => assert_eq!(
                         block.parent_hash,
-                        BlockHash(pathfinder_common::felt_bytes!(b"latest")),
+                        block_hash_bytes!(b"latest"),
                         "test case {i}"
                     ), "test case {i}")
                 }),
@@ -385,7 +386,7 @@ mod tests {
             ),
             (
                 ctx.clone(),
-                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"genesis"))),
+                BlockId::Hash(block_hash_bytes!(b"genesis")),
                 assert_hash(b"genesis"),
             ),
             (
@@ -395,7 +396,7 @@ mod tests {
             ),
             (
                 ctx,
-                BlockId::Hash(BlockHash(pathfinder_common::felt_bytes!(b"non-existent"))),
+                BlockId::Hash(block_hash_bytes!(b"non-existent")),
                 assert_error(GetBlockError::BlockNotFound),
             ),
         ];

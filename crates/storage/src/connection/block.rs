@@ -260,9 +260,10 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, felt_bytes, BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice,
-        SequencerAddress, StateUpdate, StorageCommitment, TransactionCommitment,
+        BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice, StateUpdate,
+        TransactionCommitment,
     };
 
     use super::*;
@@ -278,47 +279,47 @@ mod tests {
         // any new fields that get added.
         //
         // Set unique values so we can be sure we are (de)serializing correctly.
-        let storage_commitment = StorageCommitment(felt_bytes!(b"storage commitment genesis"));
-        let class_commitment = ClassCommitment(felt_bytes!(b"class commitment genesis"));
+        let storage_commitment = storage_commitment_bytes!(b"storage commitment genesis");
+        let class_commitment = class_commitment_bytes!(b"class commitment genesis");
 
         let genesis = BlockHeader {
-            hash: BlockHash(felt_bytes!(b"genesis hash")),
+            hash: block_hash_bytes!(b"genesis hash"),
             parent_hash: BlockHash::ZERO,
             number: BlockNumber::GENESIS,
             timestamp: BlockTimestamp::new_or_panic(10),
             gas_price: GasPrice(32),
-            sequencer_address: SequencerAddress(felt_bytes!(b"sequencer address genesis")),
+            sequencer_address: sequencer_address_bytes!(b"sequencer address genesis"),
             starknet_version: StarknetVersion::default(),
             class_commitment,
-            event_commitment: EventCommitment(felt_bytes!(b"event commitment genesis")),
+            event_commitment: event_commitment_bytes!(b"event commitment genesis"),
             // This needs to be calculated as this value is never actually stored directly.
             state_commitment: StateCommitment::calculate(storage_commitment, class_commitment),
             storage_commitment,
-            transaction_commitment: TransactionCommitment(felt_bytes!(b"tx commitment genesis")),
+            transaction_commitment: transaction_commitment_bytes!(b"tx commitment genesis"),
         };
         let header1 = genesis
             .child_builder()
             .with_timestamp(BlockTimestamp::new_or_panic(12))
             .with_gas_price(GasPrice(34))
-            .with_sequencer_address(SequencerAddress(felt_bytes!(b"sequencer address 1")))
-            .with_event_commitment(EventCommitment(felt_bytes!(b"event commitment 1")))
-            .with_class_commitment(ClassCommitment(felt_bytes!(b"class commitment 1")))
-            .with_storage_commitment(StorageCommitment(felt_bytes!(b"storage commitment 1")))
+            .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 1"))
+            .with_event_commitment(event_commitment_bytes!(b"event commitment 1"))
+            .with_class_commitment(class_commitment_bytes!(b"class commitment 1"))
+            .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 1"))
             .with_calculated_state_commitment()
-            .with_transaction_commitment(TransactionCommitment(felt_bytes!(b"tx commitment 1")))
-            .finalize_with_hash(BlockHash(felt_bytes!(b"block 1 hash")));
+            .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 1"))
+            .finalize_with_hash(block_hash_bytes!(b"block 1 hash"));
 
         let header2 = header1
             .child_builder()
             .with_gas_price(GasPrice(38))
             .with_timestamp(BlockTimestamp::new_or_panic(15))
-            .with_sequencer_address(SequencerAddress(felt_bytes!(b"sequencer address 2")))
-            .with_event_commitment(EventCommitment(felt_bytes!(b"event commitment 2")))
-            .with_class_commitment(ClassCommitment(felt_bytes!(b"class commitment 2")))
-            .with_storage_commitment(StorageCommitment(felt_bytes!(b"storage commitment 2")))
+            .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
+            .with_event_commitment(event_commitment_bytes!(b"event commitment 2"))
+            .with_class_commitment(class_commitment_bytes!(b"class commitment 2"))
+            .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 2"))
             .with_calculated_state_commitment()
-            .with_transaction_commitment(TransactionCommitment(felt_bytes!(b"tx commitment 2")))
-            .finalize_with_hash(BlockHash(felt_bytes!(b"block 2 hash")));
+            .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
+            .finalize_with_hash(block_hash_bytes!(b"block 2 hash"));
 
         let headers = vec![genesis, header1, header2];
         for header in &headers {
@@ -365,7 +366,7 @@ mod tests {
             assert_eq!(&result, header);
         }
 
-        let invalid = BlockHash(felt_bytes!(b"invalid block hash"));
+        let invalid = block_hash_bytes!(b"invalid block hash");
         let result = tx.block_header(invalid.into()).unwrap();
         assert_eq!(result, None);
     }
@@ -412,7 +413,7 @@ mod tests {
         let latest = headers.last().unwrap();
 
         // Add a class to test that purging a block unsets its block number;
-        let cairo_hash = ClassHash(felt!("0x1234"));
+        let cairo_hash = class_hash!("0x1234");
         tx.insert_cairo_class(cairo_hash, &[]).unwrap();
         tx.insert_state_update(
             latest.number,
