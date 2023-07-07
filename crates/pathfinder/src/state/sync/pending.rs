@@ -92,7 +92,7 @@ pub async fn poll_pending(
                 block_task = tokio::spawn(async move {
                     tokio::time::sleep_until(t_block + poll_interval).await;
                     gateway_copy
-                        .block(BlockId::Pending)
+                        .block(BlockId::Pending, false)
                         .await
                         .context("Downloading pending block")
                 });
@@ -447,7 +447,7 @@ mod tests {
             static ref COUNT: std::sync::Mutex<usize>  = Default::default();
         );
 
-        sequencer.expect_block().returning(move |_| {
+        sequencer.expect_block().returning(move |_, _| {
             let mut count = COUNT.lock().unwrap();
             *count += 1;
 
@@ -526,7 +526,7 @@ mod tests {
         });
         sequencer
             .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {

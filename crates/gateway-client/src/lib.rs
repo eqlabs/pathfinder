@@ -82,15 +82,8 @@ pub trait GatewayApi: Sync {
 
 #[async_trait::async_trait]
 impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
-    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.as_ref().block(block).await
-    }
-
-    async fn block_without_retry(
-        &self,
-        block: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.as_ref().block_without_retry(block).await
+    async fn block(&self, block_id: BlockId, is_retry_enabled: bool) -> Result<reply::MaybePendingBlock, SequencerError> {
+        self.as_ref().block(block_id, is_retry_enabled).await
     }
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
