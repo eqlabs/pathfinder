@@ -6567,7 +6567,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "blockifier",
+ "cached",
  "cairo-vm",
+ "lazy_static",
  "pathfinder-common",
  "pathfinder-storage",
  "primitive-types",
