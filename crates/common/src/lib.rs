@@ -7,6 +7,7 @@ use primitive_types::{H160, H256};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
+mod body;
 pub mod consts;
 pub mod event;
 pub mod hash;
@@ -20,9 +21,9 @@ pub mod test_utils;
 pub mod transaction;
 pub mod trie;
 
-pub use state_update::StateUpdate;
-
+pub use body::BlockBody;
 pub use header::{BlockHeader, BlockHeaderBuilder};
+pub use state_update::StateUpdate;
 
 impl ContractAddress {
     /// The contract at 0x1 is special. It was never deployed and therefore
