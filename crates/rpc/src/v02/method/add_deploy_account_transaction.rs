@@ -57,10 +57,7 @@ pub async fn add_deploy_account_transaction(
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        CallParam, ClassHash, ContractAddressSalt, Fee, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
-    };
+    use pathfinder_common::{TransactionNonce, TransactionVersion};
 
     const INPUT_JSON: &str = r#"{
         "max_fee": "0xbf391377813",

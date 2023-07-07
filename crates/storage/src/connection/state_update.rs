@@ -404,7 +404,7 @@ pub(super) fn contract_class_hash(
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockHash, BlockHeader, CasmHash};
+    use pathfinder_common::BlockHeader;
 
     use super::*;
 

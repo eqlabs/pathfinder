@@ -54,7 +54,7 @@ pub async fn get_transaction_by_hash(
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{ContractAddress, EntryPoint, Fee, TransactionHash, TransactionNonce};
+    use pathfinder_common::{EntryPoint, Fee, TransactionNonce};
     use stark_hash::Felt;
 
     mod parsing {

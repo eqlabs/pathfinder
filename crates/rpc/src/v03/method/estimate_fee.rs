@@ -59,10 +59,7 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockHash, CallParam, ContractAddress, Fee, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
-    };
+    use pathfinder_common::{Fee, TransactionNonce, TransactionVersion};
 
     mod parsing {
         use super::*;
@@ -156,7 +153,6 @@ mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::CasmHash;
 
         #[tokio::test]
         async fn no_such_block() {

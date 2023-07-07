@@ -867,8 +867,8 @@ mod tests {
     use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt_bytes, BlockHash, BlockHeader, BlockNumber, CasmHash, ClassHash, EventCommitment,
-        SierraHash, StateCommitment, StateUpdate, TransactionCommitment,
+        felt_bytes, BlockHash, BlockHeader, BlockNumber, ClassHash, EventCommitment, SierraHash,
+        StateCommitment, StateUpdate, TransactionCommitment,
     };
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;

@@ -65,8 +65,7 @@ pub(crate) mod tests {
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHash, CallParam, Chain, ContractAddress, Fee, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        BlockHash, Chain, ContractAddress, Fee, TransactionNonce, TransactionVersion,
     };
     use pathfinder_storage::JournalMode;
     use std::path::PathBuf;
@@ -159,7 +158,7 @@ pub(crate) mod tests {
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{BlockNumber, CasmHash, ContractNonce, ContractRoot, GasPrice};
+        use pathfinder_common::{BlockNumber, ContractNonce, ContractRoot, GasPrice};
         use pathfinder_storage::Storage;
 
         // Mainnet block number 5

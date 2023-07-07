@@ -309,7 +309,7 @@ mod tests {
     use jsonrpsee::types::Params;
 
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockHash, BlockNumber, Chain};
+    use pathfinder_common::{BlockNumber, Chain};
     use starknet_gateway_types::pending::PendingData;
 
     #[test]

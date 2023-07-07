@@ -229,14 +229,14 @@ macro_rules! felt_newtypes {
             #[macro_export]
             macro_rules! [<$target:snake>] {
                 ($hex:expr) => {
-                    $target($crate::felt!($hex))
+                    $crate::$target($crate::felt!($hex))
                 };
             }
 
             #[macro_export]
             macro_rules! [<$target:snake _bytes>] {
                 ($bytes:expr) => {
-                    $target($crate::felt_bytes!($bytes))
+                    $crate::$target($crate::felt_bytes!($bytes))
                 };
             }
         }
@@ -252,14 +252,14 @@ macro_rules! felt_newtypes {
             #[macro_export]
             macro_rules! [<$target:snake>] {
                 ($hex:expr) => {
-                    $target::new_or_panic($crate::felt!($hex))
+                    $crate::$target::new_or_panic($crate::felt!($hex))
                 };
             }
 
             #[macro_export]
             macro_rules! [<$target:snake _bytes>] {
                 ($bytes:expr) => {
-                    $target::new_or_panic($crate::felt_bytes!($bytes))
+                    $crate::$target::new_or_panic($crate::felt_bytes!($bytes))
                 };
             }
         }

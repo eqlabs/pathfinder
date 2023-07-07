@@ -1993,7 +1993,7 @@ mod tests {
 
     mod block_chain {
         use pathfinder_common::macro_prelude::*;
-        use pathfinder_common::{BlockHash, BlockNumber, StateCommitment};
+        use pathfinder_common::BlockNumber;
 
         use crate::state::l2::BlockChain;
 

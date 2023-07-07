@@ -341,7 +341,7 @@ mod tests {
     use super::*;
     use crate::cairo::ext_py::ser::Nonces;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{ContractAddress, ContractNonce};
+    use pathfinder_common::ContractAddress;
 
     mod storage_updates {
         use super::*;
@@ -354,8 +354,6 @@ mod tests {
 
         #[test]
         fn with_updates() {
-            use pathfinder_common::{StorageAddress, StorageValue};
-
             let expected = r#"{
                 "0x7c38021eb1f890c5d572125302fe4a0d2f79d38b018d68a9fcd102145d4e451":[{"key":"0x5","value":"0xabc"}],
                 "0x1":[{"key":"0x123","value":"0xdef"}]
@@ -383,7 +381,6 @@ mod tests {
 
     mod deployed_contracts {
         use super::*;
-        use pathfinder_common::ClassHash;
 
         #[test]
         fn none() {

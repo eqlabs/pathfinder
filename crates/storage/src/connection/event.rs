@@ -647,9 +647,7 @@ mod tests {
     use crate::test_utils;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockHeader, BlockTimestamp, EntryPoint, EventData, Fee, SequencerAddress, StateCommitment,
-    };
+    use pathfinder_common::{BlockHeader, BlockTimestamp, EntryPoint, Fee};
 
     use starknet_gateway_types::reply::transaction as gateway_tx;
 
@@ -728,7 +726,6 @@ mod tests {
         // instead of transaction index.
         //
         // Events should be ordered by block number, transaction index, event index.
-        use pathfinder_common::TransactionHash;
 
         // All events we are storing, arbitrarily use from_address to distinguish them.
         let expected_events = (0u8..5)

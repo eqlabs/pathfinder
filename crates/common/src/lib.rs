@@ -492,7 +492,6 @@ mod tests {
         #[test]
         fn hash() {
             use crate::macro_prelude::block_hash;
-            use crate::BlockHash;
 
             let result =
                 serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();

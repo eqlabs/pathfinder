@@ -320,7 +320,7 @@ pub mod add_transaction {
 
         mod byte_code_offset {
             use pathfinder_common::macro_prelude::*;
-            use pathfinder_common::{ByteCodeOffset, EntryPoint};
+            use pathfinder_common::ByteCodeOffset;
             use stark_hash::Felt;
 
             use crate::request::contract::SelectorAndOffset;

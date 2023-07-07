@@ -88,7 +88,6 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::BlockHash;
 
         #[test]
         fn positional_args() {
@@ -275,8 +274,6 @@ mod tests {
 
     #[tokio::test]
     async fn hash() {
-        use pathfinder_common::BlockHash;
-
         let context = RpcContext::for_tests();
 
         // Cairo v0.x class

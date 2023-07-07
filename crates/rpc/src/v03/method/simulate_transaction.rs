@@ -321,8 +321,8 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, ContractAddress,
-        GasPrice, TransactionVersion,
+        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, GasPrice,
+        TransactionVersion,
     };
     use pathfinder_storage::{JournalMode, Storage};
     use starknet_gateway_test_fixtures::class_definitions::{

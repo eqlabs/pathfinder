@@ -77,7 +77,6 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::BlockHash;
 
         #[test]
         fn positional_args() {
@@ -129,8 +128,6 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use pathfinder_common::BlockHash;
-
             let context = RpcContext::for_tests();
 
             let input = GetClassHashAtInput {

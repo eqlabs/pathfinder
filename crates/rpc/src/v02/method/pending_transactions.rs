@@ -23,10 +23,7 @@ mod tests {
         InvokeTransactionV0,
     };
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, TransactionHash,
-        TransactionNonce, TransactionVersion,
-    };
+    use pathfinder_common::{TransactionNonce, TransactionVersion};
 
     #[tokio::test]
     async fn pending() {

@@ -164,10 +164,8 @@ pub mod test_utils {
     use pathfinder_common::event::Event;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CasmHash, ClassCommitment, ClassHash,
-        ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress, EventData, EventKey,
-        GasPrice, L2ToL1MessagePayloadElem, SequencerAddress, SierraHash, StarknetVersion,
-        StateUpdate, StorageAddress, StorageCommitment, TransactionHash, TransactionIndex,
+        BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
+        GasPrice, SierraHash, StarknetVersion, StateUpdate, StorageCommitment, TransactionIndex,
         TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
@@ -188,7 +186,6 @@ pub mod test_utils {
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
-        use pathfinder_common::{ContractNonce, StorageValue};
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
         let storage = Storage::in_memory().unwrap();
@@ -502,8 +499,6 @@ pub mod test_utils {
     /// i.e. the pending block's parent hash will be the latest block's hash from storage,
     /// and similarly for the pending state diffs state root.
     pub async fn create_pending_data(storage: Storage) -> PendingData {
-        use pathfinder_common::StorageValue;
-
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
             let mut db = storage2.connection().unwrap();

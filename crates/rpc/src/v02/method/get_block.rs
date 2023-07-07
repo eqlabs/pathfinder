@@ -260,7 +260,7 @@ mod tests {
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockHash, BlockNumber};
+    use pathfinder_common::BlockNumber;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]

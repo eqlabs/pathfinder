@@ -426,7 +426,7 @@ mod types {
     mod tests {
         use super::*;
         use pathfinder_common::macro_prelude::*;
-        use pathfinder_common::{EthereumAddress, EventData, EventKey, L2ToL1MessagePayloadElem};
+        use pathfinder_common::EthereumAddress;
 
         #[test]
         fn receipt() {
@@ -560,10 +560,7 @@ mod types {
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockHash, BlockNumber, ContractAddress, EthereumAddress, EventData, EventKey, Fee,
-        L2ToL1MessagePayloadElem, TransactionHash,
-    };
+    use pathfinder_common::{BlockNumber, EthereumAddress, Fee};
     use primitive_types::H160;
 
     mod parsing {

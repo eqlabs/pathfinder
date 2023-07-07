@@ -1131,7 +1131,7 @@ mod tests {
 
     mod add_transaction {
         use super::*;
-        use pathfinder_common::{ByteCodeOffset, ContractAddress};
+        use pathfinder_common::ContractAddress;
         use starknet_gateway_types::request::{
             add_transaction::CairoContractDefinition,
             contract::{EntryPointType, SelectorAndOffset},
@@ -1400,8 +1400,6 @@ mod tests {
 
         /// Return a contract definition that was dumped from a `starknet deploy`.
         fn cairo_contract_class_from_fixture() -> CairoContractDefinition {
-            use pathfinder_common::EntryPoint;
-
             let json = starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
             let json: serde_json::Value = serde_json::from_slice(json).unwrap();
             let program = &json["program"];

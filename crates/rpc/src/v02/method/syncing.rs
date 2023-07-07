@@ -83,7 +83,7 @@ mod tests {
         #[test]
         fn syncing() {
             use super::*;
-            use pathfinder_common::{BlockHash, BlockNumber};
+            use pathfinder_common::BlockNumber;
 
             let status = SyncingStatus {
                 starting_block_num: BlockNumber::new_or_panic(0x12),
@@ -114,7 +114,7 @@ mod tests {
         use crate::v02::types::syncing::NumberedBlock;
         use crate::v02::types::syncing::Status as V2Status;
         use crate::v02::types::syncing::Syncing as V2Syncing;
-        use pathfinder_common::{BlockHash, BlockNumber};
+        use pathfinder_common::BlockNumber;
 
         let status = V2Syncing::Status(V2Status {
             starting: NumberedBlock::from(("aabb", 1)),

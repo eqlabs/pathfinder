@@ -95,10 +95,7 @@ mod tests {
     use crate::context::RpcContext;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::StarknetVersion;
-    use pathfinder_common::{
-        BlockHash, BlockId, BlockNumber, BlockTimestamp, ContractAddress, ContractNonce, GasPrice,
-        SequencerAddress,
-    };
+    use pathfinder_common::{BlockId, BlockNumber, BlockTimestamp, ContractNonce, GasPrice};
 
     mod parsing {
         use super::*;
@@ -159,8 +156,6 @@ mod tests {
 
         #[tokio::test]
         async fn block_not_found() {
-            use pathfinder_common::BlockHash;
-
             let context = RpcContext::for_tests();
 
             let input = GetNonceInput {

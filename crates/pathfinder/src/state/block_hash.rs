@@ -458,7 +458,7 @@ mod tests {
     use super::*;
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{felt, EntryPoint, Fee};
+    use pathfinder_common::{felt, Fee};
     use starknet_gateway_types::reply::{
         transaction::{EntryPointType, InvokeTransaction, InvokeTransactionV0},
         Block,
@@ -466,8 +466,6 @@ mod tests {
 
     #[test]
     fn test_event_hash() {
-        use pathfinder_common::{ContractAddress, EventData, EventKey};
-
         let event = Event {
             from_address: contract_address!("0xdeadbeef"),
             data: vec![
@@ -495,8 +493,6 @@ mod tests {
 
     #[test]
     fn test_final_transaction_hash() {
-        use pathfinder_common::{ContractAddress, TransactionHash, TransactionSignatureElem};
-
         let transaction = Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
             calldata: vec![],
             sender_address: contract_address!("0xdeadbeef"),

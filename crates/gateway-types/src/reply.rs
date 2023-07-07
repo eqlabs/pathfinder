@@ -829,7 +829,7 @@ pub mod state_update {
     mod tests {
         #[test]
         fn contract_field_backward_compatibility() {
-            use super::{ClassHash, ContractAddress, DeployedContract};
+            use super::DeployedContract;
 
             use pathfinder_common::macro_prelude::*;
 

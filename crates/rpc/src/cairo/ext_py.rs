@@ -507,9 +507,9 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         BlockHash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, CallResultValue, Chain,
-        ClassCommitment, ClassHash, ContractAddress, ContractAddressSalt, ContractNonce,
-        ContractRoot, ContractStateHash, EntryPoint, GasPrice, StateCommitment, StateUpdate,
-        StorageAddress, StorageCommitment, StorageValue, TransactionVersion,
+        ClassCommitment, ClassHash, ContractAddressSalt, ContractNonce, ContractRoot,
+        ContractStateHash, EntryPoint, GasPrice, StateCommitment, StateUpdate, StorageAddress,
+        StorageCommitment, StorageValue, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{JournalMode, Storage, Transaction};

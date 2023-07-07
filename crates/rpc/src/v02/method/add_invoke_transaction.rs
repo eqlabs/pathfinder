@@ -56,10 +56,7 @@ mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransactionV1;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        CallParam, ContractAddress, Fee, TransactionNonce, TransactionSignatureElem,
-        TransactionVersion,
-    };
+    use pathfinder_common::TransactionVersion;
 
     fn test_invoke_txn() -> Transaction {
         Transaction::Invoke(BroadcastedInvokeTransaction::V1(

@@ -235,11 +235,7 @@ pub(super) fn transaction_block_hash(
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockHeader, CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress,
-        ContractAddressSalt, EntryPoint, Fee, TransactionIndex, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
-    };
+    use pathfinder_common::{BlockHeader, TransactionIndex, TransactionVersion};
     use starknet_gateway_types::reply::transaction::{
         DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction, DeployTransaction,
         InvokeTransactionV0, InvokeTransactionV1,

@@ -166,8 +166,8 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice, SequencerAddress, StarknetVersion,
-        StateCommitment, StateUpdate, TransactionVersion,
+        BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice, StarknetVersion, StateCommitment,
+        StateUpdate, TransactionVersion,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_client::MockGatewayApi;

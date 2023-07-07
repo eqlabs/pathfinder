@@ -91,7 +91,7 @@ async fn get_transaction_from_pending(
 mod tests {
     use super::*;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
+    use pathfinder_common::{BlockHash, BlockNumber};
     use stark_hash::Felt;
 
     mod parsing {

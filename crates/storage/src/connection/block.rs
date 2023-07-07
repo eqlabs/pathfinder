@@ -262,8 +262,8 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice, SequencerAddress,
-        StateUpdate, StorageCommitment, TransactionCommitment,
+        BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice, StateUpdate,
+        TransactionCommitment,
     };
 
     use super::*;

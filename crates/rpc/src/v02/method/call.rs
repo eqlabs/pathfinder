@@ -88,7 +88,6 @@ mod tests {
     mod parsing {
         use super::*;
         use jsonrpsee::types::Params;
-        use pathfinder_common::BlockHash;
 
         #[test]
         fn positional_args() {
@@ -133,7 +132,7 @@ mod tests {
 
     mod ext_py {
         use super::*;
-        use pathfinder_common::{BlockHash, Chain};
+        use pathfinder_common::Chain;
         use pathfinder_storage::JournalMode;
         use std::num::NonZeroU32;
         use std::path::PathBuf;
