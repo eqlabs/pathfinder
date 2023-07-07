@@ -49,6 +49,9 @@ pub async fn poll_pending(
             .context("Downloading pending block")
     });
 
+    let mut t_update = Instant::now();
+    let mut t_block = Instant::now();
+
     loop {
         let mut changed = false;
 
@@ -71,11 +74,9 @@ pub async fn poll_pending(
                         return Ok((None, None));
                     }
                     MaybePendingBlock::Pending(pending) => {
-                        let replace = match &prev_block {
-                            None => true,
-                            Some(prev) if pending.transactions.len() > prev.transactions.len() => true,
-                            _ => false,
-                        };
+                        let replace = prev_block.as_ref()
+                            .map(|prev| pending.transactions.len() > prev.transactions.len())
+                            .unwrap_or(true);
 
                         if replace {
                             prev_block = Some(Arc::new(pending));
@@ -89,12 +90,13 @@ pub async fn poll_pending(
 
                 let gateway_copy = sequencer.clone();
                 block_task = tokio::spawn(async move {
-                    tokio::time::sleep_until(Instant::now() + poll_interval).await;
+                    tokio::time::sleep_until(t_block + poll_interval).await;
                     gateway_copy
                         .block(BlockId::Pending)
                         .await
                         .context("Downloading pending block")
                 });
+                t_block = Instant::now();
             },
 
             state_update = &mut update_task => {
@@ -108,11 +110,9 @@ pub async fn poll_pending(
                     return Ok((None, None));
                 }
 
-                let replace = match &prev_state_update {
-                    None => true,
-                    Some(prev) if state_update.change_count() > prev.change_count() => true,
-                    _ => false,
-                };
+                let replace = prev_state_update.as_ref()
+                    .map(|prev| state_update.change_count() > prev.change_count())
+                    .unwrap_or(true);
 
                 if replace {
                     prev_state_update = Some(Arc::new(state_update));
@@ -124,12 +124,13 @@ pub async fn poll_pending(
 
                 let gateway_copy = sequencer.clone();
                 update_task = tokio::spawn(async move {
-                    tokio::time::sleep_until(Instant::now() + poll_interval).await;
+                    tokio::time::sleep_until(t_update + poll_interval).await;
                     gateway_copy
                         .state_update(BlockId::Pending)
                         .await
                         .context("Downloading state update block")
                 });
+                t_update = Instant::now();
             }
         }
 
