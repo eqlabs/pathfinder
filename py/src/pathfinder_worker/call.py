@@ -363,6 +363,10 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
         command = line
         timings = {}
 
+        # Error message character limit. A simple contract error message is ~3000,
+        # so 50 000 feels like a reasonable limit for more complex call stacks.
+        MSG_LIMIT = 50_000
+
         try:
             command = Command.Schema().loads(line)
 
@@ -395,8 +399,8 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
 
                 if exc.message:
                     message = exc.message
-                    if len(message) > 200:
-                        message = message[:197] + "..."
+                    if len(message) > MSG_LIMIT:
+                        message = message[:MSG_LIMIT] + "..."
                     exception_message = f"{exc.code}: {message}"
                 else:
                     exception_message = str(exc.code)
@@ -405,8 +409,8 @@ def do_loop(connection: sqlite3.Connection, input_gen, output_file):
         except Exception as exc:
             stringified = str(exc)
 
-            if len(stringified) > 200:
-                stringified = stringified[:197] + "..."
+            if len(message) > MSG_LIMIT:
+                message = message[:MSG_LIMIT] + "..."
             report_failed(logger, command, exc)
             out = {"status": "failed", "exception": stringified}
         finally:
