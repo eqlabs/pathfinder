@@ -9,10 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.5] - 2023-07-07
+
 ### Fixed
 
 - pending data from the gateway is inconsistent
   - this could exhibit as RPC data changing status between `pending | L2 accepted | not found`, especially noticeable for transactions.
+
+### Changed
+
+- substantially increase the character limit of execution errors
+  - previously, the RPC would return a highly truncated error message from the execution vm
 
 ## [0.6.4] - 2023-07-05
 
