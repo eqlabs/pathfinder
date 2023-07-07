@@ -103,6 +103,118 @@ pub trait GatewayApi: Sync {
     }
 }
 
+#[async_trait::async_trait]
+impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
+    async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
+        self.as_ref().block(block).await
+    }
+
+    async fn block_without_retry(
+        &self,
+        block: BlockId,
+    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        self.as_ref().block_without_retry(block).await
+    }
+
+    async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+        self.as_ref().class_by_hash(class_hash).await
+    }
+
+    async fn pending_class_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        self.as_ref().pending_class_by_hash(class_hash).await
+    }
+
+    async fn transaction(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<reply::Transaction, SequencerError> {
+        self.as_ref().transaction(transaction_hash).await
+    }
+
+    async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
+        self.as_ref().state_update(block).await
+    }
+
+    async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
+        self.as_ref().eth_contract_addresses().await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_invoke_transaction(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_address: ContractAddress,
+        calldata: Vec<CallParam>,
+    ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
+        self.as_ref()
+            .add_invoke_transaction(
+                version,
+                max_fee,
+                signature,
+                nonce,
+                contract_address,
+                calldata,
+            )
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_declare_transaction(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_definition: ContractDefinition,
+        sender_address: ContractAddress,
+        compiled_class_hash: Option<CasmHash>,
+        token: Option<String>,
+    ) -> Result<reply::add_transaction::DeclareResponse, SequencerError> {
+        self.as_ref()
+            .add_declare_transaction(
+                version,
+                max_fee,
+                signature,
+                nonce,
+                contract_definition,
+                sender_address,
+                compiled_class_hash,
+                token,
+            )
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn add_deploy_account(
+        &self,
+        version: TransactionVersion,
+        max_fee: Fee,
+        signature: Vec<TransactionSignatureElem>,
+        nonce: TransactionNonce,
+        contract_address_salt: ContractAddressSalt,
+        class_hash: ClassHash,
+        calldata: Vec<CallParam>,
+    ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
+        self.as_ref()
+            .add_deploy_account(
+                version,
+                max_fee,
+                signature,
+                nonce,
+                contract_address_salt,
+                class_hash,
+                calldata,
+            )
+            .await
+    }
+}
+
 /// Starknet sequencer client using REST API.
 ///
 /// Retry is performed on __all__ types of errors __except for__

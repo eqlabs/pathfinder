@@ -117,4 +117,62 @@ impl StateUpdate {
         self.declared_cairo_classes.insert(cairo);
         self
     }
+
+    /// The number of individual changes in this state update.
+    ///
+    /// The total amount of:
+    /// - system storage updates
+    /// - contract storage updates
+    /// - contract nonce updates
+    /// - contract deployments
+    /// - contract class replacements
+    /// - class declarations
+    pub fn change_count(&self) -> usize {
+        self.declared_cairo_classes.len()
+            + self.declared_sierra_classes.len()
+            + self
+                .system_contract_updates
+                .iter()
+                .map(|x| x.1.storage.len())
+                .sum::<usize>()
+            + self
+                .contract_updates
+                .iter()
+                .map(|x| {
+                    x.1.storage.len()
+                        + x.1.class.as_ref().map(|_| 1).unwrap_or_default()
+                        + x.1.nonce.as_ref().map(|_| 1).unwrap_or_default()
+                })
+                .sum::<usize>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::felt;
+
+    use super::*;
+
+    #[test]
+    fn change_count() {
+        let state_update = StateUpdate::default()
+            .with_contract_nonce(ContractAddress(felt!("0x1")), ContractNonce(felt!("0x2")))
+            .with_contract_nonce(ContractAddress(felt!("0x4")), ContractNonce(felt!("0x5")))
+            .with_declared_cairo_class(ClassHash(felt!("0x3")))
+            .with_declared_sierra_class(SierraHash(felt!("0x4")), CasmHash(felt!("0x5")))
+            .with_deployed_contract(ContractAddress(felt!("0x1")), ClassHash(felt!("0x3")))
+            .with_replaced_class(ContractAddress(felt!("0x33")), ClassHash(felt!("0x35")))
+            .with_system_storage_update(
+                ContractAddress::ONE,
+                StorageAddress(felt!("0x10")),
+                StorageValue(felt!("0x99")),
+            )
+            .with_storage_update(
+                ContractAddress(felt!("0x33")),
+                StorageAddress(felt!("0x10")),
+                StorageValue(felt!("0x99")),
+            );
+
+        assert_eq!(state_update.change_count(), 8);
+    }
 }
