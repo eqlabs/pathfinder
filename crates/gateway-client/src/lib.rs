@@ -293,7 +293,7 @@ impl Client {
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
-            .block(BlockNumber::GENESIS.into(), false)
+            .block(BlockNumber::GENESIS.into(), true)
             .await?
             .as_block()
             .expect("Genesis block should not be pending")
@@ -316,6 +316,7 @@ impl GatewayApi for Client {
         self.block(block_id, false).await
     }
 
+    #[tracing::instrument(skip(self))]
     async fn block_with_retry(
         &self,
         block_id: BlockId,
@@ -721,7 +722,7 @@ mod tests {
         let url = Url::parse(&url).unwrap();
         let client = Client::with_base_url(url).unwrap();
 
-        let _ = client.block(BlockId::Latest, false).await;
+        let _ = client.block(BlockId::Latest, true).await;
         shutdown_tx.send(()).unwrap();
         server_handle.await.unwrap();
     }
@@ -742,11 +743,11 @@ mod tests {
                 ),
             ]);
             let by_hash = client
-                .block(BlockId::from(GENESIS_BLOCK_HASH), false)
+                .block(BlockId::from(GENESIS_BLOCK_HASH), true)
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockId::from(GENESIS_BLOCK_NUMBER), false)
+                .block(BlockId::from(GENESIS_BLOCK_NUMBER), true)
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -768,12 +769,12 @@ mod tests {
                 .block(
                     block_hash!("040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746")
                         .into(),
-                    false,
+                    true,
                 )
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockNumber::new_or_panic(231579).into(), false)
+                .block(BlockNumber::new_or_panic(231579).into(), true)
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -791,7 +792,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=latest",
                 (v0_9_0::block::NUMBER_231579, 200),
             )]);
-            client.block(BlockId::Latest, false).await.unwrap();
+            client.block(BlockId::Latest, true).await.unwrap();
         }
 
         #[tokio::test]
@@ -800,7 +801,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=pending",
                 (v0_9_0::block::PENDING, 200),
             )]);
-            client.block(BlockId::Pending, false).await.unwrap();
+            client.block(BlockId::Pending, true).await.unwrap();
         }
 
         #[test_log::test(tokio::test)]
@@ -810,7 +811,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_HASH), false)
+                .block(BlockId::from(INVALID_BLOCK_HASH), true)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -826,7 +827,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_NUMBER), false)
+                .block(BlockId::from(INVALID_BLOCK_NUMBER), true)
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -853,7 +854,7 @@ mod tests {
             let expected_version = StarknetVersion::new(0, 9, 1);
 
             let version = client
-                .block(BlockNumber::new_or_panic(300000).into(), false)
+                .block(BlockNumber::new_or_panic(300000).into(), true)
                 .await
                 .unwrap()
                 .as_block()
@@ -861,7 +862,7 @@ mod tests {
                 .starknet_version;
             assert_eq!(version, expected_version);
 
-            let block = client.block(BlockId::Pending, false).await.unwrap();
+            let block = client.block(BlockId::Pending, true).await.unwrap();
             assert_matches!(block, MaybePendingBlock::Pending(_));
         }
     }
