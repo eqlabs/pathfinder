@@ -768,7 +768,7 @@ mod tests {
                 .block(
                     block_hash!("040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746")
                         .into(),
-                    false
+                    false,
                 )
                 .await
                 .unwrap();
