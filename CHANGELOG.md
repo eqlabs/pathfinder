@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- a stack overflow caused by compiling a Sierra class to CASM using the Cairo compiler has been fixed
+
 ## [0.6.5] - 2023-07-07
 
 ### Fixed
