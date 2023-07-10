@@ -248,8 +248,8 @@ mod tests {
             compile_to_casm(CAIRO_1_1_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 2)).unwrap();
         }
 
-        #[tokio::test]
-        async fn regression_stack_overflow() {
+        #[test]
+        fn regression_stack_overflow() {
             // This class caused a stack-overflow in v2 compilers <= v2.0.1
             compile_to_casm(CAIRO_2_0_0_STACK_OVERFLOW, &StarknetVersion::new(0, 12, 0)).unwrap();
         }
