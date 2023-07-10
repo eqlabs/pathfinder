@@ -37,7 +37,7 @@ pub async fn poll_pending(
     let gateway_copy = sequencer.clone();
     let mut block_task = tokio::spawn(async move {
         gateway_copy
-            .block(BlockId::Pending, false)
+            .block_with_retry(BlockId::Pending)
             .await
             .context("Downloading pending block")
     });
@@ -92,7 +92,7 @@ pub async fn poll_pending(
                 block_task = tokio::spawn(async move {
                     tokio::time::sleep_until(t_block + poll_interval).await;
                     gateway_copy
-                        .block(BlockId::Pending, false)
+                        .block_with_retry(BlockId::Pending)
                         .await
                         .context("Downloading pending block")
                 });
@@ -230,8 +230,8 @@ mod tests {
 
         // Give a pending state update and full block.
         sequencer
-            .expect_block()
-            .returning(move |_, _| Ok(MaybePendingBlock::Block(NEXT_BLOCK.clone())));
+            .expect_block_with_retry()
+            .returning(move |_| Ok(MaybePendingBlock::Block(NEXT_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
@@ -272,8 +272,8 @@ mod tests {
         let full_diff_copy = full_diff.clone();
 
         sequencer
-            .expect_block()
-            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .expect_block_with_retry()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(full_diff_copy.clone()));
@@ -308,8 +308,8 @@ mod tests {
         let mut pending_block = PENDING_BLOCK.clone();
         pending_block.parent_hash = block_hash!("0xFFFFFF");
         sequencer
-            .expect_block()
-            .returning(move |_, _| Ok(MaybePendingBlock::Pending(pending_block.clone())));
+            .expect_block_with_retry()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
@@ -340,8 +340,8 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         sequencer
-            .expect_block()
-            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .expect_block_with_retry()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
         let disconnected_diff = PENDING_UPDATE
             .clone()
@@ -376,8 +376,8 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         sequencer
-            .expect_block()
-            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .expect_block_with_retry()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
         sequencer
             .expect_state_update()
             .returning(move |_| Ok(PENDING_UPDATE.clone()));
@@ -447,7 +447,7 @@ mod tests {
             static ref COUNT: std::sync::Mutex<usize>  = Default::default();
         );
 
-        sequencer.expect_block().returning(move |_, _| {
+        sequencer.expect_block_with_retry().returning(move |_| {
             let mut count = COUNT.lock().unwrap();
             *count += 1;
 
@@ -525,8 +525,8 @@ mod tests {
             }
         });
         sequencer
-            .expect_block()
-            .returning(move |_, _| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
+            .expect_block_with_retry()
+            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {

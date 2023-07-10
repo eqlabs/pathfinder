@@ -529,7 +529,7 @@ async fn verify_database(
             (Chain::Custom, _) => {
                 // Verify against gateway.
                 let gateway_block = gateway_client
-                    .block(BlockNumber::GENESIS.into(), false)
+                    .block_with_retry(BlockNumber::GENESIS.into())
                     .await
                     .context("Downloading genesis block from gateway for database verification")?
                     .as_block()

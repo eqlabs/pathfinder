@@ -61,10 +61,7 @@ impl Cached {
                 // Update the gas price from the starknet pending block.
                 tokio::spawn(async move {
                     use starknet_gateway_types::reply::MaybePendingBlock;
-                    let gas_price = match gateway
-                        .block(pathfinder_common::BlockId::Pending, false)
-                        .await
-                    {
+                    let gas_price = match gateway.block(pathfinder_common::BlockId::Pending).await {
                         Ok(b) => match b {
                             MaybePendingBlock::Pending(b) => b.gas_price,
                             MaybePendingBlock::Block(b) => match b.gas_price {
