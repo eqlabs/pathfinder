@@ -23,11 +23,6 @@ mod metrics;
 pub trait GatewayApi: Sync {
     async fn block(&self, block_id: BlockId) -> Result<reply::MaybePendingBlock, SequencerError>;
 
-    async fn block_with_retry(
-        &self,
-        block_id: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError>;
-
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError>;
 
     async fn pending_class_by_hash(
@@ -85,13 +80,6 @@ pub trait GatewayApi: Sync {
 impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
     async fn block(&self, block_id: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.as_ref().block(block_id).await
-    }
-
-    async fn block_with_retry(
-        &self,
-        block_id: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.as_ref().block_with_retry(block_id).await
     }
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
@@ -208,6 +196,7 @@ pub struct Client {
     inner: reqwest::Client,
     gateway: Url,
     feeder_gateway: Url,
+    is_retry_enabled: bool,
 }
 
 impl Client {
@@ -261,7 +250,15 @@ impl Client {
                 .build()?,
             gateway,
             feeder_gateway,
+            is_retry_enabled: false,
         })
+    }
+
+    pub fn with_retry(self) -> Self {
+        Self {
+            is_retry_enabled: true,
+            ..self
+        }
     }
 
     fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
@@ -272,15 +269,11 @@ impl Client {
         builder::Request::builder(&self.inner, self.feeder_gateway.clone())
     }
 
-    async fn block(
-        &self,
-        block_id: BlockId,
-        is_retry_enabled: bool,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
+    async fn block(&self, block_id: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.feeder_gateway_request()
             .get_block()
             .with_block(block_id)
-            .with_retry(is_retry_enabled)
+            .with_retry(self.is_retry_enabled)
             .get()
             .await
     }
@@ -293,7 +286,7 @@ impl Client {
         };
         // unwrap is safe as `block_hash` is always present for non-pending blocks.
         let genesis_hash = self
-            .block(BlockNumber::GENESIS.into(), true)
+            .block(BlockNumber::GENESIS.into())
             .await?
             .as_block()
             .expect("Genesis block should not be pending")
@@ -313,15 +306,7 @@ impl Client {
 impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn block(&self, block_id: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.block(block_id, false).await
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn block_with_retry(
-        &self,
-        block_id: BlockId,
-    ) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.block(block_id, true).await
+        self.block(block_id).await
     }
 
     /// Gets class for a particular class hash.
@@ -330,7 +315,7 @@ impl GatewayApi for Client {
         self.feeder_gateway_request()
             .get_class_by_hash()
             .with_class_hash(class_hash)
-            .with_retry(true)
+            .with_retry(self.is_retry_enabled)
             .get_as_bytes()
             .await
     }
@@ -345,7 +330,7 @@ impl GatewayApi for Client {
             .get_class_by_hash()
             .with_class_hash(class_hash)
             .with_block(BlockId::Pending)
-            .with_retry(true)
+            .with_retry(self.is_retry_enabled)
             .get_as_bytes()
             .await
     }
@@ -359,7 +344,7 @@ impl GatewayApi for Client {
         self.feeder_gateway_request()
             .get_transaction()
             .with_transaction_hash(transaction_hash)
-            .with_retry(true)
+            .with_retry(self.is_retry_enabled)
             .get()
             .await
     }
@@ -370,7 +355,7 @@ impl GatewayApi for Client {
             .feeder_gateway_request()
             .get_state_update()
             .with_block(block)
-            .with_retry(true)
+            .with_retry(self.is_retry_enabled)
             .get()
             .await?;
 
@@ -382,7 +367,7 @@ impl GatewayApi for Client {
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         self.feeder_gateway_request()
             .get_contract_addresses()
-            .with_retry(true)
+            .with_retry(self.is_retry_enabled)
             .get()
             .await
     }
@@ -722,7 +707,7 @@ mod tests {
         let url = Url::parse(&url).unwrap();
         let client = Client::with_base_url(url).unwrap();
 
-        let _ = client.block(BlockId::Latest, true).await;
+        let _ = client.block(BlockId::Latest).await;
         shutdown_tx.send(()).unwrap();
         server_handle.await.unwrap();
     }
@@ -743,11 +728,11 @@ mod tests {
                 ),
             ]);
             let by_hash = client
-                .block(BlockId::from(GENESIS_BLOCK_HASH), true)
+                .block(BlockId::from(GENESIS_BLOCK_HASH))
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockId::from(GENESIS_BLOCK_NUMBER), true)
+                .block(BlockId::from(GENESIS_BLOCK_NUMBER))
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -769,12 +754,11 @@ mod tests {
                 .block(
                     block_hash!("040ffdbd9abbc4fc64652c50db94a29bce65c183316f304a95df624de708e746")
                         .into(),
-                    true,
                 )
                 .await
                 .unwrap();
             let by_number = client
-                .block(BlockNumber::new_or_panic(231579).into(), true)
+                .block(BlockNumber::new_or_panic(231579).into())
                 .await
                 .unwrap();
             assert_eq!(by_hash, by_number);
@@ -792,7 +776,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=latest",
                 (v0_9_0::block::NUMBER_231579, 200),
             )]);
-            client.block(BlockId::Latest, true).await.unwrap();
+            client.block(BlockId::Latest).await.unwrap();
         }
 
         #[tokio::test]
@@ -801,7 +785,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=pending",
                 (v0_9_0::block::PENDING, 200),
             )]);
-            client.block(BlockId::Pending, true).await.unwrap();
+            client.block(BlockId::Pending).await.unwrap();
         }
 
         #[test_log::test(tokio::test)]
@@ -811,7 +795,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_HASH), true)
+                .block(BlockId::from(INVALID_BLOCK_HASH))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -827,7 +811,7 @@ mod tests {
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
             let error = client
-                .block(BlockId::from(INVALID_BLOCK_NUMBER), true)
+                .block(BlockId::from(INVALID_BLOCK_NUMBER))
                 .await
                 .unwrap_err();
             assert_matches!(
@@ -854,7 +838,7 @@ mod tests {
             let expected_version = StarknetVersion::new(0, 9, 1);
 
             let version = client
-                .block(BlockNumber::new_or_panic(300000).into(), true)
+                .block(BlockNumber::new_or_panic(300000).into())
                 .await
                 .unwrap()
                 .as_block()
@@ -862,7 +846,7 @@ mod tests {
                 .starknet_version;
             assert_eq!(version, expected_version);
 
-            let block = client.block(BlockId::Pending, true).await.unwrap();
+            let block = client.block(BlockId::Pending).await.unwrap();
             assert_matches!(block, MaybePendingBlock::Pending(_));
         }
     }

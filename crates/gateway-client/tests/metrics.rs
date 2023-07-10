@@ -17,7 +17,7 @@ async fn all_counter_types_including_tags() {
     with_method(
         "get_block",
         |client, x| async move {
-            let _ = client.block_with_retry(x).await;
+            let _ = client.block(x).await;
         },
         (v0_9_0::block::GENESIS.to_owned(), 200),
     )

@@ -550,7 +550,7 @@ async fn update_sync_status_latest(
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
     loop {
-        match sequencer.block_with_retry(BlockId::Latest).await {
+        match sequencer.block(BlockId::Latest).await {
             Ok(MaybePendingBlock::Block(block)) => {
                 let latest = {
                     let latest_hash = block.block_hash;

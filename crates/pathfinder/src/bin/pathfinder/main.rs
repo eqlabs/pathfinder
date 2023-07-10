@@ -389,28 +389,28 @@ mod pathfinder_context {
                 NetworkConfig::Mainnet => Self {
                     network: Chain::Mainnet,
                     network_id: ChainId::MAINNET,
-                    gateway: GatewayClient::mainnet(),
+                    gateway: GatewayClient::mainnet().with_retry(),
                     database: data_directory.join("mainnet.sqlite"),
                     l1_core_address: H160::from(core_addr::MAINNET),
                 },
                 NetworkConfig::Testnet => Self {
                     network: Chain::Testnet,
                     network_id: ChainId::TESTNET,
-                    gateway: GatewayClient::testnet(),
+                    gateway: GatewayClient::testnet().with_retry(),
                     database: data_directory.join("goerli.sqlite"),
                     l1_core_address: H160::from(core_addr::TESTNET),
                 },
                 NetworkConfig::Testnet2 => Self {
                     network: Chain::Testnet2,
                     network_id: ChainId::TESTNET2,
-                    gateway: GatewayClient::testnet2(),
+                    gateway: GatewayClient::testnet2().with_retry(),
                     database: data_directory.join("testnet2.sqlite"),
                     l1_core_address: H160::from(core_addr::TESTNET2),
                 },
                 NetworkConfig::Integration => Self {
                     network: Chain::Integration,
                     network_id: ChainId::INTEGRATION,
-                    gateway: GatewayClient::integration(),
+                    gateway: GatewayClient::integration().with_retry(),
                     database: data_directory.join("integration.sqlite"),
                     l1_core_address: H160::from(core_addr::INTEGRATION),
                 },
@@ -438,8 +438,9 @@ mod pathfinder_context {
             use stark_hash::Felt;
             use starknet_gateway_client::GatewayApi;
 
-            let gateway =
-                GatewayClient::with_urls(gateway, feeder).context("Creating gateway client")?;
+            let gateway = GatewayClient::with_urls(gateway, feeder)
+                .context("Creating gateway client")?
+                .with_retry();
 
             let network_id =
                 ChainId(Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?);
@@ -529,7 +530,7 @@ async fn verify_database(
             (Chain::Custom, _) => {
                 // Verify against gateway.
                 let gateway_block = gateway_client
-                    .block_with_retry(BlockNumber::GENESIS.into())
+                    .block(BlockNumber::GENESIS.into())
                     .await
                     .context("Downloading genesis block from gateway for database verification")?
                     .as_block()
