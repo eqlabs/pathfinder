@@ -8,15 +8,11 @@ on:
 
 jobs:
   update-docker-images:
+    env:
+      # Workaround for https://github.com/rust-lang/cargo/issues/8719#issuecomment-1516492970
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
     runs-on: pathfinder-large-ubuntu
     steps:
-      - name: Free up space
-        run: |
-          echo "before freeing up space:"
-          df -h
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          echo "after freeing up space:"
-          df -h
       - name: Determine Docker image metadata
         id: meta
         uses: docker/metadata-action@v4
@@ -28,11 +24,6 @@ jobs:
             type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
             # snapshot tag for manually triggered builds
             type=raw,value=snapshot-{{branch}}-{{sha}},enable=${{ github.event_name == 'workflow_dispatch' }}
-      # Workaround for https://github.com/rust-lang/cargo/issues/8719
-      - name: Set Swap Space
-        uses: pierotofy/set-swap-space@v1.0
-        with:
-          swap-size-gb: 10
       - name: Checkout sources
         uses: actions/checkout@v3
         with:
