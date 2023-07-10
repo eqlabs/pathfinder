@@ -352,9 +352,9 @@ where
     use pathfinder_retry::Retry;
     use std::num::NonZeroU64;
 
-    Retry::exponential(future_factory, NonZeroU64::new(2).unwrap())
-        .factor(NonZeroU64::new(15).unwrap())
-        .max_delay(std::time::Duration::from_secs(10 * 60))
+    Retry::exponential(future_factory, NonZeroU64::new(1).unwrap())
+        .factor(NonZeroU64::new(2).unwrap())
+        .max_delay(std::time::Duration::from_secs(30))
         .when(retry_condition)
         .await
 }
