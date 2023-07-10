@@ -417,21 +417,21 @@ mod tests {
         fn status_queue_server(
             statuses: VecDeque<(StatusCode, &'static str)>,
         ) -> (JoinHandle<()>, SocketAddr) {
-            use std::cell::RefCell;
-
-            let statuses = Arc::new(Mutex::new(RefCell::new(statuses)));
+            let statuses = Arc::new(Mutex::new(statuses));
             let any = warp::any().then(move || {
-                let s = statuses.clone();
+                let statuses = statuses.clone();
                 async move {
-                    let s = s.lock().await;
-                    let s = s.borrow_mut().pop_front().unwrap();
-                    Builder::new().status(s.0).body(s.1)
+                    if let Some((code, body)) = statuses.lock().await.pop_front() {
+                        Builder::new().status(code).body(body)
+                    } else {
+                        Builder::new().status(201).body("No content")
+                    }
                 }
             });
 
-            let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
-            let server_handle = tokio::spawn(run_srv);
-            (server_handle, addr)
+            let (addr, serve) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
+            let handle = tokio::spawn(serve);
+            (handle, addr)
         }
 
         // A test helper
@@ -440,9 +440,9 @@ mod tests {
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 Ok(Builder::new().status(200).body(""))
             });
-            let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
-            let server_handle = tokio::spawn(run_srv);
-            (server_handle, addr)
+            let (addr, serve) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
+            let handle = tokio::spawn(serve);
+            (handle, addr)
         }
 
         #[test_log::test(tokio::test)]
@@ -547,15 +547,11 @@ mod tests {
                 retry_condition,
             );
 
-            // The retry loops forever, so wrap it in a timeout and check the counter.
-            // 5 retries = 465s
-            // 6 retries = 945s
-            tokio::time::timeout(Duration::from_secs(500), fut)
+            tokio::time::timeout(Duration::from_secs(30), fut)
                 .await
                 .unwrap_err();
 
-            // 5th try should have timedout if this is really exponential backoff
-            assert_eq!(CNT.load(Ordering::Relaxed), 5);
+            assert_eq!(CNT.load(Ordering::Relaxed), 15);
         }
     }
 
