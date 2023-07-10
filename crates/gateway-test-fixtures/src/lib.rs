@@ -215,6 +215,11 @@ pub mod class_definitions {
         bytes_fixture!("contracts/sierra-1.1.0-balance.json");
     pub const CAIRO_1_1_0_BALANCE_CASM_JSON: &[u8] =
         bytes_fixture!("contracts/sierra-1.1.0-balance.casm.json");
+
+    // A sierra class which caused a stack overflow in the 2.0.1 compiler.
+    // https://alpha4.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x03dd9347d22f1ea2d5fbc7bd1f0860c6c334973499f9f1989fcb81bfff5191da
+    pub const CAIRO_2_0_0_STACK_OVERFLOW: &[u8] =
+        bytes_fixture!("contracts/sierra-2.0.0-stack-overflow.json");
 }
 
 pub mod testnet {

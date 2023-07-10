@@ -24,7 +24,7 @@ pub fn compile_to_casm(
         .parse_as_semver()
         .context("Deciding on compiler version")?
     {
-        Some(v) if v >= V_0_11_2 => v2_0_0_rc6::compile(definition),
+        Some(v) if v >= V_0_11_2 => v2::compile(definition),
         Some(v) if v >= V_0_11_1 => v1_0_0_rc0::compile(definition),
         _ => v1_0_0_alpha6::compile(definition),
     }
@@ -123,13 +123,11 @@ mod v1_0_0_rc0 {
 }
 
 // This compiler is backwards compatible with v1.1.
-mod v2_0_0_rc6 {
+mod v2 {
     use anyhow::Context;
-    use casm_compiler_v2_0_0_rc6::allowed_libfuncs::{
-        validate_compatible_sierra_version, ListSelector,
-    };
-    use casm_compiler_v2_0_0_rc6::casm_contract_class::CasmContractClass;
-    use casm_compiler_v2_0_0_rc6::contract_class::ContractClass;
+    use casm_compiler_v2::allowed_libfuncs::{validate_compatible_sierra_version, ListSelector};
+    use casm_compiler_v2::casm_contract_class::CasmContractClass;
+    use casm_compiler_v2::contract_class::ContractClass;
 
     use crate::sierra::FeederGatewayContractClass;
 
@@ -155,7 +153,7 @@ mod v2_0_0_rc6 {
         validate_compatible_sierra_version(
             &sierra_class,
             ListSelector::ListName(
-                casm_compiler_v2_0_0_rc6::allowed_libfuncs::BUILTIN_ALL_LIBFUNCS_LIST.to_string(),
+                casm_compiler_v2::allowed_libfuncs::BUILTIN_ALL_LIBFUNCS_LIST.to_string(),
             ),
         )
         .context("Validating Sierra class")?;
@@ -232,7 +230,9 @@ mod tests {
 
     mod starknet_v0_11_2_onwards {
         use super::*;
-        use starknet_gateway_test_fixtures::class_definitions::CAIRO_1_1_0_RC0_SIERRA;
+        use starknet_gateway_test_fixtures::class_definitions::{
+            CAIRO_1_1_0_RC0_SIERRA, CAIRO_2_0_0_STACK_OVERFLOW,
+        };
 
         #[test]
         fn test_feeder_gateway_contract_conversion() {
@@ -240,13 +240,18 @@ mod tests {
                 serde_json::from_slice::<FeederGatewayContractClass<'_>>(CAIRO_1_1_0_RC0_SIERRA)
                     .unwrap();
 
-            let _: casm_compiler_v1_0_0_rc0::contract_class::ContractClass =
-                class.try_into().unwrap();
+            let _: casm_compiler_v2::contract_class::ContractClass = class.try_into().unwrap();
         }
 
         #[test]
         fn test_compile() {
             compile_to_casm(CAIRO_1_1_0_RC0_SIERRA, &StarknetVersion::new(0, 11, 2)).unwrap();
+        }
+
+        #[test]
+        fn regression_stack_overflow() {
+            // This class caused a stack-overflow in v2 compilers <= v2.0.1
+            compile_to_casm(CAIRO_2_0_0_STACK_OVERFLOW, &StarknetVersion::new(0, 12, 0)).unwrap();
         }
     }
 }

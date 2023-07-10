@@ -8,7 +8,7 @@ on:
 
 jobs:
   update-docker-images:
-    runs-on: ubuntu-latest
+    runs-on: pathfinder-large-ubuntu
     steps:
       - name: Free up space
         run: |
