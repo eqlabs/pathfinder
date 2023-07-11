@@ -762,6 +762,8 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
             state_update = state_update.with_declared_sierra_class(class_hash, compiled_class_hash);
         }
 
+        state_update.declared_cairo_classes = gateway.state_diff.old_declared_contracts;
+
         state_update
     }
 }
@@ -946,6 +948,12 @@ pub mod add_transaction {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{HashMap, HashSet};
+
+    use crate::reply::state_update::{
+        DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff,
+    };
+
     /// The aim of these tests is to make sure pathfinder is still able to correctly
     /// deserialize replies from the mainnet sequencer when it still is using some
     /// previous version of cairo while at the same time the goerli sequencer is
@@ -1012,5 +1020,87 @@ mod tests {
 
             assert_matches::assert_matches!(tx, TransactionVariant::L1Handler(_));
         }
+    }
+
+    #[test]
+    fn from_state_update() {
+        use pathfinder_common::macro_prelude::*;
+
+        let expected = pathfinder_common::StateUpdate::default()
+            .with_block_hash(block_hash_bytes!(b"block hash"))
+            .with_state_commitment(state_commitment_bytes!(b"state commitment"))
+            .with_parent_state_commitment(state_commitment_bytes!(b"parent commitment"))
+            .with_storage_update(
+                contract_address_bytes!(b"contract 0"),
+                storage_address_bytes!(b"storage key 0"),
+                storage_value_bytes!(b"storage val 0"),
+            )
+            .with_deployed_contract(
+                contract_address_bytes!(b"deployed contract"),
+                class_hash_bytes!(b"deployed class"),
+            )
+            .with_declared_cairo_class(class_hash_bytes!(b"cairo 0 0"))
+            .with_declared_cairo_class(class_hash_bytes!(b"cairo 0 1"))
+            .with_declared_sierra_class(
+                sierra_hash_bytes!(b"sierra class"),
+                casm_hash_bytes!(b"casm hash"),
+            )
+            .with_contract_nonce(
+                contract_address_bytes!(b"contract 0"),
+                contract_nonce_bytes!(b"nonce 0"),
+            )
+            .with_contract_nonce(
+                contract_address_bytes!(b"contract 10"),
+                contract_nonce_bytes!(b"nonce 10"),
+            )
+            .with_replaced_class(
+                contract_address_bytes!(b"contract 0"),
+                class_hash_bytes!(b"replaced class"),
+            );
+
+        let gateway = super::StateUpdate {
+            block_hash: block_hash_bytes!(b"block hash"),
+            new_root: state_commitment_bytes!(b"state commitment"),
+            old_root: state_commitment_bytes!(b"parent commitment"),
+            state_diff: super::state_update::StateDiff {
+                storage_diffs: HashMap::from([(
+                    contract_address_bytes!(b"contract 0"),
+                    vec![StorageDiff {
+                        key: storage_address_bytes!(b"storage key 0"),
+                        value: storage_value_bytes!(b"storage val 0"),
+                    }],
+                )]),
+                deployed_contracts: vec![DeployedContract {
+                    address: contract_address_bytes!(b"deployed contract"),
+                    class_hash: class_hash_bytes!(b"deployed class"),
+                }],
+                old_declared_contracts: HashSet::from([
+                    class_hash_bytes!(b"cairo 0 0"),
+                    class_hash_bytes!(b"cairo 0 1"),
+                ]),
+                declared_classes: vec![DeclaredSierraClass {
+                    class_hash: sierra_hash_bytes!(b"sierra class"),
+                    compiled_class_hash: casm_hash_bytes!(b"casm hash"),
+                }],
+                nonces: HashMap::from([
+                    (
+                        contract_address_bytes!(b"contract 0"),
+                        contract_nonce_bytes!(b"nonce 0"),
+                    ),
+                    (
+                        contract_address_bytes!(b"contract 10"),
+                        contract_nonce_bytes!(b"nonce 10"),
+                    ),
+                ]),
+                replaced_classes: vec![ReplacedClass {
+                    address: contract_address_bytes!(b"contract 0"),
+                    class_hash: class_hash_bytes!(b"replaced class"),
+                }],
+            },
+        };
+
+        let common = pathfinder_common::StateUpdate::from(gateway);
+
+        assert_eq!(common, expected);
     }
 }
