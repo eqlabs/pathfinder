@@ -33,6 +33,19 @@ impl Transaction {
 }
 
 impl TransactionVariant {
+    pub const fn kind(&self) -> &str {
+        use TransactionVariant::*;
+        match self {
+            DeclareV0(_) => "DeclareV0",
+            DeclareV1(_) => "DeclareV1",
+            DeclareV2(_) => "DeclareV2",
+            Deploy(_) => "Deploy",
+            DeployAccount(_) => "DeployAccount",
+            InvokeV0(_) => "InvokeV0",
+            InvokeV1(_) => "InvokeV1",
+            L1Handler(_) => "L1Handler",
+        }
+    }
     /// Calcualtes the [TransactionHash] of this transaction.
     ///
     /// #### WARNING: only guaranteed to be correct for transactions from starknet 0.8 onwards.
