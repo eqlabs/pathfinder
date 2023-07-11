@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- some cairo 0 classes are not downloaded which can cause execution methods to fail
+  - this bug was introduced in v0.6.4 and requires a resync to fix
+
 ## [0.6.6] - 2023-07-10
 
 ### Fixed
