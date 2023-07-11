@@ -6,13 +6,10 @@ use crate::reply::transaction::{
     L1HandlerTransaction, Transaction,
 };
 use pathfinder_common::{
-    BlockNumber, CasmHash, ClassHash, ContractAddress, EntryPoint, Fee, TransactionHash,
+    BlockNumber, CasmHash, ChainId, ClassHash, ContractAddress, EntryPoint, Fee, TransactionHash,
     TransactionNonce, TransactionVersion,
 };
 
-use crate::class_hash::truncated_keccak;
-use pathfinder_common::ChainId;
-use sha3::{Digest, Keccak256};
 use stark_hash::{Felt, HashChain};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -169,13 +166,6 @@ fn compute_declare_v2_hash(txn: &DeclareTransactionV2, chain_id: ChainId) -> Tra
 ///
 /// Where `h` is [Pedersen hash](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#pedersen_hash), and `sn_keccak` is [Starknet Keccak](https://docs.starknet.io/documentation/architecture_and_concepts/Hashing/hash-functions/#Starknet-keccak)
 fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> TransactionHash {
-    lazy_static::lazy_static!(
-        static ref CONSTRUCTOR: EntryPoint = {
-            let mut keccak = Keccak256::default();
-            keccak.update(b"constructor");
-            EntryPoint(truncated_keccak(<[u8; 32]>::from(keccak.finalize())))};
-    );
-
     let constructor_params_hash = {
         let hh = txn.constructor_calldata.iter().fold(
             HashChain::default(),
@@ -191,7 +181,7 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> Transactio
         b"deploy",
         txn.version,
         txn.contract_address,
-        Some(*CONSTRUCTOR),
+        Some(EntryPoint::CONSTRUCTOR),
         constructor_params_hash,
         None,
         chain_id,
@@ -205,7 +195,7 @@ fn compute_deploy_hash(txn: &DeployTransaction, chain_id: ChainId) -> Transactio
         legacy_compute_txn_hash(
             b"deploy",
             txn.contract_address,
-            Some(*CONSTRUCTOR),
+            Some(EntryPoint::CONSTRUCTOR),
             constructor_params_hash,
             chain_id,
         )
