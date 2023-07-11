@@ -43,6 +43,10 @@ impl BlockHeader {
             .with_block_hash(self.hash)
             .with_state_commitment(self.state_commitment)
     }
+
+    pub fn is_pending(&self) -> bool {
+        self.hash == BlockHash::ZERO
+    }
 }
 
 impl BlockHeaderBuilder {
@@ -113,6 +117,12 @@ impl BlockHeaderBuilder {
 
     pub fn finalize_with_hash(mut self, hash: BlockHash) -> BlockHeader {
         self.0.hash = hash;
+        self.0
+    }
+
+    /// Builds the [BlockHeader] and marks it as pending by setting its hash to zero.
+    pub fn finalize_as_pending(mut self) -> BlockHeader {
+        self.0.hash = BlockHash::ZERO;
         self.0
     }
 }

@@ -21,7 +21,7 @@ pub mod test_utils;
 pub mod transaction;
 pub mod trie;
 
-pub use body::BlockBody;
+pub use body::{BlockBody, BlockWithBody};
 pub use header::{BlockHeader, BlockHeaderBuilder};
 pub use state_update::StateUpdate;
 
@@ -118,7 +118,7 @@ macros::i64_backed_u64::new_get_partialeq!(BlockTimestamp);
 macros::i64_backed_u64::serdes!(BlockTimestamp);
 
 /// A Starknet transaction index.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct TransactionIndex(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(TransactionIndex);
@@ -129,7 +129,7 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 pub struct GasPrice(pub u128);
 
 /// Starknet transaction version.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TransactionVersion(pub H256);
 
 impl TransactionVersion {
