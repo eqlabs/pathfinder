@@ -49,6 +49,14 @@ impl TransactionVariant {
     /// Calcualtes the [TransactionHash] of this transaction.
     ///
     /// #### WARNING: only guaranteed to be correct for transactions from starknet 0.8 onwards.
+    /// 
+    /// More specifically:
+    /// ```
+    /// mainnet       4 399
+    /// testnet     306 700
+    /// testnet2     21 086  (early blocks used the wrong chain ID)
+    /// integration TBD
+    /// ```
     pub fn calculate_hash(&self, chain_id: ChainId) -> TransactionHash {
         use TransactionVariant::*;
         let prefix = match self {
