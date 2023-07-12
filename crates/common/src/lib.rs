@@ -13,6 +13,7 @@ pub mod event;
 pub mod hash;
 mod header;
 mod macros;
+pub mod pending;
 pub mod prelude;
 pub mod receipt;
 pub mod state_update;

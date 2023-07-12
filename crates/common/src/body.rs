@@ -7,7 +7,7 @@ pub struct BlockBody {
     pub transaction_data: Vec<(crate::transaction::Transaction, crate::receipt::Receipt)>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BlockWithBody {
     pub header: BlockHeader,
     pub body: BlockBody,
