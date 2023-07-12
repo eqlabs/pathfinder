@@ -44,7 +44,7 @@ We need much better system monitoring. Ideally an alert should have warned us 10
 
 We also need better communication procedures. We managed to reach a Starkware engineer but clearly failed to communicate the severity of the issue. This meant people that could have helped were unaware of the issue until the next morning. Communication with the rest of the ecosystem was also limited due to the lack of properly defined communication channels and responsibilities.
 
-It also highlights the lack of with node diversity currently within Starknet. Having multiple node implementations divides the risk as different implementations are unlikely to share the same bug. Fortunately Starknet has a growing list of strong node implementations with Juno and Papyrus which will reduce this weakness in the future.
+It also highlights the lack of node diversity currently within Starknet. Having multiple node implementations divides the risk as different implementations are unlikely to share the same bug. Fortunately Starknet has a growing list of strong node implementations with Juno and Papyrus which will reduce this weakness in the future.
 
 ### Improvements
 
