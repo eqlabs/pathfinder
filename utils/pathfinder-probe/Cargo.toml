@@ -1,0 +1,16 @@
+[package]
+name = "pathfinder-probe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.71"
+axum = "0.6.18"
+metrics = "0.21.1"
+metrics-exporter-prometheus = "0.12.1"
+reqwest = { version = "0.11.18", features = ["json"] }
+serde = "1.0.171"
+serde_json = "1.0.100"
+tokio = { version = "1.29.1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.17"
