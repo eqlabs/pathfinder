@@ -778,7 +778,7 @@ mod tests {
                         .unwrap()
                         .headers
                         .into_iter()
-                        .map(header::from_p2p).collect::<Vec<_>>();
+                        .map(header::try_from_p2p).collect::<anyhow::Result<Vec<_>>>().unwrap();
 
                     prop_assert_eq!(from_p2p, from_db)
                 }
@@ -804,7 +804,7 @@ mod tests {
                         .unwrap()
                         .headers
                         .into_iter()
-                        .map(header::from_p2p).collect::<Vec<_>>();
+                        .map(header::try_from_p2p).collect::<anyhow::Result<Vec<_>>>().unwrap();
 
                     prop_assert_eq!(from_p2p, from_db)
                 }
@@ -952,7 +952,7 @@ mod tests {
                         .block_state_updates
                         .into_iter()
                         .map(|state_update| {
-                            StateUpdate::from(state_update::from_p2p(state_update))
+                            StateUpdate::from(state_update::try_from_p2p(state_update).unwrap())
                         }).collect::<Vec<_>>();
 
                     prop_assert_eq!(from_p2p, from_db)
@@ -989,7 +989,7 @@ mod tests {
                         .block_state_updates
                         .into_iter()
                         .map(|state_update| {
-                            StateUpdate::from(state_update::from_p2p(state_update))
+                            StateUpdate::from(state_update::try_from_p2p(state_update).unwrap())
                         }).collect::<Vec<_>>();
 
                     prop_assert_eq!(from_p2p, from_db)

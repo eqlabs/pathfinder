@@ -11,12 +11,18 @@ pub mod conv {
             TransactionCommitment,
         };
 
-        pub fn from_p2p(header: p2p_proto::common::BlockHeader) -> BlockHeader {
-            BlockHeader {
+        pub fn try_from_p2p(header: p2p_proto::common::BlockHeader) -> anyhow::Result<BlockHeader> {
+            Ok(BlockHeader {
                 hash: BlockHash(header.hash),
                 parent_hash: BlockHash(header.parent_hash),
-                number: BlockNumber::new_or_panic(header.number),
-                timestamp: BlockTimestamp::new_or_panic(header.timestamp),
+                number: BlockNumber::new(header.number).ok_or(anyhow::anyhow!(
+                    "Out of range block number {}",
+                    header.number
+                ))?,
+                timestamp: BlockTimestamp::new(header.timestamp).ok_or(anyhow::anyhow!(
+                    "Out of range timestamp in block {}",
+                    header.number
+                ))?,
                 gas_price: GasPrice::from_be_slice(&header.gas_price.as_be_bytes()[16..])
                     .expect("larger to smaller array is ok"),
                 sequencer_address: SequencerAddress(header.sequencer_address),
@@ -26,11 +32,12 @@ pub mod conv {
                 state_commitment: StateCommitment(header.state_commitment),
                 storage_commitment: StorageCommitment(header.storage_commitment),
                 transaction_commitment: TransactionCommitment(header.transaction_commitment),
-            }
+            })
         }
     }
 
     pub mod body {
+        use anyhow::Context;
         use p2p_proto::common::{BlockBody, Receipt, Transaction};
         use pathfinder_common::{
             CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
@@ -69,19 +76,23 @@ pub mod conv {
                 .transactions
                 .into_iter()
                 .zip(body.receipts.into_iter())
-                .map(|(t, r)| {
+                .enumerate()
+                .map(|(i, (t, r))| {
                     match (t, &r) {
                         (Transaction::Invoke(t), Receipt::Invoke(r)) => match version(t.version) {
                             0 => {
                                 let (entry_point_selector, entry_point_type) =
-                                    entry_point(t.deprecated_entry_point_selector)?;
+                                    entry_point(t.deprecated_entry_point_selector)
+                                        .context(r.common.transaction_hash)?;
 
-                                Ok(gw::Transaction::Invoke(gw::InvokeTransaction::V0(
+                                anyhow::Ok(gw::Transaction::Invoke(gw::InvokeTransaction::V0(
                                     gw::InvokeTransactionV0 {
                                         calldata: t.calldata.into_iter().map(CallParam).collect(),
-                                        sender_address: ContractAddress::new_or_panic(
-                                            t.sender_address,
-                                        ),
+                                        sender_address: ContractAddress::new(t.sender_address)
+                                            .ok_or(anyhow::anyhow!(
+                                                "Out of range sender address {}",
+                                                t.sender_address
+                                            ))?,
                                         entry_point_selector,
                                         entry_point_type,
                                         max_fee: Fee(t.max_fee),
@@ -99,7 +110,12 @@ pub mod conv {
                             1 => Ok(gw::Transaction::Invoke(gw::InvokeTransaction::V1(
                                 gw::InvokeTransactionV1 {
                                     calldata: t.calldata.into_iter().map(CallParam).collect(),
-                                    sender_address: ContractAddress::new_or_panic(t.sender_address),
+                                    sender_address: ContractAddress::new(t.sender_address).ok_or(
+                                        anyhow::anyhow!(
+                                            "Out of range sender address {}",
+                                            t.sender_address
+                                        ),
+                                    )?,
                                     max_fee: Fee(t.max_fee),
                                     signature: t
                                         .signature
@@ -110,7 +126,11 @@ pub mod conv {
                                     transaction_hash: TransactionHash(r.common.transaction_hash),
                                 },
                             ))),
-                            _ => anyhow::bail!("Invalid invoke transaction version {}", t.version),
+                            _ => anyhow::bail!(
+                                "Invalid version {} of invoke transaction {}",
+                                t.version,
+                                r.common.transaction_hash
+                            ),
                         },
                         (Transaction::Declare(t), Receipt::Declare(r)) => {
                             match version(t.version) {
@@ -119,9 +139,11 @@ pub mod conv {
                                         class_hash: ClassHash(t.class_hash),
                                         max_fee: Fee(t.max_fee),
                                         nonce: TransactionNonce(t.nonce),
-                                        sender_address: ContractAddress::new_or_panic(
-                                            t.sender_address,
-                                        ),
+                                        sender_address: ContractAddress::new(t.sender_address)
+                                            .ok_or(anyhow::anyhow!(
+                                                "Out of range sender address {}",
+                                                t.sender_address
+                                            ))?,
                                         signature: t
                                             .signature
                                             .into_iter()
@@ -137,9 +159,11 @@ pub mod conv {
                                         class_hash: ClassHash(t.class_hash),
                                         max_fee: Fee(t.max_fee),
                                         nonce: TransactionNonce(t.nonce),
-                                        sender_address: ContractAddress::new_or_panic(
-                                            t.sender_address,
-                                        ),
+                                        sender_address: ContractAddress::new(t.sender_address)
+                                            .ok_or(anyhow::anyhow!(
+                                                "Out of range sender address {}",
+                                                t.sender_address
+                                            ))?,
                                         signature: t
                                             .signature
                                             .into_iter()
@@ -155,9 +179,11 @@ pub mod conv {
                                         class_hash: ClassHash(t.class_hash),
                                         max_fee: Fee(t.max_fee),
                                         nonce: TransactionNonce(t.nonce),
-                                        sender_address: ContractAddress::new_or_panic(
-                                            t.sender_address,
-                                        ),
+                                        sender_address: ContractAddress::new(t.sender_address)
+                                            .ok_or(anyhow::anyhow!(
+                                                "Out of range sender address {}",
+                                                t.sender_address
+                                            ))?,
                                         signature: t
                                             .signature
                                             .into_iter()
@@ -170,14 +196,20 @@ pub mod conv {
                                     },
                                 ))),
                                 _ => anyhow::bail!(
-                                    "Invalid declare transaction version {}",
-                                    t.version
+                                    "Invalid version {} of declare transaction {}",
+                                    t.version,
+                                    r.common.transaction_hash
                                 ),
                             }
                         }
                         (Transaction::Deploy(t), Receipt::Deploy(r)) => {
                             Ok(gw::Transaction::Deploy(gw::DeployTransaction {
-                                contract_address: ContractAddress::new_or_panic(r.contract_address),
+                                contract_address: ContractAddress::new(r.contract_address).ok_or(
+                                    anyhow::anyhow!(
+                                        "Out of range contract address {}",
+                                        r.contract_address
+                                    ),
+                                )?,
                                 contract_address_salt: ContractAddressSalt(t.contract_address_salt),
                                 class_hash: ClassHash(t.class_hash),
                                 constructor_calldata: t
@@ -193,7 +225,12 @@ pub mod conv {
                         }
                         (Transaction::L1Handler(t), Receipt::L1Handler(r)) => {
                             Ok(gw::Transaction::L1Handler(gw::L1HandlerTransaction {
-                                contract_address: ContractAddress::new_or_panic(t.contract_address),
+                                contract_address: ContractAddress::new(t.contract_address).ok_or(
+                                    anyhow::anyhow!(
+                                        "Out of range contract address {}",
+                                        t.contract_address
+                                    ),
+                                )?,
                                 entry_point_selector: EntryPoint(t.entry_point_selector),
                                 nonce: TransactionNonce(t.nonce),
                                 calldata: t.calldata.into_iter().map(CallParam).collect(),
@@ -205,7 +242,12 @@ pub mod conv {
                         }
                         (Transaction::DeployAccount(t), Receipt::DeployAccount(r)) => Ok(
                             gw::Transaction::DeployAccount(gw::DeployAccountTransaction {
-                                contract_address: ContractAddress::new_or_panic(r.contract_address),
+                                contract_address: ContractAddress::new(r.contract_address).ok_or(
+                                    anyhow::anyhow!(
+                                        "Out of range contract address {}",
+                                        r.contract_address
+                                    ),
+                                )?,
                                 transaction_hash: TransactionHash(r.common.transaction_hash),
                                 max_fee: Fee(t.max_fee),
                                 version: TransactionVersion(H256::from_slice(
@@ -226,11 +268,9 @@ pub mod conv {
                                 class_hash: ClassHash(t.class_hash),
                             }),
                         ),
-                        _ => anyhow::bail!(
-                            "Transaction receipt type differs from its respective transaction type"
-                        ),
+                        _ => anyhow::bail!("Receipt vs transaction type mismatch at pos {}", i),
                     }
-                    .map(|t| (t, receipt::from_p2p(r)))
+                    .map(|t| Ok((t, receipt::try_from_p2p(r)?)))?
                 })
                 .collect::<anyhow::Result<Vec<_>>>()?
                 .into_iter()
@@ -252,71 +292,94 @@ pub mod conv {
                 TransactionHash, TransactionIndex,
             };
 
-            pub(super) fn from_p2p(r: Receipt) -> gw::Receipt {
+            pub(super) fn try_from_p2p(r: Receipt) -> anyhow::Result<gw::Receipt> {
                 match r {
                     Receipt::Declare(DeclareTransactionReceipt { common })
                     | Receipt::Deploy(DeployTransactionReceipt { common, .. })
                     | Receipt::DeployAccount(DeployAccountTransactionReceipt { common, .. })
                     | Receipt::Invoke(InvokeTransactionReceipt { common })
-                    | Receipt::L1Handler(L1HandlerTransactionReceipt { common }) => gw::Receipt {
-                        actual_fee: Some(Fee(common.actual_fee)),
-                        events: common
-                            .events
-                            .into_iter()
-                            .map(|e| Event {
-                                data: e.data.into_iter().map(EventData).collect(),
-                                from_address: ContractAddress::new_or_panic(e.from_address),
-                                keys: e.keys.into_iter().map(EventKey).collect(),
-                            })
-                            .collect(),
-                        execution_resources: Some(gw::ExecutionResources {
-                            builtin_instance_counter: {
-                                let b = common.execution_resources.builtin_instance_counter;
-                                gw::execution_resources::BuiltinInstanceCounter::Normal(
-                                    gw::execution_resources::NormalBuiltinInstanceCounter {
-                                        bitwise_builtin: b.bitwise_builtin,
-                                        ecdsa_builtin: b.ecdsa_builtin,
-                                        ec_op_builtin: b.ec_op_builtin,
-                                        output_builtin: b.output_builtin,
-                                        pedersen_builtin: b.pedersen_builtin,
-                                        range_check_builtin: b.range_check_builtin,
-                                    },
-                                )
+                    | Receipt::L1Handler(L1HandlerTransactionReceipt { common }) => {
+                        Ok(gw::Receipt {
+                            actual_fee: Some(Fee(common.actual_fee)),
+                            events: common
+                                .events
+                                .into_iter()
+                                .map(|e| {
+                                    Ok(Event {
+                                        data: e.data.into_iter().map(EventData).collect(),
+                                        from_address: ContractAddress::new(e.from_address).ok_or(
+                                            anyhow::anyhow!(
+                                                "Out of range 'from' address {}",
+                                                e.from_address
+                                            ),
+                                        )?,
+                                        keys: e.keys.into_iter().map(EventKey).collect(),
+                                    })
+                                })
+                                .collect::<anyhow::Result<Vec<_>>>()?,
+                            execution_resources: Some(gw::ExecutionResources {
+                                builtin_instance_counter: {
+                                    let b = common.execution_resources.builtin_instance_counter;
+                                    gw::execution_resources::BuiltinInstanceCounter::Normal(
+                                        gw::execution_resources::NormalBuiltinInstanceCounter {
+                                            bitwise_builtin: b.bitwise_builtin,
+                                            ecdsa_builtin: b.ecdsa_builtin,
+                                            ec_op_builtin: b.ec_op_builtin,
+                                            output_builtin: b.output_builtin,
+                                            pedersen_builtin: b.pedersen_builtin,
+                                            range_check_builtin: b.range_check_builtin,
+                                        },
+                                    )
+                                },
+                                n_steps: common.execution_resources.n_steps,
+                                n_memory_holes: common.execution_resources.n_memory_holes,
+                            }),
+                            l1_to_l2_consumed_message: match common.consumed_message {
+                                Some(x) => Some(gw::L1ToL2Message {
+                                    from_address: EthereumAddress(x.from_address),
+                                    payload: x
+                                        .payload
+                                        .into_iter()
+                                        .map(L1ToL2MessagePayloadElem)
+                                        .collect(),
+                                    selector: EntryPoint(x.entry_point_selector),
+                                    to_address: ContractAddress::new(x.to_address).ok_or(
+                                        anyhow::anyhow!(
+                                            "Out of range 'to' address {}",
+                                            x.to_address
+                                        ),
+                                    )?,
+                                    nonce: Some(L1ToL2MessageNonce(x.nonce)),
+                                }),
+                                None => None,
                             },
-                            n_steps: common.execution_resources.n_steps,
-                            n_memory_holes: common.execution_resources.n_memory_holes,
-                        }),
-                        l1_to_l2_consumed_message: common.consumed_message.map(|x| {
-                            gw::L1ToL2Message {
-                                from_address: EthereumAddress(x.from_address),
-                                payload: x
-                                    .payload
-                                    .into_iter()
-                                    .map(L1ToL2MessagePayloadElem)
-                                    .collect(),
-                                selector: EntryPoint(x.entry_point_selector),
-                                to_address: ContractAddress::new_or_panic(x.to_address),
-                                nonce: Some(L1ToL2MessageNonce(x.nonce)),
-                            }
-                        }),
-                        l2_to_l1_messages: common
-                            .messages_sent
-                            .into_iter()
-                            .map(|m| gw::L2ToL1Message {
-                                from_address: ContractAddress::new_or_panic(m.from_address),
-                                payload: m
-                                    .payload
-                                    .into_iter()
-                                    .map(L2ToL1MessagePayloadElem)
-                                    .collect(),
-                                to_address: EthereumAddress(m.to_address),
-                            })
-                            .collect(),
-                        transaction_hash: TransactionHash(common.transaction_hash),
-                        transaction_index: TransactionIndex::new_or_panic(
-                            common.transaction_index.into(),
-                        ),
-                    },
+                            l2_to_l1_messages: common
+                                .messages_sent
+                                .into_iter()
+                                .map(|m| {
+                                    Ok(gw::L2ToL1Message {
+                                        from_address: ContractAddress::new(m.from_address).ok_or(
+                                            anyhow::anyhow!(
+                                                "Out of range 'from' address {}",
+                                                m.from_address
+                                            ),
+                                        )?,
+                                        payload: m
+                                            .payload
+                                            .into_iter()
+                                            .map(L2ToL1MessagePayloadElem)
+                                            .collect(),
+                                        to_address: EthereumAddress(m.to_address),
+                                    })
+                                })
+                                .collect::<anyhow::Result<Vec<_>>>()?,
+                            transaction_hash: TransactionHash(common.transaction_hash),
+                            transaction_index: TransactionIndex::new(
+                                common.transaction_index.into(),
+                            )
+                            .expect("u32::MAX is always smaller than i64::MAX"),
+                        })
+                    }
                 }
             }
         }
@@ -332,8 +395,8 @@ pub mod conv {
         };
         use starknet_gateway_types::reply as gw;
 
-        pub fn from_p2p(su: BlockStateUpdateWithHash) -> gw::StateUpdate {
-            gw::StateUpdate {
+        pub fn try_from_p2p(su: BlockStateUpdateWithHash) -> anyhow::Result<gw::StateUpdate> {
+            Ok(gw::StateUpdate {
                 block_hash: BlockHash(su.block_hash),
                 new_root: StateCommitment(su.state_commitment),
                 old_root: StateCommitment(su.parent_state_commitment),
@@ -343,28 +406,44 @@ pub mod conv {
                         .contract_diffs
                         .iter()
                         .map(|contract_diff| {
-                            (
-                                ContractAddress::new_or_panic(contract_diff.contract_address),
+                            Ok((
+                                ContractAddress::new(contract_diff.contract_address).ok_or(
+                                    anyhow::anyhow!(
+                                        "Out of range contract address {}",
+                                        contract_diff.contract_address
+                                    ),
+                                )?,
                                 contract_diff
                                     .storage_diffs
                                     .iter()
-                                    .map(|x| gw::state_update::StorageDiff {
-                                        key: StorageAddress::new_or_panic(x.key),
-                                        value: StorageValue(x.value),
+                                    .map(|x| {
+                                        Ok(gw::state_update::StorageDiff {
+                                            key: StorageAddress::new(x.key).ok_or(
+                                                anyhow::anyhow!("Out of range key {}", x.key),
+                                            )?,
+                                            value: StorageValue(x.value),
+                                        })
                                     })
-                                    .collect(),
-                            )
+                                    .collect::<anyhow::Result<_>>()?,
+                            ))
                         })
-                        .collect::<HashMap<_, _>>(),
+                        .collect::<anyhow::Result<HashMap<_, _>>>()?,
                     deployed_contracts: su
                         .state_update
                         .deployed_contracts
                         .into_iter()
-                        .map(|x| gw::state_update::DeployedContract {
-                            address: ContractAddress::new_or_panic(x.contract_address),
-                            class_hash: ClassHash(x.class_hash),
+                        .map(|x| {
+                            Ok(gw::state_update::DeployedContract {
+                                address: ContractAddress::new(x.contract_address).ok_or(
+                                    anyhow::anyhow!(
+                                        "Out of range contract address {}",
+                                        x.contract_address
+                                    ),
+                                )?,
+                                class_hash: ClassHash(x.class_hash),
+                            })
                         })
-                        .collect(),
+                        .collect::<anyhow::Result<_>>()?,
                     old_declared_contracts: su
                         .state_update
                         .declared_cairo_classes
@@ -385,23 +464,35 @@ pub mod conv {
                         .contract_diffs
                         .iter()
                         .map(|contract_diff| {
-                            (
-                                ContractAddress::new_or_panic(contract_diff.contract_address),
+                            Ok((
+                                ContractAddress::new(contract_diff.contract_address).ok_or(
+                                    anyhow::anyhow!(
+                                        "Out of range contract address {}",
+                                        contract_diff.contract_address
+                                    ),
+                                )?,
                                 ContractNonce(contract_diff.nonce),
-                            )
+                            ))
                         })
-                        .collect::<HashMap<_, _>>(),
+                        .collect::<anyhow::Result<HashMap<_, _>>>()?,
                     replaced_classes: su
                         .state_update
                         .replaced_classes
                         .into_iter()
-                        .map(|x| gw::state_update::ReplacedClass {
-                            address: ContractAddress::new_or_panic(x.contract_address),
-                            class_hash: ClassHash(x.class_hash),
+                        .map(|x| {
+                            Ok(gw::state_update::ReplacedClass {
+                                address: ContractAddress::new(x.contract_address).ok_or(
+                                    anyhow::anyhow!(
+                                        "Out of range contract address {}",
+                                        x.contract_address
+                                    ),
+                                )?,
+                                class_hash: ClassHash(x.class_hash),
+                            })
                         })
-                        .collect(),
+                        .collect::<anyhow::Result<_>>()?,
                 },
-            }
+            })
         }
     }
 }
