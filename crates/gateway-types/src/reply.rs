@@ -456,7 +456,9 @@ pub mod transaction {
 
         pub fn version(&self) -> TransactionVersion {
             match self {
-                Transaction::Declare(t) => t.version(),
+                Transaction::Declare(DeclareTransaction::V0(_)) => TransactionVersion::ZERO,
+                Transaction::Declare(DeclareTransaction::V1(_)) => TransactionVersion::ONE,
+                Transaction::Declare(DeclareTransaction::V2(_)) => TransactionVersion::TWO,
                 Transaction::Deploy(t) => t.version,
                 Transaction::DeployAccount(t) => t.version,
                 Transaction::Invoke(InvokeTransaction::V0(_)) => TransactionVersion::ZERO,
@@ -521,14 +523,6 @@ pub mod transaction {
                 DeclareTransaction::V0(tx) => tx.signature.as_ref(),
                 DeclareTransaction::V1(tx) => tx.signature.as_ref(),
                 DeclareTransaction::V2(tx) => tx.signature.as_ref(),
-            }
-        }
-
-        pub fn version(&self) -> TransactionVersion {
-            match self {
-                DeclareTransaction::V0(_) => TransactionVersion::ZERO,
-                DeclareTransaction::V1(_) => TransactionVersion::ONE,
-                DeclareTransaction::V2(_) => TransactionVersion::TWO,
             }
         }
     }
