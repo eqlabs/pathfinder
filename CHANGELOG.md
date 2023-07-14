@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - some cairo 0 classes are not downloaded which can cause execution methods to fail
   - this bug was introduced in v0.6.4 and requires a resync to fix
+- `pathfinder_getTransactionStatus` still emits `pending` status
 
 ## [0.6.6] - 2023-07-10
 
