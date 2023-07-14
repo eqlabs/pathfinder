@@ -29,7 +29,7 @@ pub async fn get_class(
                 let is_pending = context
                     .pending_state_update(&tx)
                     .context("Querying pending state update")?
-                    .map(|u| u.contains_declared_class(input.class_hash))
+                    .map(|u| u.contains_class_declaration(input.class_hash))
                     .unwrap_or_default();
 
                 (pathfinder_storage::BlockId::Latest, is_pending)
