@@ -63,7 +63,7 @@ impl RpcContext {
 
     pub(crate) fn pending_block(
         &self,
-        db: &pathfinder_storage::Transaction,
+        db: &pathfinder_storage::Transaction<'_>,
     ) -> anyhow::Result<Option<Arc<BlockWithBody>>> {
         let Some(latest) = db
             .block_id(pathfinder_storage::BlockId::Latest)
@@ -76,7 +76,7 @@ impl RpcContext {
 
     pub(crate) fn pending_state_update(
         &self,
-        db: &pathfinder_storage::Transaction,
+        db: &pathfinder_storage::Transaction<'_>,
     ) -> anyhow::Result<Option<Arc<StateUpdate>>> {
         let Some(latest) = db
             .block_header(pathfinder_storage::BlockId::Latest)

@@ -30,13 +30,12 @@ pub async fn get_transaction_receipt(
             context
                 .pending_block(&db_tx)
                 .context("Querying pending block")?
-                .map(|x| {
+                .and_then(|x| {
                     x.body.transaction_data.iter().find_map(|(tx, rx)| {
                         (tx.hash == input.transaction_hash)
                             .then_some(PendingTransactionReceipt::from(rx, tx, context.version))
                     })
-                })
-                .flatten();
+                });
 
         if let Some(pending) = pending {
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));

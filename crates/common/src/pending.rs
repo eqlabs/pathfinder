@@ -16,25 +16,19 @@ impl PendingData {
     ///
     /// That is, if the pending block's parent hash matches latest.
     pub fn block(&self, latest: BlockHash) -> Option<Arc<BlockWithBody>> {
-        self.0
-            .read()
-            .ok()
-            .map(|inner| (inner.block.header.parent_hash == latest).then_some(inner.block.clone()))
-            .flatten()
+        self.0.read().ok().and_then(|inner| {
+            (inner.block.header.parent_hash == latest).then_some(inner.block.clone())
+        })
     }
 
     /// Returns the inner pending state update if is valid for the latest block.
     ///
     /// That is, if the pending block's state update parent commitment matches latest.
     pub fn state_update(&self, latest: StateCommitment) -> Option<Arc<StateUpdate>> {
-        self.0
-            .read()
-            .ok()
-            .map(|inner| {
-                (inner.state_update.parent_state_commitment == latest)
-                    .then_some(inner.state_update.clone())
-            })
-            .flatten()
+        self.0.read().ok().and_then(|inner| {
+            (inner.state_update.parent_state_commitment == latest)
+                .then_some(inner.state_update.clone())
+        })
     }
 
     pub fn block_unchecked(&self) -> Arc<BlockWithBody> {

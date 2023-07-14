@@ -10,9 +10,7 @@ pub struct Transaction {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransactionVariant {
-    /// Identical to [Transaction::DeclareV1] and should be differentiated by the enum variant or version tag.
     DeclareV0(DeclareTransactionV0V1),
-    /// Identical to [Transaction::DeclareV0] and should be differentiated by the enum variant or version tag.
     DeclareV1(DeclareTransactionV0V1),
     DeclareV2(DeclareTransactionV2),
     // Regenesis: deploy is a legacy variant and can be removed after regenesis.

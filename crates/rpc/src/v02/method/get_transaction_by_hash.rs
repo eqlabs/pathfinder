@@ -28,12 +28,11 @@ pub async fn get_transaction_by_hash(
         let pending = context
             .pending_block(&db_tx)
             .context("Querying pending block")?
-            .map(|x| {
+            .and_then(|x| {
                 x.body.transaction_data.iter().find_map(|(tx, _rx)| {
                     (tx.hash == input.transaction_hash).then_some(tx.clone().into())
                 })
-            })
-            .flatten();
+            });
 
         if let Some(pending) = pending {
             return Ok(pending);
