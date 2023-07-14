@@ -1,5 +1,5 @@
 use crate::context::RpcContext;
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -13,34 +13,28 @@ pub async fn get_state_update(
     context: RpcContext,
     input: GetStateUpdateInput,
 ) -> Result<types::StateUpdate, GetStateUpdateError> {
-    let block_id = match input.block_id {
-        BlockId::Pending => {
-            match &context
-                .pending_data
-                .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
-                .state_update()
-                .await
-            {
-                Some(update) => {
-                    let update = update.as_ref().clone().into();
-                    return Ok(update);
-                }
-                None => return Err(GetStateUpdateError::BlockNotFound),
-            }
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
-    let storage = context.storage.clone();
     let span = tracing::Span::current();
 
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        let mut db = storage
+        let mut db = context
+            .storage
             .connection()
             .context("Opening database connection")?;
 
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let block_id = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_state_update(&tx)
+                    .context("Querying pending state update")?;
+                let pending = pending.ok_or(GetStateUpdateError::BlockNotFound)?;
+
+                return Ok(pending.as_ref().into());
+            }
+            other => other.try_into().expect("Only pending cast should fail"),
+        };
 
         get_state_update_from_storage(&tx, block_id)
     });
@@ -57,7 +51,7 @@ fn get_state_update_from_storage(
         .context("Fetching state diff")?
         .ok_or(GetStateUpdateError::BlockNotFound)?;
 
-    Ok(state_update.into())
+    Ok((&state_update).into())
 }
 
 mod types {
@@ -102,13 +96,13 @@ mod types {
         }
     }
 
-    impl From<pathfinder_common::StateUpdate> for StateUpdate {
-        fn from(value: pathfinder_common::StateUpdate) -> Self {
+    impl From<&pathfinder_common::StateUpdate> for StateUpdate {
+        fn from(value: &pathfinder_common::StateUpdate) -> Self {
             let mut storage_diffs = Vec::new();
             let mut deployed_contracts = Vec::new();
             let mut nonces = Vec::new();
 
-            for (contract_address, update) in value.contract_updates {
+            for (&contract_address, update) in &value.contract_updates {
                 if let Some(nonce) = update.nonce {
                     nonces.push(Nonce {
                         contract_address,
@@ -125,8 +119,8 @@ mod types {
 
                 let storage_entries = update
                     .storage
-                    .into_iter()
-                    .map(|(key, value)| StorageEntry { key, value })
+                    .iter()
+                    .map(|(&key, &value)| StorageEntry { key, value })
                     .collect();
 
                 storage_diffs.push(StorageDiff {
@@ -135,11 +129,11 @@ mod types {
                 });
             }
 
-            for (address, update) in value.system_contract_updates {
+            for (&address, update) in &value.system_contract_updates {
                 let storage_entries = update
                     .storage
-                    .into_iter()
-                    .map(|(key, value)| StorageEntry { key, value })
+                    .iter()
+                    .map(|(&key, &value)| StorageEntry { key, value })
                     .collect();
 
                 storage_diffs.push(StorageDiff {
@@ -150,8 +144,8 @@ mod types {
 
             let declared_contract_hashes = value
                 .declared_sierra_classes
-                .into_keys()
-                .map(|class_hash| ClassHash(class_hash.0))
+                .keys()
+                .map(|&class_hash| ClassHash(class_hash.0))
                 .chain(value.declared_cairo_classes.iter().copied())
                 .collect();
 
@@ -309,8 +303,8 @@ mod tests {
     use jsonrpsee::types::Params;
 
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::pending::PendingData;
     use pathfinder_common::{BlockNumber, Chain};
-    use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
@@ -356,7 +350,7 @@ mod tests {
         let sync_state = std::sync::Arc::new(crate::SyncState::default());
         let sequencer = starknet_gateway_client::Client::new(Chain::Testnet).unwrap();
         let context = RpcContext::new(storage, sync_state, ChainId::TESTNET, sequencer);
-        let state_updates = state_updates.into_iter().map(Into::into).collect();
+        let state_updates = state_updates.iter().map(Into::into).collect();
 
         (state_updates, context)
     }
@@ -440,14 +434,6 @@ mod tests {
                 assert_error(GetStateUpdateError::BlockNotFound),
             ),
             (
-                // Pending is disabled for this context
-                ctx,
-                BlockId::Pending,
-                assert_error(GetStateUpdateError::Internal(anyhow!(
-                    "Pending data not supported in this configuration"
-                ))),
-            ),
-            (
                 ctx_with_pending_empty,
                 BlockId::Pending,
                 assert_error(GetStateUpdateError::BlockNotFound),
@@ -468,13 +454,8 @@ mod tests {
 
         let expected: StateUpdate = context
             .pending_data
+            .state_update_unchecked()
             .as_ref()
-            .unwrap()
-            .state_update()
-            .await
-            .unwrap()
-            .as_ref()
-            .to_owned()
             .into();
 
         let result = get_state_update(context, input).await.unwrap();

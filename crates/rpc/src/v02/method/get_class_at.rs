@@ -1,8 +1,7 @@
 use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
-use pathfinder_common::{BlockId, ClassHash, ContractAddress};
-use starknet_gateway_types::pending::PendingData;
+use pathfinder_common::{BlockId, ContractAddress};
 
 crate::error::generate_rpc_error_subset!(GetClassAtError: BlockNotFound, ContractNotFound);
 
@@ -18,18 +17,6 @@ pub async fn get_class_at(
 ) -> Result<ContractClass, GetClassAtError> {
     let span = tracing::Span::current();
 
-    // Map block id to the storage variant.
-    let block_id = match input.block_id {
-        BlockId::Pending => pathfinder_storage::BlockId::Latest,
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
-    let pending_class_hash = if input.block_id == BlockId::Pending {
-        get_pending_class_hash(context.pending_data, input.contract_address).await
-    } else {
-        None
-    };
-
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut db = context
@@ -38,6 +25,25 @@ pub async fn get_class_at(
             .context("Opening database connection")?;
 
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let (block_id, pending_class_hash) = match input.block_id {
+            BlockId::Pending => {
+                let pending_class = context
+                    .pending_state_update(&tx)
+                    .context("Querying pending state update")?
+                    .and_then(|u| {
+                        u.contract_updates
+                            .get(&input.contract_address)
+                            .and_then(|c| c.class.as_ref().map(|x| x.class_hash()))
+                    });
+
+                (pathfinder_storage::BlockId::Latest, pending_class)
+            }
+            other => (
+                other.try_into().expect("Only pending cast should fail"),
+                None,
+            ),
+        };
 
         if !tx.block_exists(block_id)? {
             return Err(GetClassAtError::BlockNotFound);
@@ -63,19 +69,6 @@ pub async fn get_class_at(
     });
 
     jh.await.context("Reading class from database")?
-}
-
-/// Returns the [ClassHash] of the given [ContractAddress] if any is defined in the pending data.
-async fn get_pending_class_hash(
-    pending: Option<PendingData>,
-    address: ContractAddress,
-) -> Option<ClassHash> {
-    pending?.state_update().await.and_then(|state_update| {
-        state_update
-            .contract_updates
-            .get(&address)
-            .and_then(|x| x.class.as_ref().map(|x| x.class_hash()))
-    })
 }
 
 #[cfg(test)]

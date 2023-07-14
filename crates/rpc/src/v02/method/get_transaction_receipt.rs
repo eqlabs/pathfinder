@@ -1,4 +1,5 @@
 use crate::context::RpcContext;
+use crate::v02::method::get_transaction_receipt::types::PendingTransactionReceipt;
 use crate::v02::types::reply::BlockStatus;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
@@ -14,36 +15,32 @@ pub async fn get_transaction_receipt(
     context: RpcContext,
     input: GetTransactionReceiptInput,
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
-    // First check pending data as this is in-mem and should be faster.
-    if let Some(pending) = &context.pending_data {
-        let receipt_transaction = pending.block().await.and_then(|block| {
-            block
-                .transaction_receipts
-                .iter()
-                .zip(block.transactions.iter())
-                .find_map(|(receipt, tx)| {
-                    (receipt.transaction_hash == input.transaction_hash)
-                        .then(|| (receipt.clone(), tx.clone()))
-                })
-        });
-
-        if let Some((receipt, transaction)) = receipt_transaction {
-            let pending =
-                types::PendingTransactionReceipt::from(receipt, &transaction, context.version);
-            return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
-        };
-    }
-
-    let storage = context.storage.clone();
     let span = tracing::Span::current();
 
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        let mut db = storage
+        let mut db = context
+            .storage
             .connection()
             .context("Opening database connection")?;
 
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        let pending =
+            context
+                .pending_block(&db_tx)
+                .context("Querying pending block")?
+                .map(|x| {
+                    x.body.transaction_data.iter().find_map(|(tx, rx)| {
+                        (tx.hash == input.transaction_hash)
+                            .then_some(PendingTransactionReceipt::from(rx, tx, context.version))
+                    })
+                })
+                .flatten();
+
+        if let Some(pending) = pending {
+            return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
+        }
 
         let (transaction, receipt, block_hash) = db_tx
             .transaction_with_receipt(input.transaction_hash)
@@ -291,8 +288,8 @@ mod types {
 
     impl PendingTransactionReceipt {
         pub fn from(
-            receipt: starknet_gateway_types::reply::transaction::Receipt,
-            transaction: &starknet_gateway_types::reply::transaction::Transaction,
+            receipt: &pathfinder_common::receipt::Receipt,
+            transaction: &pathfinder_common::transaction::Transaction,
             rpc_version: RpcVersion,
         ) -> Self {
             let common = CommonPendingTransactionReceiptProperties {
@@ -302,15 +299,17 @@ mod types {
                     .unwrap_or_else(|| Fee(Default::default())),
                 messages_sent: receipt
                     .l2_to_l1_messages
-                    .into_iter()
-                    .map(|msg| MessageToL1::from(msg, rpc_version))
+                    .iter()
+                    .map(|msg| MessageToL1::from_common(msg, rpc_version))
                     .collect(),
-                events: receipt.events.into_iter().map(Event::from).collect(),
+                events: receipt.events.iter().cloned().map(Event::from).collect(),
             };
 
-            use starknet_gateway_types::reply::transaction::Transaction::*;
-            match transaction {
-                Declare(_) => Self::Declare(PendingDeclareTransactionReceipt { common }),
+            use pathfinder_common::transaction::TransactionVariant::*;
+            match &transaction.variant {
+                DeclareV0(_) | DeclareV1(_) | DeclareV2(_) => {
+                    Self::Declare(PendingDeclareTransactionReceipt { common })
+                }
                 Deploy(tx) => Self::Deploy(PendingDeployTransactionReceipt {
                     common,
                     contract_address: tx.contract_address,
@@ -319,7 +318,9 @@ mod types {
                     common,
                     contract_address: tx.contract_address,
                 }),
-                Invoke(_) => Self::Invoke(PendingInvokeTransactionReceipt { common }),
+                InvokeV0(_) | InvokeV1(_) => {
+                    Self::Invoke(PendingInvokeTransactionReceipt { common })
+                }
                 L1Handler(_) => Self::L1Handler(PendingL1HandlerTransactionReceipt { common }),
             }
         }
@@ -349,6 +350,17 @@ mod types {
                 from_address: (!matches!(rpc_version, RpcVersion::V02)).then_some(msg.from_address),
                 to_address: msg.to_address,
                 payload: msg.payload,
+            }
+        }
+
+        fn from_common(
+            msg: &pathfinder_common::receipt::L2ToL1Message,
+            rpc_version: RpcVersion,
+        ) -> Self {
+            Self {
+                from_address: (!matches!(rpc_version, RpcVersion::V02)).then_some(msg.from_address),
+                to_address: msg.to_address,
+                payload: msg.payload.clone(),
             }
         }
     }

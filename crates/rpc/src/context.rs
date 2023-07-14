@@ -1,9 +1,11 @@
 use crate::cairo::ext_py;
 use crate::gas_price;
 use crate::SyncState;
-use pathfinder_common::ChainId;
+use anyhow::{Context, Ok};
+use pathfinder_common::pending::PendingData;
+use pathfinder_common::{BlockWithBody, ChainId, StateUpdate};
 use pathfinder_storage::Storage;
-use starknet_gateway_types::pending::PendingData;
+
 use std::sync::Arc;
 
 type SequencerClient = starknet_gateway_client::Client;
@@ -31,7 +33,7 @@ impl RpcVersion {
 #[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
-    pub pending_data: Option<PendingData>,
+    pub pending_data: PendingData,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
     pub call_handle: Option<ext_py::Handle>,
@@ -51,12 +53,38 @@ impl RpcContext {
             storage,
             sync_status,
             chain_id,
-            pending_data: None,
+            pending_data: Default::default(),
             call_handle: None,
             eth_gas_price: None,
             sequencer,
             version: RpcVersion::default(),
         }
+    }
+
+    pub(crate) fn pending_block(
+        &self,
+        db: &pathfinder_storage::Transaction,
+    ) -> anyhow::Result<Option<Arc<BlockWithBody>>> {
+        let Some(latest) = db
+            .block_id(pathfinder_storage::BlockId::Latest)
+            .context("Querying latest block hash")? else {
+                return Ok(None);
+            };
+
+        Ok(self.pending_data.block(latest.1))
+    }
+
+    pub(crate) fn pending_state_update(
+        &self,
+        db: &pathfinder_storage::Transaction,
+    ) -> anyhow::Result<Option<Arc<StateUpdate>>> {
+        let Some(latest) = db
+            .block_header(pathfinder_storage::BlockId::Latest)
+            .context("Querying latest block header")? else {
+                return Ok(None);
+            };
+
+        Ok(self.pending_data.state_update(latest.state_commitment))
     }
 
     pub(crate) fn with_version(self, version: &str) -> Self {
@@ -97,7 +125,7 @@ impl RpcContext {
 
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
         Self {
-            pending_data: Some(pending_data),
+            pending_data,
             ..self
         }
     }

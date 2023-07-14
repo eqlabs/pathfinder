@@ -2,7 +2,6 @@ use crate::context::RpcContext;
 use crate::v02::types::ContractClass;
 use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
-use starknet_gateway_types::pending::PendingData;
 
 crate::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
 
@@ -16,18 +15,6 @@ pub async fn get_class(
     context: RpcContext,
     input: GetClassInput,
 ) -> Result<ContractClass, GetClassError> {
-    let (block_id, is_pending) = match input.block_id {
-        BlockId::Pending => {
-            let latest = pathfinder_storage::BlockId::Latest;
-            let is_pending = is_pending_class(&context.pending_data, input.class_hash).await;
-            (latest, is_pending)
-        }
-        other => (
-            other.try_into().expect("Only pending cast should fail"),
-            false,
-        ),
-    };
-
     let span = tracing::Span::current();
     let jh = tokio::task::spawn_blocking(move || -> Result<ContractClass, GetClassError> {
         let _g = span.enter();
@@ -36,6 +23,22 @@ pub async fn get_class(
             .connection()
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let (block_id, is_pending) = match input.block_id {
+            BlockId::Pending => {
+                let is_pending = context
+                    .pending_state_update(&tx)
+                    .context("Querying pending state update")?
+                    .map(|u| u.contains_declared_class(input.class_hash))
+                    .unwrap_or_default();
+
+                (pathfinder_storage::BlockId::Latest, is_pending)
+            }
+            other => (
+                other.try_into().expect("Only pending cast should fail"),
+                false,
+            ),
+        };
 
         // Check that block exists
         let block_exists = tx.block_exists(block_id)?;
@@ -46,15 +49,13 @@ pub async fn get_class(
         // If the class is declared in the pending block, then we shouldn't check the class's
         // declaration point.
         let definition = if is_pending {
-            tx.class_definition(input.class_hash)
+            tx.class_definition(input.class_hash)?
+                .context("Pending class definition is missing")
+                .map_err(Into::into)
         } else {
-            tx.class_definition_at(block_id, input.class_hash)
-        }
-        .context("Fetching class definition")?;
-
-        let Some(definition) = definition else {
-            return Err(GetClassError::ClassHashNotFound);
-        };
+            tx.class_definition_at(block_id, input.class_hash)?
+                .ok_or(GetClassError::ClassHashNotFound)
+        }?;
 
         let class = ContractClass::from_definition_bytes(&definition)
             .context("Parsing class definition")?;
@@ -63,25 +64,6 @@ pub async fn get_class(
     });
 
     jh.await.context("Reading class from database")?
-}
-
-/// Returns true if the class is declared in the pending state.
-async fn is_pending_class(pending: &Option<PendingData>, hash: ClassHash) -> bool {
-    let state_diff = match pending {
-        Some(pending) => match pending.state_update().await {
-            Some(pending) => pending,
-            None => return false,
-        },
-        None => return false,
-    };
-
-    let cairo = state_diff.declared_cairo_classes.iter().cloned();
-    let sierra = state_diff
-        .declared_sierra_classes
-        .keys()
-        .map(|sierra| ClassHash(sierra.0));
-
-    cairo.chain(sierra).any(|item| item == hash)
 }
 
 #[cfg(test)]

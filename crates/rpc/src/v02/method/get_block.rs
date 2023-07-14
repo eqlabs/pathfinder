@@ -1,6 +1,6 @@
 use crate::context::RpcContext;
 use crate::v02::types::reply::BlockStatus;
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber};
 use serde::Deserialize;
 
@@ -44,32 +44,12 @@ async fn get_block(
     block_id: BlockId,
     scope: types::BlockResponseScope,
 ) -> Result<types::Block, GetBlockError> {
-    let block_id = match block_id {
-        BlockId::Pending => {
-            match context
-                .pending_data
-                .ok_or_else(|| anyhow!("Pending data not supported in this configuration"))?
-                .block()
-                .await
-            {
-                Some(block) => {
-                    return Ok(types::Block::from_sequencer_scoped(
-                        block.as_ref().clone().into(),
-                        scope,
-                    ))
-                }
-                None => return Err(GetBlockError::BlockNotFound),
-            }
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
-    let storage = context.storage.clone();
     let span = tracing::Span::current();
 
     tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        let mut connection = storage
+        let mut connection = context
+            .storage
             .connection()
             .context("Opening database connection")?;
 
@@ -77,24 +57,60 @@ async fn get_block(
             .transaction()
             .context("Creating database transaction")?;
 
-        let header = transaction
-            .block_header(block_id)
-            .context("Reading block from database")?
-            .ok_or(GetBlockError::BlockNotFound)?;
+        match block_id {
+            BlockId::Pending => {
+                let block = context
+                    .pending_block(&transaction)
+                    .context("Querying pending block")?
+                    .ok_or(GetBlockError::BlockNotFound)?;
 
-        let l1_accepted = transaction.block_is_l1_accepted(header.number.into())?;
-        let block_status = if l1_accepted {
-            BlockStatus::AcceptedOnL1
-        } else {
-            BlockStatus::AcceptedOnL2
-        };
+                let transactions = block.body.transaction_data.iter();
 
-        let transactions = get_block_transactions(&transaction, header.number, scope)?;
+                let transactions = match scope {
+                    types::BlockResponseScope::TransactionHashes => {
+                        types::Transactions::HashesOnly(
+                            transactions
+                                .map(|(tx, _)| tx.hash)
+                                .collect::<Vec<_>>()
+                                .into(),
+                        )
+                    }
+                    types::BlockResponseScope::FullTransactions => types::Transactions::Full(
+                        transactions
+                            .map(|(tx, _)| tx.clone().into())
+                            .collect::<Vec<_>>(),
+                    ),
+                };
 
-        Ok(types::Block::from_parts(header, block_status, transactions))
+                Ok(types::Block::from_parts(
+                    block.header.clone(),
+                    BlockStatus::Pending,
+                    transactions,
+                ))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending cast should fail");
+
+                let header = transaction
+                    .block_header(block_id)
+                    .context("Reading block from database")?
+                    .ok_or(GetBlockError::BlockNotFound)?;
+
+                let l1_accepted = transaction.block_is_l1_accepted(header.number.into())?;
+                let block_status = if l1_accepted {
+                    BlockStatus::AcceptedOnL1
+                } else {
+                    BlockStatus::AcceptedOnL2
+                };
+
+                let transactions = get_block_transactions(&transaction, header.number, scope)?;
+
+                Ok(types::Block::from_parts(header, block_status, transactions))
+            }
+        }
     })
     .await
-    .context("Database read panic or shutting down")?
+    .context("Joining database task")?
 }
 
 /// This function assumes that the block ID is valid i.e. it won't check if the block hash or number exist.
@@ -134,7 +150,6 @@ mod types {
     };
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
-    use stark_hash::Felt;
 
     /// Determines the type of response to block related queries.
     #[derive(Copy, Clone, Debug)]
@@ -201,56 +216,6 @@ mod types {
                 transactions,
             }
         }
-
-        /// Constructs [Block] from [sequencer's block representation](starknet_gateway_types::reply::Block)
-        pub fn from_sequencer_scoped(
-            block: starknet_gateway_types::reply::MaybePendingBlock,
-            scope: BlockResponseScope,
-        ) -> Self {
-            let transactions = match scope {
-                BlockResponseScope::TransactionHashes => {
-                    let hashes = block
-                        .transactions()
-                        .iter()
-                        .map(|t| t.hash())
-                        .collect::<Vec<_>>()
-                        .into();
-
-                    Transactions::HashesOnly(hashes)
-                }
-                BlockResponseScope::FullTransactions => {
-                    let transactions = block.transactions().iter().map(|t| t.into()).collect();
-                    Transactions::Full(transactions)
-                }
-            };
-
-            use starknet_gateway_types::reply::MaybePendingBlock;
-            match block {
-                MaybePendingBlock::Block(block) => Self {
-                    status: block.status.into(),
-                    block_hash: Some(block.block_hash),
-                    parent_hash: block.parent_block_hash,
-                    block_number: Some(block.block_number),
-                    new_root: Some(block.state_commitment),
-                    timestamp: block.timestamp,
-                    sequencer_address: block
-                        .sequencer_address
-                        // Default value for cairo <0.8.0 is 0
-                        .unwrap_or(SequencerAddress(Felt::ZERO)),
-                    transactions,
-                },
-                MaybePendingBlock::Pending(pending) => Self {
-                    status: pending.status.into(),
-                    block_hash: None,
-                    parent_hash: pending.parent_hash,
-                    block_number: None,
-                    new_root: None,
-                    timestamp: pending.timestamp,
-                    sequencer_address: pending.sequencer_address,
-                    transactions,
-                },
-            }
-        }
     }
 }
 
@@ -260,8 +225,8 @@ mod tests {
     use assert_matches::assert_matches;
     use jsonrpsee::types::Params;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::pending::PendingData;
     use pathfinder_common::BlockNumber;
-    use starknet_gateway_types::pending::PendingData;
 
     #[test]
     fn parsing() {
@@ -350,7 +315,6 @@ mod tests {
         let ctx = RpcContext::for_tests_with_pending().await;
         let ctx_with_pending_empty =
             RpcContext::for_tests().with_pending_data(PendingData::default());
-        let ctx_with_pending_disabled = RpcContext::for_tests();
 
         let cases: &[(RpcContext, BlockId, TestCaseHandler)] = &[
             // Pending
@@ -369,13 +333,6 @@ mod tests {
                 ctx_with_pending_empty,
                 BlockId::Pending,
                 assert_error(GetBlockError::BlockNotFound),
-            ),
-            (
-                ctx_with_pending_disabled,
-                BlockId::Pending,
-                assert_error(GetBlockError::Internal(anyhow!(
-                    "Pending data not supported in this configuration"
-                ))),
             ),
             // Other block ids
             (ctx.clone(), BlockId::Latest, assert_hash(b"latest")),

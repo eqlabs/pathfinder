@@ -14,30 +14,30 @@ pub async fn get_transaction_by_hash(
     context: RpcContext,
     input: GetTransactionByHashInput,
 ) -> Result<Transaction, GetTransactionByHashError> {
-    if let Some(pending) = &context.pending_data {
-        let pending_tx = pending.block().await.and_then(|block| {
-            block
-                .transactions
-                .iter()
-                .find(|tx| tx.hash() == input.transaction_hash)
-                .cloned()
-        });
-
-        if let Some(pending_tx) = pending_tx {
-            return Ok(pending_tx.into());
-        }
-    }
-
-    let storage = context.storage.clone();
     let span = tracing::Span::current();
 
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        let mut db = storage
+        let mut db = context
+            .storage
             .connection()
             .context("Opening database connection")?;
 
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        let pending = context
+            .pending_block(&db_tx)
+            .context("Querying pending block")?
+            .map(|x| {
+                x.body.transaction_data.iter().find_map(|(tx, _rx)| {
+                    (tx.hash == input.transaction_hash).then_some(tx.clone().into())
+                })
+            })
+            .flatten();
+
+        if let Some(pending) = pending {
+            return Ok(pending);
+        }
 
         // Get the transaction from storage.
         db_tx

@@ -163,29 +163,26 @@ impl Default for SyncState {
 pub mod test_utils {
     use pathfinder_common::event::Event;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
-        GasPrice, SierraHash, StarknetVersion, StateUpdate, StorageCommitment, TransactionIndex,
-        TransactionVersion,
-    };
+    use pathfinder_common::pending::PendingData;
+    use pathfinder_common::prelude::*;
+    use pathfinder_common::StateUpdate;
+
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
-    use primitive_types::{H160, H256};
+    use primitive_types::H160;
     use stark_hash::Felt;
     use starknet_gateway_types::reply::transaction::L2ToL1Message;
-    use starknet_gateway_types::{
-        pending::PendingData,
-        reply::transaction::{
-            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
-            DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
-            InvokeTransactionV0, Receipt, Transaction,
-        },
-    };
+
     use std::collections::HashMap;
     use std::sync::Arc;
 
     // Creates storage for tests
     pub fn setup_storage() -> Storage {
+        use starknet_gateway_types::reply::transaction::{
+            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
+            EntryPointType, ExecutionResources, InvokeTransactionV0, Receipt, Transaction,
+        };
+
         use pathfinder_merkle_tree::contract_state::update_contract_state;
 
         let storage = Storage::in_memory().unwrap();
@@ -499,6 +496,11 @@ pub mod test_utils {
     /// i.e. the pending block's parent hash will be the latest block's hash from storage,
     /// and similarly for the pending state diffs state root.
     pub async fn create_pending_data(storage: Storage) -> PendingData {
+        use pathfinder_common::receipt::{ExecutionResources, Receipt};
+        use pathfinder_common::transaction::{
+            DeployTransaction, EntryPointType, InvokeTransactionV0, Transaction, TransactionVariant,
+        };
+
         let storage2 = storage.clone();
         let latest = tokio::task::spawn_blocking(move || {
             let mut db = storage2.connection().unwrap();
@@ -512,30 +514,29 @@ pub mod test_utils {
         .unwrap();
 
         let transactions: Vec<Transaction> = vec![
-            InvokeTransaction::V0(InvokeTransactionV0 {
-                calldata: vec![],
-                sender_address: contract_address_bytes!(b"pending contract addr 0"),
-                entry_point_selector: entry_point_bytes!(b"entry point 0"),
-                entry_point_type: Some(EntryPointType::External),
-                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
-                signature: vec![],
-                transaction_hash: transaction_hash_bytes!(b"pending tx hash 0"),
-            })
-            .into(),
-            DeployTransaction {
-                contract_address: contract_address!("0x1122355"),
-                contract_address_salt: contract_address_salt_bytes!(b"salty"),
-                class_hash: class_hash_bytes!(b"pending class hash 1"),
-                constructor_calldata: vec![],
-                transaction_hash: transaction_hash_bytes!(b"pending tx hash 1"),
-                version: TransactionVersion(H256::zero()),
-            }
-            .into(),
+            Transaction {
+                hash: transaction_hash_bytes!(b"pending tx hash 0"),
+                variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    sender_address: contract_address_bytes!(b"pending contract addr 0"),
+                    entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                    entry_point_type: Some(EntryPointType::External),
+                    max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
+                    ..Default::default()
+                }),
+            },
+            Transaction {
+                hash: transaction_hash_bytes!(b"pending tx hash 1"),
+                variant: TransactionVariant::Deploy(DeployTransaction {
+                    contract_address: contract_address!("0x1122355"),
+                    contract_address_salt: contract_address_salt_bytes!(b"salty"),
+                    class_hash: class_hash_bytes!(b"pending class hash 1"),
+                    ..Default::default()
+                }),
+            },
         ];
 
-        let transaction_receipts = vec![
+        let receipts = vec![
             Receipt {
-                actual_fee: None,
                 events: vec![
                     Event {
                         data: vec![],
@@ -553,45 +554,34 @@ pub mod test_utils {
                         keys: vec![event_key_bytes!(b"pending key 2")],
                     },
                 ],
-                execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                        EmptyBuiltinInstanceCounter {},
-                    ),
-                    n_memory_holes: 0,
-                    n_steps: 0,
-                }),
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: vec![],
-                transaction_hash: transactions[0].hash(),
+                execution_resources: Some(ExecutionResources::default()),
+                transaction_hash: transactions[0].hash,
                 transaction_index: TransactionIndex::new_or_panic(0),
+                ..Default::default()
             },
             Receipt {
-                actual_fee: None,
-                events: vec![],
-                execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                        EmptyBuiltinInstanceCounter {},
-                    ),
-                    n_memory_holes: 0,
-                    n_steps: 0,
-                }),
-                l1_to_l2_consumed_message: None,
-                l2_to_l1_messages: vec![],
-                transaction_hash: transactions[1].hash(),
+                execution_resources: Some(ExecutionResources::default()),
+                transaction_hash: transactions[1].hash,
                 transaction_index: TransactionIndex::new_or_panic(1),
+                ..Default::default()
             },
         ];
 
-        let block = starknet_gateway_types::reply::PendingBlock {
-            gas_price: GasPrice::from_be_slice(b"gas price").unwrap(),
-            parent_hash: latest.hash,
-            sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
-            status: starknet_gateway_types::reply::Status::Pending,
-            timestamp: BlockTimestamp::new_or_panic(1234567),
-            transaction_receipts,
-            transactions,
-            starknet_version: StarknetVersion::new(0, 11, 0),
-        };
+        let header = latest
+            .child_builder()
+            .with_gas_price(GasPrice::from_be_slice(b"gas price").unwrap())
+            .with_sequencer_address(sequencer_address_bytes!(b"pending sequencer address"))
+            .with_timestamp(BlockTimestamp::new_or_panic(1234567))
+            .with_starknet_version(StarknetVersion::new(0, 11, 0))
+            .finalize_as_pending();
+
+        let mut body = BlockBody::default();
+
+        for (tx, rx) in transactions.into_iter().zip(receipts.into_iter()) {
+            body = body.with_transaction(tx, rx);
+        }
+
+        let block = BlockWithBody { header, body };
 
         let contract1 = contract_address_bytes!(b"pending contract 1 address");
         let state_update = StateUpdate::default()
@@ -617,6 +607,10 @@ pub mod test_utils {
             .with_replaced_class(
                 contract_address_bytes!(b"pending contract 2 (replaced)"),
                 class_hash_bytes!(b"pending class 2 hash (replaced)"),
+            )
+            .with_contract_nonce(
+                contract_address_bytes!(b"pending contract 0 address"),
+                contract_nonce!("0x123"),
             );
 
         // The class definitions must be inserted into the database.
@@ -642,9 +636,8 @@ pub mod test_utils {
         .unwrap();
 
         let pending_data = PendingData::default();
-        pending_data
-            .set(Arc::new(block), Arc::new(state_update))
-            .await;
+        pending_data.set_block(Arc::new(block));
+        pending_data.set_state_update(Arc::new(state_update));
         pending_data
     }
 }

@@ -15,28 +15,28 @@ pub async fn get_block_transaction_count(
     context: RpcContext,
     input: GetBlockTransactionCountInput,
 ) -> Result<BlockTransactionCount, GetBlockTransactionCountError> {
-    let block_id = match input.block_id {
-        BlockId::Pending => {
-            if let Some(pending) = context.pending_data.as_ref() {
-                if let Some(block) = pending.block().await.as_ref() {
-                    return Ok(block.transactions.len() as BlockTransactionCount);
-                }
-            }
-
-            return Ok(0);
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
-
-    let storage = context.storage.clone();
     let span = tracing::Span::current();
 
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        let mut db = storage
+        let mut db = context
+            .storage
             .connection()
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let block_id = match input.block_id {
+            BlockId::Pending => {
+                let count = context
+                    .pending_block(&tx)
+                    .context("Querying pending block")?
+                    .map(|x| x.body.transaction_data.len())
+                    .unwrap_or_default();
+
+                return Ok(count as BlockTransactionCount);
+            }
+            other => other.try_into().expect("Only pending cast should fail"),
+        };
 
         let block_transaction_count = tx
             .transaction_count(block_id)
@@ -118,13 +118,13 @@ mod tests {
         assert!(result.is_err());
     }
 
-    async fn get_count(context: &RpcContext) -> BlockTransactionCount {
-        if let Some(pending) = context.pending_data.as_ref() {
-            if let Some(block) = pending.block().await.as_ref() {
-                return block.transactions.len() as BlockTransactionCount;
-            }
-        }
-        0
+    fn get_count(context: &RpcContext) -> BlockTransactionCount {
+        context
+            .pending_data
+            .block_unchecked()
+            .body
+            .transaction_data
+            .len() as BlockTransactionCount
     }
 
     #[tokio::test]
@@ -144,7 +144,7 @@ mod tests {
     #[tokio::test]
     async fn test_pending() {
         let context = RpcContext::for_tests();
-        let count = get_count(&context).await;
+        let count = get_count(&context);
         let block_id = BlockId::Pending;
         check_count(context, block_id, count).await;
     }

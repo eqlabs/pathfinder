@@ -675,6 +675,100 @@ pub mod reply {
         pub calldata: Vec<CallParam>,
     }
 
+    impl From<pathfinder_common::transaction::Transaction> for Transaction {
+        fn from(value: pathfinder_common::transaction::Transaction) -> Self {
+            use pathfinder_common::transaction::TransactionVariant::*;
+            match value.variant {
+                DeclareV0(tx) => {
+                    Transaction::Declare(DeclareTransaction::V0(DeclareTransactionV0V1 {
+                        common: CommonDeclareInvokeTransactionProperties {
+                            hash: value.hash,
+                            max_fee: tx.max_fee,
+                            signature: tx.signature,
+                            nonce: tx.nonce,
+                        },
+                        class_hash: tx.class_hash,
+                        sender_address: tx.sender_address,
+                    }))
+                }
+                DeclareV1(tx) => {
+                    Transaction::Declare(DeclareTransaction::V1(DeclareTransactionV0V1 {
+                        common: CommonDeclareInvokeTransactionProperties {
+                            hash: value.hash,
+                            max_fee: tx.max_fee,
+                            signature: tx.signature,
+                            nonce: tx.nonce,
+                        },
+                        class_hash: tx.class_hash,
+                        sender_address: tx.sender_address,
+                    }))
+                }
+                DeclareV2(tx) => {
+                    Transaction::Declare(DeclareTransaction::V2(DeclareTransactionV2 {
+                        common: CommonDeclareInvokeTransactionProperties {
+                            hash: value.hash,
+                            max_fee: tx.max_fee,
+                            signature: tx.signature,
+                            nonce: tx.nonce,
+                        },
+                        class_hash: tx.class_hash,
+                        sender_address: tx.sender_address,
+                        compiled_class_hash: tx.compiled_class_hash,
+                    }))
+                }
+                Deploy(tx) => Transaction::Deploy(DeployTransaction {
+                    hash: value.hash,
+                    class_hash: tx.class_hash,
+                    version: tx.version,
+                    contract_address_salt: tx.contract_address_salt,
+                    constructor_calldata: tx.constructor_calldata,
+                }),
+                DeployAccount(tx) => Transaction::DeployAccount(DeployAccountTransaction {
+                    common: CommonTransactionProperties {
+                        hash: value.hash,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                        version: tx.version,
+                    },
+                    contract_address_salt: tx.contract_address_salt,
+                    constructor_calldata: tx.constructor_calldata,
+                    class_hash: tx.class_hash,
+                }),
+                InvokeV0(tx) => Transaction::Invoke(InvokeTransaction::V0(InvokeTransactionV0 {
+                    common: CommonDeclareInvokeTransactionProperties {
+                        hash: value.hash,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        // No nonce in invoke v0.
+                        nonce: Default::default(),
+                    },
+                    contract_address: tx.sender_address,
+                    entry_point_selector: tx.entry_point_selector,
+                    calldata: tx.calldata,
+                })),
+                InvokeV1(tx) => Transaction::Invoke(InvokeTransaction::V1(InvokeTransactionV1 {
+                    common: CommonDeclareInvokeTransactionProperties {
+                        hash: value.hash,
+                        max_fee: tx.max_fee,
+                        signature: tx.signature,
+                        nonce: tx.nonce,
+                    },
+                    sender_address: tx.sender_address,
+                    calldata: tx.calldata,
+                })),
+                L1Handler(tx) => Transaction::L1Handler(L1HandlerTransaction {
+                    hash: value.hash,
+                    version: tx.version,
+                    nonce: tx.nonce,
+                    contract_address: tx.contract_address,
+                    entry_point_selector: tx.entry_point_selector,
+                    calldata: tx.calldata,
+                }),
+            }
+        }
+    }
+
     impl TryFrom<starknet_gateway_types::reply::Transaction> for Transaction {
         type Error = anyhow::Error;
 

@@ -1,6 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::TransactionHash;
-use starknet_gateway_types::pending::PendingData;
+use pathfinder_common::{BlockWithBody, TransactionHash};
 
 use crate::context::RpcContext;
 
@@ -15,24 +14,28 @@ pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,
 ) -> Result<TransactionStatus, GetGatewayTransactionError> {
-    // Check in pending block.
-    if let Some(pending) = &context.pending_data {
-        if is_pending_tx(pending, &input.transaction_hash).await {
-            return Ok(TransactionStatus::Pending);
-        }
-    }
-
-    // Check database.
     let span = tracing::Span::current();
+    let db_context = context.clone();
 
     let db_status = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
-        let mut db = context
+        let mut db = db_context
             .storage
             .connection()
             .context("Opening database connection")?;
         let db_tx = db.transaction().context("Creating database transaction")?;
+
+        let pending_block = db_context
+            .pending_block(&db_tx)
+            .context("Querying pending block")?;
+
+        if let Some(pending) = pending_block {
+            if is_pending_tx(&pending, &input.transaction_hash) {
+                return Ok(Some(false));
+            }
+        }
+
         let block_hash = db_tx
             .transaction_block_hash(input.transaction_hash)
             .context("Fetching transaction block hash from database")?;
@@ -67,12 +70,12 @@ pub async fn get_transaction_status(
         .map_err(GetGatewayTransactionError::Internal)
 }
 
-async fn is_pending_tx(pending: &PendingData, tx_hash: &TransactionHash) -> bool {
+fn is_pending_tx(pending: &BlockWithBody, tx_hash: &TransactionHash) -> bool {
     pending
-        .block()
-        .await
-        .map(|block| block.transactions.iter().any(|tx| &tx.hash() == tx_hash))
-        .unwrap_or_default()
+        .body
+        .transaction_data
+        .iter()
+        .any(|tx| &tx.0.hash == tx_hash)
 }
 
 #[derive(Copy, Clone, Debug, serde::Serialize, PartialEq)]
@@ -81,8 +84,6 @@ pub enum TransactionStatus {
     NotReceived,
     #[serde(rename = "RECEIVED")]
     Received,
-    #[serde(rename = "PENDING")]
-    Pending,
     #[serde(rename = "REJECTED")]
     Rejected,
     #[serde(rename = "ACCEPTED_ON_L1")]
@@ -101,7 +102,7 @@ impl From<starknet_gateway_types::reply::Status> for TransactionStatus {
         match value {
             Status::NotReceived => Self::NotReceived,
             Status::Received => Self::Received,
-            Status::Pending => Self::Pending,
+            Status::Pending => Self::AcceptedOnL2,
             Status::Rejected => Self::Rejected,
             Status::AcceptedOnL1 => Self::AcceptedOnL1,
             Status::AcceptedOnL2 => Self::AcceptedOnL2,
@@ -153,7 +154,7 @@ mod tests {
         };
         let status = get_transaction_status(context, input).await.unwrap();
 
-        assert_eq!(status, TransactionStatus::Pending);
+        assert_eq!(status, TransactionStatus::AcceptedOnL2);
     }
 
     #[tokio::test]

@@ -13,8 +13,8 @@ pub(crate) use simulate_transaction::simulate_transaction;
 pub(crate) mod common {
     use std::sync::Arc;
 
+    use pathfinder_common::pending::PendingData;
     use pathfinder_common::{BlockId, BlockTimestamp, StateUpdate};
-    use starknet_gateway_types::pending::PendingData;
 
     use crate::{
         cairo::ext_py::{BlockHashNumberOrLatest, GasPriceSource, Handle},
@@ -70,7 +70,7 @@ pub(crate) mod common {
     /// by [`crate::cairo::ext_py`] with the optional, latest pending data.
     pub async fn base_block_and_pending_for_call(
         at_block: BlockId,
-        pending_data: &Option<PendingData>,
+        pending_data: &PendingData,
     ) -> Result<
         (
             BlockHashNumberOrLatest,
@@ -84,30 +84,13 @@ pub(crate) mod common {
         match BlockHashNumberOrLatest::try_from(at_block) {
             Ok(when) => Ok((when, None, None)),
             Err(Pending) => {
-                // we must have pending_data configured for pending requests, otherwise we fail
-                // fast.
-                match pending_data {
-                    Some(pending) => {
-                        // call on this particular parent block hash; if it's not found at query time over
-                        // at python, it should fall back to latest and **disregard** the pending data.
-                        let pending_on_top_of_a_block = pending
-                            .state_update_on_parent_block()
-                            .await
-                            .map(|(parent_block, timestamp, data)| {
-                                (parent_block.into(), Some(timestamp), Some(data))
-                            });
-
-                        // if there is no pending data available, just execute on whatever latest.
-                        Ok(pending_on_top_of_a_block.unwrap_or((
-                            BlockHashNumberOrLatest::Latest,
-                            None,
-                            None,
-                        )))
-                    }
-                    None => Err(anyhow::anyhow!(
-                        "Pending data not supported in this configuration"
-                    )),
-                }
+                let block = pending_data.block_unchecked();
+                let state_update = pending_data.state_update_unchecked();
+                Ok((
+                    BlockHashNumberOrLatest::Latest,
+                    Some(block.header.timestamp),
+                    Some(state_update),
+                ))
             }
         }
     }
