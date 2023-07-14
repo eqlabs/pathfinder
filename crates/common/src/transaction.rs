@@ -49,7 +49,7 @@ impl TransactionVariant {
     /// Calcualtes the [TransactionHash] of this transaction.
     ///
     /// #### WARNING: only guaranteed to be correct for transactions from starknet 0.8 onwards.
-    /// 
+    ///
     /// More specifically:
     /// ```
     /// mainnet       4 399
@@ -442,23 +442,23 @@ mod tests {
         #[test]
         fn declare_v1() {
             let expected = transaction_hash!(
-                "0xaed69c218b07fdce54cc5bbed3346b76c236d4ce851ffe5742f967e4390ea6"
+                "0x60a9a8c1badb7a0a5bbbd3499c869f44d61578a4f308f486aeb271bc33adc3a"
             );
             let tx = TransactionVariant::DeclareV1(DeclareTransactionV0V1 {
                 class_hash: class_hash!(
-                    "0x71e6ef53e53e6f5ca792fc4a5799a33e6f4118e4fd1d948dca3a371506f0cc7"
+                    "0x68704d18de8ccf71da7c9761ee53efd44dcfcfd512eddfac9c396e7d175e234"
                 ),
-                max_fee: fee!("0x2386f26fc10000"),
+                max_fee: fee!("0x174876e8000"),
                 sender_address: contract_address!(
-                    "0x223a8d916acd673717bb514decf82218cd590b9b82d467f6588ecf179970445"
+                    "0x198dcf77076f4edc644e7faf5918b86eedc1c52e7c42f13d21c4d75e2e2aa71"
                 ),
-                nonce: transaction_nonce!("0x234"),
+                nonce: transaction_nonce!("0x0"),
                 signature: vec![
                     transaction_signature_elem!(
-                        "0x7c26c6f2ff39d1e778af9f121752678d2f17590dacf594b2e81e2930b72d9db"
+                        "0x25b5e2231f682a7f25ace7544258423459305ec0f4764a2a442de08ffc4dcb4"
                     ),
                     transaction_signature_elem!(
-                        "0x51efa12ef543d34273955a48f21704d50e21c5e1ba1ccc65d46ed4db6515d04"
+                        "0x39668e451495bbeb762a5a4a3550113c899e51c35542fb59b984e701e5d7d6d"
                     ),
                 ],
             });
@@ -499,25 +499,30 @@ mod tests {
         #[test]
         fn deploy_v0() {
             let expected = transaction_hash!(
-                "0x45c61314be4da85f0e13df53d18062e002c04803218f08061e4b274d4b38537"
+                "0x7bd95674900c93e1e7aa8fbaf3b99166131d995f547bd33bbf5d915cbf87e4"
             );
             let tx = TransactionVariant::Deploy(DeployTransaction {
                 contract_address: contract_address!(
-                    "0x2f40faa63fdd5871415b2dcfb1a5e3e1ca06435b3dda6e2ba9df3f726fd3251"
+                    "0x7d9d10f80bf2df877c7cd65c7be6064c3facf2e5c5399a3aa81f3e8dc75f759"
                 ),
                 contract_address_salt: contract_address_salt!(
-                    "0x7284a0367fdd636434f76da25532785690d5f27db40ba38b0cfcbc89a472507"
+                    "0x734104a0205f328106ee270b5d2653b28a34e73889feb66e68e73b3923d81b4"
                 ),
                 class_hash: class_hash!(
-                    "0x10455c752b86932ce552f2b0fe81a880746649b9aee7e0d842bf3f52378f9f8"
+                    "0x25ec026985a3bf9d0cc1fe17326b245dfdc3ff89b8fde106542a3ea56c5a918"
                 ),
                 constructor_calldata: vec![
                     constructor_param!(
-                        "0x635b73abaa9efff71570cb08f3e5014424788470c3b972b952368fb3fc27cc3"
+                        "0x3e327de1c40540b98d05cbcb13552008e36f0ec8d61d46956d2f9752c294328"
                     ),
                     constructor_param!(
-                        "0x7e92479a573a24241ee6f3e4ade742ff37bae4a60bacef5be1caaff5e7e04f3"
+                        "0x79dc0da7c54b95f10aa182ad0a46400db63156920adb65eca2654c0945a463"
                     ),
+                    constructor_param!("0x2"),
+                    constructor_param!(
+                        "0x734104a0205f328106ee270b5d2653b28a34e73889feb66e68e73b3923d81b4"
+                    ),
+                    constructor_param!("0x0"),
                 ],
                 version: TransactionVersion::ZERO,
             });
@@ -599,23 +604,21 @@ mod tests {
         #[test]
         fn l1_handler() {
             let expected = transaction_hash!(
-                "0x61b518bb1f97c49244b8a7a1a984798b4c2876d42920eca2b6ba8dfb1bddc54"
+                "0xb11aa5369db77a9705ef108f0bfa6861581b99a54bd068261c0cd3bded2f57"
             );
             let tx = TransactionVariant::L1Handler(L1HandlerTransaction {
                 contract_address: contract_address!(
-                    "0xda8054260ec00606197a4103eb2ef08d6c8af0b6a808b610152d1ce498f8c3"
+                    "0x73314940630fd6dcda0d772d4c972c4e0a9946bef9dabf4ef84eda8ef542b82"
                 ),
                 entry_point_selector: entry_point!(
-                    "0xe3f5e9e1456ffa52a3fbc7e8c296631d4cc2120c0be1e2829301c0d8fa026b"
+                    "0x2d757788a8d8d6f21d1cd40bce38a8222d70654214e96ff95d8086e684fbee5"
                 ),
-                nonce: TransactionNonce::ZERO,
+                nonce: transaction_nonce!("0x567db"),
                 calldata: vec![
-                    call_param!("0x142273bcbfca76512b2a05aed21f134c4495208"),
-                    call_param!("0xa0c316cb0bb0c9632315ddc8f49c7921f2c80daa"),
-                    call_param!("0x2"),
-                    call_param!(
-                        "0x453b0310bcdfa50d3c2e7f757e284ac6cd4171933a4e67d1bdcfdbc7f3cbc93"
-                    ),
+                    call_param!("0xc3511006c04ef1d78af4c8e0e74ec18a6e64ff9e"),
+                    call_param!("0x37a5019d41f19b0e37616a81ea3984457c3eb12b37cf76089a81ba5ebbbf9"),
+                    call_param!("0x2386f26fc10000"),
+                    call_param!("0x0"),
                 ],
                 version: TransactionVersion::ZERO,
             });

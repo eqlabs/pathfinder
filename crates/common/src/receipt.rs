@@ -27,14 +27,14 @@ pub struct L2ToL1Message {
     pub to_address: EthereumAddress,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExecutionResources {
     pub builtin_instance_counter: BuiltinInstanceCounter,
     pub n_steps: u64,
     pub n_memory_holes: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum BuiltinInstanceCounter {
     Normal {
         bitwise_builtin: u64,
@@ -44,5 +44,6 @@ pub enum BuiltinInstanceCounter {
         pedersen_builtin: u64,
         range_check_builtin: u64,
     },
+    #[default]
     Empty,
 }

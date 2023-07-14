@@ -1,6 +1,9 @@
+pub use crate::BlockBody;
 pub use crate::BlockHash;
+pub use crate::BlockHeader;
 pub use crate::BlockNumber;
 pub use crate::BlockTimestamp;
+pub use crate::BlockWithBody;
 pub use crate::ByteCodeOffset;
 pub use crate::CallParam;
 pub use crate::CallResultValue;
@@ -31,6 +34,7 @@ pub use crate::SequencerAddress;
 pub use crate::SierraHash;
 pub use crate::StarknetVersion;
 pub use crate::StateCommitment;
+pub use crate::StateUpdate;
 pub use crate::StorageAddress;
 pub use crate::StorageCommitment;
 pub use crate::StorageValue;
