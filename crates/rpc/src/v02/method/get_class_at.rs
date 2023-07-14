@@ -31,11 +31,7 @@ pub async fn get_class_at(
                 let pending_class = context
                     .pending_state_update(&tx)
                     .context("Querying pending state update")?
-                    .and_then(|u| {
-                        u.contract_updates
-                            .get(&input.contract_address)
-                            .and_then(|c| c.class.as_ref().map(|x| x.class_hash()))
-                    });
+                    .and_then(|p| p.contract_class(input.contract_address));
 
                 (pathfinder_storage::BlockId::Latest, pending_class)
             }

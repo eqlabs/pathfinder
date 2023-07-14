@@ -152,6 +152,13 @@ impl StateUpdate {
                 .declared_sierra_classes
                 .contains_key(&SierraHash(class_hash.0))
     }
+
+    /// Returns the deployed or replaced class hash of the given contract.
+    pub fn contract_class(&self, contract: ContractAddress) -> Option<ClassHash> {
+        self.contract_updates
+            .get(&contract)
+            .and_then(|u| u.class.as_ref().map(|c| c.class_hash()))
+    }
 }
 
 #[cfg(test)]
