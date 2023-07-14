@@ -1,7 +1,7 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST API.
 use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, ContractAddress, EthereumAddress, GasPrice,
-    SequencerAddress, StarknetVersion, StateCommitment,
+    BlockBody, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ContractAddress,
+    EthereumAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,30 @@ pub struct PendingBlock {
     /// Version metadata introduced in 0.9.1, older blocks will not have it.
     #[serde(default)]
     pub starknet_version: StarknetVersion,
+}
+
+impl PendingBlock {
+    pub fn into_parts(self) -> (BlockHeader, BlockBody) {
+        let header = BlockHeader {
+            parent_hash: self.parent_hash,
+            timestamp: self.timestamp,
+            gas_price: self.gas_price,
+            sequencer_address: self.sequencer_address,
+            starknet_version: self.starknet_version,
+            ..Default::default()
+        };
+
+        let transaction_data = self
+            .transactions
+            .into_iter()
+            .zip(self.transaction_receipts.into_iter())
+            .map(|(tx, rx)| (tx.into(), rx.into()))
+            .collect();
+
+        let body = BlockBody { transaction_data };
+
+        (header, body)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

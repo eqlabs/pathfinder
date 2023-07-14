@@ -4,10 +4,11 @@ pub mod l2;
 mod pending;
 
 use anyhow::Context;
+use pathfinder_common::pending::PendingData;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-    EventCommitment, GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate,
-    StorageCommitment, TransactionCommitment,
+    BlockHash, BlockHeader, BlockNumber, BlockWithBody, CasmHash, Chain, ChainId, ClassCommitment,
+    ClassHash, EventCommitment, GasPrice, SequencerAddress, SierraHash, StateCommitment,
+    StateUpdate, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -22,10 +23,7 @@ use primitive_types::H160;
 use stark_hash::Felt;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::PendingBlock;
-use starknet_gateway_types::{
-    pending::PendingData,
-    reply::{Block, MaybePendingBlock},
-};
+use starknet_gateway_types::reply::{Block, MaybePendingBlock};
 
 use std::future::Future;
 use std::{sync::Arc, time::Duration};
@@ -139,7 +137,7 @@ where
         sequencer,
         state,
         head_poll_interval,
-        pending_data,
+        pending_data: _,
         pending_poll_interval: _,
         block_validation_mode: _,
         websocket_txs: _,
@@ -229,7 +227,6 @@ where
                 });
             },
             l2_producer_result = &mut l2_handle => {
-                pending_data.clear().await;
                 // L2 sync process failed; restart it.
                 match l2_producer_result.context("Join L2 sync process handle")? {
                     Ok(()) => {
@@ -372,7 +369,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 // This opens a short window where `pending` overlaps with `latest` in storage. Unfortuantely
                 // there is no easy way of having a transaction over both memory and database. sqlite does support
                 // multi-database transactions, but it does not work for WAL mode.
-                pending_data.clear().await;
                 let block_time = last_block_start.elapsed();
                 let update_t = update_t.elapsed();
                 last_block_start = std::time::Instant::now();
@@ -437,8 +433,6 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 }
             }
             Reorg(reorg_tail) => {
-                pending_data.clear().await;
-
                 l2_reorg(&mut db_conn, reorg_tail)
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
@@ -494,7 +488,10 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
             Pending(block, state_update) => {
-                pending_data.set(block, state_update).await;
+                let (header, body) = block.as_ref().clone().into_parts();
+                let block = Arc::new(BlockWithBody { header, body });
+                pending_data.set_block(block);
+                pending_data.set_state_update(state_update);
                 tracing::debug!("Updated pending data");
             }
         }
@@ -866,6 +863,7 @@ mod tests {
     use super::l2;
     use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::pending::PendingData;
     use pathfinder_common::{
         felt_bytes, BlockHash, BlockHeader, BlockNumber, ClassHash, EventCommitment, SierraHash,
         StateCommitment, StateUpdate, TransactionCommitment,
@@ -873,8 +871,8 @@ mod tests {
     use pathfinder_rpc::SyncState;
     use pathfinder_storage::Storage;
     use stark_hash::Felt;
+    use starknet_gateway_types::reply;
     use starknet_gateway_types::reply::Block;
-    use starknet_gateway_types::{pending::PendingData, reply};
     use std::sync::Arc;
 
     /// Generate some arbitrary block chain data from genesis onwards.
