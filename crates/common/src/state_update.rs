@@ -145,6 +145,13 @@ impl StateUpdate {
                 })
                 .sum::<usize>()
     }
+
+    pub fn contains_declared_class(&self, class_hash: ClassHash) -> bool {
+        self.declared_cairo_classes.contains(&class_hash)
+            || self
+                .declared_sierra_classes
+                .contains_key(&SierraHash(class_hash.0))
+    }
 }
 
 #[cfg(test)]
