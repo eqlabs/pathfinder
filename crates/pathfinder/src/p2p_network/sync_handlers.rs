@@ -441,7 +441,10 @@ mod conv {
             BlockStateUpdate, ContractDiff, DeclaredClass, DeployedContract, ReplacedClass,
             StorageDiff,
         };
-        use pathfinder_common::state_update::{ContractClassUpdate, StateUpdate};
+        use pathfinder_common::{
+            state_update::{ContractClassUpdate, StateUpdate},
+            ContractNonce,
+        };
 
         pub fn from(x: StateUpdate) -> BlockStateUpdate {
             let mut deployed_contracts = Vec::new();
@@ -479,6 +482,23 @@ mod conv {
                             storage_diffs,
                         }
                     })
+                    .chain(x.system_contract_updates.into_iter().map(
+                        |(contract_address, update)| {
+                            let storage_diffs = update
+                                .storage
+                                .into_iter()
+                                .map(|(key, value)| StorageDiff {
+                                    key: key.0,
+                                    value: value.0,
+                                })
+                                .collect();
+                            ContractDiff {
+                                contract_address: contract_address.0,
+                                nonce: ContractNonce::ZERO.0,
+                                storage_diffs,
+                            }
+                        },
+                    ))
                     .collect();
 
             BlockStateUpdate {
@@ -921,6 +941,7 @@ mod tests {
             use crate::p2p_network::client::conv::state_update;
             use pathfinder_common::StateUpdate;
             use proptest::prelude::*;
+            use std::collections::HashMap;
 
             proptest! {
                 #[test]
@@ -934,7 +955,9 @@ mod tests {
                             Default::default()
                         },
                     };
-                    let from_db = overlapping::forward(from_db, start, count).map(|(_, _, state_update)| state_update).collect::<Vec<_>>();
+                    let from_db = overlapping::forward(from_db, start, count).map(|(_, _, state_update)|
+                        (state_update.block_hash.0, state_update)
+                    ).collect::<HashMap<_, _>>();
 
                     let request = p2p_proto::sync::GetStateDiffs {
                         start_block: start_hash.0,
@@ -951,11 +974,12 @@ mod tests {
                         .unwrap()
                         .block_state_updates
                         .into_iter()
-                        .map(|state_update| {
-                            StateUpdate::from(state_update::try_from_p2p(state_update).unwrap())
-                        }).collect::<Vec<_>>();
+                        .map(|state_update|
+                            (state_update.block_hash, StateUpdate::from(state_update::try_from_p2p(state_update).unwrap()))
+                        )
+                        .collect::<HashMap<_, _>>();
 
-                    prop_assert_eq!(from_p2p, from_db)
+                    prop_assert_eq!(from_p2p, from_db);
                 }
             }
 
@@ -971,7 +995,8 @@ mod tests {
                             Default::default()
                         },
                     };
-                    let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, _, state_update)| state_update).collect::<Vec<_>>();
+                    let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, _, state_update)|
+                        (state_update.block_hash.0, state_update)).collect::<HashMap<_, _>>();
 
                     let request = p2p_proto::sync::GetStateDiffs {
                         start_block: start_hash.0,
@@ -989,8 +1014,8 @@ mod tests {
                         .block_state_updates
                         .into_iter()
                         .map(|state_update| {
-                            StateUpdate::from(state_update::try_from_p2p(state_update).unwrap())
-                        }).collect::<Vec<_>>();
+                            (state_update.block_hash, StateUpdate::from(state_update::try_from_p2p(state_update).unwrap()))
+                        }).collect::<HashMap<_, _>>();
 
                     prop_assert_eq!(from_p2p, from_db)
                 }

@@ -48,8 +48,7 @@ pub fn with_n_blocks_and_rng(
                         .unwrap()
                 });
 
-            tx.insert_state_update(header.number, &state_update)
-                .unwrap();
+            tx.insert_state_update(header.number, state_update).unwrap();
         });
     tx.commit().unwrap();
     fake_data
@@ -61,8 +60,9 @@ pub mod init {
 
     use super::StorageInitializer;
     use fake::{Fake, Faker};
-    use pathfinder_common::state_update::ContractUpdate;
+    use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
+    use pathfinder_common::ContractAddress;
     use pathfinder_common::{
         state_update::ContractClassUpdate, BlockHash, BlockHeader, BlockNumber, StateCommitment,
         StateUpdate, TransactionIndex,
@@ -134,7 +134,12 @@ pub mod init {
                     parent_state_commitment: StateCommitment::ZERO,
                     declared_cairo_classes: Faker.fake_with_rng::<HashSet<_>, _>(rng),
                     declared_sierra_classes: Faker.fake_with_rng::<HashMap<_, _>, _>(rng),
-                    system_contract_updates: Faker.fake_with_rng::<HashMap<_, _>, _>(rng),
+                    system_contract_updates: HashMap::from([(
+                        ContractAddress::ONE,
+                        SystemContractUpdate {
+                            storage: fake_non_empty_with_rng(rng),
+                        },
+                    )]),
                     contract_updates: {
                         let mut x = Faker.fake_with_rng::<HashMap<_, ContractUpdate>, _>(rng);
                         x.iter_mut().for_each(|(_, u)| {
@@ -145,8 +150,7 @@ pub mod init {
                                 .map(|x| ContractClassUpdate::Deploy(x.class_hash()));
                             // Disallow empty storage entries
                             if u.storage.is_empty() {
-                                u.storage
-                                    .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
+                                u.storage = fake_non_empty_with_rng(rng);
                             }
                         });
                         x
@@ -165,24 +169,6 @@ pub mod init {
                 StateCommitment::calculate(header.storage_commitment, header.class_commitment);
             state_update.block_hash = header.hash;
             state_update.parent_state_commitment = StateCommitment::ZERO;
-
-            // Disallow empty storage entries
-            state_update.contract_updates.iter_mut().for_each(|(_, x)| {
-                if x.storage.is_empty() {
-                    x.storage
-                        .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
-                }
-            });
-
-            state_update
-                .system_contract_updates
-                .iter_mut()
-                .for_each(|(_, x)| {
-                    if x.storage.is_empty() {
-                        x.storage
-                            .insert(Faker.fake_with_rng(rng), Faker.fake_with_rng(rng));
-                    }
-                });
 
             for i in 1..n {
                 let (parent_hash, parent_state_commitment, deployed_in_parent) = init

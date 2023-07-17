@@ -105,6 +105,9 @@ mod types {
             self.state_diff.deprecated_declared_classes.sort();
             self.state_diff.nonces.sort_by_key(|x| x.contract_address);
             self.state_diff.storage_diffs.sort_by_key(|x| x.address);
+            self.state_diff.storage_diffs.iter_mut().for_each(|x| {
+                x.storage_entries.sort_by_key(|x| x.key);
+            });
         }
     }
 

@@ -463,6 +463,8 @@ pub mod conv {
                         .state_update
                         .contract_diffs
                         .iter()
+                        // Filter out the zero nonce, which does not indicate an update.
+                        .filter(|contract_diff| contract_diff.nonce != ContractNonce::ZERO.0)
                         .map(|contract_diff| {
                             Ok((
                                 ContractAddress::new(contract_diff.contract_address).ok_or(
