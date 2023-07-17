@@ -18,7 +18,7 @@ pub async fn get_transaction_status(
     // Check in pending block.
     if let Some(pending) = &context.pending_data {
         if is_pending_tx(pending, &input.transaction_hash).await {
-            return Ok(TransactionStatus::Pending);
+            return Ok(TransactionStatus::AcceptedOnL2);
         }
     }
 
@@ -153,7 +153,7 @@ mod tests {
         };
         let status = get_transaction_status(context, input).await.unwrap();
 
-        assert_eq!(status, TransactionStatus::Pending);
+        assert_eq!(status, TransactionStatus::AcceptedOnL2);
     }
 
     #[tokio::test]
