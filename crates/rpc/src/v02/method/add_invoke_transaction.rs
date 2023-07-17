@@ -1,11 +1,9 @@
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedInvokeTransaction;
-use anyhow::Context;
 use pathfinder_common::TransactionHash;
 use starknet_gateway_client::GatewayApi;
-
-crate::error::generate_rpc_error_subset!(AddInvokeTransactionError);
+use starknet_gateway_types::error::{SequencerError, StarknetError};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -26,6 +24,27 @@ pub struct AddInvokeTransactionOutput {
     transaction_hash: TransactionHash,
 }
 
+#[derive(Debug)]
+pub enum AddInvokeTransactionError {
+    GatewayError(StarknetError),
+    Internal(anyhow::Error),
+}
+
+impl From<AddInvokeTransactionError> for crate::error::RpcError {
+    fn from(value: AddInvokeTransactionError) -> Self {
+        match value {
+            AddInvokeTransactionError::GatewayError(x) => Self::GatewayError(x),
+            AddInvokeTransactionError::Internal(x) => Self::Internal(x),
+        }
+    }
+}
+
+impl From<anyhow::Error> for AddInvokeTransactionError {
+    fn from(value: anyhow::Error) -> Self {
+        AddInvokeTransactionError::Internal(value)
+    }
+}
+
 pub async fn add_invoke_transaction(
     context: RpcContext,
     input: AddInvokeTransactionInput,
@@ -43,7 +62,10 @@ pub async fn add_invoke_transaction(
                 v1.calldata,
             )
             .await
-            .context("Sending V1 invoke transaction to gateway")?,
+            .map_err(|e| match e {
+                SequencerError::StarknetError(e) => AddInvokeTransactionError::GatewayError(e),
+                other => AddInvokeTransactionError::Internal(other.into()),
+            })?,
     };
 
     Ok(AddInvokeTransactionOutput {

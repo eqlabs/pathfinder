@@ -1,9 +1,9 @@
 use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
 use crate::v02::types::request::BroadcastedDeployAccountTransaction;
-use anyhow::Context;
 use pathfinder_common::{ContractAddress, TransactionHash};
 use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError, StarknetError};
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -26,7 +26,28 @@ pub struct AddDeployAccountTransactionOutput {
     contract_address: ContractAddress,
 }
 
-crate::error::generate_rpc_error_subset!(AddDeployAccountTransactionError: ClassHashNotFound);
+#[derive(Debug)]
+pub enum AddDeployAccountTransactionError {
+    ClassHashNotFound,
+    GatewayError(StarknetError),
+    Internal(anyhow::Error),
+}
+
+impl From<AddDeployAccountTransactionError> for crate::error::RpcError {
+    fn from(value: AddDeployAccountTransactionError) -> Self {
+        match value {
+            AddDeployAccountTransactionError::ClassHashNotFound => Self::ClassHashNotFound,
+            AddDeployAccountTransactionError::GatewayError(x) => Self::GatewayError(x),
+            AddDeployAccountTransactionError::Internal(x) => Self::Internal(x),
+        }
+    }
+}
+
+impl From<anyhow::Error> for AddDeployAccountTransactionError {
+    fn from(value: anyhow::Error) -> Self {
+        AddDeployAccountTransactionError::Internal(value)
+    }
+}
 
 pub async fn add_deploy_account_transaction(
     context: RpcContext,
@@ -45,7 +66,15 @@ pub async fn add_deploy_account_transaction(
             tx.constructor_calldata,
         )
         .await
-        .context("Sending Deploy Account Transaction to the gateway")?;
+        .map_err(|e| match e {
+            SequencerError::StarknetError(e)
+                if e.code == KnownStarknetErrorCode::UndeclaredClass.into() =>
+            {
+                AddDeployAccountTransactionError::ClassHashNotFound
+            }
+            SequencerError::StarknetError(e) => AddDeployAccountTransactionError::GatewayError(e),
+            other => AddDeployAccountTransactionError::Internal(other.into()),
+        })?;
 
     Ok(AddDeployAccountTransactionOutput {
         transaction_hash: response.transaction_hash,
