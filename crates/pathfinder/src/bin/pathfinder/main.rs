@@ -85,18 +85,31 @@ async fn main() -> anyhow::Result<()> {
         Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
     let sync_storage = storage_manager
         .create_pool(NonZeroU32::new(5).unwrap())
-        .context("Creating database connection pool for sync")?;
+        .context(
+            r"Creating database connection pool for sync.
+
+Hint: This is usually caused by exceeding the file descriptor limit of your sysem.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
     // Set the rpc file connection limit to a fraction of the RPC connections.
     // Having this be too large is counter productive as disk IO will then slow down
     // all queries.
     let rpc_storage = std::cmp::max(10, config.max_rpc_connections.get() / 8);
     let rpc_storage = NonZeroU32::new(rpc_storage).expect("A non-zero minimum is set");
-    let rpc_storage = storage_manager
-        .create_pool(rpc_storage)
-        .context("Creating database connection pool for sync")?;
+    let rpc_storage = storage_manager.create_pool(rpc_storage).context(
+        r"Creating database connection pool for sync
+        
+Hint: This is usually caused by exceeding the file descriptor limit of your sysem.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+    )?;
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
-        .context("Creating database connection pool for p2p")?;
+        .context(
+            r"Creating database connection pool for p2p
+        
+Hint: This is usually caused by exceeding the file descriptor limit of your sysem.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
 
     info!(location=?pathfinder_context.database, "Database migrated.");
     verify_database(
