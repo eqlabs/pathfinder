@@ -1,7 +1,10 @@
 use crate::module::Module;
 
+mod method;
+
 use crate::v02::method as v02_method;
 use crate::v03::method as v03_method;
+use crate::v04::method as v04_method;
 
 /// Registers all methods for the v0.3 RPC API
 pub fn register_methods(module: Module) -> anyhow::Result<Module> {
@@ -72,16 +75,17 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
             v03_method::simulate_transaction,
         )?
         .register_method(
-            "v0.4_starknet_estimateMessageFee",
-            v03_method::estimate_message_fee,
-        )?
-        .register_method(
             "v0.4_pathfinder_getProof",
             crate::pathfinder::methods::get_proof,
         )?
         .register_method(
             "v0.4_pathfinder_getTransactionStatus",
             crate::pathfinder::methods::get_transaction_status,
+        )?
+        // Specific v0.4 implementations
+        .register_method(
+            "v0.4_starknet_estimateMessageFee",
+            v04_method::estimate_message_fee,
         )?;
 
     Ok(module)
