@@ -38,6 +38,8 @@ pub enum RpcError {
     #[error("Too many keys provided in a filter")]
     TooManyKeysInFilter { limit: usize, requested: usize },
     #[error(transparent)]
+    GatewayError(starknet_gateway_types::error::StarknetError),
+    #[error(transparent)]
     Internal(anyhow::Error),
 }
 
@@ -59,7 +61,9 @@ impl RpcError {
             RpcError::ContractError => 40,
             RpcError::InvalidContractClass => 50,
             RpcError::ProofLimitExceeded { .. } => 10000,
-            RpcError::Internal(_) => jsonrpsee::types::error::ErrorCode::InternalError.code(),
+            RpcError::GatewayError(_) | RpcError::Internal(_) => {
+                jsonrpsee::types::error::ErrorCode::InternalError.code()
+            }
         }
     }
 }

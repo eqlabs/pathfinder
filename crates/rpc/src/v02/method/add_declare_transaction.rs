@@ -3,12 +3,33 @@ use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedDeclareTransaction;
 use pathfinder_common::{ClassHash, TransactionHash};
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::error::SequencerError;
+use starknet_gateway_types::error::{SequencerError, StarknetError};
 use starknet_gateway_types::request::add_transaction::{
     CairoContractDefinition, ContractDefinition, SierraContractDefinition,
 };
 
-crate::error::generate_rpc_error_subset!(AddDeclareTransactionError: InvalidContractClass);
+#[derive(Debug)]
+pub enum AddDeclareTransactionError {
+    InvalidContractClass,
+    GatewayError(StarknetError),
+    Internal(anyhow::Error),
+}
+
+impl From<AddDeclareTransactionError> for crate::error::RpcError {
+    fn from(value: AddDeclareTransactionError) -> Self {
+        match value {
+            AddDeclareTransactionError::InvalidContractClass => Self::InvalidContractClass,
+            AddDeclareTransactionError::GatewayError(x) => Self::GatewayError(x),
+            AddDeclareTransactionError::Internal(x) => Self::Internal(x),
+        }
+    }
+}
+
+impl From<anyhow::Error> for AddDeclareTransactionError {
+    fn from(value: anyhow::Error) -> Self {
+        AddDeclareTransactionError::Internal(value)
+    }
+}
 
 impl From<SequencerError> for AddDeclareTransactionError {
     fn from(e: SequencerError) -> Self {
@@ -19,9 +40,10 @@ impl From<SequencerError> for AddDeclareTransactionError {
             SequencerError::StarknetError(e)
                 if e.code == InvalidProgram.into() || e.code == InvalidContractClass.into() =>
             {
-                Self::InvalidContractClass
+                AddDeclareTransactionError::InvalidContractClass
             }
-            _ => Self::Internal(e.into()),
+            SequencerError::StarknetError(other) => AddDeclareTransactionError::GatewayError(other),
+            _ => AddDeclareTransactionError::Internal(e.into()),
         }
     }
 }
