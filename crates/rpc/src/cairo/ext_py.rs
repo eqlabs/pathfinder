@@ -615,7 +615,7 @@ mod tests {
 
         use primitive_types::H256;
 
-        const EXPECTED_GAS_CONSUMED: u64 = 0xe82;
+        const EXPECTED_GAS_CONSUMED: u64 = 0x134a;
 
         for (gas_price_u64, block, use_past_block) in [
             (1, latest_block_number.into(), true),
