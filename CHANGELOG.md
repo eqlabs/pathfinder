@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - this bug was introduced in v0.6.4 and requires a resync to fix
 - gateway error messages are not passed through for `add_xxx_transaction` methods
 - fee estimation is under-estimating most declare transactions by factor 2
+- `pathfinder_getTransactionStatus` still returns `PENDING` instead of `ACCEPTED_ON_L2`
 
 ### Added
 
