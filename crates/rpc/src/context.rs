@@ -15,6 +15,7 @@ pub enum RpcVersion {
     V01,
     V02,
     V03,
+    V04,
 }
 
 impl RpcVersion {
@@ -23,6 +24,7 @@ impl RpcVersion {
             "v0.1" => Self::V01,
             "v0.2" => Self::V02,
             "v0.3" => Self::V03,
+            "v0.4" => Self::V04,
             _ => Self::default(),
         }
     }

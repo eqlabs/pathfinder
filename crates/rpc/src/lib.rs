@@ -12,6 +12,7 @@ mod pathfinder;
 pub mod test_client;
 pub mod v02;
 pub mod v03;
+pub mod v04;
 pub mod websocket;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
