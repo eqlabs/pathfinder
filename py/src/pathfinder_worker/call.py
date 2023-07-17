@@ -112,7 +112,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 35
-EXPECTED_CAIRO_VERSION = "0.12.0a0"
+EXPECTED_CAIRO_VERSION = "0.12.0"
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
 DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
@@ -968,6 +968,7 @@ def create_general_config(chain_id: StarknetChainId) -> StarknetGeneralConfig:
         {
             "cairo_resource_fee_weights": {"n_steps": constants.N_STEPS_FEE_WEIGHT},
             "compiled_class_hash_commitment_tree_height": constants.COMPILED_CLASS_HASH_COMMITMENT_TREE_HEIGHT,
+            "constant_gas_price": False,
             "contract_storage_commitment_tree_height": constants.CONTRACT_STATES_COMMITMENT_TREE_HEIGHT,
             "enforce_l1_handler_fee": False,
             "event_commitment_tree_height": constants.EVENT_COMMITMENT_TREE_HEIGHT,

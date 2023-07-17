@@ -1228,7 +1228,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
+            [FeeEstimation(gas_consumed=2490, gas_price=1, overall_fee=2490)],
         ),
         (
             dataclasses.replace(
@@ -1253,7 +1253,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transactions=[base_transaction_and_class_hash_hint_with_nonce_1],
             ),
-            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
+            [FeeEstimation(gas_consumed=2490, gas_price=1, overall_fee=2490)],
         ),
         (
             dataclasses.replace(
@@ -1290,7 +1290,7 @@ def test_nonce_with_dummy():
                 transactions=[base_transaction_and_class_hash_hint_with_nonce_2],
                 pending_nonces={0x123: 2},
             ),
-            [FeeEstimation(gas_consumed=1266, gas_price=1, overall_fee=1266)],
+            [FeeEstimation(gas_consumed=2490, gas_price=1, overall_fee=2490)],
         ),
         (
             dataclasses.replace(
@@ -1567,9 +1567,9 @@ def test_estimate_fee_for_sierra_invoke_function_through_account():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=3717,
+            gas_consumed=4941,
             gas_price=1,
-            overall_fee=3717,
+            overall_fee=4941,
         )
     ]
 
@@ -1619,9 +1619,9 @@ def test_estimate_fee_for_sierra_declare_through_account():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=1252,
+            gas_consumed=2476,
             gas_price=1,
-            overall_fee=1252,
+            overall_fee=2476,
         )
     ]
 
@@ -1700,9 +1700,9 @@ def test_estimate_fee_for_deploy_account():
         ),
         # INVOKE_FUNCTION through deployed account
         FeeEstimation(
-            gas_consumed=3717,
+            gas_consumed=4941,
             gas_price=1,
-            overall_fee=3717,
+            overall_fee=4941,
         ),
     ]
 
@@ -1874,7 +1874,7 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
 
     assert output == [
         # DECLARE an account contract class
-        FeeEstimation(overall_fee=1252, gas_price=1, gas_consumed=1252),
+        FeeEstimation(overall_fee=2476, gas_price=1, gas_consumed=2476),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
         FeeEstimation(overall_fee=3099, gas_price=1, gas_consumed=3099),
     ]
