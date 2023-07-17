@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - some cairo 0 classes are not downloaded which can cause execution methods to fail
   - this bug was introduced in v0.6.4 and requires a resync to fix
 - gateway error messages are not passed through for `add_xxx_transaction` methods
+- fee estimation is under-estimating most declare transactions by factor 2
+
+### Added
+
+- `cairo-lang` upgraded to 0.12.0
 
 ## [0.6.6] - 2023-07-10
 
