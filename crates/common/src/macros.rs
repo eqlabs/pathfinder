@@ -1,7 +1,8 @@
 /// Macros for newtypes stored with an sqlite INTEGER column.
 pub(super) mod i64_backed_u64 {
 
-    /// Generates `new`, `new_or_panic` and `get` methods, and `PartialEq` against `i64` and `u64`.
+    /// Generates `new`, `new_or_panic` and `get` methods, `PartialEq` against `i64` and `u64`, and `fake::Dummy` when
+    /// feature `test-utils` enabled.
     macro_rules! new_get_partialeq {
         ($target:ty) => {
             impl $target {
@@ -36,6 +37,13 @@ pub(super) mod i64_backed_u64 {
             impl PartialEq<i64> for $target {
                 fn eq(&self, other: &i64) -> bool {
                     u64::try_from(*other).map(|x| self == &x).unwrap_or(false)
+                }
+            }
+
+            #[cfg(any(feature = "test-utils", test))]
+            impl<T> fake::Dummy<T> for $target {
+                fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+                    Self(rng.gen_range(0..i64::MAX as u64))
                 }
             }
         };
@@ -114,6 +122,7 @@ macro_rules! felt_newtypes {
     (@define_felt $target:ident) => {
         paste::paste! {
             #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, PartialOrd, Ord)]
+            #[cfg_attr(feature = "test-utils", derive(Dummy))]
             pub struct $target(pub stark_hash::Felt);
 
             #[allow(unused)]
@@ -138,6 +147,7 @@ macro_rules! felt_newtypes {
     (@define_felt251 $target:ident) => {
         paste::paste! {
             #[derive(Copy, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, PartialOrd, Ord)]
+            #[cfg_attr(feature = "test-utils", derive(Dummy))]
             pub struct $target(pub stark_hash::Felt);
 
             $crate::macros::fmt::thin_debug!($target);

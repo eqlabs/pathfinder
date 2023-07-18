@@ -172,7 +172,7 @@ message BlockBody {
   repeated Receipt receipts = 4;
 }
 
-message CompressedClass {
-  // FIXME currently a zstd compressed JSON representation
+message RawClass {
+  // FIXME currently carries raw JSON representation
   bytes class = 1;
 }

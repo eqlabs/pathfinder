@@ -1,4 +1,4 @@
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 use fake::{Dummy, Fake, Faker};
 use stark_hash::Felt;
 
@@ -7,7 +7,7 @@ use crate::{ToProtobuf, TryFromProtobuf};
 use super::proto;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::BlockHeader")]
 pub struct BlockHeader {
     pub hash: Felt,
@@ -27,7 +27,7 @@ pub struct BlockHeader {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::BlockBody")]
 pub struct BlockBody {
     pub transactions: Vec<Transaction>,
@@ -35,7 +35,7 @@ pub struct BlockBody {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 pub enum Transaction {
     Invoke(InvokeTransaction),
     Declare(DeclareTransaction),
@@ -93,7 +93,7 @@ impl ToProtobuf<proto::common::Transaction> for Transaction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::InvokeTransaction")]
 pub struct InvokeTransaction {
     pub sender_address: Felt,
@@ -107,7 +107,7 @@ pub struct InvokeTransaction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::L1HandlerTransaction")]
 pub struct L1HandlerTransaction {
     pub contract_address: Felt,
@@ -118,7 +118,7 @@ pub struct L1HandlerTransaction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeclareTransaction")]
 pub struct DeclareTransaction {
     pub class_hash: Felt,
@@ -131,7 +131,7 @@ pub struct DeclareTransaction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeployAccountTransaction")]
 pub struct DeployAccountTransaction {
     pub contract_address_salt: Felt,
@@ -144,7 +144,7 @@ pub struct DeployAccountTransaction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeprecatedDeployTransaction")]
 pub struct DeployTransaction {
     pub class_hash: Felt,
@@ -154,14 +154,14 @@ pub struct DeployTransaction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
-#[protobuf(name = "crate::proto::common::CompressedClass")]
-pub struct CompressedClass {
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
+#[protobuf(name = "crate::proto::common::RawClass")]
+pub struct RawClass {
     pub class: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::Event")]
 pub struct Event {
     pub from_address: Felt,
@@ -177,13 +177,13 @@ pub struct MessageToL1 {
     pub to_address: primitive_types::H160,
 }
 
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 impl<T> Dummy<T> for MessageToL1 {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, _: &mut R) -> Self {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
         Self {
-            from_address: Faker.fake(),
-            payload: Faker.fake(),
-            to_address: primitive_types::H160::random(),
+            from_address: Felt::dummy_with_rng(config, rng),
+            payload: Faker.fake_with_rng(rng),
+            to_address: primitive_types::H160::random_using(rng),
         }
     }
 }
@@ -198,21 +198,21 @@ pub struct MessageToL2 {
     pub nonce: Felt,
 }
 
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 impl<T> Dummy<T> for MessageToL2 {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, _: &mut R) -> Self {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self {
-            from_address: primitive_types::H160::random(),
-            payload: Faker.fake(),
-            to_address: Faker.fake(),
-            entry_point_selector: Faker.fake(),
-            nonce: Faker.fake(),
+            from_address: primitive_types::H160::random_using(rng),
+            payload: Faker.fake_with_rng(rng),
+            to_address: Faker.fake_with_rng(rng),
+            entry_point_selector: Faker.fake_with_rng(rng),
+            nonce: Faker.fake_with_rng(rng),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::ExecutionResources")]
 pub struct ExecutionResources {
     pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
@@ -224,7 +224,7 @@ pub mod execution_resources {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     #[protobuf(name = "crate::proto::common::execution_resources::BuiltinInstanceCounter")]
     pub struct BuiltinInstanceCounter {
         pub bitwise_builtin: u64,
@@ -237,7 +237,7 @@ pub mod execution_resources {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::CommonTransactionReceiptProperties")]
 pub struct CommonTransactionReceiptProperties {
     pub transaction_hash: Felt,
@@ -251,28 +251,28 @@ pub struct CommonTransactionReceiptProperties {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::InvokeTransactionReceipt")]
 pub struct InvokeTransactionReceipt {
     pub common: CommonTransactionReceiptProperties,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::L1HandlerTransactionReceipt")]
 pub struct L1HandlerTransactionReceipt {
     pub common: CommonTransactionReceiptProperties,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeclareTransactionReceipt")]
 pub struct DeclareTransactionReceipt {
     pub common: CommonTransactionReceiptProperties,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeprecatedDeployTransactionReceipt")]
 pub struct DeployTransactionReceipt {
     pub common: CommonTransactionReceiptProperties,
@@ -281,7 +281,7 @@ pub struct DeployTransactionReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::common::DeployAccountTransactionReceipt")]
 pub struct DeployAccountTransactionReceipt {
     pub common: CommonTransactionReceiptProperties,
@@ -290,7 +290,7 @@ pub struct DeployAccountTransactionReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 
 pub enum Receipt {
     Invoke(InvokeTransactionReceipt),
@@ -351,12 +351,12 @@ impl ToProtobuf<proto::common::Receipt> for Receipt {
 pub mod invoke_transaction {
     use crate::proto;
     use crate::{ToProtobuf, TryFromProtobuf};
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(feature = "test-utils", test))]
     use fake::Dummy;
     use stark_hash::Felt;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    #[cfg_attr(feature = "test-utils", derive(Dummy))]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum EntryPoint {
         Unspecified(Felt),
         External(Felt),

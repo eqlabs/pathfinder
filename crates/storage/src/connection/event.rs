@@ -249,11 +249,11 @@ pub(super) fn get_events<K: KeyFilter>(
 fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
     // with padding it seems 44 bytes are needed for each
     let needed = (keys.len() * (" ".len() + 44)).saturating_sub(" ".len());
+
     if let Some(more) = needed.checked_sub(out.capacity() - out.len()) {
+        // This is a wish which is not always fulfilled
         out.reserve(more);
     }
-
-    let _capacity = out.capacity();
 
     keys.iter().enumerate().for_each(|(i, x)| {
         encode_event_key_to_base64(x, out);
@@ -262,8 +262,6 @@ fn event_keys_to_base64_strings(keys: &[EventKey], out: &mut String) {
             out.push(' ');
         }
     });
-
-    debug_assert_eq!(_capacity, out.capacity(), "pre-reservation was not enough");
 }
 
 fn encode_event_key_to_base64(key: &EventKey, buf: &mut String) {

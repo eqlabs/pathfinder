@@ -10,6 +10,8 @@ use stark_hash::Felt;
 use tokio::sync::RwLock;
 use tracing::Instrument;
 
+#[cfg(any(feature = "test-utils", test))]
+mod client;
 mod sync_handlers;
 
 #[tracing::instrument(name = "p2p", skip_all)]
@@ -59,7 +61,11 @@ pub async fn start(
     }
 
     let block_propagation_topic = format!("blocks/{}", chain_id.to_hex_str());
-    p2p_client.subscribe_topic(&block_propagation_topic).await?;
+
+    if !bootstrap_addresses.is_empty() {
+        // Bootstrap nodes don't subscribe to topic they're publishing to
+        p2p_client.subscribe_topic(&block_propagation_topic).await?;
+    }
 
     let join_handle = {
         let mut p2p_client = p2p_client.clone();
@@ -84,7 +90,7 @@ pub async fn start(
         )
     };
 
-    Ok((peers, p2p_client, join_handle))
+    Ok((peers.clone(), p2p_client, join_handle))
 }
 
 async fn handle_p2p_event(
@@ -110,16 +116,20 @@ async fn handle_p2p_event(
                 Request::GetBlockHeaders(r) => {
                     Response::BlockHeaders(sync_handlers::get_block_headers(r, storage).await?)
                 }
-                Request::GetBlockBodies(_r) => unimplemented!(),
-                Request::GetStateDiffs(_r) => unimplemented!(),
-                Request::GetClasses(_r) => unimplemented!(),
+                Request::GetBlockBodies(r) => {
+                    Response::BlockBodies(sync_handlers::get_block_bodies(r, storage).await?)
+                }
+                Request::GetStateDiffs(r) => {
+                    Response::StateDiffs(sync_handlers::get_state_diffs(r, storage).await?)
+                }
+                Request::GetClasses(r) => {
+                    Response::Classes(sync_handlers::get_classes(r, storage).await?)
+                }
                 Request::Status(_) => Response::Status(current_status(chain_id, sync_state).await),
             };
             p2p_client.send_sync_response(channel, response).await;
         }
-        p2p::Event::BlockPropagation(block_propagation) => {
-            tracing::info!(?block_propagation, "Block Propagation");
-        }
+        p2p::Event::BlockPropagation(message) => tracing::info!(?message, "Block Propagation"),
         p2p::Event::Test(_) => { /* Ignore me */ }
     }
 

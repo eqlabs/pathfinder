@@ -99,6 +99,9 @@ mod types {
             self.state_diff.declared_contract_hashes.sort();
             self.state_diff.nonces.sort_by_key(|x| x.contract_address);
             self.state_diff.storage_diffs.sort_by_key(|x| x.address);
+            self.state_diff.storage_diffs.iter_mut().for_each(|x| {
+                x.storage_entries.sort_by_key(|x| x.key);
+            });
         }
     }
 
@@ -196,7 +199,7 @@ mod types {
 
     /// L2 storage diff of a contract.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageDiff {
@@ -207,7 +210,7 @@ mod types {
 
     /// A key-value entry of a storage diff.
     #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct StorageEntry {
@@ -218,10 +221,10 @@ mod types {
     }
 
     impl From<starknet_gateway_types::reply::state_update::StorageDiff> for StorageEntry {
-        fn from(diff: starknet_gateway_types::reply::state_update::StorageDiff) -> Self {
+        fn from(d: starknet_gateway_types::reply::state_update::StorageDiff) -> Self {
             Self {
-                key: diff.key,
-                value: diff.value,
+                key: d.key,
+                value: d.value,
             }
         }
     }
@@ -350,13 +353,16 @@ mod tests {
         let storage = pathfinder_storage::Storage::in_memory().unwrap();
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
-        let state_updates = pathfinder_storage::test_fixtures::init::with_n_state_updates(&tx, 3);
+        let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
+            .into_iter()
+            .map(|(_, _, x)| x.into())
+            .collect();
+
         tx.commit().unwrap();
 
         let sync_state = std::sync::Arc::new(crate::SyncState::default());
         let sequencer = starknet_gateway_client::Client::new(Chain::Testnet).unwrap();
         let context = RpcContext::new(storage, sync_state, ChainId::TESTNET, sequencer);
-        let state_updates = state_updates.into_iter().map(Into::into).collect();
 
         (state_updates, context)
     }

@@ -1,4 +1,4 @@
-#[cfg(feature = "test-utils")]
+#[cfg(any(feature = "test-utils", test))]
 use fake::Dummy;
 use stark_hash::Felt;
 
@@ -88,14 +88,14 @@ impl ToProtobuf<proto::propagation::Message> for Message {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::NewBlockHeader")]
 pub struct NewBlockHeader {
     pub header: BlockHeader,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::NewBlockBody")]
 pub struct NewBlockBody {
     pub block_hash: Felt,
@@ -103,7 +103,7 @@ pub struct NewBlockBody {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::NewBlockState")]
 pub struct NewBlockState {
     pub block_hash: Felt,
@@ -111,7 +111,7 @@ pub struct NewBlockState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::BlockStateUpdate")]
 pub struct BlockStateUpdate {
     pub contract_diffs: Vec<ContractDiff>,
@@ -122,7 +122,7 @@ pub struct BlockStateUpdate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::ContractDiff")]
 pub struct ContractDiff {
     pub contract_address: Felt,
@@ -131,7 +131,7 @@ pub struct ContractDiff {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::StorageDiff")]
 pub struct StorageDiff {
     pub key: Felt,
@@ -139,7 +139,7 @@ pub struct StorageDiff {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::DeployedContract")]
 pub struct DeployedContract {
     pub contract_address: Felt,
@@ -147,7 +147,7 @@ pub struct DeployedContract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::DeclaredClass")]
 pub struct DeclaredClass {
     pub sierra_hash: Felt,
@@ -155,7 +155,7 @@ pub struct DeclaredClass {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 #[protobuf(name = "crate::proto::propagation::block_state_update::ReplacedClass")]
 pub struct ReplacedClass {
     pub contract_address: Felt,

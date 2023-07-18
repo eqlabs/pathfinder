@@ -64,6 +64,10 @@ message StateDiffs {
   message BlockStateUpdateWithHash {
     starknet.common.FieldElement block_hash = 1;
     starknet.propagation.BlockStateUpdate state_update = 2;
+    // TODO: temporary workaround until proto files updated
+    // according to the spec
+    starknet.common.FieldElement state_commitment = 3;
+    starknet.common.FieldElement parent_state_commitment = 4;
   }
 
   repeated BlockStateUpdateWithHash block_state_updates = 2;
@@ -81,5 +85,5 @@ message GetClasses {
 }
 
 message Classes {
-  repeated starknet.common.CompressedClass classes = 1;
+  repeated starknet.common.RawClass classes = 1;
 }

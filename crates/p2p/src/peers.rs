@@ -49,7 +49,7 @@ impl Peers {
     fn update_connection_status(&mut self, peer_id: &PeerId, connection_status: ConnectionStatus) {
         self.peers
             .entry(*peer_id)
-            .or_insert_with(Default::default)
+            .or_default()
             .update_connection_status(connection_status);
     }
 
