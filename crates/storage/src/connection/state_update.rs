@@ -55,6 +55,14 @@ pub(super) fn insert_state_update(
         }
     }
 
+    for (address, update) in &state_update.system_contract_updates {
+        for (key, value) in &update.storage {
+            insert_storage
+                .execute(params![&block_number, address, key, value])
+                .context("Inserting system storage update")?;
+        }
+    }
+
     // Set all declared classes block numbers. Class definitions are inserted by a separate mechanism, prior
     // to state update inserts. However, since the class insertion does not know with which block number to
     // associate with the class definition, we need to fill it in here.
@@ -472,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn state_diff() {
+    fn state_update() {
         let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
         let tx = db.transaction().unwrap();
 
@@ -518,6 +526,11 @@ mod tests {
                 contract_address,
                 storage_address_bytes!(b"storage key"),
                 storage_value_bytes!(b"storage value"),
+            )
+            .with_system_storage_update(
+                ContractAddress::ONE,
+                storage_address_bytes!(b"key"),
+                storage_value_bytes!(b"value"),
             )
             .with_deployed_contract(
                 contract_address_bytes!(b"contract addr 2"),
