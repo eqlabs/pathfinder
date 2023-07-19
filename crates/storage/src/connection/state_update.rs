@@ -480,7 +480,7 @@ mod tests {
     }
 
     #[test]
-    fn state_diff() {
+    fn state_update() {
         let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
         let tx = db.transaction().unwrap();
 
@@ -526,6 +526,11 @@ mod tests {
                 contract_address,
                 storage_address_bytes!(b"storage key"),
                 storage_value_bytes!(b"storage value"),
+            )
+            .with_system_storage_update(
+                ContractAddress::ONE,
+                storage_address_bytes!(b"key"),
+                storage_value_bytes!(b"value"),
             )
             .with_deployed_contract(
                 contract_address_bytes!(b"contract addr 2"),
