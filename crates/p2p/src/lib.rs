@@ -609,10 +609,6 @@ impl MainLoop {
                 tracing::debug!(%peer_id, "Dialing peer");
                 Ok(())
             }
-            SwarmEvent::NewListenAddr { address, .. } => {
-                tracing::debug!(%address, "New listen");
-                Ok(())
-            }
             // ===========================
             // Identify
             // ===========================
@@ -831,7 +827,12 @@ impl MainLoop {
             // test purposes
             // ===========================
             event => {
-                tracing::trace!(?event, "Ignoring event");
+                match &event {
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        tracing::debug!(%address, "New listen");
+                    }
+                    _ => tracing::trace!(?event, "Ignoring event"),
+                }
                 self.handle_event_for_test(event).await;
                 Ok(())
             }

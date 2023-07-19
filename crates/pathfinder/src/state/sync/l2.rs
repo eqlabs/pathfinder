@@ -118,6 +118,7 @@ where
             Some(head) => (head.0 + 1, Some(head)),
             None => (BlockNumber::GENESIS, None),
         };
+
         let t_block = std::time::Instant::now();
         // Next block and state update which we can get for free when exiting poll pending mode
         let mut next_block = None;
@@ -161,7 +162,7 @@ where
                     }
                 }
                 DownloadBlock::Reorg => {
-                    let head = match head {
+                    head = match head {
                         Some(some_head) => reorg(
                             some_head,
                             chain,
@@ -497,6 +498,7 @@ async fn download_block(
         }
         Err(other) => Err(other).context("Download block from sequencer"),
     };
+
     match result {
         Ok(DownloadBlock::Block(block, commitments)) => {
             for (i, txn) in block.transactions.iter().enumerate() {
