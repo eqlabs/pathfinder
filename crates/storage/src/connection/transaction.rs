@@ -375,6 +375,8 @@ mod tests {
                 l2_to_l1_messages: vec![],
                 transaction_hash: t.hash(),
                 transaction_index: TransactionIndex::new_or_panic(i as u64),
+                execution_status: Default::default(),
+                revert_error: Default::default(),
             })
             .collect();
         assert_eq!(transactions.len(), receipts.len());

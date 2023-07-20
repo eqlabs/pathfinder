@@ -378,6 +378,9 @@ pub mod conv {
                                 common.transaction_index.into(),
                             )
                             .expect("u32::MAX is always smaller than i64::MAX"),
+                            // FIXME: once p2p supports reverted
+                            execution_status: Default::default(),
+                            revert_error: Default::default(),
                         })
                     }
                 }

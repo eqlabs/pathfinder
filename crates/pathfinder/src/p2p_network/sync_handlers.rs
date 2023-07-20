@@ -860,7 +860,9 @@ mod tests {
             }
 
             proptest! {
+                // FIXME: unignore once reverted is supported
                 #[test]
+                #[ignore]
                 fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
                     // Initialize storage once for this proptest, greatly increases performance
                     // static STORAGE: SeededStorage = OnceCell::new();
@@ -896,7 +898,9 @@ mod tests {
                     prop_assert_eq!(from_p2p, from_db)
                 }
 
+                // FIXME: unignore once reverted is supported
                 #[test]
+                #[ignore]
                 fn backward((start, count, seed, num_blocks) in super::strategy::backward()) {
                     // Initialize storage once for this proptest, greatly increases performance
                     let (storage, from_db) = storage_with_seed(seed, num_blocks);

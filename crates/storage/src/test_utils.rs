@@ -138,6 +138,8 @@ pub(crate) fn create_transactions_and_receipts(
             l2_to_l1_messages: Vec::new(),
             transaction_hash: tx.hash(),
             transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
+            execution_status: Default::default(),
+            revert_error: Default::default(),
         };
 
         (tx, receipt)
