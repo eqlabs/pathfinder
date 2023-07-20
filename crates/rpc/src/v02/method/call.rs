@@ -186,7 +186,7 @@ mod tests {
             .await
             .unwrap();
 
-            let sequencer = starknet_gateway_client::Client::new(Chain::Mainnet).unwrap();
+            let sequencer = starknet_gateway_client::Client::mainnet();
 
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (

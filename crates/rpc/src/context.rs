@@ -78,17 +78,16 @@ impl RpcContext {
         assert_ne!(chain, Chain::Mainnet, "Testing on MainNet?");
 
         use pathfinder_common::Chain;
-        let chain_id = match chain {
-            Chain::Mainnet => ChainId::MAINNET,
-            Chain::Testnet => ChainId::TESTNET,
-            Chain::Integration => ChainId::INTEGRATION,
-            Chain::Testnet2 => ChainId::TESTNET2,
+        let (chain_id, sequencer) = match chain {
+            Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet()),
+            Chain::Testnet => (ChainId::TESTNET, SequencerClient::testnet()),
+            Chain::Integration => (ChainId::INTEGRATION, SequencerClient::integration()),
+            Chain::Testnet2 => (ChainId::TESTNET2, SequencerClient::testnet2()),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
         };
 
         let storage = super::test_utils::setup_storage();
         let sync_state = Arc::new(SyncState::default());
-        let sequencer = SequencerClient::new(chain).unwrap();
         Self::new(storage, sync_state, chain_id, sequencer)
     }
 

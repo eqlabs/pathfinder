@@ -20,7 +20,7 @@ mod builder;
 mod metrics;
 
 #[allow(unused_variables)]
-#[cfg_attr(feature = "test-utils", mockall::automock)]
+#[mockall::automock]
 #[async_trait::async_trait]
 pub trait GatewayApi: Sync {
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
@@ -240,18 +240,6 @@ impl Client {
     const RETRY: builder::Retry = builder::Retry::Enabled;
     #[cfg(any(test, feature = "test-utils"))]
     const RETRY: builder::Retry = builder::Retry::Disabled;
-
-    /// Creates a new Sequencer client for the given chain.
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn new(chain: Chain) -> anyhow::Result<Self> {
-        match chain {
-            Chain::Mainnet => Ok(Self::mainnet()),
-            Chain::Testnet => Ok(Self::testnet()),
-            Chain::Testnet2 => Ok(Self::testnet2()),
-            Chain::Integration => Ok(Self::integration()),
-            Chain::Custom => panic!("Not supported for Chain::Custom"),
-        }
-    }
 
     /// Creates a [Client] for [Chain::Mainnet].
     pub fn mainnet() -> Self {
@@ -520,10 +508,8 @@ impl GatewayApi for Client {
     }
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     use super::Client;
-    use pathfinder_common::Chain;
     use starknet_gateway_types::error::KnownStarknetErrorCode;
 
     /// Helper funtion which allows for easy creation of a response tuple
@@ -571,9 +557,9 @@ pub mod test_utils {
         S2: std::string::ToString + Send + Sync + Clone + 'static,
     {
         if std::env::var_os("SEQUENCER_TESTS_LIVE_API").is_some() {
-            (None, Client::new(Chain::Testnet).unwrap())
+            (None, Client::testnet())
         } else if std::env::var_os("SEQUENCER_TESTS_LIVE_API_INTEGRATION").is_some() {
-            (None, Client::new(Chain::Integration).unwrap())
+            (None, Client::integration())
         } else {
             use warp::Filter;
             let opt_query_raw = warp::query::raw()
@@ -1555,8 +1541,8 @@ mod tests {
                 && target != TargetChain::Invalid
             {
                 match target {
-                    TargetChain::Mainnet => (None, Client::new(Chain::Mainnet).unwrap()),
-                    TargetChain::Testnet => (None, Client::new(Chain::Testnet).unwrap()),
+                    TargetChain::Mainnet => (None, Client::mainnet()),
+                    TargetChain::Testnet => (None, Client::testnet()),
                     // Escaped above already
                     TargetChain::Invalid => unreachable!(),
                 }

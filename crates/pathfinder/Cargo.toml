@@ -74,7 +74,6 @@ rand = "0.8"
 rand_chacha = "0.3.1"
 rstest = "0.17.0"
 serde_with = { workspace = true }
-starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["test-util"] }
 zstd = "0.12"
