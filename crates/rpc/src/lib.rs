@@ -8,7 +8,6 @@ pub mod metrics;
 pub mod middleware;
 mod module;
 mod pathfinder;
-#[cfg(any(test, feature = "test-utils"))]
 pub mod test_client;
 pub mod v02;
 pub mod v03;
@@ -160,7 +159,6 @@ impl Default for SyncState {
     }
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     use pathfinder_common::event::Event;
     use pathfinder_common::macro_prelude::*;

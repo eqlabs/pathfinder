@@ -72,7 +72,6 @@ impl WebsocketSenders {
     }
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 impl WebsocketSenders {
     pub fn for_test() -> Self {
         Self::with_capacity(100)

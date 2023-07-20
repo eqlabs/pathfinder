@@ -68,12 +68,10 @@ impl RpcContext {
         }
     }
 
-    #[cfg(any(test, feature = "test-utils"))]
     pub fn for_tests() -> Self {
         Self::for_tests_on(pathfinder_common::Chain::Testnet)
     }
 
-    #[cfg(any(test, feature = "test-utils"))]
     pub fn for_tests_on(chain: pathfinder_common::Chain) -> Self {
         assert_ne!(chain, Chain::Mainnet, "Testing on MainNet?");
 
@@ -91,7 +89,6 @@ impl RpcContext {
         Self::new(storage, sync_state, chain_id, sequencer)
     }
 
-    #[cfg(any(test, feature = "test-utils"))]
     pub fn with_storage(self, storage: Storage) -> Self {
         Self { storage, ..self }
     }
@@ -103,7 +100,6 @@ impl RpcContext {
         }
     }
 
-    #[cfg(any(test, feature = "test-utils"))]
     pub async fn for_tests_with_pending() -> Self {
         // This is a bit silly with the arc in and out, but since its for tests the ergonomics of
         // having Arc also constructed is nice.

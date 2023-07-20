@@ -11,6 +11,7 @@ pub mod conv {
             TransactionCommitment,
         };
 
+        #[allow(unused)]
         pub fn try_from_p2p(header: p2p_proto::common::BlockHeader) -> anyhow::Result<BlockHeader> {
             Ok(BlockHeader {
                 hash: BlockHash(header.hash),
@@ -48,6 +49,7 @@ pub mod conv {
         use stark_hash::Felt;
         use starknet_gateway_types::reply::transaction::{self as gw, EntryPointType};
 
+        #[allow(unused)]
         pub fn try_from_p2p(
             body: BlockBody,
         ) -> anyhow::Result<(Vec<gw::Transaction>, Vec<gw::Receipt>)> {
@@ -398,6 +400,7 @@ pub mod conv {
         };
         use starknet_gateway_types::reply as gw;
 
+        #[allow(unused)]
         pub fn try_from_p2p(su: BlockStateUpdateWithHash) -> anyhow::Result<gw::StateUpdate> {
             Ok(gw::StateUpdate {
                 block_hash: BlockHash(su.block_hash),

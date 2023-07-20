@@ -6,11 +6,9 @@
 mod prelude;
 
 mod connection;
-#[cfg(any(feature = "test-utils", test))]
 pub mod fake;
 mod params;
 mod schema;
-#[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 
 use std::num::NonZeroU32;

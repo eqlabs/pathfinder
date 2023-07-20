@@ -1,4 +1,3 @@
-#[cfg(any(feature = "test-utils", test))]
 use fake::Dummy;
 use pathfinder_common::{BlockHash, StateCommitment};
 use serde::{Deserialize, Serialize};
@@ -7,9 +6,8 @@ use serde_with::skip_serializing_none;
 /// L2 state update as returned by the [RPC API v0.1.0](https://github.com/starkware-libs/starknet-specs/blob/30e5bafcda60c31b5fb4021b4f5ddcfc18d2ff7d/api/starknet_api_openrpc.json#L846)
 /// and currently the format in which we store the state updates.
 #[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
 #[serde(deny_unknown_fields)]
-#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
 pub struct StateUpdate {
     /// Keeping optional because not sure if all serialized state updates contain this field
     // FIXME regenesis: remove Option<> around block_hash
@@ -39,7 +37,6 @@ impl From<starknet_gateway_types::reply::StateUpdate> for StateUpdate {
 /// on the `rpc-full-serde` feature because state updates are
 /// stored in the DB as compressed raw JSON bytes.
 pub mod state_update {
-    #[cfg(any(feature = "test-utils", test))]
     use fake::Dummy;
     use pathfinder_common::{
         CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
@@ -48,9 +45,8 @@ pub mod state_update {
     use serde::{Deserialize, Serialize};
 
     /// L2 state diff.
-    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
         /// Refers to Declare V0 & V1 txns, these contain Cairo classes
@@ -141,33 +137,6 @@ pub mod state_update {
             }
             self
         }
-
-        #[cfg(any(feature = "test-utils", test))]
-        pub fn sort(self) -> Self {
-            use std::collections::BTreeSet;
-
-            Self {
-                storage_diffs: self
-                    .storage_diffs
-                    .into_iter()
-                    .map(|mut x| {
-                        x.storage_entries.sort_unstable();
-                        StorageDiff {
-                            address: x.address,
-                            storage_entries: x.storage_entries,
-                        }
-                    })
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect(),
-                nonces: {
-                    let mut x = self.nonces;
-                    x.sort_unstable();
-                    x
-                },
-                ..self
-            }
-        }
     }
 
     impl From<starknet_gateway_types::reply::state_update::StateDiff> for StateDiff {
@@ -209,17 +178,15 @@ pub mod state_update {
     }
 
     /// L2 storage diff of a contract.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy, Ord, PartialOrd))]
     pub struct StorageDiff {
         pub address: ContractAddress,
         pub storage_entries: Vec<StorageEntry>,
     }
 
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy, Ord, PartialOrd))]
     pub struct StorageEntry {
         pub key: StorageAddress,
         pub value: StorageValue,
@@ -235,35 +202,31 @@ pub mod state_update {
     }
 
     /// L2 state diff Declared V1 class item.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct DeclaredCairoClass {
         pub class_hash: ClassHash,
     }
 
     /// L2 state diff deployed contract item.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct DeployedContract {
         pub address: ContractAddress,
         pub class_hash: ClassHash,
     }
 
     /// L2 state diff nonce item.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct Nonce {
         pub contract_address: ContractAddress,
         pub nonce: ContractNonce,
     }
 
     /// L2 state diff Declared V2 class item. Maps Sierra class hash to a Casm hash.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct DeclaredSierraClass {
         pub class_hash: SierraHash,
         pub compiled_class_hash: CasmHash,
@@ -281,9 +244,8 @@ pub mod state_update {
     }
 
     /// L2 state diff replaced class item. Maps contract address to a new class.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct ReplacedClass {
         pub address: ContractAddress,
         pub class_hash: ClassHash,
