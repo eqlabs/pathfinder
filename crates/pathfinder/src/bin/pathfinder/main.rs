@@ -32,9 +32,9 @@ async fn main() -> anyhow::Result<()> {
         std::env::set_var("RUST_LOG", "pathfinder=info");
     }
 
-    setup_tracing();
-
     let config = config::Config::parse();
+
+    setup_tracing(config.color);
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -232,13 +232,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
 }
 
 #[cfg(feature = "tokio-console")]
-fn setup_tracing() {
+fn setup_tracing(color: config::Color) {
     use tracing_subscriber::prelude::*;
 
     // EnvFilter isn't really a Filter, so this we need this ugly workaround for filtering with it.
     // See https://github.com/tokio-rs/tracing/issues/1868 for more details.
     let env_filter = Arc::new(tracing_subscriber::EnvFilter::from_default_env());
     let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(color.is_color_enabled())
         .with_target(false)
         .compact()
         .with_filter(tracing_subscriber::filter::dynamic_filter_fn(
@@ -252,7 +253,7 @@ fn setup_tracing() {
 }
 
 #[cfg(not(feature = "tokio-console"))]
-fn setup_tracing() {
+fn setup_tracing(color: config::Color) {
     use time::macros::format_description;
 
     let time_fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
@@ -262,6 +263,7 @@ fn setup_tracing() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_target(false)
         .with_timer(time_fmt)
+        .with_ansi(color.is_color_enabled())
         .compact()
         .init();
 }
