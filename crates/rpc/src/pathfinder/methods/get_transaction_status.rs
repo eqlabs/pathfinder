@@ -1,6 +1,7 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
 use starknet_gateway_types::pending::PendingData;
+use starknet_gateway_types::reply::transaction::ExecutionStatus;
 
 use crate::context::RpcContext;
 
@@ -17,8 +18,8 @@ pub async fn get_transaction_status(
 ) -> Result<TransactionStatus, GetGatewayTransactionError> {
     // Check in pending block.
     if let Some(pending) = &context.pending_data {
-        if is_pending_tx(pending, &input.transaction_hash).await {
-            return Ok(TransactionStatus::AcceptedOnL2);
+        if let Some(status) = pending_status(pending, &input.transaction_hash).await {
+            return Ok(status);
         }
     }
 
@@ -33,27 +34,32 @@ pub async fn get_transaction_status(
             .connection()
             .context("Opening database connection")?;
         let db_tx = db.transaction().context("Creating database transaction")?;
-        let block_hash = db_tx
-            .transaction_block_hash(input.transaction_hash)
-            .context("Fetching transaction block hash from database")?;
 
-        let Some(block_hash) = block_hash else {
-            return Ok(None);
-        };
+        let Some((_, receipt, block_hash)) = db_tx
+            .transaction_with_receipt(input.transaction_hash)
+            .context("Fetching receipt from database")? else {
+                return anyhow::Ok(None);
+            };
 
-        let tx_status = db_tx
+        if receipt.execution_status == ExecutionStatus::Reverted {
+            return Ok(Some(TransactionStatus::Reverted));
+        }
+
+        let l1_accepted = db_tx
             .block_is_l1_accepted(block_hash.into())
             .context("Quering block's status")?;
 
-        anyhow::Ok(Some(tx_status))
+        if l1_accepted {
+            Ok(Some(TransactionStatus::AcceptedOnL1))
+        } else {
+            Ok(Some(TransactionStatus::AcceptedOnL2))
+        }
     })
     .await
     .context("Joining database task")??;
 
-    match db_status {
-        Some(true) => return Ok(TransactionStatus::AcceptedOnL1),
-        Some(false) => return Ok(TransactionStatus::AcceptedOnL2),
-        None => {}
+    if let Some(db_status) = db_status {
+        return Ok(db_status);
     }
 
     // Check gateway for rejected transactions.
@@ -67,11 +73,26 @@ pub async fn get_transaction_status(
         .map_err(GetGatewayTransactionError::Internal)
 }
 
-async fn is_pending_tx(pending: &PendingData, tx_hash: &TransactionHash) -> bool {
+async fn pending_status(
+    pending: &PendingData,
+    tx_hash: &TransactionHash,
+) -> Option<TransactionStatus> {
     pending
         .block()
         .await
-        .map(|block| block.transactions.iter().any(|tx| &tx.hash() == tx_hash))
+        .map(|block| {
+            block.transaction_receipts.iter().find_map(|rx| {
+                if &rx.transaction_hash == tx_hash {
+                    if rx.execution_status == ExecutionStatus::Reverted {
+                        Some(TransactionStatus::Reverted)
+                    } else {
+                        Some(TransactionStatus::AcceptedOnL2)
+                    }
+                } else {
+                    None
+                }
+            })
+        })
         .unwrap_or_default()
 }
 
@@ -168,5 +189,25 @@ mod tests {
         let status = get_transaction_status(context, input).await.unwrap();
 
         assert_eq!(status, TransactionStatus::Rejected);
+    }
+
+    #[tokio::test]
+    async fn reverted() {
+        let context = RpcContext::for_tests_with_pending()
+            .await
+            .with_version("v0.3");
+        let input = GetGatewayTransactionInput {
+            transaction_hash: transaction_hash_bytes!(b"txn reverted"),
+        };
+        let status = get_transaction_status(context.clone(), input)
+            .await
+            .unwrap();
+        assert_eq!(status, TransactionStatus::Reverted);
+
+        let input = GetGatewayTransactionInput {
+            transaction_hash: transaction_hash_bytes!(b"pending reverted"),
+        };
+        let status = get_transaction_status(context, input).await.unwrap();
+        assert_eq!(status, TransactionStatus::Reverted);
     }
 }

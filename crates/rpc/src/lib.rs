@@ -609,26 +609,10 @@ pub mod test_utils {
                 execution_status: Default::default(),
                 revert_error: Default::default(),
             },
-            // Copy of the receipt[0] but reverted
+            // Reverted and without events
             Receipt {
                 actual_fee: None,
-                events: vec![
-                    Event {
-                        data: vec![],
-                        from_address: contract_address!("0xabcddddddd"),
-                        keys: vec![event_key_bytes!(b"pending key")],
-                    },
-                    Event {
-                        data: vec![],
-                        from_address: contract_address!("0xabcddddddd"),
-                        keys: vec![event_key_bytes!(b"pending key")],
-                    },
-                    Event {
-                        data: vec![],
-                        from_address: contract_address!("0xabcaaaaaaa"),
-                        keys: vec![event_key_bytes!(b"pending key 2")],
-                    },
-                ],
+                events: vec![],
                 execution_resources: Some(ExecutionResources {
                     builtin_instance_counter: BuiltinInstanceCounter::Empty(
                         EmptyBuiltinInstanceCounter {},
@@ -638,8 +622,8 @@ pub mod test_utils {
                 }),
                 l1_to_l2_consumed_message: None,
                 l2_to_l1_messages: vec![],
-                transaction_hash: transactions[0].hash(),
-                transaction_index: TransactionIndex::new_or_panic(0),
+                transaction_hash: transactions[2].hash(),
+                transaction_index: TransactionIndex::new_or_panic(2),
                 execution_status:
                     starknet_gateway_types::reply::transaction::ExecutionStatus::Reverted,
                 revert_error: Some("Reverted!".to_owned()),

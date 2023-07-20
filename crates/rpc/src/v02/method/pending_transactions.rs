@@ -48,9 +48,22 @@ mod tests {
             constructor_calldata: vec![],
         };
 
+        let tx2 = InvokeTransactionV0 {
+            common: CommonDeclareInvokeTransactionProperties {
+                hash: transaction_hash_bytes!(b"pending reverted"),
+                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
+                signature: vec![],
+                nonce: TransactionNonce::ZERO,
+            },
+            contract_address: contract_address_bytes!(b"pending contract addr 0"),
+            entry_point_selector: entry_point_bytes!(b"entry point 0"),
+            calldata: vec![],
+        };
+
         let expected = vec![
             Transaction::Invoke(InvokeTransaction::V0(tx0)),
             Transaction::Deploy(tx1),
+            Transaction::Invoke(InvokeTransaction::V0(tx2)),
         ];
 
         let context = RpcContext::for_tests_with_pending().await;
