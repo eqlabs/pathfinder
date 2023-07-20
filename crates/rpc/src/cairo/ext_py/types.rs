@@ -4,7 +4,6 @@ use serde_with::serde_as;
 use stark_hash::Felt;
 
 use crate::felt::RpcFelt;
-use crate::v03::method::simulate_transaction::dto::{EntryPointType, MsgToL1};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -63,6 +62,25 @@ pub struct FunctionInvocation {
     pub messages: Option<Vec<MsgToL1>>,
     #[serde(default)]
     pub result: Option<Vec<Felt>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+pub enum EntryPointType {
+    #[serde(rename = "CONSTRUCTOR")]
+    Constructor,
+    #[serde(rename = "EXTERNAL")]
+    External,
+    #[serde(rename = "L1_HANDLER")]
+    L1Handler,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+pub struct MsgToL1 {
+    #[serde_as(as = "Vec<RpcFelt>")]
+    pub payload: Vec<Felt>,
+    #[serde_as(as = "RpcFelt")]
+    pub to_address: Felt,
 }
 
 #[serde_as]

@@ -1,6 +1,9 @@
 use crate::{
     cairo::ext_py::{
-        types::{FeeEstimate, FunctionInvocation, TransactionSimulation, TransactionTrace},
+        types::{
+            EntryPointType, FeeEstimate, FunctionInvocation, MsgToL1, TransactionSimulation,
+            TransactionTrace,
+        },
         CallFailure,
     },
     context::RpcContext,
@@ -11,7 +14,7 @@ use crate::{
 };
 
 use anyhow::anyhow;
-use pathfinder_common::{BlockId, CallParam, EntryPoint};
+use pathfinder_common::{BlockId, CallParam, ContractAddress, EntryPoint};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
@@ -107,7 +110,7 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
             .take()
             .map(|calls| calls.into_iter().map(map_function_invocation).collect()),
         code_address: fi.class_hash,
-        entry_point_type: fi.entry_point_type,
+        entry_point_type: fi.entry_point_type.map(Into::into),
         events: fi.events.map(|events| {
             events
                 .into_iter()
@@ -117,7 +120,9 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
                 })
                 .collect()
         }),
-        messages: fi.messages,
+        messages: fi
+            .messages
+            .map(|messages| map_messages(messages, fi.contract_address)),
         function_call: FunctionCall {
             calldata: fi.calldata.into_iter().map(CallParam).collect(),
             contract_address: fi.contract_address,
@@ -125,6 +130,17 @@ fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocatio
         },
         result: fi.result,
     }
+}
+
+fn map_messages(messages: Vec<MsgToL1>, from_address: ContractAddress) -> Vec<dto::MsgToL1> {
+    messages
+        .into_iter()
+        .map(|msg| dto::MsgToL1 {
+            payload: msg.payload,
+            to_address: msg.to_address,
+            from_address: from_address.0,
+        })
+        .collect()
 }
 
 fn map_trace(
@@ -137,7 +153,7 @@ fn map_trace(
     );
     match invocations {
         (Some(val), Some(fun), fee)
-            if fun.entry_point_type == Some(dto::EntryPointType::Constructor) =>
+            if fun.entry_point_type == Some(EntryPointType::Constructor) =>
         {
             Ok(dto::TransactionTrace::DeployAccount(
                 dto::DeployAccountTxnTrace {
@@ -147,9 +163,7 @@ fn map_trace(
                 },
             ))
         }
-        (Some(val), Some(fun), fee)
-            if fun.entry_point_type == Some(dto::EntryPointType::External) =>
-        {
+        (Some(val), Some(fun), fee) if fun.entry_point_type == Some(EntryPointType::External) => {
             Ok(dto::TransactionTrace::Invoke(dto::InvokeTxnTrace {
                 fee_transfer_invocation: fee.map(map_function_invocation),
                 validate_invocation: Some(map_function_invocation(val)),
@@ -201,16 +215,6 @@ pub mod dto {
         LibraryCall,
     }
 
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub enum EntryPointType {
-        #[serde(rename = "CONSTRUCTOR")]
-        Constructor,
-        #[serde(rename = "EXTERNAL")]
-        External,
-        #[serde(rename = "L1_HANDLER")]
-        L1Handler,
-    }
-
     #[serde_with::serde_as]
     #[serde_with::skip_serializing_none]
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -236,6 +240,27 @@ pub mod dto {
         #[serde(default)]
         #[serde_as(as = "Option<Vec<RpcFelt>>")]
         pub result: Option<Vec<Felt>>,
+    }
+
+    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    pub enum EntryPointType {
+        #[serde(rename = "CONSTRUCTOR")]
+        Constructor,
+        #[serde(rename = "EXTERNAL")]
+        External,
+        #[serde(rename = "L1_HANDLER")]
+        L1Handler,
+    }
+
+    impl From<crate::cairo::ext_py::types::EntryPointType> for EntryPointType {
+        fn from(value: crate::cairo::ext_py::types::EntryPointType) -> Self {
+            use crate::cairo::ext_py::types::EntryPointType::*;
+            match value {
+                Constructor => Self::Constructor,
+                External => Self::External,
+                L1Handler => Self::L1Handler,
+            }
+        }
     }
 
     #[serde_with::serde_as]
