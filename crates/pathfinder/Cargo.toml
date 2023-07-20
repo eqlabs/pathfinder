@@ -44,7 +44,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
-starknet-gateway-types = { path = "../gateway-types", features = ["test-utils"] }
+starknet-gateway-types = { path = "../gateway-types" }
 tempfile = "3.4"
 thiserror = "1.0.40"
 time = { version = "0.3.20", features = ["macros"] }

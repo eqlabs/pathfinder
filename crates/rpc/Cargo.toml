@@ -52,7 +52,6 @@ reqwest = { version = "0.11.13", features = ["json"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-starknet-gateway-types = { path = "../gateway-types", features = ["test-utils"] }
 tempfile = "3.4"
 test-log = { version = "0.2.11", default-features = false, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util", "process"] }
