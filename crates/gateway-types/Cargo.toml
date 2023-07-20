@@ -19,7 +19,10 @@ primitive-types = "0.12.1"
 rand = { version = "0.8.5", optional = true }
 reqwest = "0.11.13"
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 serde_with = { workspace = true }
 sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
@@ -30,5 +33,7 @@ tokio = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 # Due to pathfinder_common::starkhash!() usage
+fake = { version = "2.5.0", features = ["derive"] }
+rand = { version = "0.8.5" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }

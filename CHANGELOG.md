@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- control log color output via `--color auto|always|never`
+
 ### Fixed
 
 - system contract updates are not correctly stored

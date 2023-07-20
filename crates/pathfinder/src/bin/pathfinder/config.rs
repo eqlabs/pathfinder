@@ -141,6 +141,35 @@ Examples:
         env = "PATHFINDER_HEAD_POLL_INTERVAL_SECONDS"
     )]
     poll_interval: std::num::NonZeroU64,
+
+    #[arg(
+        long = "color",
+        long_help = "This flag controls when to use colors in the output logs.",
+        default_value = "auto",
+        env = "PATHFINDER_COLOR",
+        value_name = "WHEN"
+    )]
+    color: Color,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
+pub enum Color {
+    Auto,
+    Never,
+    Always,
+}
+
+impl Color {
+    /// Returns true if color should be enabled, either because the setting is [Color::Always],
+    /// or because it is [Color::Auto] and stdout is targetting a terminal.
+    pub fn is_color_enabled(&self) -> bool {
+        use std::io::IsTerminal;
+        match self {
+            Color::Auto => std::io::stdout().is_terminal(),
+            Color::Never => false,
+            Color::Always => true,
+        }
+    }
 }
 
 #[derive(clap::Args)]
@@ -288,6 +317,7 @@ pub struct Config {
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroU32,
     pub poll_interval: std::time::Duration,
+    pub color: Color,
 }
 
 pub struct WebSocket {
@@ -381,6 +411,7 @@ impl Config {
             },
             max_rpc_connections: cli.max_rpc_connections,
             poll_interval: std::time::Duration::from_secs(cli.poll_interval.get()),
+            color: cli.color,
         }
     }
 }
