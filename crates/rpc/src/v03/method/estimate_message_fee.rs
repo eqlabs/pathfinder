@@ -9,9 +9,9 @@ use super::common::prepare_handle_and_block;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateMessageFeeInput {
-    message: FunctionCall,
-    sender_address: EthereumAddress,
-    block_id: BlockId,
+    pub message: FunctionCall,
+    pub sender_address: EthereumAddress,
+    pub block_id: BlockId,
 }
 
 crate::error::generate_rpc_error_subset!(
