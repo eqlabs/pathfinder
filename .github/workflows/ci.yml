@@ -133,7 +133,7 @@ jobs:
       - name: Execute tests
         run: |
           timeout 25m cargo test --all-targets --all-features --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
-          timeout 3m cargo test --test integration* --features test-utils --locked --profile stripdebuginfo
+          timeout 3m cargo test --test integration* --locked --profile stripdebuginfo
 
   clippy:
     runs-on: ubuntu-latest

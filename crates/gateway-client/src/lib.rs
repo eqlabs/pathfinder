@@ -14,8 +14,6 @@ use starknet_gateway_types::{
 };
 use std::{fmt::Debug, result::Result, time::Duration};
 
-use crate::builder::Retry;
-
 mod builder;
 mod metrics;
 
@@ -233,14 +231,12 @@ pub struct Client {
     gateway: Url,
     /// Starknet feeder gateway URL.
     feeder_gateway: Url,
+    /// Whether __read only__ requests should be retried, defaults to __true__ for production.
+    /// Use [disable_retry_for_tests] to disable retry logic for all __read only__ requests when testing.
+    retry: bool,
 }
 
 impl Client {
-    #[cfg(not(any(test, feature = "test-utils")))]
-    const RETRY: builder::Retry = builder::Retry::Enabled;
-    #[cfg(any(test, feature = "test-utils"))]
-    const RETRY: builder::Retry = builder::Retry::Disabled;
-
     /// Creates a [Client] for [Chain::Mainnet].
     pub fn mainnet() -> Self {
         Self::with_base_url(Url::parse("https://alpha-mainnet.starknet.io/").unwrap()).unwrap()
@@ -280,7 +276,16 @@ impl Client {
                 .build()?,
             gateway,
             feeder_gateway,
+            retry: true,
         })
+    }
+
+    /// Use this method to disable retry logic for all __non write__ requests when testing.
+    pub fn disable_retry_for_tests(self) -> Self {
+        Self {
+            retry: false,
+            ..self
+        }
     }
 
     fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
@@ -294,7 +299,7 @@ impl Client {
     async fn block_with_retry_behaviour(
         &self,
         block: BlockId,
-        retry: Retry,
+        retry: bool,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.feeder_gateway_request()
             .get_block()
@@ -332,7 +337,7 @@ impl Client {
 impl GatewayApi for Client {
     #[tracing::instrument(skip(self))]
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.block_with_retry_behaviour(block, Self::RETRY).await
+        self.block_with_retry_behaviour(block, self.retry).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -340,8 +345,7 @@ impl GatewayApi for Client {
         &self,
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
-        self.block_with_retry_behaviour(block, Retry::Disabled)
-            .await
+        self.block_with_retry_behaviour(block, false).await
     }
 
     /// Gets class for a particular class hash.
@@ -350,7 +354,7 @@ impl GatewayApi for Client {
         self.feeder_gateway_request()
             .get_class_by_hash()
             .with_class_hash(class_hash)
-            .with_retry(Self::RETRY)
+            .with_retry(self.retry)
             .get_as_bytes()
             .await
     }
@@ -365,7 +369,7 @@ impl GatewayApi for Client {
             .get_class_by_hash()
             .with_class_hash(class_hash)
             .with_block(BlockId::Pending)
-            .with_retry(Self::RETRY)
+            .with_retry(self.retry)
             .get_as_bytes()
             .await
     }
@@ -379,7 +383,7 @@ impl GatewayApi for Client {
         self.feeder_gateway_request()
             .get_transaction()
             .with_transaction_hash(transaction_hash)
-            .with_retry(Self::RETRY)
+            .with_retry(self.retry)
             .get()
             .await
     }
@@ -390,7 +394,7 @@ impl GatewayApi for Client {
             .feeder_gateway_request()
             .get_state_update()
             .with_block(block)
-            .with_retry(Self::RETRY)
+            .with_retry(self.retry)
             .get()
             .await?;
 
@@ -402,7 +406,7 @@ impl GatewayApi for Client {
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         self.feeder_gateway_request()
             .get_contract_addresses()
-            .with_retry(Self::RETRY)
+            .with_retry(self.retry)
             .get()
             .await
     }
@@ -433,7 +437,7 @@ impl GatewayApi for Client {
         // client instead.
         self.gateway_request()
             .add_transaction()
-            .with_retry(builder::Retry::Disabled)
+            .with_retry(false)
             .post_with_json(&req)
             .await
     }
@@ -469,7 +473,7 @@ impl GatewayApi for Client {
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
             .with_optional_token(token.as_deref())
-            .with_retry(builder::Retry::Disabled)
+            .with_retry(false)
             .post_with_json(&req)
             .await
     }
@@ -502,7 +506,7 @@ impl GatewayApi for Client {
 
         self.gateway_request()
             .add_transaction()
-            .with_retry(builder::Retry::Disabled)
+            .with_retry(false)
             .post_with_json(&req)
             .await
     }
@@ -671,8 +675,9 @@ pub mod test_utils {
 
         let (addr, serve_fut) = warp::serve(path).bind_ephemeral(([127, 0, 0, 1], 0));
         let server_handle = tokio::spawn(serve_fut);
-        let client =
-            Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap()).unwrap();
+        let client = Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap())
+            .unwrap()
+            .disable_retry_for_tests();
         (Some(server_handle), client)
     }
 }
@@ -1541,8 +1546,8 @@ mod tests {
                 && target != TargetChain::Invalid
             {
                 match target {
-                    TargetChain::Mainnet => (None, Client::mainnet()),
-                    TargetChain::Testnet => (None, Client::testnet()),
+                    TargetChain::Mainnet => (None, Client::mainnet().disable_retry_for_tests()),
+                    TargetChain::Testnet => (None, Client::testnet().disable_retry_for_tests()),
                     // Escaped above already
                     TargetChain::Invalid => unreachable!(),
                 }
@@ -1587,7 +1592,8 @@ mod tests {
                 let server_handle = tokio::spawn(serve_fut);
                 let client =
                     Client::with_base_url(reqwest::Url::parse(&format!("http://{addr}")).unwrap())
-                        .unwrap();
+                        .unwrap()
+                        .disable_retry_for_tests();
 
                 (Some(server_handle), client)
             }

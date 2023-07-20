@@ -301,9 +301,8 @@ pub mod transaction {
         pub to_address: EthereumAddress,
     }
 
-    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum ExecutionStatus {
         // This must be the default as pre v0.12.1 receipts did not contain this value and
         // were always success as reverted did not exist.

@@ -86,7 +86,12 @@ impl RpcContext {
 
         let storage = super::test_utils::setup_storage();
         let sync_state = Arc::new(SyncState::default());
-        Self::new(storage, sync_state, chain_id, sequencer)
+        Self::new(
+            storage,
+            sync_state,
+            chain_id,
+            sequencer.disable_retry_for_tests(),
+        )
     }
 
     pub fn with_storage(self, storage: Storage) -> Self {

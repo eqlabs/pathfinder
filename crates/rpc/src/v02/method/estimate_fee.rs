@@ -290,7 +290,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
 
-            let sequencer = starknet_gateway_client::Client::mainnet();
+            let sequencer = starknet_gateway_client::Client::mainnet().disable_retry_for_tests();
             let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (
                 db_dir,
