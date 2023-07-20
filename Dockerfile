@@ -92,7 +92,7 @@ RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
 ###############################
 # Stage 3: Cairo 1.0 compiler #
 ###############################
-FROM starknet/cairo:2.0.0-rc5 AS cairo-compiler
+FROM starknet/cairo:2.1.0-rc0 AS cairo-compiler
 
 #######################
 # Final Stage: Runner #
