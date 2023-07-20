@@ -173,7 +173,7 @@ pub mod test_utils {
     use pathfinder_storage::{BlockId, Storage};
     use primitive_types::{H160, H256};
     use stark_hash::Felt;
-    use starknet_gateway_types::reply::transaction::L2ToL1Message;
+    use starknet_gateway_types::reply::transaction::{ExecutionStatus, L2ToL1Message};
     use starknet_gateway_types::{
         pending::PendingData,
         reply::transaction::{
@@ -409,11 +409,14 @@ pub mod test_utils {
         let txn4_hash = transaction_hash_bytes!(b"txn 4 ");
         let txn5_hash = transaction_hash_bytes!(b"txn 5");
         let txn6_hash = transaction_hash_bytes!(b"txn 6");
+        let txn_reverted_hash = transaction_hash_bytes!(b"txn reverted");
+
         let mut txn1 = txn0.clone();
         let mut txn2 = txn0.clone();
         let mut txn3 = txn0.clone();
         let mut txn4 = txn0.clone();
         let mut txn6 = txn0.clone();
+        let mut txn_reverted = txn0.clone();
         txn1.transaction_hash = txn1_hash;
         txn1.sender_address = contract1_addr;
         txn2.transaction_hash = txn2_hash;
@@ -423,6 +426,7 @@ pub mod test_utils {
         txn4.transaction_hash = txn4_hash;
         txn6.sender_address = contract1_addr;
         txn6.transaction_hash = txn6_hash;
+        txn_reverted.transaction_hash = txn_reverted_hash;
 
         txn4.sender_address = ContractAddress::new_or_panic(Felt::ZERO);
         let mut txn5 = txn4.clone();
@@ -434,11 +438,13 @@ pub mod test_utils {
         let txn4 = Transaction::Invoke(txn4.into());
         let txn5 = Transaction::Invoke(txn5.into());
         let txn6 = Transaction::Invoke(txn6.into());
+        let txn_reverted = Transaction::Invoke(txn_reverted.into());
         let mut receipt1 = receipt0.clone();
         let mut receipt2 = receipt0.clone();
         let mut receipt3 = receipt0.clone();
         let mut receipt4 = receipt0.clone();
         let mut receipt5 = receipt0.clone();
+        let mut receipt_reverted = receipt0.clone();
         let mut receipt6 = Receipt {
             l2_to_l1_messages: vec![L2ToL1Message {
                 from_address: contract_address!("0xcafebabe"),
@@ -462,6 +468,10 @@ pub mod test_utils {
         receipt4.transaction_hash = txn4_hash;
         receipt5.transaction_hash = txn5_hash;
         receipt6.transaction_hash = txn6_hash;
+        receipt_reverted.transaction_hash = txn_reverted_hash;
+        receipt_reverted.execution_status = ExecutionStatus::Reverted;
+        receipt_reverted.revert_error = Some("Reverted because".to_owned());
+
         let transaction_data0 = [(txn0, receipt0)];
         let transaction_data1 = [(txn1, receipt1), (txn2, receipt2)];
         let transaction_data2 = [
@@ -469,6 +479,7 @@ pub mod test_utils {
             (txn4, receipt4),
             (txn5, receipt5),
             (txn6, receipt6),
+            (txn_reverted, receipt_reverted),
         ];
         db_txn
             .insert_transaction_data(header0.hash, header0.number, &transaction_data0)
@@ -534,6 +545,17 @@ pub mod test_utils {
                 version: TransactionVersion(H256::zero()),
             }
             .into(),
+            // Will be a reverted txn.
+            InvokeTransaction::V0(InvokeTransactionV0 {
+                calldata: vec![],
+                sender_address: contract_address_bytes!(b"pending contract addr 0"),
+                entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                entry_point_type: Some(EntryPointType::External),
+                max_fee: crate::v02::types::request::Call::DEFAULT_MAX_FEE,
+                signature: vec![],
+                transaction_hash: transaction_hash_bytes!(b"pending reverted"),
+            })
+            .into(),
         ];
 
         let transaction_receipts = vec![
@@ -586,6 +608,41 @@ pub mod test_utils {
                 transaction_index: TransactionIndex::new_or_panic(1),
                 execution_status: Default::default(),
                 revert_error: Default::default(),
+            },
+            // Copy of the receipt[0] but reverted
+            Receipt {
+                actual_fee: None,
+                events: vec![
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![event_key_bytes!(b"pending key")],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![event_key_bytes!(b"pending key")],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcaaaaaaa"),
+                        keys: vec![event_key_bytes!(b"pending key 2")],
+                    },
+                ],
+                execution_resources: Some(ExecutionResources {
+                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
+                        EmptyBuiltinInstanceCounter {},
+                    ),
+                    n_memory_holes: 0,
+                    n_steps: 0,
+                }),
+                l1_to_l2_consumed_message: None,
+                l2_to_l1_messages: vec![],
+                transaction_hash: transactions[0].hash(),
+                transaction_index: TransactionIndex::new_or_panic(0),
+                execution_status:
+                    starknet_gateway_types::reply::transaction::ExecutionStatus::Reverted,
+                revert_error: Some("Reverted!".to_owned()),
             },
         ];
 

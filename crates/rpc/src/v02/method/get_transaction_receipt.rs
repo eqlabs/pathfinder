@@ -2,6 +2,7 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::BlockStatus;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
+use starknet_gateway_types::reply::transaction::ExecutionStatus;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionReceiptInput {
@@ -28,6 +29,12 @@ pub async fn get_transaction_receipt(
         });
 
         if let Some((receipt, transaction)) = receipt_transaction {
+            if receipt.execution_status == ExecutionStatus::Reverted {
+                let reason = receipt.revert_error.unwrap_or_default();
+
+                return Err(anyhow::anyhow!("Reverted: {reason}")).map_err(Into::into);
+            }
+
             let pending =
                 types::PendingTransactionReceipt::from(receipt, &transaction, context.version);
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
@@ -49,6 +56,12 @@ pub async fn get_transaction_receipt(
             .transaction_with_receipt(input.transaction_hash)
             .context("Reading transaction receipt from database")?
             .ok_or(GetTransactionReceiptError::TxnHashNotFound)?;
+
+        if receipt.execution_status == ExecutionStatus::Reverted {
+            let reason = receipt.revert_error.unwrap_or_default();
+
+            return Err(anyhow::anyhow!("Reverted: {reason}")).map_err(Into::into);
+        }
 
         let block_number = db_tx
             .block_id(block_hash.into())
@@ -723,7 +736,9 @@ mod tests {
 
     #[tokio::test]
     async fn pending() {
-        let context = RpcContext::for_tests_with_pending().await;
+        let context = RpcContext::for_tests_with_pending()
+            .await
+            .with_version("v0.3");
         let transaction_hash = transaction_hash_bytes!(b"pending tx hash 0");
         let input = GetTransactionReceiptInput { transaction_hash };
 
@@ -758,5 +773,23 @@ mod tests {
                 }
             ))
         );
+    }
+
+    #[tokio::test]
+    async fn reverted_is_error() {
+        let context = RpcContext::for_tests_with_pending()
+            .await
+            .with_version("v0.3");
+        let input = GetTransactionReceiptInput {
+            transaction_hash: transaction_hash_bytes!(b"txn reverted"),
+        };
+        get_transaction_receipt(context.clone(), input)
+            .await
+            .unwrap_err();
+
+        let input = GetTransactionReceiptInput {
+            transaction_hash: transaction_hash_bytes!(b"pending reverted"),
+        };
+        get_transaction_receipt(context, input).await.unwrap_err();
     }
 }
