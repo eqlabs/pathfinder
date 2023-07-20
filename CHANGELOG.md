@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - system contract updates are not correctly stored
+- `starknet_simulateTransaction` fails for transactions sending L2->L1 messages
 
 ### Changed
 
