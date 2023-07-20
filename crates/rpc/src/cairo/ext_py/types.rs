@@ -16,6 +16,7 @@ pub struct TransactionSimulation {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionTrace {
+    pub revert_error: Option<String>,
     pub validate_invocation: Option<FunctionInvocation>,
     pub function_invocation: Option<FunctionInvocation>,
     pub fee_transfer_invocation: Option<FunctionInvocation>,

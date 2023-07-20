@@ -112,7 +112,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 36
-EXPECTED_CAIRO_VERSION = "0.12.0"
+EXPECTED_CAIRO_VERSION = "0.12.1a0"
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
 DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
@@ -144,16 +144,6 @@ class StorageDiff:
 
 class_hash_metadata = dict(
     marshmallow_field=fields.ClassHashIntField.get_marshmallow_field(required=True)
-)
-
-optional_class_hash_metadata = dict(
-    marshmallow_field=fields.OptionalClassHashIntField.get_marshmallow_field()
-)
-
-class_hash_list_metadata = dict(
-    marshmallow_field=mfields.List(
-        fields.OptionalClassHashIntField.get_marshmallow_field()
-    )
 )
 
 
@@ -189,7 +179,9 @@ pending_nonces_metadata = dict(
 @marshmallow_dataclass.dataclass(frozen=True)
 class TransactionAndClassHashHint:
     transaction: AccountTransaction
-    class_hash_hint: Optional[int] = field(metadata=optional_class_hash_metadata)
+    class_hash_hint: Optional[int] = field(
+        metadata=fields.optional_new_class_hash_metadata
+    )
 
 
 @dataclass(frozen=True)
@@ -907,6 +899,7 @@ async def do_simulate_tx(
             )
 
             trace = TransactionTrace(
+                revert_error=None,
                 validate_invocation=FunctionInvocation.from_optional_internal(
                     tx_info.validate_info
                 ),

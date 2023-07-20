@@ -2,6 +2,7 @@ from abc import abstractmethod
 import dataclasses
 import io
 import json
+import pathlib
 import sqlite3
 from typing import Tuple
 
@@ -150,8 +151,6 @@ def test_relative_path(path):
     """
     Returns a path from this file, py/src/test_call.py
     """
-    import pathlib
-
     # by default pytest doesn't set cwd which is interesting
     current = pathlib.Path(__file__)
 
@@ -1881,7 +1880,10 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
 
 
 def declare_class(
-    cur: sqlite3.Cursor, class_hash: int, class_definition_path: str, block_number: int
+    cur: sqlite3.Cursor,
+    class_hash: int,
+    class_definition_path: pathlib.Path,
+    block_number: int,
 ):
     with open(class_definition_path, "rb") as f:
         class_definition = f.read()
@@ -2367,7 +2369,7 @@ def test_estimate_message_fee_direct_command():
 
     (verb, output, _timings) = loop_inner(con, command)
 
-    assert output == FeeEstimation(gas_consumed=18329, gas_price=1, overall_fee=18329)
+    assert output == FeeEstimation(gas_consumed=17105, gas_price=1, overall_fee=17105)
 
 
 def test_estimate_message_fee_json():
@@ -2406,11 +2408,11 @@ def test_estimate_message_fee_json():
     con.execute("BEGIN")
 
     (verb, output, _timings) = loop_inner(con, command)
-    assert output == FeeEstimation(gas_consumed=18329, gas_price=1, overall_fee=18329)
+    assert output == FeeEstimation(gas_consumed=17105, gas_price=1, overall_fee=17105)
 
     result = render(command.verb, output)
     assert result == {
-        "gas_consumed": "0x4799",
+        "gas_consumed": "0x42d1",
         "gas_price": "0x1",
-        "overall_fee": "0x4799",
+        "overall_fee": "0x42d1",
     }
