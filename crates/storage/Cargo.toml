@@ -7,7 +7,7 @@ rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-test-utils = ["dep:fake", "dep:rand", "pathfinder-common/test-utils", "starknet-gateway-client/test-utils", "starknet-gateway-types/test-utils"]
+test-utils = ["starknet-gateway-client/test-utils", "starknet-gateway-types/test-utils"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -15,7 +15,7 @@ base64 = "0.13.1"
 bitvec = "0.20.4"
 const_format = { workspace = true }
 data-encoding = "2.3.3"
-fake = { version = "2.5.0", features = ["derive"], optional = true }
+fake = { version = "2.5.0", features = ["derive"] }
 flate2 = "1.0.25"
 hex = "0.4.3"
 lazy_static = "1.4.0"
@@ -25,7 +25,7 @@ pathfinder-serde = { path = "../serde" }
 primitive-types = "0.12.1"
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.21.0"
-rand = { version = "0.8.5", optional = true }
+rand = { version = "0.8.5" }
 rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
@@ -41,8 +41,5 @@ zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = { workspace = true }
-fake = { version = "2.5.0", features = ["derive"] }
-pathfinder-common = { path = "../common", features = ["test-utils"] }
-rand = { version = "0.8.5" }
 starknet-gateway-types = { path = "../gateway-types", features = ["test-utils"] }
 tempfile = "3.4"

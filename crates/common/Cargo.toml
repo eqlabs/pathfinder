@@ -6,17 +6,16 @@ edition = "2021"
 
 [features]
 full-serde = []
-test-utils = ["dep:fake", "dep:metrics", "dep:rand", "stark_hash/test-utils"]
 
 [dependencies]
 anyhow = { workspace = true }
 bitvec = "0.20.4"
-fake = { version = "2.5.0", features = ["derive"], optional = true }
-metrics = { version = "0.20.1", optional = true }
+fake = { version = "2.5.0", features = ["derive"] }
+metrics = { version = "0.20.1" }
 num-bigint = { version = "0.4.3", features = ["serde"] }
 paste = "1.0.12"
 primitive-types = { version = "0.12.1", features = ["serde"] }
-rand = { version = "0.8.5", optional = true }
+rand = { version = "0.8.5" }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }

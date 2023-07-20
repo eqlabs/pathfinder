@@ -3,11 +3,9 @@ use crate::{
     SequencerAddress, StarknetVersion, StateCommitment, StateUpdate, StorageCommitment,
     TransactionCommitment,
 };
-#[cfg(any(feature = "test-utils", test))]
 use fake::Dummy;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
 pub struct BlockHeader {
     pub hash: BlockHash,
     pub parent_hash: BlockHash,

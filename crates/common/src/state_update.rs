@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-#[cfg(feature = "test-utils")]
 use fake::Dummy;
 
 use crate::{
@@ -8,8 +7,7 @@ use crate::{
     StorageAddress, StorageValue,
 };
 
-#[derive(Default, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct StateUpdate {
     pub block_hash: BlockHash,
     pub parent_state_commitment: StateCommitment,
@@ -20,8 +18,7 @@ pub struct StateUpdate {
     pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
     /// The class associated with this update as the result of either a deploy or class replacement transaction.
@@ -29,14 +26,12 @@ pub struct ContractUpdate {
     pub nonce: Option<ContractNonce>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct SystemContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "test-utils", derive(Dummy))]
+#[derive(Debug, Clone, PartialEq, Dummy)]
 pub enum ContractClassUpdate {
     Deploy(ClassHash),
     Replace(ClassHash),

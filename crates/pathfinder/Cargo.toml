@@ -65,7 +65,7 @@ flate2 = "1.0.25"
 http = "0.2.8"
 mockall = "0.11.3"
 p2p_proto = { path = "../p2p_proto", features = ["test-utils"] }
-pathfinder-common = { path = "../common", features = ["full-serde", "test-utils"] }
+pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-rpc = { path = "../rpc", features = ["test-utils"] }
 pathfinder-storage = { path = "../storage", features = ["test-utils"] }
 pretty_assertions = "1.3.0"
