@@ -399,6 +399,8 @@ pub mod test_utils {
             l2_to_l1_messages: vec![],
             transaction_hash: txn0_hash,
             transaction_index: TransactionIndex::new_or_panic(0),
+            execution_status: Default::default(),
+            revert_error: Default::default(),
         };
         let txn1_hash = transaction_hash_bytes!(b"txn 1");
         let txn2_hash = transaction_hash_bytes!(b"txn 2");
@@ -564,6 +566,8 @@ pub mod test_utils {
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[0].hash(),
                 transaction_index: TransactionIndex::new_or_panic(0),
+                execution_status: Default::default(),
+                revert_error: Default::default(),
             },
             Receipt {
                 actual_fee: None,
@@ -579,6 +583,8 @@ pub mod test_utils {
                 l2_to_l1_messages: vec![],
                 transaction_hash: transactions[1].hash(),
                 transaction_index: TransactionIndex::new_or_panic(1),
+                execution_status: Default::default(),
+                revert_error: Default::default(),
             },
         ];
 

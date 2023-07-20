@@ -378,6 +378,8 @@ pub mod conv {
                                 common.transaction_index.into(),
                             )
                             .expect("u32::MAX is always smaller than i64::MAX"),
+                            execution_status: todo!("Does not exist in p2p yet"),
+                            revert_error: todo!("Does not exist in p2p yet"),
                         })
                     }
                 }

@@ -786,6 +786,8 @@ mod tests {
                 l2_to_l1_messages: Vec::new(),
                 transaction_hash: transactions[0].hash(),
                 transaction_index: pathfinder_common::TransactionIndex::new_or_panic(0),
+                execution_status: Default::default(),
+                revert_error: Default::default(),
             },
             gateway_tx::Receipt {
                 actual_fee: None,
@@ -802,6 +804,8 @@ mod tests {
                 l2_to_l1_messages: Vec::new(),
                 transaction_hash: transactions[1].hash(),
                 transaction_index: pathfinder_common::TransactionIndex::new_or_panic(1),
+                execution_status: Default::default(),
+                revert_error: Default::default(),
             },
         ];
 

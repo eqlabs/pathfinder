@@ -309,6 +309,17 @@ pub mod transaction {
         pub to_address: EthereumAddress,
     }
 
+    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
+    pub enum ExecutionStatus {
+        // This must be the default as pre v0.12.1 receipts did not contain this value and
+        // were always success as reverted did not exist.
+        #[default]
+        Succeeded,
+        Reverted,
+    }
+
     /// Represents deserialized L2 transaction receipt data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -322,6 +333,13 @@ pub mod transaction {
         pub l2_to_l1_messages: Vec<L2ToL1Message>,
         pub transaction_hash: TransactionHash,
         pub transaction_index: TransactionIndex,
+        // Introduced in v0.12.1
+        #[serde(default)]
+        pub execution_status: ExecutionStatus,
+        // Introduced in v0.12.1
+        /// Only present if status is [ExecutionStatus::Reverted].
+        #[serde(default)]
+        pub revert_error: Option<String>,
     }
 
     #[cfg(any(feature = "test-utils", test))]
@@ -336,6 +354,8 @@ pub mod transaction {
                 l2_to_l1_messages: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 transaction_index: Faker.fake_with_rng(rng),
+                execution_status: Faker.fake_with_rng(rng),
+                revert_error: Faker.fake_with_rng(rng),
             }
         }
     }
@@ -1226,5 +1246,79 @@ mod tests {
         let common = pathfinder_common::StateUpdate::from(gateway);
 
         assert_eq!(common, expected);
+    }
+
+    mod receipts {
+        use crate::reply::transaction::{ExecutionStatus, Receipt};
+
+        #[test]
+        fn without_execution_status() {
+            // Execution status was introduced in v0.12.1. Receipts from before this time could not revert
+            // and should therefore always succeed. Receipt below taken from testnet v0.12.0.
+            let json = r#"{
+                "transaction_index": 0,
+                "transaction_hash": "0xff4820a0ae5859fa2f75606effcb5caab34c01f7aecb413c2bd7dc724d603",
+                "l2_to_l1_messages": [],
+                "events": [{
+                    "from_address": "0x783a9097b26eae0586373b2ce0ed3529ddc44069d1e0fbc4f66d42b69d6850d",
+                    "keys": ["0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9"],
+                    "data": [
+                        "0x0",
+                        "0x192688d37fe07a79213990c7bc7d3ca092541db3d9bcba3d7462fb3bfb4265f",
+                        "0x3ecb5eb3ee",
+                        "0x0"
+                    ]
+                }]
+            }"#;
+
+            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
+
+            assert_eq!(receipt.execution_status, ExecutionStatus::Succeeded);
+        }
+
+        #[test]
+        fn succeeded() {
+            // Taken from integration v0.12.1.
+            let json = r#"{
+                "execution_status": "SUCCEEDED",
+                "transaction_index": 0,
+                "transaction_hash": "0x5c01146ca14316ceb337df39653d8cba17593c19aecfa56b7b40005749e159b",
+                "l2_to_l1_messages": [],
+                "events": [],
+                "execution_resources": {
+                    "n_steps": 318,
+                    "builtin_instance_counter": {
+                        "bitwise_builtin": 2,
+                        "range_check_builtin": 8,
+                        "pedersen_builtin": 2
+                    },
+                    "n_memory_holes": 25
+                },
+                "actual_fee": "0x59e58f1d1a0"
+            }"#;
+
+            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
+
+            assert_eq!(receipt.execution_status, ExecutionStatus::Succeeded);
+        }
+
+        #[test]
+        fn reverted() {
+            // Taken from integration v0.12.1 (revert_error was changed to shorten it)
+            let json = r#"{
+                "revert_error": "reason goes here",
+                "execution_status": "REVERTED",
+                "transaction_index": 1,
+                "transaction_hash": "0x19abec18bbacec23c2eee160c70190a48e4b41dd5ff98ad8f247f9393559998",
+                "l2_to_l1_messages": [],
+                "events": [],
+                "actual_fee": "0x247aff6e224"
+            }"#;
+
+            let receipt = serde_json::from_str::<Receipt>(json).unwrap();
+
+            assert_eq!(receipt.execution_status, ExecutionStatus::Reverted);
+            assert_eq!(receipt.revert_error, Some("reason goes here".to_owned()));
+        }
     }
 }
