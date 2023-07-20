@@ -189,8 +189,8 @@ You can interact with Starknet using the JSON-RPC API. Pathfinder supports the o
 Currently pathfinder supports both `v0.2.1` and `v0.3.0` versions of the Starknet JSON-RPC specification. `v0.1` is not supported anymore.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
-- the `v0.2.1` API is exposed on the `/` and `/rpc/v0.2` paths
-- the `v0.3.0` API is exposed on the `/rpc/v0.3` path
+- the `v0.2.1` API is exposed on the `/rpc/v0.2` paths
+- the `v0.3.0` API is exposed on the `/` and `/rpc/v0.3` path
 - the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1`
 
 Note that the pathfinder extension is versioned separately from the Starknet specification itself.
