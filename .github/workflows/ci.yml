@@ -7,95 +7,16 @@ on:
   pull_request:
     branches: [ main ]
 
+# Limits workflow concurrency to only the latest commit in the PR.
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+    
 jobs:
-  compile_pathfinder_ethereum_tests:
-    name: Compile l1 tests
+  test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: rui314/setup-mold@v1
-        with:
-          mold-version: 1.4.1
-          make-default: false
-      - name: Install protoc
-        run: |
-          sudo apt-get install -y protobuf-compiler
-      - name: Enable mold
-        run: |
-          mkdir -p $HOME/.cargo
-          cat << EOF >> $HOME/.cargo/config.toml
-          [target.x86_64-unknown-linux-gnu]
-          linker = "/usr/bin/clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/mold"]
-          EOF
-
-          cat $HOME/.cargo/config.toml
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: "mold"
-
-      - name: Compile tests
-        id: compile-tests
-        # Note: profile changed because otherwise the test binary is 100MB+
-        run: |
-          cargo test --no-run --locked --profile stripdebuginfo --message-format=json \
-            -p pathfinder-ethereum \
-            | jq -r 'select(.reason=="compiler-artifact" and .target.test==true and .executable) | .executable' \
-            | xargs -I '{}' bash -c 'file={}; mv ${file} $(basename ${file::(-17)})'
-
-      - name: Archive test binary pathfinder_ethereum
-        uses: actions/upload-artifact@v3
-        with:
-          name: test-binary-pathfinder-ethereum
-          path: pathfinder_ethereum
-          if-no-files-found: error
-
-  test_pathfinder_ethereum_alchemy:
-    name: l1 tests (alchemy)
-    needs: compile_pathfinder_ethereum_tests
-    runs-on: ubuntu-latest
-    steps:       
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-pathfinder-ethereum
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x pathfinder_ethereum
-
-      - name: Execute tests
-        run: |
-          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.ALCHEMY_GOERLI_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.ALCHEMY_GOERLI_PASSWORD }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.ALCHEMY_MAINNET_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.ALCHEMY_MAINNET_PASSWORD }} \
-            timeout 3m ./pathfinder_ethereum
-
-  test_pathfinder_ethereum_infura:
-    name: l1 tests (infura)
-    needs: compile_pathfinder_ethereum_tests
-    runs-on: ubuntu-latest
-    steps:       
-      # Fetch the test binary artifact
-      - uses: actions/download-artifact@v3
-        with:
-          name: test-binary-pathfinder-ethereum
-      # Archiving removes the file permissions
-      - name: Fix file permissions
-        run: chmod +x pathfinder_ethereum
-
-      - name: Execute tests
-        run: |
-          PATHFINDER_ETHEREUM_HTTP_GOERLI_URL=${{ secrets.INFURA_GOERLI_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_GOERLI_PASSWORD=${{ secrets.INFURA_GOERLI_PASSWORD }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_URL=${{ secrets.INFURA_MAINNET_URL }} \
-            PATHFINDER_ETHEREUM_HTTP_MAINNET_PASSWORD=${{ secrets.INFURA_MAINNET_PASSWORD }} \
-            timeout 3m ./pathfinder_ethereum
-
-  test_all_except_pathfinder_ethereum:
-    name: all tests w/o l1
-    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
     needs: python-starkhash
     steps:
       # Required for the python environment
@@ -105,6 +26,7 @@ jobs:
       - name: Install protoc
         run: |
           sudo apt-get install -y protobuf-compiler
+      - uses: taiki-e/install-action@nextest
       - uses: actions/setup-python@v4
         id: setup_python
         with:
@@ -127,13 +49,15 @@ jobs:
       - name: Install Pedersen hash Python wrapper
         run: |
           pip install --no-index --force-reinstall ./starknet_pathfinder_crypto-*.whl
-  
-      # We want to strip the debug info as some of these test binaries are 100MB+ and pathfinder_lib is 1GB+
-      # Integration tests have to be called explicitly
-      - name: Execute tests
-        run: |
-          timeout 25m cargo test --all-targets --all-features --workspace --locked --profile stripdebuginfo --exclude pathfinder-ethereum
-          timeout 3m cargo test --test integration* --locked --profile stripdebuginfo
+
+      - name: Compile unit tests
+        run: timeout 25m cargo nextest run --all-targets --all-features --workspace --locked --no-run
+
+      - name: Run unit tests
+        run: timeout 5m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
+          
+      - name: Run integration tests
+        run: timeout 3m cargo test --test integration* --locked
 
   clippy:
     runs-on: ubuntu-latest
