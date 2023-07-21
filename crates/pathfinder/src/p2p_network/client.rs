@@ -322,16 +322,17 @@ pub mod conv {
                             execution_resources: Some(gw::ExecutionResources {
                                 builtin_instance_counter: {
                                     let b = common.execution_resources.builtin_instance_counter;
-                                    gw::execution_resources::BuiltinInstanceCounter::Normal(
-                                        gw::execution_resources::NormalBuiltinInstanceCounter {
-                                            bitwise_builtin: b.bitwise_builtin,
-                                            ecdsa_builtin: b.ecdsa_builtin,
-                                            ec_op_builtin: b.ec_op_builtin,
-                                            output_builtin: b.output_builtin,
-                                            pedersen_builtin: b.pedersen_builtin,
-                                            range_check_builtin: b.range_check_builtin,
-                                        },
-                                    )
+                                    gw::BuiltinCounters {
+                                        bitwise_builtin: b.bitwise_builtin,
+                                        ecdsa_builtin: b.ecdsa_builtin,
+                                        ec_op_builtin: b.ec_op_builtin,
+                                        output_builtin: b.output_builtin,
+                                        pedersen_builtin: b.pedersen_builtin,
+                                        range_check_builtin: b.range_check_builtin,
+                                        // FIXME once p2p has these builtins.
+                                        keccak_builtin: Default::default(),
+                                        poseidon_builtin: Default::default(),
+                                    }
                                 },
                                 n_steps: common.execution_resources.n_steps,
                                 n_memory_holes: common.execution_resources.n_memory_holes,

@@ -775,10 +775,7 @@ mod tests {
                 actual_fee: None,
                 events: expected_events[..3].to_vec(),
                 execution_resources: Some(gateway_tx::ExecutionResources {
-                    builtin_instance_counter:
-                        gateway_tx::execution_resources::BuiltinInstanceCounter::Empty(
-                            gateway_tx::execution_resources::EmptyBuiltinInstanceCounter {},
-                        ),
+                    builtin_instance_counter: Default::default(),
                     n_steps: 0,
                     n_memory_holes: 0,
                 }),
@@ -793,10 +790,7 @@ mod tests {
                 actual_fee: None,
                 events: expected_events[3..].to_vec(),
                 execution_resources: Some(gateway_tx::ExecutionResources {
-                    builtin_instance_counter:
-                        gateway_tx::execution_resources::BuiltinInstanceCounter::Empty(
-                            gateway_tx::execution_resources::EmptyBuiltinInstanceCounter {},
-                        ),
+                    builtin_instance_counter: Default::default(),
                     n_steps: 0,
                     n_memory_holes: 0,
                 }),
