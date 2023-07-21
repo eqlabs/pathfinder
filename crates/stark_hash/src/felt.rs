@@ -4,10 +4,8 @@ use std::error::Error;
 use stark_curve::{FieldElement, FieldElementRepr};
 
 use bitvec::{order::Msb0, slice::BitSlice, view::BitView};
-use stark_curve::ff::PrimeField;
-
-#[cfg(any(feature = "test-utils", test))]
 use fake::Dummy;
+use stark_curve::ff::PrimeField;
 
 /// The Starknet elliptic curve Field Element.
 ///
@@ -46,7 +44,6 @@ impl std::default::Default for Felt {
     }
 }
 
-#[cfg(any(feature = "test-utils", test))]
 impl<T> Dummy<T> for Felt {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         let mut bytes = [0u8; 32];

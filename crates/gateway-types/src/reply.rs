@@ -184,7 +184,6 @@ pub struct TransactionStatus {
 
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
-    #[cfg(any(feature = "test-utils", test))]
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
         CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
@@ -201,9 +200,8 @@ pub mod transaction {
     use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
         External,
@@ -212,9 +210,8 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct ExecutionResources {
         pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
         pub n_steps: u64,
@@ -223,7 +220,6 @@ pub mod transaction {
 
     /// Types used when deserializing L2 execution resources related data.
     pub mod execution_resources {
-        #[cfg(any(feature = "test-utils", test))]
         use fake::{Dummy, Fake, Faker};
         use serde::{Deserialize, Serialize};
 
@@ -242,7 +238,6 @@ pub mod transaction {
             }
         }
 
-        #[cfg(any(feature = "test-utils", test))]
         impl<T> Dummy<T> for BuiltinInstanceCounter {
             fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
                 // We don't care about the other variant which was a patch
@@ -251,9 +246,8 @@ pub mod transaction {
             }
         }
 
-        #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+        #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
         #[serde(deny_unknown_fields)]
-        #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
         pub struct NormalBuiltinInstanceCounter {
             pub bitwise_builtin: u64,
             pub ecdsa_builtin: u64,
@@ -282,7 +276,6 @@ pub mod transaction {
         pub nonce: Option<L1ToL2MessageNonce>,
     }
 
-    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for L1ToL2Message {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             // Nonces were missing in very old messages, we don't care about it
@@ -298,9 +291,8 @@ pub mod transaction {
 
     /// Represents deserialized L2 to L1 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
         #[serde_as(as = "Vec<L2ToL1MessagePayloadElemAsDecimalStr>")]
@@ -309,9 +301,8 @@ pub mod transaction {
         pub to_address: EthereumAddress,
     }
 
-    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum ExecutionStatus {
         // This must be the default as pre v0.12.1 receipts did not contain this value and
         // were always success as reverted did not exist.
@@ -342,7 +333,6 @@ pub mod transaction {
         pub revert_error: Option<String>,
     }
 
-    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for Receipt {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             // Those fields that were missing in very old receipts are always present
@@ -361,10 +351,9 @@ pub mod transaction {
     }
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
     #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum Transaction {
         #[serde(rename = "DECLARE")]
         Declare(DeclareTransaction),
@@ -488,9 +477,8 @@ pub mod transaction {
         }
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
     #[serde(tag = "version")]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum DeclareTransaction {
         #[serde(rename = "0x0")]
         V0(DeclareTransactionV0V1),
@@ -549,9 +537,8 @@ pub mod transaction {
 
     /// A version 0 or 1 declare transaction.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct DeclareTransactionV0V1 {
         pub class_hash: ClassHash,
         pub max_fee: Fee,
@@ -565,9 +552,8 @@ pub mod transaction {
 
     /// A version 2 declare transaction.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct DeclareTransactionV2 {
         pub class_hash: ClassHash,
         pub max_fee: Fee,
@@ -600,7 +586,6 @@ pub mod transaction {
         pub version: TransactionVersion,
     }
 
-    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for DeployTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             use primitive_types::H256;
@@ -635,7 +620,6 @@ pub mod transaction {
         pub class_hash: ClassHash,
     }
 
-    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for DeployAccountTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
@@ -654,9 +638,8 @@ pub mod transaction {
         }
     }
 
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
     #[serde(tag = "version")]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub enum InvokeTransaction {
         #[serde(rename = "0x0")]
         V0(InvokeTransactionV0),
@@ -709,9 +692,8 @@ pub mod transaction {
 
     /// Represents deserialized L2 invoke transaction v0 data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct InvokeTransactionV0 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
@@ -732,9 +714,8 @@ pub mod transaction {
 
     /// Represents deserialized L2 invoke transaction v1 data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
-    #[cfg_attr(any(feature = "test-utils", test), derive(Dummy))]
     pub struct InvokeTransactionV1 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
@@ -767,7 +748,6 @@ pub mod transaction {
         pub version: TransactionVersion,
     }
 
-    #[cfg(any(feature = "test-utils", test))]
     impl<T> Dummy<T> for L1HandlerTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {

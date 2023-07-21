@@ -368,7 +368,7 @@ mod tests {
     use jsonrpsee::types::Params;
 
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockNumber, Chain};
+    use pathfinder_common::BlockNumber;
     use starknet_gateway_types::pending::PendingData;
 
     #[test]
@@ -414,7 +414,7 @@ mod tests {
             .collect();
 
         let sync_state = std::sync::Arc::new(crate::SyncState::default());
-        let sequencer = starknet_gateway_client::Client::new(Chain::Testnet).unwrap();
+        let sequencer = starknet_gateway_client::Client::testnet();
         let context = RpcContext::new(storage, sync_state, ChainId::TESTNET, sequencer);
 
         (state_updates, context)

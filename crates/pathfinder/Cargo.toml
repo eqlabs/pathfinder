@@ -44,7 +44,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
-starknet-gateway-types = { path = "../gateway-types", features = ["test-utils"] }
+starknet-gateway-types = { path = "../gateway-types" }
 tempfile = "3.4"
 thiserror = "1.0.40"
 time = { version = "0.3.20", features = ["macros"] }
@@ -64,17 +64,13 @@ fake = { version = "2.5.0", features = ["derive"] }
 flate2 = "1.0.25"
 http = "0.2.8"
 mockall = "0.11.3"
-p2p_proto = { path = "../p2p_proto", features = ["test-utils"] }
-pathfinder-common = { path = "../common", features = ["full-serde", "test-utils"] }
-pathfinder-rpc = { path = "../rpc", features = ["test-utils"] }
-pathfinder-storage = { path = "../storage", features = ["test-utils"] }
+pathfinder-common = { path = "../common", features = ["full-serde"] }
 pretty_assertions = "1.3.0"
 proptest = "1.2.0"
 rand = "0.8"
 rand_chacha = "0.3.1"
 rstest = "0.17.0"
 serde_with = { workspace = true }
-starknet-gateway-client = { path = "../gateway-client", features = ["test-utils"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["test-util"] }
 zstd = "0.12"

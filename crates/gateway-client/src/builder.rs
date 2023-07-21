@@ -20,13 +20,6 @@ pub struct Request<'a, S: RequestState> {
     client: &'a reqwest::Client,
 }
 
-/// Describes the retry behavior of a [Request].
-#[allow(dead_code)]
-pub enum Retry {
-    Enabled,
-    Disabled,
-}
-
 pub mod stage {
     use crate::metrics::RequestMetadata;
 
@@ -60,7 +53,7 @@ pub mod stage {
     /// - [post_with_json](super::Request::post_with_json)
     pub struct Final {
         pub meta: RequestMetadata,
-        pub retry: super::Retry,
+        pub retry: bool,
     }
 
     impl super::RequestState for Init {}
@@ -200,7 +193,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     /// Sets the request retry behavior.
-    pub fn with_retry(self, retry: Retry) -> Request<'a, stage::Final> {
+    pub fn with_retry(self, retry: bool) -> Request<'a, stage::Final> {
         Request {
             url: self.url,
             client: self.client,
@@ -231,8 +224,8 @@ impl<'a> Request<'a, stage::Final> {
         }
 
         match self.state.retry {
-            Retry::Disabled => send_request(self.url, self.client, self.state.meta).await,
-            Retry::Enabled => {
+            false => send_request(self.url, self.client, self.state.meta).await,
+            true => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
@@ -262,8 +255,8 @@ impl<'a> Request<'a, stage::Final> {
         }
 
         match self.state.retry {
-            Retry::Disabled => get_as_bytes_inner(self.url, self.client, self.state.meta).await,
-            Retry::Enabled => {
+            false => get_as_bytes_inner(self.url, self.client, self.state.meta).await,
+            true => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
@@ -301,10 +294,8 @@ impl<'a> Request<'a, stage::Final> {
         }
 
         match self.state.retry {
-            Retry::Disabled => {
-                post_with_json_inner(self.url, self.client, self.state.meta, json).await
-            }
-            Retry::Enabled => {
+            false => post_with_json_inner(self.url, self.client, self.state.meta, json).await,
+            true => {
                 retry0(
                     || async {
                         let clone_url = self.url.clone();
@@ -588,7 +579,9 @@ mod tests {
             let (_jh, addr) = server();
             let mut url = reqwest::Url::parse("http://localhost/").unwrap();
             url.set_port(Some(addr.port())).unwrap();
-            let client = Client::with_base_url(url).unwrap();
+            let client = Client::with_base_url(url)
+                .unwrap()
+                .disable_retry_for_tests();
             let error = client.chain().await.unwrap_err();
             assert_eq!(
                 error.to_string(),

@@ -30,9 +30,7 @@ assert_matches = { workspace = true }
 env_logger = "0.10.0"
 fake = { workspace = true }
 hex = "0.4.3"
-p2p_proto = { path = "../p2p_proto", features = ["test-utils"] }
 pathfinder-common = { path = "../common" }
 rand = { workspace = true }
-stark_hash = { path = "../stark_hash", features = ["test-utils"] }
 test-log = { version = "0.2.11", default-features = false, features = ["trace"] }
 tokio = { version = "1.20.1", features = ["test-util"] }

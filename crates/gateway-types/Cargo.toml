@@ -6,17 +6,14 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.62"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-test-utils = ["dep:fake", "dep:rand", "pathfinder-common/test-utils"]
-
 [dependencies]
 anyhow = { workspace = true }
-fake = { version = "2.5.0", features = ["derive"], optional = true }
+fake = { version = "2.5.0", features = ["derive"] }
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
 pathfinder-serde = { path = "../serde" }
 primitive-types = "0.12.1"
-rand = { version = "0.8.5", optional = true }
+rand = { version = "0.8.5" }
 reqwest = "0.11.13"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [

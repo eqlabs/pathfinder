@@ -26,7 +26,7 @@ pub const EVENTS_PER_BLOCK: usize = INVOKE_TRANSACTIONS_PER_BLOCK + DECLARE_TRAN
 pub const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
 pub const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
 
-/// Creates a set of consecutive [StarknetBlock]s starting from L2 genesis,
+/// Creates a set of consecutive [BlockHeader]s starting from L2 genesis,
 /// with arbitrary other values.
 pub(crate) fn create_blocks() -> [BlockHeader; NUM_BLOCKS] {
     (0..NUM_BLOCKS)
