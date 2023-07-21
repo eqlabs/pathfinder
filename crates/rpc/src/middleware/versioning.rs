@@ -1,6 +1,7 @@
 //! Middleware that proxies requests at a specified URI to internal
 //! RPC method calls.
 use http::{response::Builder, status::StatusCode};
+use hyper::body::HttpBody;
 use hyper::{Body, Request, Response};
 use jsonrpsee::core::error::GenericTransportError;
 use jsonrpsee::core::http_helpers::read_body;
@@ -20,6 +21,8 @@ enum VersioningError {
     Internal,
     #[error("JSON-RPC notification queries are not allowed, please specify the `id` property")]
     Notification,
+    #[error("HealthCheck")]
+    HealthCheck,
 }
 
 impl VersioningError {
@@ -30,6 +33,7 @@ impl VersioningError {
             VersioningError::Malformed => response::malformed(),
             VersioningError::Internal => response::internal(),
             VersioningError::Notification => response::notification(),
+            VersioningError::HealthCheck => response::ok_with_empty_body(),
         }
     }
 }
@@ -38,11 +42,28 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
     request: Request<Body>,
     max_request_body_size: u32,
 ) -> Result<Request<Body>, BoxError> {
-    let prefixes = match request.uri().path() {
-        // An empty path "" is treated the same as "/".
-        // However for a non-empty path adding a trailing slash
-        // makes it a different path from the original,
-        // that's why we have to account for those separately.
+    // Retain the parts to then later recreate the request
+    let (parts, body) = request.into_parts();
+    let path = parts.uri.path();
+    // An empty path "" is treated the same as "/".
+    // However for a non-empty path adding a trailing slash
+    // makes it a different path from the original,
+    // that's why we have to account for those separately.
+    let prefixes = match path {
+        // ----------------------
+        // Health check endpoints
+        // ----------------------
+        // Root is treated as a health check endpoint **only if it has an empty body**
+        "/" if body.is_end_stream() => {
+            return Err(BoxError::from(VersioningError::HealthCheck));
+        }
+        // This endpoint ignores the body, which is **never** read
+        "/health" | "/health/" => {
+            return Err(BoxError::from(VersioningError::HealthCheck));
+        }
+        // ----------------------
+        // RPC endpoints
+        // ----------------------
         "/" | "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..],
         "/rpc/v0.4" | "/rpc/v0.4/" => &[("starknet_", "v0.4_"), ("pathfinder_", "v0.4_")][..],
         "/rpc/pathfinder/v0.1" | "/rpc/pathfinder/v0.1/" => &[("pathfinder_", "v0.1_")][..],
@@ -50,9 +71,6 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
             return Err(BoxError::from(VersioningError::InvalidPath));
         }
     };
-
-    // Retain the parts to then later recreate the request
-    let (parts, body) = request.into_parts();
 
     let (body, is_single) = match read_body(&parts.headers, body, max_request_body_size).await {
         Ok(x) => x,
@@ -163,6 +181,13 @@ mod response {
     const TEXT: &str = "text/plain";
     const JSON: &str = "application/json; charset=utf-8";
 
+    pub(super) fn ok_with_empty_body() -> Response<Body> {
+        Builder::new()
+            .status(StatusCode::OK)
+            .body(Body::empty())
+            .expect("response is properly formed")
+    }
+
     pub(super) fn not_found() -> Response<Body> {
         with_canonical_reason(StatusCode::NOT_FOUND)
     }
@@ -251,13 +276,13 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-
     use super::prefix_rpc_method_names_with_version;
     use super::test_utils::{method_names, paths};
     use crate::test_client::TestClientBuilder;
     use crate::{RpcContext, RpcServer};
     use jsonrpsee::core::error::Error;
     use jsonrpsee::types::error::{CallError, METHOD_NOT_FOUND_CODE};
+    use rstest::rstest;
     use serde_json::json;
 
     // In an unintentional way OFC: if a method is INTENDED to be available
@@ -329,6 +354,45 @@ mod tests {
             .as_u16();
 
         assert_eq!(status_code, 404);
+    }
+
+    #[rstest]
+    #[case("", "", 200, "")]
+    #[case("/", "", 200, "")]
+    #[case("/health", "", 200, "")]
+    #[case("/health/", "", 200, "")]
+    #[case("/health", "body is ignored", 200, "")]
+    #[case("/health/", "body is ignored", 200, "")]
+    #[case(
+        "/",
+        "body is not empty",
+        400,
+        r#"{"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null}"#
+    )]
+    #[tokio::test]
+    async fn health(
+        #[case] path: &str,
+        #[case] body: &str,
+        #[case] expected_code: u16,
+        #[case] expected_body: &str,
+    ) {
+        let context = RpcContext::for_tests();
+        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
+            .run()
+            .await
+            .unwrap();
+
+        let url = format!("http://{address}{path}");
+
+        let resp = reqwest::Client::new()
+            .post(url)
+            .body(body.to_string())
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status().as_u16(), expected_code);
+        assert_eq!(resp.text().await.unwrap(), expected_body);
     }
 
     #[tokio::test]

@@ -91,12 +91,13 @@ impl RpcServer {
                 .option_layer(self.cors)
                 .map_result(middleware::versioning::try_map_errors_to_responses)
                 .filter_async(
-					|result: Request<Body>| async move {
+					|request: Request<Body>| async move {
 					// skip method_name checks for websocket handshake
-					if result.headers().get("sec-websocket-key").is_some() {
-						return Ok(result);
+					if request.headers().get("sec-websocket-key").is_some() {
+						return Ok(request);
 					}
-                    middleware::versioning::prefix_rpc_method_names_with_version(result, TEN_MB).await
+
+                    middleware::versioning::prefix_rpc_method_names_with_version(request, TEN_MB).await
                 })
             )
             .build(self.addr)
