@@ -605,9 +605,7 @@ pub mod test_utils {
                 actual_fee: None,
                 events: vec![],
                 execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                        EmptyBuiltinInstanceCounter {},
-                    ),
+                    builtin_instance_counter: Default::default(),
                     n_memory_holes: 0,
                     n_steps: 0,
                 }),
