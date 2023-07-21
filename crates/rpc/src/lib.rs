@@ -175,7 +175,6 @@ pub mod test_utils {
     use starknet_gateway_types::{
         pending::PendingData,
         reply::transaction::{
-            execution_resources::{BuiltinInstanceCounter, EmptyBuiltinInstanceCounter},
             DeployTransaction, EntryPointType, ExecutionResources, InvokeTransaction,
             InvokeTransactionV0, Receipt, Transaction,
         },
@@ -388,9 +387,7 @@ pub mod test_utils {
             actual_fee: None,
             events: vec![],
             execution_resources: Some(ExecutionResources {
-                builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                    EmptyBuiltinInstanceCounter {},
-                ),
+                builtin_instance_counter: Default::default(),
                 n_memory_holes: 0,
                 n_steps: 0,
             }),
@@ -555,9 +552,7 @@ pub mod test_utils {
                     },
                 ],
                 execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                        EmptyBuiltinInstanceCounter {},
-                    ),
+                    builtin_instance_counter: Default::default(),
                     n_memory_holes: 0,
                     n_steps: 0,
                 }),
@@ -572,9 +567,7 @@ pub mod test_utils {
                 actual_fee: None,
                 events: vec![],
                 execution_resources: Some(ExecutionResources {
-                    builtin_instance_counter: BuiltinInstanceCounter::Empty(
-                        EmptyBuiltinInstanceCounter {},
-                    ),
+                    builtin_instance_counter: Default::default(),
                     n_memory_holes: 0,
                     n_steps: 0,
                 }),

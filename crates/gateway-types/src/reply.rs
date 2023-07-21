@@ -213,52 +213,23 @@ pub mod transaction {
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
-        pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
+        pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
     }
 
-    /// Types used when deserializing L2 execution resources related data.
-    pub mod execution_resources {
-        use fake::{Dummy, Fake, Faker};
-        use serde::{Deserialize, Serialize};
-
-        /// Sometimes `builtin_instance_counter` JSON object is returned empty.
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        #[serde(untagged)]
-        #[serde(deny_unknown_fields)]
-        pub enum BuiltinInstanceCounter {
-            Normal(NormalBuiltinInstanceCounter),
-            Empty(EmptyBuiltinInstanceCounter),
-        }
-
-        impl Default for BuiltinInstanceCounter {
-            fn default() -> Self {
-                Self::Normal(Default::default())
-            }
-        }
-
-        impl<T> Dummy<T> for BuiltinInstanceCounter {
-            fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-                // We don't care about the other variant which was a patch
-                // over some old receipts missing this data
-                BuiltinInstanceCounter::Normal(Faker.fake_with_rng(rng))
-            }
-        }
-
-        #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
-        #[serde(deny_unknown_fields)]
-        pub struct NormalBuiltinInstanceCounter {
-            pub bitwise_builtin: u64,
-            pub ecdsa_builtin: u64,
-            pub ec_op_builtin: u64,
-            pub output_builtin: u64,
-            pub pedersen_builtin: u64,
-            pub range_check_builtin: u64,
-        }
-
-        #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-        pub struct EmptyBuiltinInstanceCounter {}
+    #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[serde(default)]
+    #[serde(deny_unknown_fields)]
+    pub struct BuiltinCounters {
+        pub output_builtin: u64,
+        pub pedersen_builtin: u64,
+        pub range_check_builtin: u64,
+        pub ecdsa_builtin: u64,
+        pub bitwise_builtin: u64,
+        pub ec_op_builtin: u64,
+        pub keccak_builtin: u64,
+        pub poseidon_builtin: u64,
     }
 
     /// Represents deserialized L1 to L2 message.

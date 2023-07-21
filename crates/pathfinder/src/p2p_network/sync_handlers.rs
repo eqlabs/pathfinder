@@ -295,12 +295,7 @@ mod conv {
                 }),
                 execution_resources: {
                     let x = gw_r.execution_resources.unwrap_or_default();
-                    let b = match x.builtin_instance_counter {
-                        gw::execution_resources::BuiltinInstanceCounter::Normal(n) => n,
-                        gw::execution_resources::BuiltinInstanceCounter::Empty(_) => {
-                            Default::default()
-                        }
-                    };
+                    let b = x.builtin_instance_counter;
                     ExecutionResources {
                         builtin_instance_counter: BuiltinInstanceCounter {
                             bitwise_builtin: b.bitwise_builtin,
