@@ -43,6 +43,13 @@ pub trait GatewayApi: Sync {
         unimplemented!();
     }
 
+    async fn pending_casm_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        unimplemented!();
+    }
+
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
@@ -123,6 +130,13 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         class_hash: ClassHash,
     ) -> Result<bytes::Bytes, SequencerError> {
         self.as_ref().pending_class_by_hash(class_hash).await
+    }
+
+    async fn pending_casm_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        self.as_ref().pending_casm_by_hash(class_hash).await
     }
 
     async fn transaction(
@@ -367,6 +381,21 @@ impl GatewayApi for Client {
     ) -> Result<bytes::Bytes, SequencerError> {
         self.feeder_gateway_request()
             .get_class_by_hash()
+            .with_class_hash(class_hash)
+            .with_block(BlockId::Pending)
+            .with_retry(self.retry)
+            .get_as_bytes()
+            .await
+    }
+
+    /// Gets CASM for a particular class hash.
+    #[tracing::instrument(skip(self))]
+    async fn pending_casm_by_hash(
+        &self,
+        class_hash: ClassHash,
+    ) -> Result<bytes::Bytes, SequencerError> {
+        self.feeder_gateway_request()
+            .get_compiled_class_by_class_hash()
             .with_class_hash(class_hash)
             .with_block(BlockId::Pending)
             .with_retry(self.retry)

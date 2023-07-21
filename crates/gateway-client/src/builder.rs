@@ -125,6 +125,7 @@ impl<'a> Request<'a, stage::Method> {
         add_transaction,
         get_block,
         get_class_by_hash,
+        get_compiled_class_by_class_hash,
         get_transaction,
         get_state_update,
         get_contract_addresses,
