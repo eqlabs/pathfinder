@@ -1,4 +1,4 @@
-use pathfinder_common::{Chain, StateUpdate};
+use pathfinder_common::StateUpdate;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::MaybePendingBlock;
@@ -24,7 +24,6 @@ pub async fn poll_pending(
         pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
-    chain: Chain,
     storage: Storage,
 ) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
     use anyhow::Context;
@@ -141,7 +140,6 @@ pub async fn poll_pending(
                 update.as_ref(),
                 &sequencer,
                 &tx_event,
-                chain,
                 &block.starknet_version,
                 storage.clone(),
             )
@@ -166,7 +164,7 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockHash, BlockNumber, BlockTimestamp, Chain, GasPrice, StarknetVersion, StateCommitment,
+        BlockHash, BlockNumber, BlockTimestamp, GasPrice, StarknetVersion, StateCommitment,
         StateUpdate, TransactionVersion,
     };
     use pathfinder_storage::Storage;
@@ -244,7 +242,6 @@ mod tests {
                 sequencer,
                 (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
-                Chain::Testnet,
                 Storage::in_memory().unwrap(),
             )
             .await
@@ -285,7 +282,6 @@ mod tests {
                 sequencer,
                 (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
-                Chain::Testnet,
                 Storage::in_memory().unwrap(),
             )
             .await
@@ -321,7 +317,6 @@ mod tests {
                 sequencer,
                 (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
-                Chain::Testnet,
                 Storage::in_memory().unwrap(),
             )
             .await
@@ -357,7 +352,6 @@ mod tests {
                 sequencer,
                 (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
-                Chain::Testnet,
                 Storage::in_memory().unwrap(),
             )
             .await
@@ -389,7 +383,6 @@ mod tests {
                 sequencer,
                 (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
-                Chain::Testnet,
                 Storage::in_memory().unwrap(),
             )
             .await
@@ -468,7 +461,6 @@ mod tests {
                 sequencer,
                 (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
-                Chain::Testnet,
                 Storage::in_memory().unwrap(),
             )
             .await
@@ -535,7 +527,6 @@ mod tests {
                 sequencer,
                 (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
-                Chain::Testnet,
                 Storage::in_memory().unwrap(),
             )
             .await
