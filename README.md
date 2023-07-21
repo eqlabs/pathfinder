@@ -203,6 +203,15 @@ Note that the pathfinder extension is versioned separately from the Starknet spe
 
 You can find the API specification [here](doc/rpc/pathfinder_rpc_api.json).
 
+### Health
+
+To check the health status of the RPC server without resorting to the [monitoring api](#monitoring-api) use the following endpoints:
+- `/` (root), provided that the request body is empty.
+
+A `200 OK` status is returned if the RPC server is healthy.
+
+Note that this method is HTTP verb agnostic.
+
 ## Monitoring API
 
 Pathfinder has a monitoring API which can be enabled with the `--monitor-address` configuration option.
