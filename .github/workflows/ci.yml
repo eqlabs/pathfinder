@@ -10,6 +10,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
     needs: python-starkhash
     steps:
       # Required for the python environment
@@ -19,6 +21,7 @@ jobs:
       - name: Install protoc
         run: |
           sudo apt-get install -y protobuf-compiler
+      - uses: taiki-e/install-action@nextest
       - uses: actions/setup-python@v4
         id: setup_python
         with:
@@ -46,8 +49,8 @@ jobs:
       # Integration tests have to be called explicitly
       - name: Execute tests
         run: |
-          timeout 25m cargo test --all-targets --all-features --workspace --locked --profile stripdebuginfo
-          timeout 3m cargo test --test integration* --locked --profile stripdebuginfo
+          timeout 25m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
+          timeout 3m cargo test --test integration* --locked
 
   clippy:
     runs-on: ubuntu-latest
