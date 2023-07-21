@@ -232,7 +232,7 @@ pub struct Client {
     /// Starknet feeder gateway URL.
     feeder_gateway: Url,
     /// Whether __read only__ requests should be retried, defaults to __true__ for production.
-    /// Use [disable_retry_for_tests] to disable retry logic for all __read only__ requests when testing.
+    /// Use [disable_retry_for_tests](Client::disable_retry_for_tests) to disable retry logic for all __read only__ requests when testing.
     retry: bool,
 }
 
@@ -517,7 +517,7 @@ pub mod test_utils {
     use starknet_gateway_types::error::KnownStarknetErrorCode;
 
     /// Helper funtion which allows for easy creation of a response tuple
-    /// that contains a [StarknetError] for a given [StarknetErrorCode].
+    /// that contains a [StarknetError](starknet_gateway_types::error::StarknetError) for a given [KnownStarknetErrorCode].
     ///
     /// The response tuple can then be used by the [setup] function.
     ///
@@ -535,16 +535,16 @@ pub mod test_utils {
 
     /// # Usage
     ///
-    /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
+    /// Use to initialize a [Client] test case. The function does one of the following things:
     ///
     /// 1. if `SEQUENCER_TESTS_LIVE_API` environment variable is set:
-    ///    - creates a [sequencer::Client] instance which connects to the Goerli
+    ///    - creates a [Client] instance which connects to the Goerli
     ///      sequencer API
     ///
     /// 2. otherwise:
     ///    - initializes a local mock server instance with the given expected
     ///      url paths & queries and respective fixtures for replies
-    ///    - creates a [sequencer::Client] instance which connects to the mock server
+    ///    - creates a [Client] instance which connects to the mock server
     ///
     pub fn setup<S1, S2, const N: usize>(
         url_paths_queries_and_response_fixtures: [(S1, (S2, u16)); N],
@@ -608,10 +608,10 @@ pub mod test_utils {
 
     /// # Usage
     ///
-    /// Use to initialize a [sequencer::Client] test case. The function does one of the following things:
+    /// Use to initialize a [Client] test case. The function does one of the following things:
     /// - initializes a local mock server instance with the given expected
     ///   url paths & queries and respective fixtures for replies
-    /// - creates a [sequencer::Client] instance which connects to the mock server
+    /// - creates a [Client] instance which connects to the mock server
     /// - replies for a particular path & query are consumed one at a time until exhausted
     ///
     /// # Panics

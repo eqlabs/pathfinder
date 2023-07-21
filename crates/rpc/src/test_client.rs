@@ -93,7 +93,7 @@ impl TestClient {
     ///     .await;
     /// ```
     ///
-    /// The difference from [`jsonrpsee::http_client::HttpClient::request`] is that
+    /// The difference from [`jsonrpsee`] is that
     /// this method reports the core reason for response `R` serde error,
     /// while the former just ignores it.
     pub async fn request<'a, R>(
