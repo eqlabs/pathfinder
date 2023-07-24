@@ -34,14 +34,21 @@ pub(super) fn insert_transactions(
             .compress(&serialized_receipt)
             .context("Compressing receipt")?;
 
-        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash, idx, block_hash, tx, receipt) VALUES (:hash, :idx, :block_hash, :tx, :receipt)",
-                   named_params![
-                ":hash": &transaction.hash(),
-                ":idx": &i,
-                ":block_hash": &block_hash,
-                ":tx": &tx_data,
-                ":receipt": &serialized_receipt,
-            ]).context("Inserting transaction data")?;
+        let execution_status = match receipt.execution_status {
+            gateway::ExecutionStatus::Succeeded => 0,
+            gateway::ExecutionStatus::Reverted => 1,
+        };
+
+        tx.inner().execute(r"INSERT OR REPLACE INTO starknet_transactions (hash,  idx,  block_hash,  tx,  receipt,  execution_status) 
+                                                                  VALUES (:hash, :idx, :block_hash, :tx, :receipt, :execution_status)",
+            named_params![
+            ":hash": &transaction.hash(),
+            ":idx": &i,
+            ":block_hash": &block_hash,
+            ":tx": &tx_data,
+            ":receipt": &serialized_receipt,
+            ":execution_status": &execution_status,
+        ]).context("Inserting transaction data")?;
 
         // insert events from receipt
         super::event::insert_events(tx, block_number, receipt.transaction_hash, &receipt.events)
