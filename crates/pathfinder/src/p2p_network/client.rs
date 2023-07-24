@@ -332,6 +332,7 @@ pub mod conv {
                                         // FIXME once p2p has these builtins.
                                         keccak_builtin: Default::default(),
                                         poseidon_builtin: Default::default(),
+                                        segment_arena_builtin: Default::default(),
                                     }
                                 },
                                 n_steps: common.execution_resources.n_steps,
