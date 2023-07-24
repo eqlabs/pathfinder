@@ -43,7 +43,6 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
         // However for a non-empty path adding a trailing slash
         // makes it a different path from the original,
         // that's why we have to account for those separately.
-        "/rpc/v0.2" | "/rpc/v0.2/" => &[("starknet_", "v0.2_"), ("pathfinder_", "v0.2_")][..],
         "/" | "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..],
         "/rpc/v0.4" | "/rpc/v0.4/" => &[("starknet_", "v0.4_"), ("pathfinder_", "v0.4_")][..],
         "/rpc/pathfinder/v0.1" | "/rpc/pathfinder/v0.1/" => &[("pathfinder_", "v0.1_")][..],

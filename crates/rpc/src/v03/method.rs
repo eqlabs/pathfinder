@@ -1,4 +1,4 @@
-mod estimate_fee;
+pub(crate) mod estimate_fee;
 pub(crate) mod estimate_message_fee;
 mod get_events;
 mod get_state_update;

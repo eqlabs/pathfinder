@@ -123,7 +123,6 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
         let local_addr = server.local_addr()?;
 
         let module = crate::module::Module::new(self.context);
-        let module = v02::register_methods(module)?;
         let module = v03::register_methods(module)?;
         let module = pathfinder::register_methods(module)?;
         let module = match &self.ws_senders {
