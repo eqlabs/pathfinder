@@ -5,7 +5,7 @@ use pathfinder_common::{
     BlockNumber, CallParam, ConstructorParam, EthereumAddress, GasPrice, L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem, TransactionSignatureElem, TransactionVersion,
 };
-use primitive_types::{H160, H256};
+use primitive_types::{H160, H256, U256};
 use serde::de::Visitor;
 use serde_with::{serde_conv, DeserializeAs, SerializeAs};
 use stark_hash::{Felt, HexParseError, OverflowError};
@@ -225,10 +225,10 @@ serde_with::serde_conv!(
 );
 
 serde_with::serde_conv!(
-    pub H256AsHexStr,
-    primitive_types::H256,
-    |u: &H256| bytes_to_hex_str(u.as_bytes()),
-    |s: &str| bytes_from_hex_str::<32>(s).map(H256::from)
+    pub U256AsHexStr,
+    primitive_types::U256,
+    |u: &U256| { let mut b = [0u8; 32]; u.to_big_endian(&mut b); bytes_to_hex_str(&b) },
+    |s: &str| bytes_from_hex_str::<32>(s).map(U256::from)
 );
 
 pub struct U64AsHexStr(pub u64);
