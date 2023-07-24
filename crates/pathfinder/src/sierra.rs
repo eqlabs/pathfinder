@@ -17,6 +17,7 @@ pub fn compile_to_casm(
     let definition = serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_definition)
         .context("Parsing Sierra class")?;
 
+    const V_0_11_0: semver::Version = semver::Version::new(0, 11, 0);
     const V_0_11_1: semver::Version = semver::Version::new(0, 11, 1);
     const V_0_11_2: semver::Version = semver::Version::new(0, 11, 2);
 
@@ -24,8 +25,9 @@ pub fn compile_to_casm(
         .parse_as_semver()
         .context("Deciding on compiler version")?
     {
-        Some(v) if v >= V_0_11_2 => v2::compile(definition),
-        Some(v) if v >= V_0_11_1 => v1_0_0_rc0::compile(definition),
+        Some(v) if v > V_0_11_2 => v2::compile(definition),
+        Some(v) if v > V_0_11_1 => v1_1_1::compile(definition),
+        Some(v) if v > V_0_11_0 => v1_0_0_rc0::compile(definition),
         _ => v1_0_0_alpha6::compile(definition),
     }
 }
@@ -83,6 +85,52 @@ mod v1_0_0_rc0 {
     };
     use casm_compiler_v1_0_0_rc0::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_rc0::contract_class::ContractClass;
+
+    use crate::sierra::FeederGatewayContractClass;
+
+    impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
+        type Error = serde_json::Error;
+
+        fn try_from(value: FeederGatewayContractClass<'a>) -> Result<Self, Self::Error> {
+            let json = serde_json::json!({
+                "abi": [],
+                "sierra_program": value.sierra_program,
+                "contract_class_version": value.contract_class_version,
+                "entry_points_by_type": value.entry_points_by_type,
+            });
+            serde_json::from_value::<ContractClass>(json)
+        }
+    }
+
+    pub(super) fn compile(definition: FeederGatewayContractClass<'_>) -> anyhow::Result<Vec<u8>> {
+        let sierra_class: ContractClass = definition
+            .try_into()
+            .context("Converting to Sierra class")?;
+
+        validate_compatible_sierra_version(
+            &sierra_class,
+            ListSelector::ListName(
+                casm_compiler_v1_0_0_rc0::allowed_libfuncs::DEFAULT_EXPERIMENTAL_LIBFUNCS_LIST
+                    .to_string(),
+            ),
+        )
+        .context("Validating Sierra class")?;
+
+        let casm_class = CasmContractClass::from_contract_class(sierra_class, true)
+            .context("Compiling to CASM")?;
+        let casm_definition = serde_json::to_vec(&casm_class)?;
+
+        Ok(casm_definition)
+    }
+}
+
+mod v1_1_1 {
+    use anyhow::Context;
+    use casm_compiler_v1_1_1::allowed_libfuncs::{
+        validate_compatible_sierra_version, ListSelector,
+    };
+    use casm_compiler_v1_1_1::casm_contract_class::CasmContractClass;
+    use casm_compiler_v1_1_1::contract_class::ContractClass;
 
     use crate::sierra::FeederGatewayContractClass;
 
