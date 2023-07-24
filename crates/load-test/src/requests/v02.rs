@@ -175,7 +175,7 @@ pub async fn get_events(
             "from_block": from_block,
             "to_block": to_block,
             "address": filter.address,
-            "keys": filter.keys,
+            "keys": vec![filter.keys],
             "chunk_size": 1000,
         }}),
     )
@@ -252,7 +252,7 @@ pub async fn estimate_fee_for_invoke(
         user,
         "starknet_estimateFee",
         json!({
-            "request": {
+            "request": [{
                 "type": "INVOKE",
                 "version": "0x0",
                 "max_fee": max_fee,
@@ -260,7 +260,7 @@ pub async fn estimate_fee_for_invoke(
                 "contract_address": contract_address,
                 "calldata": call_data,
                 "entry_point_selector": entry_point_selector,
-            },
+            }],
             "block_id": {"block_hash": at_block}
         }),
     )
@@ -274,7 +274,7 @@ async fn post_jsonrpc_request<T: DeserializeOwned>(
 ) -> MethodResult<T> {
     let request = jsonrpc_request(method, params);
     let response = user
-        .post_json("/rpc/v0.2", &request)
+        .post_json("/rpc/v0.3", &request)
         .await?
         .response
         .map_err(|e| Box::new(e.into()))?;
