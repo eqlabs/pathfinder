@@ -55,7 +55,7 @@ pub async fn estimate_fee(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::v02::types::request::BroadcastedInvokeTransaction;
     use pathfinder_common::macro_prelude::*;
@@ -143,16 +143,246 @@ mod tests {
     }
 
     // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
-    mod ext_py {
+    pub(crate) mod ext_py {
         use super::*;
-        use crate::v02::method::estimate_fee::tests::ext_py::{
-            test_context_with_call_handling, valid_invoke_v1, BLOCK_5,
-        };
+
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
             BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
+
+        // These tests require a Python environment properly set up _and_ a mainnet database with the first six blocks.
+        use std::num::NonZeroU32;
+        use std::path::PathBuf;
+        use std::sync::Arc;
+
+        use pathfinder_common::{
+            BlockHash, BlockNumber, Chain, ContractAddress, ContractNonce, ContractRoot, GasPrice,
+        };
+        use pathfinder_storage::{JournalMode, Storage};
+
+        // Mainnet block number 5
+        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
+            "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
+        ));
+
+        pub(crate) fn valid_invoke_v1(account_address: ContractAddress) -> BroadcastedTransaction {
+            BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
+                BroadcastedInvokeTransactionV1 {
+                    version: TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    max_fee: Fee(Default::default()),
+                    signature: vec![],
+                    nonce: TransactionNonce(Default::default()),
+                    sender_address: account_address,
+                    calldata: vec![
+                        // Transaction data taken from:
+                        // https://alpha-mainnet.starknet.io/feeder_gateway/get_transaction?transactionHash=0x000c52079f33dcb44a58904fac3803fd908ac28d6632b67179ee06f2daccb4b5
+                        //
+                        // Structure of "outer" calldata (BroadcastedInvokeTransactionV1::calldata) is based on:
+                        //
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/4dd04250c55ae8a5bbcb72663c989bb204e8d998/src/openzeppelin/account/IAccount.cairo#L30
+                        //
+                        // func __execute__(
+                        //     call_array_len: felt,          // <-- number of contract calls passed through this account in this transaction (here: 1)
+                        //     call_array: AccountCallArray*, // <-- metadata for each passed contract call
+                        //     calldata_len: felt,            // <-- unused
+                        //     calldata: felt*                // <-- this entire "outer" vector (BroadcastedInvokeTransactionV1::calldata)
+                        // )
+                        //
+                        // Metadata for each contract call passed through the account
+                        //
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/4dd04250c55ae8a5bbcb72663c989bb204e8d998/src/openzeppelin/account/library.cairo#L52
+                        //
+                        // struct AccountCallArray {
+                        //     to: felt,            // The address of the contract that is being called
+                        //     selector: felt,      // Entry point selector for the contract function called
+                        //     data_offset: felt,   // Offset in the "outer" calldata (BroadcastedInvokeTransactionV1::calldata) to the next contract's calldata
+                        //     data_len: felt,      // Size of the calldata for this contract function call
+                        // }
+                        //
+                        // To see how the above structure is translated to a proper calldata for a single call instance see
+                        // a "preset" implementation of IAccount
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/4dd04250c55ae8a5bbcb72663c989bb204e8d998/src/openzeppelin/account/presets/Account.cairo#L128
+                        // https://github.com/OpenZeppelin/cairo-contracts/blob/main/src/openzeppelin/account/library.cairo#L239
+                        //
+                        // especially
+                        //
+                        // func _from_call_array_to_call{syscall_ptr: felt*}(
+                        //     call_array_len: felt, call_array: AccountCallArray*, calldata: felt*, calls: Call*
+                        // )
+                        //
+                        // Called contract address, i.e. AccountCallArray::to
+                        call_param!(
+                            "05a02acdbf218464be3dd787df7a302f71fab586cad5588410ba88b3ed7b3a21"
+                        ),
+                        // Entry point selector for the called contract, i.e. AccountCallArray::selector
+                        call_param!(
+                            "03d7905601c217734671143d457f0db37f7f8883112abd34b92c4abfeafde0c3"
+                        ),
+                        // Length of the call data for the called contract, i.e. AccountCallArray::data_len
+                        call_param!("2"),
+                        // Proper calldata for this contract
+                        call_param!(
+                            "e150b6c2db6ed644483b01685571de46d2045f267d437632b508c19f3eb877"
+                        ),
+                        call_param!(
+                            "0494196e88ce16bff11180d59f3c75e4ba3475d9fba76249ab5f044bcd25add6"
+                        ),
+                    ],
+                },
+            ))
+        }
+
+        pub(crate) fn test_storage_with_account(
+            gas_price: GasPrice,
+        ) -> (
+            tempfile::TempDir,
+            Storage,
+            ContractAddress,
+            BlockHash,
+            BlockNumber,
+        ) {
+            let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            source_path.push("fixtures/mainnet.sqlite");
+
+            let db_dir = tempfile::TempDir::new().unwrap();
+            let mut db_path = PathBuf::from(db_dir.path());
+            db_path.push("mainnet.sqlite");
+
+            std::fs::copy(&source_path, &db_path).unwrap();
+
+            let storage = pathfinder_storage::Storage::migrate(db_path, JournalMode::WAL)
+                .unwrap()
+                .create_pool(NonZeroU32::new(1).unwrap())
+                .unwrap();
+
+            let (account_address, latest_block_hash, latest_block_number) =
+                add_dummy_account(storage.clone(), gas_price);
+
+            (
+                db_dir,
+                storage,
+                account_address,
+                latest_block_hash,
+                latest_block_number,
+            )
+        }
+
+        pub(crate) async fn test_context_with_call_handling() -> (
+            tempfile::TempDir,
+            RpcContext,
+            tokio::task::JoinHandle<()>,
+            ContractAddress,
+            BlockHash,
+        ) {
+            use pathfinder_common::ChainId;
+
+            let (db_dir, storage, account_address, latest_block_hash, _) =
+                test_storage_with_account(GasPrice::ZERO);
+
+            let sync_state = Arc::new(crate::SyncState::default());
+            let (call_handle, cairo_handle) = crate::cairo::ext_py::start(
+                storage.path().into(),
+                std::num::NonZeroUsize::try_from(2).unwrap(),
+                futures::future::pending(),
+                Chain::Mainnet,
+            )
+            .await
+            .unwrap();
+
+            let sequencer = starknet_gateway_client::Client::mainnet().disable_retry_for_tests();
+            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
+            (
+                db_dir,
+                context.with_call_handling(call_handle),
+                cairo_handle,
+                account_address,
+                latest_block_hash,
+            )
+        }
+
+        fn add_dummy_account(
+            storage: pathfinder_storage::Storage,
+            gas_price: GasPrice,
+        ) -> (ContractAddress, BlockHash, BlockNumber) {
+            let mut db_conn = storage.connection().unwrap();
+            let db_txn = db_conn.transaction().unwrap();
+
+            //
+            // "Declare"
+            //
+            let class_hash =
+                starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
+            let class_definition = starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
+
+            db_txn
+                .insert_cairo_class(class_hash, class_definition)
+                .unwrap();
+
+            //
+            // "Deploy"
+            //
+            let contract_address = contract_address_bytes!(b"account");
+            let contract_root = ContractRoot::ZERO;
+            let contract_nonce = ContractNonce::ZERO;
+            let contract_state_hash =
+                pathfinder_merkle_tree::contract_state::calculate_contract_state_hash(
+                    class_hash,
+                    contract_root,
+                    contract_nonce,
+                );
+
+            db_txn
+                .insert_contract_state(
+                    contract_state_hash,
+                    class_hash,
+                    contract_root,
+                    contract_nonce,
+                )
+                .unwrap();
+
+            let latest_header = db_txn
+                .block_header(pathfinder_storage::BlockId::Latest)
+                .unwrap()
+                .unwrap();
+
+            let mut storage_commitment_tree = pathfinder_merkle_tree::StorageCommitmentTree::load(
+                &db_txn,
+                latest_header.storage_commitment,
+            )
+            .unwrap();
+
+            storage_commitment_tree
+                .set(contract_address, contract_state_hash)
+                .unwrap();
+
+            let (new_storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
+            db_txn
+                .insert_storage_trie(new_storage_commitment, &nodes)
+                .unwrap();
+
+            let new_header = latest_header
+                .child_builder()
+                .with_storage_commitment(new_storage_commitment)
+                .with_gas_price(gas_price)
+                .with_calculated_state_commitment()
+                .finalize_with_hash(block_hash_bytes!(b"latest block"));
+            db_txn.insert_block_header(&new_header).unwrap();
+
+            let state_update = new_header
+                .init_state_update()
+                .with_deployed_contract(contract_address, class_hash);
+
+            db_txn
+                .insert_state_update(new_header.number, &state_update)
+                .unwrap();
+
+            // Persist
+            db_txn.commit().unwrap();
+
+            (contract_address, new_header.hash, new_header.number)
+        }
 
         #[tokio::test]
         async fn no_such_block() {

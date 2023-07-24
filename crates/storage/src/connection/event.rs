@@ -272,73 +272,6 @@ fn encode_event_data_to_bytes(data: &[EventData], buffer: &mut Vec<u8>) {
     buffer.extend(data.iter().flat_map(|e| (*e.0.as_be_bytes()).into_iter()))
 }
 
-#[derive(Clone)]
-/// Event key filter for the v0.1 and v0.2 JSON-RPC API
-///
-/// In these API versions events are matched against a list of keys. An event
-/// matches the filter if _any_ key matches.
-pub struct V02KeyFilter {
-    key_fts_expression: Option<String>,
-}
-
-impl V02KeyFilter {
-    pub fn new(keys: Vec<EventKey>) -> Self {
-        let key_fts_expression = if keys.is_empty() {
-            None
-        } else {
-            let mut key_fts_expression = String::with_capacity(100);
-
-            keys.iter().enumerate().for_each(|(i, key)| {
-                key_fts_expression.push('"');
-                encode_event_key_to_base64(key, &mut key_fts_expression);
-                key_fts_expression.push('"');
-
-                if i != keys.len() - 1 {
-                    key_fts_expression.push_str(" OR ");
-                }
-            });
-
-            Some(key_fts_expression)
-        };
-
-        Self { key_fts_expression }
-    }
-}
-
-impl KeyFilter for V02KeyFilter {
-    fn count(&self, tx: &Transaction<'_>) -> anyhow::Result<Option<usize>> {
-        match &self.key_fts_expression {
-            None => Ok(None),
-            Some(key_fts_expression) => {
-                let count: usize = tx.inner().query_row(
-                    "SELECT COUNT(1) FROM starknet_events_keys WHERE keys MATCH :events_match",
-                    [&key_fts_expression],
-                    |row| row.get(0),
-                )?;
-                Ok(Some(count))
-            }
-        }
-    }
-
-    fn apply(&self, strategy: QueryStrategy) -> Option<KeyFilterResult<'_>> {
-        match self.key_fts_expression.as_ref() {
-            None => None,
-            Some(key_fts_expression) => {
-                let base_query = match strategy {
-                    QueryStrategy::BlockRangeFirst => " CROSS JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
-                    QueryStrategy::KeysFirst => " INNER JOIN starknet_events_keys ON starknet_events.rowid = starknet_events_keys.rowid",
-                };
-
-                Some(KeyFilterResult {
-                    base_query,
-                    where_statement: "starknet_events_keys.keys MATCH :events_match",
-                    param: (":events_match", key_fts_expression.to_sql()),
-                })
-            }
-        }
-    }
-}
-
 fn encode_event_key_and_index_to_base32(index: u8, key: &EventKey, output: &mut String) {
     let mut buf = [0u8; 33];
     buf[0] = index;
@@ -702,8 +635,8 @@ mod tests {
             from_block: Some(expected_event.block_number),
             to_block: Some(expected_event.block_number),
             contract_address: Some(expected_event.from_address),
-            // we're using a key which is present in _all_ events
-            keys: V02KeyFilter::new(vec![event_key!("0xdeadbeef")]),
+            // we're using a key which is present in _all_ events as the 2nd key
+            keys: V03KeyFilter::new(vec![vec![], vec![event_key!("0xdeadbeef")]]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -823,7 +756,7 @@ mod tests {
                 from_block: None,
                 to_block: None,
                 contract_address: None,
-                keys: V02KeyFilter::new(vec![]),
+                keys: V03KeyFilter::new(vec![]),
                 page_size: 1024,
                 offset: 0,
             },
@@ -854,7 +787,7 @@ mod tests {
             from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
             to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64)),
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -883,7 +816,7 @@ mod tests {
             from_block: None,
             to_block: Some(BlockNumber::new_or_panic(UNTIL_BLOCK_NUMBER as u64)),
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -912,7 +845,7 @@ mod tests {
             from_block: Some(BlockNumber::new_or_panic(FROM_BLOCK_NUMBER as u64)),
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -941,34 +874,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: Some(expected_event.from_address),
-            keys: V02KeyFilter::new(vec![]),
-            page_size: test_utils::NUM_EVENTS,
-            offset: 0,
-        };
-
-        let events = get_events(&tx, &filter).unwrap();
-        assert_eq!(
-            events,
-            PageOfEvents {
-                events: vec![expected_event.clone()],
-                is_last_page: true,
-            }
-        );
-    }
-
-    #[test]
-    fn get_events_by_key_v02() {
-        let (storage, test_data) = test_utils::setup_test_storage();
-        let emitted_events = test_data.events;
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        let expected_event = &emitted_events[27];
-        let filter = EventFilter {
-            from_block: None,
-            to_block: None,
-            contract_address: None,
-            keys: V02KeyFilter::new(vec![expected_event.keys[0]]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -1041,7 +947,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
         };
@@ -1067,7 +973,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: 10,
             offset: 0,
         };
@@ -1084,7 +990,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: 10,
             offset: 10,
         };
@@ -1101,7 +1007,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: 10,
             offset: 30,
         };
@@ -1126,7 +1032,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: PAGE_SIZE,
             // _after_ the last one
             offset: test_utils::NUM_BLOCKS * test_utils::EVENTS_PER_BLOCK,
@@ -1151,7 +1057,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: 0,
             offset: 0,
         };
@@ -1163,7 +1069,7 @@ mod tests {
             from_block: None,
             to_block: None,
             contract_address: None,
-            keys: V02KeyFilter::new(vec![]),
+            keys: V03KeyFilter::new(vec![]),
             page_size: PAGE_SIZE_LIMIT + 1,
             offset: 0,
         };
@@ -1172,69 +1078,6 @@ mod tests {
         assert_eq!(
             result.unwrap_err().downcast::<EventFilterError>().unwrap(),
             EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT)
-        );
-    }
-
-    #[test]
-    fn get_events_by_key_v02_with_paging() {
-        let (storage, test_data) = test_utils::setup_test_storage();
-        let emitted_events = test_data.events;
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        let expected_events = &emitted_events[27..32];
-        let keys_for_expected_events =
-            V02KeyFilter::new(expected_events.iter().map(|e| e.keys[0]).collect());
-
-        let filter = EventFilter {
-            from_block: None,
-            to_block: None,
-            contract_address: None,
-            keys: keys_for_expected_events.clone(),
-            page_size: 2,
-            offset: 0,
-        };
-        let events = get_events(&tx, &filter).unwrap();
-        assert_eq!(
-            events,
-            PageOfEvents {
-                events: expected_events[..2].to_vec(),
-                is_last_page: false,
-            }
-        );
-
-        let filter = EventFilter {
-            from_block: None,
-            to_block: None,
-            contract_address: None,
-            keys: keys_for_expected_events.clone(),
-            page_size: 2,
-            offset: 2,
-        };
-        let events = get_events(&tx, &filter).unwrap();
-        assert_eq!(
-            events,
-            PageOfEvents {
-                events: expected_events[2..4].to_vec(),
-                is_last_page: false,
-            }
-        );
-
-        let filter = EventFilter {
-            from_block: None,
-            to_block: None,
-            contract_address: None,
-            keys: keys_for_expected_events,
-            page_size: 2,
-            offset: 4,
-        };
-        let events = get_events(&tx, &filter).unwrap();
-        assert_eq!(
-            events,
-            PageOfEvents {
-                events: expected_events[4..].to_vec(),
-                is_last_page: true,
-            }
         );
     }
 
@@ -1311,7 +1154,7 @@ mod tests {
 
         let block = Some(BlockNumber::new_or_panic(2));
 
-        let count = event_count(&tx, block, block, None, &V02KeyFilter::new(vec![])).unwrap();
+        let count = event_count(&tx, block, block, None, &V03KeyFilter::new(vec![])).unwrap();
         assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
     }
 
@@ -1333,7 +1176,7 @@ mod tests {
             Some(BlockNumber::GENESIS),
             Some(BlockNumber::MAX),
             Some(addr),
-            &V02KeyFilter::new(vec![]),
+            &V03KeyFilter::new(vec![]),
         )
         .unwrap();
         assert_eq!(count, expected);
@@ -1357,7 +1200,7 @@ mod tests {
             Some(BlockNumber::GENESIS),
             Some(BlockNumber::MAX),
             None,
-            &V02KeyFilter::new(vec![key]),
+            &V03KeyFilter::new(vec![vec![key]]),
         )
         .unwrap();
         assert_eq!(count, expected);

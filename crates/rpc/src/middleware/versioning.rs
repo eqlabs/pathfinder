@@ -43,7 +43,6 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
         // However for a non-empty path adding a trailing slash
         // makes it a different path from the original,
         // that's why we have to account for those separately.
-        "/rpc/v0.2" | "/rpc/v0.2/" => &[("starknet_", "v0.2_"), ("pathfinder_", "v0.2_")][..],
         "/" | "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..],
         "/rpc/v0.4" | "/rpc/v0.4/" => &[("starknet_", "v0.4_"), ("pathfinder_", "v0.4_")][..],
         "/rpc/pathfinder/v0.1" | "/rpc/pathfinder/v0.1/" => &[("pathfinder_", "v0.1_")][..],
@@ -213,7 +212,7 @@ mod response {
 
 pub mod test_utils {
     pub mod method_names {
-        pub const COMMON_FOR_V02_V03: [&str; 23] = [
+        pub const COMMON_FOR_V03: [&str; 23] = [
             "starknet_addDeclareTransaction",
             "starknet_addDeployAccountTransaction",
             "starknet_addInvokeTransaction",
@@ -245,7 +244,6 @@ pub mod test_utils {
     }
 
     pub mod paths {
-        pub const V02: &[&str] = &["/rpc/v0.2", "/rpc/v0.2/"];
         pub const V03: &[&str] = &["", "/", "/rpc/v0.3", "/rpc/v0.3/"];
         pub const PATHFINDER: &[&str] = &["/rpc/pathfinder/v0.1", "/rpc/pathfinder/v0.1/"];
     }
@@ -272,21 +270,15 @@ mod tests {
             .await
             .unwrap();
 
-        let not_in_v02 = method_names::V03_ONLY
-            .into_iter()
-            .clone()
-            .chain(method_names::PATHFINDER_ONLY.into_iter())
-            .collect::<Vec<_>>();
         let not_in_v03 = method_names::PATHFINDER_ONLY
             .into_iter()
             .collect::<Vec<_>>();
-        let not_in_pathfinder = method_names::COMMON_FOR_V02_V03
+        let not_in_pathfinder = method_names::COMMON_FOR_V03
             .into_iter()
             .chain(method_names::V03_ONLY.into_iter())
             .collect::<Vec<_>>();
 
         for (paths, methods) in vec![
-            (paths::V02, not_in_v02),
             (paths::V03, not_in_v03),
             (paths::PATHFINDER, not_in_pathfinder),
         ]

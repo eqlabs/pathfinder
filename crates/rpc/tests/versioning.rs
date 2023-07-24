@@ -18,12 +18,7 @@ async fn api_versions_are_routed_correctly_for_all_methods() {
         .await
         .unwrap();
 
-    let v02_methods = method_names::COMMON_FOR_V02_V03
-        .into_iter()
-        .chain(method_names::COMMON_FOR_ALL.into_iter())
-        .collect::<Vec<_>>();
-    let v03_methods = v02_methods
-        .clone()
+    let v03_methods = method_names::COMMON_FOR_V03
         .into_iter()
         .chain(method_names::V03_ONLY.into_iter())
         .collect::<Vec<_>>();
@@ -33,7 +28,6 @@ async fn api_versions_are_routed_correctly_for_all_methods() {
         .collect();
 
     for (paths, version, methods) in vec![
-        (paths::V02, "v0.2", v02_methods),
         (paths::V03, "v0.3", v03_methods),
         (paths::PATHFINDER, "v0.1", pathfinder_methods),
     ]
