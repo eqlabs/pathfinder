@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `cairo-lang` upgraded to 12.2.1a0
 
+### Removed
+
+- support for RPC v0.2
+
 ## [0.6.7] - 2023-07-17
 
 ### Fixed
