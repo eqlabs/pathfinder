@@ -230,6 +230,7 @@ pub mod transaction {
         pub ec_op_builtin: u64,
         pub keccak_builtin: u64,
         pub poseidon_builtin: u64,
+        pub segment_arena_builtin: u64,
     }
 
     /// Represents deserialized L1 to L2 message.
