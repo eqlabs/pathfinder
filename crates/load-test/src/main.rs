@@ -16,7 +16,7 @@ mod tasks;
 mod types;
 
 fn register_v02(attack: GooseAttack) -> GooseAttack {
-    use tasks::v02::*;
+    use tasks::v03::*;
 
     attack
         // primitive operations using the database
