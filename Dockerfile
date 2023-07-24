@@ -8,7 +8,7 @@
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.59-rust-1.69-slim-bullseye AS cargo-chef
+FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.61-rust-1.71-slim-bullseye AS cargo-chef
 WORKDIR /usr/src/pathfinder
 
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-planner
@@ -92,7 +92,7 @@ RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
 ###############################
 # Stage 3: Cairo 1.0 compiler #
 ###############################
-FROM starknet/cairo:2.1.0-rc0 AS cairo-compiler
+FROM starknet/cairo:2.1.0-rc1 AS cairo-compiler
 
 #######################
 # Final Stage: Runner #
