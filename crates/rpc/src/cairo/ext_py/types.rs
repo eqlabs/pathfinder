@@ -86,10 +86,10 @@ pub struct MsgToL1 {
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FeeEstimate {
-    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_consumed: primitive_types::H256,
-    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub gas_price: primitive_types::H256,
-    #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-    pub overall_fee: primitive_types::H256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub gas_consumed: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub gas_price: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub overall_fee: primitive_types::U256,
 }

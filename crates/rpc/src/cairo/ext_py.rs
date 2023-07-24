@@ -321,16 +321,13 @@ pub enum GasPriceSource {
     /// manufacture a block hash for some future use cases.
     PastBlock,
     /// Use this latest value from `eth_gasPrice`.
-    ///
-    /// U256 is not used for serialization matters, [u8; 32] could be used as well. python side's
-    /// serialization limits this value to u128 but in general `eth_gasPrice` is U256.
-    Current(primitive_types::H256),
+    Current(primitive_types::U256),
 }
 
 impl GasPriceSource {
-    const GAS_PRICE_ZERO: primitive_types::H256 = primitive_types::H256::zero();
-    /// Convert to `&H256`, for use in serialization.
-    fn as_price(&self) -> &primitive_types::H256 {
+    const GAS_PRICE_ZERO: primitive_types::U256 = primitive_types::U256::zero();
+    /// Convert to `&U256`, for use in serialization.
+    pub fn as_price(&self) -> &primitive_types::U256 {
         match self {
             GasPriceSource::PastBlock => &Self::GAS_PRICE_ZERO,
             GasPriceSource::Current(price) => price,
@@ -613,16 +610,14 @@ mod tests {
 
         let transactions = vec![valid_invoke_v1(account_address)];
 
-        use primitive_types::H256;
-
-        const EXPECTED_GAS_CONSUMED: u64 = 0x134a;
+        const EXPECTED_GAS_CONSUMED: u64 = 4938;
 
         for (gas_price_u64, block, use_past_block) in [
             (1, latest_block_number.into(), true),
             (10, latest_block_hash.into(), false),
             (123, BlockHashNumberOrLatest::Latest, false),
         ] {
-            let gas_price = H256::from_low_u64_be(gas_price_u64);
+            let gas_price = gas_price_u64.into();
             let fee = handle
                 .estimate_fee(
                     transactions.clone(),
@@ -641,9 +636,9 @@ mod tests {
             assert_eq!(
                 fee,
                 vec![crate::v02::types::reply::FeeEstimate {
-                    gas_consumed: H256::from_low_u64_be(EXPECTED_GAS_CONSUMED),
+                    gas_consumed: EXPECTED_GAS_CONSUMED.into(),
                     gas_price,
-                    overall_fee: H256::from_low_u64_be(EXPECTED_GAS_CONSUMED * gas_price_u64),
+                    overall_fee: (EXPECTED_GAS_CONSUMED * gas_price_u64).into(),
                 }],
                 "block: {block}, gas_price: {gas_price}"
             );
@@ -709,14 +704,12 @@ mod tests {
             .await
             .unwrap();
 
-        use primitive_types::H256;
-
         assert_eq!(
             at_block_fee,
             vec![crate::v02::types::reply::FeeEstimate {
-                gas_consumed: H256::from_low_u64_be(0xc19),
-                gas_price: H256::from_low_u64_be(1),
-                overall_fee: H256::from_low_u64_be(0xc19),
+                gas_consumed: 0xc19.into(),
+                gas_price: 1.into(),
+                overall_fee: 0xc19.into(),
             }]
         );
 

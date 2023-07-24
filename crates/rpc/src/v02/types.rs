@@ -836,14 +836,14 @@ pub mod reply {
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimate {
         /// The Ethereum gas cost of the transaction
-        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub gas_consumed: primitive_types::H256,
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub gas_consumed: primitive_types::U256,
         /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
-        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub gas_price: primitive_types::H256,
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub gas_price: primitive_types::U256,
         /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
-        #[serde_as(as = "pathfinder_serde::H256AsHexStr")]
-        pub overall_fee: primitive_types::H256,
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub overall_fee: primitive_types::U256,
     }
 
     #[cfg(test)]
