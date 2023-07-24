@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `cairo-lang` upgraded to 12.2.1a0
+- Cairo compiler upgraded from 2.0.2 to 2.1.0-rc1
 
 ### Removed
 
