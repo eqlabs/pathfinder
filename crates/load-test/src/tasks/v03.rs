@@ -2,7 +2,7 @@ use goose::prelude::*;
 use rand::{Rng, SeedableRng};
 use stark_hash::Felt;
 
-use crate::requests::v02::*;
+use crate::requests::v03::*;
 
 /// Fetch a random block, then fetch all individual transactions and receipts in the block.
 pub async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
