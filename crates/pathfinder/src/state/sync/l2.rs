@@ -149,7 +149,6 @@ where
                                 sequencer.clone(),
                                 (head.1, head.2),
                                 interval,
-                                chain,
                                 storage.clone(),
                             )
                             .await
@@ -243,7 +242,6 @@ where
             &state_update,
             &sequencer,
             &tx_event,
-            chain,
             &block.starknet_version,
             storage.clone(),
         )
@@ -292,7 +290,6 @@ pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
     tx_event: &mpsc::Sender<SyncEvent>,
-    chain: Chain,
     version: &StarknetVersion,
     storage: Storage,
 ) -> Result<(), anyhow::Error> {
@@ -346,7 +343,7 @@ pub async fn download_new_classes(
     .context("Querying database for missing classes")?;
 
     for class_hash in require_downloading {
-        let class = download_class(sequencer, class_hash, chain, version.clone())
+        let class = download_class(sequencer, class_hash, version.clone())
             .await
             .with_context(|| format!("Downloading class {}", class_hash.0))?;
 

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - control log color output via `--color auto|always|never`
+- if Sierra to CASM compilation fails we now fall back to fetching CASM from the gateway
 
 ### Fixed
 
