@@ -98,6 +98,20 @@ pub enum KnownStarknetErrorCode {
     UnauthorizedEntryPointForInvoke,
     #[serde(rename = "StarknetErrorCode.INVALID_CONTRACT_CLASS")]
     InvalidContractClass,
+    #[serde(rename = "StarknetErrorCode.CLASS_ALREADY_DECLARED")]
+    ClassAlreadyDeclared,
+    #[serde(rename = "StarkErrorCode.INVALID_SIGNATURE")]
+    InvalidSignature,
+    #[serde(rename = "StarknetErrorCode.INSUFFICIENT_ACCOUNT_BALANCE")]
+    InsufficientAccountBalance,
+    #[serde(rename = "StarknetErrorCode.INSUFFICIENT_MAX_FEE")]
+    InsufficientMaxFee,
+    #[serde(rename = "StarknetErrorCode.VALIDATE_FAILURE")]
+    ValidateFailure,
+    #[serde(rename = "StarknetErrorCode.CONTRACT_BYTECODE_SIZE_TOO_LARGE")]
+    ContractBytecodeSizeTooLarge,
+    #[serde(rename = "StarknetErrorCode.DUPLICATED_TRANSACTION")]
+    DuplicatedTransaction,
 }
 
 #[cfg(test)]
