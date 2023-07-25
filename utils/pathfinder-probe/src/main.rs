@@ -1,7 +1,10 @@
 use anyhow::Context;
 use axum::{routing, Router};
 use metrics_exporter_prometheus::PrometheusBuilder;
+use reqwest::Url;
 use std::{net::SocketAddr, time::Duration};
+
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 // RUST_LOG=pathfinder_probe=debug ./target/release/pathfinder-probe 0.0.0.0:19999 https://alpha-mainnet.starknet.io http://127.0.0.1:9545 5
 #[tokio::main]
@@ -16,13 +19,14 @@ async fn main() -> anyhow::Result<()> {
     let setup = setup()?;
     tracing::debug!(setup=?setup, "pathfinder-probe starting");
 
-    let listen_at: SocketAddr = setup.listen_at.parse().unwrap();
+    let listen_at = setup.listen_at;
     tracing::info!(server=?listen_at, "pathfinder-probe running");
 
     tokio::spawn(async move {
         loop {
-            if let Err(e) = tick(&setup).await {
-                tracing::error!(cause=?e, "Probe failed");
+            if let Err(cause) = tick(&setup).await {
+                tracing::error!(%cause, "Probe failed");
+                metrics::counter!("probe_failed", 1);
             }
             tokio::time::sleep(setup.poll_delay).await;
         }
@@ -40,9 +44,9 @@ async fn main() -> anyhow::Result<()> {
 
 #[derive(Debug)]
 struct Setup {
-    listen_at: String,
-    gateway_url: String,
-    pathfinder_url: String,
+    listen_at: SocketAddr,
+    gateway_url: Url,
+    pathfinder_url: Url,
     poll_delay: Duration,
 }
 
@@ -53,22 +57,23 @@ fn setup() -> anyhow::Result<Setup> {
         .zip(args.get(3))
         .zip(args.get(4))
         .map(|(((listen_at, gateway_url), pathfinder_url), delay_seconds)| Ok(Setup {
-            listen_at: listen_at.to_string(),
-            gateway_url: gateway_url.to_string(),
-            pathfinder_url: pathfinder_url.to_string(),
+            listen_at: listen_at.parse().context("Failed to parse <listen-at> socket address")?,
+            gateway_url: Url::parse(gateway_url).context("Failed to parse <gateway-url> as URL")?,
+            pathfinder_url: Url::parse(pathfinder_url).context("Failed to parse <pathfinder-url> as URL")?,
             poll_delay: Duration::from_secs(delay_seconds.parse().context("Failed to parse <poll-seconds> integer")?),
         }))
         .ok_or(anyhow::anyhow!("Failed to parse arguments: <listen-at> <gateway-url> <pathfinder-url> <poll-delay-seconds>"))?
 }
 
 // curl "https://alpha-mainnet.starknet.io/feeder_gateway/get_block?blockNumber=latest" 2>/dev/null | jq '.block_number'
-async fn get_gateway_latest(gateway_url: &str) -> anyhow::Result<i64> {
+async fn get_gateway_latest(gateway_url: &Url) -> anyhow::Result<i64> {
     let json: serde_json::Value = reqwest::ClientBuilder::new()
         .build()?
         .get(&format!(
             "{}/feeder_gateway/get_block?blockNumber=latest",
             gateway_url
         ))
+        .timeout(REQUEST_TIMEOUT)
         .send()
         .await?
         .json()
@@ -80,11 +85,12 @@ async fn get_gateway_latest(gateway_url: &str) -> anyhow::Result<i64> {
 }
 
 // curl -H 'Content-type: application/json' -d '{"jsonrpc":"2.0","method":"starknet_blockNumber","params":[],"id":1}' http://127.0.0.1:9000/rpc/v0.3
-async fn get_pathfinder_head(pathfinder_url: &str) -> anyhow::Result<i64> {
+async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<i64> {
     let json: serde_json::Value = reqwest::ClientBuilder::new().build()?
         .post(&format!("{}/rpc/v0.3", pathfinder_url))
         .header("Content-type", "application/json")
         .json(&serde_json::json!({"jsonrpc":"2.0","method":"starknet_blockNumber","params":[],"id":1}))
+        .timeout(REQUEST_TIMEOUT)
         .send()
         .await?
         .json()
