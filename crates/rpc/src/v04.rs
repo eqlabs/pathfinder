@@ -60,7 +60,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method(
             "v0.4_starknet_getTransactionReceipt",
-            v02_method::get_transaction_receipt,
+            v04_method::get_transaction_receipt,
         )?
         .register_method_with_no_input(
             "v0.4_starknet_pendingTransactions",
