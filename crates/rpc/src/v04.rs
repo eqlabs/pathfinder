@@ -16,7 +16,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method(
             "v0.4_starknet_addDeployAccountTransaction",
-            v02_method::add_deploy_account_transaction,
+            v04_method::add_deploy_account_transaction,
         )?
         .register_method(
             "v0.4_starknet_addInvokeTransaction",
