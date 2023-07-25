@@ -20,7 +20,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method(
             "v0.4_starknet_addInvokeTransaction",
-            v02_method::add_invoke_transaction,
+            v04_method::add_invoke_transaction,
         )?
         .register_method_with_no_input(
             "v0.4_starknet_blockHashAndNumber",
