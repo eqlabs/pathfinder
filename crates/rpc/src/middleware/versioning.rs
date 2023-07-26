@@ -212,7 +212,7 @@ mod response {
 
 pub mod test_utils {
     pub mod method_names {
-        pub const COMMON_FOR_V03: [&str; 23] = [
+        pub const COMMON_FOR_V03_V04: [&str; 23] = [
             "starknet_addDeclareTransaction",
             "starknet_addDeployAccountTransaction",
             "starknet_addInvokeTransaction",
@@ -240,11 +240,13 @@ pub mod test_utils {
         pub const COMMON_FOR_ALL: [&str; 2] =
             ["pathfinder_getProof", "pathfinder_getTransactionStatus"];
         pub const V03_ONLY: [&str; 1] = ["starknet_simulateTransaction"];
+        pub const V04_ONLY: [&str; 1] = ["starknet_simulateTransactions"];
         pub const PATHFINDER_ONLY: [&str; 1] = ["pathfinder_version"];
     }
 
     pub mod paths {
         pub const V03: &[&str] = &["", "/", "/rpc/v0.3", "/rpc/v0.3/"];
+        pub const V04: &[&str] = &["/rpc/v0.4", "/rpc/v0.4/"];
         pub const PATHFINDER: &[&str] = &["/rpc/pathfinder/v0.1", "/rpc/pathfinder/v0.1/"];
     }
 }
@@ -272,14 +274,21 @@ mod tests {
 
         let not_in_v03 = method_names::PATHFINDER_ONLY
             .into_iter()
+            .chain(method_names::V04_ONLY.into_iter())
             .collect::<Vec<_>>();
-        let not_in_pathfinder = method_names::COMMON_FOR_V03
+        let not_in_v04 = method_names::PATHFINDER_ONLY
             .into_iter()
             .chain(method_names::V03_ONLY.into_iter())
+            .collect::<Vec<_>>();
+        let not_in_pathfinder = method_names::COMMON_FOR_V03_V04
+            .into_iter()
+            .chain(method_names::V03_ONLY.into_iter())
+            .chain(method_names::V04_ONLY.into_iter())
             .collect::<Vec<_>>();
 
         for (paths, methods) in vec![
             (paths::V03, not_in_v03),
+            (paths::V04, not_in_v04),
             (paths::PATHFINDER, not_in_pathfinder),
         ]
         .into_iter()
