@@ -99,7 +99,7 @@ async fn get_gateway_latest(gateway_url: &Url) -> anyhow::Result<Head> {
     })
 }
 
-// curl -H 'Content-type: application/json' -d '{"jsonrpc":"2.0","method":"starknet_blockNumber","params":[],"id":1}' http://127.0.0.1:9000/rpc/v0.3
+// curl -H 'Content-type: application/json' -d '{"jsonrpc":"2.0","method":"starknet_getBlockWithTxHashes","params":["latest"],"id":1}' http://127.0.0.1:9000/rpc/v0.3
 async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<Head> {
     let json: serde_json::Value = reqwest::ClientBuilder::new().build()?
         .post(&format!("{}/rpc/v0.3", pathfinder_url))
@@ -111,11 +111,17 @@ async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<Head> {
         .json()
         .await?;
 
-    let block_number = json["result"]["block_number"]
+    let block_number = json["result"]
+        .as_object()
+        .ok_or(anyhow::anyhow!("Response 'result' missing"))?
+        ["block_number"]
         .as_i64()
         .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
 
-    let block_timestamp = json["result"]["timestamp"]
+    let block_timestamp = json["result"]
+        .as_object()
+        .ok_or(anyhow::anyhow!("Response 'result' missing"))?
+        ["timestamp"]
         .as_i64()
         .ok_or(anyhow::anyhow!("Failed to fetch block timestamp"))?;
 
