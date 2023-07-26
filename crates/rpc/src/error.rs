@@ -50,11 +50,13 @@ pub enum RpcError {
     #[error("Compilation failed")]
     CompilationFailed,
     #[error("Contract bytecode size is too large")]
-    ContractBytecodeSizeTooLarge,
+    ContractBytecodeSizeIsTooLarge,
     #[error("Sender address in not an account contract")]
     NonAccount,
     #[error("A transaction with the same hash already exists in the mempool")]
     DuplicateTransaction,
+    #[error("The compiled class hash did not match the one supplied in the transaction")]
+    CompiledClassHashMismatch,
     #[error(transparent)]
     GatewayError(starknet_gateway_types::error::StarknetError),
     #[error(transparent)]
@@ -84,9 +86,10 @@ impl RpcError {
             RpcError::InsufficientAccountBalance => 54,
             RpcError::ValidationFailure => 55,
             RpcError::CompilationFailed => 56,
-            RpcError::ContractBytecodeSizeTooLarge => 57,
+            RpcError::ContractBytecodeSizeIsTooLarge => 57,
             RpcError::NonAccount => 58,
             RpcError::DuplicateTransaction => 59,
+            RpcError::CompiledClassHashMismatch => 60,
             RpcError::ProofLimitExceeded { .. } => 10000,
             RpcError::GatewayError(_) | RpcError::Internal(_) => {
                 jsonrpsee::types::error::ErrorCode::InternalError.code()

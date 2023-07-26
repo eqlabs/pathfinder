@@ -19,6 +19,7 @@ pub enum AddDeclareTransactionError {
     CompilationFailed,
     ContractBytecodeSizeTooLarge,
     DuplicateTransaction,
+    CompiledClassHashMismatch,
     GatewayError(StarknetError),
     Internal(anyhow::Error),
 }
@@ -36,9 +37,12 @@ impl From<AddDeclareTransactionError> for crate::error::RpcError {
             AddDeclareTransactionError::ValidationFailure => Self::ValidationFailure,
             AddDeclareTransactionError::CompilationFailed => Self::CompilationFailed,
             AddDeclareTransactionError::ContractBytecodeSizeTooLarge => {
-                Self::ContractBytecodeSizeTooLarge
+                Self::ContractBytecodeSizeIsTooLarge
             }
             AddDeclareTransactionError::DuplicateTransaction => Self::DuplicateTransaction,
+            AddDeclareTransactionError::CompiledClassHashMismatch => {
+                Self::CompiledClassHashMismatch
+            }
             AddDeclareTransactionError::GatewayError(x) => Self::GatewayError(x),
             AddDeclareTransactionError::Internal(x) => Self::Internal(x),
         }
@@ -56,7 +60,8 @@ impl From<SequencerError> for AddDeclareTransactionError {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
             ClassAlreadyDeclared, CompilationFailed, ContractBytecodeSizeTooLarge,
             DuplicatedTransaction, InsufficientAccountBalance, InsufficientMaxFee,
-            InvalidContractClass, InvalidProgram, InvalidTransactionNonce, ValidateFailure,
+            InvalidCompiledClassHash, InvalidContractClass, InvalidProgram,
+            InvalidTransactionNonce, ValidateFailure,
         };
         match e {
             SequencerError::StarknetError(e)
@@ -87,6 +92,9 @@ impl From<SequencerError> for AddDeclareTransactionError {
             }
             SequencerError::StarknetError(e) if e.code == ValidateFailure.into() => {
                 AddDeclareTransactionError::ValidationFailure
+            }
+            SequencerError::StarknetError(e) if e.code == InvalidCompiledClassHash.into() => {
+                AddDeclareTransactionError::CompiledClassHashMismatch
             }
             SequencerError::StarknetError(other) => AddDeclareTransactionError::GatewayError(other),
             _ => AddDeclareTransactionError::Internal(e.into()),
