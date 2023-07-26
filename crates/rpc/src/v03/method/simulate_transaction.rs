@@ -406,18 +406,10 @@ mod tests {
                 {
                     "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
                     "max_fee": "0x0",
-                    "signature": [
-                        "0x296ab4b0b7cb0c6929c4fb1e04b782511dffb049f72a90efe5d53f0515eab88",
-                        "0x4e80d8bb98a9baf47f6f0459c2329a5401538576e76436acaf5f56c573c7d77"
-                    ],
-                    "class_hash": "0x2b63cad399dd78efbc9938631e74079cbf19c9c08828e820e7606f46b947513",
                     "signature": [],
                     "class_hash": DUMMY_ACCOUNT_CLASS_HASH,
                     "nonce": "0x0",
                     "version": "0x100000000000000000000000000000001",
-                    "constructor_calldata": [
-                        "0x63c056da088a767a6685ea0126f447681b5bceff5629789b70738bc26b5469d"
-                    ],
                     "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
                     "constructor_calldata": [],
                     "type": "DEPLOY_ACCOUNT"
