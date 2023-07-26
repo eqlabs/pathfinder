@@ -71,8 +71,8 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method("v0.4_starknet_getEvents", v03_method::get_events)?
         .register_method("v0.4_starknet_getStateUpdate", v03_method::get_state_update)?
         .register_method(
-            "v0.4_starknet_simulateTransaction",
-            v03_method::simulate_transaction,
+            "v0.4_starknet_simulateTransactions",
+            v04_method::simulate_transactions,
         )?
         .register_method(
             "v0.4_pathfinder_getProof",
