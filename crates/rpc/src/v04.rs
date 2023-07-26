@@ -60,13 +60,13 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method(
             "v0.4_starknet_getTransactionReceipt",
-            v02_method::get_transaction_receipt,
+            v04_method::get_transaction_receipt,
         )?
         .register_method_with_no_input(
             "v0.4_starknet_pendingTransactions",
             v02_method::pending_transactions,
         )?
-        .register_method_with_no_input("v0.4_starknet_syncing", v02_method::syncing)?
+        .register_method_with_no_input("v0.4_starknet_syncing", v04_method::syncing)?
         // Specific implementations for v0.3
         .register_method("v0.4_starknet_getEvents", v03_method::get_events)?
         .register_method("v0.4_starknet_getStateUpdate", v03_method::get_state_update)?
