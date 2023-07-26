@@ -62,6 +62,20 @@ pub async fn simulate_transactions(
         .0
         .iter()
         .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
+
+    let skip_fee_charge = input
+        .simulation_flags
+        .0
+        .iter()
+        .any(|flag| flag == &dto::SimulationFlag::SkipFeeCharge);
+
+    if !skip_fee_charge {
+        return Err(
+            anyhow::anyhow!("Pathfinder currently does not support `starknet_simulateTransactions` without `SKIP_FEE_CHARGE` simulation flag being set. This will become supported in a future release")
+                .into()
+        );
+    }
+
     let txs = handle
         .simulate_transaction(
             at_block,
@@ -413,7 +427,7 @@ mod tests {
                     "type": "DEPLOY_ACCOUNT"
                 }
             ],
-            "simulation_flags": []
+            "simulation_flags": ["SKIP_FEE_CHARGE"]
         });
         let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
 
@@ -477,5 +491,69 @@ mod tests {
 
         let result = simulate_transactions(rpc, input).await.expect("result");
         pretty_assertions::assert_eq!(result.0, expected);
+    }
+
+    #[tokio::test]
+    async fn skip_fee_charge_is_required() {
+        // this is a valid test except we don't specify skipping fee charges.
+        let dir = tempdir().expect("tempdir");
+        let mut db_path = dir.path().to_path_buf();
+        db_path.push("db.sqlite");
+
+        let storage = Storage::migrate(db_path, JournalMode::WAL)
+            .expect("storage")
+            .create_pool(NonZeroU32::new(1).unwrap())
+            .unwrap();
+
+        {
+            let mut db = storage.connection().unwrap();
+            let tx = db.transaction().expect("tx");
+
+            tx.insert_cairo_class(DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
+                .expect("insert class");
+
+            let header = BlockHeader::builder()
+                .with_number(BlockNumber::GENESIS + 1)
+                .with_timestamp(BlockTimestamp::new_or_panic(1))
+                .with_gas_price(GasPrice(1))
+                .finalize_with_hash(BlockHash::ZERO);
+
+            tx.insert_block_header(&header).unwrap();
+            tx.commit().unwrap();
+        }
+
+        let (call_handle, _join_handle) = crate::cairo::ext_py::start(
+            storage.path().into(),
+            std::num::NonZeroUsize::try_from(1).unwrap(),
+            futures::future::pending(),
+            Chain::Testnet,
+        )
+        .await
+        .unwrap();
+
+        let rpc = RpcContext::for_tests()
+            .with_storage(storage)
+            .with_call_handling(call_handle);
+
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transactions": [
+                {
+                    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+                    "max_fee": "0x0",
+                    "signature": [],
+                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH,
+                    "nonce": "0x0",
+                    "version": "0x100000000000000000000000000000001",
+                    "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    "constructor_calldata": [],
+                    "type": "DEPLOY_ACCOUNT"
+                }
+            ],
+            "simulation_flags": []
+        });
+        let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
+
+        simulate_transactions(rpc, input).await.unwrap_err();
     }
 }
