@@ -124,6 +124,7 @@ Hint: If you are looking to run two instances of pathfinder, you must configure 
 
         let module = crate::module::Module::new(self.context);
         let module = v03::register_methods(module)?;
+        let module = v04::register_methods(module)?;
         let module = pathfinder::register_methods(module)?;
         let module = match &self.ws_senders {
             Some(ws_senders) => websocket::register_subscriptions(module, ws_senders.clone())?,
