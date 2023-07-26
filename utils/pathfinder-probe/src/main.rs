@@ -50,6 +50,12 @@ struct Setup {
     poll_delay: Duration,
 }
 
+#[derive(Debug)]
+struct Head {
+    block_number: i64,
+    block_timestamp: i64,
+}
+
 fn setup() -> anyhow::Result<Setup> {
     let args = std::env::args().collect::<Vec<String>>();
     args.get(1)
@@ -66,7 +72,7 @@ fn setup() -> anyhow::Result<Setup> {
 }
 
 // curl "https://alpha-mainnet.starknet.io/feeder_gateway/get_block?blockNumber=latest" 2>/dev/null | jq '.block_number'
-async fn get_gateway_latest(gateway_url: &Url) -> anyhow::Result<i64> {
+async fn get_gateway_latest(gateway_url: &Url) -> anyhow::Result<Head> {
     let json: serde_json::Value = reqwest::ClientBuilder::new()
         .build()?
         .get(&format!(
@@ -79,40 +85,61 @@ async fn get_gateway_latest(gateway_url: &Url) -> anyhow::Result<i64> {
         .json()
         .await?;
 
-    json["block_number"]
+    let block_number = json["block_number"]
         .as_i64()
-        .ok_or(anyhow::anyhow!("Failed to fetch block number"))
+        .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
+
+    let block_timestamp = json["timestamp"]
+        .as_i64()
+        .ok_or(anyhow::anyhow!("Failed to fetch block timestamp"))?;
+
+    Ok(Head {
+        block_number,
+        block_timestamp,
+    })
 }
 
 // curl -H 'Content-type: application/json' -d '{"jsonrpc":"2.0","method":"starknet_blockNumber","params":[],"id":1}' http://127.0.0.1:9000/rpc/v0.3
-async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<i64> {
+async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<Head> {
     let json: serde_json::Value = reqwest::ClientBuilder::new().build()?
         .post(&format!("{}/rpc/v0.3", pathfinder_url))
         .header("Content-type", "application/json")
-        .json(&serde_json::json!({"jsonrpc":"2.0","method":"starknet_blockNumber","params":[],"id":1}))
+        .json(&serde_json::json!({"jsonrpc":"2.0","method":"starknet_getBlockWithTxHashes","params":["latest"],"id":1}))
         .timeout(REQUEST_TIMEOUT)
         .send()
         .await?
         .json()
         .await?;
 
-    json["result"]
+    let block_number = json["result"]["block_number"]
         .as_i64()
-        .ok_or(anyhow::anyhow!("Failed to fetch block number"))
+        .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
+
+    let block_timestamp = json["result"]["timestamp"]
+        .as_i64()
+        .ok_or(anyhow::anyhow!("Failed to fetch block timestamp"))?;
+
+    Ok(Head {
+        block_number,
+        block_timestamp,
+    })
 }
 
 async fn tick(setup: &Setup) -> anyhow::Result<()> {
-    let gw_head = get_gateway_latest(&setup.gateway_url).await?;
-    tracing::debug!(head = gw_head, "gateway");
+    let gw = get_gateway_latest(&setup.gateway_url).await?;
+    tracing::debug!(head = gw.block_number, "gateway");
 
-    let pf_head = get_pathfinder_head(&setup.pathfinder_url).await?;
-    tracing::debug!(head = pf_head, "pathfinder");
+    let pf = get_pathfinder_head(&setup.pathfinder_url).await?;
+    tracing::debug!(head = pf.block_number, "pathfinder");
 
-    metrics::gauge!("gw_head", gw_head as f64);
-    metrics::gauge!("pf_head", pf_head as f64);
+    metrics::gauge!("gw_head", gw.block_number as f64);
+    metrics::gauge!("pf_head", pf.block_number as f64);
 
-    let delay = gw_head - pf_head;
-    metrics::gauge!("blocks_missing", delay as f64);
+    let blocks_missing = gw.block_number - pf.block_number;
+    metrics::gauge!("blocks_missing", blocks_missing as f64);
+
+    let blocks_delay = gw.block_timestamp - pf.block_timestamp;
+    metrics::gauge!("blocks_delay", blocks_delay as f64);
 
     Ok(())
 }
