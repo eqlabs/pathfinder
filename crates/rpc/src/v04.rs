@@ -12,15 +12,15 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         // Reused from v0.2
         .register_method(
             "v0.4_starknet_addDeclareTransaction",
-            v02_method::add_declare_transaction,
+            v04_method::add_declare_transaction,
         )?
         .register_method(
             "v0.4_starknet_addDeployAccountTransaction",
-            v02_method::add_deploy_account_transaction,
+            v04_method::add_deploy_account_transaction,
         )?
         .register_method(
             "v0.4_starknet_addInvokeTransaction",
-            v02_method::add_invoke_transaction,
+            v04_method::add_invoke_transaction,
         )?
         .register_method_with_no_input(
             "v0.4_starknet_blockHashAndNumber",

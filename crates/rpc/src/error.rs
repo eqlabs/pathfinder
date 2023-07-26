@@ -37,6 +37,26 @@ pub enum RpcError {
     ProofLimitExceeded { limit: u32, requested: u32 },
     #[error("Too many keys provided in a filter")]
     TooManyKeysInFilter { limit: usize, requested: usize },
+    #[error("Class already declared")]
+    ClassAlreadyDeclared,
+    #[error("Invalid transaction nonce")]
+    InvalidTransactionNonce,
+    #[error("Max fee is smaller than the validation's actual fee")]
+    InsufficientMaxFee,
+    #[error("Account balance is smaller than the transaction's max_fee")]
+    InsufficientAccountBalance,
+    #[error("Account validation failed")]
+    ValidationFailure,
+    #[error("Compilation failed")]
+    CompilationFailed,
+    #[error("Contract bytecode size is too large")]
+    ContractBytecodeSizeIsTooLarge,
+    #[error("Sender address in not an account contract")]
+    NonAccount,
+    #[error("A transaction with the same hash already exists in the mempool")]
+    DuplicateTransaction,
+    #[error("The compiled class hash did not match the one supplied in the transaction")]
+    CompiledClassHashMismatch,
     #[error(transparent)]
     GatewayError(starknet_gateway_types::error::StarknetError),
     #[error(transparent)]
@@ -60,6 +80,16 @@ impl RpcError {
             RpcError::TooManyKeysInFilter { .. } => 34,
             RpcError::ContractError => 40,
             RpcError::InvalidContractClass => 50,
+            RpcError::ClassAlreadyDeclared => 51,
+            RpcError::InvalidTransactionNonce => 52,
+            RpcError::InsufficientMaxFee => 53,
+            RpcError::InsufficientAccountBalance => 54,
+            RpcError::ValidationFailure => 55,
+            RpcError::CompilationFailed => 56,
+            RpcError::ContractBytecodeSizeIsTooLarge => 57,
+            RpcError::NonAccount => 58,
+            RpcError::DuplicateTransaction => 59,
+            RpcError::CompiledClassHashMismatch => 60,
             RpcError::ProofLimitExceeded { .. } => 10000,
             RpcError::GatewayError(_) | RpcError::Internal(_) => {
                 jsonrpsee::types::error::ErrorCode::InternalError.code()
