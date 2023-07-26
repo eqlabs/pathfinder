@@ -186,7 +186,7 @@ This can be used to interact with a custom Starknet gateway, or to use a gateway
 
 You can interact with Starknet using the JSON-RPC API. Pathfinder supports the official Starknet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
-Currently pathfinder supports `v0.3.0` and `v0.4.0` versions of the Starknet JSON-RPC specification.
+Currently pathfinder supports `v0.3` and `v0.4` versions of the Starknet JSON-RPC specification.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
 - the `v0.3.0` API is exposed on the `/` and `/rpc/v0.3` path
@@ -197,12 +197,11 @@ Note that the pathfinder extension is versioned separately from the Starknet spe
 
 ### API `v0.4.0`
 
-`starknet_simulateTransactions` currently treats the `SKIP_FEE_CHARGE` flag as permamently enabled.
+`starknet_simulateTransactions` currently always requires the `SKIP_FEE_CHARGE` flag until we upgrade to using starknet-in-rust as our execution engine.
 
 ### pathfinder extension API
 
 You can find the API specification [here](doc/rpc/pathfinder_rpc_api.json).
-
 
 ## Monitoring API
 
