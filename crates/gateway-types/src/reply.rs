@@ -218,9 +218,11 @@ pub mod transaction {
         pub n_memory_holes: u64,
     }
 
+    // This struct purposefully allows for unknown fields as it is not critical to
+    // store these counters perfectly. Failure would be far more costly than simply
+    // ignoring them.
     #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
     #[serde(default)]
-    #[serde(deny_unknown_fields)]
     pub struct BuiltinCounters {
         pub output_builtin: u64,
         pub pedersen_builtin: u64,
