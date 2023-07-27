@@ -53,14 +53,10 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
     // makes it a different path from the original,
     // that's why we have to account for those separately.
     let prefixes = match path {
-        // Health check endpoints
+        // Special health check endpoint to satisfy bots
         // - we don't really care about the http method here
         // - root is treated as a health check endpoint **only if it has an empty body**
-        // - health ignores the body, which is **never** read
         "/" if body.is_end_stream() => {
-            return Err(BoxError::from(VersioningError::HealthCheck));
-        }
-        "/health" | "/health/" => {
             return Err(BoxError::from(VersioningError::HealthCheck));
         }
         // RPC endpoints
@@ -357,11 +353,6 @@ mod tests {
     // Root requires empty body to become health
     #[case("", "", 200, "")]
     #[case("/", "", 200, "")]
-    // Genuine health does not matter about the body
-    #[case("/health", "", 200, "")]
-    #[case("/health/", "", 200, "")]
-    #[case("/health", "body is ignored", 200, "")]
-    #[case("/health/", "body is ignored", 200, "")]
     #[tokio::test]
     async fn health_ignores_http_method(
         #[case] path: &str,
