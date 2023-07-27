@@ -3,7 +3,7 @@ use crate::felt::{RpcFelt, RpcFelt251};
 use crate::v02::types::request::BroadcastedDeployAccountTransaction;
 use pathfinder_common::{ContractAddress, TransactionHash};
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::error::{SequencerError, StarknetError};
+use starknet_gateway_types::error::SequencerError;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -34,8 +34,9 @@ pub enum AddDeployAccountTransactionError {
     InsufficientAccountBalance,
     ValidationFailure,
     DuplicateTransaction,
-    GatewayError(StarknetError),
-    Internal(anyhow::Error),
+    NonAccount,
+    UnsupportedTransactionVersion,
+    UnexpectedError(String),
 }
 
 impl From<AddDeployAccountTransactionError> for crate::error::RpcError {
@@ -48,23 +49,25 @@ impl From<AddDeployAccountTransactionError> for crate::error::RpcError {
             InsufficientAccountBalance => Self::InsufficientAccountBalance,
             ValidationFailure => Self::ValidationFailure,
             DuplicateTransaction => Self::DuplicateTransaction,
-            GatewayError(x) => Self::GatewayError(x),
-            Internal(x) => Self::Internal(x),
+            NonAccount => Self::NonAccount,
+            UnsupportedTransactionVersion => Self::UnsupportedTxVersion,
+            UnexpectedError(data) => Self::UnexpectedError { data },
         }
     }
 }
 
 impl From<anyhow::Error> for AddDeployAccountTransactionError {
     fn from(value: anyhow::Error) -> Self {
-        AddDeployAccountTransactionError::Internal(value)
+        AddDeployAccountTransactionError::UnexpectedError(value.to_string())
     }
 }
 
 impl From<SequencerError> for AddDeployAccountTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
-            DuplicatedTransaction, InsufficientAccountBalance, InsufficientMaxFee,
-            InvalidTransactionNonce, UndeclaredClass, ValidateFailure,
+            DuplicatedTransaction, EntryPointNotFound, InsufficientAccountBalance,
+            InsufficientMaxFee, InvalidTransactionNonce, InvalidTransactionVersion,
+            UndeclaredClass, ValidateFailure,
         };
         match e {
             SequencerError::StarknetError(e) if e.code == UndeclaredClass.into() => {
@@ -85,10 +88,13 @@ impl From<SequencerError> for AddDeployAccountTransactionError {
             SequencerError::StarknetError(e) if e.code == ValidateFailure.into() => {
                 AddDeployAccountTransactionError::ValidationFailure
             }
-            SequencerError::StarknetError(other) => {
-                AddDeployAccountTransactionError::GatewayError(other)
+            SequencerError::StarknetError(e) if e.code == InvalidTransactionVersion.into() => {
+                AddDeployAccountTransactionError::UnsupportedTransactionVersion
             }
-            _ => AddDeployAccountTransactionError::Internal(e.into()),
+            SequencerError::StarknetError(e) if e.code == EntryPointNotFound.into() => {
+                AddDeployAccountTransactionError::NonAccount
+            }
+            _ => AddDeployAccountTransactionError::UnexpectedError(e.to_string()),
         }
     }
 }
