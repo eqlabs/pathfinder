@@ -1,6 +1,7 @@
 //! Middleware that proxies requests at a specified URI to internal
 //! RPC method calls.
 use http::{response::Builder, status::StatusCode};
+use hyper::body::HttpBody;
 use hyper::{Body, Request, Response};
 use jsonrpsee::core::error::GenericTransportError;
 use jsonrpsee::core::http_helpers::read_body;
@@ -20,6 +21,10 @@ enum VersioningError {
     Internal,
     #[error("JSON-RPC notification queries are not allowed, please specify the `id` property")]
     Notification,
+    #[error("MethodNotAllowed")]
+    MethodNotAllowed,
+    #[error("HealthCheck")]
+    HealthCheck,
 }
 
 impl VersioningError {
@@ -30,6 +35,8 @@ impl VersioningError {
             VersioningError::Malformed => response::malformed(),
             VersioningError::Internal => response::internal(),
             VersioningError::Notification => response::notification(),
+            VersioningError::MethodNotAllowed => response::method_not_allowed(),
+            VersioningError::HealthCheck => response::ok_with_empty_body(),
         }
     }
 }
@@ -38,11 +45,21 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
     request: Request<Body>,
     max_request_body_size: u32,
 ) -> Result<Request<Body>, BoxError> {
-    let prefixes = match request.uri().path() {
-        // An empty path "" is treated the same as "/".
-        // However for a non-empty path adding a trailing slash
-        // makes it a different path from the original,
-        // that's why we have to account for those separately.
+    // Retain the parts to then later recreate the request
+    let (parts, body) = request.into_parts();
+    let path = parts.uri.path();
+    // An empty path "" is treated the same as "/".
+    // However for a non-empty path adding a trailing slash
+    // makes it a different path from the original,
+    // that's why we have to account for those separately.
+    let prefixes = match path {
+        // Special health check endpoint to satisfy bots
+        // - we don't really care about the http method here
+        // - root is treated as a health check endpoint **only if it has an empty body**
+        "/" if body.is_end_stream() => {
+            return Err(BoxError::from(VersioningError::HealthCheck));
+        }
+        // RPC endpoints
         "/" | "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..],
         "/rpc/v0.4" | "/rpc/v0.4/" => &[("starknet_", "v0.4_"), ("pathfinder_", "v0.4_")][..],
         "/rpc/pathfinder/v0.1" | "/rpc/pathfinder/v0.1/" => &[("pathfinder_", "v0.1_")][..],
@@ -51,8 +68,11 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
         }
     };
 
-    // Retain the parts to then later recreate the request
-    let (parts, body) = request.into_parts();
+    // Only POST & OPTIONS is allowed for the RPC endpoints
+    // but OPTIONS is handled by the cors middleware
+    if parts.method != http::Method::POST {
+        return Err(BoxError::from(VersioningError::MethodNotAllowed));
+    }
 
     let (body, is_single) = match read_body(&parts.headers, body, max_request_body_size).await {
         Ok(x) => x,
@@ -163,28 +183,39 @@ mod response {
     const TEXT: &str = "text/plain";
     const JSON: &str = "application/json; charset=utf-8";
 
+    pub(super) fn ok_with_empty_body() -> Response<Body> {
+        with_body(StatusCode::OK, Body::empty())
+    }
+
     pub(super) fn not_found() -> Response<Body> {
         with_canonical_reason(StatusCode::NOT_FOUND)
     }
 
     pub(super) fn too_large(limit: u32) -> Response<Body> {
-        with_error(StatusCode::PAYLOAD_TOO_LARGE, reject_too_big_request(limit))
+        with_rpc_error(StatusCode::PAYLOAD_TOO_LARGE, reject_too_big_request(limit))
     }
 
     pub(super) fn malformed() -> Response<Body> {
-        with_error(StatusCode::BAD_REQUEST, ErrorCode::ParseError)
+        with_rpc_error(StatusCode::BAD_REQUEST, ErrorCode::ParseError)
     }
 
     pub(super) fn internal() -> Response<Body> {
-        with_error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError)
+        with_rpc_error(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError)
     }
 
     pub(super) fn notification() -> Response<Body> {
-        let error = ErrorObject::owned(ErrorCode::InvalidRequest.code(), "Invalid request, JSON-RPC notification queries are not allowed, please specify the `id` property", Option::<()>::None);
-        with_error(StatusCode::INTERNAL_SERVER_ERROR, error)
+        let error = ErrorObject::owned(ErrorCode::InvalidRequest.code(), "Invalid request, JSON-RPC notification queries are not allowed, please specify the `id` property\n", Option::<()>::None);
+        with_rpc_error(StatusCode::INTERNAL_SERVER_ERROR, error)
     }
 
-    fn with_error<'a>(code: StatusCode, error: impl Into<ErrorObject<'a>>) -> Response<Body> {
+    pub(super) fn method_not_allowed() -> Response<Body> {
+        with_body(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "Only POST or OPTIONS method is allowed\n",
+        )
+    }
+
+    fn with_rpc_error<'a>(code: StatusCode, error: impl Into<ErrorObject<'a>>) -> Response<Body> {
         let body = ErrorResponse::borrowed(error.into(), Id::Null);
         let body = serde_json::to_string(&body)
             .expect("error response is serializable")
@@ -206,6 +237,14 @@ mod response {
                     .expect("canonical reason is defined")
                     .into(),
             )
+            .expect("response is properly formed")
+    }
+
+    fn with_body(code: StatusCode, body: impl Into<Body>) -> Response<Body> {
+        Builder::new()
+            .status(code)
+            .header(CONTENT_TYPE, TEXT)
+            .body(body.into())
             .expect("response is properly formed")
     }
 }
@@ -251,13 +290,14 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-
     use super::prefix_rpc_method_names_with_version;
     use super::test_utils::{method_names, paths};
     use crate::test_client::TestClientBuilder;
     use crate::{RpcContext, RpcServer};
+    use http::Method;
     use jsonrpsee::core::error::Error;
     use jsonrpsee::types::error::{CallError, METHOD_NOT_FOUND_CODE};
+    use rstest::rstest;
     use serde_json::json;
 
     // In an unintentional way OFC: if a method is INTENDED to be available
@@ -309,78 +349,119 @@ mod tests {
         }
     }
 
+    #[rstest]
+    // Root requires empty body to become health
+    #[case("", "", 200, "")]
+    #[case("/", "", 200, "")]
     #[tokio::test]
-    async fn invalid_path() {
+    async fn health_ignores_http_method(
+        #[case] path: &str,
+        #[case] body: &str,
+        #[case] expected_code: u16,
+        #[case] expected_body: &str,
+        // We really care about these two but any is fine
+        #[values(Method::POST, Method::GET)] http_method: Method,
+    ) {
         let context = RpcContext::for_tests();
         let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
             .run()
             .await
             .unwrap();
 
-        let url = format!("http://{address}/invalid/path");
+        let url = format!("http://{address}{path}");
 
-        let status_code = reqwest::Client::new()
-            .post(url)
-            .body("")
+        let resp = reqwest::Client::new()
+            .request(http_method, url)
+            .body(body.to_owned())
             .send()
             .await
-            .unwrap()
-            .status()
-            .as_u16();
-
-        assert_eq!(status_code, 404);
-    }
-
-    #[tokio::test]
-    async fn disallow_notifications() {
-        for case in [
-            // Notification w/o params
-            r#"{"jsonrpc":"2.0","method":"foo"}"#,
-            // Request, notification, w/o params
-            r#"[{"jsonrpc":"2.0","method":"foo","id":0},{"jsonrpc":"2.0","method":"foo"}]"#,
-            // Notification w params
-            r#"{"jsonrpc":"2.0","method":"foo","params":["bar"]}"#,
-            // Request, notification, w params
-            r#"[{"jsonrpc":"2.0","method":"foo","params":[1],"id":0},{"jsonrpc":"2.0","method":"foo","params":[1,2]}]"#,
-        ] {
-            let request = http::Request::new(hyper::Body::from(case));
-            let error = prefix_rpc_method_names_with_version(request, 1_000)
-                .await
-                .unwrap_err()
-                .downcast::<super::VersioningError>()
-                .unwrap();
-            assert!(
-                matches!(*error, super::VersioningError::Notification),
-                "{case}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn pass_non_notifications() {
-        for case in [
-            // Neither valid requests nor valid notifications but valid json
-            r#"{"jsonrpc":"2.0"}"#,
-            r#"[{"jsonrpc":"2.0"},{"method":"foo"}]"#,
-            r#"{"id":0}"#,
-            r#"[{"id":0},{"method":"foo"}]"#,
-            r#"{"foo":"bar"}"#,
-            r#"["foo","bar"]"#,
-            // Valid requests
-            r#"{"jsonrpc":"2.0","method":"foo","id":0,"params":[1]}"#,
-            r#"[{"jsonrpc":"2.0","method":"foo","id":0,"params":"bar"},{"jsonrpc":"2.0","method":"bar","id":0,"params":[1,2]}]"#,
-        ] {
-            let request = http::Request::new(hyper::Body::from(case));
-            let body = prefix_rpc_method_names_with_version(request, 1_000)
-                .await
-                .unwrap()
-                .into_body();
-            let body = serde_json::from_slice::<serde_json::Value>(
-                &hyper::body::to_bytes(body).await.unwrap(),
-            )
             .unwrap();
-            let expected = serde_json::from_str::<serde_json::Value>(case).unwrap();
-            assert_eq!(body, expected, "{case}");
-        }
+
+        assert_eq!(resp.status().as_u16(), expected_code);
+        assert_eq!(resp.text().await.unwrap(), expected_body);
+    }
+
+    #[rstest]
+    // Valid paths that accept POST only
+    #[case("/", "body is not empty so this is not health", 405)]
+    #[case("/rpc/v0.3/", "", 405)]
+    #[case("/rpc/v0.3/", "a body", 405)]
+    #[case("/rpc/pathfinder/v0.1/", "", 405)]
+    #[case("/rpc/pathfinder/v0.1/", "a body", 405)]
+    // Invalid paths
+    #[case("/neither/health/nor/rpc", "", 404)]
+    #[case("/neither/health/nor/rpc", "a body", 404)]
+    #[tokio::test]
+    async fn invalid_path_or_method(
+        #[case] path: &str,
+        #[case] body: &str,
+        #[case] expected_status: u16,
+        // Some unsupported http methods
+        #[values(Method::GET, Method::PUT, Method::DELETE, Method::HEAD)] http_method: Method,
+    ) {
+        let context = RpcContext::for_tests();
+        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
+            .run()
+            .await
+            .unwrap();
+
+        let url = format!("http://{address}{path}");
+
+        let resp = reqwest::Client::new()
+            .request(http_method, url)
+            .body(body.to_owned())
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status().as_u16(), expected_status);
+    }
+
+    #[rstest]
+    // Notification w/o params
+    #[case(r#"{"jsonrpc":"2.0","method":"foo"}"#)]
+    // Request, notification, w/o params
+    #[case(r#"[{"jsonrpc":"2.0","method":"foo","id":0},{"jsonrpc":"2.0","method":"foo"}]"#)]
+    // Notification w params
+    #[case(r#"{"jsonrpc":"2.0","method":"foo","params":["bar"]}"#)]
+    // Request, notification, w params
+    #[case(r#"[{"jsonrpc":"2.0","method":"foo","params":[1],"id":0},{"jsonrpc":"2.0","method":"foo","params":[1,2]}]"#)]
+    #[tokio::test]
+    async fn disallow_notifications(#[case] body: &str) {
+        let mut request = http::Request::new(hyper::Body::from(body.to_owned()));
+        *request.method_mut() = http::Method::POST;
+        let error = prefix_rpc_method_names_with_version(request, 1_000)
+            .await
+            .unwrap_err()
+            .downcast::<super::VersioningError>()
+            .unwrap();
+        assert!(matches!(*error, super::VersioningError::Notification));
+    }
+
+    #[rstest]
+    // Neither valid requests nor valid notifications but valid json
+    #[case(r#"{"jsonrpc":"2.0"}"#)]
+    #[case(r#"[{"jsonrpc":"2.0"},{"method":"foo"}]"#)]
+    #[case(r#"{"id":0}"#)]
+    #[case(r#"[{"id":0},{"method":"foo"}]"#)]
+    #[case(r#"{"foo":"bar"}"#)]
+    #[case(r#"["foo","bar"]"#)]
+    // Valid requests
+    #[case(r#"{"jsonrpc":"2.0","method":"foo","id":0,"params":[1]}"#)]
+    #[case(r#"[{"jsonrpc":"2.0","method":"foo","id":0,"params":"bar"},{"jsonrpc":"2.0","method":"bar","id":0,"params":[1,2]}]"#)]
+    #[tokio::test]
+    async fn pass_non_notifications(#[case] body: &str) {
+        let mut request = http::Request::new(hyper::Body::from(body.to_owned()));
+        *request.method_mut() = http::Method::POST;
+        let processed_body = prefix_rpc_method_names_with_version(request, 1_000)
+            .await
+            .unwrap()
+            .into_body();
+        let processed_body = serde_json::from_slice::<serde_json::Value>(
+            &hyper::body::to_bytes(processed_body).await.unwrap(),
+        )
+        .unwrap();
+        let expected = serde_json::from_str::<serde_json::Value>(body).unwrap();
+        assert_eq!(processed_body, expected);
     }
 }
