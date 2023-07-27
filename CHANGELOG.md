@@ -13,8 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - control log color output via `--color auto|always|never`
 - if Sierra to CASM compilation fails we now fall back to fetching CASM from the gateway
-- RPC server health check on:
-  - `/` if the request body is empty
+- Negate bot spam on response metrics by returning `Ok(200)` on `/` RPC queries. Web crawlers and bots often poke this endpoint which previously skewed response failure metrics when these were rejected.
 
 ### Fixed
 
