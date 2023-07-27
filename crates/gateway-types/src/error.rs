@@ -110,8 +110,12 @@ pub enum KnownStarknetErrorCode {
     ValidateFailure,
     #[serde(rename = "StarknetErrorCode.CONTRACT_BYTECODE_SIZE_TOO_LARGE")]
     ContractBytecodeSizeTooLarge,
+    #[serde(rename = "StarknetErrorCode.CONTRACT_CLASS_OBJECT_SIZE_TOO_LARGE")]
+    ContractClassObjectSizeTooLarge,
     #[serde(rename = "StarknetErrorCode.DUPLICATED_TRANSACTION")]
     DuplicatedTransaction,
+    #[serde(rename = "StarknetErrorCode.INVALID_CONTRACT_CLASS_VERSION")]
+    InvalidContractClassVersion,
 }
 
 #[cfg(test)]
