@@ -5,7 +5,6 @@ use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, En
 crate::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
     ContractNotFound,
-    InvalidMessageSelector,
     ContractError
 );
 
@@ -15,7 +14,9 @@ impl From<crate::cairo::ext_py::CallFailure> for CallError {
         match c {
             NoSuchBlock => Self::BlockNotFound,
             NoSuchContract => Self::ContractNotFound,
-            InvalidEntryPoint => Self::InvalidMessageSelector,
+            InvalidEntryPoint => {
+                Self::Internal(anyhow::anyhow!("Internal error: invalid entry point"))
+            }
             ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {}", e)),
             // Intentionally hide the message under Internal
             Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),
@@ -234,7 +235,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let error = call(context, input).await;
-            assert_matches::assert_matches!(error, Err(CallError::InvalidMessageSelector));
+            assert_matches::assert_matches!(error, Err(CallError::Internal(_)));
         }
 
         #[tokio::test]
