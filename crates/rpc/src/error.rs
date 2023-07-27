@@ -13,8 +13,6 @@ pub enum RpcError {
     ContractNotFound,
     #[error("Invalid message selector")] // ?
     InvalidMessageSelector,
-    #[error("Invalid call data")] // ?
-    InvalidCallData,
     // v03 trace api spec
     // INVALID_BLOCK_HASH "Invalid block hash" 24
     // v04 trace api spec
@@ -84,7 +82,6 @@ impl RpcError {
             RpcError::FailedToReceiveTxn => 1,
             RpcError::ContractNotFound => 20,
             RpcError::InvalidMessageSelector => 21, // removed in v03
-            RpcError::InvalidCallData => 22,        // removed in v03
             // v03 trace api spec
             // INVALID_BLOCK_HASH 24
             RpcError::BlockNotFound => 24,

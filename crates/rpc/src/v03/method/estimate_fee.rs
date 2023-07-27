@@ -16,8 +16,7 @@ crate::error::generate_rpc_error_subset!(
     EstimateFeeError: BlockNotFound,
     ContractNotFound,
     ContractError,
-    InvalidMessageSelector,
-    InvalidCallData
+    InvalidMessageSelector
 );
 
 impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {

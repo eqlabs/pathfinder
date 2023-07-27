@@ -6,7 +6,6 @@ crate::error::generate_rpc_error_subset!(
     CallError: BlockNotFound,
     ContractNotFound,
     InvalidMessageSelector,
-    InvalidCallData,
     ContractError
 );
 
