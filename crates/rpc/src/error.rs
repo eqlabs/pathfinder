@@ -11,37 +11,33 @@ pub enum RpcError {
     FailedToReceiveTxn,
     #[error("Contract not found")]
     ContractNotFound,
-    #[error("Invalid message selector")]
-    InvalidMessageSelector,
-    #[error("Invalid call data")]
-    InvalidCallData,
     #[error("Block not found")]
     BlockNotFound,
     #[error("Transaction hash not found")]
-    TxnHashNotFound,
+    TxnHashNotFoundV03,
     #[error("Invalid transaction index in a block")]
     InvalidTxnIndex,
     #[error("Class hash not found")]
     ClassHashNotFound,
+    #[error("Transaction hash not found")]
+    TxnHashNotFoundV04,
     #[error("Requested page size is too big")]
     PageSizeTooBig,
     #[error("There are no blocks")]
     NoBlocks,
     #[error("The supplied continuation token is invalid or unknown")]
     InvalidContinuationToken,
+    #[error("Too many keys provided in a filter")]
+    TooManyKeysInFilter { limit: usize, requested: usize },
     #[error("Contract error")]
     ContractError,
     #[error("Invalid contract class")]
     InvalidContractClass,
-    #[error("Too many storage keys requested")]
-    ProofLimitExceeded { limit: u32, requested: u32 },
-    #[error("Too many keys provided in a filter")]
-    TooManyKeysInFilter { limit: usize, requested: usize },
     #[error("Class already declared")]
     ClassAlreadyDeclared,
     #[error("Invalid transaction nonce")]
     InvalidTransactionNonce,
-    #[error("Max fee is smaller than the validation's actual fee")]
+    #[error("Max fee is smaller than the minimal transaction cost (validation plus fee transfer)")]
     InsufficientMaxFee,
     #[error("Account balance is smaller than the transaction's max_fee")]
     InsufficientAccountBalance,
@@ -49,14 +45,22 @@ pub enum RpcError {
     ValidationFailure,
     #[error("Compilation failed")]
     CompilationFailed,
-    #[error("Contract bytecode size is too large")]
-    ContractBytecodeSizeIsTooLarge,
+    #[error("Contract class size it too large")]
+    ContractClassSizeIsTooLarge,
     #[error("Sender address in not an account contract")]
     NonAccount,
     #[error("A transaction with the same hash already exists in the mempool")]
     DuplicateTransaction,
     #[error("The compiled class hash did not match the one supplied in the transaction")]
     CompiledClassHashMismatch,
+    #[error("The transaction version is not supported")]
+    UnsupportedTxVersion,
+    #[error("The contract class version is not supported")]
+    UnsupportedContractClassVersion,
+    #[error("An unexpected error occured")]
+    UnexpectedError { data: String },
+    #[error("Too many storage keys requested")]
+    ProofLimitExceeded { limit: u32, requested: u32 },
     #[error(transparent)]
     GatewayError(starknet_gateway_types::error::StarknetError),
     #[error(transparent)]
@@ -68,12 +72,11 @@ impl RpcError {
         match self {
             RpcError::FailedToReceiveTxn => 1,
             RpcError::ContractNotFound => 20,
-            RpcError::InvalidMessageSelector => 21,
-            RpcError::InvalidCallData => 22,
             RpcError::BlockNotFound => 24,
-            RpcError::TxnHashNotFound => 25,
+            RpcError::TxnHashNotFoundV03 => 25,
             RpcError::InvalidTxnIndex => 27,
             RpcError::ClassHashNotFound => 28,
+            RpcError::TxnHashNotFoundV04 => 29,
             RpcError::PageSizeTooBig => 31,
             RpcError::NoBlocks => 32,
             RpcError::InvalidContinuationToken => 33,
@@ -86,10 +89,13 @@ impl RpcError {
             RpcError::InsufficientAccountBalance => 54,
             RpcError::ValidationFailure => 55,
             RpcError::CompilationFailed => 56,
-            RpcError::ContractBytecodeSizeIsTooLarge => 57,
+            RpcError::ContractClassSizeIsTooLarge => 57,
             RpcError::NonAccount => 58,
             RpcError::DuplicateTransaction => 59,
             RpcError::CompiledClassHashMismatch => 60,
+            RpcError::UnsupportedTxVersion => 61,
+            RpcError::UnsupportedContractClassVersion => 62,
+            RpcError::UnexpectedError { .. } => 63,
             RpcError::ProofLimitExceeded { .. } => 10000,
             RpcError::GatewayError(_) | RpcError::Internal(_) => {
                 jsonrpsee::types::error::ErrorCode::InternalError.code()

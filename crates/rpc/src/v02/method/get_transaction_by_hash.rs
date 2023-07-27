@@ -8,7 +8,7 @@ pub struct GetTransactionByHashInput {
     transaction_hash: TransactionHash,
 }
 
-crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFound);
+crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFoundV03);
 
 pub async fn get_transaction_by_hash(
     context: RpcContext,
@@ -43,7 +43,7 @@ pub async fn get_transaction_by_hash(
         db_tx
             .transaction(input.transaction_hash)
             .context("Reading transaction from database")?
-            .ok_or(GetTransactionByHashError::TxnHashNotFound)
+            .ok_or(GetTransactionByHashError::TxnHashNotFoundV03)
             .map(|tx| tx.into())
     });
 
@@ -109,7 +109,7 @@ mod tests {
 
             assert_matches::assert_matches!(
                 result,
-                Err(GetTransactionByHashError::TxnHashNotFound)
+                Err(GetTransactionByHashError::TxnHashNotFoundV03)
             );
         }
     }

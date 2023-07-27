@@ -15,9 +15,7 @@ pub struct EstimateFeeInput {
 crate::error::generate_rpc_error_subset!(
     EstimateFeeError: BlockNotFound,
     ContractNotFound,
-    ContractError,
-    InvalidMessageSelector,
-    InvalidCallData
+    ContractError
 );
 
 impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {
@@ -26,7 +24,9 @@ impl From<crate::cairo::ext_py::CallFailure> for EstimateFeeError {
         match c {
             NoSuchBlock => Self::BlockNotFound,
             NoSuchContract => Self::ContractNotFound,
-            InvalidEntryPoint => Self::InvalidMessageSelector,
+            InvalidEntryPoint => {
+                Self::Internal(anyhow::anyhow!("Internal error: invalid entry point"))
+            }
             ExecutionFailed(e) => Self::Internal(anyhow::anyhow!("Internal error: {e}")),
             // Intentionally hide the message under Internal
             Internal(_) | Shutdown => Self::Internal(anyhow::anyhow!("Internal error")),

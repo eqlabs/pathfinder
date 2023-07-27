@@ -3,31 +3,31 @@ use crate::felt::RpcFelt;
 use crate::v02::types::request::BroadcastedDeclareTransaction;
 use pathfinder_common::{ClassHash, TransactionHash};
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::error::{SequencerError, StarknetError};
+use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::{
     CairoContractDefinition, ContractDefinition, SierraContractDefinition,
 };
 
 #[derive(Debug)]
 pub enum AddDeclareTransactionError {
-    InvalidContractClass,
     ClassAlreadyDeclared,
     InvalidTransactionNonce,
     InsufficientMaxFee,
     InsufficientAccountBalance,
     ValidationFailure,
     CompilationFailed,
-    ContractBytecodeSizeTooLarge,
+    ContractClassSizeIsTooLarge,
     DuplicateTransaction,
     CompiledClassHashMismatch,
-    GatewayError(StarknetError),
-    Internal(anyhow::Error),
+    NonAccount,
+    UnsupportedTransactionVersion,
+    UnsupportedContractClassVersion,
+    UnexpectedError(String),
 }
 
 impl From<AddDeclareTransactionError> for crate::error::RpcError {
     fn from(value: AddDeclareTransactionError) -> Self {
         match value {
-            AddDeclareTransactionError::InvalidContractClass => Self::InvalidContractClass,
             AddDeclareTransactionError::ClassAlreadyDeclared => Self::ClassAlreadyDeclared,
             AddDeclareTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,
             AddDeclareTransactionError::InsufficientMaxFee => Self::InsufficientMaxFee,
@@ -36,22 +36,26 @@ impl From<AddDeclareTransactionError> for crate::error::RpcError {
             }
             AddDeclareTransactionError::ValidationFailure => Self::ValidationFailure,
             AddDeclareTransactionError::CompilationFailed => Self::CompilationFailed,
-            AddDeclareTransactionError::ContractBytecodeSizeTooLarge => {
-                Self::ContractBytecodeSizeIsTooLarge
+            AddDeclareTransactionError::ContractClassSizeIsTooLarge => {
+                Self::ContractClassSizeIsTooLarge
             }
             AddDeclareTransactionError::DuplicateTransaction => Self::DuplicateTransaction,
             AddDeclareTransactionError::CompiledClassHashMismatch => {
                 Self::CompiledClassHashMismatch
             }
-            AddDeclareTransactionError::GatewayError(x) => Self::GatewayError(x),
-            AddDeclareTransactionError::Internal(x) => Self::Internal(x),
+            AddDeclareTransactionError::NonAccount => Self::NonAccount,
+            AddDeclareTransactionError::UnsupportedTransactionVersion => Self::UnsupportedTxVersion,
+            AddDeclareTransactionError::UnsupportedContractClassVersion => {
+                Self::UnsupportedContractClassVersion
+            }
+            AddDeclareTransactionError::UnexpectedError(data) => Self::UnexpectedError { data },
         }
     }
 }
 
 impl From<anyhow::Error> for AddDeclareTransactionError {
     fn from(value: anyhow::Error) -> Self {
-        AddDeclareTransactionError::Internal(value)
+        AddDeclareTransactionError::UnexpectedError(value.to_string())
     }
 }
 
@@ -59,24 +63,23 @@ impl From<SequencerError> for AddDeclareTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
             ClassAlreadyDeclared, CompilationFailed, ContractBytecodeSizeTooLarge,
-            DuplicatedTransaction, InsufficientAccountBalance, InsufficientMaxFee,
-            InvalidCompiledClassHash, InvalidContractClass, InvalidProgram,
-            InvalidTransactionNonce, ValidateFailure,
+            ContractClassObjectSizeTooLarge, DuplicatedTransaction, EntryPointNotFound,
+            InsufficientAccountBalance, InsufficientMaxFee, InvalidCompiledClassHash,
+            InvalidContractClassVersion, InvalidTransactionNonce, InvalidTransactionVersion,
+            ValidateFailure,
         };
         match e {
-            SequencerError::StarknetError(e)
-                if e.code == InvalidProgram.into() || e.code == InvalidContractClass.into() =>
-            {
-                AddDeclareTransactionError::InvalidContractClass
-            }
             SequencerError::StarknetError(e) if e.code == ClassAlreadyDeclared.into() => {
                 AddDeclareTransactionError::ClassAlreadyDeclared
             }
             SequencerError::StarknetError(e) if e.code == CompilationFailed.into() => {
                 AddDeclareTransactionError::CompilationFailed
             }
-            SequencerError::StarknetError(e) if e.code == ContractBytecodeSizeTooLarge.into() => {
-                AddDeclareTransactionError::ContractBytecodeSizeTooLarge
+            SequencerError::StarknetError(e)
+                if e.code == ContractBytecodeSizeTooLarge.into()
+                    || e.code == ContractClassObjectSizeTooLarge.into() =>
+            {
+                AddDeclareTransactionError::ContractClassSizeIsTooLarge
             }
             SequencerError::StarknetError(e) if e.code == DuplicatedTransaction.into() => {
                 AddDeclareTransactionError::DuplicateTransaction
@@ -96,8 +99,16 @@ impl From<SequencerError> for AddDeclareTransactionError {
             SequencerError::StarknetError(e) if e.code == InvalidCompiledClassHash.into() => {
                 AddDeclareTransactionError::CompiledClassHashMismatch
             }
-            SequencerError::StarknetError(other) => AddDeclareTransactionError::GatewayError(other),
-            _ => AddDeclareTransactionError::Internal(e.into()),
+            SequencerError::StarknetError(e) if e.code == InvalidTransactionVersion.into() => {
+                AddDeclareTransactionError::UnsupportedTransactionVersion
+            }
+            SequencerError::StarknetError(e) if e.code == InvalidContractClassVersion.into() => {
+                AddDeclareTransactionError::UnsupportedContractClassVersion
+            }
+            SequencerError::StarknetError(e) if e.code == EntryPointNotFound.into() => {
+                AddDeclareTransactionError::NonAccount
+            }
+            _ => AddDeclareTransactionError::UnexpectedError(e.to_string()),
         }
     }
 }
@@ -407,7 +418,7 @@ mod tests {
             token: None,
         };
         let error = add_declare_transaction(context, input).await.unwrap_err();
-        assert_matches::assert_matches!(error, AddDeclareTransactionError::InvalidContractClass);
+        assert_matches::assert_matches!(error, AddDeclareTransactionError::UnexpectedError(_));
     }
 
     #[test_log::test(tokio::test)]
@@ -441,7 +452,7 @@ mod tests {
             token: None,
         };
         let error = add_declare_transaction(context, input).await.unwrap_err();
-        assert_matches::assert_matches!(error, AddDeclareTransactionError::InvalidContractClass);
+        assert_matches::assert_matches!(error, AddDeclareTransactionError::UnexpectedError(_));
     }
 
     #[test_log::test(tokio::test)]
@@ -465,7 +476,7 @@ mod tests {
             token: None,
         };
         let error = add_declare_transaction(context, input).await.unwrap_err();
-        assert_matches::assert_matches!(error, AddDeclareTransactionError::InvalidContractClass);
+        assert_matches::assert_matches!(error, AddDeclareTransactionError::UnexpectedError(_));
     }
 
     #[test_log::test(tokio::test)]
