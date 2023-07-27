@@ -37,7 +37,7 @@ impl From<AddDeclareTransactionError> for crate::error::RpcError {
             AddDeclareTransactionError::ValidationFailure => Self::ValidationFailure,
             AddDeclareTransactionError::CompilationFailed => Self::CompilationFailed,
             AddDeclareTransactionError::ContractBytecodeSizeTooLarge => {
-                Self::ContractBytecodeSizeIsTooLarge
+                Self::ContractClassSizeIsTooLarge
             }
             AddDeclareTransactionError::DuplicateTransaction => Self::DuplicateTransaction,
             AddDeclareTransactionError::CompiledClassHashMismatch => {

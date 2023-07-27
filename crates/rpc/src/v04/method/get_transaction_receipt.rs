@@ -7,7 +7,7 @@ pub struct GetTransactionReceiptInput {
     transaction_hash: TransactionHash,
 }
 
-crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
+crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFoundV04);
 
 pub async fn get_transaction_receipt(
     context: RpcContext,
@@ -47,7 +47,7 @@ pub async fn get_transaction_receipt(
         let (transaction, receipt, block_hash) = db_tx
             .transaction_with_receipt(input.transaction_hash)
             .context("Reading transaction receipt from database")?
-            .ok_or(GetTransactionReceiptError::TxnHashNotFound)?;
+            .ok_or(GetTransactionReceiptError::TxnHashNotFoundV04)?;
 
         let block_number = db_tx
             .block_id(block_hash.into())
@@ -524,7 +524,7 @@ mod tests {
 
             assert_matches::assert_matches!(
                 result,
-                Err(GetTransactionReceiptError::TxnHashNotFound)
+                Err(GetTransactionReceiptError::TxnHashNotFoundV04)
             );
         }
     }
