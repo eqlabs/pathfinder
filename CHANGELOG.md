@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - system contract updates are not correctly stored
 - `starknet_simulateTransaction` fails for transactions sending L2->L1 messages
+- deprecated error code 21 `INVALID_MESSAGE_SELECTOR` is used in RPC v0.3
 
 ### Changed
 
