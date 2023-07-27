@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.0] - 2023-07-27
+
 ### Added
 
+- RPC v0.4 support on `/rpc/v0.4/`
 - control log color output via `--color auto|always|never`
 - if Sierra to CASM compilation fails we now fall back to fetching CASM from the gateway
 - Negate bot spam on response metrics by returning `Ok(200)` on `/` RPC queries. Web crawlers and bots often poke this endpoint which previously skewed response failure metrics when these were rejected.
