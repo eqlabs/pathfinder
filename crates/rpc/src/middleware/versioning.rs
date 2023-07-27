@@ -215,7 +215,7 @@ mod response {
     pub(super) fn method_not_allowed() -> Response<Body> {
         with_body(
             StatusCode::METHOD_NOT_ALLOWED,
-            "Used HTTP Method is not allowed. POST or OPTIONS is required\n",
+            "Only POST or OPTIONS method is allowed\n",
         )
     }
 
