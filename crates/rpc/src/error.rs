@@ -7,67 +7,60 @@
 /// The Starknet JSON-RPC error variants.
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {
-    #[error("Failed to write transaction")] // 1
+    #[error("Failed to write transaction")]
     FailedToReceiveTxn,
-    #[error("Contract not found")] // 20
+    #[error("Contract not found")]
     ContractNotFound,
-    // v03 trace api spec
-    // INVALID_BLOCK_HASH "Invalid block hash" 24
-    // v04 trace api spec
-    // INVALID_BLOCK_HASH "Invalid block hash" 26
-    #[error("Block not found")] // 24
+    #[error("Block not found")]
     BlockNotFound,
-    // v03,v04 trace api spec
-    // INVALID_TXN_HASH "Invalid transaction hash"
-    #[error("Transaction hash not found")] // 25
+    #[error("Transaction hash not found")]
     TxnHashNotFoundV03,
-    #[error("Invalid transaction index in a block")] // 27
+    #[error("Invalid transaction index in a block")]
     InvalidTxnIndex,
-    #[error("Class hash not found")] // 28
+    #[error("Class hash not found")]
     ClassHashNotFound,
-    #[error("Transaction hash not found")] // 29
+    #[error("Transaction hash not found")]
     TxnHashNotFoundV04,
-    #[error("Requested page size is too big")] // 31
+    #[error("Requested page size is too big")]
     PageSizeTooBig,
-    #[error("There are no blocks")] // 32
+    #[error("There are no blocks")]
     NoBlocks,
-    #[error("The supplied continuation token is invalid or unknown")] // 33
+    #[error("The supplied continuation token is invalid or unknown")]
     InvalidContinuationToken,
-    #[error("Contract error")] // 40
-    ContractError,
-    #[error("Invalid contract class")] // 50
-    InvalidContractClass,
-    #[error("Too many storage keys requested")]
-    ProofLimitExceeded { limit: u32, requested: u32 },
-    #[error("Too many keys provided in a filter")] // 34
+    #[error("Too many keys provided in a filter")]
     TooManyKeysInFilter { limit: usize, requested: usize },
-    #[error("Class already declared")] // 51 largest v03
+    #[error("Contract error")]
+    ContractError,
+    #[error("Invalid contract class")]
+    InvalidContractClass,
+    #[error("Class already declared")]
     ClassAlreadyDeclared,
-    #[error("Invalid transaction nonce")] // 52 v04 onwards only
+    #[error("Invalid transaction nonce")]
     InvalidTransactionNonce,
-    // 53
     #[error("Max fee is smaller than the minimal transaction cost (validation plus fee transfer)")]
     InsufficientMaxFee,
-    #[error("Account balance is smaller than the transaction's max_fee")] // 54
+    #[error("Account balance is smaller than the transaction's max_fee")]
     InsufficientAccountBalance,
-    #[error("Account validation failed")] // 55
+    #[error("Account validation failed")]
     ValidationFailure,
-    #[error("Compilation failed")] // 56
+    #[error("Compilation failed")]
     CompilationFailed,
-    #[error("Contract class size it too large")] // 57
+    #[error("Contract class size it too large")]
     ContractClassSizeIsTooLarge,
-    #[error("Sender address in not an account contract")] // 58
+    #[error("Sender address in not an account contract")]
     NonAccount,
-    #[error("A transaction with the same hash already exists in the mempool")] // 59
+    #[error("A transaction with the same hash already exists in the mempool")]
     DuplicateTransaction,
-    #[error("The compiled class hash did not match the one supplied in the transaction")] // 60
+    #[error("The compiled class hash did not match the one supplied in the transaction")]
     CompiledClassHashMismatch,
-    #[error("The transaction version is not supported")] // 61
+    #[error("The transaction version is not supported")]
     UnsupportedTxVersion,
-    #[error("The contract class version is not supported")] // 62
+    #[error("The contract class version is not supported")]
     UnsupportedContractClassVersion,
-    #[error("An unexpected error occured")] // 63
+    #[error("An unexpected error occured")]
     UnexpectedError { data: String },
+    #[error("Too many storage keys requested")]
+    ProofLimitExceeded { limit: u32, requested: u32 },
     #[error(transparent)]
     GatewayError(starknet_gateway_types::error::StarknetError),
     #[error(transparent)]
@@ -79,11 +72,7 @@ impl RpcError {
         match self {
             RpcError::FailedToReceiveTxn => 1,
             RpcError::ContractNotFound => 20,
-            // v03 trace api spec
-            // INVALID_BLOCK_HASH 24
             RpcError::BlockNotFound => 24,
-            // v03 trace api spec
-            // INVALID_TXN_HASH 25
             RpcError::TxnHashNotFoundV03 => 25,
             RpcError::InvalidTxnIndex => 27,
             RpcError::ClassHashNotFound => 28,
