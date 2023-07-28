@@ -33,6 +33,8 @@ pub mod conv {
                 state_commitment: StateCommitment(header.state_commitment),
                 storage_commitment: StorageCommitment(header.storage_commitment),
                 transaction_commitment: TransactionCommitment(header.transaction_commitment),
+                transaction_count: header.transaction_count as usize,
+                event_count: header.event_count as usize,
             })
         }
     }

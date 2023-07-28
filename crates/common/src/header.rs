@@ -19,6 +19,8 @@ pub struct BlockHeader {
     pub state_commitment: StateCommitment,
     pub storage_commitment: StorageCommitment,
     pub transaction_commitment: TransactionCommitment,
+    pub transaction_count: usize,
+    pub event_count: usize,
 }
 
 pub struct BlockHeaderBuilder(BlockHeader);
@@ -109,6 +111,16 @@ impl BlockHeaderBuilder {
 
     pub fn with_starknet_version(mut self, starknet_version: StarknetVersion) -> Self {
         self.0.starknet_version = starknet_version;
+        self
+    }
+
+    pub fn with_transaction_count(mut self, transaction_count: usize) -> Self {
+        self.0.transaction_count = transaction_count;
+        self
+    }
+
+    pub fn with_event_count(mut self, event_count: usize) -> Self {
+        self.0.event_count = event_count;
         self
     }
 
