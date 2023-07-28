@@ -13,7 +13,7 @@ pub(super) fn insert_block_header(
 
     // Insert the header
     tx.inner().execute(
-        r"INSERT INTO starknet_blocks 
+        r"INSERT INTO headers 
                    ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  class_commitment)
             VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
         named_params! {
@@ -102,10 +102,10 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
 
     tx.inner()
         .execute(
-            "DELETE FROM starknet_blocks WHERE number = ?",
+            "DELETE FROM headers WHERE number = ?",
             params![&block],
         )
-        .context("Deleting block from starknet_blocks table")?;
+        .context("Deleting block from headers table")?;
 
     Ok(())
 }
@@ -173,7 +173,7 @@ pub(super) fn block_header(
     block: BlockId,
 ) -> anyhow::Result<Option<BlockHeader>> {
     // TODO: is LEFT JOIN reasonable? It's required because version ID can be null for non-existent versions.
-    const BASE_SQL: &str = "SELECT * FROM starknet_blocks LEFT JOIN starknet_versions ON starknet_blocks.version_id = starknet_versions.id";
+    const BASE_SQL: &str = "SELECT * FROM headers LEFT JOIN starknet_versions ON headers.version_id = starknet_versions.id";
     let sql = match block {
         BlockId::Latest => format!("{BASE_SQL} ORDER BY number DESC LIMIT 1"),
         BlockId::Number(_) => format!("{BASE_SQL} WHERE number = ?"),
@@ -234,7 +234,7 @@ pub(super) fn block_header(
         let parent_hash = tx
             .inner()
             .query_row(
-                "SELECT hash FROM starknet_blocks WHERE number = ?",
+                "SELECT hash FROM headers WHERE number = ?",
                 params![&(header.number - 1)],
                 |row| row.get_block_hash(0),
             )
@@ -386,7 +386,7 @@ mod tests {
 
         // Overwrite the commitment fields to NULL.
         tx.inner().execute(
-            r"UPDATE starknet_blocks
+            r"UPDATE headers
                 SET transaction_commitment=NULL, event_commitment=NULL, class_commitment=NULL, version_id=NULL
                 WHERE number=?",
             params![&target.number],

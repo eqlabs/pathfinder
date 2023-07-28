@@ -198,7 +198,7 @@ def inmemory_with_tables():
         CREATE TABLE class_definitions (
             hash       BLOB PRIMARY KEY,
             definition BLOB,
-            block_number INTEGER REFERENCES starknet_blocks(number) NOT NULL
+            block_number INTEGER REFERENCES headers(number) NOT NULL
         );
 
         -- This is missing the foreign key definition
@@ -216,7 +216,7 @@ def inmemory_with_tables():
             version TEXT NOT NULL UNIQUE
         );
 
-        CREATE TABLE starknet_blocks (
+        CREATE TABLE headers (
             number               INTEGER PRIMARY KEY,
             hash                 BLOB    NOT NULL,
             root                 BLOB    NOT NULL,
@@ -445,7 +445,7 @@ def populate_test_contract_with_132_on_3(con):
 
     # interestingly python sqlite does not accept X'0' here:
     cur.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(state_root),
@@ -615,7 +615,7 @@ def test_no_such_block():
 
     common_command_data = f'"contract_address": "{contract_address}", "entry_point_selector": "{entry_point}", "calldata": ["0x84"], "gas_price": 0, "chain": "TESTNET", "pending_updates": {{}}, "pending_deployed": [], "pending_nonces": {{}}, "pending_timestamp": 0'
 
-    con.execute("delete from starknet_blocks")
+    con.execute("delete from headers")
     con.commit()
 
     output = default_132_on_3_scenario(
@@ -824,7 +824,7 @@ def test_starknet_version_is_resolved():
     )
     version_id = cursor.lastrowid
 
-    con.execute("UPDATE starknet_blocks SET version_id = ?", [version_id])
+    con.execute("UPDATE headers SET version_id = ?", [version_id])
     (info, _root, _class_commitment) = resolve_block(con, "latest", 0)
 
     assert info.starknet_version == "0.9.1"
@@ -1152,7 +1152,7 @@ def test_nonce_with_dummy():
     )
 
     cur.executemany(
-        "insert into starknet_blocks (hash, number, root, timestamp, gas_price, sequencer_address, version_id) values (?, ?, ?, ?, ?, ?, ?)",
+        "insert into headers (hash, number, root, timestamp, gas_price, sequencer_address, version_id) values (?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 b"another block".rjust(32, b"\x00"),
@@ -1452,7 +1452,7 @@ def setup_account_and_sierra_contract(
 
     # Block
     cur.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(storage_root_node.hash()),
@@ -1713,7 +1713,7 @@ def test_estimate_fee_for_deploy_newly_declared_account():
 
     # Block
     cur.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(0),
@@ -2194,7 +2194,7 @@ def test_simulate_transaction_succeeds():
     )
 
     con.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             b"\x00" * 32,
@@ -2324,7 +2324,7 @@ def deploy_contract(con, name, contract_address, class_hash):
     state_root = root_node.hash()
 
     cur.execute(
-        """insert into starknet_blocks (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(state_root),

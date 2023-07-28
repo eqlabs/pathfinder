@@ -150,7 +150,7 @@ pub(super) fn get_events<K: KeyFilter>(
 
     let base_query = r#"SELECT
               block_number,
-              starknet_blocks.hash as block_hash,
+              headers.hash as block_hash,
               transaction_hash,
               starknet_transactions.idx as transaction_idx,
               from_address,
@@ -158,7 +158,7 @@ pub(super) fn get_events<K: KeyFilter>(
               starknet_events.keys as keys
            FROM starknet_events
            INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
-           INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#;
+           INNER JOIN headers ON (headers.number = starknet_events.block_number)"#;
 
     let (mut base_query, mut params) = event_query(
         base_query,

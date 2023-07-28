@@ -6609,6 +6609,8 @@ dependencies = [
  "serde_with",
  "sha3",
  "stark_hash",
+ "stark_poseidon",
+ "starknet-gateway-client",
  "starknet-gateway-types",
  "tempfile",
  "thiserror",

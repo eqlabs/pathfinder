@@ -40,7 +40,7 @@ pub(crate) mod common {
             .ok_or_else(|| anyhow::anyhow!("Unsupported configuration"))?;
 
         // discussed during estimateFee work: when user is requesting using block_hash use the
-        // gasPrice from the starknet_blocks::gas_price column, otherwise (tags) get the latest
+        // gasPrice from the headers::gas_price column, otherwise (tags) get the latest
         // eth_gasPrice.
         //
         // the fact that [`base_block_and_pending_for_call`] transforms pending cases to use
