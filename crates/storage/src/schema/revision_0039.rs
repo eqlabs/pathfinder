@@ -76,7 +76,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         .prepare("UPDATE headers SET state_commitment = ? WHERE number = ?")
         .context("Preparing commitment writer statement")?;
 
-    let mut rows = reader
+    let rows = reader
         .query_map([start], |row| {
             let number: u64 = row.get(0).unwrap();
             let storage: Vec<u8> = row.get(1).unwrap();
@@ -87,7 +87,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         .context("Querying commitments")?;
 
     const GLOBAL_STATE_VERSION: Felt = pathfinder_common::felt_bytes!(b"STARKNET_STATE_V0");
-    while let Some(row) = rows.next() {
+    for row in rows {
         let (number, storage, class) = row.context("Iterating over rows")?;
 
         let storage = Felt::from_be_slice(&storage).context("Parsing storage commitment bytes")?;
