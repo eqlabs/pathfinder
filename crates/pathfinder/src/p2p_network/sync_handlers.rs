@@ -252,8 +252,9 @@ mod conv {
             execution_resources::BuiltinInstanceCounter, invoke_transaction::EntryPoint,
             CommonTransactionReceiptProperties, DeclareTransaction, DeclareTransactionReceipt,
             DeployAccountTransaction, DeployAccountTransactionReceipt, DeployTransaction,
-            DeployTransactionReceipt, Event, ExecutionResources, InvokeTransaction,
-            InvokeTransactionReceipt, MessageToL1, MessageToL2, Receipt, Transaction,
+            DeployTransactionReceipt, Event, ExecutionResources, ExecutionStatus,
+            InvokeTransaction, InvokeTransactionReceipt, MessageToL1, MessageToL2, Receipt,
+            Transaction,
         };
         use pathfinder_common::{Fee, L1ToL2MessageNonce, TransactionNonce};
         use stark_hash::Felt;
@@ -304,10 +305,21 @@ mod conv {
                             output_builtin: b.output_builtin,
                             pedersen_builtin: b.pedersen_builtin,
                             range_check_builtin: b.range_check_builtin,
+                            keccak_builtin: b.keccak_builtin,
+                            poseidon_builtin: b.poseidon_builtin,
+                            segment_arena_builtin: b.segment_arena_builtin,
                         },
                         n_steps: x.n_steps,
                         n_memory_holes: x.n_memory_holes,
                     }
+                },
+                execution_status: match gw_r.execution_status {
+                    gw::ExecutionStatus::Succeeded => ExecutionStatus::Succeeded,
+                    gw::ExecutionStatus::Reverted => ExecutionStatus::Reverted,
+                },
+                revert_error: match gw_r.execution_status {
+                    gw::ExecutionStatus::Succeeded => Default::default(),
+                    gw::ExecutionStatus::Reverted => gw_r.revert_error.unwrap_or_default(),
                 },
             };
 
@@ -854,9 +866,7 @@ mod tests {
             }
 
             proptest! {
-                // FIXME: unignore once reverted is supported
                 #[test]
-                #[ignore]
                 fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
                     let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
@@ -890,12 +900,9 @@ mod tests {
                     prop_assert_eq!(from_p2p, from_db)
                 }
 
-                // FIXME: unignore once reverted is supported
                 #[test]
-                #[ignore]
                 fn backward((start, count, seed, num_blocks) in super::strategy::backward()) {
                     let (storage, from_db) = storage_with_seed(seed, num_blocks);
-
                     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
                         Some(h) => h,
                         None => {

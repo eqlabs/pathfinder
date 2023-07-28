@@ -118,6 +118,10 @@ message CommonTransactionReceiptProperties {
   // Optional
   MessageToL2 consumed_message = 6;
   ExecutionResources execution_resources = 7;
+  // FIXME: the following 2 fields are not yet in the spec
+  ExecutionStatus execution_status = 8;
+  // Empty if execution_status == SUCCEEDED
+  string revert_error = 9;
 }
 
 message ExecutionResources {
@@ -128,11 +132,20 @@ message ExecutionResources {
     uint64 output_builtin = 4;
     uint64 pedersen_builtin = 5;
     uint64 range_check_builtin = 6;
+    // FIXME: the following 3 fields are not yet in the spec
+    uint64 keccak_builtin = 7;
+    uint64 poseidon_builtin = 8;
+    uint64 segment_arena_builtin = 9;
   }
 
   BuiltinInstanceCounter builtin_instance_counter = 1;
   uint64 n_steps = 2;
   uint64 n_memory_holes = 3;
+}
+
+enum ExecutionStatus {
+  SUCCEEDED = 0;
+  REVERTED = 1;
 }
 
 message InvokeTransactionReceipt {
