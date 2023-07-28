@@ -1,3 +1,5 @@
+use std::fmt::{Display, Write};
+
 use fake::Dummy;
 use stark_hash::Felt;
 
@@ -171,6 +173,40 @@ pub enum Response {
     StateDiffs(StateDiffs),
     Classes(Classes),
     Status(Status),
+}
+
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Response::BlockHeaders(BlockHeaders { headers }) => {
+                write!(f, "BlockHeaders[len={};", headers.len())?;
+                for header in headers {
+                    write!(f, "{},", header.number)?;
+                }
+                f.write_char(']')
+            }
+            Response::BlockBodies(BlockBodies { block_bodies }) => {
+                write!(f, "BlockBodies[len={}]", block_bodies.len())
+            }
+            Response::StateDiffs(StateDiffs {
+                block_state_updates,
+            }) => {
+                write!(
+                    f,
+                    "StateDiffs[len={};block_hashes:",
+                    block_state_updates.len()
+                )?;
+                for diff in block_state_updates {
+                    write!(f, "{},", diff.block_hash)?;
+                }
+                f.write_char(']')
+            }
+            Response::Classes(Classes { classes }) => write!(f, "Classes[len={}]", classes.len()),
+            Response::Status(Status { height, hash, .. }) => {
+                write!(f, "Status{{height:{height},hash:{hash},...}}")
+            }
+        }
+    }
 }
 
 impl Response {

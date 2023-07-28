@@ -10,6 +10,7 @@ use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identity::Keypair;
 use libp2p::kad::record::Key;
 use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
+use libp2p::multiaddr::Protocol;
 use libp2p::request_response::{self, RequestId, ResponseChannel};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Multiaddr;
@@ -829,6 +830,9 @@ impl MainLoop {
             event => {
                 match &event {
                     SwarmEvent::NewListenAddr { address, .. } => {
+                        let my_peerid = *self.swarm.local_peer_id();
+                        let address = address.clone().with(Protocol::P2p(my_peerid.into()));
+
                         tracing::debug!(%address, "New listen");
                     }
                     _ => tracing::trace!(?event, "Ignoring event"),
@@ -898,7 +902,7 @@ impl MainLoop {
                 request,
                 sender,
             } => {
-                tracing::debug!(?request, "Sending block sync request");
+                tracing::debug!(?request, "Sending sync request");
 
                 let request_id = self
                     .swarm
@@ -910,7 +914,7 @@ impl MainLoop {
             Command::SendSyncResponse { channel, response } => {
                 // This might fail, but we're just ignoring it. In case of failure a
                 // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(?response, "Sending block sync response");
+                tracing::debug!(%response, "Sending sync response");
 
                 let _ = self
                     .swarm
@@ -919,7 +923,7 @@ impl MainLoop {
                     .send_response(channel, response);
             }
             Command::SendSyncStatusRequest { peer_id, status } => {
-                tracing::debug!(?status, "Sending block sync status");
+                tracing::debug!(?status, "Sending sync status request");
 
                 let request_id = self
                     .swarm
