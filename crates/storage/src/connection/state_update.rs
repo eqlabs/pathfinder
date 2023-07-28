@@ -97,7 +97,7 @@ fn block_details(
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
     use const_format::formatcp;
 
-    const PREFIX: &str = r"SELECT b1.number, b1.hash, b1.root, b1.class_commitment, b2.root, b2.class_commitment FROM headers b1 
+    const PREFIX: &str = r"SELECT b1.number, b1.hash, b1.storage_commitment, b1.class_commitment, b2.storage_commitment, b2.class_commitment FROM headers b1 
             LEFT OUTER JOIN headers b2 ON b2.number = b1.number - 1";
 
     const LATEST: &str = formatcp!("{PREFIX} ORDER BY b1.number DESC LIMIT 1");

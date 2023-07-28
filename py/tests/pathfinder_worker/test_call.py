@@ -219,7 +219,7 @@ def inmemory_with_tables():
         CREATE TABLE headers (
             number               INTEGER PRIMARY KEY,
             hash                 BLOB    NOT NULL,
-            root                 BLOB    NOT NULL,
+            storage_commitment   BLOB    NOT NULL,
             timestamp            INTEGER NOT NULL,
             gas_price            BLOB    NOT NULL,
             sequencer_address    BLOB    NOT NULL,
@@ -445,7 +445,7 @@ def populate_test_contract_with_132_on_3(con):
 
     # interestingly python sqlite does not accept X'0' here:
     cur.execute(
-        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(state_root),
@@ -1152,7 +1152,7 @@ def test_nonce_with_dummy():
     )
 
     cur.executemany(
-        "insert into headers (hash, number, root, timestamp, gas_price, sequencer_address, version_id) values (?, ?, ?, ?, ?, ?, ?)",
+        "insert into headers (hash, number, storage_commitment, timestamp, gas_price, sequencer_address, version_id) values (?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 b"another block".rjust(32, b"\x00"),
@@ -1452,7 +1452,7 @@ def setup_account_and_sierra_contract(
 
     # Block
     cur.execute(
-        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(storage_root_node.hash()),
@@ -1713,7 +1713,7 @@ def test_estimate_fee_for_deploy_newly_declared_account():
 
     # Block
     cur.execute(
-        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(0),
@@ -2194,7 +2194,7 @@ def test_simulate_transaction_succeeds():
     )
 
     con.execute(
-        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, storage_commitment, gas_price, sequencer_address) values (?, 1, 1, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             b"\x00" * 32,
@@ -2324,7 +2324,7 @@ def deploy_contract(con, name, contract_address, class_hash):
     state_root = root_node.hash()
 
     cur.execute(
-        """insert into headers (hash, number, timestamp, root, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
+        """insert into headers (hash, number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment) values (?, 1, 1, ?, ?, ?, ?)""",
         [
             b"some blockhash somewhere".rjust(32, b"\x00"),
             felt_to_bytes(state_root),

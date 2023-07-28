@@ -617,11 +617,11 @@ def resolve_block(
         # it has been decided that the latest is whatever pathfinder knows to be latest synced block
         # regardless of it being the highest known (not yet synced)
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from headers left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
+            "select number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment, sn_ver.version from headers left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
         )
     elif isinstance(at_block, int):
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from headers left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
+            "select number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment, sn_ver.version from headers left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
             [at_block],
         )
     else:
@@ -631,7 +631,7 @@ def resolve_block(
             at_block = b"\x00" * (32 - len(at_block)) + at_block
 
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from headers left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
+            "select number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment, sn_ver.version from headers left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
             [at_block],
         )
 

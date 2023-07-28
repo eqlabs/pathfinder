@@ -14,12 +14,12 @@ pub(super) fn insert_block_header(
     // Insert the header
     tx.inner().execute(
         r"INSERT INTO headers 
-                   ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  class_commitment)
-            VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
+                   ( number,  hash,  storage_commitment,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  class_commitment)
+            VALUES (:number, :hash, :storage_commitment, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
-            ":root": &header.storage_commitment,
+            ":storage_commitment": &header.storage_commitment,
             ":timestamp": &header.timestamp,
             ":gas_price": &header.gas_price.to_be_bytes().as_slice(),
             ":sequencer_address": &header.sequencer_address,
@@ -183,7 +183,7 @@ pub(super) fn block_header(
     let parse_row = |row: &rusqlite::Row<'_>| {
         let number = row.get_block_number("number")?;
         let hash = row.get_block_hash("hash")?;
-        let storage_commitment = row.get_storage_commitment("root")?;
+        let storage_commitment = row.get_storage_commitment("storage_commitment")?;
         let timestamp = row.get_timestamp("timestamp")?;
         let gas_price = row.get_gas_price("gas_price")?;
         let sequencer_address = row.get_sequencer_address("sequencer_address")?;
