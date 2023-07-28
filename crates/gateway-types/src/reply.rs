@@ -290,6 +290,10 @@ pub mod transaction {
 
     impl<T> Dummy<T> for Receipt {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            let execution_status = Faker.fake_with_rng(rng);
+            let revert_error =
+                (execution_status == ExecutionStatus::Reverted).then(|| Faker.fake_with_rng(rng));
+
             // Those fields that were missing in very old receipts are always present
             Self {
                 actual_fee: Some(Faker.fake_with_rng(rng)),
@@ -299,8 +303,8 @@ pub mod transaction {
                 l2_to_l1_messages: Faker.fake_with_rng(rng),
                 transaction_hash: Faker.fake_with_rng(rng),
                 transaction_index: Faker.fake_with_rng(rng),
-                execution_status: Faker.fake_with_rng(rng),
-                revert_error: Faker.fake_with_rng(rng),
+                execution_status,
+                revert_error,
             }
         }
     }
