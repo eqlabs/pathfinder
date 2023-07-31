@@ -246,8 +246,9 @@ fn setup_tracing(color: config::Color) {
     let env_filter = Arc::new(tracing_subscriber::EnvFilter::from_default_env());
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(color.is_color_enabled())
-        .with_target(false)
-        .compact()
+        // Makes debugging p2p a lot easier.
+        .with_target(cfg!(feature = "p2p"))
+        .pretty()
         .with_filter(tracing_subscriber::filter::dynamic_filter_fn(
             move |m, c| env_filter.enabled(m, c.clone()),
         ));
@@ -267,7 +268,8 @@ fn setup_tracing(color: config::Color) {
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_target(false)
+        // Makes debugging p2p a lot easier.
+        .with_target(cfg!(feature = "p2p"))
         .with_timer(time_fmt)
         .with_ansi(color.is_color_enabled())
         .compact()

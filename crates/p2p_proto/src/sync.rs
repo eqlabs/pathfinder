@@ -179,7 +179,7 @@ impl Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Response::BlockHeaders(BlockHeaders { headers }) => {
-                write!(f, "BlockHeaders[len={};", headers.len())?;
+                write!(f, "BlockHeaders[len={};block-numbers:", headers.len())?;
                 for header in headers {
                     write!(f, "{},", header.number)?;
                 }
@@ -193,7 +193,7 @@ impl Display for Response {
             }) => {
                 write!(
                     f,
-                    "StateDiffs[len={};block_hashes:",
+                    "StateDiffs[len={};block-hashes:",
                     block_state_updates.len()
                 )?;
                 for diff in block_state_updates {
@@ -201,7 +201,13 @@ impl Display for Response {
                 }
                 f.write_char(']')
             }
-            Response::Classes(Classes { classes }) => write!(f, "Classes[len={}]", classes.len()),
+            Response::Classes(Classes { classes }) => {
+                write!(f, "Classes[len={};compressed-class-sizes:", classes.len())?;
+                for class in classes {
+                    write!(f, "{},", class.class.len())?;
+                }
+                f.write_char(']')
+            }
             Response::Status(Status { height, hash, .. }) => {
                 write!(f, "Status{{height:{height},hash:{hash},...}}")
             }

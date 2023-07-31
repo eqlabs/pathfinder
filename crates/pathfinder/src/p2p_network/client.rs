@@ -185,6 +185,10 @@ impl GatewayApi for HybridClient {
                 }
 
                 let p2p_proto::common::RawClass { class } = classes.swap_remove(0);
+
+                let class = zstd::decode_all(class.as_slice())
+                    .map_err(|_| class_not_found("zstd failed"))?;
+
                 Ok(class.into())
             }
         }
@@ -215,6 +219,10 @@ impl GatewayApi for HybridClient {
                 }
 
                 let p2p_proto::common::RawClass { class } = classes.swap_remove(0);
+
+                let class = zstd::decode_all(class.as_slice())
+                    .map_err(|_| class_not_found("zstd failed"))?;
+
                 Ok(class.into())
             }
         }
