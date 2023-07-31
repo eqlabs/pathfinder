@@ -121,6 +121,12 @@ pub mod init {
                 })
                 .collect::<Vec<_>>();
 
+            header.transaction_count = transactions_and_receipts.len();
+            header.event_count = transactions_and_receipts
+                .iter()
+                .map(|(_, r)| r.events.len())
+                .sum();
+
             let block_hash = header.hash;
             let state_commitment = header.state_commitment;
 

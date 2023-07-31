@@ -25,7 +25,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut count = 0;
     let mut t = std::time::Instant::now();
     while let Some(row) = rows.next().context("Reading next row")? {
-        let rowid: usize = row.get(0).context("Getting rowid")?;
+        let rowid: i64 = row.get(0).context("Getting rowid")?;
         let nonce: ContractNonce = row.get_contract_nonce(1).context("Getting nonce")?;
 
         write

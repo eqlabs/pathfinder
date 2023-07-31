@@ -27,8 +27,8 @@ pub(super) fn insert_block_header(
             ":transaction_commitment": &header.transaction_commitment,
             ":event_commitment": &header.event_commitment,
             ":class_commitment": &header.class_commitment,
-            ":transaction_count": &header.transaction_count,
-            ":event_count": &header.event_count,
+            ":transaction_count": &header.transaction_count.try_into_sql_int()?,
+            ":event_count": &header.event_count.try_into_sql_int()?,
             ":state_commitment": &header.state_commitment,
         },
     ).context("Inserting block header")?;
