@@ -1,5 +1,6 @@
 use anyhow::Context;
 use axum::{routing, Router};
+use futures::{future, StreamExt};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use reqwest::Url;
 use std::{net::SocketAddr, time::Duration};
@@ -17,24 +18,48 @@ async fn main() -> anyhow::Result<()> {
         .expect("failed to install recorder");
 
     let setup = setup()?;
-    tracing::debug!(setup=?setup, "pathfinder-probe starting");
+    tracing::debug!(PF=%setup.pathfinder_url, GW=%setup.gateway_url, "pathfinder-probe starting");
 
-    let listen_at = setup.listen_at;
-    tracing::info!(server=?listen_at, "pathfinder-probe running");
-
-    tokio::spawn(async move {
-        loop {
-            if let Err(cause) = tick(&setup).await {
-                tracing::error!(%cause, "Probe failed");
-                metrics::counter!("probe_failed", 1);
-            }
+    let gw_stream = futures::stream::unfold(Head::default(), move |state| {
+        let url = setup.gateway_url.clone();
+        async move {
+            let head = get_gateway_latest(&url).await.unwrap_or(state);
+            tracing::debug!(head = head.block_number, "GW");
             tokio::time::sleep(setup.poll_delay).await;
+            Some((head.clone(), head))
         }
     });
 
+    let pf_stream = futures::stream::unfold(Head::default(), move |state| {
+        let url = setup.pathfinder_url.clone();
+        async move {
+            let head = get_pathfinder_head(&url).await.unwrap_or(state);
+            tracing::debug!(head = head.block_number, "PF");
+            tokio::time::sleep(setup.poll_delay).await;
+            Some((head.clone(), head))
+        }
+    });
+
+    tokio::spawn(async move {
+        gw_stream
+            .zip(pf_stream)
+            .for_each(|(gw, pf)| {
+                let blocks_missing = gw.block_number - pf.block_number;
+                metrics::gauge!("blocks_missing", blocks_missing as f64);
+
+                let blocks_delay = gw.block_timestamp - pf.block_timestamp;
+                metrics::gauge!("blocks_delay", blocks_delay as f64);
+
+                future::ready(())
+            })
+            .await
+    });
+
+    tracing::info!(server=?setup.listen_at, "pathfinder-probe running");
+
     let app = Router::new().route("/metrics", routing::get(|| async move { handle.render() }));
 
-    axum::Server::bind(&listen_at)
+    axum::Server::bind(&setup.listen_at)
         .serve(app.into_make_service())
         .await
         .unwrap();
@@ -50,7 +75,7 @@ struct Setup {
     poll_delay: Duration,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Default)]
 struct Head {
     block_number: i64,
     block_timestamp: i64,
@@ -110,15 +135,13 @@ async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<Head> {
 
     let block_number = json["result"]
         .as_object()
-        .ok_or(anyhow::anyhow!("Response 'result' missing"))?
-        ["block_number"]
+        .ok_or(anyhow::anyhow!("Response 'result' missing"))?["block_number"]
         .as_i64()
         .ok_or(anyhow::anyhow!("Failed to fetch block number"))?;
 
     let block_timestamp = json["result"]
         .as_object()
-        .ok_or(anyhow::anyhow!("Response 'result' missing"))?
-        ["timestamp"]
+        .ok_or(anyhow::anyhow!("Response 'result' missing"))?["timestamp"]
         .as_i64()
         .ok_or(anyhow::anyhow!("Failed to fetch block timestamp"))?;
 
@@ -126,23 +149,4 @@ async fn get_pathfinder_head(pathfinder_url: &Url) -> anyhow::Result<Head> {
         block_number,
         block_timestamp,
     })
-}
-
-async fn tick(setup: &Setup) -> anyhow::Result<()> {
-    let gw = get_gateway_latest(&setup.gateway_url).await?;
-    tracing::debug!(head = gw.block_number, "gateway");
-
-    let pf = get_pathfinder_head(&setup.pathfinder_url).await?;
-    tracing::debug!(head = pf.block_number, "pathfinder");
-
-    metrics::gauge!("gw_head", gw.block_number as f64);
-    metrics::gauge!("pf_head", pf.block_number as f64);
-
-    let blocks_missing = gw.block_number - pf.block_number;
-    metrics::gauge!("blocks_missing", blocks_missing as f64);
-
-    let blocks_delay = gw.block_timestamp - pf.block_timestamp;
-    metrics::gauge!("blocks_delay", blocks_delay as f64);
-
-    Ok(())
 }
