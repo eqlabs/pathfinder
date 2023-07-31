@@ -773,7 +773,6 @@ mod tests {
             proptest! {
                 #[test]
                 fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
-                    // Initialize storage once for this proptest, greatly increases performance
                     let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
                     let from_db = overlapping::forward(from_db, start, count).map(|(header, _, _)| header).collect::<Vec<_>>();
@@ -859,10 +858,8 @@ mod tests {
                 #[test]
                 #[ignore]
                 fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
-                    // Initialize storage once for this proptest, greatly increases performance
-                    // static STORAGE: SeededStorage = OnceCell::new();
-                    // let (storage, from_db) = STORAGE.get_or_init(|| {storage_with_seed(seed)}).clone();
                     let (storage, from_db) = storage_with_seed(seed, num_blocks);
+
                     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
                         Some(h) => h,
                         None => {
@@ -897,7 +894,6 @@ mod tests {
                 #[test]
                 #[ignore]
                 fn backward((start, count, seed, num_blocks) in super::strategy::backward()) {
-                    // Initialize storage once for this proptest, greatly increases performance
                     let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
                     let start_hash = match from_db.get(usize::try_from(start).unwrap()).map(|x| x.0.hash) {
