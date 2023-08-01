@@ -59,6 +59,8 @@ pub fn simulate(
                 return Err(error.into());
             }
         }
+
+        state.cache_mut().update_initial_values();
     }
     Ok(simulations)
 }

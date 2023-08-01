@@ -298,14 +298,14 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 24.into(),
+                gas_consumed: 1252.into(),
                 gas_price: 1.into(),
-                overall_fee: 24.into(),
+                overall_fee: 1252.into(),
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 1255.into(),
+                gas_consumed: 4932.into(),
                 gas_price: 1.into(),
-                overall_fee: 1255.into(),
+                overall_fee: 4932.into(),
             };
             assert_eq!(result, vec![declare_expected, deploy_expected]);
         }
@@ -587,14 +587,14 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let expected0 = FeeEstimate {
-                gas_consumed: 2478.into(),
+                gas_consumed: 4931.into(),
                 gas_price: 1.into(),
-                overall_fee: 2478.into(),
+                overall_fee: 4931.into(),
             };
             let expected1 = FeeEstimate {
-                gas_consumed: 2478.into(),
+                gas_consumed: 2483.into(),
                 gas_price: 1.into(),
-                overall_fee: 2478.into(),
+                overall_fee: 2483.into(),
             };
             assert_eq!(result, vec![expected0, expected1]);
         }
@@ -628,9 +628,9 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let expected = FeeEstimate {
-                gas_consumed: 24.into(),
+                gas_consumed: 2476.into(),
                 gas_price: 1.into(),
-                overall_fee: 24.into(),
+                overall_fee: 2476.into(),
             };
             assert_eq!(result, vec![expected]);
         }
@@ -670,9 +670,9 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let expected = FeeEstimate {
-                gas_consumed: 24.into(),
+                gas_consumed: 1252.into(),
                 gas_price: 1.into(),
-                overall_fee: 24.into(),
+                overall_fee: 1252.into(),
             };
             assert_eq!(result, vec![expected]);
         }

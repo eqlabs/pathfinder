@@ -434,9 +434,9 @@ mod tests {
             SimulatedTransaction {
                 fee_estimation:
                     FeeEstimate {
-                        gas_consumed: 1256.into(),
+                        gas_consumed: 3709.into(),
                         gas_price: 1.into(),
-                        overall_fee: 1256.into(),
+                        overall_fee: 3709.into(),
                     }
                 ,
                 transaction_trace:
