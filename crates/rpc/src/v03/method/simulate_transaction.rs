@@ -66,7 +66,12 @@ pub async fn simulate_transaction(
     let txs = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
-        crate::cairo::starknet_rs::simulate(execution_state, input.transactions, skip_validate)
+        crate::cairo::starknet_rs::simulate(
+            execution_state,
+            input.transactions,
+            skip_validate,
+            true,
+        )
     })
     .await
     .context("Simulating transaction")??;
@@ -346,18 +351,15 @@ pub(crate) mod dto {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
-
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, GasPrice, StateUpdate,
         TransactionVersion,
     };
-    use pathfinder_storage::{JournalMode, Storage};
+    use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
     };
-    use tempfile::tempdir;
 
     use crate::v02::method::call::FunctionCall;
     use crate::v02::types::reply::FeeEstimate;
@@ -366,14 +368,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_simulate_transaction() {
-        let dir = tempdir().expect("tempdir");
-        let mut db_path = dir.path().to_path_buf();
-        db_path.push("db.sqlite");
-
-        let storage = Storage::migrate(db_path, JournalMode::WAL)
-            .expect("storage")
-            .create_pool(NonZeroU32::new(1).unwrap())
-            .unwrap();
+        let storage = Storage::in_memory().expect("storage");
 
         {
             let mut db = storage.connection().unwrap();
