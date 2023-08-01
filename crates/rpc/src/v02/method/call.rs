@@ -14,7 +14,7 @@ impl From<crate::cairo::starknet_rs::CallError> for CallError {
         use crate::cairo::starknet_rs::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::InvalidMessageSelector,
+            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
             Reverted(revert_error) => {
                 Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
             }

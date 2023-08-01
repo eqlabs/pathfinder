@@ -34,7 +34,7 @@ pub fn simulate(
         let _enter = span.enter();
 
         let transaction_for_simulation =
-            transaction.create_for_simulation(skip_validate, false, true);
+            transaction.create_for_simulation(skip_validate, false, true, true);
         let tx_info = transaction_for_simulation.execute(&mut state, &block_context, 1_000_000);
         match tx_info {
             Ok(tx_info) => {
