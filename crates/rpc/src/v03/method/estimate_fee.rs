@@ -23,7 +23,7 @@ impl From<crate::cairo::starknet_rs::CallError> for EstimateFeeError {
         use crate::cairo::starknet_rs::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::InvalidMessageSelector,
+            InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
             Reverted(revert_error) => {
                 Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
             }
@@ -312,7 +312,7 @@ pub(crate) mod tests {
     }
 
     // These tests require a mainnet database with the first six blocks.
-    mod mainnet {
+    pub(crate) mod mainnet {
         use std::num::NonZeroU32;
         use std::path::PathBuf;
         use std::sync::Arc;

@@ -96,7 +96,8 @@ fn estimate_fee_impl(
         let span = tracing::debug_span!("execute", transaction_hash=%super::transaction::transaction_hash(transaction), %block_number, %transaction_idx);
         let _enter = span.enter();
 
-        let transaction_for_simulation = transaction.create_for_simulation(false, false, true);
+        let transaction_for_simulation =
+            transaction.create_for_simulation(false, false, true, true);
         let tx_info = transaction_for_simulation.execute(&mut state, &block_context, 100_000_000);
 
         match tx_info {
