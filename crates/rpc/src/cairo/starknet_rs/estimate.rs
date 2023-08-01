@@ -107,7 +107,7 @@ fn estimate_fee_impl(
                     return Err(CallError::Reverted(revert_error));
                 }
 
-                tracing::trace!(actual_fee=%tx_info.actual_fee, "Transaction estimation finished");
+                tracing::trace!(actual_fee=%tx_info.actual_fee, actual_resources=?tx_info.actual_resources, "Transaction estimation finished");
                 // L1Handler transactions don't normally calculate the fee -- we have to do that after execution.
                 let actual_fee = match transaction {
                     Transaction::L1Handler(_) => calculate_tx_fee(
