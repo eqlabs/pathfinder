@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = { workspace = true }
-base64 = "0.13.0"
+base64 = "0.13.1"
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 futures = "0.3.21"
 libp2p = { version = "0.50.0", default-features = false, features = ["identify", "kad", "noise", "ping", "dns", "tcp", "tokio", "yamux", "relay", "autonat", "macros"] }

@@ -9,7 +9,8 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = "0.1.58"
-base64 = "0.13.0"
+base64 = "0.13.1"
+clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 delay_map = "0.1.2"
 futures = "0.3.21"
 libp2p = { version = "0.51.3", default-features = false, features = [

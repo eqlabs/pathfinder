@@ -163,8 +163,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         pathfinder_context.network_id,
         p2p_storage,
         sync_state.clone(),
-        config.p2p_boot,
         pathfinder_context.gateway,
+        config.p2p,
     )
     .await?;
 
@@ -290,37 +290,60 @@ async fn start_p2p(
     chain_id: ChainId,
     storage: Storage,
     sync_state: Arc<SyncState>,
-    i_am_boot: bool,
     sequencer: starknet_gateway_client::Client,
+    config: config::P2PConfig,
 ) -> anyhow::Result<(tokio::task::JoinHandle<()>, HybridClient)> {
-    let p2p_listen_address = std::env::var("PATHFINDER_P2P_LISTEN_ADDRESS")
-        .unwrap_or_else(|_| "/ip4/0.0.0.0/tcp/0".to_owned());
-    let listen_on: p2p::libp2p::Multiaddr = p2p_listen_address.parse()?;
+    use p2p::libp2p::identity::Keypair;
+    use pathfinder_lib::p2p_network::P2PContext;
+    use serde::Deserialize;
+    use std::path::Path;
+    use zeroize::Zeroizing;
 
-    let bootstrap_addresses = if i_am_boot {
-        Vec::new()
-    } else {
-        let p2p_bootstrap_addresses =
-            std::env::var("PATHFINDER_P2P_BOOTSTRAP_MULTIADDRESSES").unwrap_or_default();
-        p2p_bootstrap_addresses
-            .split_ascii_whitespace()
-            .map(|a| a.parse::<p2p::libp2p::Multiaddr>())
-            .collect::<Result<Vec<_>, _>>()?
+    #[derive(Clone, Deserialize)]
+    struct IdentityConfig {
+        pub private_key: String,
+    }
+
+    impl IdentityConfig {
+        pub fn from_file(path: &Path) -> anyhow::Result<Self> {
+            Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
+        }
+    }
+
+    impl zeroize::Zeroize for IdentityConfig {
+        fn zeroize(&mut self) {
+            self.private_key.zeroize()
+        }
+    }
+
+    let keypair = match config.identity_config_file {
+        Some(path) => {
+            let config = Zeroizing::new(IdentityConfig::from_file(path.as_path())?);
+            let private_key = Zeroizing::new(base64::decode(config.private_key.as_bytes())?);
+            Keypair::from_protobuf_encoding(&private_key)?
+        }
+        None => {
+            tracing::info!("No private key configured, generating a new one");
+            Keypair::generate_ed25519()
+        }
+    };
+
+    let context = P2PContext {
+        chain_id,
+        storage,
+        sync_state,
+        proxy: config.proxy,
+        keypair,
+        listen_on: config.listen_on,
+        bootstrap_addresses: config.bootstrap_addresses,
     };
 
     let (_p2p_peers, p2p_client, p2p_head_receiver, p2p_handle) =
-        pathfinder_lib::p2p_network::start(
-            chain_id,
-            storage,
-            sync_state,
-            listen_on,
-            &bootstrap_addresses,
-        )
-        .await?;
+        pathfinder_lib::p2p_network::start(context).await?;
 
     Ok((
         p2p_handle,
-        HybridClient::new(i_am_boot, p2p_client, sequencer, p2p_head_receiver),
+        HybridClient::new(config.proxy, p2p_client, sequencer, p2p_head_receiver),
     ))
 }
 
@@ -329,8 +352,8 @@ async fn start_p2p(
     _: ChainId,
     _: Storage,
     _: Arc<SyncState>,
-    _: bool,
     sequencer: starknet_gateway_client::Client,
+    _: config::P2PConfig,
 ) -> anyhow::Result<(tokio::task::JoinHandle<()>, starknet_gateway_client::Client)> {
     let join_handle = tokio::task::spawn(async move { futures::future::pending().await });
 

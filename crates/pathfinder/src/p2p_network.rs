@@ -21,15 +21,27 @@ pub type P2PNetworkHandle = (
     tokio::task::JoinHandle<()>,
 );
 
+pub struct P2PContext {
+    pub chain_id: ChainId,
+    pub storage: Storage,
+    pub sync_state: Arc<SyncState>,
+    pub proxy: bool,
+    pub keypair: Keypair,
+    pub listen_on: Multiaddr,
+    pub bootstrap_addresses: Vec<Multiaddr>,
+}
+
 #[tracing::instrument(name = "p2p", skip_all)]
-pub async fn start(
-    chain_id: ChainId,
-    mut storage: Storage,
-    sync_state: Arc<SyncState>,
-    listen_on: Multiaddr,
-    bootstrap_addresses: &[Multiaddr],
-) -> anyhow::Result<P2PNetworkHandle> {
-    let keypair = Keypair::generate_ed25519();
+pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
+    let P2PContext {
+        chain_id,
+        mut storage,
+        sync_state,
+        proxy,
+        keypair,
+        listen_on,
+        bootstrap_addresses,
+    } = context;
 
     let peer_id = keypair.public().to_peer_id();
     tracing::info!(%peer_id, "Starting P2P");
@@ -69,8 +81,8 @@ pub async fn start(
 
     let block_propagation_topic = format!("blocks/{}", chain_id.to_hex_str());
 
-    if !bootstrap_addresses.is_empty() {
-        // Bootstrap nodes don't subscribe to topic they're publishing to
+    if proxy {
+        // Proxy nodes don't subscribe to topic they're publishing to
         p2p_client.subscribe_topic(&block_propagation_topic).await?;
     }
 

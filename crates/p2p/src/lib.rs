@@ -367,18 +367,6 @@ impl Client {
             .expect("Command receiver not to be dropped");
     }
 
-    // pub fn sync_handle(
-    //     &self,
-    //     block_propagation_topic: String,
-    //     peers: Arc<RwLock<peers::Peers>>,
-    // ) -> SyncClient {
-    //     SyncClient {
-    //         client: self.clone(),
-    //         block_propagation_topic,
-    //         peers,
-    //     }
-    // }
-
     #[cfg(test)]
     pub(crate) fn for_test(&self) -> test_utils::Client {
         test_utils::Client::new(self.sender.clone())

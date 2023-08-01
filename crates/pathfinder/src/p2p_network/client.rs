@@ -2,8 +2,9 @@
 //!
 //! This is a temporary wrapper around proper p2p sync|propagation api that fits into
 //! current sequential sync logic and will be removed when __proper__ sync algo is
-//! integrated. What it does is just split methods between a bootstrap node
-//! that syncs from the gateway and a "proper" p2p node which only syncs via p2p.
+//! integrated. What it does is just split methods between a "proxy" node
+//! that syncs from the gateway and propagates new headers and a
+//! "proper" p2p node which only syncs via p2p.
 
 use p2p::HeadReceiver;
 use pathfinder_common::{
@@ -22,14 +23,11 @@ use starknet_gateway_types::request::add_transaction::ContractDefinition;
 pub enum HybridClient {
     /// Syncs from the feeder gateway, propagates new headers via p2p
     /// Proxies blockchain data to non propagating nodes via p2p
-    ///
-    /// Ofc bootstrapping can be split from proxying but let's keep two types
-    /// of nodes for PoC
-    Bootstrap {
+    Propagating {
         p2p_client: p2p::SyncClient,
         sequencer: starknet_gateway_client::Client,
     },
-    /// Syncs from p2p network
+    /// Syncs from p2p network, does not propagate
     NonPropagating {
         p2p_client: p2p::SyncClient,
         sequencer: starknet_gateway_client::Client,
@@ -39,13 +37,13 @@ pub enum HybridClient {
 
 impl HybridClient {
     pub fn new(
-        i_am_boot: bool,
+        i_am_proxy: bool,
         p2p_client: p2p::SyncClient,
         sequencer: starknet_gateway_client::Client,
         head_receiver: HeadReceiver,
     ) -> Self {
-        if i_am_boot {
-            Self::Bootstrap {
+        if i_am_proxy {
+            Self::Propagating {
                 p2p_client,
                 sequencer,
             }
@@ -60,7 +58,7 @@ impl HybridClient {
 
     fn as_sequencer(&self) -> &starknet_gateway_client::Client {
         match self {
-            HybridClient::Bootstrap { sequencer, .. } => sequencer,
+            HybridClient::Propagating { sequencer, .. } => sequencer,
             HybridClient::NonPropagating { sequencer, .. } => sequencer,
         }
     }
@@ -93,7 +91,7 @@ impl GatewayApi for HybridClient {
         use error::block_not_found;
 
         match self {
-            HybridClient::Bootstrap { sequencer, .. } => sequencer.block(block).await,
+            HybridClient::Propagating { sequencer, .. } => sequencer.block(block).await,
             HybridClient::NonPropagating { p2p_client, .. } => match block {
                 BlockId::Number(n) => {
                     let mut headers = p2p_client
@@ -158,7 +156,9 @@ impl GatewayApi for HybridClient {
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
         match self {
-            HybridClient::Bootstrap { sequencer, .. } => sequencer.block_without_retry(block).await,
+            HybridClient::Propagating { sequencer, .. } => {
+                sequencer.block_without_retry(block).await
+            }
             HybridClient::NonPropagating { .. } => {
                 unreachable!("used for gas price and not in sync")
             }
@@ -169,7 +169,9 @@ impl GatewayApi for HybridClient {
         use error::class_not_found;
 
         match self {
-            HybridClient::Bootstrap { sequencer, .. } => sequencer.class_by_hash(class_hash).await,
+            HybridClient::Propagating { sequencer, .. } => {
+                sequencer.class_by_hash(class_hash).await
+            }
             HybridClient::NonPropagating { p2p_client, .. } => {
                 let classes = p2p_client
                     .contract_classes(vec![class_hash])
@@ -201,7 +203,7 @@ impl GatewayApi for HybridClient {
         use error::class_not_found;
 
         match self {
-            HybridClient::Bootstrap { sequencer, .. } => {
+            HybridClient::Propagating { sequencer, .. } => {
                 sequencer.pending_class_by_hash(class_hash).await
             }
             HybridClient::NonPropagating { p2p_client, .. } => {
@@ -239,7 +241,7 @@ impl GatewayApi for HybridClient {
         use error::block_not_found;
 
         match self {
-            HybridClient::Bootstrap { sequencer, .. } => sequencer.state_update(block).await,
+            HybridClient::Propagating { sequencer, .. } => sequencer.state_update(block).await,
             HybridClient::NonPropagating { p2p_client, .. } => match block {
                 BlockId::Hash(hash) => {
                     let mut state_updates = p2p_client
@@ -351,7 +353,7 @@ impl GatewayApi for HybridClient {
     /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         match self {
-            HybridClient::Bootstrap { sequencer, .. } => Ok(sequencer.head().await?),
+            HybridClient::Propagating { sequencer, .. } => Ok(sequencer.head().await?),
             HybridClient::NonPropagating { head_receiver, .. } => (*head_receiver.borrow()).ok_or(
                 error::block_not_found("Haven't received any gossiped block headers yet"),
             ),
@@ -368,7 +370,7 @@ impl GossipApi for HybridClient {
         event_count: u32,
     ) {
         match self {
-            HybridClient::Bootstrap { p2p_client, .. } => {
+            HybridClient::Propagating { p2p_client, .. } => {
                 match p2p_client
                     .propagate_new_header(super::sync_handlers::conv::header::from(
                         header,

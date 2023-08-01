@@ -6389,6 +6389,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
+ "base64 0.13.1",
  "bitvec 0.20.4",
  "bytes",
  "clap",
@@ -6436,6 +6437,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "warp",
+ "zeroize",
  "zstd",
 ]
 
