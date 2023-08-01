@@ -1,9 +1,9 @@
 use anyhow::Context;
 use axum::{routing, Router};
-use futures::{future, StreamExt};
+use futures::{future, Future, Stream, StreamExt};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use reqwest::Url;
-use std::{net::SocketAddr, time::Duration};
+use std::{fmt::Debug, net::SocketAddr, time::Duration};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -20,39 +20,29 @@ async fn main() -> anyhow::Result<()> {
     let setup = setup()?;
     tracing::debug!(PF=%setup.pathfinder_url, GW=%setup.gateway_url, "pathfinder-probe starting");
 
-    let gw_stream = futures::stream::unfold(Head::default(), move |state| {
-        let url = setup.gateway_url.clone();
-        async move {
-            let head = get_gateway_latest(&url).await.unwrap_or(state);
-            tracing::debug!(head = head.block_number, "GW");
-            tokio::time::sleep(setup.poll_delay).await;
-            Some((head.clone(), head))
-        }
-    });
-
-    let pf_stream = futures::stream::unfold(Head::default(), move |state| {
-        let url = setup.pathfinder_url.clone();
-        async move {
-            let head = get_pathfinder_head(&url).await.unwrap_or(state);
-            tracing::debug!(head = head.block_number, "PF");
-            tokio::time::sleep(setup.poll_delay).await;
-            Some((head.clone(), head))
-        }
-    });
-
     tokio::spawn(async move {
-        gw_stream
-            .zip(pf_stream)
-            .for_each(|(gw, pf)| {
-                let blocks_missing = gw.block_number - pf.block_number;
-                metrics::gauge!("blocks_missing", blocks_missing as f64);
+        stream(
+            &setup.gateway_url,
+            "GW",
+            get_gateway_latest,
+            setup.poll_delay,
+        )
+        .zip(stream(
+            &setup.pathfinder_url,
+            "PF",
+            get_pathfinder_head,
+            setup.poll_delay,
+        ))
+        .for_each(|(gw, pf)| {
+            let blocks_missing = gw.block_number - pf.block_number;
+            metrics::gauge!("blocks_missing", blocks_missing as f64);
 
-                let blocks_delay = gw.block_timestamp - pf.block_timestamp;
-                metrics::gauge!("blocks_delay", blocks_delay as f64);
+            let blocks_delay = gw.block_timestamp - pf.block_timestamp;
+            metrics::gauge!("blocks_delay", blocks_delay as f64);
 
-                future::ready(())
-            })
-            .await
+            future::ready(())
+        })
+        .await
     });
 
     tracing::info!(server=?setup.listen_at, "pathfinder-probe running");
@@ -94,6 +84,24 @@ fn setup() -> anyhow::Result<Setup> {
             poll_delay: Duration::from_secs(delay_seconds.parse().context("Failed to parse <poll-seconds> integer")?),
         }))
         .ok_or(anyhow::anyhow!("Failed to parse arguments: <listen-at> <gateway-url> <pathfinder-url> <poll-delay-seconds>"))?
+}
+
+fn stream<'a, T, R>(
+    url: &'a Url,
+    tag: &'a str,
+    f: fn(&'a Url) -> R,
+    delay: Duration,
+) -> impl Stream<Item = T> + 'a
+where
+    R: Future<Output = anyhow::Result<T>> + 'a,
+    T: Clone + Debug + Default + 'a,
+{
+    futures::stream::unfold(T::default(), move |old| async move {
+        let new = f(url).await.unwrap_or(old);
+        tracing::debug!(%tag, ?new, "stream");
+        tokio::time::sleep(delay).await;
+        Some((new.clone(), new))
+    })
 }
 
 // curl "https://alpha-mainnet.starknet.io/feeder_gateway/get_block?blockNumber=latest" 2>/dev/null | jq '.block_number'
