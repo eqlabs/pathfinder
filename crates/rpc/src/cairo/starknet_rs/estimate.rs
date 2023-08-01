@@ -129,6 +129,8 @@ fn estimate_fee_impl(
                 return Err(error.into());
             }
         }
+
+        state.cache_mut().update_initial_values();
     }
     Ok(fees)
 }

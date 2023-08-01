@@ -235,9 +235,9 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
-            gas_consumed: 17104.into(),
+            gas_consumed: 18328.into(),
             gas_price: 1.into(),
-            overall_fee: 17104.into(),
+            overall_fee: 18328.into(),
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");
