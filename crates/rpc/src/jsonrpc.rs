@@ -28,6 +28,18 @@ struct RpcResponse {
     id: IdValue,
 }
 
+impl RpcResponse {
+    const PARSE_ERROR: Self = Self {
+        output: Err(RpcError::ParseError),
+        id: IdValue::Null,
+    };
+
+    const INVALID_REQUEST: Self = Self {
+        output: Err(RpcError::InvalidRequest),
+        id: IdValue::Null,
+    };
+}
+
 type RpcResult = Result<Value, RpcError>;
 
 #[derive(Debug, PartialEq)]
@@ -210,10 +222,448 @@ where
     }
 }
 
+impl IntoResponse for RpcResponse {
+    fn into_response(self) -> axum::response::Response {
+        serde_json::to_vec(&self).unwrap().into_response()
+    }
+}
+
+async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
+    /// Used to parse the outer shell of an JSON RPC request.
+    ///
+    /// The specification requires differentiating between invalid json and invalid individual requests
+    /// within the json. This intermediary type let's us handle this.
+    #[derive(Debug, Deserialize)]
+    #[serde(untagged)]
+    enum RawRequest {
+        // This must come first as otherwise a batch request will get parsed as a Value::Array
+        Batch(Vec<Value>),
+        Single(Value),
+    }
+
+    let Ok(raw_request) = serde_json::from_slice::<RawRequest>(&bytes) else {
+        return RpcResponse::PARSE_ERROR.into_response();
+    };
+
+    match raw_request {
+        RawRequest::Single(request) => {
+            let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
+                return serde_json::to_string(&RpcResponse::INVALID_REQUEST).unwrap().into_response();
+            };
+
+            // Ignore notification requests.
+            let Some(id) = request.id else {
+                // TODO: should this just be closed connection?
+                return ().into_response();
+            };
+
+            let output = spec_method_handler(&request.method, request.params, id).await;
+
+            return serde_json::to_string(&output).unwrap().into_response();
+        }
+        RawRequest::Batch(requests) => {
+            // An empty batch is invalid
+            if requests.is_empty() {
+                return serde_json::to_string(&RpcResponse::INVALID_REQUEST)
+                    .unwrap()
+                    .into_response();
+            }
+
+            let mut responses = Vec::new();
+
+            // TODO: these should be spawned so that panics are isolated per request.
+            for request in requests {
+                let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
+                    responses.push(RpcResponse::INVALID_REQUEST);
+                    continue;
+                };
+
+                // Ignore notification requests.
+                let Some(id) = request.id else {
+                    continue;
+                };
+
+                let output = spec_method_handler(&request.method, request.params, id).await;
+                responses.push(output);
+            }
+
+            // All requests were notifications.
+            if responses.is_empty() {
+                // TODO: should this just be closed connection?
+                return ().into_response();
+            }
+
+            return serde_json::to_string(&responses).unwrap().into_response();
+        }
+    }
+}
+
+async fn spec_method_handler(method: &str, params: Value, id: IdValue) -> RpcResponse {
+    let output = match method {
+        "subtract" => {
+            #[derive(Debug, Deserialize, Serialize)]
+            struct Input {
+                minuend: i32,
+                subtrahend: i32,
+            }
+            Input::deserialize(params)
+                .map_err(|_| RpcError::InvalidParams)
+                .map(|input| Value::Number((input.minuend - input.subtrahend).into()))
+        }
+        "sum" => {
+            #[derive(Debug, Deserialize, Serialize)]
+            struct Input(Vec<i32>);
+
+            Input::deserialize(params)
+                .map_err(|_| RpcError::InvalidParams)
+                .map(|input| Value::Number((input.0.iter().sum::<i32>()).into()))
+        }
+        "get_data" => {
+            #[derive(Debug, Deserialize, Serialize)]
+            struct Input;
+            #[derive(Debug, Deserialize, Serialize)]
+            struct Output(Vec<Value>);
+
+            Input::deserialize(params)
+                .map_err(|_| RpcError::InvalidParams)
+                .map(|_| {
+                    serde_json::to_value(&Output(vec![
+                        Value::String("hello".to_owned()),
+                        Value::Number(5.into()),
+                    ]))
+                    .unwrap()
+                })
+        }
+        unknown => Err(RpcError::MethodNotFound {
+            method: unknown.to_owned(),
+        }),
+    };
+
+    RpcResponse { id, output }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    mod specification_tests {
+        //! Test cases lifted directly from the [RPC specification](https://www.jsonrpc.org/specification).
+        use super::*;
+
+        async fn spawn_server() -> String {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let url = format!("http://127.0.0.1:{}", addr.port());
+
+            tokio::spawn(async {
+                let router = axum::Router::new().route("/", axum::routing::post(rpc_handler));
+                axum::Server::from_tcp(listener)
+                    .unwrap()
+                    .serve(router.into_make_service())
+                    .await
+            });
+
+            url
+        }
+
+        #[tokio::test]
+        async fn with_positional_params() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "subtract", "params": [42, 23], "id": 2}
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "result": 19, "id": 2});
+            assert_eq!(res, expected);
+
+            let res = client
+                .post(url)
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "subtract", "params": [23, 42], "id": 2}
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "result": -19, "id": 2});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn with_named_params() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "subtract", "params": {"subtrahend": 23, "minuend": 42}, "id": 3}
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "result": 19, "id": 3});
+            assert_eq!(res, expected);
+
+            let res = client
+            .post(url)
+            .json(&serde_json::json!(
+                {"jsonrpc": "2.0", "method": "subtract", "params": {"minuend": 42, "subtrahend": 23}, "id": 4}
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "result": 19, "id": 4});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn notification() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "update", "params": [1,2,3,4,5]}
+                ))
+                .send()
+                .await
+                .unwrap();
+
+            assert_eq!(res.content_length(), Some(0));
+
+            // --> {"jsonrpc": "2.0", "method": "foobar"}
+            let res = client
+                .post(url)
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "foobar"}
+                ))
+                .send()
+                .await
+                .unwrap();
+
+            assert_eq!(res.content_length(), Some(0));
+        }
+
+        #[tokio::test]
+        async fn non_existent_method() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "foobar", "id": "1"}
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "1"});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn invalid_json() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .body(r#"{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]"#)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": null});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn invalid_request_object() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!({"jsonrpc": "2.0", "method": 1, "params": "bar"}))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn invalid_json_batch() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .body(
+                    r#"[
+                    {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
+                    {"jsonrpc": "2.0", "method"
+                 ]"#,
+                )
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": null});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn empty_batch() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!([]))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn invalid_batch() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!([1]))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!([
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
+            ]);
+            assert_eq!(res, expected);
+
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!([1, 2, 3]))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!([
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
+            ]);
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn batch() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    [
+                        {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
+                        {"jsonrpc": "2.0", "method": "notify_hello", "params": [7]},
+                        {"jsonrpc": "2.0", "method": "subtract", "params": [42,23], "id": "2"},
+                        {"foo": "boo"},
+                        {"jsonrpc": "2.0", "method": "foo.get", "params": {"name": "myself"}, "id": "5"},
+                        {"jsonrpc": "2.0", "method": "get_data", "id": "9"}
+                    ]
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!(
+                [
+                    {"jsonrpc": "2.0", "result": 7, "id": "1"},
+                    {"jsonrpc": "2.0", "result": 19, "id": "2"},
+                    {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
+                    {"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "5"},
+                    {"jsonrpc": "2.0", "result": ["hello", 5], "id": "9"}
+                ]
+            );
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn batch_all_notifications() {
+            let url = spawn_server().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    [
+                        {"jsonrpc": "2.0", "method": "notify_sum", "params": [1,2,4]},
+                        {"jsonrpc": "2.0", "method": "notify_hello", "params": [7]}
+                    ]
+                ))
+                .send()
+                .await
+                .unwrap();
+
+            assert_eq!(res.content_length(), Some(0));
+        }
+    }
 
     mod request {
         use super::*;
