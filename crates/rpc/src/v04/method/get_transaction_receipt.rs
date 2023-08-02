@@ -148,7 +148,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(rename = "SCREAMING_SNAKE_CASE")]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub enum ExecutionStatus {
         Succeeded,
@@ -169,7 +169,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(rename = "SCREAMING_SNAKE_CASE")]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     pub enum FinalityStatus {
         AcceptedOnL2,
@@ -723,5 +723,36 @@ mod tests {
             receipt.common.execution_status,
             types::ExecutionStatus::Reverted
         );
+    }
+
+    #[tokio::test]
+    async fn json_output() {
+        let context = RpcContext::for_tests_with_pending()
+            .await
+            .with_version("v0.3");
+        let input = GetTransactionReceiptInput {
+            transaction_hash: transaction_hash_bytes!(b"txn reverted"),
+        };
+
+        let receipt = get_transaction_receipt(context.clone(), input)
+            .await
+            .unwrap();
+
+        let receipt = serde_json::to_value(receipt).unwrap();
+
+        let expected = serde_json::json!({
+            "transaction_hash": transaction_hash_bytes!(b"txn reverted"),
+            "actual_fee": "0x0",
+            "execution_status": "REVERTED",
+            "finality_status": "ACCEPTED_ON_L2",
+            "block_hash": block_hash_bytes!(b"latest"),
+            "block_number": 2,
+            "messages_sent": [],
+            "revert_reason": "Reverted because",
+            "events": [],
+            "type": "INVOKE",
+        });
+
+        assert_eq!(receipt, expected);
     }
 }
