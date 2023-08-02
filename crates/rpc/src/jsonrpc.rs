@@ -6,9 +6,10 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::marker::PhantomData;
 
-use axum::async_trait;
 use axum::extract::{FromRequest, State};
+use axum::headers::ContentType;
 use axum::response::{IntoResponse, Response};
+use axum::{async_trait, TypedHeader};
 use futures::{Future, FutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -314,8 +315,14 @@ pub trait RpcMethodHandler {
 /// ```
 async fn rpc_handler<H: RpcMethodHandler>(
     State(state): State<RpcContext>,
+    TypedHeader(content_type): TypedHeader<ContentType>,
     bytes: axum::body::Bytes,
 ) -> impl IntoResponse {
+    // Only allow json content.
+    if content_type != ContentType::json() {
+        return axum::http::StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+
     /// Used to parse the outer shell of an JSON RPC request.
     ///
     /// The specification requires differentiating between invalid json and invalid individual requests
@@ -328,7 +335,7 @@ async fn rpc_handler<H: RpcMethodHandler>(
         Single(Value),
     }
 
-    // TODO: json header
+    // TODO: what HTTP codes should the rpc errors get?
 
     let Ok(raw_request) = serde_json::from_slice::<RawRequest>(&bytes) else {
         return RpcResponse::PARSE_ERROR.into_response();
@@ -620,6 +627,7 @@ mod tests {
             let res = client
                 .post(url.clone())
                 .body(r#"{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]"#)
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .send()
                 .await
                 .unwrap()
@@ -663,6 +671,7 @@ mod tests {
                     {"jsonrpc": "2.0", "method"
                  ]"#,
                 )
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .send()
                 .await
                 .unwrap()
@@ -945,8 +954,6 @@ mod tests {
                 params: Value,
                 id: RequestId,
             ) -> RpcResponse {
-                crate::error::generate_rpc_error_subset!(ExampleError:);
-
                 match method {
                     "panic" => panic!("Oh no!"),
                     _ => RpcResponse {
@@ -1004,5 +1011,43 @@ mod tests {
             ]);
             assert_eq!(res, expected);
         }
+    }
+
+    #[tokio::test]
+    async fn rejects_non_json_content_header() {
+        struct OnlySuccess;
+        #[async_trait]
+        impl RpcMethodHandler for OnlySuccess {
+            async fn call_method(
+                method: &str,
+                ctx: RpcContext,
+                params: Value,
+                id: RequestId,
+            ) -> RpcResponse {
+                RpcResponse {
+                    id,
+                    output: Ok(json!("Success")),
+                }
+            }
+        }
+
+        let url = spawn_server::<OnlySuccess>().await;
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(url.clone())
+            .body(
+                serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "any", "id": 1}
+                )
+                .to_string(),
+            )
+            .header(reqwest::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .send()
+            .await
+            .unwrap()
+            .status();
+
+        assert_eq!(res, reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE);
     }
 }
