@@ -230,7 +230,7 @@ impl IntoResponse for RpcResponse {
 }
 
 /// Utility trait which automates the serde of an RPC methods input and output.
-/// 
+///
 /// You should not implement this yourself - it is already be implemented for
 /// RPC functions with the signature:
 /// ```
@@ -258,7 +258,23 @@ where
     }
 }
 
-async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
+/// Handles invoking an RPC route's methods.
+///
+/// See [rpc_handler] for more information.
+#[async_trait]
+trait RpcMethodHandler {
+    async fn call_method(method: &str, params: Value, id: RequestId) -> RpcResponse;
+}
+
+/// An axum handler for a JSON RPC endpoint.
+///
+/// Specify the RPC methods by implementing [RpcMethodHandler].
+///
+/// ```rust
+/// let router = axum::Router::new()
+///     .route("/", post(rpc_handler::<ExampleHandler>));
+/// ```
+async fn rpc_handler<H: RpcMethodHandler>(bytes: axum::body::Bytes) -> impl IntoResponse {
     /// Used to parse the outer shell of an JSON RPC request.
     ///
     /// The specification requires differentiating between invalid json and invalid individual requests
@@ -270,6 +286,8 @@ async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
         Batch(Vec<Value>),
         Single(Value),
     }
+
+    // TODO: json header
 
     let Ok(raw_request) = serde_json::from_slice::<RawRequest>(&bytes) else {
         return RpcResponse::PARSE_ERROR.into_response();
@@ -287,7 +305,7 @@ async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
                 return ().into_response();
             };
 
-            let output = spec_method_handler(&request.method, request.params, id).await;
+            let output = H::call_method(&request.method, request.params, id).await;
 
             return serde_json::to_string(&output).unwrap().into_response();
         }
@@ -313,7 +331,7 @@ async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
                     continue;
                 };
 
-                let output = spec_method_handler(&request.method, request.params, id).await;
+                let output = H::call_method(&request.method, request.params, id).await;
                 responses.push(output);
             }
 
@@ -328,47 +346,6 @@ async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
     }
 }
 
-async fn spec_method_handler(method: &str, params: Value, id: RequestId) -> RpcResponse {
-    crate::error::generate_rpc_error_subset!(ExampleError:);
-
-    #[derive(Debug, Deserialize, Serialize)]
-    struct SubtractInput {
-        minuend: i32,
-        subtrahend: i32,
-    }
-    async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
-        Ok(Value::Number((input.minuend - input.subtrahend).into()))
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    struct SumInput(Vec<i32>);
-    async fn sum(input: SumInput) -> Result<Value, ExampleError> {
-        Ok(Value::Number((input.0.iter().sum::<i32>()).into()))
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    struct GetDataInput;
-    #[derive(Debug, Deserialize, Serialize)]
-    struct GetDataOutput(Vec<Value>);
-    async fn get_data(input: GetDataInput) -> Result<GetDataOutput, ExampleError> {
-        Ok(GetDataOutput(vec![
-            Value::String("hello".to_owned()),
-            Value::Number(5.into()),
-        ]))
-    }
-
-    let output = match method {
-        "subtract" => subtract.invoke(params).await,
-        "sum" => sum.invoke(params).await,
-        "get_data" => get_data.invoke(params).await,
-        unknown => Err(RpcError::MethodNotFound {
-            method: unknown.to_owned(),
-        }),
-    };
-
-    RpcResponse { id, output }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,13 +355,59 @@ mod tests {
         //! Test cases lifted directly from the [RPC specification](https://www.jsonrpc.org/specification).
         use super::*;
 
+        struct SpecMethodHandler;
+        #[async_trait]
+        impl RpcMethodHandler for SpecMethodHandler {
+            async fn call_method(method: &str, params: Value, id: RequestId) -> RpcResponse {
+                crate::error::generate_rpc_error_subset!(ExampleError:);
+
+                #[derive(Debug, Deserialize, Serialize)]
+                struct SubtractInput {
+                    minuend: i32,
+                    subtrahend: i32,
+                }
+                async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
+                    Ok(Value::Number((input.minuend - input.subtrahend).into()))
+                }
+
+                #[derive(Debug, Deserialize, Serialize)]
+                struct SumInput(Vec<i32>);
+                async fn sum(input: SumInput) -> Result<Value, ExampleError> {
+                    Ok(Value::Number((input.0.iter().sum::<i32>()).into()))
+                }
+
+                #[derive(Debug, Deserialize, Serialize)]
+                struct GetDataInput;
+                #[derive(Debug, Deserialize, Serialize)]
+                struct GetDataOutput(Vec<Value>);
+                async fn get_data(input: GetDataInput) -> Result<GetDataOutput, ExampleError> {
+                    Ok(GetDataOutput(vec![
+                        Value::String("hello".to_owned()),
+                        Value::Number(5.into()),
+                    ]))
+                }
+
+                let output = match method {
+                    "subtract" => subtract.invoke(params).await,
+                    "sum" => sum.invoke(params).await,
+                    "get_data" => get_data.invoke(params).await,
+                    unknown => Err(RpcError::MethodNotFound {
+                        method: unknown.to_owned(),
+                    }),
+                };
+
+                RpcResponse { id, output }
+            }
+        }
+
         async fn spawn_server() -> String {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let addr = listener.local_addr().unwrap();
             let url = format!("http://127.0.0.1:{}", addr.port());
 
             tokio::spawn(async {
-                let router = axum::Router::new().route("/", axum::routing::post(rpc_handler));
+                let router = axum::Router::new()
+                    .route("/", axum::routing::post(rpc_handler::<SpecMethodHandler>));
                 axum::Server::from_tcp(listener)
                     .unwrap()
                     .serve(router.into_make_service())
