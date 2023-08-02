@@ -3,11 +3,7 @@ use crate::felt::RpcFelt;
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
-crate::error::generate_rpc_error_subset!(
-    CallError: BlockNotFound,
-    ContractNotFound,
-    ContractError
-);
+crate::error::generate_rpc_error_subset!(CallError: BlockNotFound, ContractNotFound, ContractError);
 
 impl From<pathfinder_executor::CallError> for CallError {
     fn from(value: pathfinder_executor::CallError) -> Self {

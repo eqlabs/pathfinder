@@ -1,5 +1,5 @@
 use crate::context::RpcContext;
-use crate::jsonrpc::{RequestId, RpcResponse};
+use crate::jsonrpc::RpcResult;
 use crate::module::Module;
 
 mod method;
@@ -106,12 +106,7 @@ pub struct RpcHandlerV04;
 
 #[axum::async_trait]
 impl crate::jsonrpc::RpcMethodHandler for RpcHandlerV04 {
-    async fn call_method(
-        method: &str,
-        ctx: RpcContext,
-        params: serde_json::Value,
-        id: RequestId,
-    ) -> RpcResponse {
+    async fn call_method(method: &str, ctx: RpcContext, params: serde_json::Value) -> RpcResult {
         use crate::jsonrpc::RpcMethod;
 
         #[rustfmt::skip]
@@ -151,6 +146,6 @@ impl crate::jsonrpc::RpcMethodHandler for RpcHandlerV04 {
             }),
         };
 
-        RpcResponse { id, output }
+        output
     }
 }

@@ -1,7 +1,4 @@
 //! Contains the JSON-RPC framework and its components.
-
-#![allow(unused)]
-
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::marker::PhantomData;
@@ -27,9 +24,9 @@ struct RpcRequest {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct RpcResponse {
-    pub output: RpcResult,
-    pub id: RequestId,
+struct RpcResponse {
+    output: RpcResult,
+    id: RequestId,
 }
 
 impl RpcResponse {
@@ -44,10 +41,10 @@ impl RpcResponse {
     };
 }
 
-type RpcResult = Result<Value, RpcError>;
+pub type RpcResult = Result<Value, RpcError>;
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum RequestId {
+enum RequestId {
     Number(i64),
     String(String),
     Null,
@@ -297,12 +294,7 @@ where
 /// See [rpc_handler] for more information.
 #[async_trait]
 pub trait RpcMethodHandler {
-    async fn call_method(
-        method: &str,
-        state: RpcContext,
-        params: Value,
-        id: RequestId,
-    ) -> RpcResponse;
+    async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
 }
 
 /// An axum handler for a JSON RPC endpoint.
@@ -355,20 +347,17 @@ async fn rpc_handler<H: RpcMethodHandler>(
 
             // Use tokio spawn to handle panics. This could be done by catch_unwind but RpcContext
             // contains a mutex which is not unwindsafe and I'm not smart enough to figure it out.
-            let id2 = id.clone();
             let result = tokio::spawn(async move {
-                H::call_method(&request.method, state, request.params, id2).await
+                H::call_method(&request.method, state, request.params).await
             })
             .await;
 
-            match result {
-                Ok(output) => serde_json::to_string(&output).unwrap().into_response(),
-                Err(e) => RpcResponse {
-                    output: Err(RpcError::InternalError(anyhow::anyhow!(e))),
-                    id,
-                }
-                .into_response(),
-            }
+            let output = match result {
+                Ok(output) => output,
+                Err(e) => Err(RpcError::InternalError(anyhow::anyhow!(e))),
+            };
+
+            RpcResponse { output, id }.into_response()
         }
         RawRequest::Batch(requests) => {
             // An empty batch is invalid
@@ -393,20 +382,16 @@ async fn rpc_handler<H: RpcMethodHandler>(
 
                 // Use tokio spawn to handle panics. This could be done by catch_unwind but RpcContext
                 // contains a mutex which is not unwindsafe and I'm not smart enough to figure it out.
-                let id2 = id.clone();
                 let state2 = state.clone();
                 let result = tokio::spawn(async move {
-                    H::call_method(&request.method, state2, request.params, id2).await
+                    H::call_method(&request.method, state2, request.params).await
                 })
                 .await;
                 let output = match result {
                     Ok(output) => output,
-                    Err(e) => RpcResponse {
-                        output: Err(RpcError::InternalError(anyhow::anyhow!(e))),
-                        id,
-                    },
+                    Err(e) => Err(RpcError::InternalError(anyhow::anyhow!(e))),
                 };
-                responses.push(output);
+                responses.push(RpcResponse { output, id });
             }
 
             // All requests were notifications.
@@ -450,12 +435,7 @@ mod tests {
         struct SpecMethodHandler;
         #[async_trait]
         impl RpcMethodHandler for SpecMethodHandler {
-            async fn call_method(
-                method: &str,
-                ctx: RpcContext,
-                params: Value,
-                id: RequestId,
-            ) -> RpcResponse {
+            async fn call_method(method: &str, ctx: RpcContext, params: Value) -> RpcResult {
                 crate::error::generate_rpc_error_subset!(ExampleError:);
 
                 #[derive(Debug, Deserialize, Serialize)]
@@ -493,7 +473,7 @@ mod tests {
                     }),
                 };
 
-                RpcResponse { id, output }
+                output
             }
         }
 
@@ -948,18 +928,10 @@ mod tests {
         struct PanicHandler;
         #[async_trait]
         impl RpcMethodHandler for PanicHandler {
-            async fn call_method(
-                method: &str,
-                ctx: RpcContext,
-                params: Value,
-                id: RequestId,
-            ) -> RpcResponse {
+            async fn call_method(method: &str, ctx: RpcContext, params: Value) -> RpcResult {
                 match method {
                     "panic" => panic!("Oh no!"),
-                    _ => RpcResponse {
-                        id,
-                        output: Ok(json!("Success")),
-                    },
+                    _ => Ok(json!("Success")),
                 }
             }
         }
@@ -1018,16 +990,8 @@ mod tests {
         struct OnlySuccess;
         #[async_trait]
         impl RpcMethodHandler for OnlySuccess {
-            async fn call_method(
-                method: &str,
-                ctx: RpcContext,
-                params: Value,
-                id: RequestId,
-            ) -> RpcResponse {
-                RpcResponse {
-                    id,
-                    output: Ok(json!("Success")),
-                }
+            async fn call_method(method: &str, ctx: RpcContext, params: Value) -> RpcResult {
+                Ok(json!("Success"))
             }
         }
 

@@ -1,4 +1,4 @@
-use crate::jsonrpc::{RequestId, RpcResponse};
+use crate::jsonrpc::RpcResult;
 use crate::module::Module;
 
 pub mod method;
@@ -98,8 +98,7 @@ impl crate::jsonrpc::RpcMethodHandler for RpcHandlerV03 {
         method: &str,
         ctx: crate::context::RpcContext,
         params: serde_json::Value,
-        id: RequestId,
-    ) -> RpcResponse {
+    ) -> RpcResult {
         use crate::jsonrpc::RpcMethod;
 
         #[rustfmt::skip]
@@ -124,7 +123,7 @@ impl crate::jsonrpc::RpcMethodHandler for RpcHandlerV03 {
             "starknet_getTransactionReceipt"           => v02_method::get_transaction_receipt.invoke(ctx, params).await,
             "starknet_pendingTransactions"             => v02_method::pending_transactions.invoke(ctx, params).await,
             "starknet_syncing"                         => v02_method::syncing.invoke(ctx, params).await,
-            
+
             "starknet_estimateFee"                     => v03_method::estimate_fee.invoke(ctx, params).await,
             "starknet_getEvents"                       => v03_method::get_events.invoke(ctx, params).await,
             "starknet_getStateUpdate"                  => v03_method::get_state_update.invoke(ctx, params).await,
@@ -138,6 +137,6 @@ impl crate::jsonrpc::RpcMethodHandler for RpcHandlerV03 {
             }),
         };
 
-        RpcResponse { id, output }
+        output
     }
 }
