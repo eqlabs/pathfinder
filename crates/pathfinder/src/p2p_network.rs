@@ -86,6 +86,11 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         p2p_client.subscribe_topic(&block_propagation_topic).await?;
     }
 
+    let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
+    for capability in capabilities {
+        p2p_client.provide_capability(capability).await?
+    }
+
     let (tx, rx) = tokio::sync::watch::channel(None);
     let (tx2, mut rx2) = tokio::sync::mpsc::channel(1);
 

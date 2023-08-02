@@ -80,13 +80,12 @@ async fn main() -> anyhow::Result<()> {
 
     let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new());
     let transport = dns::TokioDnsConfig::system(transport).unwrap();
-    let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-        .into_authentic(&keypair)
-        .expect("Signing libp2p-noise static DH keypair failed.");
+    let noise_config =
+        noise::Config::new(&keypair).expect("Signing libp2p-noise static DH keypair failed.");
     let transport = transport
         .upgrade(upgrade::Version::V1)
-        .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(libp2p::yamux::YamuxConfig::default())
+        .authenticate(noise_config)
+        .multiplex(libp2p::yamux::Config::default())
         .boxed();
 
     let mut swarm = SwarmBuilder::with_executor(

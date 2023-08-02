@@ -304,6 +304,28 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    pub async fn get_capability_providers(&self, capability: &str) -> Result<HashSet<PeerId>, ()> {
+        let (sender, mut receiver) = mpsc::channel(1);
+        self.sender
+            .send(Command::GetCapabilityProviders {
+                capability: capability.to_owned(),
+                sender,
+            })
+            .await
+            .expect("Command receiver not to be dropped");
+
+        let mut providers = HashSet::new();
+
+        while let Some(partial_result) = receiver.recv().await {
+            match partial_result {
+                Ok(more_providers) => providers.extend(more_providers.into_iter()),
+                Err(_) => return Err(()),
+            }
+        }
+
+        Ok(providers)
+    }
+
     pub async fn subscribe_topic(&self, topic: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);
@@ -390,6 +412,10 @@ enum Command {
         capability: String,
         sender: EmptyResultSender,
     },
+    GetCapabilityProviders {
+        capability: String,
+        sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>, ()>>,
+    },
     SubscribeTopic {
         topic: IdentTopic,
         sender: EmptyResultSender,
@@ -474,7 +500,15 @@ pub struct MainLoop {
     request_sync_status: HashSetDelay<PeerId>,
 
     bootstrap_cfg: BootstrapConfig,
+
+    pending_queries: PendingQueries,
+
     _pending_test_queries: TestQueries,
+}
+
+#[derive(Debug, Default)]
+struct PendingQueries {
+    pub get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>, ()>>>,
 }
 
 impl MainLoop {
@@ -495,6 +529,7 @@ impl MainLoop {
             pending_block_sync_status_requests: Default::default(),
             request_sync_status: HashSetDelay::new(periodic_cfg.status_period),
             bootstrap_cfg: periodic_cfg.bootstrap,
+            pending_queries: Default::default(),
             _pending_test_queries: Default::default(),
         }
     }
@@ -875,6 +910,13 @@ impl MainLoop {
                     }
                     Err(e) => sender.send(Err(e)),
                 };
+            }
+            Command::GetCapabilityProviders { capability, sender } => {
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .get_capability_providers(&capability);
+                self.pending_queries.get_providers.insert(query_id, sender);
             }
             Command::SubscribeTopic { topic, sender } => {
                 let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {

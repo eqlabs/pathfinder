@@ -97,6 +97,11 @@ impl Behaviour {
         Ok(())
     }
 
+    pub fn get_capability_providers(&mut self, capability: &str) -> kad::QueryId {
+        let key = string_to_key(capability);
+        self.kademlia.get_providers(key)
+    }
+
     pub fn subscribe_topic(&mut self, topic: &IdentTopic) -> anyhow::Result<()> {
         self.gossipsub.subscribe(topic)?;
         Ok(())
