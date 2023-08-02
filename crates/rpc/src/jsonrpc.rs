@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 use axum::async_trait;
 use axum::extract::{FromRequest, State};
 use axum::response::{IntoResponse, Response};
-use futures::Future;
+use futures::{Future, FutureExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -45,7 +45,7 @@ impl RpcResponse {
 
 type RpcResult = Result<Value, RpcError>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum RequestId {
     Number(i64),
     String(String),
@@ -92,7 +92,7 @@ impl RpcError {
             RpcError::InvalidRequest => -32600,
             RpcError::MethodNotFound { .. } => -32601,
             RpcError::InvalidParams => -32602,
-            RpcError::InternalError(_) => 32603,
+            RpcError::InternalError(_) => -32603,
             RpcError::ApplicationError { code, .. } => *code,
         }
     }
@@ -346,9 +346,22 @@ async fn rpc_handler<H: RpcMethodHandler>(
                 return ().into_response();
             };
 
-            let output = H::call_method(&request.method, state, request.params, id).await;
+            // Use tokio spawn to handle panics. This could be done by catch_unwind but RpcContext
+            // contains a mutex which is not unwindsafe and I'm not smart enough to figure it out.
+            let id2 = id.clone();
+            let result = tokio::spawn(async move {
+                H::call_method(&request.method, state, request.params, id2).await
+            })
+            .await;
 
-            return serde_json::to_string(&output).unwrap().into_response();
+            match result {
+                Ok(output) => serde_json::to_string(&output).unwrap().into_response(),
+                Err(e) => RpcResponse {
+                    output: Err(RpcError::InternalError(anyhow::anyhow!(e))),
+                    id,
+                }
+                .into_response(),
+            }
         }
         RawRequest::Batch(requests) => {
             // An empty batch is invalid
@@ -360,7 +373,6 @@ async fn rpc_handler<H: RpcMethodHandler>(
 
             let mut responses = Vec::new();
 
-            // TODO: these should be spawned so that panics are isolated per request.
             for request in requests {
                 let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
                     responses.push(RpcResponse::INVALID_REQUEST);
@@ -372,8 +384,21 @@ async fn rpc_handler<H: RpcMethodHandler>(
                     continue;
                 };
 
-                let output =
-                    H::call_method(&request.method, state.clone(), request.params, id).await;
+                // Use tokio spawn to handle panics. This could be done by catch_unwind but RpcContext
+                // contains a mutex which is not unwindsafe and I'm not smart enough to figure it out.
+                let id2 = id.clone();
+                let state2 = state.clone();
+                let result = tokio::spawn(async move {
+                    H::call_method(&request.method, state2, request.params, id2).await
+                })
+                .await;
+                let output = match result {
+                    Ok(output) => output,
+                    Err(e) => RpcResponse {
+                        output: Err(RpcError::InternalError(anyhow::anyhow!(e))),
+                        id,
+                    },
+                };
                 responses.push(output);
             }
 
@@ -392,6 +417,24 @@ async fn rpc_handler<H: RpcMethodHandler>(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    async fn spawn_server<H: RpcMethodHandler + 'static>() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://127.0.0.1:{}", addr.port());
+
+        tokio::spawn(async {
+            let router = axum::Router::new()
+                .route("/", axum::routing::post(rpc_handler::<H>))
+                .with_state(RpcContext::for_tests());
+            axum::Server::from_tcp(listener)
+                .unwrap()
+                .serve(router.into_make_service())
+                .await
+        });
+
+        url
+    }
 
     mod specification_tests {
         //! Test cases lifted directly from the [RPC specification](https://www.jsonrpc.org/specification).
@@ -413,9 +456,7 @@ mod tests {
                     minuend: i32,
                     subtrahend: i32,
                 }
-                async fn subtract(
-                    input: SubtractInput,
-                ) -> Result<Value, ExampleError> {
+                async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
                     Ok(Value::Number((input.minuend - input.subtrahend).into()))
                 }
 
@@ -429,9 +470,7 @@ mod tests {
                 struct GetDataInput;
                 #[derive(Debug, Deserialize, Serialize)]
                 struct GetDataOutput(Vec<Value>);
-                async fn get_data(
-                    input: GetDataInput,
-                ) -> Result<GetDataOutput, ExampleError> {
+                async fn get_data(input: GetDataInput) -> Result<GetDataOutput, ExampleError> {
                     Ok(GetDataOutput(vec![
                         Value::String("hello".to_owned()),
                         Value::Number(5.into()),
@@ -451,27 +490,9 @@ mod tests {
             }
         }
 
-        async fn spawn_server() -> String {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            let addr = listener.local_addr().unwrap();
-            let url = format!("http://127.0.0.1:{}", addr.port());
-
-            tokio::spawn(async {
-                let router = axum::Router::new()
-                    .route("/", axum::routing::post(rpc_handler::<SpecMethodHandler>))
-                    .with_state(RpcContext::for_tests());
-                axum::Server::from_tcp(listener)
-                    .unwrap()
-                    .serve(router.into_make_service())
-                    .await
-            });
-
-            url
-        }
-
         #[tokio::test]
         async fn with_positional_params() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -507,7 +528,7 @@ mod tests {
 
         #[tokio::test]
         async fn with_named_params() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -543,7 +564,7 @@ mod tests {
 
         #[tokio::test]
         async fn notification() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -572,7 +593,7 @@ mod tests {
 
         #[tokio::test]
         async fn non_existent_method() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -593,7 +614,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_json() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -612,7 +633,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_request_object() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -631,7 +652,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_json_batch() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -655,7 +676,7 @@ mod tests {
 
         #[tokio::test]
         async fn empty_batch() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -674,7 +695,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_batch() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -712,7 +733,7 @@ mod tests {
 
         #[tokio::test]
         async fn batch() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -748,7 +769,7 @@ mod tests {
 
         #[tokio::test]
         async fn batch_all_notifications() {
-            let url = spawn_server().await;
+            let url = spawn_server::<SpecMethodHandler>().await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -909,6 +930,79 @@ mod tests {
                 "result": "foobar",
                 "id": 1,
             });
+        }
+    }
+
+    mod panic_handling {
+        use super::*;
+
+        struct PanicHandler;
+        #[async_trait]
+        impl RpcMethodHandler for PanicHandler {
+            async fn call_method(
+                method: &str,
+                ctx: RpcContext,
+                params: Value,
+                id: RequestId,
+            ) -> RpcResponse {
+                crate::error::generate_rpc_error_subset!(ExampleError:);
+
+                match method {
+                    "panic" => panic!("Oh no!"),
+                    _ => RpcResponse {
+                        id,
+                        output: Ok(json!("Success")),
+                    },
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn panic_is_internal_error() {
+            let url = spawn_server::<PanicHandler>().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "panic", "id": 1}
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1});
+            assert_eq!(res, expected);
+        }
+
+        #[tokio::test]
+        async fn panic_in_batch_is_isolated() {
+            let url = spawn_server::<PanicHandler>().await;
+
+            let client = reqwest::Client::new();
+            let res = client
+                .post(url.clone())
+                .json(&serde_json::json!(
+                    [
+                        {"jsonrpc": "2.0", "method": "panic", "id": 1},
+                        {"jsonrpc": "2.0", "method": "no panic", "id": 2},
+                    ]
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+
+            let expected = serde_json::json!([
+                {"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1},
+                {"jsonrpc": "2.0", "result": "Success", "id": 2},
+            ]);
+            assert_eq!(res, expected);
         }
     }
 }
