@@ -19,31 +19,31 @@ struct RpcRequest {
     // This is allowed to be missing but to reduce the indirection we
     // map None to to null in the deserialization implementation.
     params: Value,
-    id: Option<IdValue>,
+    id: Option<RequestId>,
 }
 
 #[derive(Debug, PartialEq)]
 struct RpcResponse {
     output: RpcResult,
-    id: IdValue,
+    id: RequestId,
 }
 
 impl RpcResponse {
     const PARSE_ERROR: Self = Self {
         output: Err(RpcError::ParseError),
-        id: IdValue::Null,
+        id: RequestId::Null,
     };
 
     const INVALID_REQUEST: Self = Self {
         output: Err(RpcError::InvalidRequest),
-        id: IdValue::Null,
+        id: RequestId::Null,
     };
 }
 
 type RpcResult = Result<Value, RpcError>;
 
 #[derive(Debug, PartialEq)]
-enum IdValue {
+enum RequestId {
     Number(i64),
     String(String),
     Null,
@@ -136,9 +136,9 @@ impl Serialize for RpcResponse {
         };
 
         match &self.id {
-            IdValue::Number(x) => obj.serialize_entry("id", &x)?,
-            IdValue::String(x) => obj.serialize_entry("id", &x)?,
-            IdValue::Null => obj.serialize_entry("id", &Value::Null)?,
+            RequestId::Number(x) => obj.serialize_entry("id", &x)?,
+            RequestId::String(x) => obj.serialize_entry("id", &x)?,
+            RequestId::Null => obj.serialize_entry("id", &Value::Null)?,
         };
 
         obj.end()
@@ -181,10 +181,10 @@ impl<'de> Deserialize<'de> for RpcRequest {
         }
 
         let id = match helper.id {
-            IdHelper::Some(Value::Null) => Some(IdValue::Null),
-            IdHelper::Some(Value::String(x)) => Some(IdValue::String(x)),
+            IdHelper::Some(Value::Null) => Some(RequestId::Null),
+            IdHelper::Some(Value::String(x)) => Some(RequestId::String(x)),
             IdHelper::Some(Value::Number(x)) if x.is_i64() => {
-                Some(IdValue::Number(x.as_i64().unwrap()))
+                Some(RequestId::Number(x.as_i64().unwrap()))
             }
             IdHelper::Some(Value::Number(x)) if x.is_u64() => {
                 return Err(D::Error::custom("id value too large"));
@@ -298,7 +298,7 @@ async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
     }
 }
 
-async fn spec_method_handler(method: &str, params: Value, id: IdValue) -> RpcResponse {
+async fn spec_method_handler(method: &str, params: Value, id: RequestId) -> RpcResponse {
     let output = match method {
         "subtract" => {
             #[derive(Debug, Deserialize, Serialize)]
@@ -680,7 +680,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: Some(IdValue::Null),
+                id: Some(RequestId::Null),
             };
             assert_eq!(result, expected);
         }
@@ -697,7 +697,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: Some(IdValue::String("text".to_owned())),
+                id: Some(RequestId::String("text".to_owned())),
             };
             assert_eq!(result, expected);
         }
@@ -714,7 +714,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: Some(IdValue::Number(456)),
+                id: Some(RequestId::Number(456)),
             };
             assert_eq!(result, expected);
         }
@@ -767,7 +767,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!(null),
-                id: Some(IdValue::Number(456)),
+                id: Some(RequestId::Number(456)),
             };
             assert_eq!(result, expected);
         }
@@ -780,7 +780,7 @@ mod tests {
         fn output_is_error() {
             let serialized = serde_json::to_value(&RpcResponse {
                 output: Err(RpcError::InvalidParams),
-                id: IdValue::Number(1),
+                id: RequestId::Number(1),
             })
             .unwrap();
 
@@ -798,7 +798,7 @@ mod tests {
         fn output_is_ok() {
             let serialized = serde_json::to_value(&RpcResponse {
                 output: Ok(Value::String("foobar".to_owned())),
-                id: IdValue::Number(1),
+                id: RequestId::Number(1),
             })
             .unwrap();
 
