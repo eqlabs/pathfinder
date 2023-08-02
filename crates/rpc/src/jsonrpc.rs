@@ -3,6 +3,7 @@
 #![allow(unused)]
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::marker::PhantomData;
 
 use axum::async_trait;
@@ -228,6 +229,35 @@ impl IntoResponse for RpcResponse {
     }
 }
 
+/// Utility trait which automates the serde of an RPC methods input and output.
+/// 
+/// You should not implement this yourself - it is already be implemented for
+/// RPC functions with the signature:
+/// ```
+/// async fn example(input: impl Deserialize) -> Result<impl Serialize, Into<RpcError>>;
+/// ```
+#[async_trait]
+trait RpcMethod<T, U> {
+    async fn invoke(&self, params: Value) -> RpcResult;
+}
+
+#[async_trait]
+impl<F, Input, Output, Error, Fut> RpcMethod<Input, Output> for F
+where
+    F: Fn(Input) -> Fut + std::marker::Sync,
+    Input: DeserializeOwned + std::marker::Send,
+    Output: Serialize,
+    Error: Into<RpcError>,
+    Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+{
+    async fn invoke(&self, params: Value) -> RpcResult {
+        let input: Input = serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
+        let output = self(input).await.map_err(Into::into)?;
+
+        serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+    }
+}
+
 async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
     /// Used to parse the outer shell of an JSON RPC request.
     ///
@@ -299,41 +329,38 @@ async fn rpc_handler(bytes: axum::body::Bytes) -> impl IntoResponse {
 }
 
 async fn spec_method_handler(method: &str, params: Value, id: RequestId) -> RpcResponse {
+    crate::error::generate_rpc_error_subset!(ExampleError:);
+
+    #[derive(Debug, Deserialize, Serialize)]
+    struct SubtractInput {
+        minuend: i32,
+        subtrahend: i32,
+    }
+    async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
+        Ok(Value::Number((input.minuend - input.subtrahend).into()))
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    struct SumInput(Vec<i32>);
+    async fn sum(input: SumInput) -> Result<Value, ExampleError> {
+        Ok(Value::Number((input.0.iter().sum::<i32>()).into()))
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    struct GetDataInput;
+    #[derive(Debug, Deserialize, Serialize)]
+    struct GetDataOutput(Vec<Value>);
+    async fn get_data(input: GetDataInput) -> Result<GetDataOutput, ExampleError> {
+        Ok(GetDataOutput(vec![
+            Value::String("hello".to_owned()),
+            Value::Number(5.into()),
+        ]))
+    }
+
     let output = match method {
-        "subtract" => {
-            #[derive(Debug, Deserialize, Serialize)]
-            struct Input {
-                minuend: i32,
-                subtrahend: i32,
-            }
-            Input::deserialize(params)
-                .map_err(|_| RpcError::InvalidParams)
-                .map(|input| Value::Number((input.minuend - input.subtrahend).into()))
-        }
-        "sum" => {
-            #[derive(Debug, Deserialize, Serialize)]
-            struct Input(Vec<i32>);
-
-            Input::deserialize(params)
-                .map_err(|_| RpcError::InvalidParams)
-                .map(|input| Value::Number((input.0.iter().sum::<i32>()).into()))
-        }
-        "get_data" => {
-            #[derive(Debug, Deserialize, Serialize)]
-            struct Input;
-            #[derive(Debug, Deserialize, Serialize)]
-            struct Output(Vec<Value>);
-
-            Input::deserialize(params)
-                .map_err(|_| RpcError::InvalidParams)
-                .map(|_| {
-                    serde_json::to_value(&Output(vec![
-                        Value::String("hello".to_owned()),
-                        Value::Number(5.into()),
-                    ]))
-                    .unwrap()
-                })
-        }
+        "subtract" => subtract.invoke(params).await,
+        "sum" => sum.invoke(params).await,
+        "get_data" => get_data.invoke(params).await,
         unknown => Err(RpcError::MethodNotFound {
             method: unknown.to_owned(),
         }),
