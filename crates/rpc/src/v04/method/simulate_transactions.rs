@@ -1,8 +1,6 @@
 use crate::{
-    cairo::starknet_rs::types::TransactionSimulation,
-    cairo::starknet_rs::CallError,
-    context::RpcContext,
-    v02::types::request::BroadcastedTransaction,
+    cairo::starknet_rs::types::TransactionSimulation, cairo::starknet_rs::CallError,
+    context::RpcContext, v02::types::request::BroadcastedTransaction,
     v03::method::common::ExecutionStateError,
 };
 
@@ -74,7 +72,12 @@ pub async fn simulate_transactions(
     let txs = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
-        crate::cairo::starknet_rs::simulate(execution_state, input.transactions, skip_validate, skip_fee_charge)
+        crate::cairo::starknet_rs::simulate(
+            execution_state,
+            input.transactions,
+            skip_validate,
+            skip_fee_charge,
+        )
     })
     .await
     .context("Simulating transaction")??;
@@ -347,11 +350,10 @@ pub mod dto {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{macro_prelude::*, StateUpdate};
     use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, GasPrice,
-        TransactionVersion,
+        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, GasPrice, TransactionVersion,
     };
+    use pathfinder_common::{macro_prelude::*, StateUpdate};
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::{
         DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
@@ -397,8 +399,7 @@ mod tests {
             tx.commit().unwrap();
         }
 
-        RpcContext::for_tests()
-            .with_storage(storage)
+        RpcContext::for_tests().with_storage(storage)
     }
 
     #[tokio::test]
@@ -427,14 +428,14 @@ mod tests {
             use dto::*;
             vec![
             SimulatedTransaction {
-                fee_estimation: 
+                fee_estimation:
                     FeeEstimate {
                         gas_consumed: 3709.into(),
                         gas_price: 1.into(),
                         overall_fee: 3709.into(),
                     }
                 ,
-                transaction_trace: 
+                transaction_trace:
                     TransactionTrace::DeployAccount(
                         DeployAccountTxnTrace {
                             constructor_invocation: Some(
