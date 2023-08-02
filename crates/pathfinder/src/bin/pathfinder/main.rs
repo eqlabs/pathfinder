@@ -248,6 +248,7 @@ fn setup_tracing(color: config::Color) {
         .with_ansi(color.is_color_enabled())
         // Makes debugging p2p a lot easier.
         .with_target(cfg!(feature = "p2p"))
+        //.compact()
         .pretty()
         .with_filter(tracing_subscriber::filter::dynamic_filter_fn(
             move |m, c| env_filter.enabled(m, c.clone()),
@@ -272,7 +273,8 @@ fn setup_tracing(color: config::Color) {
         .with_target(cfg!(feature = "p2p"))
         .with_timer(time_fmt)
         .with_ansi(color.is_color_enabled())
-        .compact()
+        //.compact()
+        .pretty()
         .init();
 }
 

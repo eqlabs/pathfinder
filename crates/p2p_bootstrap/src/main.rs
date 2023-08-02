@@ -18,10 +18,12 @@ mod behaviour;
 
 #[derive(Parser, Debug)]
 struct Args {
-    #[clap(long, value_parser, env = "IDENTITY_CONFIG_FILE")]
+    #[clap(long, short, value_parser, env = "IDENTITY_CONFIG_FILE")]
     identity_config_file: Option<std::path::PathBuf>,
-    #[clap(long, value_parser, env = "LISTEN_ON")]
+    #[clap(long, short, value_parser, env = "LISTEN_ON")]
     listen_on: Multiaddr,
+    #[clap(long, short, value_parser, env = "BOOTSTRAP_INTERVAL")]
+    bootstrap_interval_seconds: u64,
 }
 
 #[derive(Clone, Deserialize)]
@@ -97,8 +99,8 @@ async fn main() -> anyhow::Result<()> {
 
     swarm.listen_on(args.listen_on)?;
 
-    const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(5 * 60);
-    let mut bootstrap_interval = tokio::time::interval(BOOTSTRAP_INTERVAL);
+    let mut bootstrap_interval =
+        tokio::time::interval(Duration::from_secs(args.bootstrap_interval_seconds));
 
     loop {
         let bootstrap_interval_tick = bootstrap_interval.tick();
@@ -151,7 +153,8 @@ async fn main() -> anyhow::Result<()> {
 fn setup_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_target(false)
-        .compact()
+        .with_target(true)
+        //.compact()
+        .pretty()
         .init();
 }
