@@ -4,6 +4,7 @@ mod error;
 mod executor;
 mod felt;
 pub mod gas_price;
+mod jsonrpc;
 pub mod metrics;
 pub mod middleware;
 mod module;
