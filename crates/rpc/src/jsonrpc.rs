@@ -1,16 +1,12 @@
 //! Contains the JSON-RPC framework and its components.
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::marker::PhantomData;
-
-use axum::extract::{FromRequest, State};
+use axum::extract::State;
 use axum::headers::ContentType;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use axum::{async_trait, TypedHeader};
-use futures::{Future, FutureExt};
+use futures::Future;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::context::RpcContext;
 
@@ -268,7 +264,7 @@ where
     Error: Into<RpcError>,
     Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
 {
-    async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult {
+    async fn invoke(&self, _ctx: RpcContext, params: Value) -> RpcResult {
         let input: Input = serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
         let output = self(input).await.map_err(Into::into)?;
         serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
@@ -283,8 +279,22 @@ where
     Error: Into<RpcError>,
     Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
 {
-    async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult {
+    async fn invoke(&self, ctx: RpcContext, _params: Value) -> RpcResult {
         let output = self(ctx).await.map_err(Into::into)?;
+        serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+    }
+}
+
+#[async_trait]
+impl<F, Output, Error, Fut> RpcMethod<()> for F
+where
+    F: Fn() -> Fut + std::marker::Sync,
+    Output: Serialize,
+    Error: Into<RpcError>,
+    Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+{
+    async fn invoke(&self, _ctx: RpcContext, _params: Value) -> RpcResult {
+        let output = self().await.map_err(Into::into)?;
         serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
     }
 }
@@ -305,7 +315,7 @@ pub trait RpcMethodHandler {
 /// let router = axum::Router::new()
 ///     .route("/", post(rpc_handler::<ExampleHandler>));
 /// ```
-async fn rpc_handler<H: RpcMethodHandler>(
+pub async fn rpc_handler<H: RpcMethodHandler>(
     State(state): State<RpcContext>,
     TypedHeader(content_type): TypedHeader<ContentType>,
     bytes: axum::body::Bytes,
@@ -457,7 +467,7 @@ mod tests {
                 struct GetDataInput;
                 #[derive(Debug, Deserialize, Serialize)]
                 struct GetDataOutput(Vec<Value>);
-                async fn get_data(input: GetDataInput) -> Result<GetDataOutput, ExampleError> {
+                async fn get_data() -> Result<GetDataOutput, ExampleError> {
                     Ok(GetDataOutput(vec![
                         Value::String("hello".to_owned()),
                         Value::Number(5.into()),
@@ -534,16 +544,16 @@ mod tests {
             assert_eq!(res, expected);
 
             let res = client
-            .post(url)
-            .json(&serde_json::json!(
-                {"jsonrpc": "2.0", "method": "subtract", "params": {"minuend": 42, "subtrahend": 23}, "id": 4}
-            ))
-            .send()
-            .await
-            .unwrap()
-            .json::<Value>()
-            .await
-            .unwrap();
+                .post(url)
+                .json(&serde_json::json!(
+                    {"jsonrpc": "2.0", "method": "subtract", "params": {"minuend": 42, "subtrahend": 23}, "id": 4}
+                ))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
 
             let expected = serde_json::json!({"jsonrpc": "2.0", "result": 19, "id": 4});
             assert_eq!(res, expected);
@@ -904,6 +914,8 @@ mod tests {
                 },
                 "id": 1,
             });
+
+            assert_eq!(serialized, expected);
         }
 
         #[test]
@@ -919,6 +931,8 @@ mod tests {
                 "result": "foobar",
                 "id": 1,
             });
+
+            assert_eq!(serialized, expected);
         }
     }
 
@@ -928,7 +942,7 @@ mod tests {
         struct PanicHandler;
         #[async_trait]
         impl RpcMethodHandler for PanicHandler {
-            async fn call_method(method: &str, ctx: RpcContext, params: Value) -> RpcResult {
+            async fn call_method(method: &str, _ctx: RpcContext, _params: Value) -> RpcResult {
                 match method {
                     "panic" => panic!("Oh no!"),
                     _ => Ok(json!("Success")),
@@ -990,7 +1004,7 @@ mod tests {
         struct OnlySuccess;
         #[async_trait]
         impl RpcMethodHandler for OnlySuccess {
-            async fn call_method(method: &str, ctx: RpcContext, params: Value) -> RpcResult {
+            async fn call_method(_method: &str, _ctx: RpcContext, _params: Value) -> RpcResult {
                 Ok(json!("Success"))
             }
         }
