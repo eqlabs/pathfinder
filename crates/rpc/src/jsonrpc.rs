@@ -227,75 +227,126 @@ impl IntoResponse for RpcResponse {
 
 /// Utility trait which automates the serde of an RPC methods input and output.
 ///
-/// You should not implement this yourself - it is already be implemented for
-/// the following signatures:
+/// This trait is sealed to prevent attempts at implementing it manually. This will
+/// likely clash with the existing blanket implementations with very unhelpful error
+/// messages.
+///
+/// This trait is automatically implemented for the following methods:
 /// ```
 /// async fn input_and_context(ctx: RpcContext, input: impl Deserialize) -> Result<impl Serialize, Into<RpcError>>;
 /// async fn input_only(input: impl Deserialize) -> Result<impl Serialize, Into<RpcError>>;
 /// async fn context_only(ctx: RpcContext) -> Result<impl Serialize, Into<RpcError>>;
 /// ```
+///
+/// The generics allow us to achieve a form of variadic specilization and can be ignored by callers. 
+/// See [sealed::Sealed] to add more method signatures or more information on how this works.
 #[async_trait]
-pub trait RpcMethod<T> {
+pub trait RpcMethod<I, O, S>: sealed::Sealed<I, O, S> {
     async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult;
 }
 
 #[async_trait]
-impl<F, Input, Output, Error, Fut> RpcMethod<(RpcContext, Input, Output)> for F
+impl<T, I, O, S> RpcMethod<I, O, S> for T
 where
-    F: Fn(RpcContext, Input) -> Fut + std::marker::Sync,
-    Input: DeserializeOwned + std::marker::Send,
-    Output: Serialize,
-    Error: Into<RpcError>,
-    Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+    T: sealed::Sealed<I, O, S> + std::marker::Sync,
 {
     async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult {
-        let input: Input = serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
-        let output = self(ctx, input).await.map_err(Into::into)?;
-        serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        <T as sealed::Sealed<I, O, S>>::invoke(&self, ctx, params).await
     }
 }
 
-#[async_trait]
-impl<F, Input, Output, Error, Fut> RpcMethod<(Input, Output)> for F
-where
-    F: Fn(Input) -> Fut + std::marker::Sync,
-    Input: DeserializeOwned + std::marker::Send,
-    Output: Serialize,
-    Error: Into<RpcError>,
-    Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
-{
-    async fn invoke(&self, _ctx: RpcContext, params: Value) -> RpcResult {
-        let input: Input = serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
-        let output = self(input).await.map_err(Into::into)?;
-        serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
-    }
-}
+mod sealed {
+    use super::*;
 
-#[async_trait]
-impl<F, Output, Error, Fut> RpcMethod<(RpcContext, Output)> for F
-where
-    F: Fn(RpcContext) -> Fut + std::marker::Sync,
-    Output: Serialize,
-    Error: Into<RpcError>,
-    Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
-{
-    async fn invoke(&self, ctx: RpcContext, _params: Value) -> RpcResult {
-        let output = self(ctx).await.map_err(Into::into)?;
-        serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+    /// Sealed implementation of [RpcMethod].
+    ///
+    /// The generics allow for a form of specialization over a methods Input, Output and State
+    /// by treating each as a tuple. Varying the tuple length allows us to target a specific method 
+    /// signature. This same could be achieved with a single generic but it becomes less clear as 
+    /// each permuation would require a different tuple length.
+    /// 
+    /// By convention, the lack of a type is equivalent to the unit tuple (). So if we want to target functions
+    /// with no input params, no input state and an output:
+    /// ```
+    /// Sealed<I = (), S = (), O = ((), Ouput)>
+    /// ```
+    #[async_trait]
+    pub trait Sealed<I, O, S> {
+        async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult;
     }
-}
 
-#[async_trait]
-impl<F, Output, Error, Fut> RpcMethod<()> for F
-where
-    F: Fn() -> Fut + std::marker::Sync,
-    Output: Serialize,
-    Error: Into<RpcError>,
-    Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
-{
-    async fn invoke(&self, _ctx: RpcContext, _params: Value) -> RpcResult {
-        let output = self().await.map_err(Into::into)?;
-        serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+    /// ```
+    /// async fn example(RpcContext, impl Deserialize) -> Result<Output, Into<RpcError>>
+    /// ```
+    #[async_trait]
+    impl<F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ((), RpcContext)> for F
+    where
+        F: Fn(RpcContext, Input) -> Fut + std::marker::Sync,
+        Input: DeserializeOwned + std::marker::Send,
+        Output: Serialize,
+        Error: Into<RpcError>,
+        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+    {
+        async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult {
+            let input: Input =
+                serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
+            let output = self(ctx, input).await.map_err(Into::into)?;
+            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        }
+    }
+
+    /// ```
+    /// async fn example(impl Deserialize) -> Result<Output, Into<RpcError>>
+    /// ```
+    #[async_trait]
+    impl<F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ()> for F
+    where
+        F: Fn(Input) -> Fut + std::marker::Sync,
+        Input: DeserializeOwned + std::marker::Send,
+        Output: Serialize,
+        Error: Into<RpcError>,
+        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+    {
+        async fn invoke(&self, _ctx: RpcContext, params: Value) -> RpcResult {
+            let input: Input =
+                serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
+            let output = self(input).await.map_err(Into::into)?;
+            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        }
+    }
+
+    /// ```
+    /// async fn example(RpcContext) -> Result<Output, Into<RpcError>>
+    /// ```
+    #[async_trait]
+    impl<F, Output, Error, Fut> Sealed<(), ((), Output), ((), RpcContext)> for F
+    where
+        F: Fn(RpcContext) -> Fut + std::marker::Sync,
+        Output: Serialize,
+        Error: Into<RpcError>,
+        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+    {
+        async fn invoke(&self, ctx: RpcContext, _params: Value) -> RpcResult {
+            let output = self(ctx).await.map_err(Into::into)?;
+            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        }
+    }
+
+    /// ```
+    /// async fn example() -> Result<Output, Into<RpcError>>
+    /// ```
+    #[async_trait]
+    impl<F, Output, Error, Fut> Sealed<(), (), ((), Output)> for F
+    where
+        F: Fn() -> Fut + std::marker::Sync,
+        Output: Serialize,
+        Error: Into<RpcError>,
+        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+    {
+        async fn invoke(&self, _ctx: RpcContext, _params: Value) -> RpcResult {
+            let output = self().await.map_err(Into::into)?;
+            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        }
     }
 }
 
