@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use delay_map::HashSetDelay;
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
@@ -127,6 +128,25 @@ impl SyncClient {
             .await
     }
 
+    async fn peers_with_sync_capability(&self) -> anyhow::Result<HashSet<PeerId>> {
+        self.client
+            .get_capability_providers("core/blocks-sync/1")
+            .await
+    }
+
+    async fn shuffled_peers_with_sync_capability(&self) -> anyhow::Result<Vec<PeerId>> {
+        use rand::seq::SliceRandom;
+        let peers = self.peers_with_sync_capability().await?;
+
+        if peers.is_empty() {
+            anyhow::bail!("No peers with sync capability found.")
+        }
+
+        let mut peers = peers.into_iter().collect::<Vec<_>>();
+        peers.shuffle(&mut rand::thread_rng());
+        Ok(peers)
+    }
+
     // FIXME Pick the first connected for the time being
     // :( not the best algo to pick a peer
     async fn first_connected_peer(&self) -> Option<PeerId> {
@@ -145,27 +165,35 @@ impl SyncClient {
             return Ok(Vec::new());
         }
 
-        let peer_id = match self.first_connected_peer().await {
-            Some(x) => x,
-            None => return Ok(Vec::new()),
-        };
-
-        let response = self
-            .client
-            .send_sync_request(
-                peer_id,
-                p2p_proto::sync::Request::GetBlockHeaders(p2p_proto::sync::GetBlockHeaders {
-                    start_block: start_block.get(),
-                    count: num_blocks.try_into().expect("Can it go wrong here?"),
-                    size_limit: u64::MAX, // FIXME
-                    direction: p2p_proto::sync::Direction::Forward,
-                }),
-            )
-            .await?;
-        match response {
-            p2p_proto::sync::Response::BlockHeaders(x) => Ok(x.headers),
-            _ => anyhow::bail!("Response variant does not match request"),
+        for peer in self.shuffled_peers_with_sync_capability().await? {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetBlockHeaders(p2p_proto::sync::GetBlockHeaders {
+                        start_block: start_block.get(),
+                        count: num_blocks.try_into().expect("Can it go wrong here?"),
+                        size_limit: u64::MAX, // FIXME
+                        direction: p2p_proto::sync::Direction::Forward,
+                    }),
+                )
+                .await?;
+            match response {
+                p2p_proto::sync::Response::BlockHeaders(x) => {
+                    if x.headers.is_empty() {
+                        tracing::debug!(%peer, "Got empty block headers response from");
+                        continue;
+                    } else {
+                        return Ok(x.headers);
+                    }
+                }
+                _ => anyhow::bail!("Response variant does not match request"),
+            }
         }
+
+        anyhow::bail!(
+            "No peers with block headers found for start_block {start_block} num_blocks {num_blocks}"
+        )
     }
 
     pub async fn block_bodies(
@@ -304,7 +332,10 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn get_capability_providers(&self, capability: &str) -> Result<HashSet<PeerId>, ()> {
+    pub async fn get_capability_providers(
+        &self,
+        capability: &str,
+    ) -> anyhow::Result<HashSet<PeerId>> {
         let (sender, mut receiver) = mpsc::channel(1);
         self.sender
             .send(Command::GetCapabilityProviders {
@@ -317,10 +348,9 @@ impl Client {
         let mut providers = HashSet::new();
 
         while let Some(partial_result) = receiver.recv().await {
-            match partial_result {
-                Ok(more_providers) => providers.extend(more_providers.into_iter()),
-                Err(_) => return Err(()),
-            }
+            let more_providers =
+                partial_result.with_context(|| format!("Getting providers for {capability}"))?;
+            providers.extend(more_providers.into_iter());
         }
 
         Ok(providers)
@@ -414,7 +444,7 @@ enum Command {
     },
     GetCapabilityProviders {
         capability: String,
-        sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>, ()>>,
+        sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>>>,
     },
     SubscribeTopic {
         topic: IdentTopic,
@@ -504,7 +534,7 @@ pub struct MainLoop {
 
 #[derive(Debug, Default)]
 struct PendingQueries {
-    pub get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>, ()>>>,
+    pub get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>>>>,
 }
 
 impl MainLoop {
@@ -750,7 +780,7 @@ impl MainLoop {
                                         Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
                                             ..
                                         }) => Ok(Default::default()),
-                                        Err(_) => Err(()),
+                                        Err(e) => Err(e.into()),
                                     };
 
                                     let sender = self
