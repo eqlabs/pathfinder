@@ -38,14 +38,14 @@ pub fn new(
     peers: Arc<RwLock<peers::Peers>>,
     periodic_cfg: PeriodicTaskConfig,
 ) -> (Client, EventReceiver, MainLoop) {
-    let peer_id = keypair.public().to_peer_id();
+    let my_peer_id = keypair.public().to_peer_id();
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
 
     let swarm = SwarmBuilder::with_executor(
         transport::create(&keypair, relay_transport),
         behaviour,
-        peer_id,
+        my_peer_id,
         executor::TokioExecutor(),
     )
     .build();
@@ -56,9 +56,17 @@ pub fn new(
     (
         Client {
             sender: command_sender,
+            my_peer_id,
         },
         event_receiver,
-        MainLoop::new(swarm, command_receiver, event_sender, peers, periodic_cfg),
+        MainLoop::new(
+            swarm,
+            command_receiver,
+            event_sender,
+            peers,
+            periodic_cfg,
+            my_peer_id,
+        ),
     )
 }
 
@@ -118,6 +126,12 @@ impl SyncClient {
         &self,
         header: p2p_proto::common::BlockHeader,
     ) -> anyhow::Result<()> {
+        tracing::info!(
+            "Propagating new header: {}, topic: {}",
+            header.number,
+            self.block_propagation_topic
+        );
+
         self.client
             .publish_propagation_message(
                 &self.block_propagation_topic,
@@ -128,31 +142,26 @@ impl SyncClient {
             .await
     }
 
-    async fn peers_with_sync_capability(&self) -> anyhow::Result<HashSet<PeerId>> {
-        self.client
-            .get_capability_providers("core/blocks-sync/1")
-            .await
-    }
-
     async fn shuffled_peers_with_sync_capability(&self) -> anyhow::Result<Vec<PeerId>> {
         use rand::seq::SliceRandom;
-        let peers = self.peers_with_sync_capability().await?;
+        let mut peers = self
+            .client
+            .get_capability_providers("core/blocks-sync/1")
+            .await?;
+
+        let _i_should_have_the_capability_too = peers.remove(&self.client.my_peer_id);
+        debug_assert!(_i_should_have_the_capability_too);
 
         if peers.is_empty() {
-            anyhow::bail!("No peers with sync capability found.")
+            anyhow::bail!("No other peers with sync capability found.")
         }
 
         let mut peers = peers.into_iter().collect::<Vec<_>>();
         peers.shuffle(&mut rand::thread_rng());
-        Ok(peers)
-    }
 
-    // FIXME Pick the first connected for the time being
-    // :( not the best algo to pick a peer
-    async fn first_connected_peer(&self) -> Option<PeerId> {
-        let peers = self.peers.read().await;
-        let mut connected = peers.connected();
-        connected.next().map(Clone::clone)
+        tracing::info!("shuffled_peers_with_sync_capability: {:?}", peers);
+
+        Ok(peers)
     }
 
     pub async fn block_headers(
@@ -181,7 +190,7 @@ impl SyncClient {
             match response {
                 p2p_proto::sync::Response::BlockHeaders(x) => {
                     if x.headers.is_empty() {
-                        tracing::debug!(%peer, "Got empty block headers response from");
+                        tracing::info!(%peer, "Got empty block headers response from");
                         continue;
                     } else {
                         return Ok(x.headers);
@@ -191,9 +200,9 @@ impl SyncClient {
             }
         }
 
-        anyhow::bail!(
-            "No peers with block headers found for start_block {start_block} num_blocks {num_blocks}"
-        )
+        tracing::info!(%start_block, %num_blocks, "No peers with block headers found for");
+
+        Ok(Vec::new())
     }
 
     pub async fn block_bodies(
@@ -205,27 +214,35 @@ impl SyncClient {
             return Ok(Vec::new());
         }
 
-        let peer_id = match self.first_connected_peer().await {
-            Some(x) => x,
-            None => return Ok(Vec::new()),
-        };
-
-        let response = self
-            .client
-            .send_sync_request(
-                peer_id,
-                p2p_proto::sync::Request::GetBlockBodies(p2p_proto::sync::GetBlockBodies {
-                    start_block: start_block_hash.0,
-                    count: num_blocks.try_into().expect("Can it go wrong here?"),
-                    size_limit: u64::MAX, // FIXME
-                    direction: p2p_proto::sync::Direction::Forward,
-                }),
-            )
-            .await?;
-        match response {
-            p2p_proto::sync::Response::BlockBodies(x) => Ok(x.block_bodies),
-            _ => anyhow::bail!("Response variant does not match request"),
+        for peer in self.shuffled_peers_with_sync_capability().await? {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetBlockBodies(p2p_proto::sync::GetBlockBodies {
+                        start_block: start_block_hash.0,
+                        count: num_blocks.try_into().expect("Can it go wrong here?"),
+                        size_limit: u64::MAX, // FIXME
+                        direction: p2p_proto::sync::Direction::Forward,
+                    }),
+                )
+                .await?;
+            match response {
+                p2p_proto::sync::Response::BlockBodies(x) => {
+                    if x.block_bodies.is_empty() {
+                        tracing::info!(%peer, "Got empty block bodies response from");
+                        continue;
+                    } else {
+                        return Ok(x.block_bodies);
+                    }
+                }
+                _ => anyhow::bail!("Response variant does not match request"),
+            }
         }
+
+        tracing::info!(%start_block_hash, %num_blocks, "No peers with block bodies found for");
+
+        Ok(Vec::new())
     }
 
     pub async fn state_updates(
@@ -237,56 +254,78 @@ impl SyncClient {
             return Ok(Vec::new());
         }
 
-        let peer_id = match self.first_connected_peer().await {
-            Some(x) => x,
-            None => return Ok(Vec::new()),
-        };
-
-        let response = self
-            .client
-            .send_sync_request(
-                peer_id, // FIXME
-                p2p_proto::sync::Request::GetStateDiffs(p2p_proto::sync::GetStateDiffs {
-                    start_block: start_block_hash.0,
-                    count: num_blocks.try_into()?,
-                    size_limit: u64::MAX, // FIXME
-                    direction: p2p_proto::sync::Direction::Forward,
-                }),
-            )
-            .await?;
-        match response {
-            p2p_proto::sync::Response::StateDiffs(x) => Ok(x.block_state_updates),
-            _ => anyhow::bail!("Response variant does not match request"),
+        for peer in self.shuffled_peers_with_sync_capability().await? {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetStateDiffs(p2p_proto::sync::GetStateDiffs {
+                        start_block: start_block_hash.0,
+                        count: num_blocks.try_into()?,
+                        size_limit: u64::MAX, // FIXME
+                        direction: p2p_proto::sync::Direction::Forward,
+                    }),
+                )
+                .await?;
+            match response {
+                p2p_proto::sync::Response::StateDiffs(x) => {
+                    if x.block_state_updates.is_empty() {
+                        tracing::info!(%peer, "Got empty state updates response from");
+                        continue;
+                    } else {
+                        return Ok(x.block_state_updates);
+                    }
+                }
+                _ => anyhow::bail!("Response variant does not match request"),
+            }
         }
+
+        tracing::info!(%start_block_hash, %num_blocks, "No peers with state updates found for");
+
+        Ok(Vec::new())
     }
 
     pub async fn contract_classes(
         &self,
         class_hashes: Vec<ClassHash>,
     ) -> anyhow::Result<p2p_proto::sync::Classes> {
-        let peer_id = match self.first_connected_peer().await {
-            Some(x) => x,
-            None => {
-                return Ok(p2p_proto::sync::Classes {
-                    classes: Vec::new(),
-                })
-            }
-        };
-
-        let response = self
-            .client
-            .send_sync_request(
-                peer_id,
-                p2p_proto::sync::Request::GetClasses(p2p_proto::sync::GetClasses {
-                    class_hashes: class_hashes.into_iter().map(|x| x.0).collect(),
-                    size_limit: u64::MAX, // FIXME
-                }),
-            )
-            .await?;
-        match response {
-            p2p_proto::sync::Response::Classes(x) => Ok(x),
-            _ => anyhow::bail!("Response variant does not match request"),
+        if class_hashes.is_empty() {
+            return Ok(p2p_proto::sync::Classes {
+                classes: Vec::new(),
+            });
         }
+
+        let class_hashes = class_hashes.into_iter().map(|x| x.0).collect::<Vec<_>>();
+
+        for peer in self.shuffled_peers_with_sync_capability().await? {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetClasses(p2p_proto::sync::GetClasses {
+                        class_hashes: class_hashes.clone(),
+                        size_limit: u64::MAX, // FIXME
+                    }),
+                )
+                .await?;
+            match response {
+                p2p_proto::sync::Response::Classes(x) => {
+                    if x.classes.is_empty() {
+                        tracing::info!(%peer, "Got empty classes response from");
+                        continue;
+                    } else {
+                        return Ok(x);
+                    }
+                }
+                _ => anyhow::bail!("Response variant does not match request"),
+            }
+        }
+
+        tracing::info!(?class_hashes, "No peers with classes found for");
+
+        Ok(p2p_proto::sync::Classes {
+            classes: Vec::new(),
+        })
     }
 }
 
@@ -295,6 +334,8 @@ impl SyncClient {
 #[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<Command>,
+    // Mostly for logging & debugging
+    my_peer_id: PeerId,
 }
 
 impl Client {
@@ -512,24 +553,20 @@ pub enum TestEvent {
 pub type EventReceiver = mpsc::Receiver<Event>;
 
 pub struct MainLoop {
+    bootstrap_cfg: BootstrapConfig,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
-
     peers: Arc<RwLock<peers::Peers>>,
-
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_block_sync_requests:
         HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>>,
     pending_block_sync_status_requests: HashSet<RequestId>,
-
     request_sync_status: HashSetDelay<PeerId>,
-
-    bootstrap_cfg: BootstrapConfig,
-
     pending_queries: PendingQueries,
-
     _pending_test_queries: TestQueries,
+    // Mostly for logging & debugging
+    my_peer_id: PeerId,
 }
 
 #[derive(Debug, Default)]
@@ -544,8 +581,10 @@ impl MainLoop {
         event_sender: mpsc::Sender<Event>,
         peers: Arc<RwLock<peers::Peers>>,
         periodic_cfg: PeriodicTaskConfig,
+        my_peer_id: PeerId,
     ) -> Self {
         Self {
+            bootstrap_cfg: periodic_cfg.bootstrap,
             swarm,
             command_receiver,
             event_sender,
@@ -554,9 +593,9 @@ impl MainLoop {
             pending_block_sync_requests: Default::default(),
             pending_block_sync_status_requests: Default::default(),
             request_sync_status: HashSetDelay::new(periodic_cfg.status_period),
-            bootstrap_cfg: periodic_cfg.bootstrap,
             pending_queries: Default::default(),
             _pending_test_queries: Default::default(),
+            my_peer_id,
         }
     }
 
@@ -566,11 +605,39 @@ impl MainLoop {
         let mut bootstrap_interval =
             tokio::time::interval_at(bootstrap_start, self.bootstrap_cfg.period);
 
+        let mut network_status_interval = tokio::time::interval(Duration::from_secs(2));
+        let me = self.swarm.local_peer_id().clone();
+
         loop {
             let bootstrap_interval_tick = bootstrap_interval.tick();
             tokio::pin!(bootstrap_interval_tick);
 
+            let network_status_interval_tick = network_status_interval.tick();
+            tokio::pin!(network_status_interval_tick);
+
             tokio::select! {
+                _ = network_status_interval_tick => {
+                    let dht = self.swarm.behaviour_mut().kademlia
+                        .kbuckets()
+                        // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
+                        .map(|kbucket_ref| {
+                            kbucket_ref
+                                .iter()
+                                .map(|entry_ref| *entry_ref.node.key.preimage())
+                                .collect::<Vec<_>>()
+                        })
+                        .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
+                        .collect::<HashSet<_>>();
+                    let guard = self.peers.read().await;
+                    let connected = guard.connected().collect::<Vec<_>>();
+
+                    tracing::info!(
+                        "Network status: me {}, connected {:?}, dht {:?}",
+                        me,
+                        connected,
+                        dht,
+                    );
+                }
                 _ = bootstrap_interval_tick => {
                     tracing::debug!("Doing periodical bootstrap");
                     _ = self.swarm.behaviour_mut().kademlia.bootstrap();

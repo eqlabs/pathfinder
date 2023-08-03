@@ -81,10 +81,14 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
     let block_propagation_topic = format!("blocks/{}", chain_id.to_hex_str());
 
-    if proxy {
-        // Proxy nodes don't subscribe to topic they're publishing to
-        p2p_client.subscribe_topic(&block_propagation_topic).await?;
-    }
+    // if proxy {
+    tracing::info!("Subscribing to topic: {}", block_propagation_topic);
+
+    // Proxy nodes don't subscribe to topic they're publishing to
+    p2p_client.subscribe_topic(&block_propagation_topic).await?;
+
+    tracing::info!("Subscribed to topic: {}", block_propagation_topic);
+    // }
 
     let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
     for capability in capabilities {

@@ -101,20 +101,26 @@ async fn main() -> anyhow::Result<()> {
     let mut bootstrap_interval =
         tokio::time::interval(Duration::from_secs(args.bootstrap_interval_seconds));
 
+    let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
+
     loop {
         let bootstrap_interval_tick = bootstrap_interval.tick();
         tokio::pin!(bootstrap_interval_tick);
 
-        tokio::select! {
-            _ = bootstrap_interval_tick => {
-                tracing::debug!("Doing periodical bootstrap");
-                _ = swarm.behaviour_mut().kademlia.bootstrap();
+        let network_status_interval_tick = network_status_interval.tick();
+        tokio::pin!(network_status_interval_tick);
 
+        tokio::select! {
+            _ = network_status_interval_tick => {
                 let network_info = swarm.network_info();
                 let num_peers = network_info.num_peers();
                 let connection_counters = network_info.connection_counters();
                 let num_connections = connection_counters.num_connections();
                 tracing::info!(%num_peers, %num_connections, "Peer-to-peer status")
+            }
+            _ = bootstrap_interval_tick => {
+                tracing::debug!("Doing periodical bootstrap");
+                _ = swarm.behaviour_mut().kademlia.bootstrap();
             }
             Some(event) = swarm.next() => {
                 match event {
