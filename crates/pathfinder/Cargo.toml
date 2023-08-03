@@ -73,6 +73,7 @@ mockall = "0.11.3"
 num_cpus = "1.15.0"
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
 pretty_assertions = "1.3.0"
@@ -82,6 +83,7 @@ rand_chacha = "0.3.1"
 rstest = "0.18.1"
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+starknet_api = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 zstd = "0.12"
 

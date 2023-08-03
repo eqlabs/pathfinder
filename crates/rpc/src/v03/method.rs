@@ -82,6 +82,56 @@ pub(crate) mod common {
         Ok(execution_state)
     }
 
+    pub async fn execution_state_blockifier(
+        context: RpcContext,
+        block_id: BlockId,
+        forced_gas_price: Option<U256>,
+    ) -> Result<pathfinder_executor::ExecutionState, ExecutionStateError> {
+        let (gas_price, at_block, pending_timestamp, pending_update) =
+            prepare_block(&context, block_id, forced_gas_price).await?;
+
+        let storage = context.storage.clone();
+        let span = tracing::Span::current();
+
+        let block = tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+
+            let mut db = storage.connection()?;
+            let tx = db.transaction().context("Creating database transaction")?;
+
+            let block = tx
+                .block_header(at_block)
+                .context("Reading block")?
+                .ok_or_else(|| ExecutionStateError::BlockNotFound)?;
+
+            Ok::<_, ExecutionStateError>(block)
+        })
+        .await
+        .context("Getting block")??;
+
+        let gas_price = match gas_price {
+            GasPriceSource::PastBlock => block.gas_price.0.into(),
+            GasPriceSource::Current(c) => c,
+        };
+
+        let timestamp = pending_timestamp.unwrap_or(block.timestamp);
+
+        let connection = context.storage.connection()?;
+
+        let execution_state = pathfinder_executor::ExecutionState {
+            connection,
+            chain_id: context.chain_id,
+            block_number: block.number,
+            block_timestamp: timestamp,
+            sequencer_address: block.sequencer_address,
+            state_at_block: Some(block.number),
+            gas_price,
+            pending_update,
+        };
+
+        Ok(execution_state)
+    }
+
     async fn prepare_block(
         context: &RpcContext,
         block_id: BlockId,

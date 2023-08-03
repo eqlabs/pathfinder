@@ -3,6 +3,7 @@ members = [
     "crates/common",
     "crates/compiler",
     "crates/ethereum",
+    "crates/executor",
     "crates/gateway-client",
     "crates/gateway-test-fixtures",
     "crates/gateway-types",
@@ -30,7 +31,8 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = "1.0.66"
 assert_matches = "1.5.0"
-clap =  "4.1.13"
+blockifier = "0.1.0-rc2"
+clap = "4.1.13"
 const_format = "0.2.31"
 criterion = "0.5.1"
 fake = { version = "2.5.0", features = ["derive"] }
@@ -39,6 +41,7 @@ semver = "1.0.14"
 serde = "1.0.160"
 serde_json = "1.0.96"
 serde_with = "2.1.0"
+starknet_api = "0.3.0"
 thiserror = "1.0.37"
 tokio = "1.24.2"
 tracing = "0.1.37"

@@ -9,9 +9,9 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<crate::cairo::starknet_rs::CallError> for CallError {
-    fn from(value: crate::cairo::starknet_rs::CallError) -> Self {
-        use crate::cairo::starknet_rs::CallError::*;
+impl From<pathfinder_executor::CallError> for CallError {
+    fn from(value: pathfinder_executor::CallError) -> Self {
+        use pathfinder_executor::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
@@ -68,16 +68,19 @@ impl From<FunctionCall> for crate::v02::types::request::Call {
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
-    let execution_state =
-        crate::v03::method::common::execution_state(context, input.block_id, Some(1.into()))
-            .await?;
+    let execution_state = crate::v03::method::common::execution_state_blockifier(
+        context,
+        input.block_id,
+        Some(1.into()),
+    )
+    .await?;
 
     let span = tracing::Span::current();
 
     let result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
-        let result = crate::cairo::starknet_rs::call(
+        let result = pathfinder_executor::call(
             execution_state,
             input.request.contract_address,
             input.request.entry_point_selector,
