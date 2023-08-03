@@ -445,10 +445,6 @@ enum Command {
 #[derive(Debug)]
 pub enum TestCommand {
     GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
-    GetProviders {
-        key: Vec<u8>,
-        sender: mpsc::Sender<Result<HashSet<PeerId>, ()>>,
-    },
 }
 
 #[derive(Debug)]
@@ -744,10 +740,61 @@ impl MainLoop {
                                     )
                                     .await;
                                 }
+                                QueryResult::GetProviders(result) => {
+                                    use libp2p::kad::GetProvidersOk;
+
+                                    let result = match result {
+                                        Ok(GetProvidersOk::FoundProviders {
+                                            providers, ..
+                                        }) => Ok(providers),
+                                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
+                                            ..
+                                        }) => Ok(Default::default()),
+                                        Err(_) => Err(()),
+                                    };
+
+                                    let sender = self
+                                        .pending_queries
+                                        .get_providers
+                                        .remove(&id)
+                                        .expect("Query to be pending");
+
+                                    sender
+                                        .send(result)
+                                        .await
+                                        .expect("Receiver not to be dropped");
+                                }
                                 _ => self.test_query_completed(id, result).await,
                             }
                         } else {
-                            self.test_query_progressed(id, result).await;
+                            if let QueryResult::GetProviders(result) = result {
+                                use libp2p::kad::GetProvidersOk;
+
+                                let result = match result {
+                                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
+                                        Ok(providers)
+                                    }
+                                    Ok(_) => Ok(Default::default()),
+                                    Err(_) => {
+                                        unreachable!(
+                                            "when a query times out libp2p makes it the last stage"
+                                        )
+                                    }
+                                };
+
+                                let sender = self
+                                    .pending_queries
+                                    .get_providers
+                                    .get(&id)
+                                    .expect("Query to be pending");
+
+                                sender
+                                    .send(result)
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            } else {
+                                self.test_query_progressed(id, result).await;
+                            }
                         }
                     }
                     KademliaEvent::RoutingUpdated {
