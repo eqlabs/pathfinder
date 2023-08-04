@@ -13,7 +13,6 @@ bitvec = "0.20.4"
 const_format = { workspace = true }
 data-encoding = "2.3.3"
 fake = { version = "2.5.0", features = ["derive"] }
-flate2 = "1.0.25"
 hex = "0.4.3"
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
@@ -25,11 +24,13 @@ r2d2_sqlite = "0.21.0"
 rand = { version = "0.8.5" }
 rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 serde_with = { workspace = true }
 sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
-starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
