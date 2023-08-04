@@ -19,7 +19,20 @@ pub fn estimate_fee(
     for (transaction_idx, transaction) in transactions.into_iter().enumerate() {
         let _span = tracing::debug_span!("execute", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
 
-        let tx_info = transaction.execute(&mut state, &block_context, false, true);
+        let tx_info = match transaction {
+            Transaction::AccountTransaction(transaction) => {
+                transaction.execute(&mut state, &block_context, false, true)
+            }
+            Transaction::L1HandlerTransaction(transaction) => transaction
+                .execute(&mut state, &block_context, false, true)
+                .and_then(|mut tx_info| {
+                    tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
+                        &tx_info.actual_resources,
+                        &block_context,
+                    )?;
+                    Ok(tx_info)
+                }),
+        };
 
         match tx_info {
             Ok(tx_info) => {

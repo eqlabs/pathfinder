@@ -2,7 +2,6 @@ use pathfinder_common::{BlockId, CallParam, ContractAddress, EntryPoint, Ethereu
 
 use crate::context::RpcContext;
 use crate::v02::method::call::FunctionCall;
-use crate::v02::types::reply::FeeEstimate;
 use crate::v03::method::estimate_message_fee::EstimateMessageFeeError;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -22,7 +21,7 @@ pub struct MsgFromL1 {
 pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
-) -> Result<FeeEstimate, EstimateMessageFeeError> {
+) -> Result<crate::v03::method::estimate_message_fee::FeeEstimate, EstimateMessageFeeError> {
     let input = crate::v03::method::estimate_message_fee::EstimateMessageFeeInput {
         message: FunctionCall {
             contract_address: input.message.to_address,

@@ -1,11 +1,16 @@
-use anyhow::Context;
+use std::sync::Arc;
 
-use crate::{
-    context::RpcContext,
-    v02::{method::call::FunctionCall, types::reply::FeeEstimate},
+use anyhow::Context;
+use pathfinder_common::{
+    felt, BlockId, ChainId, EthereumAddress, TransactionHash, TransactionNonce, TransactionVersion,
 };
-use pathfinder_common::{BlockId, EthereumAddress};
-use serde::Deserialize;
+use pathfinder_executor::IntoStarkFelt;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use stark_hash::Felt;
+use starknet_api::core::PatriciaKey;
+
+use crate::{context::RpcContext, v02::method::call::FunctionCall};
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct EstimateMessageFeeInput {
@@ -20,9 +25,9 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<crate::cairo::starknet_rs::CallError> for EstimateMessageFeeError {
-    fn from(c: crate::cairo::starknet_rs::CallError) -> Self {
-        use crate::cairo::starknet_rs::CallError::*;
+impl From<pathfinder_executor::CallError> for EstimateMessageFeeError {
+    fn from(c: pathfinder_executor::CallError) -> Self {
+        use pathfinder_executor::CallError::*;
         match c {
             InvalidMessageSelector => Self::ContractError,
             ContractNotFound => Self::ContractNotFound,
@@ -34,42 +39,128 @@ impl From<crate::cairo::starknet_rs::CallError> for EstimateMessageFeeError {
     }
 }
 
-impl From<super::common::ExecutionStateError> for EstimateMessageFeeError {
-    fn from(error: super::common::ExecutionStateError) -> Self {
+impl From<crate::executor::ExecutionStateError> for EstimateMessageFeeError {
+    fn from(error: crate::executor::ExecutionStateError) -> Self {
+        use crate::executor::ExecutionStateError::*;
         match error {
-            super::common::ExecutionStateError::BlockNotFound => Self::BlockNotFound,
-            super::common::ExecutionStateError::Internal(e) => Self::Internal(e),
+            BlockNotFound => Self::BlockNotFound,
+            Internal(e) => Self::Internal(e),
         }
     }
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct FeeEstimate {
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub gas_consumed: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub gas_price: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub overall_fee: primitive_types::U256,
 }
 
 pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
 ) -> Result<FeeEstimate, EstimateMessageFeeError> {
-    let execution_state = super::common::execution_state(context, input.block_id, None).await?;
+    let chain_id = context.chain_id;
+    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
 
     let span = tracing::Span::current();
 
-    let result = tokio::task::spawn_blocking(move || {
+    let mut result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
-        let result = crate::cairo::starknet_rs::estimate_message_fee(
-            execution_state,
-            input.message,
-            input.sender_address,
-        )?;
+        let transaction = create_executor_transaction(input, chain_id)?;
+
+        let result = pathfinder_executor::estimate_fee(execution_state, vec![transaction])?;
 
         Ok::<_, EstimateMessageFeeError>(result)
     })
     .await
-    .context("Executing transaction")??;
+    .context("Estimating message fee")??;
+
+    if result.len() != 1 {
+        return Err(
+            anyhow::anyhow!("Internal error: expected exactly one fee estimation result").into(),
+        );
+    }
+
+    let result = result.pop().unwrap();
 
     Ok(FeeEstimate {
         gas_consumed: result.gas_consumed,
         gas_price: result.gas_price,
         overall_fee: result.overall_fee,
     })
+}
+
+fn create_executor_transaction(
+    input: EstimateMessageFeeInput,
+    chain_id: ChainId,
+) -> anyhow::Result<pathfinder_executor::Transaction> {
+    let transaction_hash = calculate_transaction_hash(&input, chain_id);
+
+    // prepend sender address to calldata
+    let sender_address = Felt::from_be_slice(input.sender_address.0.as_bytes())
+        .expect("Ethereum address is 160 bits");
+    let calldata = std::iter::once(pathfinder_common::CallParam(sender_address))
+        .chain(input.message.calldata.into_iter())
+        .map(|p| p.0.into_starkfelt())
+        .collect();
+
+    let tx = starknet_api::transaction::L1HandlerTransaction {
+        version: starknet_api::transaction::TransactionVersion(felt!("0x1").into_starkfelt()),
+        nonce: starknet_api::core::Nonce(Felt::ZERO.into_starkfelt()),
+        contract_address: starknet_api::core::ContractAddress(
+            PatriciaKey::try_from(input.message.contract_address.0.into_starkfelt())
+                .expect("A ContractAddress should be the right size"),
+        ),
+        entry_point_selector: starknet_api::core::EntryPointSelector(
+            input.message.entry_point_selector.0.into_starkfelt(),
+        ),
+        calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
+    };
+
+    let transaction = pathfinder_executor::Transaction::from_api(
+        starknet_api::transaction::Transaction::L1Handler(tx),
+        starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
+        None,
+        Some(starknet_api::transaction::Fee(1)),
+        None,
+    )?;
+    Ok(transaction)
+}
+
+fn calculate_transaction_hash(
+    input: &EstimateMessageFeeInput,
+    chain_id: ChainId,
+) -> TransactionHash {
+    let call_params_hash = {
+        let mut hh = stark_hash::HashChain::default();
+        hh = input
+            .message
+            .calldata
+            .iter()
+            .fold(hh, |mut hh, call_param| {
+                hh.update(call_param.0);
+                hh
+            });
+        hh.finalize()
+    };
+
+    starknet_gateway_types::transaction_hash::compute_txn_hash(
+        b"l1_handler",
+        TransactionVersion::ONE,
+        input.message.contract_address,
+        Some(input.message.entry_point_selector),
+        call_params_hash,
+        None,
+        chain_id,
+        TransactionNonce::ZERO,
+        None,
+    )
 }
 
 #[cfg(test)]
@@ -235,9 +326,9 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
-            gas_consumed: 18328.into(),
+            gas_consumed: 17105.into(),
             gas_price: 1.into(),
-            overall_fee: 18328.into(),
+            overall_fee: 17105.into(),
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");
@@ -272,7 +363,7 @@ mod tests {
         let rpc = setup(Setup::Full).await.expect("RPC context");
         assert_matches::assert_matches!(
             estimate_message_fee(rpc, input).await,
-            Err(EstimateMessageFeeError::Internal(e)) if (e.to_string() == "Transaction reverted: Requested entry point was not found")
+            Err(EstimateMessageFeeError::ContractError)
         );
     }
 }
