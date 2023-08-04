@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::parse();
 
-    setup_tracing(config.color);
+    setup_tracing(config.color, config.pretty_log);
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -238,7 +238,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
 }
 
 #[cfg(feature = "tokio-console")]
-fn setup_tracing(color: config::Color) {
+fn setup_tracing(color: config::Color, pretty_log: bool) {
     use tracing_subscriber::prelude::*;
 
     // EnvFilter isn't really a Filter, so this we need this ugly workaround for filtering with it.
@@ -246,36 +246,42 @@ fn setup_tracing(color: config::Color) {
     let env_filter = Arc::new(tracing_subscriber::EnvFilter::from_default_env());
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(color.is_color_enabled())
-        // Makes debugging p2p a lot easier.
-        .with_target(cfg!(feature = "p2p"))
-        //.compact()
-        .pretty()
-        .with_filter(tracing_subscriber::filter::dynamic_filter_fn(
-            move |m, c| env_filter.enabled(m, c.clone()),
-        ));
+        .with_target(pretty_log);
+    let filter =
+        tracing_subscriber::filter::dynamic_filter_fn(move |m, c| env_filter.enabled(m, c.clone()));
     let console_layer = console_subscriber::spawn();
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(console_layer)
-        .init();
+
+    if pretty_log {
+        tracing_subscriber::registry()
+            .with(fmt_layer.pretty().with_filter(filter))
+            .with(console_layer)
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(fmt_layer.compact().with_filter(filter))
+            .with(console_layer)
+            .init();
+    }
 }
 
 #[cfg(not(feature = "tokio-console"))]
-fn setup_tracing(color: config::Color) {
+fn setup_tracing(color: config::Color, pretty_log: bool) {
     use time::macros::format_description;
 
     let time_fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
     let time_fmt = tracing_subscriber::fmt::time::UtcTime::new(time_fmt);
 
-    tracing_subscriber::fmt()
+    let subscriber = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        // Makes debugging p2p a lot easier.
-        .with_target(cfg!(feature = "p2p"))
+        .with_target(pretty_log)
         .with_timer(time_fmt)
-        .with_ansi(color.is_color_enabled())
-        //.compact()
-        .pretty()
-        .init();
+        .with_ansi(color.is_color_enabled());
+
+    if pretty_log {
+        subscriber.pretty().init();
+    } else {
+        subscriber.compact().init();
+    }
 }
 
 fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {

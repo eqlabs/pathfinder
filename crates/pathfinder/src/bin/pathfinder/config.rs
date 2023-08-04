@@ -164,6 +164,15 @@ Examples:
     #[cfg(not(feature = "p2p"))]
     #[clap(skip)]
     p2p: (),
+
+    #[cfg_attr(feature = "p2p", arg(
+        long = "pretty-log",
+        long_help = "Enable pretty logging, which is especially helpful when debugging p2p behavior",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_PRETTY_LOG",
+    ))]
+    pretty_log: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -368,6 +377,7 @@ pub struct Config {
     pub poll_interval: std::time::Duration,
     pub color: Color,
     pub p2p: P2PConfig,
+    pub pretty_log: bool,
 }
 
 pub struct WebSocket {
@@ -520,6 +530,11 @@ impl Config {
             poll_interval: std::time::Duration::from_secs(cli.poll_interval.get()),
             color: cli.color,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
+            pretty_log: if cfg!(feature = "p2p") {
+                cli.pretty_log
+            } else {
+                false
+            },
         }
     }
 }
