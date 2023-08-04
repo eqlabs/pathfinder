@@ -6,7 +6,7 @@ const PARTIAL_ROUNDS: usize = 83;
 
 include!(concat!(env!("OUT_DIR"), "/poseidon_consts.rs"));
 
-/// Linear layer for MDS matrix M = ((3,1,1), (1,-1,1), (1,1,2))
+/// Linear layer for MDS matrix M = ((3,1,1), (1,-1,1), (1,1,-2))
 /// Given state vector x, it returns Mx, optimized by precomputing t.
 #[inline(always)]
 fn mix(state: &mut PoseidonState) {
