@@ -18,11 +18,10 @@ use starknet_gateway_types::request::add_transaction::ContractDefinition;
 use starknet_gateway_types::{error::SequencerError, reply::MaybePendingBlock};
 use std::sync::{Arc, RwLock};
 
-/// Hybrid, as it uses either p2p or the gateway depending on role
-/// and api call
+/// Hybrid, as it uses either p2p or the gateway depending on role and api call
 #[derive(Clone, Debug)]
 pub enum HybridClient {
-    /// Syncs from the feeder gateway, propagates new headers via p2p
+    /// Syncs from the feeder gateway, propagates new headers via p2p/gossipsub
     /// Proxies blockchain data to non propagating nodes via p2p
     GatewayProxy {
         p2p_client: p2p::SyncClient,
@@ -33,34 +32,34 @@ pub enum HybridClient {
         p2p_client: p2p::SyncClient,
         sequencer: starknet_gateway_client::Client,
         head_receiver: HeadReceiver,
-        last_block: LastBlockCache,
+        /// We need to cache the last fetched block via p2p otherwise sync logic will
+        /// produce a false reorg from genesis when we loose connection to other p2p
+        /// nodes which for the sync logic looks like a sequencer error.
+        /// This was we can stay at the same height while we are disconnected.
+        last_block: Watch<MaybePendingBlock>,
     },
 }
 
-/// We need to cache the last fetched block via p2p otherwise sync logic will
-/// produce a false reorg from genesis when we loose connection to other p2p
-/// nodes which for the sync logic looks like a sequencer error.
-/// This was we can stay at the same height while we are disconnected.
 #[derive(Clone, Debug)]
-pub struct LastBlockCache {
-    block: Arc<RwLock<Option<MaybePendingBlock>>>,
+pub struct Watch<T: Clone> {
+    data: Arc<RwLock<Option<T>>>,
 }
 
-impl Default for LastBlockCache {
+impl<T: Clone> Default for Watch<T> {
     fn default() -> Self {
         Self {
-            block: Arc::new(RwLock::new(None)),
+            data: Arc::new(RwLock::new(None)),
         }
     }
 }
 
-impl LastBlockCache {
-    fn set(&self, block: MaybePendingBlock) {
-        *self.block.write().unwrap() = Some(block.clone());
+impl<T: Clone> Watch<T> {
+    fn set(&self, data: T) {
+        *self.data.write().unwrap() = Some(data.clone());
     }
 
-    fn get(&self) -> Option<MaybePendingBlock> {
-        self.block.read().unwrap().clone()
+    fn get(&self) -> Option<T> {
+        self.data.read().unwrap().clone()
     }
 }
 
@@ -128,6 +127,7 @@ impl GatewayApi for HybridClient {
                 ..
             } => match block {
                 BlockId::Number(n) => {
+                    tracing::info!("HybridClient::block({})", n);
                     let result = {
                         let mut headers = p2p_client
                             .block_headers(n, 1)
@@ -178,10 +178,22 @@ impl GatewayApi for HybridClient {
 
                     match result {
                         Ok(block) => {
+                            tracing::info!("HybridClient::block({}), updated block cache", n);
                             last_block.set(block.clone());
                             Ok(block)
                         }
-                        Err(error) => last_block.get().ok_or(error),
+                        // Equivalent to:
+                        // Err(error) => last_block.get().ok_or(error),
+                        Err(error) => match last_block.get() {
+                            Some(block) => {
+                                tracing::info!("HybridClient::block({}), using cached block", n);
+                                Ok(block)
+                            }
+                            None => {
+                                tracing::info!("HybridClient::block({}), error", error);
+                                Err(error)
+                            }
+                        },
                     }
                 }
                 BlockId::Latest => {
@@ -398,10 +410,25 @@ impl GatewayApi for HybridClient {
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => Ok(sequencer.head().await?),
-            HybridClient::NonPropagatingP2P { head_receiver, .. } => (*head_receiver.borrow())
-                .ok_or(error::block_not_found(
+            HybridClient::NonPropagatingP2P { head_receiver, .. } => {
+                let borrowed = head_receiver.borrow();
+                match *borrowed {
+                    Some((block_number, block_hash)) => {
+                        tracing::info!(
+                            "HybridClient::head() returning cached value {} {}",
+                            block_number,
+                            block_hash
+                        );
+                    }
+                    None => {
+                        tracing::info!("HybridClient::head() no cached value");
+                    }
+                }
+
+                (*head_receiver.borrow()).ok_or(error::block_not_found(
                     "Haven't received any gossiped block headers yet",
-                )),
+                ))
+            }
         }
     }
 }

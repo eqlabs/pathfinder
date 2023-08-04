@@ -100,7 +100,7 @@ impl Default for PeriodicTaskConfig {
 pub struct SyncClient {
     client: Client,
     block_propagation_topic: String,
-    peers: Arc<RwLock<peers::Peers>>,
+    _peers: Arc<RwLock<peers::Peers>>,
 }
 
 pub type HeadSender = tokio::sync::mpsc::Sender<(BlockNumber, BlockHash)>;
@@ -117,7 +117,7 @@ impl SyncClient {
         Self {
             client,
             block_propagation_topic,
-            peers,
+            _peers: peers,
         }
     }
 
@@ -566,7 +566,7 @@ pub struct MainLoop {
     pending_queries: PendingQueries,
     _pending_test_queries: TestQueries,
     // Mostly for logging & debugging
-    my_peer_id: PeerId,
+    _my_peer_id: PeerId,
 }
 
 #[derive(Debug, Default)]
@@ -595,7 +595,7 @@ impl MainLoop {
             request_sync_status: HashSetDelay::new(periodic_cfg.status_period),
             pending_queries: Default::default(),
             _pending_test_queries: Default::default(),
-            my_peer_id,
+            _my_peer_id: my_peer_id,
         }
     }
 

@@ -37,7 +37,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         chain_id,
         mut storage,
         sync_state,
-        proxy,
+        proxy: _,
         keypair,
         listen_on,
         bootstrap_addresses,
