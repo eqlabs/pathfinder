@@ -26,6 +26,9 @@ use crate::v02::types::syncing::Syncing;
 use crate::websocket::types::WebsocketSenders;
 use anyhow::Context;
 use axum::error_handling::HandleErrorLayer;
+use axum::extract::DefaultBodyLimit;
+
+use axum::response::IntoResponse;
 use context::RpcContext;
 use http::Request;
 use hyper::Body;
@@ -36,7 +39,6 @@ use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
-use tower_http::limit::RequestBodyLimitLayer;
 
 const DEFAULT_MAX_CONNECTIONS: u32 = 1024;
 
@@ -90,25 +92,27 @@ impl RpcServer {
     }
 
     /// Starts the HTTP-RPC server.
-    pub async fn run_axum(
-        self,
-    ) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
+    pub fn run_axum(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use crate::jsonrpc::rpc_handler;
-        use axum::routing::post;
+        use axum::routing::{get, post};
 
         // TODO: make this configurable
         const TEN_MB: usize = 10 * 1024 * 1024;
         // TODO: make this configurable
         const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
-        let server = match axum::Server::try_bind(&self.addr) {
-            Ok(server) => server,
+        let listener = match std::net::TcpListener::bind(self.addr) {
+            Ok(listener) => listener,
             Err(e) => return Err(e).context(format!("RPC address {} is already in use.
     
             Hint: This usually means you are already running another instance of pathfinder.
             Hint: If this happens when upgrading, make sure to shut down the first one first.
             Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr)),
         };
+        let addr = listener
+            .local_addr()
+            .context("Getting local address from listener")?;
+        let server = axum::Server::from_tcp(listener).context("Binding server to tcp listener")?;
 
         async fn handle_middleware_errors(err: axum::BoxError) -> (http::StatusCode, String) {
             // TODO: handle timeout error
@@ -124,13 +128,25 @@ impl RpcServer {
             .layer(HandleErrorLayer::new(handle_middleware_errors))
             // TODO: remove cast
             .concurrency_limit(self.max_connections as usize)
-            .layer(RequestBodyLimitLayer::new(TEN_MB))
+            .layer(DefaultBodyLimit::max(TEN_MB))
             .timeout(TIMEOUT)
             .option_layer(self.cors);
 
+        /// Returns success for requests with an empty body without reading
+        /// the entire body.
+        async fn empty_body(request: Request<Body>) -> impl IntoResponse {
+            use hyper::body::HttpBody;
+            if request.body().is_end_stream() {
+                http::StatusCode::OK.into_response()
+            } else {
+                http::StatusCode::METHOD_NOT_ALLOWED.into_response()
+            }
+        }
+
         let router = axum::Router::new()
-            // TODO: handle bot spam on `/`
-            .route("/", post(rpc_handler::<v03::RpcHandlerV03>))
+            // Also return success for get's with an empty body. These are often
+            // used by monitoring bots to check service health.
+            .route("/", get(empty_body).post(rpc_handler::<v03::RpcHandlerV03>))
             .route("/rpc/v0.3", post(rpc_handler::<v03::RpcHandlerV03>))
             .route("/rpc/v0.4", post(rpc_handler::<v04::RpcHandlerV04>))
             .route(
@@ -140,7 +156,6 @@ impl RpcServer {
             .layer(middleware)
             // TODO: metrics
             // TODO: websockets
-            // TODO: logger
             .with_state(self.context);
 
         let server_handle = tokio::spawn(async move {
@@ -150,8 +165,7 @@ impl RpcServer {
                 .map_err(Into::into)
         });
 
-        // TODO: Is there a difference between self.addr and server.local_addr() ?
-        Ok((server_handle, self.addr))
+        Ok((server_handle, addr))
     }
 
     /// Starts the HTTP-RPC server.
@@ -772,6 +786,7 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn roundtrip_syncing() {
@@ -798,6 +813,44 @@ mod tests {
 
             assert_eq!(parsed, expected, "example from line {line}");
             assert_eq!(&output, input, "example from line {line}");
+        }
+    }
+
+    mod axum_server {
+        use super::*;
+
+        #[tokio::test]
+        async fn empty_get_on_root_is_ok() {
+            // Monitoring bots often get query `/` with no body as a form
+            // of health check. Test that we return success for such queries.
+            let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+            let context = RpcContext::for_tests();
+            let (_jh, addr) = RpcServer::new(addr, context).run_axum().unwrap();
+
+            let url = format!("http://{addr}/");
+
+            let client = reqwest::Client::new();
+            // No body
+            let status = client.get(url.clone()).send().await.unwrap().status();
+            assert!(status.is_success());
+            // Empty body - unsure if this is actually different to no body.
+            let status = client
+                .get(url.clone())
+                .body("")
+                .send()
+                .await
+                .unwrap()
+                .status();
+            assert!(status.is_success());
+            // Non-empty body should fail.
+            let status = client
+                .get(url.clone())
+                .body("x")
+                .send()
+                .await
+                .unwrap()
+                .status();
+            assert!(!status.is_success());
         }
     }
 }
