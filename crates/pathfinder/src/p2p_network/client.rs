@@ -13,9 +13,10 @@ use pathfinder_common::{
     TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
-use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::reply::{self, Block};
+use starknet_gateway_types::reply;
 use starknet_gateway_types::request::add_transaction::ContractDefinition;
+use starknet_gateway_types::{error::SequencerError, reply::MaybePendingBlock};
+use std::sync::{Arc, RwLock};
 
 /// Hybrid, as it uses either p2p or the gateway depending on role
 /// and api call
@@ -23,16 +24,44 @@ use starknet_gateway_types::request::add_transaction::ContractDefinition;
 pub enum HybridClient {
     /// Syncs from the feeder gateway, propagates new headers via p2p
     /// Proxies blockchain data to non propagating nodes via p2p
-    Propagating {
+    GatewayProxy {
         p2p_client: p2p::SyncClient,
         sequencer: starknet_gateway_client::Client,
     },
     /// Syncs from p2p network, does not propagate
-    NonPropagating {
+    NonPropagatingP2P {
         p2p_client: p2p::SyncClient,
         sequencer: starknet_gateway_client::Client,
         head_receiver: HeadReceiver,
+        last_block: LastBlockCache,
     },
+}
+
+/// We need to cache the last fetched block via p2p otherwise sync logic will
+/// produce a false reorg from genesis when we loose connection to other p2p
+/// nodes which for the sync logic looks like a sequencer error.
+/// This was we can stay at the same height while we are disconnected.
+#[derive(Clone, Debug)]
+pub struct LastBlockCache {
+    block: Arc<RwLock<Option<MaybePendingBlock>>>,
+}
+
+impl Default for LastBlockCache {
+    fn default() -> Self {
+        Self {
+            block: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+impl LastBlockCache {
+    fn set(&self, block: MaybePendingBlock) {
+        *self.block.write().unwrap() = Some(block.clone());
+    }
+
+    fn get(&self) -> Option<MaybePendingBlock> {
+        self.block.read().unwrap().clone()
+    }
 }
 
 impl HybridClient {
@@ -43,23 +72,24 @@ impl HybridClient {
         head_receiver: HeadReceiver,
     ) -> Self {
         if i_am_proxy {
-            Self::Propagating {
+            Self::GatewayProxy {
                 p2p_client,
                 sequencer,
             }
         } else {
-            Self::NonPropagating {
+            Self::NonPropagatingP2P {
                 p2p_client,
                 sequencer,
                 head_receiver,
+                last_block: Default::default(),
             }
         }
     }
 
     fn as_sequencer(&self) -> &starknet_gateway_client::Client {
         match self {
-            HybridClient::Propagating { sequencer, .. } => sequencer,
-            HybridClient::NonPropagating { sequencer, .. } => sequencer,
+            HybridClient::GatewayProxy { sequencer, .. } => sequencer,
+            HybridClient::NonPropagatingP2P { sequencer, .. } => sequencer,
         }
     }
 }
@@ -91,54 +121,68 @@ impl GatewayApi for HybridClient {
         use error::block_not_found;
 
         match self {
-            HybridClient::Propagating { sequencer, .. } => sequencer.block(block).await,
-            HybridClient::NonPropagating { p2p_client, .. } => match block {
+            HybridClient::GatewayProxy { sequencer, .. } => sequencer.block(block).await,
+            HybridClient::NonPropagatingP2P {
+                p2p_client,
+                last_block,
+                ..
+            } => match block {
                 BlockId::Number(n) => {
-                    let mut headers = p2p_client
-                        .block_headers(n, 1)
-                        .await
-                        .map_err(block_not_found)?;
+                    let result = {
+                        let mut headers = p2p_client
+                            .block_headers(n, 1)
+                            .await
+                            .map_err(block_not_found)?;
 
-                    if headers.len() != 1 {
-                        return Err(block_not_found(format!(
-                            "Headers len for block {n} is {}, expected 1",
-                            headers.len()
-                        )));
+                        if headers.len() != 1 {
+                            return Err(block_not_found(format!(
+                                "Headers len for block {n} is {}, expected 1",
+                                headers.len()
+                            )));
+                        }
+
+                        let header = headers.swap_remove(0);
+
+                        let mut bodies = p2p_client
+                            .block_bodies(BlockHash(header.hash), 1)
+                            .await
+                            .map_err(block_not_found)?;
+
+                        if bodies.len() != 1 {
+                            return Err(block_not_found(format!(
+                                "Bodies len for block {n} is {}, expected 1",
+                                headers.len()
+                            )));
+                        }
+
+                        let body = bodies.swap_remove(0);
+                        let (transactions, transaction_receipts) =
+                            conv::body::try_from_p2p(body).map_err(block_not_found)?;
+                        let header = conv::header::try_from_p2p(header).map_err(block_not_found)?;
+
+                        Ok(reply::MaybePendingBlock::Block(reply::Block {
+                            block_hash: header.hash,
+                            block_number: header.number,
+                            gas_price: Some(header.gas_price),
+                            parent_block_hash: header.parent_hash,
+                            sequencer_address: Some(header.sequencer_address),
+                            state_commitment: header.state_commitment,
+                            // FIXME
+                            status: starknet_gateway_types::reply::Status::AcceptedOnL2,
+                            timestamp: header.timestamp,
+                            transaction_receipts,
+                            transactions,
+                            starknet_version: header.starknet_version,
+                        }))
+                    };
+
+                    match result {
+                        Ok(block) => {
+                            last_block.set(block.clone());
+                            Ok(block)
+                        }
+                        Err(error) => last_block.get().ok_or(error),
                     }
-
-                    let header = headers.swap_remove(0);
-
-                    let mut bodies = p2p_client
-                        .block_bodies(BlockHash(header.hash), 1)
-                        .await
-                        .map_err(block_not_found)?;
-
-                    if bodies.len() != 1 {
-                        return Err(block_not_found(format!(
-                            "Bodies len for block {n} is {}, expected 1",
-                            headers.len()
-                        )));
-                    }
-
-                    let body = bodies.swap_remove(0);
-                    let (transactions, transaction_receipts) =
-                        conv::body::try_from_p2p(body).map_err(block_not_found)?;
-                    let header = conv::header::try_from_p2p(header).map_err(block_not_found)?;
-
-                    Ok(reply::MaybePendingBlock::Block(Block {
-                        block_hash: header.hash,
-                        block_number: header.number,
-                        gas_price: Some(header.gas_price),
-                        parent_block_hash: header.parent_hash,
-                        sequencer_address: Some(header.sequencer_address),
-                        state_commitment: header.state_commitment,
-                        // FIXME
-                        status: starknet_gateway_types::reply::Status::AcceptedOnL2,
-                        timestamp: header.timestamp,
-                        transaction_receipts,
-                        transactions,
-                        starknet_version: header.starknet_version,
-                    }))
                 }
                 BlockId::Latest => {
                     unreachable!("GatewayApi.head() is used in sync and sync status instead")
@@ -156,10 +200,10 @@ impl GatewayApi for HybridClient {
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
         match self {
-            HybridClient::Propagating { sequencer, .. } => {
+            HybridClient::GatewayProxy { sequencer, .. } => {
                 sequencer.block_without_retry(block).await
             }
-            HybridClient::NonPropagating { .. } => {
+            HybridClient::NonPropagatingP2P { .. } => {
                 unreachable!("used for gas price and not in sync")
             }
         }
@@ -169,10 +213,10 @@ impl GatewayApi for HybridClient {
         use error::class_not_found;
 
         match self {
-            HybridClient::Propagating { sequencer, .. } => {
+            HybridClient::GatewayProxy { sequencer, .. } => {
                 sequencer.class_by_hash(class_hash).await
             }
-            HybridClient::NonPropagating { p2p_client, .. } => {
+            HybridClient::NonPropagatingP2P { p2p_client, .. } => {
                 let classes = p2p_client
                     .contract_classes(vec![class_hash])
                     .await
@@ -203,10 +247,10 @@ impl GatewayApi for HybridClient {
         use error::class_not_found;
 
         match self {
-            HybridClient::Propagating { sequencer, .. } => {
+            HybridClient::GatewayProxy { sequencer, .. } => {
                 sequencer.pending_class_by_hash(class_hash).await
             }
-            HybridClient::NonPropagating { p2p_client, .. } => {
+            HybridClient::NonPropagatingP2P { p2p_client, .. } => {
                 let mut classes = p2p_client
                     .contract_classes(vec![class_hash])
                     .await
@@ -241,8 +285,8 @@ impl GatewayApi for HybridClient {
         use error::block_not_found;
 
         match self {
-            HybridClient::Propagating { sequencer, .. } => sequencer.state_update(block).await,
-            HybridClient::NonPropagating { p2p_client, .. } => match block {
+            HybridClient::GatewayProxy { sequencer, .. } => sequencer.state_update(block).await,
+            HybridClient::NonPropagatingP2P { p2p_client, .. } => match block {
                 BlockId::Hash(hash) => {
                     let mut state_updates = p2p_client
                         .state_updates(hash, 1)
@@ -353,10 +397,11 @@ impl GatewayApi for HybridClient {
     /// TODO remove me when sync is changed to use the high level (ie. peer unaware) p2p API
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         match self {
-            HybridClient::Propagating { sequencer, .. } => Ok(sequencer.head().await?),
-            HybridClient::NonPropagating { head_receiver, .. } => (*head_receiver.borrow()).ok_or(
-                error::block_not_found("Haven't received any gossiped block headers yet"),
-            ),
+            HybridClient::GatewayProxy { sequencer, .. } => Ok(sequencer.head().await?),
+            HybridClient::NonPropagatingP2P { head_receiver, .. } => (*head_receiver.borrow())
+                .ok_or(error::block_not_found(
+                    "Haven't received any gossiped block headers yet",
+                )),
         }
     }
 }
@@ -370,7 +415,7 @@ impl GossipApi for HybridClient {
         event_count: u32,
     ) {
         match self {
-            HybridClient::Propagating { p2p_client, .. } => {
+            HybridClient::GatewayProxy { p2p_client, .. } => {
                 match p2p_client
                     .propagate_new_header(super::sync_handlers::conv::header::from(
                         header,
@@ -383,7 +428,7 @@ impl GossipApi for HybridClient {
                     Err(error) => tracing::warn!(%error, "Propagating block header failed"),
                 }
             }
-            HybridClient::NonPropagating { .. } => {
+            HybridClient::NonPropagatingP2P { .. } => {
                 // This is why it's called non-propagating
             }
         }
