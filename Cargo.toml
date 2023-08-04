@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/common",
+    "crates/compiler",
     "crates/ethereum",
     "crates/gateway-client",
     "crates/gateway-test-fixtures",
