@@ -2,6 +2,7 @@
 pub mod cairo;
 pub mod context;
 mod error;
+mod executor;
 mod felt;
 pub mod gas_price;
 pub mod metrics;

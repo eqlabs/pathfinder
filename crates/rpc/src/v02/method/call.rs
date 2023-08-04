@@ -23,9 +23,9 @@ impl From<pathfinder_executor::CallError> for CallError {
     }
 }
 
-impl From<crate::v03::method::common::ExecutionStateError> for CallError {
-    fn from(error: crate::v03::method::common::ExecutionStateError) -> Self {
-        use crate::v03::method::common::ExecutionStateError::*;
+impl From<crate::executor::ExecutionStateError> for CallError {
+    fn from(error: crate::executor::ExecutionStateError) -> Self {
+        use crate::executor::ExecutionStateError::*;
         match error {
             BlockNotFound => Self::BlockNotFound,
             Internal(e) => Self::Internal(e),
@@ -68,12 +68,8 @@ impl From<FunctionCall> for crate::v02::types::request::Call {
 pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
-    let execution_state = crate::v03::method::common::execution_state_blockifier(
-        context,
-        input.block_id,
-        Some(1.into()),
-    )
-    .await?;
+    let execution_state =
+        crate::executor::execution_state(context, input.block_id, Some(1.into())).await?;
 
     let span = tracing::Span::current();
 

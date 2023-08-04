@@ -37,7 +37,7 @@ pub fn estimate_fee(
                 });
             }
             Err(error) => {
-                tracing::error!(%error, %transaction_idx, "Transaction estimation failed");
+                tracing::debug!(%error, %transaction_idx, "Transaction estimation failed");
                 return Err(error.into());
             }
         }

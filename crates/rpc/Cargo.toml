@@ -19,6 +19,7 @@ jsonrpsee = { version = "0.16.2", default-features = false, features = [
 ] }
 metrics = "0.20.1"
 pathfinder-common = { path = "../common" }
+pathfinder-compiler = { path = "../compiler" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
@@ -36,6 +37,7 @@ stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet-gateway-types = { path = "../gateway-types" }
+starknet_api = { workspace = true }
 starknet_in_rust = { git = "https://github.com/lambdaclass/starknet_in_rust", branch = "main" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "process"] }

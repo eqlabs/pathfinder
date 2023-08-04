@@ -1,9 +1,7 @@
 use anyhow::Context;
+use serde_with::serde_as;
 
-use crate::{
-    cairo::starknet_rs::types::FeeEstimate, context::RpcContext,
-    v02::types::request::BroadcastedTransaction,
-};
+use crate::{context::RpcContext, v02::types::request::BroadcastedTransaction};
 use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -18,9 +16,9 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<crate::cairo::starknet_rs::CallError> for EstimateFeeError {
-    fn from(value: crate::cairo::starknet_rs::CallError) -> Self {
-        use crate::cairo::starknet_rs::CallError::*;
+impl From<pathfinder_executor::CallError> for EstimateFeeError {
+    fn from(value: pathfinder_executor::CallError) -> Self {
+        use pathfinder_executor::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
@@ -32,11 +30,33 @@ impl From<crate::cairo::starknet_rs::CallError> for EstimateFeeError {
     }
 }
 
-impl From<super::common::ExecutionStateError> for EstimateFeeError {
-    fn from(error: super::common::ExecutionStateError) -> Self {
+impl From<crate::executor::ExecutionStateError> for EstimateFeeError {
+    fn from(error: crate::executor::ExecutionStateError) -> Self {
+        use crate::executor::ExecutionStateError::*;
         match error {
-            super::common::ExecutionStateError::BlockNotFound => Self::BlockNotFound,
-            super::common::ExecutionStateError::Internal(e) => Self::Internal(e),
+            BlockNotFound => Self::BlockNotFound,
+            Internal(e) => Self::Internal(e),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+pub struct FeeEstimate {
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub gas_consumed: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub gas_price: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub overall_fee: primitive_types::U256,
+}
+
+impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
+    fn from(value: pathfinder_executor::types::FeeEstimate) -> Self {
+        Self {
+            gas_consumed: value.gas_consumed,
+            gas_price: value.gas_price,
+            overall_fee: value.overall_fee,
         }
     }
 }
@@ -45,21 +65,29 @@ pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
-    let execution_state = super::common::execution_state(context, input.block_id, None).await?;
+    let chain_id = context.chain_id;
+
+    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
 
     let span = tracing::Span::current();
 
     let result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
-        let result = crate::cairo::starknet_rs::estimate_fee(execution_state, input.request)?;
+        let transactions = input
+            .request
+            .iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let result = pathfinder_executor::estimate_fee(execution_state, transactions)?;
 
         Ok::<_, EstimateFeeError>(result)
     })
     .await
     .context("Executing transaction")??;
 
-    Ok(result)
+    Ok(result.into_iter().map(Into::into).collect())
 }
 
 #[cfg(test)]
@@ -269,7 +297,7 @@ pub(crate) mod tests {
             );
             let deploy_transaction = BroadcastedTransaction::Invoke(
                 BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
-                    nonce: TransactionNonce(felt!("0x0")),
+                    nonce: TransactionNonce(felt!("0x1")),
                     version: TransactionVersion::ONE,
                     max_fee,
                     signature: vec![],
@@ -298,14 +326,14 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 1252.into(),
+                gas_consumed: 3700.into(),
                 gas_price: 1.into(),
-                overall_fee: 1252.into(),
+                overall_fee: 3700.into(),
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 4932.into(),
+                gas_consumed: 4337.into(),
                 gas_price: 1.into(),
-                overall_fee: 4932.into(),
+                overall_fee: 4337.into(),
             };
             assert_eq!(result, vec![declare_expected, deploy_expected]);
         }
@@ -343,16 +371,11 @@ pub(crate) mod tests {
             (db_dir, context, account_address, latest_block_hash)
         }
 
-        // Mainnet block number 5
-        pub(crate) const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
-            "00dcbd2a4b597d051073f40a0329e585bb94b26d73df69f8d72798924fd097d3"
-        ));
-
         pub(crate) fn valid_invoke_v1(account_address: ContractAddress) -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    max_fee: Fee(Default::default()),
+                    max_fee: fee!("0x1000000000000000"),
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
                     sender_address: account_address,
@@ -546,7 +569,7 @@ pub(crate) mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (_db_dir, context, account_address, _) = test_context().await;
+            let (_db_dir, context, account_address, latest_block_hash) = test_context().await;
 
             let mainnet_invoke = valid_invoke_v1(account_address)
                 .into_invoke()
@@ -560,7 +583,7 @@ pub(crate) mod tests {
                         ..mainnet_invoke
                     }),
                 )],
-                block_id: BLOCK_5,
+                block_id: BlockId::Hash(latest_block_hash),
             };
             let error = estimate_fee(context, input).await;
             assert_matches::assert_matches!(error, Err(EstimateFeeError::ContractNotFound));
@@ -588,14 +611,14 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let expected0 = FeeEstimate {
-                gas_consumed: 4931.into(),
+                gas_consumed: 4938.into(),
                 gas_price: 1.into(),
-                overall_fee: 4931.into(),
+                overall_fee: 4938.into(),
             };
             let expected1 = FeeEstimate {
-                gas_consumed: 2483.into(),
+                gas_consumed: 2490.into(),
                 gas_price: 1.into(),
-                overall_fee: 2483.into(),
+                overall_fee: 2490.into(),
             };
             assert_eq!(result, vec![expected0, expected1]);
         }
@@ -660,9 +683,9 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let expected = FeeEstimate {
-                gas_consumed: 2476.into(),
+                gas_consumed: 1252.into(),
                 gas_price: 1.into(),
-                overall_fee: 2476.into(),
+                overall_fee: 1252.into(),
             };
             assert_eq!(result, vec![expected]);
         }
@@ -702,9 +725,9 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let expected = FeeEstimate {
-                gas_consumed: 1252.into(),
+                gas_consumed: 3700.into(),
                 gas_price: 1.into(),
-                overall_fee: 1252.into(),
+                overall_fee: 3700.into(),
             };
             assert_eq!(result, vec![expected]);
         }
