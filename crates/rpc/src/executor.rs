@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use primitive_types::U256;
 use stark_hash::Felt;
-use starknet_api::{core::PatriciaKey, hash::StarkFelt};
+use starknet_api::core::PatriciaKey;
 
 use super::v02::types::request::BroadcastedTransaction;
 use pathfinder_common::ChainId;
@@ -351,8 +351,7 @@ pub(crate) fn map_broadcasted_transaction(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
                 version: starknet_api::transaction::TransactionVersion(
-                    StarkFelt::new(tx.version.0.as_fixed_bytes().to_owned())
-                        .expect("No transaction version overflow expected"),
+                    tx.version.without_query_version().into(),
                 ),
                 signature: starknet_api::transaction::TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),

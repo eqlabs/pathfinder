@@ -6,7 +6,7 @@ use blockifier::{
 };
 use primitive_types::U256;
 
-pub fn estimate_fee(
+pub fn estimate(
     mut execution_state: ExecutionState,
     transactions: Vec<Transaction>,
 ) -> Result<Vec<FeeEstimate>, CallError> {
@@ -17,7 +17,7 @@ pub fn estimate_fee(
 
     let mut fees = Vec::with_capacity(transactions.len());
     for (transaction_idx, transaction) in transactions.into_iter().enumerate() {
-        let _span = tracing::debug_span!("execute", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
+        let _span = tracing::debug_span!("estimate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
 
         let tx_info = match transaction {
             Transaction::AccountTransaction(transaction) => {
@@ -26,6 +26,7 @@ pub fn estimate_fee(
             Transaction::L1HandlerTransaction(transaction) => transaction
                 .execute(&mut state, &block_context, false, true)
                 .and_then(|mut tx_info| {
+                    // fee is not calculated by default for L1 handler transactions, we have to do that explicitly
                     tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
                         &tx_info.actual_resources,
                         &block_context,

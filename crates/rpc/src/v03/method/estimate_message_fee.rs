@@ -74,7 +74,7 @@ pub async fn estimate_message_fee(
 
         let transaction = create_executor_transaction(input, chain_id)?;
 
-        let result = pathfinder_executor::estimate_fee(execution_state, vec![transaction])?;
+        let result = pathfinder_executor::estimate(execution_state, vec![transaction])?;
 
         Ok::<_, EstimateMessageFeeError>(result)
     })

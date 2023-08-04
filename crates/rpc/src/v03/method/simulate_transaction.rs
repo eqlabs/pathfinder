@@ -1,10 +1,8 @@
-use crate::{
-    cairo::starknet_rs::types::TransactionSimulation, cairo::starknet_rs::CallError,
-    context::RpcContext, v02::types::request::BroadcastedTransaction,
-};
+use crate::{context::RpcContext, v02::types::request::BroadcastedTransaction};
 
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, EntryPoint};
+use pathfinder_executor::{types::TransactionSimulation, CallError};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
 
@@ -40,11 +38,12 @@ impl From<CallError> for SimulateTransactionError {
     }
 }
 
-impl From<super::common::ExecutionStateError> for SimulateTransactionError {
-    fn from(error: super::common::ExecutionStateError) -> Self {
+impl From<crate::executor::ExecutionStateError> for SimulateTransactionError {
+    fn from(error: crate::executor::ExecutionStateError) -> Self {
+        use crate::executor::ExecutionStateError::*;
         match error {
-            super::common::ExecutionStateError::BlockNotFound => Self::BlockNotFound,
-            super::common::ExecutionStateError::Internal(e) => Self::Internal(e),
+            BlockNotFound => Self::BlockNotFound,
+            Internal(e) => Self::Internal(e),
         }
     }
 }
@@ -53,7 +52,9 @@ pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
-    let execution_state = super::common::execution_state(context, input.block_id, None).await?;
+    let chain_id = context.chain_id;
+
+    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
 
     let skip_validate = input
         .simulation_flags
@@ -66,12 +67,13 @@ pub async fn simulate_transaction(
     let txs = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 
-        crate::cairo::starknet_rs::simulate(
-            execution_state,
-            input.transactions,
-            skip_validate,
-            true,
-        )
+        let transactions = input
+            .transactions
+            .iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        pathfinder_executor::simulate(execution_state, transactions, skip_validate, true)
     })
     .await
     .context("Simulating transaction")??;
@@ -85,12 +87,27 @@ pub(crate) mod dto {
 
     use crate::felt::RpcFelt;
     use crate::v02::method::call::FunctionCall;
-    use crate::v02::types::reply::FeeEstimate;
 
     use super::*;
 
-    impl From<crate::cairo::starknet_rs::types::FeeEstimate> for FeeEstimate {
-        fn from(value: crate::cairo::starknet_rs::types::FeeEstimate) -> Self {
+    #[serde_as]
+    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct FeeEstimate {
+        /// The Ethereum gas cost of the transaction
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub gas_consumed: primitive_types::U256,
+        /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub gas_price: primitive_types::U256,
+        /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub overall_fee: primitive_types::U256,
+    }
+
+    impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
+        fn from(value: pathfinder_executor::types::FeeEstimate) -> Self {
             Self {
                 gas_consumed: value.gas_consumed,
                 gas_price: value.gas_price,
@@ -118,9 +135,9 @@ pub(crate) mod dto {
         LibraryCall,
     }
 
-    impl From<crate::cairo::starknet_rs::types::CallType> for CallType {
-        fn from(value: crate::cairo::starknet_rs::types::CallType) -> Self {
-            use crate::cairo::starknet_rs::types::CallType::*;
+    impl From<pathfinder_executor::types::CallType> for CallType {
+        fn from(value: pathfinder_executor::types::CallType) -> Self {
+            use pathfinder_executor::types::CallType::*;
             match value {
                 Call => Self::Call,
                 Delegate => Self::LibraryCall,
@@ -138,9 +155,9 @@ pub(crate) mod dto {
         L1Handler,
     }
 
-    impl From<crate::cairo::starknet_rs::types::EntryPointType> for EntryPointType {
-        fn from(value: crate::cairo::starknet_rs::types::EntryPointType) -> Self {
-            use crate::cairo::starknet_rs::types::EntryPointType::*;
+    impl From<pathfinder_executor::types::EntryPointType> for EntryPointType {
+        fn from(value: pathfinder_executor::types::EntryPointType) -> Self {
+            use pathfinder_executor::types::EntryPointType::*;
             match value {
                 Constructor => Self::Constructor,
                 External => Self::External,
@@ -154,7 +171,7 @@ pub(crate) mod dto {
     #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct FunctionInvocation {
         #[serde(default)]
-        pub call_type: Option<CallType>,
+        pub call_type: CallType,
         #[serde_as(as = "RpcFelt")]
         pub caller_address: Felt,
         #[serde(default)]
@@ -163,7 +180,7 @@ pub(crate) mod dto {
         #[serde_as(as = "Option<RpcFelt>")]
         pub code_address: Option<Felt>,
         #[serde(default)]
-        pub entry_point_type: Option<EntryPointType>,
+        pub entry_point_type: EntryPointType,
         #[serde(default)]
         pub events: Vec<Event>,
         #[serde(flatten)]
@@ -175,14 +192,14 @@ pub(crate) mod dto {
         pub result: Vec<Felt>,
     }
 
-    impl From<crate::cairo::starknet_rs::types::FunctionInvocation> for FunctionInvocation {
-        fn from(fi: crate::cairo::starknet_rs::types::FunctionInvocation) -> Self {
+    impl From<pathfinder_executor::types::FunctionInvocation> for FunctionInvocation {
+        fn from(fi: pathfinder_executor::types::FunctionInvocation) -> Self {
             Self {
-                call_type: fi.call_type.map(Into::into),
+                call_type: fi.call_type.into(),
                 caller_address: fi.caller_address,
                 calls: fi.internal_calls.into_iter().map(Into::into).collect(),
                 code_address: fi.class_hash,
-                entry_point_type: fi.entry_point_type.map(Into::into),
+                entry_point_type: fi.entry_point_type.into(),
                 events: fi.events.into_iter().map(Into::into).collect(),
                 function_call: FunctionCall {
                     contract_address: fi.contract_address,
@@ -206,8 +223,8 @@ pub(crate) mod dto {
         pub from_address: Felt,
     }
 
-    impl From<crate::cairo::starknet_rs::types::MsgToL1> for MsgToL1 {
-        fn from(value: crate::cairo::starknet_rs::types::MsgToL1) -> Self {
+    impl From<pathfinder_executor::types::MsgToL1> for MsgToL1 {
+        fn from(value: pathfinder_executor::types::MsgToL1) -> Self {
             Self {
                 payload: value.payload,
                 to_address: value.to_address,
@@ -225,8 +242,8 @@ pub(crate) mod dto {
         pub keys: Vec<Felt>,
     }
 
-    impl From<crate::cairo::starknet_rs::types::Event> for Event {
-        fn from(value: crate::cairo::starknet_rs::types::Event) -> Self {
+    impl From<pathfinder_executor::types::Event> for Event {
+        fn from(value: pathfinder_executor::types::Event) -> Self {
             Self {
                 data: value.data,
                 keys: value.keys,
@@ -243,9 +260,9 @@ pub(crate) mod dto {
         L1Handler(L1HandlerTxnTrace),
     }
 
-    impl From<crate::cairo::starknet_rs::types::TransactionTrace> for TransactionTrace {
-        fn from(trace: crate::cairo::starknet_rs::types::TransactionTrace) -> Self {
-            use crate::cairo::starknet_rs::types::TransactionTrace::*;
+    impl From<pathfinder_executor::types::TransactionTrace> for TransactionTrace {
+        fn from(trace: pathfinder_executor::types::TransactionTrace) -> Self {
+            use pathfinder_executor::types::TransactionTrace::*;
             match trace {
                 Declare(t) => Self::Declare(t.into()),
                 DeployAccount(t) => Self::DeployAccount(t.into()),
@@ -264,8 +281,8 @@ pub(crate) mod dto {
         pub validate_invocation: Option<FunctionInvocation>,
     }
 
-    impl From<crate::cairo::starknet_rs::types::DeclareTransactionTrace> for DeclareTxnTrace {
-        fn from(trace: crate::cairo::starknet_rs::types::DeclareTransactionTrace) -> Self {
+    impl From<pathfinder_executor::types::DeclareTransactionTrace> for DeclareTxnTrace {
+        fn from(trace: pathfinder_executor::types::DeclareTransactionTrace) -> Self {
             Self {
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
                 validate_invocation: trace.validate_invocation.map(Into::into),
@@ -284,10 +301,8 @@ pub(crate) mod dto {
         pub validate_invocation: Option<FunctionInvocation>,
     }
 
-    impl From<crate::cairo::starknet_rs::types::DeployAccountTransactionTrace>
-        for DeployAccountTxnTrace
-    {
-        fn from(trace: crate::cairo::starknet_rs::types::DeployAccountTransactionTrace) -> Self {
+    impl From<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
+        fn from(trace: pathfinder_executor::types::DeployAccountTransactionTrace) -> Self {
             Self {
                 constructor_invocation: trace.constructor_invocation.map(Into::into),
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
@@ -307,8 +322,8 @@ pub(crate) mod dto {
         pub fee_transfer_invocation: Option<FunctionInvocation>,
     }
 
-    impl From<crate::cairo::starknet_rs::types::InvokeTransactionTrace> for InvokeTxnTrace {
-        fn from(trace: crate::cairo::starknet_rs::types::InvokeTransactionTrace) -> Self {
+    impl From<pathfinder_executor::types::InvokeTransactionTrace> for InvokeTxnTrace {
+        fn from(trace: pathfinder_executor::types::InvokeTransactionTrace) -> Self {
             Self {
                 validate_invocation: trace.validate_invocation.map(Into::into),
                 execute_invocation: trace.execute_invocation.map(Into::into),
@@ -324,8 +339,8 @@ pub(crate) mod dto {
         pub function_invocation: Option<FunctionInvocation>,
     }
 
-    impl From<crate::cairo::starknet_rs::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
-        fn from(trace: crate::cairo::starknet_rs::types::L1HandlerTransactionTrace) -> Self {
+    impl From<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
+        fn from(trace: pathfinder_executor::types::L1HandlerTransactionTrace) -> Self {
             Self {
                 function_invocation: trace.function_invocation.map(Into::into),
             }
@@ -362,7 +377,6 @@ mod tests {
     };
 
     use crate::v02::method::call::FunctionCall;
-    use crate::v02::types::reply::FeeEstimate;
 
     use super::*;
 
@@ -429,9 +443,9 @@ mod tests {
             SimulatedTransaction {
                 fee_estimation:
                     FeeEstimate {
-                        gas_consumed: 3709.into(),
+                        gas_consumed: 3097.into(),
                         gas_price: 1.into(),
-                        overall_fee: 3709.into(),
+                        overall_fee: 3097.into(),
                     }
                 ,
                 transaction_trace:
@@ -439,11 +453,11 @@ mod tests {
                         DeployAccountTxnTrace {
                             constructor_invocation: Some(
                                 FunctionInvocation {
-                                    call_type: Some(CallType::Call),
+                                    call_type: CallType::Call,
                                     caller_address: felt!("0x0"),
                                     calls: vec![],
                                     code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
-                                    entry_point_type: Some(EntryPointType::Constructor),
+                                    entry_point_type: EntryPointType::Constructor,
                                     events: vec![],
                                     function_call: FunctionCall {
                                         calldata: vec![],
@@ -456,11 +470,11 @@ mod tests {
                             ),
                             validate_invocation: Some(
                                 FunctionInvocation {
-                                    call_type: Some(CallType::Call),
+                                    call_type: CallType::Call,
                                     caller_address: felt!("0x0"),
                                     calls: vec![],
                                     code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
-                                    entry_point_type: Some(EntryPointType::External),
+                                    entry_point_type: EntryPointType::External,
                                     events: vec![],
                                     function_call: FunctionCall {
                                         calldata: vec![
