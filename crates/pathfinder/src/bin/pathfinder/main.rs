@@ -249,17 +249,16 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
         .with_target(pretty_log);
     let filter =
         tracing_subscriber::filter::dynamic_filter_fn(move |m, c| env_filter.enabled(m, c.clone()));
-    let console_layer = console_subscriber::spawn();
 
     if pretty_log {
         tracing_subscriber::registry()
             .with(fmt_layer.pretty().with_filter(filter))
-            .with(console_layer)
+            .with(console_subscriber::spawn())
             .init();
     } else {
         tracing_subscriber::registry()
             .with(fmt_layer.compact().with_filter(filter))
-            .with(console_layer)
+            .with(console_subscriber::spawn())
             .init();
     }
 }

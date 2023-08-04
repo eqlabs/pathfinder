@@ -92,17 +92,14 @@ pub(super) async fn query_completed(
     _id: QueryId,
     result: QueryResult,
 ) {
-    match result {
-        QueryResult::StartProviding(result) => {
-            use libp2p::kad::AddProviderOk;
+    if let QueryResult::StartProviding(result) = result {
+        use libp2p::kad::AddProviderOk;
 
-            let result = match result {
-                Ok(AddProviderOk { key }) => Ok(key),
-                Err(error) => Err(error.into_key()),
-            };
-            send_event(event_sender, TestEvent::StartProvidingCompleted(result)).await
-        }
-        _ => {}
+        let result = match result {
+            Ok(AddProviderOk { key }) => Ok(key),
+            Err(error) => Err(error.into_key()),
+        };
+        send_event(event_sender, TestEvent::StartProvidingCompleted(result)).await
     }
 }
 

@@ -606,7 +606,7 @@ impl MainLoop {
             tokio::time::interval_at(bootstrap_start, self.bootstrap_cfg.period);
 
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(2));
-        let me = self.swarm.local_peer_id().clone();
+        let me = *self.swarm.local_peer_id();
 
         loop {
             let bootstrap_interval_tick = bootstrap_interval.tick();
@@ -863,35 +863,33 @@ impl MainLoop {
                                 }
                                 _ => self.test_query_completed(id, result).await,
                             }
+                        } else if let QueryResult::GetProviders(result) = result {
+                            use libp2p::kad::GetProvidersOk;
+
+                            let result = match result {
+                                Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
+                                    Ok(providers)
+                                }
+                                Ok(_) => Ok(Default::default()),
+                                Err(_) => {
+                                    unreachable!(
+                                        "when a query times out libp2p makes it the last stage"
+                                    )
+                                }
+                            };
+
+                            let sender = self
+                                .pending_queries
+                                .get_providers
+                                .get(&id)
+                                .expect("Query to be pending");
+
+                            sender
+                                .send(result)
+                                .await
+                                .expect("Receiver not to be dropped");
                         } else {
-                            if let QueryResult::GetProviders(result) = result {
-                                use libp2p::kad::GetProvidersOk;
-
-                                let result = match result {
-                                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
-                                        Ok(providers)
-                                    }
-                                    Ok(_) => Ok(Default::default()),
-                                    Err(_) => {
-                                        unreachable!(
-                                            "when a query times out libp2p makes it the last stage"
-                                        )
-                                    }
-                                };
-
-                                let sender = self
-                                    .pending_queries
-                                    .get_providers
-                                    .get(&id)
-                                    .expect("Query to be pending");
-
-                                sender
-                                    .send(result)
-                                    .await
-                                    .expect("Receiver not to be dropped");
-                            } else {
-                                self.test_query_progressed(id, result).await;
-                            }
+                            self.test_query_progressed(id, result).await;
                         }
                     }
                     KademliaEvent::RoutingUpdated {
