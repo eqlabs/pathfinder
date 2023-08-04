@@ -100,9 +100,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+      - uses: baptiste0928/cargo-install@v2
+        with:
+          crate: cargo-sort
+          version: "^1.0.9"
       - uses: Swatinem/rust-cache@v2
       - run: |
-          cargo install cargo-sort
           cargo sort --check --workspace
 
   msrv:
@@ -110,9 +113,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+      - uses: baptiste0928/cargo-install@v2
+        with:
+          crate: cargo-msrv
+          version: "^0.15.1"
       - uses: Swatinem/rust-cache@v2
       - run: |
-          cargo install cargo-msrv
           cargo msrv --path crates/pathfinder verify
 
   python:
