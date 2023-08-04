@@ -6,7 +6,6 @@ license = "MIT"
 build = "build.rs"
 
 [dependencies]
-anyhow = { workspace = true }
 fake = { version = "2.5.0", features = ["derive"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 primitive-types = "0.12.1"

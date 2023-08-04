@@ -6209,7 +6209,6 @@ dependencies = [
  "hex",
  "libp2p 0.51.3",
  "p2p_proto",
- "pathfinder-common",
  "prost",
  "rand 0.8.5",
  "serde",
@@ -6244,7 +6243,6 @@ dependencies = [
 name = "p2p_proto"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "fake",
  "p2p_proto_derive",
  "primitive-types",
@@ -6399,7 +6397,6 @@ dependencies = [
  "clap",
  "console-subscriber",
  "const-decoder",
- "criterion",
  "fake",
  "flate2",
  "futures",
@@ -6473,17 +6470,12 @@ name = "pathfinder-ethereum"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "assert_matches",
  "async-trait",
  "const-decoder",
- "futures",
  "hex",
  "httpmock",
  "keccak-hash",
- "lazy_static",
  "pathfinder-common",
- "pathfinder-retry",
- "pretty_assertions",
  "primitive-types",
  "reqwest",
  "serde_json",
@@ -6589,7 +6581,6 @@ dependencies = [
  "const_format",
  "data-encoding",
  "fake",
- "flate2",
  "hex",
  "lazy_static",
  "pathfinder-common",
@@ -6605,7 +6596,6 @@ dependencies = [
  "serde_with",
  "sha3",
  "stark_hash",
- "starknet-gateway-client",
  "starknet-gateway-types",
  "tempfile",
  "thiserror",
