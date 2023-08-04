@@ -242,7 +242,9 @@ impl IntoResponse for RpcResponse {
 /// See [sealed::Sealed] to add more method signatures or more information on how this works.
 #[async_trait]
 pub trait RpcMethod<I, O, S>: sealed::Sealed<I, O, S> {
-    async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult;
+    // TODO: consider an associated type for version for the metrics.
+    // TODO: consider another layer of trait for the method handler to return Option<dyn RpcMethod> for method str.
+    async fn invoke(&self, method_name: &'static str, version: &'static str, ctx: RpcContext, params: Value) -> RpcResult;
 }
 
 #[async_trait]
@@ -250,8 +252,16 @@ impl<T, I, O, S> RpcMethod<I, O, S> for T
 where
     T: sealed::Sealed<I, O, S> + std::marker::Sync,
 {
-    async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult {
-        <T as sealed::Sealed<I, O, S>>::invoke(&self, ctx, params).await
+    async fn invoke(&self, method_name: &'static str, version: &'static str, ctx: RpcContext, params: Value) -> RpcResult {
+        // TODO: is version always required or is it None for root?
+        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version);
+        let result = <T as sealed::Sealed<I, O, S>>::invoke(&self, ctx, params).await;
+
+        if result.is_err() {
+            metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => version)
+        }
+
+        result
     }
 }
 
@@ -539,11 +549,12 @@ mod tests {
                     ]))
                 }
 
+                #[rustfmt::skip]
                 let output = match method {
-                    "subtract" => subtract.invoke(ctx, params).await,
-                    "sum" => sum.invoke(ctx, params).await,
-                    "get_data" => get_data.invoke(ctx, params).await,
-                    unknown => Err(RpcError::MethodNotFound {
+                    "subtract" => subtract.invoke("subtract", "version", ctx, params).await,
+                    "sum"      => sum.invoke("sum", "version", ctx, params).await,
+                    "get_data" => get_data.invoke("get_data", "version", ctx, params).await,
+                    unknown    => Err(RpcError::MethodNotFound {
                         method: unknown.to_owned(),
                     }),
                 };

@@ -96,10 +96,12 @@ impl RpcServer {
         use crate::jsonrpc::rpc_handler;
         use axum::routing::{get, post};
 
+        // TODO: allow OPTIONS
+
         // TODO: make this configurable
-        const TEN_MB: usize = 10 * 1024 * 1024;
+        const REQUEST_MAX_SIZE: usize = 10 * 1024 * 1024;
         // TODO: make this configurable
-        const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+        const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
         let listener = match std::net::TcpListener::bind(self.addr) {
             Ok(listener) => listener,
@@ -128,8 +130,8 @@ impl RpcServer {
             .layer(HandleErrorLayer::new(handle_middleware_errors))
             // TODO: remove cast
             .concurrency_limit(self.max_connections as usize)
-            .layer(DefaultBodyLimit::max(TEN_MB))
-            .timeout(TIMEOUT)
+            .layer(DefaultBodyLimit::max(REQUEST_MAX_SIZE))
+            .timeout(REQUEST_TIMEOUT)
             .option_layer(self.cors);
 
         /// Returns success for requests with an empty body without reading
@@ -156,6 +158,7 @@ impl RpcServer {
             .layer(middleware)
             // TODO: metrics
             // TODO: websockets
+            // TODO: tracing
             .with_state(self.context);
 
         let server_handle = tokio::spawn(async move {

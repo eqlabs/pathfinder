@@ -32,9 +32,9 @@ impl crate::jsonrpc::RpcMethodHandler for RpcHandlerPathfinder {
 
         #[rustfmt::skip]
         let output = match method {
-            "pathfinder_version"              => (|| { pathfinder_common::consts::VERGEN_GIT_DESCRIBE }).invoke(ctx, params).await,
-            "pathfinder_getProof"             => methods::get_proof.invoke(ctx, params).await,
-            "pathfinder_getTransactionStatus" => methods::get_transaction_status.invoke(ctx, params).await,
+            "pathfinder_version"              => (|| { pathfinder_common::consts::VERGEN_GIT_DESCRIBE }).invoke("pathfinder_version", "v0.1", ctx, params).await,
+            "pathfinder_getProof"             => methods::get_proof.invoke("pathfinder_getProof", "v0.1", ctx, params).await,
+            "pathfinder_getTransactionStatus" => methods::get_transaction_status.invoke("pathfinder_getTransactionStatus", "v0.1", ctx, params).await,
             unknown => Err(crate::jsonrpc::RpcError::MethodNotFound {
                 method: unknown.to_owned(),
             }),
