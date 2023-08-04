@@ -6,13 +6,17 @@ pub mod syncing;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
+    use std::ops::Rem;
+
     use pathfinder_common::{
-        CallParam, CasmHash, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint, Fee,
-        TransactionNonce, TransactionSignatureElem, TransactionVersion,
+        CallParam, CasmHash, ChainId, ClassHash, ContractAddress, ContractAddressSalt, EntryPoint,
+        Fee, TransactionHash, TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_serde::{TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr};
     use serde::Deserialize;
     use serde_with::serde_as;
+    use stark_hash::{Felt, HashChain};
+    use starknet_gateway_types::transaction_hash::compute_txn_hash;
 
     /// "Broadcasted" L2 transaction in requests the RPC API.
     ///
@@ -50,6 +54,34 @@ pub mod request {
             match self {
                 Self::DeployAccount(x) => Some(x),
                 _ => None,
+            }
+        }
+
+        pub fn transaction_hash(
+            &self,
+            chain_id: ChainId,
+            class_hash: Option<ClassHash>,
+        ) -> TransactionHash {
+            match self {
+                BroadcastedTransaction::Declare(tx) => {
+                    let class_hash =
+                        class_hash.expect("Declare transactions should supply class hash");
+                    match tx {
+                        BroadcastedDeclareTransaction::V0(tx) => {
+                            tx.transaction_hash(chain_id, class_hash)
+                        }
+                        BroadcastedDeclareTransaction::V1(tx) => {
+                            tx.transaction_hash(chain_id, class_hash)
+                        }
+                        BroadcastedDeclareTransaction::V2(tx) => {
+                            tx.transaction_hash(chain_id, class_hash)
+                        }
+                    }
+                }
+                BroadcastedTransaction::Invoke(tx) => match tx {
+                    BroadcastedInvokeTransaction::V1(tx) => tx.transaction_hash(chain_id),
+                },
+                BroadcastedTransaction::DeployAccount(tx) => tx.transaction_hash(chain_id),
             }
         }
     }
@@ -114,6 +146,26 @@ pub mod request {
         pub sender_address: ContractAddress,
     }
 
+    impl BroadcastedDeclareTransactionV0 {
+        pub fn transaction_hash(
+            &self,
+            chain_id: ChainId,
+            class_hash: ClassHash,
+        ) -> TransactionHash {
+            compute_txn_hash(
+                b"declare",
+                self.version,
+                self.sender_address,
+                None,
+                HashChain::default().finalize(),
+                None,
+                chain_id,
+                class_hash,
+                None,
+            )
+        }
+    }
+
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
@@ -130,6 +182,30 @@ pub mod request {
 
         pub contract_class: super::CairoContractClass,
         pub sender_address: ContractAddress,
+    }
+
+    impl BroadcastedDeclareTransactionV1 {
+        pub fn transaction_hash(
+            &self,
+            chain_id: ChainId,
+            class_hash: ClassHash,
+        ) -> TransactionHash {
+            compute_txn_hash(
+                b"declare",
+                self.version,
+                self.sender_address,
+                None,
+                {
+                    let mut h = HashChain::default();
+                    h.update(class_hash.0);
+                    h.finalize()
+                },
+                Some(self.max_fee),
+                chain_id,
+                self.nonce,
+                None,
+            )
+        }
     }
 
     #[serde_as]
@@ -151,6 +227,30 @@ pub mod request {
         pub sender_address: ContractAddress,
     }
 
+    impl BroadcastedDeclareTransactionV2 {
+        pub fn transaction_hash(
+            &self,
+            chain_id: ChainId,
+            class_hash: ClassHash,
+        ) -> TransactionHash {
+            compute_txn_hash(
+                b"declare",
+                self.version,
+                self.sender_address,
+                None,
+                {
+                    let mut h = HashChain::default();
+                    h.update(class_hash.0);
+                    h.finalize()
+                },
+                Some(self.max_fee),
+                chain_id,
+                self.nonce,
+                Some(self.compiled_class_hash),
+            )
+        }
+    }
+
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
@@ -167,6 +267,77 @@ pub mod request {
         pub contract_address_salt: ContractAddressSalt,
         pub constructor_calldata: Vec<CallParam>,
         pub class_hash: ClassHash,
+    }
+
+    impl BroadcastedDeployAccountTransaction {
+        pub fn deployed_contract_address(&self) -> ContractAddress {
+            let constructor_calldata_hash = self
+                .constructor_calldata
+                .iter()
+                .fold(HashChain::default(), |mut h, param| {
+                    h.update(param.0);
+                    h
+                })
+                .finalize();
+
+            let contract_address = [
+                Felt::from_be_slice(b"STARKNET_CONTRACT_ADDRESS").expect("prefix is convertible"),
+                Felt::ZERO,
+                self.contract_address_salt.0,
+                self.class_hash.0,
+                constructor_calldata_hash,
+            ]
+            .into_iter()
+            .fold(HashChain::default(), |mut h, e| {
+                h.update(e);
+                h
+            })
+            .finalize();
+
+            // Contract addresses are _less than_ 2**251 - 256
+            let contract_address =
+                primitive_types::U256::from_big_endian(contract_address.as_be_bytes());
+            let max_address = primitive_types::U256::from_str_radix(
+                "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
+                16,
+            )
+            .unwrap();
+
+            let contract_address = contract_address.rem(max_address);
+            let mut b = [0u8; 32];
+            contract_address.to_big_endian(&mut b);
+            let contract_address = Felt::from_be_slice(&b).unwrap();
+
+            ContractAddress::new_or_panic(contract_address)
+        }
+
+        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
+            let contract_address = self.deployed_contract_address();
+
+            compute_txn_hash(
+                b"deploy_account",
+                self.version,
+                contract_address,
+                None,
+                {
+                    let mut h = HashChain::default();
+                    h.update(self.class_hash.0);
+                    h.update(self.contract_address_salt.0);
+                    h = self
+                        .constructor_calldata
+                        .iter()
+                        .fold(h, |mut h, constructor_param| {
+                            h.update(constructor_param.0);
+                            h
+                        });
+                    h.finalize()
+                },
+                Some(self.max_fee),
+                chain_id,
+                self.nonce,
+                None,
+            )
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -229,6 +400,30 @@ pub mod request {
 
         pub sender_address: ContractAddress,
         pub calldata: Vec<CallParam>,
+    }
+
+    impl BroadcastedInvokeTransactionV1 {
+        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
+            compute_txn_hash(
+                b"invoke",
+                self.version,
+                self.sender_address,
+                None,
+                {
+                    self.calldata
+                        .iter()
+                        .fold(HashChain::default(), |mut hh, call_param| {
+                            hh.update(call_param.0);
+                            hh
+                        })
+                        .finalize()
+                },
+                Some(self.max_fee),
+                chain_id,
+                self.nonce,
+                None,
+            )
+        }
     }
 
     /// Contains parameters passed to `starknet_call`.
@@ -386,6 +581,193 @@ pub mod request {
                 assert_eq!(
                     serde_json::from_str::<Vec<BroadcastedTransaction>>(&json_fixture).unwrap(),
                     txs
+                );
+            }
+        }
+
+        mod transaction_hash {
+            use crate::v02::types::ContractClass;
+
+            use super::super::*;
+
+            use pathfinder_common::macro_prelude::*;
+
+            #[test]
+            fn declare_v1() {
+                // https://testnet.starkscan.co/tx/0x05c72f6fdbbddde03a9921e520273b4ff940d01f118793e7f9ed56f5a74cbfc0
+                let contract_class = ContractClass::from_definition_bytes(starknet_gateway_test_fixtures::class_definitions::CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747).unwrap().as_cairo().unwrap();
+
+                let tx = BroadcastedDeclareTransactionV1 {
+                    max_fee: fee!("0x6c8737288fe"),
+                    version: TransactionVersion::ONE,
+                    signature: vec![
+                        transaction_signature_elem!(
+                            "0x1c7f348434157f917dcdb4ab62d32b26be5f859fd84502043bb6c3ed85bc53f"
+                        ),
+                        transaction_signature_elem!(
+                            "0xd3f3c40d988f9b6471e371f45419ac0354cde6aa26b885a83775ded8a4f1ae"
+                        ),
+                    ],
+                    nonce: transaction_nonce!("0x8c"),
+                    contract_class,
+                    sender_address: contract_address!(
+                        "0x138aefdb281051e0cb93199bc88f133c2ba83cbd50fe6fc984b5588b087917c"
+                    ),
+                };
+
+                let transaction =
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx));
+                assert_eq!(
+                    transaction.transaction_hash(ChainId::TESTNET, Some(starknet_gateway_test_fixtures::class_definitions::CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747_CLASS_HASH)),
+                    transaction_hash!(
+                        "0x05c72f6fdbbddde03a9921e520273b4ff940d01f118793e7f9ed56f5a74cbfc0"
+                    )
+                );
+            }
+
+            #[test]
+            fn declare_v2() {
+                // https://testnet.starkscan.co/tx/0x055ab647f4aee18d9981fbe251ccf57a553ec3841b57e2f74a434b2aa6ba0513
+                let contract_class = ContractClass::from_definition_bytes(starknet_gateway_test_fixtures::class_definitions::SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC).unwrap().as_sierra().unwrap();
+
+                let tx = BroadcastedDeclareTransactionV2 {
+                    max_fee: fee!("0x5a1cdc61aaf"),
+                    version: TransactionVersion::TWO,
+                    signature: vec![
+                        transaction_signature_elem!(
+                            "0x3b871618705b5ba52e1f93dcacf4a1e4ffb465897cff33d4ac82de449f9f364"
+                        ),
+                        transaction_signature_elem!(
+                            "0x51a63df7e26778461a275b827966a44ea279605958dde0be34f956f4818e06e"
+                        ),
+                    ],
+                    nonce: transaction_nonce!("0x1b"),
+                    compiled_class_hash: casm_hash!(
+                        "0x6b04d63f49e58baea2ec5dda9c21c66cd220e3826fb6374d11de7d672d04e07"
+                    ),
+                    contract_class,
+                    sender_address: contract_address!(
+                        "0x69b5d9662b45fe3bc6602ff519c8449e30cadf3eb2617ce46ca2551ded86ef3"
+                    ),
+                };
+
+                let transaction =
+                    BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx));
+                assert_eq!(
+                transaction.transaction_hash(ChainId::TESTNET, Some(starknet_gateway_test_fixtures::class_definitions::SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC_CLASS_HASH)),
+                transaction_hash!(
+                    "0x055ab647f4aee18d9981fbe251ccf57a553ec3841b57e2f74a434b2aa6ba0513"
+                )
+            );
+            }
+
+            #[test]
+            fn invoke_v1() {
+                // https://testnet.starkscan.co/tx/0x025d11606f1a73602099a359e4b5da03c45372a92eb0c9be2800c3123e7a26aa
+                let tx = BroadcastedInvokeTransactionV1 {
+                    version: TransactionVersion::ONE,
+                    max_fee: fee!("0x2386f26fc10000"),
+                    signature: vec![
+                        transaction_signature_elem!(
+                            "0x68ff0404a75dd45b25cfb43d8d5c6747ab602368a003a8acea4e28fae0c03d6"
+                        ),
+                        transaction_signature_elem!(
+                            "0x5c5e346a92c58239c68fbc2756aa0a2c76f9af198313c397e96f78ef273a596"
+                        ),
+                    ],
+                    nonce: transaction_nonce!("0xaa23"),
+                    sender_address: contract_address!(
+                        "0x58b7ee817bd2978c7657d05d3131e83e301ed1aa79d5ad16f01925fd52d1da7"
+                    ),
+                    calldata: vec![
+                        call_param!("0x1"),
+                        call_param!(
+                            "0x51c6428132045e01eb6a779be05f0e3b88760cadb5a4ec988d9ab2729b12a67"
+                        ),
+                        call_param!(
+                            "0x2d7cf5d5a324a320f9f37804b1615a533fde487400b41af80f13f7ac5581325"
+                        ),
+                        call_param!("0x0"),
+                        call_param!("0x4"),
+                        call_param!("0x4"),
+                        call_param!("0xdc7f0b6facd8eabbac6d1c2c1cff73bece8dbbda"),
+                        call_param!("0x2"),
+                        call_param!(
+                            "0x480817f9e0a8d41850dc4875df76a4990c7f6772221bb2a06a414b22a5fc709"
+                        ),
+                        call_param!(
+                            "0x59f131a9ff4eb312f32ba82461d2165c12bd54d9f9d97935d7778fe9c3f82c1"
+                        ),
+                    ],
+                };
+
+                let transaction =
+                    BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(tx));
+                assert_eq!(
+                    transaction.transaction_hash(ChainId::TESTNET, None),
+                    transaction_hash!(
+                        "0x25d11606f1a73602099a359e4b5da03c45372a92eb0c9be2800c3123e7a26aa"
+                    )
+                );
+            }
+
+            #[test]
+            fn deploy_account() {
+                // https://testnet.starkscan.co/tx/0x0167486c4202020e510809ae1703111186de8d36a606ce948dcfab910cc18713
+                let class_hash = class_hash!(
+                    "0x25ec026985a3bf9d0cc1fe17326b245dfdc3ff89b8fde106542a3ea56c5a918"
+                );
+                let tx = BroadcastedDeployAccountTransaction {
+                    version: TransactionVersion::ONE,
+                    max_fee: fee!("0x15e1e7c9a7a0"),
+                    signature: vec![
+                        transaction_signature_elem!(
+                            "0x32628e08929f7cee80f82c4663546057868f7f50899df1b7b8c61d9eddbb111"
+                        ),
+                        transaction_signature_elem!(
+                            "0x2fd6211adc5898cc6df61e5aeb13b1bfa79a88716cc5d8b6b2a0afffc7ccd83"
+                        ),
+                        transaction_signature_elem!(
+                            "0x5ec0d11dc1588a68f04c6b4a01c67b4f772ed364cfb26ecca5f5f4d2462fafd"
+                        ),
+                    ],
+                    nonce: transaction_nonce!("0x0"),
+                    contract_address_salt: contract_address_salt!(
+                        "0x32628e08929f7cee80f82c4663546057868f7f50899df1b7b8c61d9eddbb111"
+                    ),
+                    constructor_calldata: vec![
+                        call_param!(
+                            "0x4ba0f956a26b5e0d7e491661a0c56a6eb0fc25d49912677de09439673c3c828"
+                        ),
+                        call_param!(
+                            "0x79dc0da7c54b95f10aa182ad0a46400db63156920adb65eca2654c0945a463"
+                        ),
+                        call_param!("0x4"),
+                        call_param!("0x2"),
+                        call_param!("0x2"),
+                        call_param!(
+                            "0x32628e08929f7cee80f82c4663546057868f7f50899df1b7b8c61d9eddbb111"
+                        ),
+                        call_param!(
+                            "0x235d794ee259b38bfec8fabb5efecf7b17f53e5be3d830ec0d076fb8b101fae"
+                        ),
+                    ],
+                    class_hash,
+                };
+
+                assert_eq!(
+                    tx.deployed_contract_address(),
+                    contract_address!(
+                        "0x53b40d3140504657fa11be5b65ef139bf9b82dba6691a1b0c84be85fad5f9e2"
+                    )
+                );
+
+                let transaction = BroadcastedTransaction::DeployAccount(tx);
+                assert_eq!(
+                    transaction.transaction_hash(ChainId::TESTNET, Some(class_hash)),
+                    transaction_hash!(
+                        "0x0167486c4202020e510809ae1703111186de8d36a606ce948dcfab910cc18713"
+                    )
                 );
             }
         }

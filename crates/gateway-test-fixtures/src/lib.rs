@@ -227,6 +227,18 @@ pub mod class_definitions {
     // https://alpha4.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x03dd9347d22f1ea2d5fbc7bd1f0860c6c334973499f9f1989fcb81bfff5191da
     pub const CAIRO_2_0_0_STACK_OVERFLOW: &[u8] =
         bytes_fixture!("contracts/sierra-2.0.0-stack-overflow.json");
+
+    // A Cairo class from Testnet
+    pub const CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747: &[u8] =
+        bytes_fixture!("contracts/cairo-testnet-0331118f4e4eb8a8ddb0f4493e09612e380ef527991c49a15c42574ab48dd747.json");
+    pub const CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747_CLASS_HASH: ClassHash =
+        class_hash!("0x0331118f4e4eb8a8ddb0f4493e09612e380ef527991c49a15c42574ab48dd747");
+
+    // A Sierra class from Testnet
+    pub const SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC: &[u8] =
+        bytes_fixture!("contracts/sierra-testnet-02e62a7336b45fa98668a6275168ce42b085665a9ec16b100d895968691a0bdc.json");
+    pub const SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC_CLASS_HASH: ClassHash =
+        class_hash!("0x02e62a7336b45fa98668a6275168ce42b085665a9ec16b100d895968691a0bdc");
 }
 
 pub mod testnet {
