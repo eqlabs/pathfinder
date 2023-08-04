@@ -62,7 +62,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
             let (casm_definition, sierra_definition) =
                 tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
                     (
-                        crate::sierra::compile_to_casm(&definition, &version)
+                        pathfinder_compiler::compile_to_casm(&definition, &version)
                             .context("Compiling Sierra class"),
                         definition,
                     )

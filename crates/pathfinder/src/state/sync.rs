@@ -482,7 +482,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                         &sierra_definition,
                         &casm_hash,
                         &casm_definition,
-                        crate::sierra::COMPILER_VERSION,
+                        pathfinder_compiler::COMPILER_VERSION,
                     )
                     .context("Inserting sierra class")?;
                     tx.commit().context("Committing database transaction")

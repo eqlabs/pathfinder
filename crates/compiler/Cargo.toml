@@ -1,0 +1,31 @@
+[package]
+name = "pathfinder-compiler"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.70"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { workspace = true }
+casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
+casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
+casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
+casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.1.0-rc4" }
+pathfinder-common = { path = "../common" }
+semver = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
+
+[dev-dependencies]
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+
+[build-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }

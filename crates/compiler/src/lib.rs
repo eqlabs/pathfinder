@@ -32,6 +32,17 @@ pub fn compile_to_casm(
     }
 }
 
+/// Compile a Sierra class definition to CASM _with the latest compiler we support_.
+///
+/// Execution depends on our ability to compile a Sierra class to CASM for which we
+/// always want to use the latest compiler.
+pub fn compile_to_casm_with_latest_compiler(sierra_definition: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let definition = serde_json::from_slice::<FeederGatewayContractClass<'_>>(sierra_definition)
+        .context("Parsing Sierra class")?;
+
+    v2::compile(definition)
+}
+
 mod v1_0_0_alpha6 {
     use anyhow::Context;
     use casm_compiler_v1_0_0_alpha6::allowed_libfuncs::{
@@ -40,7 +51,7 @@ mod v1_0_0_alpha6 {
     use casm_compiler_v1_0_0_alpha6::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_alpha6::contract_class::ContractClass;
 
-    use crate::sierra::FeederGatewayContractClass;
+    use super::FeederGatewayContractClass;
 
     impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
         type Error = serde_json::Error;
@@ -86,7 +97,7 @@ mod v1_0_0_rc0 {
     use casm_compiler_v1_0_0_rc0::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_rc0::contract_class::ContractClass;
 
-    use crate::sierra::FeederGatewayContractClass;
+    use super::FeederGatewayContractClass;
 
     impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
         type Error = serde_json::Error;
@@ -132,7 +143,7 @@ mod v1_1_1 {
     use casm_compiler_v1_1_1::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_1_1::contract_class::ContractClass;
 
-    use crate::sierra::FeederGatewayContractClass;
+    use super::FeederGatewayContractClass;
 
     impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
         type Error = serde_json::Error;
@@ -177,7 +188,7 @@ mod v2 {
     use casm_compiler_v2::casm_contract_class::CasmContractClass;
     use casm_compiler_v2::contract_class::ContractClass;
 
-    use crate::sierra::FeederGatewayContractClass;
+    use super::FeederGatewayContractClass;
 
     impl<'a> TryFrom<FeederGatewayContractClass<'a>> for ContractClass {
         type Error = serde_json::Error;
