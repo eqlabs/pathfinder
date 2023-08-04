@@ -42,13 +42,8 @@ starknet_api = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tower = { version = "0.4.13", default-features = false, features = [
-    "filter",
-    "util",
-] }
-tower-http = { version = "0.4.4", default-features = false, features = [
-    "cors",
-] }
+tower = { version = "0.4.13", default-features = false, features = ["filter", "util", "limit", "timeout"] }
+tower-http = { version = "0.4.0", default-features = false, features = ["cors", "limit"] }
 tracing = { workspace = true }
 zstd = { workspace = true }
 
