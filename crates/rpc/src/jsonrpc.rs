@@ -272,6 +272,7 @@ mod sealed {
     /// ```
     #[async_trait]
     pub trait Sealed<I, O, S> {
+        // TODO: param parsing error handling for each impl if there is no input required.
         async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult;
     }
 
@@ -346,6 +347,19 @@ mod sealed {
         async fn invoke(&self, _ctx: RpcContext, _params: Value) -> RpcResult {
             let output = self().await.map_err(Into::into)?;
             serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        }
+    }
+
+    /// ```
+    /// fn example() -> &'static str
+    /// ```
+    #[async_trait]
+    impl<F> Sealed<(), (), ((), (), &'static str)> for F
+    where
+        F: Fn() -> &'static str + std::marker::Sync,
+    {
+        async fn invoke(&self, _ctx: RpcContext, _params: Value) -> RpcResult {
+            serde_json::to_value(self()).map_err(|e| RpcError::InternalError(e.into()))
         }
     }
 }
