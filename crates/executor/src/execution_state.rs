@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use blockifier::{block_context::BlockContext, state::cached_state::CachedState};
+use blockifier::{
+    block_context::BlockContext,
+    state::cached_state::{CachedState, GlobalContractCache},
+};
 use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress, StateUpdate};
 use primitive_types::U256;
 
@@ -29,7 +32,7 @@ impl ExecutionState {
             self.pending_update.is_some(),
         )?;
 
-        let mut state = CachedState::new(state_reader);
+        let mut state = CachedState::new(state_reader, GlobalContractCache::default());
 
         self.pending_update.as_ref().map(|pending_update| {
             super::pending::apply_pending_update(&mut state, pending_update.as_ref())
