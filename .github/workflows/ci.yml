@@ -112,14 +112,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: baptiste0928/cargo-install@v2
+      - name: read msrv
+        id: msrv
+        run: |
+          msrv=$(grep -P "rust-version =" crates/pathfinder/Cargo.toml | awk '{print $3}' | tr -d '"')
+          echo Found msrc: $msrv
+          echo "MSRV=$msrv" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
         with:
-          crate: cargo-msrv
-          version: "^0.15.1"
+          toolchain: ${{ steps.msrv.outputs.MSRV }}
+      - name: Install protoc
+        run: |
+          sudo apt-get install -y protobuf-compiler
       - uses: Swatinem/rust-cache@v2
-      - run: |
-          cargo msrv --path crates/pathfinder verify
+      - name: check
+        run: cargo check
 
   python:
     runs-on: ubuntu-latest
