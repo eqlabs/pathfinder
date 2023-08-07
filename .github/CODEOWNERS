@@ -2,8 +2,3 @@
 
 # assign these always as reviewers
 * @eqlabs/starknet
-
-# notify on these specifically
-/crates/stark_curve @mikdk
-/crates/stark_hash @mikdk
-/crates/stark_poseidon @mikdk
