@@ -103,15 +103,13 @@ Examples:
     network: NetworkCli,
 
     /// poll_pending and p2p are mutually exclusive
-    #[cfg_attr(
-        not(feature = "p2p"),
-        arg(
-            long = "poll-pending",
-            long_help = "Enable polling pending block",
-            action = clap::ArgAction::Set,
-            default_value = "false",
-            env = "PATHFINDER_POLL_PENDING",
-        )
+    #[cfg(not(feature = "p2p"))]
+    #[arg(
+        long = "poll-pending",
+        long_help = "Enable polling pending block",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_POLL_PENDING"
     )]
     poll_pending: bool,
 
@@ -563,11 +561,10 @@ impl Config {
             }),
             monitor_address: cli.monitor_address,
             network,
-            poll_pending: if cfg!(feature = "p2p") {
-                false
-            } else {
-                cli.poll_pending
-            },
+            #[cfg(feature = "p2p")]
+            poll_pending: false,
+            #[cfg(not(feature = "p2p"))]
+            poll_pending: cli.poll_pending,
             python_subprocesses: cli.python_subprocesses,
             sqlite_wal: match cli.sqlite_wal {
                 true => JournalMode::WAL,
