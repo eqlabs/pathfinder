@@ -675,18 +675,6 @@ pub mod reply {
         pub calldata: Vec<CallParam>,
     }
 
-    impl TryFrom<starknet_gateway_types::reply::Transaction> for Transaction {
-        type Error = anyhow::Error;
-
-        fn try_from(txn: starknet_gateway_types::reply::Transaction) -> Result<Self, Self::Error> {
-            let txn = txn
-                .transaction
-                .ok_or_else(|| anyhow::anyhow!("Transaction not found."))?;
-
-            Ok(txn.into())
-        }
-    }
-
     impl From<GatewayTransaction> for Transaction {
         fn from(txn: GatewayTransaction) -> Self {
             Self::from(&txn)
