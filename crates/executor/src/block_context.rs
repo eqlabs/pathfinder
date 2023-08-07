@@ -1,19 +1,24 @@
 use std::{collections::HashMap, sync::Arc};
 
 use blockifier::block_context::BlockContext;
-use starknet_api::{core::PatriciaKey, hash::StarkHash, patricia_key};
+use pathfinder_common::{contract_address, ContractAddress};
+use starknet_api::core::PatriciaKey;
 
 use super::execution_state::ExecutionState;
 
 use super::felt::IntoStarkFelt;
 
+// NOTE: this is currently the same for _all_ networks
+pub const FEE_TOKEN_ADDRESS: ContractAddress =
+    contract_address!("0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7");
+
 pub(super) fn construct_block_context(
     execution_state: &ExecutionState,
 ) -> anyhow::Result<BlockContext> {
-    // NOTE: this is currently the same for _all_ networks
-    let fee_token_address = starknet_api::core::ContractAddress(patricia_key!(
-        "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
-    ));
+    let fee_token_address = starknet_api::core::ContractAddress(
+        PatriciaKey::try_from(FEE_TOKEN_ADDRESS.0.into_starkfelt())
+            .expect("Fee token address overflow"),
+    );
 
     let chain_id: Vec<_> = execution_state
         .chain_id

@@ -172,6 +172,13 @@ pub mod class_definitions {
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json");
     pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash =
         class_hash!("0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf");
+
+    // A "dummy" ERC20 contract that can be used as a fee token contract
+    // https://github.com/starkware-libs/blockifier/blob/3c8ee7f541db035b49fcfb203aa85f8b0b6b42e5/crates/blockifier/ERC20_without_some_syscalls/ERC20/erc20_contract_without_some_syscalls_compiled.json
+    pub const ERC20_CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/erc20_contract.json");
+    pub const ERC20_CONTRACT_DEFINITION_CLASS_HASH: ClassHash =
+        class_hash!("0x013dbe991273192b5573c526cddc27a27decb8525b44536cb0f57b5b2c089b51");
+
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc
     pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3

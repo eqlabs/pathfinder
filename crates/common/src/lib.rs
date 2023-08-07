@@ -88,6 +88,26 @@ impl StorageAddress {
             input,
         ))))
     }
+
+    pub fn from_map_name_and_key(name: &[u8], key: Felt) -> Self {
+        use sha3::Digest;
+        use std::ops::Rem;
+
+        let intermediate = truncated_keccak(<[u8; 32]>::from(sha3::Keccak256::digest(name)));
+        let value = stark_hash::stark_hash(intermediate, key);
+
+        let value = primitive_types::U256::from_big_endian(value.as_be_bytes());
+        let max_address = primitive_types::U256::from_str_radix(
+            "0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00",
+            16,
+        )
+        .unwrap();
+
+        let value = value.rem(max_address);
+        let mut b = [0u8; 32];
+        value.to_big_endian(&mut b);
+        Self(Felt::from_be_slice(&b).expect("Truncated value should fit into a felt"))
+    }
 }
 
 /// A Starknet block number.

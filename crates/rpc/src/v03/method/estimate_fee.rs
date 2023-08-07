@@ -186,7 +186,7 @@ pub(crate) mod tests {
 
         use super::*;
 
-        use pathfinder_common::{macro_prelude::*, EntryPoint};
+        use pathfinder_common::{macro_prelude::*, EntryPoint, StorageAddress};
 
         use pathfinder_common::{
             felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ChainId, ContractAddress,
@@ -215,7 +215,7 @@ pub(crate) mod tests {
                 .finalize_with_hash(BlockHash(felt!("0xb00")));
             tx.insert_block_header(&header).unwrap();
 
-            // Declare & deploy an account class and a universal deployer class
+            // Declare & deploy an account class, a universal deployer class and the fee token ERC20 class
             let block1_number = BlockNumber::GENESIS + 1;
             let block1_hash = BlockHash(felt!("0xb01"));
 
@@ -230,6 +230,13 @@ pub(crate) mod tests {
             tx.insert_cairo_class(universal_deployer_class_hash, universal_deployer_definition)
                 .unwrap();
 
+            let erc20_class_hash = starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
+            let erc20_class_definition =
+                starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION;
+
+            tx.insert_cairo_class(erc20_class_hash, erc20_class_definition)
+                .unwrap();
+
             let header = BlockHeader::builder()
                 .with_number(block1_number)
                 .with_timestamp(BlockTimestamp::new_or_panic(1))
@@ -240,12 +247,24 @@ pub(crate) mod tests {
             let account_contract_address = contract_address!("0xc01");
             let universal_deployer_address = contract_address!("0xc02");
 
+            let account_balance_key = StorageAddress::from_map_name_and_key(
+                b"ERC20_balances",
+                account_contract_address.0,
+            );
+
             let state_update = StateUpdate::default()
                 .with_block_hash(block1_hash)
                 .with_declared_cairo_class(DUMMY_ACCOUNT_CLASS_HASH)
                 .with_declared_cairo_class(universal_deployer_class_hash)
+                .with_declared_cairo_class(erc20_class_hash)
                 .with_deployed_contract(account_contract_address, DUMMY_ACCOUNT_CLASS_HASH)
-                .with_deployed_contract(universal_deployer_address, universal_deployer_class_hash);
+                .with_deployed_contract(universal_deployer_address, universal_deployer_class_hash)
+                .with_deployed_contract(pathfinder_executor::FEE_TOKEN_ADDRESS, erc20_class_hash)
+                .with_storage_update(
+                    pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    account_balance_key,
+                    storage_value!("0x10000000000000000000000000000"),
+                );
             tx.insert_state_update(block1_number, &state_update)
                 .unwrap();
 
@@ -353,7 +372,7 @@ pub(crate) mod tests {
             BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
-        use pathfinder_common::{felt_bytes, CasmHash, ContractNonce, ContractRoot, GasPrice};
+        use pathfinder_common::{felt_bytes, CasmHash, GasPrice, StorageAddress};
         use pathfinder_common::{macro_prelude::*, BlockNumber};
         use pathfinder_storage::{JournalMode, Storage};
 
@@ -483,67 +502,56 @@ pub(crate) mod tests {
             //
             // "Declare"
             //
-            let class_hash =
+            let account_class_hash =
                 starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
-            let class_definition = starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
+            let account_class_definition =
+                starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT;
 
             db_txn
-                .insert_cairo_class(class_hash, class_definition)
+                .insert_cairo_class(account_class_hash, account_class_definition)
+                .unwrap();
+
+            let erc20_class_hash = starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
+            let erc20_class_definition =
+                starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION;
+
+            db_txn
+                .insert_cairo_class(erc20_class_hash, erc20_class_definition)
                 .unwrap();
 
             //
             // "Deploy"
             //
-            let contract_address = contract_address_bytes!(b"account");
-            let contract_root = ContractRoot::ZERO;
-            let contract_nonce = ContractNonce::ZERO;
-            let contract_state_hash =
-                pathfinder_merkle_tree::contract_state::calculate_contract_state_hash(
-                    class_hash,
-                    contract_root,
-                    contract_nonce,
-                );
-
-            db_txn
-                .insert_contract_state(
-                    contract_state_hash,
-                    class_hash,
-                    contract_root,
-                    contract_nonce,
-                )
-                .unwrap();
+            let account_contract_address = contract_address_bytes!(b"account");
 
             let latest_header = db_txn
                 .block_header(pathfinder_storage::BlockId::Latest)
                 .unwrap()
                 .unwrap();
 
-            let mut storage_commitment_tree = pathfinder_merkle_tree::StorageCommitmentTree::load(
-                &db_txn,
-                latest_header.storage_commitment,
-            )
-            .unwrap();
-
-            storage_commitment_tree
-                .set(contract_address, contract_state_hash)
-                .unwrap();
-
-            let (new_storage_commitment, nodes) = storage_commitment_tree.commit().unwrap();
-            db_txn
-                .insert_storage_trie(new_storage_commitment, &nodes)
-                .unwrap();
-
             let new_header = latest_header
                 .child_builder()
-                .with_storage_commitment(new_storage_commitment)
                 .with_gas_price(gas_price)
                 .with_calculated_state_commitment()
                 .finalize_with_hash(block_hash_bytes!(b"latest block"));
             db_txn.insert_block_header(&new_header).unwrap();
 
+            let account_balance_key = StorageAddress::from_map_name_and_key(
+                b"ERC20_balances",
+                account_contract_address.0,
+            );
+
             let state_update = new_header
                 .init_state_update()
-                .with_deployed_contract(contract_address, class_hash);
+                .with_declared_cairo_class(account_class_hash)
+                .with_declared_cairo_class(erc20_class_hash)
+                .with_deployed_contract(account_contract_address, account_class_hash)
+                .with_deployed_contract(pathfinder_executor::FEE_TOKEN_ADDRESS, erc20_class_hash)
+                .with_storage_update(
+                    pathfinder_executor::FEE_TOKEN_ADDRESS,
+                    account_balance_key,
+                    storage_value!("0x10000000000000000000000000000"),
+                );
 
             db_txn
                 .insert_state_update(new_header.number, &state_update)
@@ -552,7 +560,7 @@ pub(crate) mod tests {
             // Persist
             db_txn.commit().unwrap();
 
-            (contract_address, new_header.hash, new_header.number)
+            (account_contract_address, new_header.hash, new_header.number)
         }
 
         #[tokio::test]
@@ -589,7 +597,7 @@ pub(crate) mod tests {
             assert_matches::assert_matches!(error, Err(EstimateFeeError::ContractNotFound));
         }
 
-        #[tokio::test]
+        #[test_log::test(tokio::test)]
         async fn successful_invoke_v1() {
             let (_db_dir, context, account_address, latest_block_hash) = test_context().await;
 
@@ -609,6 +617,9 @@ pub(crate) mod tests {
                 request: vec![transaction0, transaction1],
                 block_id: BlockId::Hash(latest_block_hash),
             };
+            let address =
+                StorageAddress::from_map_name_and_key(b"ERC20_balances", account_address.0);
+            tracing::trace!(%address, "Storage address");
             let result = estimate_fee(context, input).await.unwrap();
             let expected0 = FeeEstimate {
                 gas_consumed: 4938.into(),
