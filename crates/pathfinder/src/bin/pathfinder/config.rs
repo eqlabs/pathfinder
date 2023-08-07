@@ -1,4 +1,6 @@
 use clap::{CommandFactory, Parser};
+#[cfg(feature = "p2p")]
+use p2p::libp2p::Multiaddr;
 use pathfinder_common::AllowedOrigins;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
@@ -83,7 +85,7 @@ Examples:
     single: http://one.io
     a list: http://first.com,http://second.com:1234
     any:    *",
-        value_name = "DOMAIN-LIST",
+        value_name = "DOMAIN LIST",
         value_delimiter = ',',
         env = "PATHFINDER_RPC_CORS_DOMAINS"
     )]
@@ -108,12 +110,14 @@ Examples:
     #[clap(flatten)]
     network: NetworkCli,
 
+    /// poll_pending and p2p are mutually exclusive
+    #[cfg(not(feature = "p2p"))]
     #[arg(
         long = "poll-pending",
         long_help = "Enable polling pending block",
         action = clap::ArgAction::Set,
         default_value = "false",
-        env = "PATHFINDER_POLL_PENDING", 
+        env = "PATHFINDER_POLL_PENDING"
     )]
     poll_pending: bool,
 
@@ -158,6 +162,22 @@ Examples:
         value_name = "WHEN"
     )]
     color: Color,
+
+    #[cfg(feature = "p2p")]
+    #[clap(flatten)]
+    p2p: P2PCli,
+
+    #[cfg(not(feature = "p2p"))]
+    #[clap(skip)]
+    p2p: (),
+
+    #[cfg(feature = "p2p")]
+    #[clap(flatten)]
+    debug: DebugCli,
+
+    #[cfg(not(feature = "p2p"))]
+    #[clap(skip)]
+    debug: (),
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -225,6 +245,63 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         required_if_eq("network", Network::Custom),
     )]
     gateway: Option<Url>,
+}
+
+#[cfg(feature = "p2p")]
+#[derive(clap::Args)]
+struct P2PCli {
+    #[arg(
+        long = "p2p.proxy",
+        long_help = "Enable syncing from feeder gateway and proxy to p2p network. Otherwise sync from p2p network, which is the default.",
+        default_value = "false",
+        action = clap::ArgAction::Set,
+        env = "PATHFINDER_P2P_PROXY"
+    )]
+    proxy: bool,
+    #[arg(
+        long = "p2p.identity-config-file",
+        long_help = "Path to file containing the private key of the node. If not provided, a new random key will be generated.",
+        value_name = "PATH",
+        env = "PATHFINDER_P2P_IDENTITY_CONFIG_FILE"
+    )]
+    identity_config_file: Option<std::path::PathBuf>,
+    #[arg(
+        long = "p2p.listen-on",
+        long_help = "The multiaddress on which to listen for incoming p2p connections. If not provided, default route on randomly assigned port will be used.",
+        value_name = "MULTIADDRESS",
+        default_value = "/ip4/0.0.0.0/tcp/0",
+        env = "PATHFINDER_P2P_LISTEN_ON"
+    )]
+    listen_on: Multiaddr,
+    #[arg(
+        long = "p2p.bootstrap-addresses",
+        long_help = "Comma separated list of multiaddresses to use as bootstrap nodes. The list cannot be empty.",
+        value_name = "MULTIADDRESS_LIST",
+        env = "PATHFINDER_P2P_BOOTSTRAP_ADDRESSES"
+    )]
+    bootstrap_addresses: Vec<String>,
+}
+
+#[cfg(feature = "p2p")]
+#[derive(clap::Args)]
+struct DebugCli {
+    #[arg(
+        long = "debug.pretty-log",
+        long_help = "Enable pretty logging, which is especially helpful when debugging p2p behavior",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_PRETTY_LOG",
+    )]
+    pretty_log: bool,
+
+    #[arg(
+        long = "debug.restart-delay",
+        long_help = "L2 restart delay after failure, in seconds",
+        action = clap::ArgAction::Set,
+        default_value = "60",
+        env = "PATHFINDER_RESTART_DELAY",
+    )]
+    restart_delay: u64,
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -333,6 +410,8 @@ pub struct Config {
     pub max_rpc_connections: std::num::NonZeroU32,
     pub poll_interval: std::time::Duration,
     pub color: Color,
+    pub p2p: P2PConfig,
+    pub debug: DebugConfig,
 }
 
 pub struct WebSocket {
@@ -354,6 +433,22 @@ pub enum NetworkConfig {
         feeder_gateway: Url,
         chain_id: String,
     },
+}
+
+#[cfg(feature = "p2p")]
+pub struct P2PConfig {
+    pub proxy: bool,
+    pub identity_config_file: Option<std::path::PathBuf>,
+    pub listen_on: Multiaddr,
+    pub bootstrap_addresses: Vec<Multiaddr>,
+}
+
+#[cfg(not(feature = "p2p"))]
+pub struct P2PConfig;
+
+pub struct DebugConfig {
+    pub pretty_log: bool,
+    pub restart_delay: std::time::Duration,
 }
 
 impl NetworkConfig {
@@ -399,6 +494,69 @@ impl NetworkConfig {
     }
 }
 
+#[cfg(not(feature = "p2p"))]
+impl P2PConfig {
+    fn parse_or_exit(_: ()) -> Self {
+        Self
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl P2PConfig {
+    fn parse_or_exit(args: P2PCli) -> Self {
+        use clap::error::ErrorKind;
+        use p2p::libp2p::multiaddr::Result;
+        use std::str::FromStr;
+
+        Self {
+            proxy: args.proxy,
+            identity_config_file: args.identity_config_file,
+            listen_on: args.listen_on,
+            bootstrap_addresses: {
+                let x = args
+                    .bootstrap_addresses
+                    .into_iter()
+                    .map(|addr| Multiaddr::from_str(&addr))
+                    .collect::<Result<Vec<_>>>()
+                    .unwrap_or_else(|error| {
+                        Cli::command()
+                            .error(ErrorKind::ValueValidation, error)
+                            .exit()
+                    });
+                x.is_empty().then(|| {
+                    Cli::command()
+                        .error(
+                            ErrorKind::ValueValidation,
+                            "Specify at least one bootstrap address.",
+                        )
+                        .exit()
+                });
+                x
+            },
+        }
+    }
+}
+
+#[cfg(not(feature = "p2p"))]
+impl DebugConfig {
+    fn parse(_: ()) -> Self {
+        Self {
+            pretty_log: false,
+            restart_delay: std::time::Duration::from_secs(60),
+        }
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl DebugConfig {
+    fn parse(args: DebugCli) -> Self {
+        Self {
+            pretty_log: args.pretty_log,
+            restart_delay: std::time::Duration::from_secs(args.restart_delay),
+        }
+    }
+}
+
 impl Config {
     pub fn parse() -> Self {
         let cli = Cli::parse();
@@ -419,6 +577,9 @@ impl Config {
             }),
             monitor_address: cli.monitor_address,
             network,
+            #[cfg(feature = "p2p")]
+            poll_pending: false,
+            #[cfg(not(feature = "p2p"))]
             poll_pending: cli.poll_pending,
             python_subprocesses: cli.python_subprocesses,
             sqlite_wal: match cli.sqlite_wal {
@@ -428,6 +589,8 @@ impl Config {
             max_rpc_connections: cli.max_rpc_connections,
             poll_interval: std::time::Duration::from_secs(cli.poll_interval.get()),
             color: cli.color,
+            p2p: P2PConfig::parse_or_exit(cli.p2p),
+            debug: DebugConfig::parse(cli.debug),
         }
     }
 }

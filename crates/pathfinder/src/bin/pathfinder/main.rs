@@ -5,10 +5,7 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::state::SyncContext;
-use pathfinder_lib::{
-    monitoring::{self},
-    state,
-};
+use pathfinder_lib::{monitoring, state};
 use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
@@ -34,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::parse();
 
-    setup_tracing(config.color);
+    setup_tracing(config.color, config.debug.pretty_log);
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -162,13 +159,22 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         None => rpc_server,
     };
 
+    let (p2p_handle, sequencer) = start_p2p(
+        pathfinder_context.network_id,
+        p2p_storage,
+        sync_state.clone(),
+        pathfinder_context.gateway,
+        config.p2p,
+    )
+    .await?;
+
     let sync_context = SyncContext {
         storage: sync_storage,
         ethereum: ethereum.client,
         chain: pathfinder_context.network,
         chain_id: pathfinder_context.network_id,
         core_address: pathfinder_context.l1_core_address,
-        sequencer: pathfinder_context.gateway,
+        sequencer,
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
         pending_data: pending_state,
@@ -178,6 +184,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_ws_senders(),
         block_cache_size: 1_000,
+        restart_delay: config.debug.restart_delay,
     };
 
     let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));
@@ -190,8 +197,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         .context("Starting the RPC server")?;
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
-
-    let p2p_handle = start_p2p(pathfinder_context.network_id, p2p_storage, sync_state).await?;
 
     let update_handle = tokio::spawn(update::poll_github_for_releases());
 
@@ -234,7 +239,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
 }
 
 #[cfg(feature = "tokio-console")]
-fn setup_tracing(color: config::Color) {
+fn setup_tracing(color: config::Color, pretty_log: bool) {
     use tracing_subscriber::prelude::*;
 
     // EnvFilter isn't really a Filter, so this we need this ugly workaround for filtering with it.
@@ -242,32 +247,41 @@ fn setup_tracing(color: config::Color) {
     let env_filter = Arc::new(tracing_subscriber::EnvFilter::from_default_env());
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(color.is_color_enabled())
-        .with_target(false)
-        .compact()
-        .with_filter(tracing_subscriber::filter::dynamic_filter_fn(
-            move |m, c| env_filter.enabled(m, c.clone()),
-        ));
-    let console_layer = console_subscriber::spawn();
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(console_layer)
-        .init();
+        .with_target(pretty_log);
+    let filter =
+        tracing_subscriber::filter::dynamic_filter_fn(move |m, c| env_filter.enabled(m, c.clone()));
+
+    if pretty_log {
+        tracing_subscriber::registry()
+            .with(fmt_layer.pretty().with_filter(filter))
+            .with(console_subscriber::spawn())
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(fmt_layer.compact().with_filter(filter))
+            .with(console_subscriber::spawn())
+            .init();
+    }
 }
 
 #[cfg(not(feature = "tokio-console"))]
-fn setup_tracing(color: config::Color) {
+fn setup_tracing(color: config::Color, pretty_log: bool) {
     use time::macros::format_description;
 
     let time_fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
     let time_fmt = tracing_subscriber::fmt::time::UtcTime::new(time_fmt);
 
-    tracing_subscriber::fmt()
+    let subscriber = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_target(false)
+        .with_target(pretty_log)
         .with_timer(time_fmt)
-        .with_ansi(color.is_color_enabled())
-        .compact()
-        .init();
+        .with_ansi(color.is_color_enabled());
+
+    if pretty_log {
+        subscriber.pretty().init();
+    } else {
+        subscriber.compact().init();
+    }
 }
 
 fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
@@ -284,45 +298,71 @@ async fn start_p2p(
     chain_id: ChainId,
     storage: Storage,
     sync_state: Arc<SyncState>,
-) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    sequencer: starknet_gateway_client::Client,
+    config: config::P2PConfig,
+) -> anyhow::Result<(tokio::task::JoinHandle<()>, starknet_gateway_client::Client)> {
     use p2p::libp2p::identity::Keypair;
     use pathfinder_lib::p2p_network::P2PContext;
+    use serde::Deserialize;
+    use std::path::Path;
+    use zeroize::Zeroizing;
 
-    let p2p_listen_address = std::env::var("PATHFINDER_P2P_LISTEN_ADDRESS")
-        .unwrap_or_else(|_| "/ip4/0.0.0.0/tcp/4001".to_owned());
-    let listen_on: p2p::libp2p::Multiaddr = p2p_listen_address.parse()?;
+    #[derive(Clone, Deserialize)]
+    struct IdentityConfig {
+        pub private_key: String,
+    }
 
-    let p2p_bootstrap_addresses = std::env::var("PATHFINDER_P2P_BOOTSTRAP_MULTIADDRESSES")?;
-    let bootstrap_addresses = p2p_bootstrap_addresses
-        .split_ascii_whitespace()
-        .map(|a| a.parse::<p2p::libp2p::Multiaddr>())
-        .collect::<Result<Vec<_>, _>>()?;
+    impl IdentityConfig {
+        pub fn from_file(path: &Path) -> anyhow::Result<Self> {
+            Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
+        }
+    }
+
+    impl zeroize::Zeroize for IdentityConfig {
+        fn zeroize(&mut self) {
+            self.private_key.zeroize()
+        }
+    }
+
+    let keypair = match config.identity_config_file {
+        Some(path) => {
+            let config = Zeroizing::new(IdentityConfig::from_file(path.as_path())?);
+            let private_key = Zeroizing::new(base64::decode(config.private_key.as_bytes())?);
+            Keypair::from_protobuf_encoding(&private_key)?
+        }
+        None => {
+            tracing::info!("No private key configured, generating a new one");
+            Keypair::generate_ed25519()
+        }
+    };
 
     let context = P2PContext {
         chain_id,
         storage,
         sync_state,
-        proxy: bootstrap_addresses.is_empty(),
-        keypair: Keypair::generate_ed25519(),
-        listen_on,
-        bootstrap_addresses,
+        proxy: config.proxy,
+        keypair,
+        listen_on: config.listen_on,
+        bootstrap_addresses: config.bootstrap_addresses,
     };
 
-    let (_p2p_peers, _p2p_client, _head_rx, p2p_handle) =
+    let (_p2p_peers, _p2p_client, _p2p_head_receiver, p2p_handle) =
         pathfinder_lib::p2p_network::start(context).await?;
 
-    Ok(p2p_handle)
+    Ok((p2p_handle, sequencer))
 }
 
 #[cfg(not(feature = "p2p"))]
 async fn start_p2p(
-    _chain_id: ChainId,
-    _storage: Storage,
-    _sync_state: Arc<SyncState>,
-) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    _: ChainId,
+    _: Storage,
+    _: Arc<SyncState>,
+    sequencer: starknet_gateway_client::Client,
+    _: config::P2PConfig,
+) -> anyhow::Result<(tokio::task::JoinHandle<()>, starknet_gateway_client::Client)> {
     let join_handle = tokio::task::spawn(async move { futures::future::pending().await });
 
-    Ok(join_handle)
+    Ok((join_handle, sequencer))
 }
 
 /// Spawns the monitoring task at the given address.
