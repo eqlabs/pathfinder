@@ -18,7 +18,7 @@ use super::{
 pub fn simulate(
     mut execution_state: ExecutionState,
     transactions: Vec<Transaction>,
-    skip_validate: bool,
+    _skip_validate: bool,
     skip_fee_charge: bool,
 ) -> Result<Vec<TransactionSimulation>, CallError> {
     let gas_price = execution_state.gas_price;

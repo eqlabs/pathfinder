@@ -56,11 +56,11 @@ pub async fn simulate_transaction(
 
     let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
 
-    let skip_validate = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
+    if !input.simulation_flags.0.is_empty() {
+        return Err(SimulateTransactionError::Internal(anyhow::anyhow!(
+            "Simulation flags are unsupported"
+        )));
+    }
 
     let span = tracing::Span::current();
 
@@ -73,7 +73,7 @@ pub async fn simulate_transaction(
             .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        pathfinder_executor::simulate(execution_state, transactions, skip_validate, true)
+        pathfinder_executor::simulate(execution_state, transactions, false, true)
     })
     .await
     .context("Simulating transaction")??;
@@ -415,7 +415,7 @@ mod tests {
 
         let expected: Vec<dto::SimulatedTransaction> = {
             use dto::*;
-            let transaction = 
+            let transaction =
                         SimulatedTransaction {
                             fee_estimation:
                                 FeeEstimate {
@@ -465,49 +465,77 @@ mod tests {
                                             },
                                         ),
                                         fee_transfer_invocation: Some(
-                                                                FunctionInvocation {
-                                                                    call_type: CallType::Call,
-                                                                    caller_address: felt!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
-                                                                    calls: vec![],
-                                                                    code_address: Some(
-                                                                        felt!("0x013DBE991273192B5573C526CDDC27A27DECB8525B44536CB0F57B5B2C089B51"),
-                                                                    ),
-                                                                    entry_point_type: EntryPointType::External,
-                                                                    events: vec![
-                                                                        Event {
-                                                                            data: vec![
-                                                                                felt!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
-                                                                                felt!("0x01176A1BD84444C89232EC27754698E5D2E7E1A7F1539F12027F28B23EC9F3D8"),
-                                                                                felt!("0x0000000000000000000000000000000000000000000000000000000000000C19"),
-                                                                                felt!("0x0000000000000000000000000000000000000000000000000000000000000000"),
-                                                                            ],
-                                                                            keys: vec![
-                                                                                felt!("0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"),
-                                                                            ],
-                                                                        },
-                                                                    ],
-                                                                    function_call: FunctionCall {
-                                                                        contract_address: contract_address!("0x049D36570D4E46F48E99674BD3FCC84644DDD6B96F7C741B1562B82F9E004DC7"),
-                                                                        entry_point_selector: entry_point!("0x0083AFD3F4CAEDC6EEBF44246FE54E38C95E3179A5EC9EA81740ECA5B482D12E"),
-                                                                        calldata: vec![
-                                                                            call_param!("0x01176A1BD84444C89232EC27754698E5D2E7E1A7F1539F12027F28B23EC9F3D8"),
-                                                                            call_param!("0x0000000000000000000000000000000000000000000000000000000000000C19"),
-                                                                            call_param!("0x0000000000000000000000000000000000000000000000000000000000000000"),
-                                                                        ],
-                                                                    },
-                                                                    messages: vec![],
-                                                                    result: vec![
-                                                                        felt!("0x0000000000000000000000000000000000000000000000000000000000000001"),
-                                                                    ],
-                                                                },
-                                                            ),
+                                            FunctionInvocation {
+                                                call_type: CallType::Call,
+                                                caller_address: felt!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                                calls: vec![],
+                                                code_address: Some(
+                                                    felt!("0x013DBE991273192B5573C526CDDC27A27DECB8525B44536CB0F57B5B2C089B51"),
+                                                ),
+                                                entry_point_type: EntryPointType::External,
+                                                events: vec![
+                                                    Event {
+                                                        data: vec![
+                                                            felt!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                                            felt!("0x01176A1BD84444C89232EC27754698E5D2E7E1A7F1539F12027F28B23EC9F3D8"),
+                                                            felt!("0x0000000000000000000000000000000000000000000000000000000000000C19"),
+                                                            felt!("0x0000000000000000000000000000000000000000000000000000000000000000"),
+                                                        ],
+                                                        keys: vec![
+                                                            felt!("0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"),
+                                                        ],
+                                                    },
+                                                ],
+                                                function_call: FunctionCall {
+                                                    contract_address: contract_address!("0x049D36570D4E46F48E99674BD3FCC84644DDD6B96F7C741B1562B82F9E004DC7"),
+                                                    entry_point_selector: entry_point!("0x0083AFD3F4CAEDC6EEBF44246FE54E38C95E3179A5EC9EA81740ECA5B482D12E"),
+                                                    calldata: vec![
+                                                        call_param!("0x01176A1BD84444C89232EC27754698E5D2E7E1A7F1539F12027F28B23EC9F3D8"),
+                                                        call_param!("0x0000000000000000000000000000000000000000000000000000000000000C19"),
+                                                        call_param!("0x0000000000000000000000000000000000000000000000000000000000000000"),
+                                                    ],
+                                                },
+                                                messages: vec![],
+                                                result: vec![
+                                                    felt!("0x0000000000000000000000000000000000000000000000000000000000000001"),
+                                                ],
+                                            },
+                                        ),
                                     },
                                 ),
                         };
-                    vec![transaction]
+            vec![transaction]
         };
 
         let result = simulate_transaction(context, input).await.expect("result");
         pretty_assertions::assert_eq!(result.0, expected);
+    }
+
+    #[tokio::test]
+    async fn test_skip_execute_flag_returns_error() {
+        let (context, _, _, _) = crate::test_setup::test_context().await;
+
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transaction": [],
+            "simulation_flags": ["SKIP_EXECUTE"]
+        });
+        let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
+        let error = simulate_transaction(context, input).await.unwrap_err();
+        assert_matches::assert_matches!(error, SimulateTransactionError::Internal(e) => { assert_eq!(e.to_string(), "Simulation flags are unsupported") });
+    }
+
+    #[tokio::test]
+    async fn test_skip_validate_flag_returns_error() {
+        let (context, _, _, _) = crate::test_setup::test_context().await;
+
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transaction": [],
+            "simulation_flags": ["SKIP_VALIDATE"]
+        });
+        let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
+        let error = simulate_transaction(context, input).await.unwrap_err();
+        assert_matches::assert_matches!(error, SimulateTransactionError::Internal(e) => { assert_eq!(e.to_string(), "Simulation flags are unsupported") });
     }
 }

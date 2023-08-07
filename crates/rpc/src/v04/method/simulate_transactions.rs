@@ -55,17 +55,11 @@ pub async fn simulate_transactions(
 
     let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
 
-    let skip_validate = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
-
-    let skip_fee_charge = input
-        .simulation_flags
-        .0
-        .iter()
-        .any(|flag| flag == &dto::SimulationFlag::SkipFeeCharge);
+    if !input.simulation_flags.0.is_empty() {
+        return Err(SimulateTransactionError::Internal(anyhow::anyhow!(
+            "Simulation flags are unsupported"
+        )));
+    }
 
     let span = tracing::Span::current();
 
@@ -78,12 +72,7 @@ pub async fn simulate_transactions(
             .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        pathfinder_executor::simulate(
-            execution_state,
-            transactions,
-            skip_validate,
-            skip_fee_charge,
-        )
+        pathfinder_executor::simulate(execution_state, transactions, false, true)
     })
     .await
     .context("Simulating transaction")??;
@@ -394,7 +383,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_simulate_transaction_with_skip_fee_charge() {
+    async fn test_simulate_transactions() {
         let (context, _, _, _) = crate::test_setup::test_context().await;
 
         let input_json = serde_json::json!({
@@ -411,7 +400,7 @@ mod tests {
                     "type": "DEPLOY_ACCOUNT"
                 }
             ],
-            "simulation_flags": ["SKIP_FEE_CHARGE"]
+            "simulation_flags": []
         });
         let input = SimulateTrasactionInput::deserialize(&input_json).unwrap();
 
