@@ -18,10 +18,12 @@ mod behaviour;
 
 #[derive(Parser, Debug)]
 struct Args {
-    #[clap(long, value_parser, env = "IDENTITY_CONFIG_FILE")]
+    #[clap(long, short, value_parser, env = "IDENTITY_CONFIG_FILE")]
     identity_config_file: Option<std::path::PathBuf>,
-    #[clap(long, value_parser, env = "LISTEN_ON")]
+    #[clap(long, short, value_parser, env = "LISTEN_ON")]
     listen_on: Multiaddr,
+    #[clap(long, short, value_parser, env = "BOOTSTRAP_INTERVAL")]
+    bootstrap_interval_seconds: u64,
 }
 
 #[derive(Clone, Deserialize)]
@@ -78,13 +80,12 @@ async fn main() -> anyhow::Result<()> {
 
     let transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::new());
     let transport = dns::TokioDnsConfig::system(transport).unwrap();
-    let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-        .into_authentic(&keypair)
-        .expect("Signing libp2p-noise static DH keypair failed.");
+    let noise_config =
+        noise::Config::new(&keypair).expect("Signing libp2p-noise static DH keypair failed.");
     let transport = transport
         .upgrade(upgrade::Version::V1)
-        .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(libp2p::yamux::YamuxConfig::default())
+        .authenticate(noise_config)
+        .multiplex(libp2p::yamux::Config::default())
         .boxed();
 
     let mut swarm = SwarmBuilder::with_executor(
@@ -97,23 +98,29 @@ async fn main() -> anyhow::Result<()> {
 
     swarm.listen_on(args.listen_on)?;
 
-    const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(5 * 60);
-    let mut bootstrap_interval = tokio::time::interval(BOOTSTRAP_INTERVAL);
+    let mut bootstrap_interval =
+        tokio::time::interval(Duration::from_secs(args.bootstrap_interval_seconds));
+
+    let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
 
     loop {
         let bootstrap_interval_tick = bootstrap_interval.tick();
         tokio::pin!(bootstrap_interval_tick);
 
-        tokio::select! {
-            _ = bootstrap_interval_tick => {
-                tracing::debug!("Doing periodical bootstrap");
-                _ = swarm.behaviour_mut().kademlia.bootstrap();
+        let network_status_interval_tick = network_status_interval.tick();
+        tokio::pin!(network_status_interval_tick);
 
+        tokio::select! {
+            _ = network_status_interval_tick => {
                 let network_info = swarm.network_info();
                 let num_peers = network_info.num_peers();
                 let connection_counters = network_info.connection_counters();
                 let num_connections = connection_counters.num_connections();
                 tracing::info!(%num_peers, %num_connections, "Peer-to-peer status")
+            }
+            _ = bootstrap_interval_tick => {
+                tracing::debug!("Doing periodical bootstrap");
+                _ = swarm.behaviour_mut().kademlia.bootstrap();
             }
             Some(event) = swarm.next() => {
                 match event {
