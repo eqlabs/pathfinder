@@ -165,14 +165,13 @@ Examples:
     #[clap(skip)]
     p2p: (),
 
-    #[cfg_attr(feature = "p2p", arg(
-        long = "pretty-log",
-        long_help = "Enable pretty logging, which is especially helpful when debugging p2p behavior",
-        action = clap::ArgAction::Set,
-        default_value = "false",
-        env = "PATHFINDER_PRETTY_LOG",
-    ))]
-    pretty_log: bool,
+    #[cfg(feature = "p2p")]
+    #[clap(flatten)]
+    debug: DebugCli,
+
+    #[cfg(not(feature = "p2p"))]
+    #[clap(skip)]
+    debug: (),
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -269,6 +268,28 @@ struct P2PCli {
         env = "PATHFINDER_P2P_BOOTSTRAP_ADDRESSES"
     )]
     bootstrap_addresses: Vec<String>,
+}
+
+#[cfg(feature = "p2p")]
+#[derive(clap::Args)]
+struct DebugCli {
+    #[arg(
+        long = "debug.pretty-log",
+        long_help = "Enable pretty logging, which is especially helpful when debugging p2p behavior",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_PRETTY_LOG",
+    )]
+    pretty_log: bool,
+
+    #[arg(
+        long = "debug.restart-delay",
+        long_help = "L2 restart delay after failure, in seconds",
+        action = clap::ArgAction::Set,
+        default_value = "60",
+        env = "PATHFINDER_RESTART_DELAY",
+    )]
+    restart_delay: u64,
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -377,7 +398,7 @@ pub struct Config {
     pub poll_interval: std::time::Duration,
     pub color: Color,
     pub p2p: P2PConfig,
-    pub pretty_log: bool,
+    pub debug: DebugConfig,
 }
 
 pub struct WebSocket {
@@ -408,8 +429,14 @@ pub struct P2PConfig {
     pub listen_on: Multiaddr,
     pub bootstrap_addresses: Vec<Multiaddr>,
 }
+
 #[cfg(not(feature = "p2p"))]
 pub struct P2PConfig;
+
+pub struct DebugConfig {
+    pub pretty_log: bool,
+    pub restart_delay: std::time::Duration,
+}
 
 impl NetworkConfig {
     fn from_components(args: NetworkCli) -> Option<Self> {
@@ -497,6 +524,26 @@ impl P2PConfig {
     }
 }
 
+#[cfg(not(feature = "p2p"))]
+impl DebugConfig {
+    fn parse(_: ()) -> Self {
+        Self {
+            pretty_log: false,
+            restart_delay: std::time::Duration::from_secs(60),
+        }
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl DebugConfig {
+    fn parse(args: DebugCli) -> Self {
+        Self {
+            pretty_log: args.pretty_log,
+            restart_delay: std::time::Duration::from_secs(args.restart_delay),
+        }
+    }
+}
+
 impl Config {
     pub fn parse() -> Self {
         let cli = Cli::parse();
@@ -530,11 +577,7 @@ impl Config {
             poll_interval: std::time::Duration::from_secs(cli.poll_interval.get()),
             color: cli.color,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
-            pretty_log: if cfg!(feature = "p2p") {
-                cli.pretty_log
-            } else {
-                false
-            },
+            debug: DebugConfig::parse(cli.debug),
         }
     }
 }

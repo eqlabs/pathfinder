@@ -128,11 +128,15 @@ impl GatewayApi for HybridClient {
             } => match block {
                 BlockId::Number(n) => {
                     tracing::info!("HybridClient::block({})", n);
-                    let result = {
+                    let block_inner = || async {
+                        tracing::info!("1");
+
                         let mut headers = p2p_client
                             .block_headers(n, 1)
                             .await
                             .map_err(block_not_found)?;
+
+                        tracing::info!("2");
 
                         if headers.len() != 1 {
                             return Err(block_not_found(format!(
@@ -140,6 +144,8 @@ impl GatewayApi for HybridClient {
                                 headers.len()
                             )));
                         }
+
+                        tracing::info!("3");
 
                         let header = headers.swap_remove(0);
 
@@ -154,6 +160,8 @@ impl GatewayApi for HybridClient {
                                 headers.len()
                             )));
                         }
+
+                        tracing::info!("4");
 
                         let body = bodies.swap_remove(0);
                         let (transactions, transaction_receipts) =
@@ -176,7 +184,7 @@ impl GatewayApi for HybridClient {
                         }))
                     };
 
-                    match result {
+                    match block_inner().await {
                         Ok(block) => {
                             tracing::info!("HybridClient::block({}), updated block cache", n);
                             last_block.set(block.clone());

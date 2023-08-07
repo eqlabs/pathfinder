@@ -125,6 +125,8 @@ where
         let mut next_state_update = None;
 
         let (block, commitments) = loop {
+            tracing::info!("l2 sync: {}", next);
+
             match download_block(
                 next,
                 // Reuse the next full block if we got it for free when polling pending
@@ -427,6 +429,8 @@ async fn download_block(
         error::KnownStarknetErrorCode::BlockNotFound, reply::MaybePendingBlock,
     };
 
+    tracing::info!("download_block: {}", block_number);
+
     let result = match next_block {
         // Reuse a finalized block downloaded before pending mode exited
         Some(block) if block.block_number == block_number => Ok(MaybePendingBlock::Block(block)),
@@ -532,6 +536,8 @@ async fn reorg(
     mode: BlockValidationMode,
     blocks: &BlockChain,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
+    tracing::info!("reorg: head {}", head.0);
+
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
     let mut reorg_tail = head;
@@ -568,6 +574,8 @@ async fn reorg(
     };
 
     let reorg_tail = new_head.map(|x| x.0 + 1).unwrap_or(BlockNumber::GENESIS);
+
+    tracing::info!("reorg: reorg_tail {}", reorg_tail);
 
     tx_event
         .send(SyncEvent::Reorg(reorg_tail))

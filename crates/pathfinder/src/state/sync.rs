@@ -75,6 +75,7 @@ pub struct SyncContext<G, E> {
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: WebsocketSenders,
     pub block_cache_size: usize,
+    pub restart_delay: Duration,
 }
 
 impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
@@ -141,6 +142,7 @@ where
         block_validation_mode: _,
         websocket_txs: _,
         block_cache_size,
+        restart_delay,
     } = context.clone();
 
     let mut db_conn = storage
@@ -250,7 +252,7 @@ where
                 let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain);
 
                 l2_handle = tokio::spawn(async move {
-                    tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
+                    tokio::time::sleep(restart_delay).await;
                     fut.await
                 });
                 tracing::info!("L2 sync process restarted.");

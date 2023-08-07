@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::parse();
 
-    setup_tracing(config.color, config.pretty_log);
+    setup_tracing(config.color, config.debug.pretty_log);
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -184,6 +184,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs: rpc_server.get_ws_senders(),
         block_cache_size: 1_000,
+        restart_delay: config.debug.restart_delay,
     };
 
     let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));
