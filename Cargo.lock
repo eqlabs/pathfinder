@@ -5816,6 +5816,7 @@ dependencies = [
  "hex",
  "libp2p",
  "p2p_proto",
+ "pathfinder-common",
  "prost",
  "rand 0.8.5",
  "serde",
@@ -5995,6 +5996,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
+ "base64 0.13.1",
  "bitvec",
  "bytes",
  "clap",
@@ -6041,6 +6043,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "warp",
+ "zeroize",
  "zstd",
 ]
 

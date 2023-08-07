@@ -2,29 +2,49 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use p2p::libp2p::{identity::Keypair, multiaddr::Multiaddr, PeerId};
-use p2p::Peers;
-use pathfinder_common::ChainId;
+use p2p::{HeadRx, HeadTx, Peers, SyncClient};
+use pathfinder_common::{BlockHash, BlockNumber, ChainId};
 use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
 use stark_hash::Felt;
 use tokio::sync::RwLock;
 use tracing::Instrument;
 
-mod client;
+pub mod client;
 mod sync_handlers;
 
+// Silence clippy
+pub type P2PNetworkHandle = (
+    Arc<RwLock<Peers>>,
+    SyncClient,
+    HeadRx,
+    tokio::task::JoinHandle<()>,
+);
+
+pub struct P2PContext {
+    pub chain_id: ChainId,
+    pub storage: Storage,
+    pub sync_state: Arc<SyncState>,
+    pub proxy: bool,
+    pub keypair: Keypair,
+    pub listen_on: Multiaddr,
+    pub bootstrap_addresses: Vec<Multiaddr>,
+}
+
 #[tracing::instrument(name = "p2p", skip_all)]
-pub async fn start(
-    chain_id: ChainId,
-    mut storage: Storage,
-    sync_state: Arc<SyncState>,
-    listen_on: Multiaddr,
-    bootstrap_addresses: &[Multiaddr],
-) -> anyhow::Result<(Arc<RwLock<Peers>>, p2p::Client, tokio::task::JoinHandle<()>)> {
-    let keypair = Keypair::generate_ed25519();
+pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
+    let P2PContext {
+        chain_id,
+        mut storage,
+        sync_state,
+        proxy: _,
+        keypair,
+        listen_on,
+        bootstrap_addresses,
+    } = context;
 
     let peer_id = keypair.public().to_peer_id();
-    tracing::info!(%peer_id, "Starting P2P");
+    tracing::info!(%peer_id, "🖧 Starting P2P");
 
     let peers: Arc<RwLock<Peers>> = Arc::new(RwLock::new(Default::default()));
     let (p2p_client, mut p2p_events, p2p_main_loop) =
@@ -61,10 +81,16 @@ pub async fn start(
 
     let block_propagation_topic = format!("blocks/{}", chain_id.to_hex_str());
 
-    if !bootstrap_addresses.is_empty() {
-        // Bootstrap nodes don't subscribe to topic they're publishing to
-        p2p_client.subscribe_topic(&block_propagation_topic).await?;
+    p2p_client.subscribe_topic(&block_propagation_topic).await?;
+
+    tracing::info!(topic=%block_propagation_topic, "Subscribed to");
+
+    let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
+    for capability in capabilities {
+        p2p_client.provide_capability(capability).await?
     }
+
+    let (mut tx, rx) = tokio::sync::watch::channel(None);
 
     let join_handle = {
         let mut p2p_client = p2p_client.clone();
@@ -77,7 +103,7 @@ pub async fn start(
                             break;
                         }
                         Some(event) = p2p_events.recv() => {
-                            match handle_p2p_event(event, chain_id, &mut storage, &sync_state, &mut p2p_client).await {
+                            match handle_p2p_event(event, chain_id, &mut storage, &sync_state, &mut p2p_client, &mut tx).await {
                                 Ok(()) => {},
                                 Err(e) => { tracing::error!("Failed to handle P2P event: {}", e) },
                             }
@@ -89,7 +115,12 @@ pub async fn start(
         )
     };
 
-    Ok((peers.clone(), p2p_client, join_handle))
+    Ok((
+        peers.clone(),
+        SyncClient::new(p2p_client, block_propagation_topic, peers),
+        rx,
+        join_handle,
+    ))
 }
 
 async fn handle_p2p_event(
@@ -98,6 +129,7 @@ async fn handle_p2p_event(
     storage: &mut Storage,
     sync_state: &SyncState,
     p2p_client: &mut p2p::Client,
+    tx: &mut HeadTx,
 ) -> anyhow::Result<()> {
     match event {
         p2p::Event::SyncPeerConnected { peer_id }
@@ -128,7 +160,15 @@ async fn handle_p2p_event(
             };
             p2p_client.send_sync_response(channel, response).await;
         }
-        p2p::Event::BlockPropagation(message) => tracing::info!(?message, "Block Propagation"),
+        p2p::Event::BlockPropagation { from, message } => {
+            tracing::info!(%from, ?message, "Block Propagation");
+            if let p2p_proto::propagation::Message::NewBlockHeader(h) = *message {
+                _ = tx.send(Some((
+                    BlockNumber::new_or_panic(h.header.number),
+                    BlockHash(h.header.hash),
+                )));
+            }
+        }
         p2p::Event::Test(_) => { /* Ignore me */ }
     }
 

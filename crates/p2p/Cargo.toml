@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = "0.1.58"
-base64 = "0.13.0"
+base64 = "0.13.1"
 delay_map = "0.1.2"
 futures = "0.3.21"
 libp2p = { version = "0.51.3", default-features = false, features = [
@@ -29,7 +29,9 @@ libp2p = { version = "0.51.3", default-features = false, features = [
     "macros",
 ] }
 p2p_proto = { path = "../p2p_proto" }
+pathfinder-common = { path = "../common" }
 prost = "0.11.2"
+rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = "0.10.2"

@@ -285,6 +285,9 @@ async fn start_p2p(
     storage: Storage,
     sync_state: Arc<SyncState>,
 ) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    use p2p::libp2p::identity::Keypair;
+    use pathfinder_lib::p2p_network::P2PContext;
+
     let p2p_listen_address = std::env::var("PATHFINDER_P2P_LISTEN_ADDRESS")
         .unwrap_or_else(|_| "/ip4/0.0.0.0/tcp/4001".to_owned());
     let listen_on: p2p::libp2p::Multiaddr = p2p_listen_address.parse()?;
@@ -295,14 +298,18 @@ async fn start_p2p(
         .map(|a| a.parse::<p2p::libp2p::Multiaddr>())
         .collect::<Result<Vec<_>, _>>()?;
 
-    let (_p2p_peers, _p2p_client, p2p_handle) = pathfinder_lib::p2p_network::start(
+    let context = P2PContext {
         chain_id,
         storage,
         sync_state,
+        proxy: bootstrap_addresses.is_empty(),
+        keypair: Keypair::generate_ed25519(),
         listen_on,
-        &bootstrap_addresses,
-    )
-    .await?;
+        bootstrap_addresses,
+    };
+
+    let (_p2p_peers, _p2p_client, _head_rx, p2p_handle) =
+        pathfinder_lib::p2p_network::start(context).await?;
 
     Ok(p2p_handle)
 }
