@@ -13,7 +13,7 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 rpc-full-serde = []
-p2p = ["dep:bytes", "dep:p2p", "dep:p2p_proto", "dep:zeroize", "dep:base64"]
+p2p = ["dep:bytes", "dep:p2p", "dep:p2p_proto", "dep:zeroize", "dep:base64", "dep:lru"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -25,6 +25,7 @@ clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
+lru = { version = "0.11.0", optional = true }
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 p2p = { path = "../p2p", optional = true }

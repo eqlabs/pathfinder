@@ -142,26 +142,23 @@ impl SyncClient {
             .await
     }
 
-    async fn shuffled_peers_with_sync_capability(&self) -> anyhow::Result<Vec<PeerId>> {
+    async fn shuffled_peers_with_sync_capability(&self) -> Vec<PeerId> {
         use rand::seq::SliceRandom;
         let mut peers = self
             .client
             .get_capability_providers("core/blocks-sync/1")
-            .await?;
+            .await
+            .unwrap_or_default();
 
         let _i_should_have_the_capability_too = peers.remove(&self.client.my_peer_id);
         debug_assert!(_i_should_have_the_capability_too);
-
-        if peers.is_empty() {
-            anyhow::bail!("No other peers with sync capability found.")
-        }
 
         let mut peers = peers.into_iter().collect::<Vec<_>>();
         peers.shuffle(&mut rand::thread_rng());
 
         tracing::info!("shuffled_peers_with_sync_capability: {:?}", peers);
 
-        Ok(peers)
+        peers
     }
 
     pub async fn block_headers(
@@ -169,135 +166,164 @@ impl SyncClient {
         // start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
         start_block: BlockNumber, // TODO number or hash
         num_blocks: usize,        // FIXME, use range?
-    ) -> anyhow::Result<Vec<p2p_proto::common::BlockHeader>> {
+    ) -> Option<Vec<p2p_proto::common::BlockHeader>> {
         if num_blocks == 0 {
-            return Ok(Vec::new());
+            return Some(Vec::new());
         }
 
-        for peer in self.shuffled_peers_with_sync_capability().await? {
+        let count: u64 = num_blocks.try_into().ok()?;
+
+        for peer in self.shuffled_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
                     peer,
                     p2p_proto::sync::Request::GetBlockHeaders(p2p_proto::sync::GetBlockHeaders {
                         start_block: start_block.get(),
-                        count: num_blocks.try_into().expect("Can it go wrong here?"),
+                        count,
                         size_limit: u64::MAX, // FIXME
                         direction: p2p_proto::sync::Direction::Forward,
                     }),
                 )
-                .await?;
+                .await;
+
             match response {
-                p2p_proto::sync::Response::BlockHeaders(x) => {
+                Ok(p2p_proto::sync::Response::BlockHeaders(x)) => {
                     if x.headers.is_empty() {
                         tracing::info!(%peer, "Got empty block headers response from");
                         continue;
                     } else {
-                        return Ok(x.headers);
+                        return Some(x.headers);
                     }
                 }
-                _ => anyhow::bail!("Response variant does not match request"),
+                Ok(_) => {
+                    tracing::info!(%peer, "Got unexpected response from GetBlockHeaders");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::info!(%peer, %error, "GetBlockHeaders failed");
+                    continue;
+                }
             }
         }
 
         tracing::info!(%start_block, %num_blocks, "No peers with block headers found for");
 
-        Ok(Vec::new())
+        None
     }
 
     pub async fn block_bodies(
         &self,
         start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
         num_blocks: usize,           // FIXME, use range?
-    ) -> anyhow::Result<Vec<p2p_proto::common::BlockBody>> {
+    ) -> Option<Vec<p2p_proto::common::BlockBody>> {
         if num_blocks == 0 {
-            return Ok(Vec::new());
+            return Some(Vec::new());
         }
 
-        for peer in self.shuffled_peers_with_sync_capability().await? {
+        let count: u64 = num_blocks.try_into().ok()?;
+
+        for peer in self.shuffled_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
                     peer,
                     p2p_proto::sync::Request::GetBlockBodies(p2p_proto::sync::GetBlockBodies {
                         start_block: start_block_hash.0,
-                        count: num_blocks.try_into().expect("Can it go wrong here?"),
+                        count,
                         size_limit: u64::MAX, // FIXME
                         direction: p2p_proto::sync::Direction::Forward,
                     }),
                 )
-                .await?;
+                .await;
+
             match response {
-                p2p_proto::sync::Response::BlockBodies(x) => {
+                Ok(p2p_proto::sync::Response::BlockBodies(x)) => {
                     if x.block_bodies.is_empty() {
                         tracing::info!(%peer, "Got empty block bodies response from");
                         continue;
                     } else {
-                        return Ok(x.block_bodies);
+                        return Some(x.block_bodies);
                     }
                 }
-                _ => anyhow::bail!("Response variant does not match request"),
+                Ok(_) => {
+                    tracing::info!(%peer, "Got unexpected response from GetBlockBodies");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::info!(%peer, %error, "GetBlockBodies failed");
+                    continue;
+                }
             }
         }
 
         tracing::info!(%start_block_hash, %num_blocks, "No peers with block bodies found for");
 
-        Ok(Vec::new())
+        None
     }
 
     pub async fn state_updates(
         &self,
         start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
         num_blocks: usize,           // FIXME, use range?
-    ) -> anyhow::Result<Vec<p2p_proto::sync::BlockStateUpdateWithHash>> {
+    ) -> Option<Vec<p2p_proto::sync::BlockStateUpdateWithHash>> {
         if num_blocks == 0 {
-            return Ok(Vec::new());
+            return Some(Vec::new());
         }
 
-        for peer in self.shuffled_peers_with_sync_capability().await? {
+        let count: u64 = num_blocks.try_into().ok()?;
+
+        for peer in self.shuffled_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
                     peer,
                     p2p_proto::sync::Request::GetStateDiffs(p2p_proto::sync::GetStateDiffs {
                         start_block: start_block_hash.0,
-                        count: num_blocks.try_into()?,
+                        count,
                         size_limit: u64::MAX, // FIXME
                         direction: p2p_proto::sync::Direction::Forward,
                     }),
                 )
-                .await?;
+                .await;
             match response {
-                p2p_proto::sync::Response::StateDiffs(x) => {
+                Ok(p2p_proto::sync::Response::StateDiffs(x)) => {
                     if x.block_state_updates.is_empty() {
                         tracing::info!(%peer, "Got empty state updates response from");
                         continue;
                     } else {
-                        return Ok(x.block_state_updates);
+                        return Some(x.block_state_updates);
                     }
                 }
-                _ => anyhow::bail!("Response variant does not match request"),
+                Ok(_) => {
+                    tracing::info!(%peer, "Got unexpected response from GetStateDiffs");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::info!(%peer, %error, "GetStateDiffs failed");
+                    continue;
+                }
             }
         }
 
         tracing::info!(%start_block_hash, %num_blocks, "No peers with state updates found for");
 
-        Ok(Vec::new())
+        None
     }
 
     pub async fn contract_classes(
         &self,
         class_hashes: Vec<ClassHash>,
-    ) -> anyhow::Result<p2p_proto::sync::Classes> {
+    ) -> Option<p2p_proto::sync::Classes> {
         if class_hashes.is_empty() {
-            return Ok(p2p_proto::sync::Classes {
+            return Some(p2p_proto::sync::Classes {
                 classes: Vec::new(),
             });
         }
 
         let class_hashes = class_hashes.into_iter().map(|x| x.0).collect::<Vec<_>>();
 
-        for peer in self.shuffled_peers_with_sync_capability().await? {
+        for peer in self.shuffled_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
@@ -307,25 +333,30 @@ impl SyncClient {
                         size_limit: u64::MAX, // FIXME
                     }),
                 )
-                .await?;
+                .await;
             match response {
-                p2p_proto::sync::Response::Classes(x) => {
+                Ok(p2p_proto::sync::Response::Classes(x)) => {
                     if x.classes.is_empty() {
                         tracing::info!(%peer, "Got empty classes response from");
                         continue;
                     } else {
-                        return Ok(x);
+                        return Some(x);
                     }
                 }
-                _ => anyhow::bail!("Response variant does not match request"),
+                Ok(_) => {
+                    tracing::info!(%peer, "Got unexpected response from GetClasses");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::info!(%peer, %error, "GetStateDiffs failed");
+                    continue;
+                }
             }
         }
 
         tracing::info!(?class_hashes, "No peers with classes found for");
 
-        Ok(p2p_proto::sync::Classes {
-            classes: Vec::new(),
-        })
+        None
     }
 }
 
