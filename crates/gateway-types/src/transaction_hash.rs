@@ -459,15 +459,19 @@ mod tests {
     use pathfinder_common::ChainId;
     use starknet_gateway_test_fixtures::{v0_11_0, v0_8_2, v0_9_0};
 
+    #[derive(serde::Deserialize)]
+    struct TxWrapper {
+        transaction: crate::reply::transaction::Transaction,
+    }
+
     macro_rules! case {
         ($target:expr) => {{
             let line = line!();
 
             (
-                serde_json::from_str::<crate::reply::Transaction>($target)
+                serde_json::from_str::<crate::transaction_hash::tests::TxWrapper>($target)
                     .expect(&format!("deserialization is Ok, line: {line}"))
-                    .transaction
-                    .expect(&format!("transaction is Some, line: {line}")),
+                    .transaction,
                 line,
             )
         }};

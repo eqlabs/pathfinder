@@ -155,31 +155,12 @@ pub mod call {
 }
 
 /// Used to deserialize replies to Starknet transaction requests.
+///
+/// We only care about the status so we ignore other fields.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 pub struct Transaction {
-    #[serde(default)]
-    pub block_hash: Option<BlockHash>,
-    #[serde(default)]
-    pub block_number: Option<BlockNumber>,
     pub status: Status,
-    #[serde(default)]
-    pub transaction: Option<transaction::Transaction>,
-    #[serde(default)]
-    pub transaction_index: Option<u64>,
-    #[serde(default)]
-    pub transaction_failure_reason: Option<transaction::Failure>,
-}
-
-/// Used to deserialize replies to Starknet transaction status requests.
-#[serde_as]
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct TransactionStatus {
-    #[serde(default)]
-    pub block_hash: Option<BlockHash>,
-    pub tx_status: Status,
 }
 
 /// Types used when deserializing L2 transaction related data.
@@ -961,14 +942,10 @@ pub mod state_update {
 /// Used to deserialize replies to Starknet Ethereum contract requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct EthContractAddresses {
     #[serde(rename = "Starknet")]
     #[serde_as(as = "EthereumAddressAsHexStr")]
     pub starknet: EthereumAddress,
-    #[serde_as(as = "EthereumAddressAsHexStr")]
-    #[serde(rename = "GpsStatementVerifier")]
-    pub gps_statement_verifier: EthereumAddress,
 }
 
 pub mod add_transaction {
@@ -1274,5 +1251,17 @@ mod tests {
             assert_eq!(receipt.execution_status, ExecutionStatus::Reverted);
             assert_eq!(receipt.revert_error, Some("reason goes here".to_owned()));
         }
+    }
+
+    #[test]
+    fn eth_contract_addresses_ignores_extra_fields() {
+        // Some gateway mocks include extra addesses, check that we can still parse these.
+        let json = serde_json::json!({
+            "Starknet": "0x12345abcd",
+            "GpsStatementVerifier": "0xaabdde",
+            "MemoryPageFactRegistry": "0xdeadbeef"
+        });
+
+        serde_json::from_value::<crate::reply::EthContractAddresses>(json).unwrap();
     }
 }
