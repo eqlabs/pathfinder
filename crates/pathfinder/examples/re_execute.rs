@@ -238,6 +238,7 @@ fn map_gateway_transaction(
                     pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
 
                 let tx = starknet_api::transaction::DeclareTransactionV0V1 {
+                    transaction_hash: tx_hash,
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
@@ -259,9 +260,7 @@ fn map_gateway_transaction(
                     starknet_api::transaction::Transaction::Declare(
                         starknet_api::transaction::DeclareTransaction::V0(tx),
                     ),
-                    tx_hash,
                     Some(contract_class),
-                    None,
                     None,
                 )?;
 
@@ -276,6 +275,7 @@ fn map_gateway_transaction(
                     pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
 
                 let tx = starknet_api::transaction::DeclareTransactionV0V1 {
+                    transaction_hash: tx_hash,
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
@@ -297,9 +297,7 @@ fn map_gateway_transaction(
                     starknet_api::transaction::Transaction::Declare(
                         starknet_api::transaction::DeclareTransaction::V1(tx),
                     ),
-                    tx_hash,
                     Some(contract_class),
-                    None,
                     None,
                 )?;
 
@@ -313,6 +311,7 @@ fn map_gateway_transaction(
                 let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
 
                 let tx = starknet_api::transaction::DeclareTransactionV2 {
+                    transaction_hash: tx_hash,
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
@@ -337,9 +336,7 @@ fn map_gateway_transaction(
                     starknet_api::transaction::Transaction::Declare(
                         starknet_api::transaction::DeclareTransaction::V2(tx),
                     ),
-                    tx_hash,
                     Some(contract_class),
-                    None,
                     None,
                 )?;
 
@@ -354,6 +351,8 @@ fn map_gateway_transaction(
             );
 
             let tx = starknet_api::transaction::DeployAccountTransaction {
+                transaction_hash: tx_hash,
+                contract_address,
                 max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
@@ -383,10 +382,8 @@ fn map_gateway_transaction(
 
             let tx = pathfinder_executor::Transaction::from_api(
                 starknet_api::transaction::Transaction::DeployAccount(tx),
-                tx_hash,
                 None,
                 None,
-                Some(contract_address),
             )?;
 
             Ok(tx)
@@ -394,6 +391,7 @@ fn map_gateway_transaction(
         starknet_gateway_types::reply::transaction::Transaction::Invoke(tx) => match tx {
             starknet_gateway_types::reply::transaction::InvokeTransaction::V0(tx) => {
                 let tx = starknet_api::transaction::InvokeTransactionV0 {
+                    transaction_hash: tx_hash,
                     // TODO: maybe we should store tx.max_fee as u128 internally?
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
@@ -404,7 +402,7 @@ fn map_gateway_transaction(
                             .map(|s| s.0.into_starkfelt())
                             .collect(),
                     ),
-                    contract_address: starknet_api::core::ContractAddress(
+                    sender_address: starknet_api::core::ContractAddress(
                         PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
                             .expect("No sender address overflow expected"),
                     ),
@@ -417,14 +415,13 @@ fn map_gateway_transaction(
                             .map(|c| c.0.into_starkfelt())
                             .collect(),
                     )),
+                    nonce: starknet_api::core::Nonce::default(),
                 };
 
                 let tx = pathfinder_executor::Transaction::from_api(
                     starknet_api::transaction::Transaction::Invoke(
                         starknet_api::transaction::InvokeTransaction::V0(tx),
                     ),
-                    tx_hash,
-                    None,
                     None,
                     None,
                 )?;
@@ -433,6 +430,7 @@ fn map_gateway_transaction(
             }
             starknet_gateway_types::reply::transaction::InvokeTransaction::V1(tx) => {
                 let tx = starknet_api::transaction::InvokeTransactionV1 {
+                    transaction_hash: tx_hash,
                     // TODO: maybe we should store tx.max_fee as u128 internally?
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
@@ -460,8 +458,6 @@ fn map_gateway_transaction(
                     starknet_api::transaction::Transaction::Invoke(
                         starknet_api::transaction::InvokeTransaction::V1(tx),
                     ),
-                    tx_hash,
-                    None,
                     None,
                     None,
                 )?;
@@ -471,6 +467,7 @@ fn map_gateway_transaction(
         },
         starknet_gateway_types::reply::transaction::Transaction::L1Handler(tx) => {
             let tx = starknet_api::transaction::L1HandlerTransaction {
+                transaction_hash: tx_hash,
                 version: starknet_api::transaction::TransactionVersion(
                     StarkFelt::new(tx.version.0.as_fixed_bytes().to_owned())
                         .expect("No transaction version overflow expected"),
@@ -493,10 +490,8 @@ fn map_gateway_transaction(
 
             let tx = pathfinder_executor::Transaction::from_api(
                 starknet_api::transaction::Transaction::L1Handler(tx),
-                tx_hash,
                 None,
                 Some(starknet_api::transaction::Fee(1_000_000_000_000)),
-                None,
             )?;
 
             Ok(tx)

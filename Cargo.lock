@@ -896,12 +896,11 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 
 [[package]]
 name = "blockifier"
-version = "0.1.0-rc2"
-source = "git+https://github.com/starkware-libs/blockifier?branch=main#3c8ee7f541db035b49fcfb203aa85f8b0b6b42e5"
+version = "0.1.0-rc0"
+source = "git+https://github.com/eqlabs/blockifier?branch=main-v0.12.1#4a3a9738e1091daa0a93afa9426cbbfdd2c67e22"
 dependencies = [
  "ark-ff",
  "ark-secp256k1",
- "cached",
  "cairo-felt 0.8.5",
  "cairo-lang-casm 2.1.0",
  "cairo-lang-runner",
@@ -981,42 +980,6 @@ name = "bytes"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
-
-[[package]]
-name = "cached"
-version = "0.44.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b195e4fbc4b6862bbd065b991a34750399c119797efff72492f28a5864de8700"
-dependencies = [
- "async-trait",
- "cached_proc_macro",
- "cached_proc_macro_types",
- "futures",
- "hashbrown 0.13.2",
- "instant",
- "once_cell",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "cached_proc_macro"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b48814962d2fd604c50d2b9433c2a41a0ab567779ee2c02f7fba6eca1221f082"
-dependencies = [
- "cached_proc_macro_types",
- "darling 0.14.4",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "cached_proc_macro_types"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a4f925191b4367301851c6d99b09890311d74b0d43f274c0b34c86d308a3663"
 
 [[package]]
 name = "cairo-felt"
@@ -8804,9 +8767,8 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edfe4732113f66de3d6e9fc77f713b934cfd4b24d43887ca8cbfbe9462ed9119"
+version = "0.1.0"
+source = "git+https://github.com/starkware-libs/starknet-api?rev=8f620bc#8f620bcec38b47ce0f2515f3ef158f4c6319608f"
 dependencies = [
  "cairo-lang-starknet 2.1.0",
  "derive_more",

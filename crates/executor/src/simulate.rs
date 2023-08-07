@@ -34,7 +34,7 @@ pub fn simulate(
 
         let tx_info = match transaction {
             Transaction::AccountTransaction(transaction) => transaction
-                .execute(&mut state, &block_context, !skip_fee_charge, !skip_validate)
+                .execute(&mut state, &block_context)
                 .and_then(|mut tx_info| {
                     // skipping fee charge in .execute() means that the fee isn't calculated either, do that explicitly
                     if skip_fee_charge {
@@ -46,7 +46,7 @@ pub fn simulate(
                     Ok(tx_info)
                 }),
             Transaction::L1HandlerTransaction(transaction) => transaction
-                .execute(&mut state, &block_context, !skip_fee_charge, !skip_validate)
+                .execute(&mut state, &block_context)
                 .and_then(|mut tx_info| {
                     // fee is not calculated by default for L1 handler transactions, we have to do that explicitly
                     tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(

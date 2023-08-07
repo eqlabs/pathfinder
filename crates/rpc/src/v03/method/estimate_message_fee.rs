@@ -111,6 +111,9 @@ fn create_executor_transaction(
         .collect();
 
     let tx = starknet_api::transaction::L1HandlerTransaction {
+        transaction_hash: starknet_api::transaction::TransactionHash(
+            transaction_hash.0.into_starkfelt(),
+        ),
         version: starknet_api::transaction::TransactionVersion(felt!("0x1").into_starkfelt()),
         nonce: starknet_api::core::Nonce(Felt::ZERO.into_starkfelt()),
         contract_address: starknet_api::core::ContractAddress(
@@ -125,10 +128,8 @@ fn create_executor_transaction(
 
     let transaction = pathfinder_executor::Transaction::from_api(
         starknet_api::transaction::Transaction::L1Handler(tx),
-        starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
         None,
         Some(starknet_api::transaction::Fee(1)),
-        None,
     )?;
     Ok(transaction)
 }

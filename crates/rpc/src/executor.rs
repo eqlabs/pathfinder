@@ -193,6 +193,9 @@ pub(crate) fn map_broadcasted_transaction(
                     pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
                 let tx = starknet_api::transaction::DeclareTransactionV0V1 {
+                    transaction_hash: starknet_api::transaction::TransactionHash(
+                        transaction_hash.0.into_starkfelt(),
+                    ),
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
@@ -211,9 +214,7 @@ pub(crate) fn map_broadcasted_transaction(
                     starknet_api::transaction::Transaction::Declare(
                         starknet_api::transaction::DeclareTransaction::V0(tx),
                     ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
                     Some(contract_class),
-                    None,
                     None,
                 )?;
                 Ok(tx)
@@ -232,6 +233,9 @@ pub(crate) fn map_broadcasted_transaction(
                     pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
                 let tx = starknet_api::transaction::DeclareTransactionV0V1 {
+                    transaction_hash: starknet_api::transaction::TransactionHash(
+                        transaction_hash.0.into_starkfelt(),
+                    ),
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
@@ -250,9 +254,7 @@ pub(crate) fn map_broadcasted_transaction(
                     starknet_api::transaction::Transaction::Declare(
                         starknet_api::transaction::DeclareTransaction::V0(tx),
                     ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
                     Some(contract_class),
-                    None,
                     None,
                 )?;
                 Ok(tx)
@@ -276,6 +278,9 @@ pub(crate) fn map_broadcasted_transaction(
                         .context("Parsing CASM contract definition")?;
 
                 let tx = starknet_api::transaction::DeclareTransactionV2 {
+                    transaction_hash: starknet_api::transaction::TransactionHash(
+                        transaction_hash.0.into_starkfelt(),
+                    ),
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
@@ -297,9 +302,7 @@ pub(crate) fn map_broadcasted_transaction(
                     starknet_api::transaction::Transaction::Declare(
                         starknet_api::transaction::DeclareTransaction::V2(tx),
                     ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
                     Some(casm_contract_definition),
-                    None,
                     None,
                 )?;
 
@@ -311,6 +314,9 @@ pub(crate) fn map_broadcasted_transaction(
                 let transaction_hash = transaction.transaction_hash(chain_id, None);
 
                 let tx = starknet_api::transaction::InvokeTransactionV1 {
+                    transaction_hash: starknet_api::transaction::TransactionHash(
+                        transaction_hash.0.into_starkfelt(),
+                    ),
                     // TODO: maybe we should store tx.max_fee as u128 internally?
                     max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
@@ -332,8 +338,6 @@ pub(crate) fn map_broadcasted_transaction(
                     starknet_api::transaction::Transaction::Invoke(
                         starknet_api::transaction::InvokeTransaction::V1(tx),
                     ),
-                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
-                    None,
                     None,
                     None,
                 )?;
@@ -347,6 +351,13 @@ pub(crate) fn map_broadcasted_transaction(
             let deployed_contract_address = tx.deployed_contract_address();
 
             let tx = starknet_api::transaction::DeployAccountTransaction {
+                transaction_hash: starknet_api::transaction::TransactionHash(
+                    transaction_hash.0.into_starkfelt(),
+                ),
+                contract_address: starknet_api::core::ContractAddress(
+                    PatriciaKey::try_from(deployed_contract_address.get().into_starkfelt())
+                        .expect("No sender address overflow expected"),
+                ),
                 max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
@@ -372,13 +383,8 @@ pub(crate) fn map_broadcasted_transaction(
 
             let tx = pathfinder_executor::Transaction::from_api(
                 starknet_api::transaction::Transaction::DeployAccount(tx),
-                starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
                 None,
                 None,
-                Some(starknet_api::core::ContractAddress(
-                    PatriciaKey::try_from(deployed_contract_address.get().into_starkfelt())
-                        .expect("No sender address overflow expected"),
-                )),
             )?;
 
             Ok(tx)

@@ -21,10 +21,10 @@ pub fn estimate(
 
         let tx_info = match transaction {
             Transaction::AccountTransaction(transaction) => {
-                transaction.execute(&mut state, &block_context, false, true)
+                transaction.execute(&mut state, &block_context)
             }
             Transaction::L1HandlerTransaction(transaction) => transaction
-                .execute(&mut state, &block_context, false, true)
+                .execute(&mut state, &block_context)
                 .and_then(|mut tx_info| {
                     // fee is not calculated by default for L1 handler transactions, we have to do that explicitly
                     tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
