@@ -34,21 +34,6 @@ To update your Rust version, use the `rustup` tool that came with the official i
 rustup update
 ```
 
-## Install Python
-
-`pathfinder` requires Python version `3.9` or `3.10`.
-
-```bash
-sudo apt install python3 python3-venv python3-dev
-```
-
-Verify the python version.
-Some Linux distributions only supply an outdated python version, in which case you will need to lookup a guide for your distribution.
-
-```bash
-python3 --version # must be 3.9 or 3.10
-```
-
 ## Install build dependencies
 
 `pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
@@ -63,32 +48,6 @@ Checkout the latest `pathfinder` release by cloning this repo and checking out t
 Take care not to be on our `main` branch as we do actively develop in it.
 
 The remainder of the installation documentation assumes you are in the checkout directory.
-
-## Python setup
-
-Create a python virtual environment in the `py` folder.
-
-```bash
-# Enter the `<repo>/py` directory
-cd py
-# Create the virtual environment and activate it
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-Next install the python tooling and dependencies
-
-```bash
-PIP_REQUIRE_VIRTUALENV=true pip install --upgrade pip
-PIP_REQUIRE_VIRTUALENV=true pip install -e .[dev]
-```
-
-Finally, run our python tests to make sure you were successful.
-
-```bash
-# This should run the tests (and they should pass).
-pytest
-```
 
 ### Compiling `pathfinder`
 
@@ -117,20 +76,6 @@ where `<version-tag>` is the desired pathfinder version. To display a list of al
 git tag
 ```
 
-### Python dependencies
-
-Next, update the python dependencies. First enable your python virtual environment (if you are using one). For our example installation this would be:
-
-```bash
-source ./py/.venv/bin/activate
-```
-
-and then update:
-
-```bash
-PIP_REQUIRE_VIRTUALENV=true pip install -e py/.[dev]
-```
-
 ### Build and run `pathfinder`
 
 Re-compile `pathfinder`:
@@ -143,19 +88,6 @@ and you should now be able to run your `pathfinder` node as described in the [ne
 
 
 ## Running the node
-
-Ensure you have activated the python virtual environment you created in the [python setup step](#python-setup).
-For the `pathfinder` environment this is done by running:
-
-```bash
-source py/.venv/bin/activate
-```
-
-If you are already in another virtual environment, you can exit it by running `deactivate` and then activating the `pathfinder` one.
-
-This step is always required when running `pathfinder`.
-
-Finally, you can start the node:
 
 ```bash
 cargo run --release --bin pathfinder -- <pathfinder options>

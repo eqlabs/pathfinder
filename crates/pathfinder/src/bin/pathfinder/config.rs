@@ -123,7 +123,7 @@ Examples:
 
     #[arg(
         long = "python-subprocesses",
-        long_help = "Number of Python starknet VMs subprocesses to start",
+        long_help = "This value is now unused and the argument was kept for compatibility reasons",
         default_value = "2",
         env = "PATHFINDER_PYTHON_SUBPROCESSES"
     )]

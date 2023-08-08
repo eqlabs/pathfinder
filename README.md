@@ -29,7 +29,7 @@ For help or to submit bug reports or feature requests, please open an issue or a
 
 The `pathfinder` node can be run in the provided Docker image.
 Using the Docker image is the easiest way to start `pathfinder`. If for any reason you're interested in how to set up all the
-dependencies and the Python environment yourself please check the [Installation from source](doc/install-from-source.md) guide.
+dependencies yourself please check the [Installation from source](doc/install-from-source.md) guide.
 
 The following assumes you have [Docker installed](https://docs.docker.com/get-docker/) and ready to go.
 (In case of Ubuntu installing docker is as easy as running `sudo snap install docker`.)
@@ -236,12 +236,6 @@ You may also use the label key `version` to specify a particular version of the 
 rpc_method_calls_total{method="starknet_getEvents", version="v0.3"}
 ```
 
-#### Python subprocess related counters
-
-- `extpy_processes_launched_total` incremented each time python subprocess is launched
-- `extpy_processes_exited_total` with labels, incremented each time python subprocess exits normally
-- `extpy_processes_failed_total` incremented each time python subprocess exits abnormally
-
 #### Feeder Gateway and Gateway related counters
 
 - `gateway_requests_total`
@@ -323,16 +317,9 @@ Questions are welcome! If you have any questions regarding Pathfinder, feel free
 
 * [Error compiling Pathfinder (rust)](https://www.newton.so/view/63a066c2407c7621270c0208)
 
-* [Python issues with Pathfinder](https://www.newton.so/view/63a06669620f9c99ad981fd1)
-
 
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
-
-If you would like to contribute to the `py/` parts, which interface with
-[`cairo-lang`](https://github.com/starkware-libs/cairo-lang), please include a
-mention that you agree to relicense the python parts as necessary to abide with
-future `cairo-lang` license. See `contributing.md` for more information.

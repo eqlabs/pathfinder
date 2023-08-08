@@ -6,7 +6,7 @@ use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::state::SyncContext;
 use pathfinder_lib::{monitoring, state};
-use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
+use pathfinder_rpc::{metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -120,24 +120,13 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
     let sync_state = Arc::new(SyncState::default());
     let pending_state = PendingData::default();
 
-    let (call_handle, cairo_handle) = cairo::ext_py::start(
-        rpc_storage.path().into(),
-        config.python_subprocesses,
-        futures::future::pending(),
-        pathfinder_context.network,
-    )
-    .await
-    .context(
-        "Creating python process for call handling. Have you setup our Python dependencies?",
-    )?;
-
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
-    )
-    .with_call_handling(call_handle);
+    );
+
     let context = match config.poll_pending {
         true => context.with_pending_data(pending_state.clone()),
         false => context,
@@ -209,12 +198,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
             match result {
                 Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
                 Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
-            }
-        }
-        result = cairo_handle => {
-            match result {
-                Ok(task_result) => tracing::error!("Cairo process ended unexpected with: {:?}", task_result),
-                Err(err) => tracing::error!("Cairo process ended unexpected; failed to join task handle: {:?}", err),
             }
         }
         _result = rpc_handle.stopped() => {
