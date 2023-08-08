@@ -61,6 +61,7 @@ pub mod request {
         serde(untagged)
     )]
     pub enum BroadcastedDeclareTransaction {
+        V0(BroadcastedDeclareTransactionV0),
         V1(BroadcastedDeclareTransactionV1),
         V2(BroadcastedDeclareTransactionV2),
     }
@@ -82,15 +83,35 @@ pub mod request {
             let v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
             match version.version.without_query_version() {
+                0 => Ok(Self::V0(
+                    BroadcastedDeclareTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
+                )),
                 1 => Ok(Self::V1(
                     BroadcastedDeclareTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 2 => Ok(Self::V2(
                     BroadcastedDeclareTransactionV2::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _v => Err(de::Error::custom("version must be 1 or 2")),
+                _v => Err(de::Error::custom("version must be 0, 1 or 2")),
             }
         }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedDeclareTransactionV0 {
+        // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
+        // here in a flattened struct, but `flatten` doesn't work with
+        // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
+        pub max_fee: Fee,
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+        pub signature: Vec<TransactionSignatureElem>,
+
+        pub contract_class: super::CairoContractClass,
+        pub sender_address: ContractAddress,
     }
 
     #[serde_as]

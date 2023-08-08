@@ -19,7 +19,9 @@ use crate::v02::types::reply::FeeEstimate;
 use crate::v02::types::request::{
     BroadcastedDeclareTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction, Call,
 };
-use pathfinder_common::{BlockTimestamp, CallResultValue, ClassHash, EthereumAddress, StateUpdate};
+use pathfinder_common::{
+    BlockTimestamp, CallResultValue, ClassHash, EthereumAddress, StateUpdate, TransactionNonce,
+};
 use starknet_gateway_types::request::add_transaction;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -223,6 +225,33 @@ fn map_tx(tx: BroadcastedTransaction) -> Result<TransactionAndClassHashHint, Cal
             ),
             class_hash_hint: None,
         },
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(tx)) => {
+            let class_hash = tx
+                .contract_class
+                .class_hash()
+                .map_err(|_| CallFailure::Internal("Failed to calculate class hash"))?;
+            use starknet_gateway_types::class_hash::ComputedClassHash;
+            let class_hash = match class_hash {
+                ComputedClassHash::Cairo(c) => ClassHash(c.0),
+                ComputedClassHash::Sierra(s) => ClassHash(s.0),
+            };
+            TransactionAndClassHashHint {
+                transaction: add_transaction::AddTransaction::Declare(add_transaction::Declare {
+                    version: tx.version,
+                    max_fee: tx.max_fee,
+                    signature: tx.signature,
+                    contract_class: add_transaction::ContractDefinition::Cairo(
+                        tx.contract_class.try_into().map_err(|_| {
+                            CallFailure::Internal("contract class serialization failure")
+                        })?,
+                    ),
+                    sender_address: tx.sender_address,
+                    nonce: TransactionNonce::ZERO,
+                    compiled_class_hash: None,
+                }),
+                class_hash_hint: Some(class_hash),
+            }
+        }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
             let class_hash = tx
                 .contract_class
