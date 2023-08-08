@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.1] - 2023-08-08
+
 ### Fixed
 
 - RPC v0.4 `starknet_getTransactionReceipt` incorrect execution and finality status names
