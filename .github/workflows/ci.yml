@@ -19,6 +19,14 @@ jobs:
       CARGO_TERM_COLOR: always
     needs: python-starkhash
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
       # Required for the python environment
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
