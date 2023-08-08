@@ -613,6 +613,9 @@ impl GatewayApi for Client {
 #[async_trait::async_trait]
 impl GossipApi for Client {}
 
+#[async_trait::async_trait]
+impl GossipApi for () {}
+
 pub mod test_utils {
     use super::Client;
     use starknet_gateway_types::error::KnownStarknetErrorCode;
