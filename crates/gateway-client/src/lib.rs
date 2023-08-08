@@ -1,7 +1,7 @@
 //! Starknet L2 sequencer client.
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash,
-    ContractAddress, ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
+    BlockHash, BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
+    ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
@@ -138,12 +138,7 @@ pub trait GatewayApi: Sync {
 #[cfg_attr(feature = "test-utils", mockall::automock)]
 #[async_trait::async_trait]
 pub trait GossipApi: Sync {
-    async fn propagate_block_header(
-        &self,
-        header: BlockHeader,
-        transaction_count: u32,
-        event_count: u32,
-    ) {
+    async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
         // Intentionally does nothing for default impl
     }
 }

@@ -156,6 +156,7 @@ async fn handle_p2p_event(
                 Request::GetClasses(r) => {
                     Response::Classes(sync_handlers::get_classes(r, storage).await?)
                 }
+                // TODO if from != myself && new_head > current_head {send}
                 Request::Status(_) => Response::Status(current_status(chain_id, sync_state).await),
             };
             p2p_client.send_sync_response(channel, response).await;
@@ -163,6 +164,7 @@ async fn handle_p2p_event(
         p2p::Event::BlockPropagation { from, message } => {
             tracing::info!(%from, ?message, "Block Propagation");
             if let p2p_proto::propagation::Message::NewBlockHeader(h) = *message {
+                // TODO if from != myself && new_head > current_head {send}
                 _ = tx.send(Some((
                     BlockNumber::new_or_panic(h.header.number),
                     BlockHash(h.header.hash),

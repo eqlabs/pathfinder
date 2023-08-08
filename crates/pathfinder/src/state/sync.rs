@@ -207,7 +207,6 @@ where
         storage: context.storage,
         state: context.state,
         pending_data: context.pending_data,
-        gossiper: context.sequencer.clone(),
     };
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context));
 
@@ -322,22 +321,17 @@ where
     }
 }
 
-struct ConsumerContext<G: Clone> {
+struct ConsumerContext {
     pub storage: Storage,
     pub state: Arc<SyncState>,
     pub pending_data: PendingData,
-    pub gossiper: G,
 }
 
-async fn consumer<G: GossipApi + Clone>(
-    mut events: Receiver<SyncEvent>,
-    context: ConsumerContext<G>,
-) -> anyhow::Result<()> {
+async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> anyhow::Result<()> {
     let ConsumerContext {
         storage,
         state,
         pending_data,
-        gossiper,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -379,16 +373,9 @@ async fn consumer<G: GossipApi + Clone>(
                     .map(|x| x.1.storage.len())
                     .sum();
                 let update_t = std::time::Instant::now();
-                l2_update(
-                    &mut db_conn,
-                    *block,
-                    tx_comm,
-                    ev_comm,
-                    *state_update,
-                    gossiper.clone(),
-                )
-                .await
-                .with_context(|| format!("Update L2 state to {block_number}"))?;
+                l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
+                    .await
+                    .with_context(|| format!("Update L2 state to {block_number}"))?;
                 // This opens a short window where `pending` overlaps with `latest` in storage. Unfortuantely
                 // there is no easy way of having a transaction over both memory and database. sqlite does support
                 // multi-database transactions, but it does not work for WAL mode.
@@ -565,7 +552,7 @@ async fn latest_n_blocks(
 /// Periodically updates sync state with the latest block height.
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
-    sequencer: impl GatewayApi,
+    sequencer: impl GatewayApi + GossipApi,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
     poll_interval: Duration,
@@ -596,6 +583,9 @@ async fn update_sync_status_latest(
                     Syncing::Status(status) => {
                         if status.highest.hash != latest.hash {
                             status.highest = latest;
+
+                            _ = sequencer.propagate_head(latest.number, latest.hash).await;
+
                             metrics::gauge!("highest_block", latest.number.get() as f64);
 
                             tracing::debug!(
@@ -652,15 +642,14 @@ async fn l1_update(
 }
 
 /// Returns the new [StateCommitment] after the update.
-async fn l2_update<G: Clone + GossipApi>(
+async fn l2_update(
     connection: &mut Connection,
     block: Block,
     transaction_commitment: TransactionCommitment,
     event_commitment: EventCommitment,
     state_update: StateUpdate,
-    gossiper: G,
 ) -> anyhow::Result<()> {
-    let (header, transaction_count, event_count) = tokio::task::block_in_place(move || {
+    tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
@@ -722,17 +711,6 @@ async fn l2_update<G: Clone + GossipApi>(
             .zip(block.transaction_receipts.into_iter())
             .collect::<Vec<_>>();
 
-        let transaction_count = transaction_data
-            .len()
-            .try_into()
-            .context("Too many transactions in a block")?;
-
-        let event_count = transaction_data
-            .iter()
-            .fold(0, |accum, (_, receipt)| accum + receipt.events.len())
-            .try_into()
-            .unwrap();
-
         transaction
             .insert_transaction_data(header.hash, header.number, &transaction_data)
             .context("Insert transaction data into database")?;
@@ -761,15 +739,9 @@ async fn l2_update<G: Clone + GossipApi>(
             }
         }
 
-        transaction
-            .commit()
-            .context("Commit database transaction")
-            .map(|_| (header, transaction_count, event_count))
+        transaction.commit().context("Commit database transaction")
     })?;
 
-    gossiper
-        .propagate_block_header(header, transaction_count, event_count)
-        .await;
     Ok(())
 }
 
@@ -1007,7 +979,6 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            gossiper: (),
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1050,7 +1021,6 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            gossiper: (),
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1092,7 +1062,6 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            gossiper: (),
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1126,7 +1095,6 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            gossiper: (),
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1163,7 +1131,6 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
-            gossiper: (),
         };
 
         consumer(event_rx, context).await.unwrap();

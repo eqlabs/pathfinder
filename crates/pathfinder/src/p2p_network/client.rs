@@ -9,7 +9,7 @@
 use lru::LruCache;
 use p2p::HeadRx;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
+    BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
     ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
@@ -127,7 +127,6 @@ impl GatewayApi for HybridClient {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.block(block).await,
             HybridClient::NonPropagatingP2P {
                 p2p_client,
-                // last_block,
                 block_lru,
                 ..
             } => match block {
@@ -412,20 +411,15 @@ impl GatewayApi for HybridClient {
 
 #[async_trait::async_trait]
 impl GossipApi for HybridClient {
-    async fn propagate_block_header(
-        &self,
-        header: BlockHeader,
-        transaction_count: u32,
-        event_count: u32,
-    ) {
+    async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
         match self {
             HybridClient::GatewayProxy { p2p_client, .. } => {
                 match p2p_client
-                    .propagate_new_header(super::sync_handlers::conv::header::from(
-                        header,
-                        transaction_count,
-                        event_count,
-                    ))
+                    .propagate_new_header(p2p_proto::common::BlockHeader {
+                        hash: block_hash.0,
+                        number: block_number.get(),
+                        ..Default::default()
+                    })
                     .await
                 {
                     Ok(_) => {}
