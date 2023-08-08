@@ -300,9 +300,12 @@ async fn start_p2p(
     sync_state: Arc<SyncState>,
     sequencer: starknet_gateway_client::Client,
     config: config::P2PConfig,
-) -> anyhow::Result<(tokio::task::JoinHandle<()>, starknet_gateway_client::Client)> {
+) -> anyhow::Result<(
+    tokio::task::JoinHandle<()>,
+    pathfinder_lib::p2p_network::client::HybridClient,
+)> {
     use p2p::libp2p::identity::Keypair;
-    use pathfinder_lib::p2p_network::P2PContext;
+    use pathfinder_lib::p2p_network::{client::HybridClient, P2PContext};
     use serde::Deserialize;
     use std::path::Path;
     use zeroize::Zeroizing;
@@ -346,10 +349,13 @@ async fn start_p2p(
         bootstrap_addresses: config.bootstrap_addresses,
     };
 
-    let (_p2p_peers, _p2p_client, _p2p_head_receiver, p2p_handle) =
+    let (_p2p_peers, p2p_client, head_receiver, p2p_handle) =
         pathfinder_lib::p2p_network::start(context).await?;
 
-    Ok((p2p_handle, sequencer))
+    Ok((
+        p2p_handle,
+        HybridClient::new(config.proxy, p2p_client, sequencer, head_receiver),
+    ))
 }
 
 #[cfg(not(feature = "p2p"))]
