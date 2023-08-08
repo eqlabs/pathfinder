@@ -37,78 +37,18 @@ RUN TARGETARCH=${TARGETARCH} \
     ./cargo-build.sh --locked --release -p pathfinder --bin pathfinder \
     && cp target/*-unknown-linux-gnu/release/pathfinder pathfinder-${TARGETARCH}
 
-
-#############################################
-# Stage 1.5: Build the Python Pedersen hash #
-#############################################
-FROM --platform=$BUILDPLATFORM cargo-chef AS rust-python-starkhash-planner
-COPY Cargo.toml Cargo.toml
-COPY crates/stark_curve crates/stark_curve
-COPY crates/stark_hash crates/stark_hash
-COPY crates/stark_poseidon crates/stark_poseidon
-COPY crates/stark_hash_python crates/stark_hash_python
-RUN cd crates/stark_hash_python && \
-    cargo chef prepare --recipe-path recipe.json
-
-
-FROM --platform=$BUILDPLATFORM cargo-chef AS rust-python-starkhash-builder
-ARG TARGETARCH
-COPY ./build/prepare-stark_hash_python.sh prepare-stark_hash_python.sh
-RUN TARGETARCH=${TARGETARCH} ./prepare-stark_hash_python.sh
-COPY --from=rust-python-starkhash-planner /usr/src/pathfinder/crates/stark_hash_python/recipe.json /usr/src/pathfinder/crates/stark_hash_python/recipe.json
-COPY Cargo.toml Cargo.toml
-COPY crates/stark_curve crates/stark_curve
-COPY crates/stark_hash crates/stark_hash
-COPY crates/stark_poseidon crates/stark_poseidon
-COPY ./build/cargo-chef-cook.sh ./crates/stark_hash_python/cargo-chef-cook.sh
-RUN cd crates/stark_hash_python && TARGETARCH=${TARGETARCH} ./cargo-chef-cook.sh --release --recipe-path recipe.json
-
-COPY crates/stark_hash_python crates/stark_hash_python
-COPY ./build/cargo-build.sh ./crates/stark_hash_python/cargo-build.sh
-RUN cd crates/stark_hash_python \
-    && TARGETARCH=${TARGETARCH} ./cargo-build.sh --locked --release \
-    && cp target/*-unknown-linux-gnu/release/libstarknet_pathfinder_crypto.so starknet_pathfinder_crypto.so-${TARGETARCH}
-
-#######################################
-# Stage 2: Build the Python libraries #
-#######################################
-FROM python:3.9-slim-bullseye AS python-builder
-ARG TARGETARCH
-
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp-dev gcc && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /usr/share/pathfinder
-COPY py py
-RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip --disable-pip-version-check install py/.
-COPY --from=rust-python-starkhash-builder /usr/src/pathfinder/crates/stark_hash_python/starknet_pathfinder_crypto.so-${TARGETARCH} /usr/local/lib/python3.9/site-packages/starknet_pathfinder_crypto.so
-
-# This reduces the size of the python libs by about 50%
-ENV PY_PATH=/usr/local/lib/python3.9/
-RUN find ${PY_PATH} -type d -a -name test -exec rm -rf '{}' + \
-    && find ${PY_PATH} -type d -a -name tests  -exec rm -rf '{}' + \
-    && find ${PY_PATH} -type f -a -name '*.pyc' -exec rm -rf '{}' + \
-    && find ${PY_PATH} -type f -a -name '*.pyo' -exec rm -rf '{}' +
-
-###############################
-# Stage 3: Cairo 1.0 compiler #
-###############################
-FROM starknet/cairo:2.1.0-rc1 AS cairo-compiler
-
 #######################
 # Final Stage: Runner #
 #######################
 # Note that we're explicitly using the Debian bullseye image to make sure we're
 # compatible with the Rust builder we've built the pathfinder executable in.
-FROM python:3.9-slim-bullseye AS runner
+FROM debian:bullseye-slim AS runner
 ARG TARGETARCH
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y libgmp10 tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates libgmp10 tini && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pathfinder --no-create-home pathfinder
 
 COPY --from=rust-builder /usr/src/pathfinder/pathfinder-${TARGETARCH} /usr/local/bin/pathfinder
-COPY --from=python-builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
-COPY --from=cairo-compiler /usr/bin/starknet-compile /usr/bin/starknet-sierra-compile /usr/local/lib/python3.9/site-packages/starkware/starknet/compiler/v1/bin/
-COPY --from=python-builder /usr/local/bin/pathfinder_python_worker /usr/local/bin
 
 # Create directory and volume for persistent data
 RUN install --owner 1000 --group 1000 --mode 0755 -d /usr/share/pathfinder/data

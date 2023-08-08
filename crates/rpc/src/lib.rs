@@ -1,5 +1,4 @@
 //! Starknet node JSON-RPC related modules.
-pub mod cairo;
 pub mod context;
 mod error;
 mod executor;
