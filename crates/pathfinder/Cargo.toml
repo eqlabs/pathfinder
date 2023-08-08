@@ -58,6 +58,7 @@ tracing-subscriber = { version = "0.3.16", features = [
 ] }
 url = "2.3.1"
 warp = "0.3.3"
+zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = { workspace = true }
@@ -77,7 +78,6 @@ rstest = "0.18.1"
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["test-util"] }
-zstd = "0.12"
 
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }
