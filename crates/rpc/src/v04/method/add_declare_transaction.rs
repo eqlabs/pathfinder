@@ -143,6 +143,9 @@ pub async fn add_declare_transaction(
     input: AddDeclareTransactionInput,
 ) -> Result<AddDeclareTransactionOutput, AddDeclareTransactionError> {
     match input.declare_transaction {
+        Transaction::Declare(BroadcastedDeclareTransaction::V0(_)) => {
+            Err(AddDeclareTransactionError::UnsupportedTransactionVersion)
+        }
         Transaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
             let contract_definition: CairoContractDefinition = tx
                 .contract_class
