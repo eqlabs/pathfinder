@@ -164,11 +164,19 @@ async fn handle_p2p_event(
         p2p::Event::BlockPropagation { from, message } => {
             tracing::info!(%from, ?message, "Block Propagation");
             if let p2p_proto::propagation::Message::NewBlockHeader(h) = *message {
-                // TODO if from != myself && new_head > current_head {send}
-                _ = tx.send(Some((
-                    BlockNumber::new_or_panic(h.header.number),
-                    BlockHash(h.header.hash),
-                )));
+                tx.send_if_modified(|head| {
+                    let current_height = head.unwrap_or_default().0.get();
+
+                    if h.header.number > current_height {
+                        *head = Some((
+                            BlockNumber::new_or_panic(h.header.number),
+                            BlockHash(h.header.hash),
+                        ));
+                        true
+                    } else {
+                        false
+                    }
+                });
             }
         }
         p2p::Event::Test(_) => { /* Ignore me */ }
