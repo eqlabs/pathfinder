@@ -147,8 +147,9 @@ pub(crate) mod tests {
         use super::*;
 
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
-            BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
+            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0,
+            BroadcastedDeclareTransactionV1, BroadcastedDeclareTransactionV2,
+            BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
 
@@ -443,6 +444,37 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             assert_eq!(result, vec![FeeEstimate::default(), FeeEstimate::default()]);
+        }
+
+        #[test_log::test(tokio::test)]
+        async fn successful_declare_v0() {
+            let (_db_dir, context, _join_handle, _account_address, latest_block_hash) =
+                test_context_with_call_handling().await;
+
+            let contract_class = {
+                let json = starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
+                ContractClass::from_definition_bytes(json)
+                    .unwrap()
+                    .as_cairo()
+                    .unwrap()
+            };
+
+            let declare_transaction = BroadcastedTransaction::Declare(
+                BroadcastedDeclareTransaction::V0(BroadcastedDeclareTransactionV0 {
+                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
+                    max_fee: Fee::default(),
+                    signature: vec![],
+                    contract_class,
+                    sender_address: contract_address!("0x1"),
+                }),
+            );
+
+            let input = EstimateFeeInput {
+                request: vec![declare_transaction],
+                block_id: BlockId::Hash(latest_block_hash),
+            };
+            let result = estimate_fee(context, input).await.unwrap();
+            assert_eq!(result, vec![FeeEstimate::default()]);
         }
 
         #[test_log::test(tokio::test)]
