@@ -622,7 +622,8 @@ impl MainLoop {
         let mut bootstrap_interval =
             tokio::time::interval_at(bootstrap_start, self.bootstrap_cfg.period);
 
-        let mut network_status_interval = tokio::time::interval(Duration::from_secs(2));
+        let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
+        let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
         let me = *self.swarm.local_peer_id();
 
         loop {
@@ -632,8 +633,19 @@ impl MainLoop {
             let network_status_interval_tick = network_status_interval.tick();
             tokio::pin!(network_status_interval_tick);
 
+            let peer_status_interval_tick = peer_status_interval.tick();
+            tokio::pin!(peer_status_interval_tick);
+
             tokio::select! {
                 _ = network_status_interval_tick => {
+                    let network_info = self.swarm.network_info();
+                    let num_peers = network_info.num_peers();
+                    let connection_counters = network_info.connection_counters();
+                    let num_established_connections = connection_counters.num_established();
+                    let num_pending_connections = connection_counters.num_pending();
+                    tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
+                }
+                _ = peer_status_interval_tick => {
                     let dht = self.swarm.behaviour_mut().kademlia
                         .kbuckets()
                         // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
@@ -649,7 +661,7 @@ impl MainLoop {
                     let connected = guard.connected().collect::<Vec<_>>();
 
                     tracing::info!(
-                        "Network status: me {}, connected {:?}, dht {:?}",
+                        "Peer status: me {}, connected {:?}, dht {:?}",
                         me,
                         connected,
                         dht,

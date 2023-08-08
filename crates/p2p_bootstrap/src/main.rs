@@ -115,8 +115,9 @@ async fn main() -> anyhow::Result<()> {
                 let network_info = swarm.network_info();
                 let num_peers = network_info.num_peers();
                 let connection_counters = network_info.connection_counters();
-                let num_connections = connection_counters.num_connections();
-                tracing::info!(%num_peers, %num_connections, "Peer-to-peer status")
+                let num_established_connections = connection_counters.num_established();
+                let num_pending_connections = connection_counters.num_pending();
+                tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
             }
             _ = bootstrap_interval_tick => {
                 tracing::debug!("Doing periodical bootstrap");
