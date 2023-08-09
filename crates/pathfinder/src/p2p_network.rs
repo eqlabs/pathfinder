@@ -37,7 +37,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         chain_id,
         mut storage,
         sync_state,
-        proxy: _,
+        proxy,
         keypair,
         listen_on,
         bootstrap_addresses,
@@ -81,9 +81,10 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
     let block_propagation_topic = format!("blocks/{}", chain_id.to_hex_str());
 
-    p2p_client.subscribe_topic(&block_propagation_topic).await?;
-
-    tracing::info!(topic=%block_propagation_topic, "Subscribed to");
+    if !proxy {
+        p2p_client.subscribe_topic(&block_propagation_topic).await?;
+        tracing::info!(topic=%block_propagation_topic, "Subscribed to");
+    }
 
     let capabilities = ["core/block-propagate/1", "core/blocks-sync/1"];
     for capability in capabilities {
@@ -156,8 +157,25 @@ async fn handle_p2p_event(
                 Request::GetClasses(r) => {
                     Response::Classes(sync_handlers::get_classes(r, storage).await?)
                 }
-                // TODO if from != myself && new_head > current_head {send}
-                Request::Status(_) => Response::Status(current_status(chain_id, sync_state).await),
+                Request::Status(incoming_status) => {
+                    // FIXME proxies sometimes fail to propagate (Gossipsub publish failed: InsufficientPeers)
+                    // so use status as fallback for the time being util we figure out why
+                    tx.send_if_modified(|head| {
+                        let current_height = head.unwrap_or_default().0.get();
+
+                        if incoming_status.height > current_height {
+                            *head = Some((
+                                BlockNumber::new_or_panic(incoming_status.height),
+                                BlockHash(incoming_status.hash),
+                            ));
+                            true
+                        } else {
+                            false
+                        }
+                    });
+
+                    Response::Status(current_status(chain_id, sync_state).await)
+                }
             };
             p2p_client.send_sync_response(channel, response).await;
         }
