@@ -24,6 +24,8 @@ struct Args {
     listen_on: Multiaddr,
     #[clap(long, short, value_parser, env = "BOOTSTRAP_INTERVAL")]
     bootstrap_interval_seconds: u64,
+    #[clap(long, short, value_parser, env = "PRETTY_LOG", default_value = "false")]
+    pretty_log: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -60,9 +62,10 @@ async fn main() -> anyhow::Result<()> {
         std::env::set_var("RUST_LOG", "info");
     }
 
-    setup_tracing();
-
     let args = Args::parse();
+
+    setup_tracing(args.pretty_log);
+
     let keypair = match &args.identity_config_file {
         Some(path) => {
             let config = Zeroizing::new(IdentityConfig::from_file(path.as_path())?);
@@ -156,10 +159,13 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-fn setup_tracing() {
-    tracing_subscriber::fmt()
+fn setup_tracing(pretty_log: bool) {
+    let builder = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_target(false)
-        .compact()
-        .init();
+        .with_target(pretty_log);
+    if pretty_log {
+        builder.pretty().init();
+    } else {
+        builder.compact().init();
+    }
 }
