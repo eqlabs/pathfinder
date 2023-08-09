@@ -93,6 +93,9 @@ impl Default for PeriodicTaskConfig {
 pub struct SyncClient {
     client: Client,
     block_propagation_topic: String,
+    peers_with_sync_capability: Arc<RwLock<HashSet<PeerId>>>,
+    last_update: Arc<RwLock<std::time::Instant>>,
+    // FIXME
     _peers: Arc<RwLock<peers::Peers>>,
 }
 
@@ -110,6 +113,12 @@ impl SyncClient {
         Self {
             client,
             block_propagation_topic,
+            peers_with_sync_capability: Default::default(),
+            last_update: Arc::new(RwLock::new(
+                std::time::Instant::now()
+                    .checked_sub(Duration::from_secs(55))
+                    .unwrap(),
+            )),
             _peers: peers,
         }
     }
@@ -133,22 +142,32 @@ impl SyncClient {
             .await
     }
 
-    async fn shuffled_peers_with_sync_capability(&self) -> Vec<PeerId> {
+    async fn get_update_peers_with_sync_capability(&self) -> Vec<PeerId> {
         use rand::seq::SliceRandom;
-        let mut peers = self
-            .client
-            .get_capability_providers("core/blocks-sync/1")
-            .await
-            .unwrap_or_default();
 
-        let _i_should_have_the_capability_too = peers.remove(&self.client.my_peer_id);
-        debug_assert!(_i_should_have_the_capability_too);
+        if self.last_update.read().await.clone().elapsed() > Duration::from_secs(60) {
+            let mut peers = self
+                .client
+                .get_capability_providers("core/blocks-sync/1")
+                .await
+                .unwrap_or_default();
 
-        let mut peers = peers.into_iter().collect::<Vec<_>>();
+            let _i_should_have_the_capability_too = peers.remove(&self.client.my_peer_id);
+            debug_assert!(_i_should_have_the_capability_too);
+
+            let mut peers_with_sync_capability = self.peers_with_sync_capability.write().await;
+            *peers_with_sync_capability = peers;
+
+            let mut last_update = self.last_update.write().await;
+            *last_update = std::time::Instant::now();
+        }
+
+        let peers_with_sync_capability = self.peers_with_sync_capability.read().await;
+        let mut peers = peers_with_sync_capability
+            .iter()
+            .map(Clone::clone)
+            .collect::<Vec<_>>();
         peers.shuffle(&mut rand::thread_rng());
-
-        tracing::debug!(?peers, "shuffled_peers_with_sync_capability");
-
         peers
     }
 
@@ -164,7 +183,7 @@ impl SyncClient {
 
         let count: u64 = num_blocks.try_into().ok()?;
 
-        for peer in self.shuffled_peers_with_sync_capability().await {
+        for peer in self.get_update_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
@@ -214,7 +233,7 @@ impl SyncClient {
 
         let count: u64 = num_blocks.try_into().ok()?;
 
-        for peer in self.shuffled_peers_with_sync_capability().await {
+        for peer in self.get_update_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
@@ -264,7 +283,7 @@ impl SyncClient {
 
         let count: u64 = num_blocks.try_into().ok()?;
 
-        for peer in self.shuffled_peers_with_sync_capability().await {
+        for peer in self.get_update_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
@@ -314,7 +333,7 @@ impl SyncClient {
 
         let class_hashes = class_hashes.into_iter().map(|x| x.0).collect::<Vec<_>>();
 
-        for peer in self.shuffled_peers_with_sync_capability().await {
+        for peer in self.get_update_peers_with_sync_capability().await {
             let response = self
                 .client
                 .send_sync_request(
