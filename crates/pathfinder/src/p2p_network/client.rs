@@ -402,9 +402,13 @@ impl GatewayApi for HybridClient {
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
         match self {
             HybridClient::GatewayProxy { sequencer, .. } => sequencer.head().await,
-            HybridClient::NonPropagatingP2P { head_rx, .. } => (*head_rx.borrow()).ok_or(
-                error::block_not_found("Haven't received any gossiped head yet"),
-            ),
+            HybridClient::NonPropagatingP2P { head_rx, .. } => {
+                let head = *head_rx.borrow();
+                tracing::trace!(?head, "HybridClient::head");
+                head.ok_or(error::block_not_found(
+                    "Haven't received any gossiped head yet",
+                ))
+            }
         }
     }
 }
