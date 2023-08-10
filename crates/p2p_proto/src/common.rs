@@ -218,6 +218,9 @@ pub mod execution_resources {
         pub output_builtin: u64,
         pub pedersen_builtin: u64,
         pub range_check_builtin: u64,
+        pub keccak_builtin: u64,
+        pub poseidon_builtin: u64,
+        pub segment_arena_builtin: u64,
     }
 }
 
@@ -232,6 +235,37 @@ pub struct CommonTransactionReceiptProperties {
     #[optional]
     pub consumed_message: Option<MessageToL2>,
     pub execution_resources: ExecutionResources,
+    pub execution_status: ExecutionStatus,
+    pub revert_error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+pub enum ExecutionStatus {
+    Succeeded,
+    Reverted,
+}
+
+impl TryFromProtobuf<i32> for ExecutionStatus {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+        let status = proto::common::ExecutionStatus::from_i32(input).ok_or(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Failed to convert protobuf output for {field_name}: {input} did not match any known execution status"),
+        ))?;
+
+        match status {
+            proto::common::ExecutionStatus::Succeeded => Ok(Self::Succeeded),
+            proto::common::ExecutionStatus::Reverted => Ok(Self::Reverted),
+        }
+    }
+}
+
+impl ToProtobuf<proto::common::ExecutionStatus> for ExecutionStatus {
+    fn to_protobuf(self) -> proto::common::ExecutionStatus {
+        match self {
+            ExecutionStatus::Succeeded => proto::common::ExecutionStatus::Succeeded,
+            ExecutionStatus::Reverted => proto::common::ExecutionStatus::Reverted,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

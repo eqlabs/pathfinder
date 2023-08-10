@@ -344,7 +344,7 @@ pub enum CallFailure {
 /// Where should the call code get the used `BlockInfo::gas_price`
 #[derive(Debug)]
 pub enum GasPriceSource {
-    /// Use gasPrice recorded on the `starknet_blocks::gas_price`.
+    /// Use gasPrice recorded on the `headers::gas_price`.
     ///
     /// This is not implied by other arguments such as `at_block` because we might need to
     /// manufacture a block hash for some future use cases.

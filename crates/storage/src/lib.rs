@@ -446,8 +446,7 @@ mod tests {
 
         std::fs::copy(&source_path, &db_path).unwrap();
 
-        let mut database = rusqlite::Connection::open(db_path).unwrap();
-        migrate_database(&mut database).unwrap();
+        let database = rusqlite::Connection::open(db_path).unwrap();
         let version = schema_version(&database).unwrap();
         let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
 

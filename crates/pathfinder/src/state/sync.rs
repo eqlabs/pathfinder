@@ -658,6 +658,13 @@ async fn l2_update(
             "State root mismatch"
         );
 
+        let transaction_count = block.transactions.len();
+        let event_count = block
+            .transaction_receipts
+            .iter()
+            .map(|r| r.events.len())
+            .sum();
+
         // Update L2 database. These types shouldn't be options at this level,
         // but for now the unwraps are "safe" in that these should only ever be
         // None for pending queries to the sequencer, but we aren't using those here.
@@ -677,6 +684,8 @@ async fn l2_update(
             state_commitment,
             storage_commitment,
             transaction_commitment,
+            transaction_count,
+            event_count,
         };
 
         transaction

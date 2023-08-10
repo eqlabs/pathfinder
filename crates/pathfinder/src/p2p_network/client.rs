@@ -33,6 +33,8 @@ pub mod conv {
                 state_commitment: StateCommitment(header.state_commitment),
                 storage_commitment: StorageCommitment(header.storage_commitment),
                 transaction_commitment: TransactionCommitment(header.transaction_commitment),
+                transaction_count: header.transaction_count as usize,
+                event_count: header.event_count as usize,
             })
         }
     }
@@ -285,8 +287,8 @@ pub mod conv {
             use super::gw;
             use p2p_proto::common::{
                 DeclareTransactionReceipt, DeployAccountTransactionReceipt,
-                DeployTransactionReceipt, InvokeTransactionReceipt, L1HandlerTransactionReceipt,
-                Receipt,
+                DeployTransactionReceipt, ExecutionStatus, InvokeTransactionReceipt,
+                L1HandlerTransactionReceipt, Receipt,
             };
             use pathfinder_common::{
                 event::Event, ContractAddress, EntryPoint, EthereumAddress, EventData, EventKey,
@@ -329,10 +331,9 @@ pub mod conv {
                                         output_builtin: b.output_builtin,
                                         pedersen_builtin: b.pedersen_builtin,
                                         range_check_builtin: b.range_check_builtin,
-                                        // FIXME once p2p has these builtins.
-                                        keccak_builtin: Default::default(),
-                                        poseidon_builtin: Default::default(),
-                                        segment_arena_builtin: Default::default(),
+                                        keccak_builtin: b.keccak_builtin,
+                                        poseidon_builtin: b.poseidon_builtin,
+                                        segment_arena_builtin: b.segment_arena_builtin,
                                     }
                                 },
                                 n_steps: common.execution_resources.n_steps,
@@ -382,9 +383,12 @@ pub mod conv {
                                 common.transaction_index.into(),
                             )
                             .expect("u32::MAX is always smaller than i64::MAX"),
-                            // FIXME: once p2p supports reverted
-                            execution_status: Default::default(),
-                            revert_error: Default::default(),
+                            execution_status: match common.execution_status {
+                                ExecutionStatus::Succeeded => gw::ExecutionStatus::Succeeded,
+                                ExecutionStatus::Reverted => gw::ExecutionStatus::Reverted,
+                            },
+                            revert_error: (common.execution_status == ExecutionStatus::Reverted)
+                                .then_some(common.revert_error),
                         })
                     }
                 }

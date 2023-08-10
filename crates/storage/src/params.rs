@@ -1,3 +1,4 @@
+use anyhow::Result;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, ByteCodeOffset, CallParam, CallResultValue, CasmHash,
@@ -14,6 +15,14 @@ use stark_hash::Felt;
 
 pub trait ToSql {
     fn to_sql(&self) -> ToSqlOutput<'_>;
+}
+
+pub trait TryIntoSql {
+    fn try_into_sql(&self) -> Result<ToSqlOutput<'_>>;
+}
+
+pub trait TryIntoSqlInt {
+    fn try_into_sql_int(&self) -> Result<i64>;
 }
 
 impl<Inner: ToSql> ToSql for Option<Inner> {
@@ -101,7 +110,6 @@ to_sql_compressed_felt!(ContractNonce, StorageValue, TransactionNonce);
 
 to_sql_int!(BlockNumber, BlockTimestamp);
 
-// TODO: check if these can fail in rusqlite.
 to_sql_builtin!(
     String,
     &str,
@@ -112,12 +120,14 @@ to_sql_builtin!(
     i32,
     i16,
     i8,
-    usize,
-    u64,
     u32,
     u16,
     u8
 );
+
+try_into_sql!(usize, u64);
+
+try_into_sql_int!(usize, u64);
 
 /// Extends [rusqlite::Row] to provide getters for our own foreign types. This is a work-around
 /// for the orphan rule -- our types live in a separate crate and can therefore not implement the
@@ -417,6 +427,35 @@ macro_rules! to_sql_builtin {
     }
 }
 
+macro_rules! try_into_sql {
+    ($target:ty) => {
+        impl TryIntoSql for $target {
+            fn try_into_sql(&self) -> anyhow::Result<rusqlite::types::ToSqlOutput<'_>> {
+                use rusqlite::types::{ToSqlOutput, Value};
+                Ok(ToSqlOutput::Owned(Value::Integer(i64::try_from(*self)?)))
+            }
+        }
+    };
+    ($head:ty, $($rest:ty),+  $(,)?) => {
+        try_into_sql!($head);
+        try_into_sql!($($rest),+);
+    }
+}
+
+macro_rules! try_into_sql_int {
+    ($target:ty) => {
+        impl TryIntoSqlInt for $target {
+            fn try_into_sql_int(&self) -> anyhow::Result<i64> {
+                Ok(i64::try_from(*self)?)
+            }
+        }
+    };
+    ($head:ty, $($rest:ty),+  $(,)?) => {
+        try_into_sql_int!($head);
+        try_into_sql_int!($($rest),+);
+    }
+}
+
 macro_rules! row_felt_wrapper {
     ($fn_name:ident, $Type:ident) => {
         fn $fn_name<I: RowIndex>(&self, index: I) -> rusqlite::Result<$Type> {
@@ -426,7 +465,10 @@ macro_rules! row_felt_wrapper {
     };
 }
 
-use {row_felt_wrapper, to_sql_builtin, to_sql_compressed_felt, to_sql_felt, to_sql_int};
+use {
+    row_felt_wrapper, to_sql_builtin, to_sql_compressed_felt, to_sql_felt, to_sql_int,
+    try_into_sql, try_into_sql_int,
+};
 
 /// Used in combination with our own [ToSql] trait to provide functionality equivalent to
 /// [rusqlite::params!] for our own foreign types.

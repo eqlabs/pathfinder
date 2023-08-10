@@ -81,7 +81,7 @@ pub(super) fn insert_events(
 
         stmt.execute(named_params![
             ":block_number": &block_number,
-            ":idx": &idx,
+            ":idx": &idx.try_into_sql_int()?,
             ":transaction_hash": &transaction_hash,
             ":from_address": &event.from_address,
             ":keys": &keys,
@@ -150,7 +150,7 @@ pub(super) fn get_events<K: KeyFilter>(
 
     let base_query = r#"SELECT
               block_number,
-              starknet_blocks.hash as block_hash,
+              block_headers.hash as block_hash,
               transaction_hash,
               starknet_transactions.idx as transaction_idx,
               from_address,
@@ -158,7 +158,7 @@ pub(super) fn get_events<K: KeyFilter>(
               starknet_events.keys as keys
            FROM starknet_events
            INNER JOIN starknet_transactions ON (starknet_transactions.hash = starknet_events.transaction_hash)
-           INNER JOIN starknet_blocks ON (starknet_blocks.number = starknet_events.block_number)"#;
+           INNER JOIN block_headers ON (block_headers.number = starknet_events.block_number)"#;
 
     let (mut base_query, mut params) = event_query(
         base_query,
@@ -172,8 +172,8 @@ pub(super) fn get_events<K: KeyFilter>(
     // We have to be able to decide if there are more events. We request one extra event
     // above the requested page size, so that we can decide.
     let limit = filter.page_size + 1;
-    params.push((":limit", limit.to_sql()));
-    params.push((":offset", filter.offset.to_sql()));
+    params.push((":limit", limit.try_into_sql()?));
+    params.push((":offset", filter.offset.try_into_sql()?));
 
     base_query.to_mut().push_str(
         " ORDER BY block_number, transaction_idx, starknet_events.idx LIMIT :limit OFFSET :offset",

@@ -43,7 +43,7 @@ pub(super) fn insert_transactions(
                                                                   VALUES (:hash, :idx, :block_hash, :tx, :receipt, :execution_status)",
             named_params![
             ":hash": &transaction.hash(),
-            ":idx": &i,
+            ":idx": &i.try_into_sql_int()?,
             ":block_hash": &block_hash,
             ":tx": &tx_data,
             ":receipt": &serialized_receipt,
@@ -131,7 +131,7 @@ pub(super) fn transaction_at_block(
         .context("Preparing statement")?;
 
     let mut rows = stmt
-        .query(params![&block_hash, &index])
+        .query(params![&block_hash, &index.try_into_sql_int()?])
         .context("Executing query")?;
 
     let row = match rows.next()? {
@@ -156,7 +156,7 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
             .inner()
             .query_row(
                 "SELECT COUNT(*) FROM starknet_transactions
-                JOIN starknet_blocks ON starknet_transactions.block_hash = starknet_blocks.hash
+                JOIN block_headers ON starknet_transactions.block_hash = block_headers.hash
                 WHERE number = ?1",
                 params![&number],
                 |row| row.get(0),

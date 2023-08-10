@@ -111,7 +111,7 @@ except ModuleNotFoundError:
 
 
 # used from tests, and the query which asserts that the schema is of expected version.
-EXPECTED_SCHEMA_REVISION = 38
+EXPECTED_SCHEMA_REVISION = 39
 EXPECTED_CAIRO_VERSION = "0.12.1a0"
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
@@ -608,7 +608,7 @@ def resolve_block(
 ) -> Tuple[BlockInfo, int, int]:
     """
     forced_gas_price is the gas price we must use for this blockinfo, if None,
-    the one from starknet_blocks will be used. this allows the caller to select
+    the one from block_headers will be used. this allows the caller to select
     where the gas_price information is coming from, and for example, select
     different one for latest pointed out by hash or tag.
     """
@@ -617,11 +617,11 @@ def resolve_block(
         # it has been decided that the latest is whatever pathfinder knows to be latest synced block
         # regardless of it being the highest known (not yet synced)
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
+            "select number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment, sn_ver.version from block_headers left join starknet_versions sn_ver on (sn_ver.id = version_id) order by number desc limit 1"
         )
     elif isinstance(at_block, int):
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
+            "select number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment, sn_ver.version from block_headers left join starknet_versions sn_ver on (sn_ver.id = version_id) where number = ?",
             [at_block],
         )
     else:
@@ -631,7 +631,7 @@ def resolve_block(
             at_block = b"\x00" * (32 - len(at_block)) + at_block
 
         cursor = connection.execute(
-            "select number, timestamp, root, gas_price, sequencer_address, class_commitment, sn_ver.version from starknet_blocks left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
+            "select number, timestamp, storage_commitment, gas_price, sequencer_address, class_commitment, sn_ver.version from block_headers left join starknet_versions sn_ver on (sn_ver.id = version_id) where hash = ?",
             [at_block],
         )
 

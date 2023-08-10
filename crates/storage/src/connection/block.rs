@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StarknetVersion, StateCommitment};
+use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, StarknetVersion};
 
 use crate::{prelude::*, BlockId};
 
@@ -13,13 +13,13 @@ pub(super) fn insert_block_header(
 
     // Insert the header
     tx.inner().execute(
-        r"INSERT INTO starknet_blocks 
-                   ( number,  hash,  root,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  class_commitment)
-            VALUES (:number, :hash, :root, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :class_commitment)",
+        r"INSERT INTO block_headers 
+                   ( number,  hash,  storage_commitment,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count)
+            VALUES (:number, :hash, :storage_commitment, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
-            ":root": &header.storage_commitment,
+            ":storage_commitment": &header.storage_commitment,
             ":timestamp": &header.timestamp,
             ":gas_price": &header.gas_price.to_be_bytes().as_slice(),
             ":sequencer_address": &header.sequencer_address,
@@ -27,6 +27,9 @@ pub(super) fn insert_block_header(
             ":transaction_commitment": &header.transaction_commitment,
             ":event_commitment": &header.event_commitment,
             ":class_commitment": &header.class_commitment,
+            ":transaction_count": &header.transaction_count.try_into_sql_int()?,
+            ":event_count": &header.event_count.try_into_sql_int()?,
+            ":state_commitment": &header.state_commitment,
         },
     ).context("Inserting block header")?;
 
@@ -102,10 +105,10 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
 
     tx.inner()
         .execute(
-            "DELETE FROM starknet_blocks WHERE number = ?",
+            "DELETE FROM block_headers WHERE number = ?",
             params![&block],
         )
-        .context("Deleting block from starknet_blocks table")?;
+        .context("Deleting block from block_headers table")?;
 
     Ok(())
 }
@@ -173,7 +176,7 @@ pub(super) fn block_header(
     block: BlockId,
 ) -> anyhow::Result<Option<BlockHeader>> {
     // TODO: is LEFT JOIN reasonable? It's required because version ID can be null for non-existent versions.
-    const BASE_SQL: &str = "SELECT * FROM starknet_blocks LEFT JOIN starknet_versions ON starknet_blocks.version_id = starknet_versions.id";
+    const BASE_SQL: &str = "SELECT * FROM block_headers LEFT JOIN starknet_versions ON block_headers.version_id = starknet_versions.id";
     let sql = match block {
         BlockId::Latest => format!("{BASE_SQL} ORDER BY number DESC LIMIT 1"),
         BlockId::Number(_) => format!("{BASE_SQL} WHERE number = ?"),
@@ -183,7 +186,7 @@ pub(super) fn block_header(
     let parse_row = |row: &rusqlite::Row<'_>| {
         let number = row.get_block_number("number")?;
         let hash = row.get_block_hash("hash")?;
-        let storage_commitment = row.get_storage_commitment("root")?;
+        let storage_commitment = row.get_storage_commitment("storage_commitment")?;
         let timestamp = row.get_timestamp("timestamp")?;
         let gas_price = row.get_gas_price("gas_price")?;
         let sequencer_address = row.get_sequencer_address("sequencer_address")?;
@@ -191,10 +194,9 @@ pub(super) fn block_header(
         let event_commitment = row.get_event_commitment("event_commitment")?;
         let class_commitment = row.get_class_commitment("class_commitment")?;
         let starknet_version = row.get_starknet_version("version")?;
-
-        // TODO: this really needs to get stored instead.
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-        // TODO: test what happens when a field is null.
+        let event_count: usize = row.get("event_count")?;
+        let transaction_count: usize = row.get("transaction_count")?;
+        let state_commitment = row.get_state_commitment("state_commitment")?;
 
         let header = BlockHeader {
             hash,
@@ -208,6 +210,8 @@ pub(super) fn block_header(
             storage_commitment,
             transaction_commitment,
             starknet_version,
+            transaction_count,
+            event_count,
             // TODO: store block hash in-line.
             // This gets filled in by a separate query, but really should get stored as a column in
             // order to support truncated history.
@@ -234,7 +238,7 @@ pub(super) fn block_header(
         let parent_hash = tx
             .inner()
             .query_row(
-                "SELECT hash FROM starknet_blocks WHERE number = ?",
+                "SELECT hash FROM block_headers WHERE number = ?",
                 params![&(header.number - 1)],
                 |row| row.get_block_hash(0),
             )
@@ -262,8 +266,8 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice, StateUpdate,
-        TransactionCommitment,
+        BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice, StateCommitment,
+        StateUpdate, TransactionCommitment,
     };
 
     use super::*;
@@ -292,10 +296,11 @@ mod tests {
             starknet_version: StarknetVersion::default(),
             class_commitment,
             event_commitment: event_commitment_bytes!(b"event commitment genesis"),
-            // This needs to be calculated as this value is never actually stored directly.
             state_commitment: StateCommitment::calculate(storage_commitment, class_commitment),
             storage_commitment,
             transaction_commitment: transaction_commitment_bytes!(b"tx commitment genesis"),
+            transaction_count: 37,
+            event_count: 40,
         };
         let header1 = genesis
             .child_builder()
@@ -386,7 +391,7 @@ mod tests {
 
         // Overwrite the commitment fields to NULL.
         tx.inner().execute(
-            r"UPDATE starknet_blocks
+            r"UPDATE block_headers
                 SET transaction_commitment=NULL, event_commitment=NULL, class_commitment=NULL, version_id=NULL
                 WHERE number=?",
             params![&target.number],
@@ -398,8 +403,6 @@ mod tests {
         expected.transaction_commitment = TransactionCommitment::ZERO;
         expected.event_commitment = EventCommitment::ZERO;
         expected.class_commitment = ClassCommitment::ZERO;
-        expected.state_commitment =
-            StateCommitment::calculate(expected.storage_commitment, expected.class_commitment);
 
         let result = tx.block_header(target.number.into()).unwrap().unwrap();
 
