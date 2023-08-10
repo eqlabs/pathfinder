@@ -17,7 +17,11 @@ pub enum Request {
     Status(Status),
 }
 
-const MAX_UNCOMPRESSED_MESSAGE_SIZE: usize = 1024 * 1024;
+// FIXME !!! even block bodies on testnet2 get too bit at some point
+// FIXME !!! this is going to be fixed ASAP along with the update
+// FIXME !!! of the proto files as now we don't have a decent
+// FIXME !!! way to handle message partitioning
+const MAX_UNCOMPRESSED_MESSAGE_SIZE: usize = 20 * 1024 * 1024;
 
 impl Request {
     pub fn from_protobuf_encoding(bytes: &[u8]) -> std::io::Result<Self> {
