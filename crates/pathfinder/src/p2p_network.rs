@@ -158,8 +158,9 @@ async fn handle_p2p_event(
                     Response::Classes(sync_handlers::get_classes(r, storage).await?)
                 }
                 Request::Status(incoming_status) => {
-                    // FIXME proxies sometimes fail to propagate (Gossipsub publish failed: InsufficientPeers)
-                    // so use status as fallback for the time being util we figure out why
+                    // Use status as fallback until the first head propagation message received
+                    // Using status endlessly will cause false positive reorgs in the sync logic
+                    // when sync reaches this false|temporary head
                     tx.send_if_modified(|head| {
                         let current_height = head.unwrap_or_default().0.get();
 

@@ -57,13 +57,29 @@ impl Default for BlockLru {
 
 impl BlockLru {
     fn get(&self, number: BlockNumber) -> Option<Block> {
-        let mut guard = self.inner.lock().unwrap();
-        guard.get(&number).cloned()
+        let mut locked_inner = self.inner.lock().unwrap();
+        locked_inner.get(&number).cloned()
+    }
+
+    fn clear_if_reorg(&self, header: &p2p_proto::common::BlockHeader) {
+        if let Some(parent_number) = header.number.checked_sub(1) {
+            let mut locked_inner = self.inner.lock().unwrap();
+            if let Some(parent) = locked_inner.get(&BlockNumber::new_or_panic(parent_number)) {
+                // If there's a reorg, purge the cache or we'll be stuck
+                //
+                // There's a risk we'll falsely reorg to genesis if all other peers get disconnected
+                // just after the cache is purged
+                // TODO: consider increasing the cache and just purging the last block
+                if parent.block_hash.0 != header.parent_hash {
+                    locked_inner.clear();
+                }
+            }
+        }
     }
 
     fn insert(&self, block: Block) {
-        let mut guard = self.inner.lock().unwrap();
-        guard.put(block.block_number, block);
+        let mut locked_inner = self.inner.lock().unwrap();
+        locked_inner.put(block.block_number, block);
     }
 }
 
@@ -148,6 +164,8 @@ impl GatewayApi for HybridClient {
                     }
 
                     let header = headers.swap_remove(0);
+
+                    block_lru.clear_if_reorg(&header);
 
                     let mut bodies = p2p_client
                         .block_bodies(BlockHash(header.hash), 1)
