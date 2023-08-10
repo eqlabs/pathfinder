@@ -25,6 +25,7 @@ use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::{pending::PendingData, reply::Block};
 
 use std::future::Future;
+use std::time::Instant;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -550,6 +551,9 @@ async fn latest_n_blocks(
 }
 
 /// Periodically updates sync state with the latest block height.
+///
+/// If feature `p2p` is enabled and node type is `proxy`
+/// propagates latest head after every change or otherwise every 2 minutes.
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
     sequencer: impl GatewayApi + GossipApi,
@@ -558,6 +562,7 @@ async fn update_sync_status_latest(
     poll_interval: Duration,
 ) -> anyhow::Result<()> {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
+    let mut last_propagated = Instant::now();
 
     loop {
         match sequencer.head().await {
@@ -575,6 +580,8 @@ async fn update_sync_status_latest(
                         metrics::gauge!("current_block", starting.number.get() as f64);
                         metrics::gauge!("highest_block", latest.number.get() as f64);
 
+                        propagate_head(&sequencer, &mut last_propagated, latest).await;
+
                         tracing::debug!(
                             status=%sync_status,
                             "Updated sync status",
@@ -584,9 +591,9 @@ async fn update_sync_status_latest(
                         if status.highest.hash != latest.hash {
                             status.highest = latest;
 
-                            _ = sequencer.propagate_head(latest.number, latest.hash).await;
-
                             metrics::gauge!("highest_block", latest.number.get() as f64);
+
+                            propagate_head(&sequencer, &mut last_propagated, latest).await;
 
                             tracing::debug!(
                                 %status,
@@ -594,6 +601,11 @@ async fn update_sync_status_latest(
                             );
                         }
                     }
+                }
+
+                // duplicate_cache_time for gossipsub defaults to 1 minute
+                if last_propagated.elapsed() > Duration::from_secs(120) {
+                    propagate_head(&sequencer, &mut last_propagated, latest).await;
                 }
             }
             Err(e) => {
@@ -603,6 +615,15 @@ async fn update_sync_status_latest(
 
         tokio::time::sleep(poll_interval).await;
     }
+}
+
+async fn propagate_head(
+    gossiper: &impl GossipApi,
+    last_propagated: &mut Instant,
+    head: NumberedBlock,
+) {
+    _ = gossiper.propagate_head(head.number, head.hash).await;
+    *last_propagated = Instant::now();
 }
 
 async fn l1_update(
