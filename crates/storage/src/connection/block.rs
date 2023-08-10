@@ -13,7 +13,7 @@ pub(super) fn insert_block_header(
 
     // Insert the header
     tx.inner().execute(
-        r"INSERT INTO headers 
+        r"INSERT INTO block_headers 
                    ( number,  hash,  storage_commitment,  timestamp,  gas_price,  sequencer_address,  version_id,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count)
             VALUES (:number, :hash, :storage_commitment, :timestamp, :gas_price, :sequencer_address, :version_id, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count)",
         named_params! {
@@ -104,8 +104,11 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
         .context("Deleting block from canonical_blocks table")?;
 
     tx.inner()
-        .execute("DELETE FROM headers WHERE number = ?", params![&block])
-        .context("Deleting block from headers table")?;
+        .execute(
+            "DELETE FROM block_headers WHERE number = ?",
+            params![&block],
+        )
+        .context("Deleting block from block_headers table")?;
 
     Ok(())
 }
@@ -173,7 +176,7 @@ pub(super) fn block_header(
     block: BlockId,
 ) -> anyhow::Result<Option<BlockHeader>> {
     // TODO: is LEFT JOIN reasonable? It's required because version ID can be null for non-existent versions.
-    const BASE_SQL: &str = "SELECT * FROM headers LEFT JOIN starknet_versions ON headers.version_id = starknet_versions.id";
+    const BASE_SQL: &str = "SELECT * FROM block_headers LEFT JOIN starknet_versions ON block_headers.version_id = starknet_versions.id";
     let sql = match block {
         BlockId::Latest => format!("{BASE_SQL} ORDER BY number DESC LIMIT 1"),
         BlockId::Number(_) => format!("{BASE_SQL} WHERE number = ?"),
@@ -235,7 +238,7 @@ pub(super) fn block_header(
         let parent_hash = tx
             .inner()
             .query_row(
-                "SELECT hash FROM headers WHERE number = ?",
+                "SELECT hash FROM block_headers WHERE number = ?",
                 params![&(header.number - 1)],
                 |row| row.get_block_hash(0),
             )
@@ -388,7 +391,7 @@ mod tests {
 
         // Overwrite the commitment fields to NULL.
         tx.inner().execute(
-            r"UPDATE headers
+            r"UPDATE block_headers
                 SET transaction_commitment=NULL, event_commitment=NULL, class_commitment=NULL, version_id=NULL
                 WHERE number=?",
             params![&target.number],

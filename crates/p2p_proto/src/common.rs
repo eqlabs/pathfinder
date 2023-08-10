@@ -247,13 +247,14 @@ pub enum ExecutionStatus {
 
 impl TryFromProtobuf<i32> for ExecutionStatus {
     fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
-        match input {
-            0 => Ok(ExecutionStatus::Succeeded),
-            1 => Ok(ExecutionStatus::Reverted),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse {field_name}: missing txn field"),
-            )),
+        let status = proto::common::ExecutionStatus::from_i32(input).ok_or(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Failed to convert protobuf output for {field_name}: {input} did not match any known execution status"),
+        ))?;
+
+        match status {
+            proto::common::ExecutionStatus::Succeeded => Ok(Self::Succeeded),
+            proto::common::ExecutionStatus::Reverted => Ok(Self::Reverted),
         }
     }
 }

@@ -156,7 +156,7 @@ pub(super) fn transaction_count(tx: &Transaction<'_>, block: BlockId) -> anyhow:
             .inner()
             .query_row(
                 "SELECT COUNT(*) FROM starknet_transactions
-                JOIN headers ON starknet_transactions.block_hash = headers.hash
+                JOIN block_headers ON starknet_transactions.block_hash = block_headers.hash
                 WHERE number = ?1",
                 params![&number],
                 |row| row.get(0),
