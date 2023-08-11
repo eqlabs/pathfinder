@@ -148,13 +148,10 @@ impl RpcServer {
         let router = axum::Router::new()
             // Also return success for get's with an empty body. These are often
             // used by monitoring bots to check service health.
-            .route("/", get(empty_body).post(rpc_handler::<v03::RpcHandlerV03>))
-            .route("/rpc/v0.3", post(rpc_handler::<v03::RpcHandlerV03>))
-            .route("/rpc/v0.4", post(rpc_handler::<v04::RpcHandlerV04>))
-            .route(
-                "/rpc/pathfinder/v0.1",
-                post(rpc_handler::<pathfinder::RpcHandlerPathfinder>),
-            )
+            .route("/", get(empty_body).post(v03::rpc_router()))
+            .route("/rpc/v0.3", post(v03::rpc_router()))
+            .route("/rpc/v0.4", post(v04::rpc_router()))
+            .route("/rpc/pathfinder/v0.1", post(pathfinder::rpc_router()))
             .layer(middleware)
             // TODO: metrics
             // TODO: websockets

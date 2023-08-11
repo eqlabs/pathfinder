@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::extract::State;
 use axum::headers::ContentType;
 use axum::response::IntoResponse;
@@ -11,6 +13,55 @@ use crate::context::RpcContext;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::request::RpcRequest;
 use crate::jsonrpc::response::{RpcResponse, RpcResult};
+
+#[derive(Clone)]
+pub struct RpcRouter {
+    methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
+}
+
+#[derive(Default)]
+pub struct RpcRouterBuilder {
+    methods: HashMap<&'static str, Box<dyn RpcMethod>>,
+}
+
+impl RpcRouterBuilder {
+    pub fn register<I, O, S, M: IntoRpcMethod<I, O, S>>(
+        mut self,
+        method_name: &'static str,
+        method: M,
+    ) -> Self {
+        self.methods
+            .insert(method_name, IntoRpcMethod::into_method(method));
+        self
+    }
+
+    pub fn build(self) -> RpcRouter {
+        let methods = Box::new(self.methods);
+        let methods = Box::leak(methods);
+        RpcRouter { methods }
+    }
+}
+
+impl RpcRouter {
+    pub fn builder() -> RpcRouterBuilder {
+        RpcRouterBuilder::default()
+    }
+}
+
+#[axum::async_trait]
+pub trait RpcMethod: Send + Sync {
+    async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult;
+}
+
+impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
+    type Future = std::pin::Pin<Box<dyn Future<Output = axum::response::Response> + Send>>;
+
+    fn call(self, req: axum::http::Request<axum::body::Body>, state: RpcContext) -> Self::Future {
+        Box::pin(async move {
+            todo!();
+        })
+    }
+}
 
 /// Utility trait which automates the serde of an RPC methods input and output.
 ///
@@ -27,44 +78,22 @@ use crate::jsonrpc::response::{RpcResponse, RpcResult};
 ///
 /// The generics allow us to achieve a form of variadic specilization and can be ignored by callers.
 /// See [sealed::Sealed] to add more method signatures or more information on how this works.
-#[async_trait]
-pub trait RpcMethod<I, O, S>: sealed::Sealed<I, O, S> {
-    // TODO: consider an associated type for version for the metrics.
-    // TODO: consider another layer of trait for the method handler to return Option<dyn RpcMethod> for method str.
-    async fn invoke(
-        &self,
-        method_name: &'static str,
-        version: &'static str,
-        ctx: RpcContext,
-        params: Value,
-    ) -> RpcResult;
+pub trait IntoRpcMethod<I, O, S>: sealed::Sealed<I, O, S> {
+    fn into_method(self) -> Box<dyn RpcMethod>;
 }
 
-#[async_trait]
-impl<T, I, O, S> RpcMethod<I, O, S> for T
+impl<T, I, O, S> IntoRpcMethod<I, O, S> for T
 where
-    T: sealed::Sealed<I, O, S> + std::marker::Sync,
+    T: sealed::Sealed<I, O, S>,
 {
-    async fn invoke(
-        &self,
-        method_name: &'static str,
-        version: &'static str,
-        ctx: RpcContext,
-        params: Value,
-    ) -> RpcResult {
-        // TODO: is version always required or is it None for root?
-        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => version);
-        let result = <T as sealed::Sealed<I, O, S>>::invoke(&self, ctx, params).await;
-
-        if result.is_err() {
-            metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => version)
-        }
-
-        result
+    fn into_method(self) -> Box<dyn RpcMethod> {
+        sealed::Sealed::<I, O, S>::into_method(self)
     }
 }
 
 mod sealed {
+    use std::marker::PhantomData;
+
     use crate::jsonrpc::error::RpcError;
 
     use super::*;
@@ -81,29 +110,49 @@ mod sealed {
     /// ```
     /// Sealed<I = (), S = (), O = ((), Ouput)>
     /// ```
-    #[async_trait]
     pub trait Sealed<I, O, S> {
-        // TODO: param parsing error handling for each impl if there is no input required.
-        async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult;
+        fn into_method(self) -> Box<dyn RpcMethod>;
     }
 
     /// ```
     /// async fn example(RpcContext, impl Deserialize) -> Result<Output, Into<RpcError>>
     /// ```
-    #[async_trait]
     impl<F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ((), RpcContext)> for F
     where
-        F: Fn(RpcContext, Input) -> Fut + std::marker::Sync,
-        Input: DeserializeOwned + std::marker::Send,
-        Output: Serialize,
-        Error: Into<RpcError>,
-        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+        F: Fn(RpcContext, Input) -> Fut + Sync + Send + 'static,
+        Input: DeserializeOwned + Send + Sync + 'static,
+        Output: Serialize + Send + Sync + 'static,
+        Error: Into<RpcError> + Send + Sync + 'static,
+        Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        async fn invoke(&self, ctx: RpcContext, params: Value) -> RpcResult {
-            let input: Input =
-                serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
-            let output = self(ctx, input).await.map_err(Into::into)?;
-            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        fn into_method(self) -> Box<dyn RpcMethod> {
+            struct Helper<F, Input, Output, Error> {
+                f: F,
+                _marker: PhantomData<(Input, Output, Error)>,
+            }
+
+            #[axum::async_trait]
+            impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
+            where
+                F: Fn(RpcContext, Input) -> Fut + Sync + Send,
+                Input: DeserializeOwned + Send + Sync,
+                Output: Serialize + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
+                Fut: Future<Output = Result<Output, Error>> + Send,
+            {
+                async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult {
+                    let Ok(input) = serde_json::from_value::<Input>(input) else {
+                        todo!("error mapping");
+                    };
+                    let output = (self.f)(state, input).await.map_err(Into::into)?;
+                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                }
+            }
+
+            Box::new(Helper {
+                f: self,
+                _marker: Default::default(),
+            })
         }
     }
 
@@ -113,17 +162,40 @@ mod sealed {
     #[async_trait]
     impl<F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ()> for F
     where
-        F: Fn(Input) -> Fut + std::marker::Sync,
-        Input: DeserializeOwned + std::marker::Send,
-        Output: Serialize,
-        Error: Into<RpcError>,
-        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+        F: Fn(Input) -> Fut + Sync + Send + 'static,
+        Input: DeserializeOwned + Sync + Send + 'static,
+        Output: Serialize + Sync + Send + 'static,
+        Error: Into<RpcError> + Sync + Send + 'static,
+        Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        async fn invoke(&self, _ctx: RpcContext, params: Value) -> RpcResult {
-            let input: Input =
-                serde_json::from_value(params).map_err(|_| RpcError::InvalidParams)?;
-            let output = self(input).await.map_err(Into::into)?;
-            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        fn into_method(self) -> Box<dyn RpcMethod> {
+            struct Helper<F, Input, Output, Error> {
+                f: F,
+                _marker: PhantomData<(Input, Output, Error)>,
+            }
+
+            #[axum::async_trait]
+            impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
+            where
+                F: Fn(Input) -> Fut + Sync + Send,
+                Input: DeserializeOwned + Send + Sync,
+                Output: Serialize + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
+                Fut: Future<Output = Result<Output, Error>> + Send,
+            {
+                async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult {
+                    let Ok(input) = serde_json::from_value::<Input>(input) else {
+                        todo!("error mapping");
+                    };
+                    let output = (self.f)(input).await.map_err(Into::into)?;
+                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                }
+            }
+
+            Box::new(Helper {
+                f: self,
+                _marker: Default::default(),
+            })
         }
     }
 
@@ -133,14 +205,36 @@ mod sealed {
     #[async_trait]
     impl<F, Output, Error, Fut> Sealed<(), ((), Output), ((), RpcContext)> for F
     where
-        F: Fn(RpcContext) -> Fut + std::marker::Sync,
-        Output: Serialize,
-        Error: Into<RpcError>,
-        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+        F: Fn(RpcContext) -> Fut + Sync + Send + 'static,
+        Output: Serialize + Sync + Send + 'static,
+        Error: Into<RpcError> + Send + Sync + 'static,
+        Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        async fn invoke(&self, ctx: RpcContext, _params: Value) -> RpcResult {
-            let output = self(ctx).await.map_err(Into::into)?;
-            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        fn into_method(self) -> Box<dyn RpcMethod> {
+            struct Helper<F, Output, Error> {
+                f: F,
+                _marker: PhantomData<(Output, Error)>,
+            }
+
+            #[axum::async_trait]
+            impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
+            where
+                F: Fn(RpcContext) -> Fut + Sync + Send,
+                Output: Serialize + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
+                Fut: Future<Output = Result<Output, Error>> + Send,
+            {
+                async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult {
+                    // todo!("Input must be null");
+                    let output = (self.f)(state).await.map_err(Into::into)?;
+                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                }
+            }
+
+            Box::new(Helper {
+                f: self,
+                _marker: Default::default(),
+            })
         }
     }
 
@@ -150,14 +244,36 @@ mod sealed {
     #[async_trait]
     impl<F, Output, Error, Fut> Sealed<(), (), ((), Output)> for F
     where
-        F: Fn() -> Fut + std::marker::Sync,
-        Output: Serialize,
-        Error: Into<RpcError>,
-        Fut: Future<Output = Result<Output, Error>> + std::marker::Send,
+        F: Fn() -> Fut + Sync + Send + 'static,
+        Output: Serialize + Sync + Send + 'static,
+        Error: Into<RpcError> + Sync + Send + 'static,
+        Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        async fn invoke(&self, _ctx: RpcContext, _params: Value) -> RpcResult {
-            let output = self().await.map_err(Into::into)?;
-            serde_json::to_value(&output).map_err(|e| RpcError::InternalError(e.into()))
+        fn into_method(self) -> Box<dyn RpcMethod> {
+            struct Helper<F, Output, Error> {
+                f: F,
+                _marker: PhantomData<(Output, Error)>,
+            }
+
+            #[axum::async_trait]
+            impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
+            where
+                F: Fn() -> Fut + Sync + Send,
+                Output: Serialize + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
+                Fut: Future<Output = Result<Output, Error>> + Send,
+            {
+                async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult {
+                    // todo!("Input must be null");
+                    let output = (self.f)().await.map_err(Into::into)?;
+                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                }
+            }
+
+            Box::new(Helper {
+                f: self,
+                _marker: Default::default(),
+            })
         }
     }
 
@@ -167,10 +283,25 @@ mod sealed {
     #[async_trait]
     impl<F> Sealed<(), (), ((), (), &'static str)> for F
     where
-        F: Fn() -> &'static str + std::marker::Sync,
+        F: Fn() -> &'static str + Sync + Send + 'static,
     {
-        async fn invoke(&self, _ctx: RpcContext, _params: Value) -> RpcResult {
-            serde_json::to_value(self()).map_err(|e| RpcError::InternalError(e.into()))
+        fn into_method(self) -> Box<dyn RpcMethod> {
+            struct Helper<F> {
+                f: F,
+            }
+
+            #[axum::async_trait]
+            impl<F> RpcMethod for Helper<F>
+            where
+                F: Fn() -> &'static str + Sync + Send,
+            {
+                async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult {
+                    // todo!("Input must be null");
+                    let output = (self.f)();
+                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                }
+            }
+            Box::new(Helper { f: self })
         }
     }
 }
@@ -297,14 +428,14 @@ mod tests {
     use crate::jsonrpc::RequestId;
     use serde_json::json;
 
-    async fn spawn_server<H: RpcMethodHandler + 'static>() -> String {
+    async fn spawn_server(router: RpcRouter) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let url = format!("http://127.0.0.1:{}", addr.port());
 
         tokio::spawn(async {
             let router = axum::Router::new()
-                .route("/", axum::routing::post(rpc_handler::<H>))
+                .route("/", axum::routing::post(router))
                 .with_state(RpcContext::for_tests());
             axum::Server::from_tcp(listener)
                 .unwrap()
@@ -319,55 +450,45 @@ mod tests {
         //! Test cases lifted directly from the [RPC specification](https://www.jsonrpc.org/specification).
         use super::*;
 
-        struct SpecMethodHandler;
-        #[async_trait]
-        impl RpcMethodHandler for SpecMethodHandler {
-            async fn call_method(method: &str, ctx: RpcContext, params: Value) -> RpcResult {
-                crate::error::generate_rpc_error_subset!(ExampleError:);
+        fn spec_router() -> RpcRouter {
+            crate::error::generate_rpc_error_subset!(ExampleError:);
 
-                #[derive(Debug, Deserialize, Serialize)]
-                struct SubtractInput {
-                    minuend: i32,
-                    subtrahend: i32,
-                }
-                async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
-                    Ok(Value::Number((input.minuend - input.subtrahend).into()))
-                }
-
-                #[derive(Debug, Deserialize, Serialize)]
-                struct SumInput(Vec<i32>);
-                async fn sum(input: SumInput) -> Result<Value, ExampleError> {
-                    Ok(Value::Number((input.0.iter().sum::<i32>()).into()))
-                }
-
-                #[derive(Debug, Deserialize, Serialize)]
-                struct GetDataInput;
-                #[derive(Debug, Deserialize, Serialize)]
-                struct GetDataOutput(Vec<Value>);
-                async fn get_data() -> Result<GetDataOutput, ExampleError> {
-                    Ok(GetDataOutput(vec![
-                        Value::String("hello".to_owned()),
-                        Value::Number(5.into()),
-                    ]))
-                }
-
-                #[rustfmt::skip]
-                let output = match method {
-                    "subtract" => subtract.invoke("subtract", "version", ctx, params).await,
-                    "sum"      => sum.invoke("sum", "version", ctx, params).await,
-                    "get_data" => get_data.invoke("get_data", "version", ctx, params).await,
-                    unknown    => Err(RpcError::MethodNotFound {
-                        method: unknown.to_owned(),
-                    }),
-                };
-
-                output
+            #[derive(Debug, Deserialize, Serialize)]
+            struct SubtractInput {
+                minuend: i32,
+                subtrahend: i32,
             }
+            async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
+                Ok(Value::Number((input.minuend - input.subtrahend).into()))
+            }
+
+            #[derive(Debug, Deserialize, Serialize)]
+            struct SumInput(Vec<i32>);
+            async fn sum(input: SumInput) -> Result<Value, ExampleError> {
+                Ok(Value::Number((input.0.iter().sum::<i32>()).into()))
+            }
+
+            #[derive(Debug, Deserialize, Serialize)]
+            struct GetDataInput;
+            #[derive(Debug, Deserialize, Serialize)]
+            struct GetDataOutput(Vec<Value>);
+            async fn get_data() -> Result<GetDataOutput, ExampleError> {
+                Ok(GetDataOutput(vec![
+                    Value::String("hello".to_owned()),
+                    Value::Number(5.into()),
+                ]))
+            }
+
+            RpcRouter::builder()
+                .register("subtract", subtract)
+                .register("sum", sum)
+                .register("get_data", get_data)
+                .build()
         }
 
         #[tokio::test]
         async fn with_positional_params() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -403,7 +524,7 @@ mod tests {
 
         #[tokio::test]
         async fn with_named_params() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -439,7 +560,7 @@ mod tests {
 
         #[tokio::test]
         async fn notification() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -468,7 +589,7 @@ mod tests {
 
         #[tokio::test]
         async fn non_existent_method() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -489,7 +610,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_json() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -509,7 +630,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_request_object() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -528,7 +649,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_json_batch() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -553,7 +674,7 @@ mod tests {
 
         #[tokio::test]
         async fn empty_batch() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -572,7 +693,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalid_batch() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -610,7 +731,7 @@ mod tests {
 
         #[tokio::test]
         async fn batch() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -646,7 +767,7 @@ mod tests {
 
         #[tokio::test]
         async fn batch_all_notifications() {
-            let url = spawn_server::<SpecMethodHandler>().await;
+            let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -817,20 +938,17 @@ mod tests {
     mod panic_handling {
         use super::*;
 
-        struct PanicHandler;
-        #[async_trait]
-        impl RpcMethodHandler for PanicHandler {
-            async fn call_method(method: &str, _ctx: RpcContext, _params: Value) -> RpcResult {
-                match method {
-                    "panic" => panic!("Oh no!"),
-                    _ => Ok(json!("Success")),
-                }
+        fn panic_router() -> RpcRouter {
+            fn always_panic() -> &'static str {
+                panic!("Oh no!");
             }
+
+            RpcRouter::builder().register("panic", always_panic).build()
         }
 
         #[tokio::test]
         async fn panic_is_internal_error() {
-            let url = spawn_server::<PanicHandler>().await;
+            let url = spawn_server(panic_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -851,7 +969,7 @@ mod tests {
 
         #[tokio::test]
         async fn panic_in_batch_is_isolated() {
-            let url = spawn_server::<PanicHandler>().await;
+            let url = spawn_server(panic_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
@@ -879,15 +997,15 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_non_json_content_header() {
-        struct OnlySuccess;
-        #[async_trait]
-        impl RpcMethodHandler for OnlySuccess {
-            async fn call_method(_method: &str, _ctx: RpcContext, _params: Value) -> RpcResult {
-                Ok(json!("Success"))
-            }
+        async fn always_success(_ctx: RpcContext) -> RpcResult {
+            Ok(json!("Success"))
         }
 
-        let url = spawn_server::<OnlySuccess>().await;
+        let router = RpcRouter::builder()
+            .register("success", always_success)
+            .build();
+
+        let url = spawn_server(router).await;
 
         let client = reqwest::Client::new();
         let res = client
