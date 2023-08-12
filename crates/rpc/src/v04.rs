@@ -56,7 +56,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method(
             "v0.4_starknet_getTransactionByHash",
-            v02_method::get_transaction_by_hash,
+            v04_method::get_transaction_by_hash,
         )?
         .register_method(
             "v0.4_starknet_getTransactionReceipt",
