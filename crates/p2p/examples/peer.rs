@@ -7,8 +7,8 @@ use clap::Parser;
 use libp2p::Multiaddr;
 use libp2p::{identity::Keypair, PeerId};
 use p2p::Peers;
-use p2p_proto as proto;
-use proto::sync::{BlockBodies, Classes, StateDiffs};
+use p2p_proto_v0 as proto_v0;
+use proto_v0::sync::{BlockBodies, Classes, StateDiffs};
 use serde::Deserialize;
 use stark_hash::Felt;
 use tokio::sync::RwLock;
@@ -106,8 +106,8 @@ async fn main() -> anyhow::Result<()> {
             loop {
                 ticker.tick().await;
 
-                let message = proto::propagation::Message::NewBlockHeader(
-                    proto::propagation::NewBlockHeader {
+                let message = proto_v0::propagation::Message::NewBlockHeader(
+                    proto_v0::propagation::NewBlockHeader {
                         header: Default::default(),
                     },
                 );
@@ -126,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
         match event {
             p2p::Event::SyncPeerConnected { peer_id }
             | p2p::Event::SyncPeerRequestStatus { peer_id } => {
-                use p2p_proto::sync::Status;
+                use p2p_proto_v0::sync::Status;
 
                 p2p_client
                     .send_sync_status_request(
@@ -142,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
             p2p::Event::InboundSyncRequest {
                 request, channel, ..
             } => {
-                use p2p_proto::sync::{BlockHeaders, Request, Response, Status};
+                use p2p_proto_v0::sync::{BlockHeaders, Request, Response, Status};
                 let response = match request {
                     Request::GetBlockHeaders(_r) => {
                         Response::BlockHeaders(BlockHeaders { headers: vec![] })

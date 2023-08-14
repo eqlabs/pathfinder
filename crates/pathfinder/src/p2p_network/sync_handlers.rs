@@ -1,6 +1,5 @@
 //! Sync related data retrieval from storage as requested by other p2p clients
 use anyhow::Context;
-use p2p_proto as proto;
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use pathfinder_storage::{Storage, Transaction, V03KeyFilter};
 
@@ -21,30 +20,30 @@ const MAX_BODIES_COUNT: u64 = MAX_COUNT_IN_TESTS;
 const MAX_STATE_UPDATES_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
 pub async fn get_block_headers(
-    request: p2p_proto::sync::GetBlockHeaders,
+    request: p2p_proto_v0::sync::GetBlockHeaders,
     storage: &Storage,
-) -> anyhow::Result<p2p_proto::sync::BlockHeaders> {
+) -> anyhow::Result<p2p_proto_v0::sync::BlockHeaders> {
     spawn_blocking_get(request, storage, block_headers).await
 }
 
 pub async fn get_block_bodies(
-    request: p2p_proto::sync::GetBlockBodies,
+    request: p2p_proto_v0::sync::GetBlockBodies,
     storage: &Storage,
-) -> anyhow::Result<p2p_proto::sync::BlockBodies> {
+) -> anyhow::Result<p2p_proto_v0::sync::BlockBodies> {
     spawn_blocking_get(request, storage, block_bodies).await
 }
 
 pub async fn get_state_diffs(
-    request: p2p_proto::sync::GetStateDiffs,
+    request: p2p_proto_v0::sync::GetStateDiffs,
     storage: &Storage,
-) -> anyhow::Result<p2p_proto::sync::StateDiffs> {
+) -> anyhow::Result<p2p_proto_v0::sync::StateDiffs> {
     spawn_blocking_get(request, storage, state_diffs).await
 }
 
 pub async fn get_classes(
-    request: p2p_proto::sync::GetClasses,
+    request: p2p_proto_v0::sync::GetClasses,
     storage: &Storage,
-) -> anyhow::Result<p2p_proto::sync::Classes> {
+) -> anyhow::Result<p2p_proto_v0::sync::Classes> {
     spawn_blocking_get(request, storage, classes).await
 }
 
@@ -77,8 +76,8 @@ where
 
 fn block_headers(
     tx: Transaction<'_>,
-    request: p2p_proto::sync::GetBlockHeaders,
-) -> anyhow::Result<p2p_proto::sync::BlockHeaders> {
+    request: p2p_proto_v0::sync::GetBlockHeaders,
+) -> anyhow::Result<p2p_proto_v0::sync::BlockHeaders> {
     let mut count = std::cmp::min(request.count, MAX_HEADERS_COUNT);
     let mut headers = Vec::new();
 
@@ -123,13 +122,13 @@ fn block_headers(
         next_block_number = get_next_block_number(block_number, request.direction);
     }
 
-    Ok(p2p_proto::sync::BlockHeaders { headers })
+    Ok(p2p_proto_v0::sync::BlockHeaders { headers })
 }
 
 fn block_bodies(
     tx: Transaction<'_>,
-    request: p2p_proto::sync::GetBlockBodies,
-) -> anyhow::Result<p2p_proto::sync::BlockBodies> {
+    request: p2p_proto_v0::sync::GetBlockBodies,
+) -> anyhow::Result<p2p_proto_v0::sync::BlockBodies> {
     let mut count = std::cmp::min(request.count, MAX_BODIES_COUNT);
     let mut block_bodies = Vec::new();
 
@@ -153,7 +152,7 @@ fn block_bodies(
             .map(conv::body::from)
             .unzip();
 
-        block_bodies.push(p2p_proto::common::BlockBody {
+        block_bodies.push(p2p_proto_v0::common::BlockBody {
             transactions,
             receipts,
         });
@@ -162,13 +161,13 @@ fn block_bodies(
         next_block_number = get_next_block_number(block_number, request.direction);
     }
 
-    Ok(p2p_proto::sync::BlockBodies { block_bodies })
+    Ok(p2p_proto_v0::sync::BlockBodies { block_bodies })
 }
 
 fn state_diffs(
     tx: Transaction<'_>,
-    request: p2p_proto::sync::GetStateDiffs,
-) -> anyhow::Result<p2p_proto::sync::StateDiffs> {
+    request: p2p_proto_v0::sync::GetStateDiffs,
+) -> anyhow::Result<p2p_proto_v0::sync::StateDiffs> {
     let mut count = std::cmp::min(request.count, MAX_STATE_UPDATES_COUNT);
     let mut block_state_updates = Vec::new();
 
@@ -186,7 +185,7 @@ fn state_diffs(
             break;
         };
 
-        block_state_updates.push(p2p_proto::sync::BlockStateUpdateWithHash {
+        block_state_updates.push(p2p_proto_v0::sync::BlockStateUpdateWithHash {
             block_hash: state_update.block_hash.0,
             state_commitment: state_update.state_commitment.0,
             parent_state_commitment: state_update.parent_state_commitment.0,
@@ -197,15 +196,15 @@ fn state_diffs(
         next_block_number = get_next_block_number(block_number, request.direction);
     }
 
-    Ok(p2p_proto::sync::StateDiffs {
+    Ok(p2p_proto_v0::sync::StateDiffs {
         block_state_updates,
     })
 }
 
 fn classes(
     tx: Transaction<'_>,
-    request: p2p_proto::sync::GetClasses,
-) -> anyhow::Result<p2p_proto::sync::Classes> {
+    request: p2p_proto_v0::sync::GetClasses,
+) -> anyhow::Result<p2p_proto_v0::sync::Classes> {
     let mut classes = Vec::new();
     for hash in request.class_hashes {
         let Some(class) = tx.class_definition(ClassHash(hash))? else {
@@ -215,10 +214,10 @@ fn classes(
         // This is a temporary measure to avoid exceeding the max size of a protobuf message.
         let class = zstd::bulk::compress(&class, 0)?;
 
-        classes.push(p2p_proto::common::RawClass { class });
+        classes.push(p2p_proto_v0::common::RawClass { class });
     }
 
-    Ok(p2p_proto::sync::Classes { classes })
+    Ok(p2p_proto_v0::sync::Classes { classes })
 }
 
 /// Workaround for the orphan rule - implement conversion fns for types ourside our crate.
@@ -230,8 +229,8 @@ pub(crate) mod conv {
             header: BlockHeader,
             transaction_count: u32,
             event_count: u32,
-        ) -> p2p_proto::common::BlockHeader {
-            p2p_proto::common::BlockHeader {
+        ) -> p2p_proto_v0::common::BlockHeader {
+            p2p_proto_v0::common::BlockHeader {
                 hash: header.hash.0,
                 parent_hash: header.parent_hash.0,
                 number: header.number.get(),
@@ -251,7 +250,7 @@ pub(crate) mod conv {
     }
 
     pub(super) mod body {
-        use p2p_proto::common::{
+        use p2p_proto_v0::common::{
             execution_resources::BuiltinInstanceCounter, invoke_transaction::EntryPoint,
             CommonTransactionReceiptProperties, DeclareTransaction, DeclareTransactionReceipt,
             DeployAccountTransaction, DeployAccountTransactionReceipt, DeployTransaction,
@@ -430,10 +429,10 @@ pub(crate) mod conv {
                     (t, r)
                 }
                 gw::Transaction::L1Handler(t) => {
-                    let r = Receipt::L1Handler(p2p_proto::common::L1HandlerTransactionReceipt {
+                    let r = Receipt::L1Handler(p2p_proto_v0::common::L1HandlerTransactionReceipt {
                         common,
                     });
-                    let t = Transaction::L1Handler(p2p_proto::common::L1HandlerTransaction {
+                    let t = Transaction::L1Handler(p2p_proto_v0::common::L1HandlerTransaction {
                         contract_address: *t.contract_address.get(),
                         entry_point_selector: t.entry_point_selector.0,
                         calldata: t.calldata.into_iter().map(|x| x.0).collect(),
@@ -447,7 +446,7 @@ pub(crate) mod conv {
     }
 
     pub(super) mod state_update {
-        use p2p_proto::propagation::{
+        use p2p_proto_v0::propagation::{
             BlockStateUpdate, ContractDiff, DeclaredClass, DeployedContract, ReplacedClass,
             StorageDiff,
         };
@@ -534,11 +533,15 @@ pub(crate) mod conv {
 /// None is returned if we're out-of-bounds.
 fn get_next_block_number(
     current: BlockNumber,
-    direction: proto::sync::Direction,
+    direction: p2p_proto_v0::sync::Direction,
 ) -> Option<BlockNumber> {
     match direction {
-        proto::sync::Direction::Forward => current.get().checked_add(1).and_then(BlockNumber::new),
-        proto::sync::Direction::Backward => current.get().checked_sub(1).and_then(BlockNumber::new),
+        p2p_proto_v0::sync::Direction::Forward => {
+            current.get().checked_add(1).and_then(BlockNumber::new)
+        }
+        p2p_proto_v0::sync::Direction::Backward => {
+            current.get().checked_sub(1).and_then(BlockNumber::new)
+        }
     }
 }
 
@@ -547,7 +550,7 @@ mod tests {
     use super::{block_bodies, block_headers, state_diffs};
     use assert_matches::assert_matches;
     use fake::{Fake, Faker};
-    use p2p_proto::sync::{
+    use p2p_proto_v0::sync::{
         Direction, GetBlockBodies, GetBlockHeaders, GetStateDiffs, Request, Response,
     };
     use pathfinder_common::BlockNumber;
@@ -577,8 +580,8 @@ mod tests {
 
     fn run_request(
         tx: Transaction<'_>,
-        request: p2p_proto::sync::Request,
-    ) -> anyhow::Result<p2p_proto::sync::Response> {
+        request: p2p_proto_v0::sync::Request,
+    ) -> anyhow::Result<p2p_proto_v0::sync::Response> {
         match request {
             Request::GetBlockHeaders(r) => block_headers(tx, r).map(Response::BlockHeaders),
             Request::GetBlockBodies(r) => block_bodies(tx, r).map(Response::BlockBodies),
@@ -622,7 +625,7 @@ mod tests {
 
     #[test]
     fn start_block_larger_than_i64max_yields_error() {
-        let request = p2p_proto::sync::GetBlockHeaders {
+        let request = p2p_proto_v0::sync::GetBlockHeaders {
             start_block: (i64::MAX as u64 + 1),
             ..Faker.fake()
         };
@@ -794,7 +797,7 @@ mod tests {
 
                     let from_db = overlapping::forward(from_db, start, count).map(|(header, _, _)| header).collect::<Vec<_>>();
 
-                    let request = p2p_proto::sync::GetBlockHeaders {
+                    let request = p2p_proto_v0::sync::GetBlockHeaders {
                         start_block: start,
                         count,
                         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
@@ -820,7 +823,7 @@ mod tests {
 
                     let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(header, _, _)| header).collect::<Vec<_>>();
 
-                    let request = p2p_proto::sync::GetBlockHeaders {
+                    let request = p2p_proto_v0::sync::GetBlockHeaders {
                         start_block: start,
                         count,
                         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
@@ -885,7 +888,7 @@ mod tests {
                     };
                     let from_db = overlapping::forward(from_db, start, count).map(|(_, body, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
 
-                    let request = p2p_proto::sync::GetBlockBodies {
+                    let request = p2p_proto_v0::sync::GetBlockBodies {
                         start_block: start_hash.0,
                         count,
                         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
@@ -919,7 +922,7 @@ mod tests {
 
                     let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, body, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
 
-                    let request = p2p_proto::sync::GetBlockBodies {
+                    let request = p2p_proto_v0::sync::GetBlockBodies {
                         start_block: start_hash.0,
                         count,
                         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
@@ -966,7 +969,7 @@ mod tests {
                         (state_update.block_hash.0, state_update)
                     ).collect::<HashMap<_, _>>();
 
-                    let request = p2p_proto::sync::GetStateDiffs {
+                    let request = p2p_proto_v0::sync::GetStateDiffs {
                         start_block: start_hash.0,
                         count,
                         // FIXME unused for now, will likely trigger a failure once it is really used in prod code
@@ -1005,7 +1008,7 @@ mod tests {
                     let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, _, state_update)|
                         (state_update.block_hash.0, state_update)).collect::<HashMap<_, _>>();
 
-                    let request = p2p_proto::sync::GetStateDiffs {
+                    let request = p2p_proto_v0::sync::GetStateDiffs {
                         start_block: start_hash.0,
                         count,
                         // FIXME unused for now, will likely trigger a failure once it is really used in prod code

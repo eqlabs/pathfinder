@@ -10,7 +10,7 @@ members = [
     "crates/merkle-tree",
     "crates/p2p",
     "crates/p2p_bootstrap",
-    "crates/p2p_proto",
+    "crates/p2p_proto_v0",
     "crates/p2p_proto_derive",
     "crates/pathfinder",
     "crates/retry",

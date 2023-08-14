@@ -143,7 +143,7 @@ async fn handle_p2p_event(
         p2p::Event::InboundSyncRequest {
             request, channel, ..
         } => {
-            use p2p_proto::sync::{Request, Response};
+            use p2p_proto_v0::sync::{Request, Response};
             let response = match request {
                 Request::GetBlockHeaders(r) => {
                     Response::BlockHeaders(sync_handlers::get_block_headers(r, storage).await?)
@@ -182,7 +182,7 @@ async fn handle_p2p_event(
         }
         p2p::Event::BlockPropagation { from, message } => {
             tracing::info!(%from, ?message, "Block Propagation");
-            if let p2p_proto::propagation::Message::NewBlockHeader(h) = *message {
+            if let p2p_proto_v0::propagation::Message::NewBlockHeader(h) = *message {
                 tx.send_if_modified(|head| {
                     let current_height = head.unwrap_or_default().0.get();
 
@@ -204,8 +204,8 @@ async fn handle_p2p_event(
     Ok(())
 }
 
-async fn current_status(chain_id: ChainId, sync_state: &SyncState) -> p2p_proto::sync::Status {
-    use p2p_proto::sync::Status;
+async fn current_status(chain_id: ChainId, sync_state: &SyncState) -> p2p_proto_v0::sync::Status {
+    use p2p_proto_v0::sync::Status;
     use pathfinder_rpc::v02::types::syncing::Syncing;
 
     let sync_status = { sync_state.status.read().await.clone() };

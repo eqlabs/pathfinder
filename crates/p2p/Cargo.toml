@@ -28,7 +28,7 @@ libp2p = { version = "0.51.3", default-features = false, features = [
     "dcutr",
     "macros",
 ] }
-p2p_proto = { path = "../p2p_proto" }
+p2p_proto_v0 = { path = "../p2p_proto_v0" }
 pathfinder-common = { path = "../common" }
 prost = "0.11.2"
 rand = { workspace = true }

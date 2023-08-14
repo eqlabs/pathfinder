@@ -126,7 +126,7 @@ impl SyncClient {
     // Propagate new L2 head header
     pub async fn propagate_new_header(
         &self,
-        header: p2p_proto::common::BlockHeader,
+        header: p2p_proto_v0::common::BlockHeader,
     ) -> anyhow::Result<()> {
         tracing::debug!(block_number=%header.number, topic=%self.block_propagation_topic,
             "Propagating header"
@@ -135,8 +135,8 @@ impl SyncClient {
         self.client
             .publish_propagation_message(
                 &self.block_propagation_topic,
-                p2p_proto::propagation::Message::NewBlockHeader(
-                    p2p_proto::propagation::NewBlockHeader { header },
+                p2p_proto_v0::propagation::Message::NewBlockHeader(
+                    p2p_proto_v0::propagation::NewBlockHeader { header },
                 ),
             )
             .await
@@ -176,7 +176,7 @@ impl SyncClient {
         // start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
         start_block: BlockNumber, // TODO number or hash
         num_blocks: usize,        // FIXME, use range?
-    ) -> Option<Vec<p2p_proto::common::BlockHeader>> {
+    ) -> Option<Vec<p2p_proto_v0::common::BlockHeader>> {
         if num_blocks == 0 {
             return Some(Vec::new());
         }
@@ -188,17 +188,19 @@ impl SyncClient {
                 .client
                 .send_sync_request(
                     peer,
-                    p2p_proto::sync::Request::GetBlockHeaders(p2p_proto::sync::GetBlockHeaders {
-                        start_block: start_block.get(),
-                        count,
-                        size_limit: u64::MAX, // FIXME
-                        direction: p2p_proto::sync::Direction::Forward,
-                    }),
+                    p2p_proto_v0::sync::Request::GetBlockHeaders(
+                        p2p_proto_v0::sync::GetBlockHeaders {
+                            start_block: start_block.get(),
+                            count,
+                            size_limit: u64::MAX, // FIXME
+                            direction: p2p_proto_v0::sync::Direction::Forward,
+                        },
+                    ),
                 )
                 .await;
 
             match response {
-                Ok(p2p_proto::sync::Response::BlockHeaders(x)) => {
+                Ok(p2p_proto_v0::sync::Response::BlockHeaders(x)) => {
                     if x.headers.is_empty() {
                         tracing::debug!(%peer, "Got empty block headers response");
                         continue;
@@ -226,7 +228,7 @@ impl SyncClient {
         &self,
         start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
         num_blocks: usize,           // FIXME, use range?
-    ) -> Option<Vec<p2p_proto::common::BlockBody>> {
+    ) -> Option<Vec<p2p_proto_v0::common::BlockBody>> {
         if num_blocks == 0 {
             return Some(Vec::new());
         }
@@ -238,17 +240,19 @@ impl SyncClient {
                 .client
                 .send_sync_request(
                     peer,
-                    p2p_proto::sync::Request::GetBlockBodies(p2p_proto::sync::GetBlockBodies {
-                        start_block: start_block_hash.0,
-                        count,
-                        size_limit: u64::MAX, // FIXME
-                        direction: p2p_proto::sync::Direction::Forward,
-                    }),
+                    p2p_proto_v0::sync::Request::GetBlockBodies(
+                        p2p_proto_v0::sync::GetBlockBodies {
+                            start_block: start_block_hash.0,
+                            count,
+                            size_limit: u64::MAX, // FIXME
+                            direction: p2p_proto_v0::sync::Direction::Forward,
+                        },
+                    ),
                 )
                 .await;
 
             match response {
-                Ok(p2p_proto::sync::Response::BlockBodies(x)) => {
+                Ok(p2p_proto_v0::sync::Response::BlockBodies(x)) => {
                     if x.block_bodies.is_empty() {
                         tracing::debug!(%peer, "Got empty block bodies response");
                         continue;
@@ -276,7 +280,7 @@ impl SyncClient {
         &self,
         start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
         num_blocks: usize,           // FIXME, use range?
-    ) -> Option<Vec<p2p_proto::sync::BlockStateUpdateWithHash>> {
+    ) -> Option<Vec<p2p_proto_v0::sync::BlockStateUpdateWithHash>> {
         if num_blocks == 0 {
             return Some(Vec::new());
         }
@@ -288,16 +292,16 @@ impl SyncClient {
                 .client
                 .send_sync_request(
                     peer,
-                    p2p_proto::sync::Request::GetStateDiffs(p2p_proto::sync::GetStateDiffs {
+                    p2p_proto_v0::sync::Request::GetStateDiffs(p2p_proto_v0::sync::GetStateDiffs {
                         start_block: start_block_hash.0,
                         count,
                         size_limit: u64::MAX, // FIXME
-                        direction: p2p_proto::sync::Direction::Forward,
+                        direction: p2p_proto_v0::sync::Direction::Forward,
                     }),
                 )
                 .await;
             match response {
-                Ok(p2p_proto::sync::Response::StateDiffs(x)) => {
+                Ok(p2p_proto_v0::sync::Response::StateDiffs(x)) => {
                     if x.block_state_updates.is_empty() {
                         tracing::debug!(%peer, "Got empty state updates response");
                         continue;
@@ -324,9 +328,9 @@ impl SyncClient {
     pub async fn contract_classes(
         &self,
         class_hashes: Vec<ClassHash>,
-    ) -> Option<p2p_proto::sync::Classes> {
+    ) -> Option<p2p_proto_v0::sync::Classes> {
         if class_hashes.is_empty() {
-            return Some(p2p_proto::sync::Classes {
+            return Some(p2p_proto_v0::sync::Classes {
                 classes: Vec::new(),
             });
         }
@@ -338,14 +342,14 @@ impl SyncClient {
                 .client
                 .send_sync_request(
                     peer,
-                    p2p_proto::sync::Request::GetClasses(p2p_proto::sync::GetClasses {
+                    p2p_proto_v0::sync::Request::GetClasses(p2p_proto_v0::sync::GetClasses {
                         class_hashes: class_hashes.clone(),
                         size_limit: u64::MAX, // FIXME
                     }),
                 )
                 .await;
             match response {
-                Ok(p2p_proto::sync::Response::Classes(x)) => {
+                Ok(p2p_proto_v0::sync::Response::Classes(x)) => {
                     if x.classes.is_empty() {
                         tracing::debug!(%peer, "Got empty classes response");
                         continue;
@@ -450,8 +454,8 @@ impl Client {
     pub async fn send_sync_request(
         &self,
         peer_id: PeerId,
-        request: p2p_proto::sync::Request,
-    ) -> anyhow::Result<p2p_proto::sync::Response> {
+        request: p2p_proto_v0::sync::Request,
+    ) -> anyhow::Result<p2p_proto_v0::sync::Response> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::SendSyncRequest {
@@ -466,8 +470,8 @@ impl Client {
 
     pub async fn send_sync_response(
         &self,
-        channel: ResponseChannel<p2p_proto::sync::Response>,
-        response: p2p_proto::sync::Response,
+        channel: ResponseChannel<p2p_proto_v0::sync::Response>,
+        response: p2p_proto_v0::sync::Response,
     ) {
         self.sender
             .send(Command::SendSyncResponse { channel, response })
@@ -478,7 +482,7 @@ impl Client {
     pub async fn publish_propagation_message(
         &self,
         topic: &str,
-        message: p2p_proto::propagation::Message,
+        message: p2p_proto_v0::propagation::Message,
     ) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);
@@ -493,7 +497,11 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn send_sync_status_request(&self, peer_id: PeerId, status: p2p_proto::sync::Status) {
+    pub async fn send_sync_status_request(
+        &self,
+        peer_id: PeerId,
+        status: p2p_proto_v0::sync::Status,
+    ) {
         self.sender
             .send(Command::SendSyncStatusRequest { peer_id, status })
             .await
@@ -533,20 +541,20 @@ enum Command {
     },
     SendSyncRequest {
         peer_id: PeerId,
-        request: p2p_proto::sync::Request,
-        sender: oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>,
+        request: p2p_proto_v0::sync::Request,
+        sender: oneshot::Sender<anyhow::Result<p2p_proto_v0::sync::Response>>,
     },
     SendSyncStatusRequest {
         peer_id: PeerId,
-        status: p2p_proto::sync::Status,
+        status: p2p_proto_v0::sync::Status,
     },
     SendSyncResponse {
-        channel: ResponseChannel<p2p_proto::sync::Response>,
-        response: p2p_proto::sync::Response,
+        channel: ResponseChannel<p2p_proto_v0::sync::Response>,
+        response: p2p_proto_v0::sync::Response,
     },
     PublishPropagationMessage {
         topic: IdentTopic,
-        message: Box<p2p_proto::propagation::Message>,
+        message: Box<p2p_proto_v0::propagation::Message>,
         sender: EmptyResultSender,
     },
     /// For testing purposes only
@@ -568,12 +576,12 @@ pub enum Event {
     },
     InboundSyncRequest {
         from: PeerId,
-        request: p2p_proto::sync::Request,
-        channel: ResponseChannel<p2p_proto::sync::Response>,
+        request: p2p_proto_v0::sync::Request,
+        channel: ResponseChannel<p2p_proto_v0::sync::Response>,
     },
     BlockPropagation {
         from: PeerId,
-        message: Box<p2p_proto::propagation::Message>,
+        message: Box<p2p_proto_v0::propagation::Message>,
     },
     /// For testing purposes only
     Test(TestEvent),
@@ -600,7 +608,7 @@ pub struct MainLoop {
     peers: Arc<RwLock<peers::Peers>>,
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_block_sync_requests:
-        HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>>,
+        HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto_v0::sync::Response>>>,
     pending_block_sync_status_requests: HashSet<RequestId>,
     request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
@@ -827,8 +835,9 @@ impl MainLoop {
                 message_id: id,
                 message,
             })) => {
-                match p2p_proto::propagation::Message::from_protobuf_encoding(message.data.as_ref())
-                {
+                match p2p_proto_v0::propagation::Message::from_protobuf_encoding(
+                    message.data.as_ref(),
+                ) {
                     Ok(decoded_message) => {
                         tracing::debug!(
                             "Gossipsub Event Message: [id={}][peer={}] {:?} ({} bytes)",
@@ -969,7 +978,7 @@ impl MainLoop {
                         tracing::debug!(?request, %peer, "Received block sync request");
 
                         // received an incoming status request, update peer state
-                        if let p2p_proto::sync::Request::Status(status) = &request {
+                        if let p2p_proto_v0::sync::Request::Status(status) = &request {
                             self.peers
                                 .write()
                                 .await
@@ -993,7 +1002,7 @@ impl MainLoop {
                     } => {
                         if self.pending_block_sync_status_requests.remove(&request_id) {
                             // this was a status response, handle this internally
-                            if let p2p_proto::sync::Response::Status(status) = response {
+                            if let p2p_proto_v0::sync::Response::Status(status) = response {
                                 self.peers.write().await.update_sync_status(&peer, status);
                                 Ok(())
                             } else {
@@ -1148,7 +1157,7 @@ impl MainLoop {
                     .swarm
                     .behaviour_mut()
                     .block_sync
-                    .send_request(&peer_id, p2p_proto::sync::Request::Status(status));
+                    .send_request(&peer_id, p2p_proto_v0::sync::Request::Status(status));
                 self.pending_block_sync_status_requests.insert(request_id);
                 self.trigger_periodic_sync_status(peer_id);
             }
