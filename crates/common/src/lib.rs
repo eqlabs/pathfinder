@@ -53,6 +53,10 @@ impl EntryPoint {
             input,
         ))))
     }
+
+    /// The constructor [EntryPoint], defined as the truncated keccak of b"constructor".
+    pub const CONSTRUCTOR: Self =
+        entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194");
 }
 
 impl StateCommitment {
@@ -454,6 +458,19 @@ pub fn calculate_class_commitment_leaf_hash(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn constructor_entry_point() {
+        use crate::truncated_keccak;
+        use crate::EntryPoint;
+        use sha3::{Digest, Keccak256};
+
+        let mut keccak = Keccak256::default();
+        keccak.update(b"constructor");
+        let expected = EntryPoint(truncated_keccak(<[u8; 32]>::from(keccak.finalize())));
+
+        assert_eq!(EntryPoint::CONSTRUCTOR, expected);
+    }
+
     mod starknet_version {
         use super::super::StarknetVersion;
 
