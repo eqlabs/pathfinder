@@ -11,7 +11,7 @@ mod get_class_at;
 mod get_class_hash_at;
 mod get_nonce;
 mod get_storage_at;
-mod get_transaction_by_block_id_and_index;
+pub(crate) mod get_transaction_by_block_id_and_index;
 pub(crate) mod get_transaction_by_hash;
 mod get_transaction_receipt;
 mod pending_transactions;

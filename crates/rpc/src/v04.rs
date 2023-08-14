@@ -53,7 +53,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method("v0.4_starknet_getStorageAt", v02_method::get_storage_at)?
         .register_method(
             "v0.4_starknet_getTransactionByBlockIdAndIndex",
-            v02_method::get_transaction_by_block_id_and_index,
+            v04_method::get_transaction_by_block_id_and_index,
         )?
         .register_method(
             "v0.4_starknet_getTransactionByHash",
