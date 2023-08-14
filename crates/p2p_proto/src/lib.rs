@@ -8,6 +8,9 @@ pub mod proto {
     pub mod event {
         include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     }
+    pub mod mempool {
+        include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -118,3 +121,4 @@ use p2p_proto_derive::*;
 pub mod block;
 pub mod common;
 pub mod event;
+pub mod mempool;

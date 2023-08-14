@@ -6,6 +6,7 @@ fn main() -> Result<()> {
             "proto/block.proto",
             "proto/common.proto",
             "proto/event.proto",
+            "proto/mempool.proto",
         ],
         &["proto"],
     )?;
