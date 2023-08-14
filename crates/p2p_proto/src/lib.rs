@@ -5,6 +5,9 @@ pub mod proto {
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
+    pub mod event {
+        include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -114,3 +117,4 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
 use p2p_proto_derive::*;
 pub mod block;
 pub mod common;
+pub mod event;
