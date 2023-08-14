@@ -65,7 +65,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method_with_no_input(
             "v0.4_starknet_pendingTransactions",
-            v02_method::pending_transactions,
+            v04_method::pending_transactions,
         )?
         .register_method_with_no_input("v0.4_starknet_syncing", v04_method::syncing)?
         // Specific implementations for v0.3

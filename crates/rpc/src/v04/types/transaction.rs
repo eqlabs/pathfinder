@@ -6,6 +6,7 @@ use serde::ser::SerializeStruct;
 use serde::Serialize;
 
 /// Equivalent to the TXN type from the specification.
+#[derive(PartialEq, Debug)]
 pub struct Transaction(pub pathfinder_common::transaction::TransactionVariant);
 
 impl Serialize for Transaction {
