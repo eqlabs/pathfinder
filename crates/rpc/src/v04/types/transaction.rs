@@ -2,12 +2,30 @@ use pathfinder_common::transaction::{
     DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction, DeployTransaction,
     InvokeTransactionV0, InvokeTransactionV1, L1HandlerTransaction,
 };
+use pathfinder_common::TransactionHash;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 
 /// Equivalent to the TXN type from the specification.
 #[derive(PartialEq, Debug)]
 pub struct Transaction(pub pathfinder_common::transaction::TransactionVariant);
+
+/// A transaction and its hash, a common structure used in the spec.
+#[derive(serde::Serialize, PartialEq, Debug)]
+pub struct TransactionWithHash {
+    pub transaction_hash: TransactionHash,
+    #[serde(flatten)]
+    pub txn: Transaction,
+}
+
+impl From<pathfinder_common::transaction::Transaction> for TransactionWithHash {
+    fn from(value: pathfinder_common::transaction::Transaction) -> Self {
+        Self {
+            transaction_hash: value.hash,
+            txn: Transaction(value.variant),
+        }
+    }
+}
 
 impl Serialize for Transaction {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

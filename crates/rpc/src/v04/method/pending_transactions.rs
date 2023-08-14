@@ -1,16 +1,7 @@
-use pathfinder_common::TransactionHash;
-
 use crate::context::RpcContext;
-use crate::v04::types::Transaction;
+use crate::v04::types::TransactionWithHash;
 
 crate::error::generate_rpc_error_subset!(PendingTransactionsError:);
-
-#[derive(serde::Serialize, PartialEq, Debug)]
-pub struct TransactionWithHash {
-    transaction_hash: TransactionHash,
-    #[serde(flatten)]
-    txn: Transaction,
-}
 
 pub async fn pending_transactions(
     context: RpcContext,
@@ -22,10 +13,7 @@ pub async fn pending_transactions(
                 .iter()
                 .map(|x| {
                     let common_tx = pathfinder_common::transaction::Transaction::from(x.clone());
-                    TransactionWithHash {
-                        transaction_hash: common_tx.hash,
-                        txn: Transaction(common_tx.variant),
-                    }
+                    common_tx.into()
                 })
                 .collect(),
             None => Vec::new(),
