@@ -395,13 +395,11 @@ pub(super) fn contract_class_hash(
         ),
         BlockId::Hash(hash) => tx.inner().query_row(
             r"SELECT class_hash FROM contract_updates
-                JOIN canonical_blocks ON canonical_blocks.number = contract_updates.block_number
-                WHERE 
-                    canonical_blocks.hash = ? AND 
-                    block_number <= contract_updates.block_number AND 
-                    contract_address = ?
+                WHERE contract_address = ? AND block_number <= (
+                    SELECT number FROM canonical_blocks WHERE hash = ?
+                )
                 ORDER BY block_number DESC LIMIT 1",
-            params![&hash, &contract_address],
+            params![&contract_address, &hash],
             |row| row.get_class_hash(0),
         ),
     }
