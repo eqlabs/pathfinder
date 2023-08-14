@@ -6,7 +6,7 @@ use serde::ser::SerializeStruct;
 use serde::Serialize;
 
 /// Equivalent to the TXN type from the specification.
-pub struct Transaction(pub pathfinder_common::transaction::Transaction);
+pub struct Transaction(pub pathfinder_common::transaction::TransactionVariant);
 
 impl Serialize for Transaction {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -14,7 +14,7 @@ impl Serialize for Transaction {
         S: serde::Serializer,
     {
         use pathfinder_common::transaction::TransactionVariant;
-        match &self.0.variant {
+        match &self.0 {
             TransactionVariant::DeclareV0(x) => DeclareV0Helper(x).serialize(serializer),
             TransactionVariant::DeclareV1(x) => DeclareV1Helper(x).serialize(serializer),
             TransactionVariant::DeclareV2(x) => DeclareV2Helper(x).serialize(serializer),
