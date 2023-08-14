@@ -6317,6 +6317,7 @@ dependencies = [
  "fake",
  "libp2p-identity 0.2.2",
  "p2p_proto_derive",
+ "primitive-types",
  "prost",
  "prost-build",
  "prost-types",

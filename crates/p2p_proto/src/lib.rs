@@ -11,6 +11,9 @@ pub mod proto {
     pub mod mempool {
         include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
     }
+    pub mod receipt {
+        include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -122,3 +125,4 @@ pub mod block;
 pub mod common;
 pub mod event;
 pub mod mempool;
+pub mod receipt;

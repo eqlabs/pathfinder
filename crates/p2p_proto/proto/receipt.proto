@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package starknet.receipt;
+
+import "common.proto";
+
+message MessageToL1 {
+  starknet.common.Felt252 from_address = 1;
+  repeated starknet.common.Felt252 payload = 2;
+  EthereumAddress to_address = 3;
+}
+
+message EthereumAddress { bytes elements = 1; }
+
+message MessageToL2 {
+  EthereumAddress from_address = 1;
+  repeated starknet.common.Felt252 payload = 2;
+  starknet.common.Felt252 to_address = 3;
+  starknet.common.Felt252 entry_point_selector = 4;
+  starknet.common.Felt252 nonce = 5;
+}
+
+message CommonTransactionReceiptProperties {
+  starknet.common.Felt252 transaction_hash = 1;
+  uint32 transaction_index = 2;
+  starknet.common.Felt252 actual_fee = 3;
+  repeated MessageToL1 messages_sent = 4;
+  // repeated Event events = 5; separate
+  // Optional
+  MessageToL2 consumed_message = 5;
+  ExecutionResources execution_resources = 6;
+  // FIXME: the following 2 fields are not yet in the spec
+  ExecutionStatus execution_status = 8;
+  // Empty if execution_status == SUCCEEDED
+  string revert_error = 9;
+}
+
+message ExecutionResources {
+  message BuiltinInstanceCounter {
+    uint64 bitwise_builtin = 1;
+    uint64 ecdsa_builtin = 2;
+    uint64 ec_op_builtin = 3;
+    uint64 output_builtin = 4;
+    uint64 pedersen_builtin = 5;
+    uint64 range_check_builtin = 6;
+    // FIXME: the following 3 fields are not yet in the spec
+    uint64 keccak_builtin = 7;
+    uint64 poseidon_builtin = 8;
+    uint64 segment_arena_builtin = 9;
+  }
+
+  BuiltinInstanceCounter builtin_instance_counter = 1;
+  uint64 n_steps = 2;
+  uint64 n_memory_holes = 3;
+}
+
+// FIXME: added to fix the spec
+enum ExecutionStatus {
+  SUCCEEDED = 0;
+  REVERTED = 1;
+}
+
+// TBD: also deploy of contract?
+message InvokeTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message L1HandlerTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message DeclareTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message DeprecatedDeployTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+  starknet.common.Felt252 contract_address = 2;
+}
+
+message DeployAccountTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+  starknet.common.Felt252 contract_address = 2;
+}
+
+message Receipt {
+  oneof receipt {
+    InvokeTransactionReceipt invoke = 1;
+    L1HandlerTransactionReceipt l1_handler = 2;
+    DeclareTransactionReceipt declare = 3;
+    DeprecatedDeployTransactionReceipt deprecated_deploy = 4;
+    DeployAccountTransactionReceipt deploy_account = 5;
+  }
+}
+
+message GetReceipts {
+  starknet.common.BlockID id = 1;
+}
+
+message Receipts {
+    repeated Receipt receipts = 1;
+}
