@@ -26,6 +26,8 @@ pub async fn pending_transactions(
 
 #[cfg(test)]
 mod tests {
+    use crate::v04::types::Transaction;
+
     use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::transaction::DeployTransaction;
