@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package starknet.common;
+
+message Felt252 {
+    bytes elements = 1;
+}
+
+message Hash {
+    bytes elements = 1;
+}
+
+message Address {
+    bytes elements = 1;
+}
+
+message PeerID {
+    bytes id = 1;
+}
+
+message ChainID {
+    bytes id = 1;
+}
+
+message BlockID {
+    Hash hash = 1;
+    uint64 height = 2;
+}
+
+message Signature {
+    repeated Felt252 parts = 1; // no separation of r, s because of AA
+}
+
+message Merkle {
+    uint32 n_leaves = 1; // needed to know the height, so as to how many nodes to expect in a proof.
+                         // and also when receiving all leaves, how many to expect
+    Hash root = 2;
+}
