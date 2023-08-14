@@ -16,6 +16,7 @@ mod macros;
 pub mod prelude;
 pub mod state_update;
 pub mod test_utils;
+pub mod transaction;
 pub mod trie;
 
 pub use state_update::StateUpdate;
@@ -126,7 +127,7 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 pub struct GasPrice(pub u128);
 
 /// Starknet transaction version.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct TransactionVersion(pub H256);
 
 impl TransactionVersion {
