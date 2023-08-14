@@ -395,13 +395,11 @@ pub(super) fn contract_class_hash(
         ),
         BlockId::Hash(hash) => tx.inner().query_row(
             r"SELECT class_hash FROM contract_updates
-                JOIN canonical_blocks ON canonical_blocks.number = contract_updates.block_number
-                WHERE 
-                    canonical_blocks.hash = ? AND 
-                    block_number <= contract_updates.block_number AND 
-                    contract_address = ?
+                WHERE contract_address = ? AND block_number <= (
+                    SELECT number FROM canonical_blocks WHERE hash = ?
+                )
                 ORDER BY block_number DESC LIMIT 1",
-            params![&hash, &contract_address],
+            params![&contract_address, &hash],
             |row| row.get_class_hash(0),
         ),
     }
@@ -433,12 +431,20 @@ mod tests {
         let header_2 = header_1
             .child_builder()
             .finalize_with_hash(block_hash!("0xa111123"));
+        let header_3 = header_2
+            .child_builder()
+            .finalize_with_hash(block_hash!("0xa111123aaa"));
+        let header_4 = header_3
+            .child_builder()
+            .finalize_with_hash(block_hash!("0xa111123aaafff"));
 
         let diff_0 = StateUpdate::default();
         let diff_1 = StateUpdate::default()
             .with_declared_cairo_class(original_class)
             .with_deployed_contract(contract, original_class);
         let diff_2 = StateUpdate::default().with_replaced_class(contract, replaced_class);
+        let diff_3 = StateUpdate::default();
+        let diff_4 = StateUpdate::default();
 
         tx.insert_cairo_class(original_class, definition).unwrap();
         tx.insert_cairo_class(replaced_class, definition).unwrap();
@@ -446,10 +452,14 @@ mod tests {
         tx.insert_block_header(&header_0).unwrap();
         tx.insert_block_header(&header_1).unwrap();
         tx.insert_block_header(&header_2).unwrap();
+        tx.insert_block_header(&header_3).unwrap();
+        tx.insert_block_header(&header_4).unwrap();
 
         tx.insert_state_update(header_0.number, &diff_0).unwrap();
         tx.insert_state_update(header_1.number, &diff_1).unwrap();
         tx.insert_state_update(header_2.number, &diff_2).unwrap();
+        tx.insert_state_update(header_3.number, &diff_3).unwrap();
+        tx.insert_state_update(header_4.number, &diff_4).unwrap();
 
         let not_deployed_yet =
             super::contract_class_hash(&tx, header_0.number.into(), contract).unwrap();
@@ -477,6 +487,14 @@ mod tests {
         let non_existent =
             super::contract_class_hash(&tx, BlockNumber::GENESIS.into(), non_existent).unwrap();
         assert_eq!(non_existent, None);
+
+        // Query a few blocks after deployment as well. This is a regression case where querying by
+        // block hash failed to find the class hash if it wasn't literally the deployed block.
+        let is_replaced =
+            super::contract_class_hash(&tx, header_4.number.into(), contract).unwrap();
+        assert_eq!(is_replaced, Some(replaced_class));
+        let is_replaced = super::contract_class_hash(&tx, header_4.hash.into(), contract).unwrap();
+        assert_eq!(is_replaced, Some(replaced_class));
     }
 
     #[test]

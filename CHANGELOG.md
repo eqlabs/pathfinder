@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Querying `starknet_getClassAt` and `starknet_getClassHashAt` by block hash incorrectly returns contract not found
+
 ## [0.7.1] - 2023-08-08
 
 ### Fixed
