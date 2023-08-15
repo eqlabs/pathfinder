@@ -10,6 +10,8 @@ pub mod middleware;
 mod module;
 mod pathfinder;
 pub mod test_client;
+#[cfg(test)]
+pub(crate) mod test_setup;
 pub mod v02;
 pub mod v03;
 pub mod v04;

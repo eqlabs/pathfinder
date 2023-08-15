@@ -379,66 +379,23 @@ pub mod dto {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, GasPrice, StorageAddress,
-        TransactionVersion,
-    };
-    use pathfinder_common::{macro_prelude::*, Fee, StateUpdate};
-    use pathfinder_storage::Storage;
-    use starknet_gateway_test_fixtures::class_definitions::{
-        DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
-    };
-
     use crate::v02::method::call::FunctionCall;
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
         BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1,
     };
     use crate::v02::types::ContractClass;
+    use pathfinder_common::{felt, StorageAddress, TransactionVersion};
+    use pathfinder_common::{macro_prelude::*, Fee};
+    use starknet_gateway_test_fixtures::class_definitions::{
+        DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
+    };
 
     use super::*;
 
-    fn test_context() -> RpcContext {
-        let storage = Storage::in_memory().expect("storage");
-
-        {
-            let mut db = storage.connection().unwrap();
-            let tx = db.transaction().expect("tx");
-
-            tx.insert_cairo_class(DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
-                .expect("insert class");
-
-            let header = BlockHeader::builder()
-                .with_number(BlockNumber::GENESIS)
-                .with_timestamp(BlockTimestamp::new_or_panic(0))
-                .finalize_with_hash(BlockHash(felt!("0xb00")));
-            tx.insert_block_header(&header).unwrap();
-
-            let block1_number = BlockNumber::GENESIS + 1;
-            let block1_hash = BlockHash(felt!("0xb01"));
-
-            let header = BlockHeader::builder()
-                .with_number(block1_number)
-                .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_gas_price(GasPrice(1))
-                .finalize_with_hash(block1_hash);
-            tx.insert_block_header(&header).unwrap();
-
-            let state_update = StateUpdate::default()
-                .with_block_hash(block1_hash)
-                .with_declared_cairo_class(DUMMY_ACCOUNT_CLASS_HASH);
-            tx.insert_state_update(block1_number, &state_update)
-                .unwrap();
-
-            tx.commit().unwrap();
-        }
-
-        RpcContext::for_tests().with_storage(storage)
-    }
-
     #[tokio::test]
     async fn test_simulate_transaction_with_skip_fee_charge() {
-        let rpc = test_context();
+        let (context, _, _, _) = crate::test_setup::test_context().await;
 
         let input_json = serde_json::json!({
             "block_id": {"block_number": 1},
@@ -515,7 +472,7 @@ mod tests {
             }]
         };
 
-        let result = simulate_transactions(rpc, input).await.expect("result");
+        let result = simulate_transactions(context, input).await.expect("result");
         pretty_assertions::assert_eq!(result.0, expected);
     }
 
