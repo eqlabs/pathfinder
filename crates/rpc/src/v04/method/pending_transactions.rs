@@ -35,6 +35,8 @@ mod tests {
     use pathfinder_common::transaction::InvokeTransactionV0;
     use pathfinder_common::transaction::TransactionVariant;
 
+    use pretty_assertions::assert_eq;
+
     #[tokio::test]
     async fn pending() {
         // Transcribed from the `RpcContext::for_tests_with_pending` transactions.
@@ -59,7 +61,7 @@ mod tests {
         };
 
         let tx2 = TransactionWithHash {
-            transaction_hash: transaction_hash_bytes!(b"pending tx hash 2"),
+            transaction_hash: transaction_hash_bytes!(b"pending reverted"),
             txn: Transaction(TransactionVariant::InvokeV0(InvokeTransactionV0 {
                 sender_address: contract_address_bytes!(b"pending contract addr 0"),
                 entry_point_selector: entry_point_bytes!(b"entry point 0"),

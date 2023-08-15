@@ -61,7 +61,6 @@ impl From<L1HandlerTransaction> for TransactionVariant {
     }
 }
 
-
 impl TransactionVariant {
     pub const fn kind(&self) -> &str {
         use TransactionVariant::*;
