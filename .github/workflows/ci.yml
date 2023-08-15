@@ -55,9 +55,6 @@ jobs:
 
       - name: Run unit tests
         run: timeout 5m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
-          
-      - name: Run integration tests
-        run: timeout 3m cargo test --test integration* --locked
 
   clippy:
     runs-on: ubuntu-latest
