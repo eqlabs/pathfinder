@@ -396,7 +396,7 @@ pub fn bytes_as_hex_str<'a>(bytes: &'a [u8], buf: &'a mut [u8]) -> &'a str {
 }
 
 /// A convenience function which produces a "0x" prefixed hex string from a [Felt].
-fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
+pub fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     if !bytes.iter().any(|b| *b != 0) {
         return Cow::from("0x0");
     }

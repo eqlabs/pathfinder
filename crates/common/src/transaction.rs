@@ -30,6 +30,38 @@ impl Transaction {
     }
 }
 
+impl From<DeclareTransactionV2> for TransactionVariant {
+    fn from(value: DeclareTransactionV2) -> Self {
+        Self::DeclareV2(value)
+    }
+}
+impl From<DeployTransaction> for TransactionVariant {
+    fn from(value: DeployTransaction) -> Self {
+        Self::Deploy(value)
+    }
+}
+impl From<DeployAccountTransaction> for TransactionVariant {
+    fn from(value: DeployAccountTransaction) -> Self {
+        Self::DeployAccount(value)
+    }
+}
+impl From<InvokeTransactionV0> for TransactionVariant {
+    fn from(value: InvokeTransactionV0) -> Self {
+        Self::InvokeV0(value)
+    }
+}
+impl From<InvokeTransactionV1> for TransactionVariant {
+    fn from(value: InvokeTransactionV1) -> Self {
+        Self::InvokeV1(value)
+    }
+}
+impl From<L1HandlerTransaction> for TransactionVariant {
+    fn from(value: L1HandlerTransaction) -> Self {
+        Self::L1Handler(value)
+    }
+}
+
+
 impl TransactionVariant {
     pub const fn kind(&self) -> &str {
         use TransactionVariant::*;
