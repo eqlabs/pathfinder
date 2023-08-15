@@ -37,7 +37,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method(
             "v0.4_starknet_getBlockWithTxs",
-            v02_method::get_block_with_txs,
+            v04_method::get_block_with_txs,
         )?
         .register_method(
             "v0.4_starknet_getBlockTransactionCount",

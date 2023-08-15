@@ -6,12 +6,14 @@ use pathfinder_common::TransactionHash;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 
+use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
+
 /// Equivalent to the TXN type from the specification.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub struct Transaction(pub pathfinder_common::transaction::TransactionVariant);
 
 /// A transaction and its hash, a common structure used in the spec.
-#[derive(serde::Serialize, PartialEq, Debug)]
+#[derive(serde::Serialize, PartialEq, Debug, Clone, Eq)]
 pub struct TransactionWithHash {
     pub transaction_hash: TransactionHash,
     #[serde(flatten)]
@@ -24,6 +26,12 @@ impl From<pathfinder_common::transaction::Transaction> for TransactionWithHash {
             transaction_hash: value.hash,
             txn: Transaction(value.variant),
         }
+    }
+}
+
+impl From<GatewayTransaction> for TransactionWithHash {
+    fn from(value: GatewayTransaction) -> Self {
+        pathfinder_common::transaction::Transaction::from(value).into()
     }
 }
 
