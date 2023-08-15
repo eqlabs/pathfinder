@@ -157,6 +157,13 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         self.as_ref().state_update(block).await
     }
 
+    async fn state_update_with_block(
+        &self,
+        block: BlockId,
+    ) -> Result<(reply::MaybePendingBlock, StateUpdate), SequencerError> {
+        self.as_ref().state_update_with_block(block).await
+    }
+
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         self.as_ref().eth_contract_addresses().await
     }
