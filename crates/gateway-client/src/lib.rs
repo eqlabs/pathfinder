@@ -61,6 +61,13 @@ pub trait GatewayApi: Sync {
         unimplemented!();
     }
 
+    async fn state_update_with_block(
+        &self,
+        block: BlockId,
+    ) -> Result<(reply::MaybePendingBlock, StateUpdate), SequencerError> {
+        unimplemented!();
+    }
+
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         unimplemented!();
     }
@@ -148,6 +155,13 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
 
     async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
         self.as_ref().state_update(block).await
+    }
+
+    async fn state_update_with_block(
+        &self,
+        block: BlockId,
+    ) -> Result<(reply::MaybePendingBlock, StateUpdate), SequencerError> {
+        self.as_ref().state_update_with_block(block).await
     }
 
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
@@ -428,6 +442,28 @@ impl GatewayApi for Client {
             .await?;
 
         Ok(state_update.into())
+    }
+
+    /// Gets a _block_ and the corresponding _state update_.
+    ///
+    /// Available since Starknet 0.12.2.
+    ///
+    /// This is useful because using fetching both in a single request guarantees the consistency
+    /// of the block and state update information for the pending block.
+    #[tracing::instrument(skip(self))]
+    async fn state_update_with_block(
+        &self,
+        block: BlockId,
+    ) -> Result<(reply::MaybePendingBlock, StateUpdate), SequencerError> {
+        let result: reply::StateUpdateWithBlock = self
+            .feeder_gateway_request()
+            .get_state_update()
+            .with_block(block)
+            .add_param("includeBlock", "true")
+            .with_retry(self.retry)
+            .get()
+            .await?;
+        Ok((result.block, result.state_update.into()))
     }
 
     /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
@@ -1134,6 +1170,18 @@ mod tests {
                 (v0_11_0::state_update::PENDING, 200),
             )]);
             client.state_update(BlockId::Pending).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn pending_with_block() {
+            let (_jh, client) = setup([(
+                "/feeder_gateway/get_state_update?blockNumber=pending&includeBlock=true",
+                (v0_12_2::state_update::PENDING_WITH_BLOCK, 200),
+            )]);
+            client
+                .state_update_with_block(BlockId::Pending)
+                .await
+                .unwrap();
         }
     }
 

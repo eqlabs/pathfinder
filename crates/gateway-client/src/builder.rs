@@ -218,6 +218,7 @@ impl<'a> Request<'a, stage::Final> {
             meta: RequestMetadata,
         ) -> Result<T, SequencerError> {
             with_metrics(meta, async move {
+                tracing::trace!(%url, "Fetching data from feeder gateway");
                 let response = client.get(url).send().await?;
                 parse::<T>(response).await
             })

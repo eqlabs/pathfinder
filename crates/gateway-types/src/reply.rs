@@ -943,6 +943,13 @@ pub mod state_update {
     }
 }
 
+/// Used to deserialize replies to `get_state_update&includeBlock=true`.
+#[derive(Clone, Debug, Deserialize)]
+pub struct StateUpdateWithBlock {
+    pub block: MaybePendingBlock,
+    pub state_update: StateUpdate,
+}
+
 /// Used to deserialize replies to Starknet Ethereum contract requests.
 #[serde_as]
 #[derive(Clone, Debug, Deserialize)]

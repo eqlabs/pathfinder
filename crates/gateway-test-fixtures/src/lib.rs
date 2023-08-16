@@ -138,6 +138,13 @@ pub mod v0_11_0 {
     }
 }
 
+pub mod v0_12_2 {
+    pub mod state_update {
+        pub const PENDING_WITH_BLOCK: &str =
+            str_fixture!("0.12.2/state-update/pending_with_block.json");
+    }
+}
+
 pub mod add_transaction {
     pub const INVOKE_CONTRACT_WITH_SIGNATURE: &str =
         str_fixture!("add-transaction/invoke-contract-with-signature.json");

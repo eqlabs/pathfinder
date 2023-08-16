@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - RPC v0.4 `starknet_getTransactionByHash` uses the wrong error code for `TXN_HASH_NOT_FOUND`
 - Querying `starknet_getClassAt` and `starknet_getClassHashAt` by block hash incorrectly returns contract not found
+- On Starknet 0.12.2 pathfinder now provides consistent pending data.
 
 ## [0.7.1] - 2023-08-08
 
