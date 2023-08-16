@@ -1,4 +1,5 @@
 use crate::common::Hash;
+use crate::state::ContractStoredValue;
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use stark_hash::Felt;
@@ -48,7 +49,7 @@ impl TryFromProtobuf<proto::snapshot::PatriciaNode> for PatriciaNode {
         let node = node.ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Missing {field_name} in PatriciaNode"),
+                format!("Missing node field in {field_name}"),
             )
         })?;
         Ok(match node {
@@ -131,4 +132,5 @@ pub struct GetContractStorageRange {
 pub struct ContractStorageRange {
     pub range_id: u32,
     pub root: Hash,
+    pub key_value: Vec<ContractStoredValue>,
 }

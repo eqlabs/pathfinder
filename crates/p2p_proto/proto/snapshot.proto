@@ -3,8 +3,7 @@ syntax = "proto3";
 package starknet.snapshot;
 
 import "common.proto";
-// FIXME
-// import "state.proto";
+import "state.proto";
 
 message PatriciaNode {
     message Edge {
@@ -81,6 +80,5 @@ message GetContractStorageRange {
 message ContractStorageRange {
     uint32 range_id = 1;
     starknet.common.Hash root = 2;
-    // FIXME
-    // repeated ContractStoredValue keyValue = 3;
+    repeated starknet.state.ContractStoredValue keyValue = 3;
 }
