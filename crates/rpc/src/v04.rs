@@ -1,6 +1,7 @@
 use crate::module::Module;
 
 mod method;
+mod types;
 
 use crate::v02::method as v02_method;
 use crate::v03::method as v03_method;
@@ -36,7 +37,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method(
             "v0.4_starknet_getBlockWithTxs",
-            v02_method::get_block_with_txs,
+            v04_method::get_block_with_txs,
         )?
         .register_method(
             "v0.4_starknet_getBlockTransactionCount",
@@ -52,7 +53,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         .register_method("v0.4_starknet_getStorageAt", v02_method::get_storage_at)?
         .register_method(
             "v0.4_starknet_getTransactionByBlockIdAndIndex",
-            v02_method::get_transaction_by_block_id_and_index,
+            v04_method::get_transaction_by_block_id_and_index,
         )?
         .register_method(
             "v0.4_starknet_getTransactionByHash",
@@ -64,7 +65,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
         )?
         .register_method_with_no_input(
             "v0.4_starknet_pendingTransactions",
-            v02_method::pending_transactions,
+            v04_method::pending_transactions,
         )?
         .register_method_with_no_input("v0.4_starknet_syncing", v04_method::syncing)?
         // Specific implementations for v0.3

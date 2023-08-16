@@ -2,6 +2,7 @@ use crate::context::RpcContext;
 use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionIndex};
+use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByBlockIdAndIndexInput {
@@ -14,10 +15,10 @@ crate::error::generate_rpc_error_subset!(
     InvalidTxnIndex
 );
 
-pub async fn get_transaction_by_block_id_and_index(
+pub async fn get_transaction_by_block_id_and_index_impl(
     context: RpcContext,
     input: GetTransactionByBlockIdAndIndexInput,
-) -> Result<Transaction, GetTransactionByBlockIdAndIndexError> {
+) -> Result<GatewayTransaction, GetTransactionByBlockIdAndIndexError> {
     let index: usize = input
         .index
         .get()
@@ -47,7 +48,7 @@ pub async fn get_transaction_by_block_id_and_index(
             .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
-            Some(transaction) => Ok(transaction.into()),
+            Some(transaction) => Ok(transaction),
             None => {
                 // We now need to check whether it was the block hash or transaction index which were invalid. We do this by checking if the block exists
                 // at all. If no, then the block hash is invalid. If yes, then the index is invalid.
@@ -66,10 +67,19 @@ pub async fn get_transaction_by_block_id_and_index(
     jh.await.context("Database read panic or shutting down")?
 }
 
+pub async fn get_transaction_by_block_id_and_index(
+    context: RpcContext,
+    input: GetTransactionByBlockIdAndIndexInput,
+) -> Result<Transaction, GetTransactionByBlockIdAndIndexError> {
+    get_transaction_by_block_id_and_index_impl(context, input)
+        .await
+        .map(Into::into)
+}
+
 async fn get_transaction_from_pending(
     pending: &Option<starknet_gateway_types::pending::PendingData>,
     index: usize,
-) -> Result<Transaction, GetTransactionByBlockIdAndIndexError> {
+) -> Result<GatewayTransaction, GetTransactionByBlockIdAndIndexError> {
     // We return InvalidTxnIndex even if the pending block is technically missing.
     // The absence of the pending block should be transparent to the end-user so
     // we effectively handle it as an empty pending block.
@@ -79,7 +89,7 @@ async fn get_transaction_from_pending(
             |block| {
                 block.transactions.get(index).map_or(
                     Err(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex),
-                    |txn| Ok(txn.into()),
+                    |txn| Ok(txn.clone()),
                 )
             },
         ),

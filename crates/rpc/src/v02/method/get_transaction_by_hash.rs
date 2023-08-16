@@ -3,6 +3,8 @@ use crate::v02::types::reply::Transaction;
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
 
+use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
+
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct GetTransactionByHashInput {
     transaction_hash: TransactionHash,
@@ -10,10 +12,10 @@ pub struct GetTransactionByHashInput {
 
 crate::error::generate_rpc_error_subset!(GetTransactionByHashError: TxnHashNotFoundV03);
 
-pub async fn get_transaction_by_hash(
+pub async fn get_transaction_by_hash_impl(
     context: RpcContext,
     input: GetTransactionByHashInput,
-) -> Result<Transaction, GetTransactionByHashError> {
+) -> anyhow::Result<Option<GatewayTransaction>> {
     if let Some(pending) = &context.pending_data {
         let pending_tx = pending.block().await.and_then(|block| {
             block
@@ -23,8 +25,8 @@ pub async fn get_transaction_by_hash(
                 .cloned()
         });
 
-        if let Some(pending_tx) = pending_tx {
-            return Ok(pending_tx.into());
+        if pending_tx.is_some() {
+            return Ok(pending_tx);
         }
     }
 
@@ -42,12 +44,20 @@ pub async fn get_transaction_by_hash(
         // Get the transaction from storage.
         db_tx
             .transaction(input.transaction_hash)
-            .context("Reading transaction from database")?
-            .ok_or(GetTransactionByHashError::TxnHashNotFoundV03)
-            .map(|tx| tx.into())
+            .context("Reading transaction from database")
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+pub async fn get_transaction_by_hash(
+    context: RpcContext,
+    input: GetTransactionByHashInput,
+) -> Result<Transaction, GetTransactionByHashError> {
+    get_transaction_by_hash_impl(context, input)
+        .await?
+        .map(Into::into)
+        .ok_or(GetTransactionByHashError::TxnHashNotFoundV03)
 }
 
 #[cfg(test)]

@@ -22,6 +22,11 @@ impl HashChain {
             .expect("could not have deserialized larger than usize Vecs");
     }
 
+    pub fn chain_update(mut self, value: Felt) -> Self {
+        self.update(value);
+        self
+    }
+
     pub fn finalize(self) -> Felt {
         let count =
             Felt::from_be_slice(&self.count.to_be_bytes()).expect("usize is smaller than 251-bits");

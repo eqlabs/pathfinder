@@ -13,8 +13,10 @@ pub mod event;
 pub mod hash;
 mod header;
 mod macros;
+pub mod prelude;
 pub mod state_update;
 pub mod test_utils;
+pub mod transaction;
 pub mod trie;
 
 pub use state_update::StateUpdate;
@@ -52,6 +54,10 @@ impl EntryPoint {
             input,
         ))))
     }
+
+    /// The constructor [EntryPoint], defined as the truncated keccak of b"constructor".
+    pub const CONSTRUCTOR: Self =
+        entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194");
 }
 
 impl StateCommitment {
@@ -121,7 +127,7 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 pub struct GasPrice(pub u128);
 
 /// Starknet transaction version.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct TransactionVersion(pub H256);
 
 impl TransactionVersion {
@@ -453,6 +459,19 @@ pub fn calculate_class_commitment_leaf_hash(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn constructor_entry_point() {
+        use crate::truncated_keccak;
+        use crate::EntryPoint;
+        use sha3::{Digest, Keccak256};
+
+        let mut keccak = Keccak256::default();
+        keccak.update(b"constructor");
+        let expected = EntryPoint(truncated_keccak(<[u8; 32]>::from(keccak.finalize())));
+
+        assert_eq!(EntryPoint::CONSTRUCTOR, expected);
+    }
+
     mod starknet_version {
         use super::super::StarknetVersion;
 
