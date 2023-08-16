@@ -51,14 +51,8 @@ pub(crate) mod common {
         // actual parent blocks by hash is an internal transformation we do for correctness,
         // unrelated to this consideration.
         let gas_price = if matches!(block_id, BlockId::Pending | BlockId::Latest) {
-            let gas_price = match context.eth_gas_price.as_ref() {
-                Some(cached) => cached.get().await,
-                None => None,
-            };
-
-            let gas_price =
-                gas_price.ok_or_else(|| anyhow::anyhow!("Current eth_gasPrice is unavailable"))?;
-
+            let gas_price = context.eth_gas_price.get().await
+                .ok_or_else(|| anyhow::anyhow!("Current gas price is unavailable"))?;
             GasPriceSource::Current(gas_price)
         } else {
             GasPriceSource::PastBlock
