@@ -2,11 +2,7 @@ use crate::felt::RpcFelt;
 use crate::{context::RpcContext, v03::method::common::base_block_and_pending_for_call};
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 
-crate::error::generate_rpc_error_subset!(
-    CallError: BlockNotFound,
-    ContractNotFound,
-    ContractError
-);
+crate::error::generate_rpc_error_subset!(CallError: BlockNotFound, ContractNotFound, ContractError);
 
 impl From<crate::cairo::ext_py::CallFailure> for CallError {
     fn from(c: crate::cairo::ext_py::CallFailure) -> Self {

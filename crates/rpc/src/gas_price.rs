@@ -39,7 +39,7 @@ impl Cached {
                 Some(Value { gas_price, updated }) if updated.elapsed() < self.horizon => {
                     tracing::debug!(from=?updated, "Using cached gas price value");
                     return Some(gas_price);
-                },
+                }
                 _ => {
                     tracing::debug!("Gas price missing or expired");
                 }
@@ -52,10 +52,13 @@ impl Cached {
         if let Some(gas_price) = self.gas_price().await {
             match self.value.try_lock() {
                 Ok(ref mut guard) => {
-                    **guard = Some(Value { gas_price, updated: Instant::now() });
+                    **guard = Some(Value {
+                        gas_price,
+                        updated: Instant::now(),
+                    });
                     tracing::debug!(?gas_price, "Cached gas price value updated");
                     return Some(gas_price);
-                },
+                }
                 Err(reason) => {
                     tracing::debug!(%reason, "Failed to lock gas price mutex");
                 }
@@ -66,7 +69,8 @@ impl Cached {
     }
 
     async fn gas_price(&self) -> Option<U256> {
-        match self.gateway
+        match self
+            .gateway
             // Don't indefinitely retry as this could block the RPC request.
             .block_without_retry(pathfinder_common::BlockId::Pending)
             .await
@@ -74,10 +78,10 @@ impl Cached {
             Ok(block) => match block {
                 MaybePendingBlock::Pending(block) => {
                     return Some(U256::from(block.gas_price.0));
-                },
+                }
                 MaybePendingBlock::Block(block) => {
                     return block.gas_price.map(|gp| U256::from(gp.0));
-                },
+                }
             },
             Err(reason) => {
                 tracing::debug!(%reason, "Failed to fetch gas price");
