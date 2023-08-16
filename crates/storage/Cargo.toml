@@ -32,7 +32,6 @@ serde_with = { workspace = true }
 sha3 = "0.10"
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
-starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
