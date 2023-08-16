@@ -17,6 +17,9 @@ pub mod proto {
     pub mod snapshot {
         include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
     }
+    pub mod state {
+        include!(concat!(env!("OUT_DIR"), "/starknet.state.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -130,3 +133,4 @@ pub mod event;
 pub mod mempool;
 pub mod receipt;
 pub mod snapshot;
+pub mod state;

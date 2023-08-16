@@ -9,6 +9,7 @@ fn main() -> Result<()> {
             "proto/mempool.proto",
             "proto/receipt.proto",
             "proto/snapshot.proto",
+            "proto/state.proto",
         ],
         &["proto"],
     )?;
