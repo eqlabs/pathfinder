@@ -1,5 +1,5 @@
 use crate::{common::BlockId, proto, ToProtobuf, TryFromProtobuf};
-use fake::{Dummy, Fake, Faker};
+use fake::Dummy;
 use primitive_types::H160;
 use stark_hash::Felt;
 
@@ -39,7 +39,7 @@ impl TryFromProtobuf<proto::receipt::EthereumAddress> for EthereumAddress {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::MessageToL1")]
 pub struct MessageToL1 {
     pub from_address: Felt,
@@ -47,17 +47,7 @@ pub struct MessageToL1 {
     pub to_address: EthereumAddress,
 }
 
-impl<T> Dummy<T> for MessageToL1 {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
-        Self {
-            from_address: Felt::dummy_with_rng(config, rng),
-            payload: Faker.fake_with_rng(rng),
-            to_address: EthereumAddress::dummy_with_rng(config, rng),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::MessageToL2")]
 pub struct MessageToL2 {
     pub from_address: EthereumAddress,
@@ -65,18 +55,6 @@ pub struct MessageToL2 {
     pub to_address: Felt,
     pub entry_point_selector: Felt,
     pub nonce: Felt,
-}
-
-impl<T> Dummy<T> for MessageToL2 {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
-        Self {
-            from_address: EthereumAddress::dummy_with_rng(config, rng),
-            payload: Faker.fake_with_rng(rng),
-            to_address: Faker.fake_with_rng(rng),
-            entry_point_selector: Faker.fake_with_rng(rng),
-            nonce: Faker.fake_with_rng(rng),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
