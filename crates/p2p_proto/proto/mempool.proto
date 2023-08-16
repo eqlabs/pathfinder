@@ -3,6 +3,7 @@ syntax = "proto3";
 package starknet.mempool;
 
 import "common.proto";
+import "transaction.proto";
 
 // Support also non-validating node that wants to know of the mempool (e.g. to estimate fee in case of first price)
 // Result is PooledTransactions+
@@ -18,8 +19,7 @@ message GetPooledTransactions
 }
 
 message NewPooledTransactions {
-    // FIXME
-    // repeated Transaction transactions = 1;
+    repeated starknet.transaction.Transaction transactions = 1;
 
     uint64 marker = 2; // optional, if the peer supports that.
 }

@@ -10,6 +10,7 @@ fn main() -> Result<()> {
             "proto/receipt.proto",
             "proto/snapshot.proto",
             "proto/state.proto",
+            "proto/transaction.proto",
         ],
         &["proto"],
     )?;

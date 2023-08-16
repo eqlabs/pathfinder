@@ -1,4 +1,5 @@
 use crate::common::Hash;
+use crate::transaction::Transaction;
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,8 +17,7 @@ pub struct Hashes {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::mempool::NewPooledTransactions")]
 pub struct NewPooledTransactions {
-    // FIXME
-    // pub transactions: Vec<Transaction>,
+    pub transactions: Vec<Transaction>,
     pub marker: u64,
 }
 
@@ -53,7 +53,7 @@ impl TryFromProtobuf<proto::mempool::GetPooledTransactions> for GetPooledTransac
         let known = input.known.ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Missing field {field_name}"),
+                format!("Missing field known in {field_name}"),
             )
         })?;
         match known {

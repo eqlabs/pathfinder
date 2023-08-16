@@ -20,6 +20,9 @@ pub mod proto {
     pub mod state {
         include!(concat!(env!("OUT_DIR"), "/starknet.state.rs"));
     }
+    pub mod transaction {
+        include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -134,3 +137,4 @@ pub mod mempool;
 pub mod receipt;
 pub mod snapshot;
 pub mod state;
+pub mod transaction;
