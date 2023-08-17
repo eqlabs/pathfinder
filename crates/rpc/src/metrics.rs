@@ -143,7 +143,9 @@ pub mod logger {
 
     #[cfg(test)]
     mod tests {
-        use crate::{context::RpcContext, test_client::TestClientBuilder, RpcServer};
+        use crate::{
+            context::RpcContext, test_client::TestClientBuilder, DefaultVersion, RpcServer,
+        };
         use jsonrpsee::core::Error;
         use jsonrpsee::types::error::{CallError, METHOD_NOT_FOUND_CODE};
         use serde_json::json;
@@ -151,11 +153,12 @@ pub mod logger {
         #[tokio::test]
         async fn invalid_method_name_without_underscore_doesnt_crash_the_server() {
             let context = RpcContext::for_tests();
-            let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-                .with_logger(crate::metrics::logger::RpcMetricsLogger)
-                .run()
-                .await
-                .unwrap();
+            let (_server_handle, address) =
+                RpcServer::new("127.0.0.1:0".parse().unwrap(), context, DefaultVersion::V03)
+                    .with_logger(crate::metrics::logger::RpcMetricsLogger)
+                    .run()
+                    .await
+                    .unwrap();
 
             let client = TestClientBuilder::default()
                 .address(address)

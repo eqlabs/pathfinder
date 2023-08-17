@@ -178,7 +178,7 @@ pub mod metrics {
                         .map(|&(key, val)| Label::new(key, val))
                         .collect::<Vec<_>>(),
                 ))
-                .unwrap()
+                .expect("Unregistered counter name")
                 .0
                 .load(Ordering::Relaxed)
         }

@@ -2,9 +2,17 @@
 //! that relies on metric values in a separate binary makes more sense than using an inter-test
 //! locking mechanism which can cause weird test failures without any obvious clue to what might
 //! have caused those failures in the first place.
+use rstest::rstest;
 
+use pathfinder_rpc::DefaultVersion;
+
+#[rstest]
+#[case(DefaultVersion::V03)]
+#[case(DefaultVersion::V04)]
 #[tokio::test]
-async fn api_versions_are_routed_correctly_for_all_methods() {
+async fn api_versions_are_routed_correctly_for_all_methods(
+    #[case] default_version: DefaultVersion,
+) {
     use pathfinder_common::test_utils::metrics::{FakeRecorder, ScopedRecorderGuard};
     use pathfinder_rpc::middleware::versioning::test_utils::{method_names, paths};
     use pathfinder_rpc::test_client::TestClientBuilder;
@@ -12,11 +20,12 @@ async fn api_versions_are_routed_correctly_for_all_methods() {
     use serde_json::json;
 
     let context = RpcContext::for_tests();
-    let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-        .with_logger(RpcMetricsLogger)
-        .run()
-        .await
-        .unwrap();
+    let (_server_handle, address) =
+        RpcServer::new("127.0.0.1:0".parse().unwrap(), context, default_version)
+            .with_logger(RpcMetricsLogger)
+            .run()
+            .await
+            .unwrap();
 
     let v03_methods = method_names::COMMON_FOR_V03_V04
         .into_iter()
@@ -31,7 +40,13 @@ async fn api_versions_are_routed_correctly_for_all_methods() {
         .chain(method_names::PATHFINDER_ONLY.into_iter())
         .collect();
 
+    let (root_prefix, root_methods) = match default_version {
+        DefaultVersion::V03 => ("v0.3", v03_methods.clone()),
+        DefaultVersion::V04 => ("v0.4", v04_methods.clone()),
+    };
+
     for (paths, version, methods) in vec![
+        (paths::ROOT, root_prefix, root_methods),
         (paths::V03, "v0.3", v03_methods),
         (paths::V04, "v0.4", v04_methods),
         (paths::PATHFINDER, "v0.1", pathfinder_methods),

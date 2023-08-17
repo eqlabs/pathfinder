@@ -41,9 +41,16 @@ impl VersioningError {
     }
 }
 
+#[derive(Copy, Clone, PartialEq)]
+pub enum DefaultVersion {
+    V03,
+    V04,
+}
+
 pub(crate) async fn prefix_rpc_method_names_with_version(
     request: Request<Body>,
     max_request_body_size: u32,
+    default_version: DefaultVersion,
 ) -> Result<Request<Body>, BoxError> {
     // Retain the parts to then later recreate the request
     let (parts, body) = request.into_parts();
@@ -60,7 +67,13 @@ pub(crate) async fn prefix_rpc_method_names_with_version(
             return Err(BoxError::from(VersioningError::HealthCheck));
         }
         // RPC endpoints
-        "/" | "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..],
+        "/" if default_version == DefaultVersion::V03 => {
+            &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..]
+        }
+        "/" if default_version == DefaultVersion::V04 => {
+            &[("starknet_", "v0.4_"), ("pathfinder_", "v0.4_")][..]
+        }
+        "/rpc/v0.3" | "/rpc/v0.3/" => &[("starknet_", "v0.3_"), ("pathfinder_", "v0.3_")][..],
         "/rpc/v0.4" | "/rpc/v0.4/" => &[("starknet_", "v0.4_"), ("pathfinder_", "v0.4_")][..],
         "/rpc/pathfinder/v0.1" | "/rpc/pathfinder/v0.1/" => &[("pathfinder_", "v0.1_")][..],
         _ => {
@@ -284,7 +297,8 @@ pub mod test_utils {
     }
 
     pub mod paths {
-        pub const V03: &[&str] = &["", "/", "/rpc/v0.3", "/rpc/v0.3/"];
+        pub const ROOT: &[&str] = &["", "/"];
+        pub const V03: &[&str] = &["/rpc/v0.3", "/rpc/v0.3/"];
         pub const V04: &[&str] = &["/rpc/v0.4", "/rpc/v0.4/"];
         pub const PATHFINDER: &[&str] = &["/rpc/pathfinder/v0.1", "/rpc/pathfinder/v0.1/"];
     }
@@ -292,8 +306,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use super::prefix_rpc_method_names_with_version;
     use super::test_utils::{method_names, paths};
+    use super::{prefix_rpc_method_names_with_version, DefaultVersion};
     use crate::test_client::TestClientBuilder;
     use crate::{RpcContext, RpcServer};
     use http::Method;
@@ -304,13 +318,17 @@ mod tests {
 
     // In an unintentional way OFC: if a method is INTENDED to be available
     // on many paths then this is absolutely allowed.
+    #[rstest]
+    #[case(DefaultVersion::V03)]
+    #[case(DefaultVersion::V04)]
     #[tokio::test]
-    async fn api_versions_dont_leak_between_each_other() {
+    async fn api_versions_dont_leak_between_each_other(#[case] default_version: DefaultVersion) {
         let context = RpcContext::for_tests();
-        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-            .run()
-            .await
-            .unwrap();
+        let (_server_handle, address) =
+            RpcServer::new("127.0.0.1:0".parse().unwrap(), context, default_version)
+                .run()
+                .await
+                .unwrap();
 
         let not_in_v03 = method_names::PATHFINDER_ONLY
             .into_iter()
@@ -326,7 +344,13 @@ mod tests {
             .chain(method_names::V04_ONLY.into_iter())
             .collect::<Vec<_>>();
 
+        let not_in_root = match default_version {
+            DefaultVersion::V03 => not_in_v03.clone(),
+            DefaultVersion::V04 => not_in_v04.clone(),
+        };
+
         for (paths, methods) in vec![
+            (paths::ROOT, not_in_root),
             (paths::V03, not_in_v03),
             (paths::V04, not_in_v04),
             (paths::PATHFINDER, not_in_pathfinder),
@@ -372,10 +396,11 @@ mod tests {
         #[values(Method::POST, Method::GET)] http_method: Method,
     ) {
         let context = RpcContext::for_tests();
-        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-            .run()
-            .await
-            .unwrap();
+        let (_server_handle, address) =
+            RpcServer::new("127.0.0.1:0".parse().unwrap(), context, DefaultVersion::V03)
+                .run()
+                .await
+                .unwrap();
 
         let url = format!("http://{address}{path}");
 
@@ -409,10 +434,11 @@ mod tests {
         #[values(Method::GET, Method::PUT, Method::DELETE, Method::HEAD)] http_method: Method,
     ) {
         let context = RpcContext::for_tests();
-        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-            .run()
-            .await
-            .unwrap();
+        let (_server_handle, address) =
+            RpcServer::new("127.0.0.1:0".parse().unwrap(), context, DefaultVersion::V03)
+                .run()
+                .await
+                .unwrap();
 
         let url = format!("http://{address}{path}");
 
@@ -439,7 +465,7 @@ mod tests {
     async fn disallow_notifications(#[case] body: &str) {
         let mut request = http::Request::new(hyper::Body::from(body.to_owned()));
         *request.method_mut() = http::Method::POST;
-        let error = prefix_rpc_method_names_with_version(request, 1_000)
+        let error = prefix_rpc_method_names_with_version(request, 1_000, DefaultVersion::V03)
             .await
             .unwrap_err()
             .downcast::<super::VersioningError>()
@@ -462,10 +488,11 @@ mod tests {
     async fn pass_non_notifications(#[case] body: &str) {
         let mut request = http::Request::new(hyper::Body::from(body.to_owned()));
         *request.method_mut() = http::Method::POST;
-        let processed_body = prefix_rpc_method_names_with_version(request, 1_000)
-            .await
-            .unwrap()
-            .into_body();
+        let processed_body =
+            prefix_rpc_method_names_with_version(request, 1_000, DefaultVersion::V03)
+                .await
+                .unwrap()
+                .into_body();
         let processed_body = serde_json::from_slice::<serde_json::Value>(
             &hyper::body::to_bytes(processed_body).await.unwrap(),
         )

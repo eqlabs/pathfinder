@@ -149,7 +149,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         false => context,
     };
 
-    let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context);
+    let rpc_server = pathfinder_rpc::RpcServer::new(
+        config.rpc_address,
+        context,
+        pathfinder_rpc::DefaultVersion::default(),
+    );
     let rpc_server = match config.rpc_cors_domains {
         Some(allowed_origins) => rpc_server.with_cors(allowed_origins),
         None => rpc_server,

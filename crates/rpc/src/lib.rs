@@ -14,6 +14,8 @@ pub mod v03;
 pub mod v04;
 pub mod websocket;
 
+pub use middleware::versioning::DefaultVersion;
+
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use crate::websocket::types::WebsocketSenders;
@@ -36,10 +38,11 @@ pub struct RpcServer {
     max_connections: u32,
     cors: Option<CorsLayer>,
     ws_senders: Option<WebsocketSenders>,
+    default_version: DefaultVersion,
 }
 
 impl RpcServer {
-    pub fn new(addr: SocketAddr, context: RpcContext) -> Self {
+    pub fn new(addr: SocketAddr, context: RpcContext, default_version: DefaultVersion) -> Self {
         Self {
             addr,
             context,
@@ -47,6 +50,7 @@ impl RpcServer {
             max_connections: DEFAULT_MAX_CONNECTIONS,
             cors: None,
             ws_senders: None,
+            default_version,
         }
     }
 
@@ -90,15 +94,17 @@ impl RpcServer {
             .set_middleware(tower::ServiceBuilder::new()
                 .option_layer(self.cors)
                 .map_result(middleware::versioning::try_map_errors_to_responses)
-                .filter_async(
-					|request: Request<Body>| async move {
+                .filter_async({
+                    let default_version = self.default_version;
+
+                    move |request: Request<Body>| async move {
 					// skip method_name checks for websocket handshake
 					if request.headers().get("sec-websocket-key").is_some() {
 						return Ok(request);
 					}
 
-                    middleware::versioning::prefix_rpc_method_names_with_version(request, TEN_MB).await
-                })
+                    middleware::versioning::prefix_rpc_method_names_with_version(request, TEN_MB, default_version).await
+                }})
             )
             .build(self.addr)
             .await
