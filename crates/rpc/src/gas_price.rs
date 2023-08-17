@@ -11,6 +11,7 @@ use starknet_gateway_types::reply::MaybePendingBlock;
 /// requests for [`pathfinder_common::BlockId::Latest`] or  [`pathfinder_common::BlockId::Pending`].
 #[derive(Clone)]
 pub struct Cached {
+    lock: Arc<tokio::sync::Mutex<()>>,
     value: Arc<std::sync::Mutex<Option<Value>>>,
     gateway: starknet_gateway_client::Client,
     horizon: Duration,
@@ -25,6 +26,7 @@ struct Value {
 impl Cached {
     pub fn new(gateway: starknet_gateway_client::Client) -> Self {
         Cached {
+            lock: Default::default(),
             value: Default::default(),
             gateway,
             horizon: Duration::from_secs(60),
@@ -34,10 +36,13 @@ impl Cached {
     /// Returns either a fast fresh value, slower a periodically polled value or fails because
     /// polling has stopped.
     pub async fn get(&self) -> Option<U256> {
+        // Make sure only a single call updates the gas price
+        let _lock = self.lock.lock().await;
+
         match self.value.try_lock() {
             Ok(guard) => match *guard {
                 Some(Value { gas_price, updated }) if updated.elapsed() < self.horizon => {
-                    tracing::debug!(from=?updated, "Using cached gas price value");
+                    tracing::debug!(?gas_price, from=?updated, "Using cached gas price value");
                     return Some(gas_price);
                 }
                 _ => {
