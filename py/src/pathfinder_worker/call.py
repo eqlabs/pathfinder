@@ -69,7 +69,7 @@ try:
     from starkware.starknet.definitions.error_codes import StarknetErrorCode
     from starkware.starknet.definitions.general_config import (
         DEFAULT_GAS_PRICE,
-        DEFAULT_MAX_STEPS,
+        DEFAULT_TX_MAX_STEPS,
         DEFAULT_SEQUENCER_ADDRESS,
         DEFAULT_VALIDATE_MAX_STEPS,
         StarknetChainId,
@@ -112,7 +112,7 @@ except ModuleNotFoundError:
 
 # used from tests, and the query which asserts that the schema is of expected version.
 EXPECTED_SCHEMA_REVISION = 39
-EXPECTED_CAIRO_VERSION = "0.12.1a0"
+EXPECTED_CAIRO_VERSION = "0.12.2a0"
 
 # this is set by pathfinder automatically when #[cfg(debug_assertions)]
 DEV_MODE = os.environ.get("PATHFINDER_PROFILE") == "dev"
@@ -966,7 +966,7 @@ def create_general_config(chain_id: StarknetChainId) -> StarknetGeneralConfig:
             "enforce_l1_handler_fee": False,
             "event_commitment_tree_height": constants.EVENT_COMMITMENT_TREE_HEIGHT,
             "global_state_commitment_tree_height": constants.CONTRACT_ADDRESS_BITS,
-            "invoke_tx_max_n_steps": DEFAULT_MAX_STEPS,
+            "invoke_tx_max_n_steps": DEFAULT_TX_MAX_STEPS,
             "min_gas_price": DEFAULT_GAS_PRICE,
             "sequencer_address": hex(DEFAULT_SEQUENCER_ADDRESS),
             "starknet_os_config": {
