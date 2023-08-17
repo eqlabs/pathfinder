@@ -119,11 +119,4 @@ impl RpcContext {
             ..self
         }
     }
-
-    pub fn with_eth_gas_price(self, gas_price: gas_price::Cached) -> Self {
-        Self {
-            eth_gas_price: gas_price,
-            ..self
-        }
-    }
 }
