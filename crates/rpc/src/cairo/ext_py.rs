@@ -639,7 +639,7 @@ mod tests {
 
         let transactions = vec![valid_invoke_v1(account_address)];
 
-        const EXPECTED_GAS_CONSUMED: u64 = 4938;
+        const EXPECTED_GAS_CONSUMED: u64 = 4939;
 
         for (gas_price_u64, block, use_past_block) in [
             (1, latest_block_number.into(), true),

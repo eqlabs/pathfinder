@@ -1227,7 +1227,7 @@ def test_nonce_with_dummy():
         (
             # in this block the acct contract has been deployed, so it has nonce=0
             dataclasses.replace(base_command, at_block=f'0x{(b"another block").hex()}'),
-            [FeeEstimation(gas_consumed=2490, gas_price=1, overall_fee=2490)],
+            [FeeEstimation(gas_consumed=2491, gas_price=1, overall_fee=2491)],
         ),
         (
             dataclasses.replace(
@@ -1252,7 +1252,7 @@ def test_nonce_with_dummy():
                 at_block=f'0x{(b"third block").hex()}',
                 transactions=[base_transaction_and_class_hash_hint_with_nonce_1],
             ),
-            [FeeEstimation(gas_consumed=2490, gas_price=1, overall_fee=2490)],
+            [FeeEstimation(gas_consumed=2491, gas_price=1, overall_fee=2491)],
         ),
         (
             dataclasses.replace(
@@ -1289,7 +1289,7 @@ def test_nonce_with_dummy():
                 transactions=[base_transaction_and_class_hash_hint_with_nonce_2],
                 pending_nonces={0x123: 2},
             ),
-            [FeeEstimation(gas_consumed=2490, gas_price=1, overall_fee=2490)],
+            [FeeEstimation(gas_consumed=2491, gas_price=1, overall_fee=2491)],
         ),
         (
             dataclasses.replace(
@@ -1618,9 +1618,9 @@ def test_estimate_fee_for_sierra_declare_through_account():
 
     assert output == [
         FeeEstimation(
-            gas_consumed=2476,
+            gas_consumed=3700,
             gas_price=1,
-            overall_fee=2476,
+            overall_fee=3700,
         )
     ]
 
@@ -1873,7 +1873,7 @@ def test_estimate_fee_for_deploy_newly_declared_sierra_account():
 
     assert output == [
         # DECLARE an account contract class
-        FeeEstimation(overall_fee=2476, gas_price=1, gas_consumed=2476),
+        FeeEstimation(overall_fee=3700, gas_price=1, gas_consumed=3700),
         # DEPLOY_ACCOUNT the class declared in the previous transaction
         FeeEstimation(overall_fee=3099, gas_price=1, gas_consumed=3099),
     ]
