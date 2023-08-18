@@ -106,39 +106,38 @@ rpc_call '{
     }
 }'
 
-# mainnet transaction 0xccb3808126726235eee5818e6298e5cc2c9db3731442d66ad63f7e3f7d396d again
-# because this specifies a block hash to estimate on, this will use that blocks recorded historic gas price
-# try with "block_id": "latest" for current "eth_gasPrice".
+# let's try replaying mainnet transaction 0xcbb2b87d5378e682d650e0e7d36679b4557ba2bfa9d4e285b7168c04376b21
 rpc_call '{
     "jsonrpc": "2.0",
     "id": "0",
     "method": "starknet_estimateFee",
     "params": {
-        "request": {
+        "request": [{
             "type": "INVOKE",
-            "max_fee": "0x12C72866EFA9B",
-            "version": "0x0",
+            "max_fee": "0x28ed6103d0000",
+            "version": "0x1",
             "signature": [
-                "0x10E400D046147777C2AC5645024E1EE81C86D90B52D76AB8A8125E5F49612F9",
-                "0x0ADB92739205B4626FEFB533B38D0071EB018E6FF096C98C17A6826B536817B"
+                "0x42527ffe9912b338983cbed67e139cfcc26a4d8cf1d1c2a85e4125fdf5f59ed", "0x636147d06fefd02ed37984b752556d4b9aefdac1a50b3df0528ec7c201ad84b"
             ],
-            "contract_address": "0x0019fcae2482de8fb3afaf8d4b219449bec93a5928f02f58eef645cc071767f4",
+            "sender_address": "0x13e3ca9a377084c37dc7eacbd1d9f8c3e3733935bcbad887c32a0e213cd6fe0",
             "calldata": [
-                "0x0000000000000000000000000000000000000000000000000000000000000001",
-                "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
-                "0x0083afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
-                "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "0x0000000000000000000000000000000000000000000000000000000000000003",
-                "0x0000000000000000000000000000000000000000000000000000000000000003",
-                "0x04681402a7ab16c41f7e5d091f32fe9b78de096e0bd5962ce5bd7aaa4a441f64",
-                "0x000000000000000000000000000000000000000000000000001d41f6331e6800",
-                "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "0x0000000000000000000000000000000000000000000000000000000000000001"
+                "0x2",
+                "0x57c4b510d66eb1188a7173f31cccee47b9736d40185da8144377b896d5ff3",
+                "0x2f0b3c5710379609eb5495f1ecd348cb28167711b73609fe565a72734550354",
+                "0x0",
+                "0x1",
+                "0x57c4b510d66eb1188a7173f31cccee47b9736d40185da8144377b896d5ff3",
+                "0x2f0b3c5710379609eb5495f1ecd348cb28167711b73609fe565a72734550354",
+                "0x1",
+                "0x1",
+                "0x2",
+                "0x0",
+                "0x1"
             ],
-            "entry_point_selector": "0x015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
-        },
+            "nonce": "0x1"
+        }],
         "block_id": {
-            "block_hash": "0x0147c4b0f702079384e26d9d34a15e7758881e32b219fc68c076b09d0be13f8c"
+            "block_number": 59999
         }
     }
 }'
