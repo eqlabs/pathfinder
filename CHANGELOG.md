@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `cairo-lang` upgraded to 0.12.2a0
 
+### Fixed
+
+- RPC v0.3 `starknet_estimateFee` example
+
 ## [0.7.2] - 2023-08-16
 
 ### Fixed
