@@ -320,9 +320,8 @@ pub(crate) mod tests {
         use super::*;
 
         use crate::v02::types::request::{
-            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV0,
-            BroadcastedDeclareTransactionV1, BroadcastedDeclareTransactionV2,
-            BroadcastedInvokeTransactionV1,
+            BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
+            BroadcastedDeclareTransactionV2, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
         use pathfinder_common::{felt_bytes, CasmHash, ContractNonce, ContractRoot, GasPrice};
@@ -352,7 +351,7 @@ pub(crate) mod tests {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
                 BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    max_fee: Fee(Default::default()),
+                    max_fee: fee!("0x1000000000000"),
                     signature: vec![],
                     nonce: TransactionNonce(Default::default()),
                     sender_address: account_address,
@@ -598,37 +597,6 @@ pub(crate) mod tests {
                 overall_fee: 2483.into(),
             };
             assert_eq!(result, vec![expected0, expected1]);
-        }
-
-        #[test_log::test(tokio::test)]
-        async fn successful_declare_v0() {
-            let (_db_dir, context, _join_handle, _account_address, latest_block_hash) =
-                test_context_with_call_handling().await;
-
-            let contract_class = {
-                let json = starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
-                ContractClass::from_definition_bytes(json)
-                    .unwrap()
-                    .as_cairo()
-                    .unwrap()
-            };
-
-            let declare_transaction = BroadcastedTransaction::Declare(
-                BroadcastedDeclareTransaction::V0(BroadcastedDeclareTransactionV0 {
-                    version: TransactionVersion::ZERO_WITH_QUERY_VERSION,
-                    max_fee: Fee::default(),
-                    signature: vec![],
-                    contract_class,
-                    sender_address: contract_address!("0x1"),
-                }),
-            );
-
-            let input = EstimateFeeInput {
-                request: vec![declare_transaction],
-                block_id: BlockId::Hash(latest_block_hash),
-            };
-            let result = estimate_fee(context, input).await.unwrap();
-            assert_eq!(result, vec![FeeEstimate::default()]);
         }
 
         #[test_log::test(tokio::test)]

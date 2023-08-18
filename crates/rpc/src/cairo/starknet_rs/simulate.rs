@@ -34,8 +34,13 @@ pub fn simulate(
         let span = tracing::debug_span!("execute", transaction_hash=%super::transaction::transaction_hash(transaction), %block_number);
         let _enter = span.enter();
 
-        let transaction_for_simulation =
-            transaction.create_for_simulation(skip_validate, false, skip_fee_charge, true);
+        let transaction_for_simulation = transaction.create_for_simulation(
+            skip_validate,
+            false,
+            skip_fee_charge,
+            true,
+            skip_validate,
+        );
         let tx_info = transaction_for_simulation.execute(&mut state, &block_context, 1_000_000);
         match tx_info {
             Ok(tx_info) => {

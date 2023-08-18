@@ -38,6 +38,38 @@ pub(super) fn map_broadcasted_transaction(
 
     match transaction {
         BroadcastedTransaction::Declare(tx) => match tx {
+            crate::v02::types::request::BroadcastedDeclareTransaction::V0(tx) => {
+                let signature = tx
+                    .signature
+                    .into_iter()
+                    .map(|s| s.0.into_felt252())
+                    .collect();
+
+                // decode program
+                let contract_class_json =
+                    tx.contract_class.serialize_to_json().map_err(|error| {
+                        tracing::error!(%error, "Failed to serialize Cairo class to JSON");
+                        TransactionError::MissingCompiledClass
+                    })?;
+
+                let contract_class =
+                    ContractClass::from_str(String::from_utf8_lossy(&contract_class_json).as_ref())
+                        .map_err(|error| {
+                            tracing::error!(%error, "Failed to re-parse Cairo class from JSON");
+                            TransactionError::MissingCompiledClass
+                        })?;
+
+                let tx = Declare::new(
+                    contract_class,
+                    chain_id.0.into_felt252(),
+                    Address(tx.sender_address.get().into_felt252()),
+                    0,
+                    Felt252::from_bytes_be(tx.version.0.as_bytes()),
+                    signature,
+                    0.into(),
+                )?;
+                Ok(Transaction::Declare(tx))
+            }
             crate::v02::types::request::BroadcastedDeclareTransaction::V1(tx) => {
                 let signature = tx
                     .signature
@@ -198,7 +230,7 @@ pub(super) fn map_gateway_transaction(
                 let tx = Declare::new_with_tx_hash(
                     contract_class,
                     Address(tx.sender_address.get().into_felt252()),
-                    u128::from_be_bytes(tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap()),
+                    0,
                     0.into(),
                     signature,
                     tx.nonce.0.into_felt252(),
