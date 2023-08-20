@@ -11,8 +11,7 @@ use starknet_gateway_types::reply::MaybePendingBlock;
 /// requests for [`pathfinder_common::BlockId::Latest`] or  [`pathfinder_common::BlockId::Pending`].
 #[derive(Clone)]
 pub struct Cached {
-    lock: Arc<tokio::sync::Mutex<()>>,
-    value: Arc<std::sync::Mutex<Option<Value>>>,
+    value: Arc<tokio::sync::RwLock<Option<Value>>>,
     gateway: starknet_gateway_client::Client,
     horizon: Duration,
 }
@@ -26,50 +25,43 @@ struct Value {
 impl Cached {
     pub fn new(gateway: starknet_gateway_client::Client) -> Self {
         Cached {
-            lock: Default::default(),
             value: Default::default(),
             gateway,
             horizon: Duration::from_secs(60),
         }
     }
 
-    /// Returns either a fast fresh value, slower a periodically polled value or fails because
-    /// polling has stopped.
+    /// Returns cached gas price (over defined horizon) or pulls it from the gateway.
     pub async fn get(&self) -> Option<U256> {
-        // Make sure only a single call updates the gas price
-        let _lock = self.lock.lock().await;
-
-        match self.value.try_lock() {
-            Ok(guard) => match *guard {
-                Some(Value { gas_price, updated }) if updated.elapsed() < self.horizon => {
-                    tracing::debug!(?gas_price, from=?updated, "Using cached gas price value");
-                    return Some(gas_price);
-                }
-                _ => {
-                    tracing::debug!("Gas price missing or expired");
-                }
-            },
-            Err(reason) => {
-                tracing::debug!(%reason, "Failed to lock gas price mutex");
+        if let Some(Value { gas_price, updated }) = *self.value.read().await {
+            if updated.elapsed() <= self.horizon {
+                tracing::debug!(?gas_price, from=?updated, "Using cached gas price value");
+                return Some(gas_price);
             }
         }
+
+        let mut guard = self.value.write().await;
+
+        // Double-check for cached gas price, to avoid concurrent requests to the gateway.
+        if let Some(Value { gas_price, updated }) = *guard {
+            if updated.elapsed() <= self.horizon {
+                tracing::debug!(?gas_price, from=?updated, "Using cached gas price value");
+                return Some(gas_price);
+            }
+        };
+
+        tracing::debug!("Gas price missing or expired");
 
         if let Some(gas_price) = self.gas_price().await {
-            match self.value.try_lock() {
-                Ok(ref mut guard) => {
-                    **guard = Some(Value {
-                        gas_price,
-                        updated: Instant::now(),
-                    });
-                    tracing::debug!(?gas_price, "Cached gas price value updated");
-                    return Some(gas_price);
-                }
-                Err(reason) => {
-                    tracing::debug!(%reason, "Failed to lock gas price mutex");
-                }
-            }
+            *guard = Some(Value {
+                gas_price,
+                updated: Instant::now(),
+            });
+            tracing::debug!(?gas_price, "Cached gas price value updated");
+            return Some(gas_price);
         }
 
+        tracing::debug!("Gas price is unavailable");
         None
     }
 
