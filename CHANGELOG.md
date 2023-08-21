@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - RPC v0.3 `starknet_estimateFee` example
 
+### Added
+
+- Added the `rpc.root-version` command-line option (and the corresponding PATHFINDER_RPC_ROOT_VERSION environment variable)
+  to control the version of the JSON-RPC API pathfinder serves on the `/` path
+
 ## [0.7.2] - 2023-08-16
 
 ### Fixed

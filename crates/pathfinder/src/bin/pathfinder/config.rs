@@ -90,6 +90,14 @@ Examples:
     rpc_cors_domains: Vec<String>,
 
     #[arg(
+        long = "rpc.root-version",
+        long_help = "Version of the JSON-RPC API to serve on the / (root) path",
+        default_value = "v03",
+        env = "PATHFINDER_RPC_ROOT_VERSION"
+    )]
+    rpc_root_version: RpcVersion,
+
+    #[arg(
         long = "monitor-address",
         long_help = "The address at which pathfinder will serve monitoring related information",
         value_name = "IP:PORT",
@@ -170,6 +178,12 @@ impl Color {
             Color::Always => true,
         }
     }
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
+pub enum RpcVersion {
+    V03,
+    V04,
 }
 
 #[derive(clap::Args)]
@@ -309,6 +323,7 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
+    pub rpc_root_version: RpcVersion,
     pub ws: Option<WebSocket>,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
@@ -398,6 +413,7 @@ impl Config {
             },
             rpc_address: cli.rpc_address,
             rpc_cors_domains: parse_cors_or_exit(cli.rpc_cors_domains),
+            rpc_root_version: cli.rpc_root_version,
             ws: cli.ws.then_some(WebSocket {
                 capacity: cli.ws_capacity,
             }),
