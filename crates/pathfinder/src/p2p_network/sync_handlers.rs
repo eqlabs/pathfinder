@@ -213,7 +213,7 @@ fn classes(
         };
 
         // This is a temporary measure to avoid exceeding the max size of a protobuf message.
-        let class = zstd::bulk::compress(&class, 19)?;
+        let class = zstd::bulk::compress(&class, 0)?;
 
         classes.push(p2p_proto::common::RawClass { class });
     }
