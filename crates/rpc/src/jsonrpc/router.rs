@@ -67,7 +67,7 @@ impl RpcRouter {
         let output = match result {
             Ok(output) => output,
             Err(_e) => {
-                tracing::warn!(method=request.method, "RPC method panic'd");
+                tracing::warn!(method = request.method, "RPC method panic'd");
                 Err(RpcError::InternalError(anyhow::anyhow!("Method panic'd")))
             }
         };
@@ -242,11 +242,10 @@ mod sealed {
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
                 async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult {
-                    let Ok(input) = serde_json::from_value::<Input>(input) else {
-                        todo!("error mapping");
-                    };
+                    let input = serde_json::from_value::<Input>(input)
+                        .map_err(|_| RpcError::InvalidParams)?;
                     let output = (self.f)(state, input).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -285,11 +284,10 @@ mod sealed {
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
                 async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult {
-                    let Ok(input) = serde_json::from_value::<Input>(input) else {
-                        todo!("error mapping");
-                    };
+                    let input = serde_json::from_value::<Input>(input)
+                        .map_err(|_| RpcError::InvalidParams)?;
                     let output = (self.f)(input).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -326,9 +324,11 @@ mod sealed {
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
                 async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult {
-                    // todo!("Input must be null");
+                    if !input.is_null() {
+                        return Err(RpcError::InvalidParams);
+                    }
                     let output = (self.f)(state).await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -365,9 +365,11 @@ mod sealed {
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
                 async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult {
-                    // todo!("Input must be null");
+                    if !input.is_null() {
+                        return Err(RpcError::InvalidParams);
+                    }
                     let output = (self.f)().await.map_err(Into::into)?;
-                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
 
@@ -397,9 +399,11 @@ mod sealed {
                 F: Fn() -> &'static str + Sync + Send,
             {
                 async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult {
-                    // todo!("Input must be null");
+                    if !input.is_null() {
+                        return Err(RpcError::InvalidParams);
+                    }
                     let output = (self.f)();
-                    serde_json::to_value(output).map_err(|e| todo!("error mapping"))
+                    serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
                 }
             }
             Box::new(Helper { f: self })
