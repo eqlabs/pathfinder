@@ -151,15 +151,15 @@ mod tests {
         };
         let l_node = TrieNode::Edge {
             child: duplicate,
-            path: bitvec::bitvec![Msb0, u8; 1, 0, 1, 1, 1],
+            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1],
         };
         let r_node = TrieNode::Edge {
             child: edge,
-            path: bitvec::bitvec![Msb0, u8; 1, 0, 1, 1],
+            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1],
         };
         let edge_node = TrieNode::Edge {
             child: duplicate,
-            path: bitvec::bitvec![Msb0, u8; 1, 0, 1, 1, 1, 1, 1],
+            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1, 1, 1],
         };
         let duplicate_node = TrieNode::Binary {
             left: leaf_1,

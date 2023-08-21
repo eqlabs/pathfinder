@@ -30,7 +30,8 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = "1.0.66"
 assert_matches = "1.5.0"
-clap =  "4.1.13"
+bitvec = "1.0.1"
+clap = "4.1.13"
 const_format = "0.2.31"
 criterion = "0.5.1"
 fake = { version = "2.5.0", features = ["derive"] }

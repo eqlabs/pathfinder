@@ -13,8 +13,7 @@ path = "src/lib.rs"
 stark_curve = { path = "../stark_curve" }
 
 [dependencies]
-# paritys scale codec locks us here
-bitvec = "0.20.4"
+bitvec = { workspace = true }
 fake = { version = "2.5.0", features = ["derive"] }
 rand = { version = "0.8.5" }
 rand_core = "0.6.4"

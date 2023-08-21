@@ -10,7 +10,7 @@ use crate::hash::FeltHash;
 #[derive(Debug, Clone, PartialEq)]
 pub enum TrieNode {
     Binary { left: Felt, right: Felt },
-    Edge { child: Felt, path: BitVec<Msb0, u8> },
+    Edge { child: Felt, path: BitVec<u8, Msb0> },
 }
 
 impl TrieNode {

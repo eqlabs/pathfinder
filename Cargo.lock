@@ -692,26 +692,14 @@ checksum = "630be753d4e58660abd17930c71b647fe46c27ea6b63cc59e1e3851406972e42"
 
 [[package]]
 name = "bitvec"
-version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7774144344a4faa177370406a7ff5f1da24303817368584c6206c8303eb07848"
-dependencies = [
- "funty 1.1.0",
- "radium 0.6.2",
- "tap",
- "wyz 0.2.0",
-]
-
-[[package]]
-name = "bitvec"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bc2832c24239b0141d5674bb9174f9d68a8b5b3f2753311927c172ca46f7e9c"
 dependencies = [
- "funty 2.0.0",
- "radium 0.7.0",
+ "funty",
+ "radium",
  "tap",
- "wyz 0.5.1",
+ "wyz",
 ]
 
 [[package]]
@@ -3531,12 +3519,6 @@ checksum = "6c2141d6d6c8512188a7891b4b01590a45f6dac67afb4f255c4124dbb86d4eaa"
 
 [[package]]
 name = "funty"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
-
-[[package]]
-name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
@@ -6290,7 +6272,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd8e946cc0cc711189c0b0249fb8b599cbeeab9784d83c415719368bb8d4ac64"
 dependencies = [
  "arrayvec",
- "bitvec 1.0.1",
+ "bitvec",
  "byte-slice-cast",
  "impl-trait-for-tuples",
  "parity-scale-codec-derive",
@@ -6388,7 +6370,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
- "bitvec 0.20.4",
+ "bitvec",
  "bytes",
  "clap",
  "console-subscriber",
@@ -6442,7 +6424,7 @@ name = "pathfinder-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bitvec 0.20.4",
+ "bitvec",
  "fake",
  "metrics",
  "num-bigint 0.4.3",
@@ -6502,7 +6484,7 @@ name = "pathfinder-merkle-tree"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bitvec 0.20.4",
+ "bitvec",
  "pathfinder-common",
  "pathfinder-storage",
  "pretty_assertions",
@@ -6589,7 +6571,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "base64 0.13.1",
- "bitvec 0.20.4",
+ "bitvec",
  "const_format",
  "data-encoding",
  "fake",
@@ -7155,12 +7137,6 @@ dependencies = [
  "r2d2",
  "rusqlite",
 ]
-
-[[package]]
-name = "radium"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "643f8f41a8ebc4c5dc4515c82bb8abd397b527fc20fd681b7c011c2aee5d44fb"
 
 [[package]]
 name = "radium"
@@ -8194,7 +8170,7 @@ dependencies = [
 name = "stark_curve"
 version = "0.1.0"
 dependencies = [
- "bitvec 0.20.4",
+ "bitvec",
  "ff 0.12.0",
  "pretty_assertions",
 ]
@@ -8204,7 +8180,7 @@ name = "stark_hash"
 version = "0.1.0"
 dependencies = [
  "assert_matches",
- "bitvec 0.20.4",
+ "bitvec",
  "criterion",
  "fake",
  "hex",
@@ -9789,12 +9765,6 @@ dependencies = [
  "cfg-if",
  "windows-sys",
 ]
-
-[[package]]
-name = "wyz"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
 
 [[package]]
 name = "wyz"

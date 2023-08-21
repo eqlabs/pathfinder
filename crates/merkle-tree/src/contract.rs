@@ -44,7 +44,7 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(&self, key: &BitSlice<Msb0, u8>) -> anyhow::Result<Vec<TrieNode>> {
+    pub fn get_proof(&self, key: &BitSlice<u8, Msb0>) -> anyhow::Result<Vec<TrieNode>> {
         self.tree.get_proof(&self.storage, key)
     }
 
@@ -61,7 +61,7 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<u8, Msb0>) -> ControlFlow<B, Visit>>(
         &mut self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
@@ -117,7 +117,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
     }
 
     /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<Msb0, u8>) -> ControlFlow<B, Visit>>(
+    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<u8, Msb0>) -> ControlFlow<B, Visit>>(
         &mut self,
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {

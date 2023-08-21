@@ -10,8 +10,7 @@ name = "stark_curve"
 path = "src/lib.rs"
 
 [dependencies]
-# paritys scale codec locks us here
-bitvec = "0.20.4"
+bitvec = { workspace = true }
 ff = { git = "https://github.com/eqlabs/ff", branch = "var_time_eq", default-features = false, features = [
     "derive",
     "alloc",
