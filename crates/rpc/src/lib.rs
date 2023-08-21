@@ -40,13 +40,13 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
 
-const DEFAULT_MAX_CONNECTIONS: u32 = 1024;
+const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,
     logger: MaybeRpcMetricsLogger,
-    max_connections: u32,
+    max_connections: usize,
     cors: Option<CorsLayer>,
     ws_senders: Option<WebsocketSenders>,
     default_version: DefaultVersion,
@@ -79,7 +79,7 @@ impl RpcServer {
         }
     }
 
-    pub fn with_max_connections(mut self, max_connections: u32) -> Self {
+    pub fn with_max_connections(mut self, max_connections: usize) -> Self {
         self.max_connections = max_connections;
         self
     }
@@ -127,8 +127,7 @@ impl RpcServer {
             // This is required by axum -- axum doesn't deal with Result, errors
             // must be responses as well.
             .layer(HandleErrorLayer::new(handle_middleware_errors))
-            // TODO: remove cast
-            .concurrency_limit(self.max_connections as usize)
+            .concurrency_limit(self.max_connections)
             .layer(DefaultBodyLimit::max(REQUEST_MAX_SIZE))
             .timeout(REQUEST_TIMEOUT)
             .option_layer(self.cors);
@@ -175,7 +174,7 @@ impl RpcServer {
 				Some(_) => ServerBuilder::default(),
 				None => ServerBuilder::default().http_only(),
 			}
-            .max_connections(self.max_connections)
+            .max_connections(self.max_connections as u32)
             .max_request_body_size(TEN_MB)
             .set_logger(self.logger)
             .set_middleware(tower::ServiceBuilder::new()

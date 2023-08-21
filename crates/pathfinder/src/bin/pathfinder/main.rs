@@ -100,7 +100,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // Set the rpc file connection limit to a fraction of the RPC connections.
     // Having this be too large is counter productive as disk IO will then slow down
     // all queries.
-    let rpc_storage = std::cmp::max(10, config.max_rpc_connections.get() / 8);
+    let rpc_storage = std::cmp::max(10, config.max_rpc_connections.get() as u32 / 8);
     let rpc_storage = NonZeroU32::new(rpc_storage).expect("A non-zero minimum is set");
     let rpc_storage = storage_manager.create_pool(rpc_storage).context(
         r"Creating database connection pool for RPC

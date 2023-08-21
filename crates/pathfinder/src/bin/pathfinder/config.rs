@@ -151,7 +151,7 @@ Examples:
         env = "PATHFINDER_MAX_RPC_CONNECTIONS",
         default_value = "1024"
     )]
-    max_rpc_connections: std::num::NonZeroU32,
+    max_rpc_connections: std::num::NonZeroUsize,
 
     #[arg(
         long = "sync.poll-interval",
@@ -428,7 +428,7 @@ pub struct Config {
     pub poll_pending: bool,
     pub execution_concurrency: Option<std::num::NonZeroU32>,
     pub sqlite_wal: JournalMode,
-    pub max_rpc_connections: std::num::NonZeroU32,
+    pub max_rpc_connections: std::num::NonZeroUsize,
     pub poll_interval: std::time::Duration,
     pub color: Color,
     pub p2p: P2PConfig,
