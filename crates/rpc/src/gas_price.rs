@@ -35,7 +35,7 @@ impl Cached {
     pub async fn get(&self) -> Option<U256> {
         if let Some(Value { gas_price, updated }) = *self.value.read().await {
             if updated.elapsed() <= self.horizon {
-                tracing::debug!(?gas_price, from=?updated, "Using cached gas price value");
+                tracing::trace!(?gas_price, from=?updated, "Using cached gas price value");
                 return Some(gas_price);
             }
         }
@@ -45,23 +45,23 @@ impl Cached {
         // Double-check for cached gas price, to avoid concurrent requests to the gateway.
         if let Some(Value { gas_price, updated }) = *guard {
             if updated.elapsed() <= self.horizon {
-                tracing::debug!(?gas_price, from=?updated, "Using cached gas price value");
+                tracing::trace!(?gas_price, from=?updated, "Using cached gas price value");
                 return Some(gas_price);
             }
         };
 
-        tracing::debug!("Gas price missing or expired");
+        tracing::trace!("Gas price missing or expired");
 
         if let Some(gas_price) = self.gas_price().await {
             *guard = Some(Value {
                 gas_price,
                 updated: Instant::now(),
             });
-            tracing::debug!(?gas_price, "Cached gas price value updated");
+            tracing::trace!(?gas_price, "Cached gas price value updated");
             return Some(gas_price);
         }
 
-        tracing::debug!("Gas price is unavailable");
+        tracing::trace!("Gas price is unavailable");
         None
     }
 
