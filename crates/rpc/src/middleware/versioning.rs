@@ -165,7 +165,7 @@ pub(crate) fn try_map_errors_to_responses(
 
 fn prefix_method(request: &mut jsonrpsee::types::Request<'_>, prefixes: &[(&str, &str)]) {
     for (old, new) in prefixes {
-        if request.method.starts_with(old) {
+        if request.method.contains(old) {
             let method = new.to_string() + &request.method;
             request.method = method.into();
             break;
@@ -472,5 +472,28 @@ mod tests {
         .unwrap();
         let expected = serde_json::from_str::<serde_json::Value>(body).unwrap();
         assert_eq!(processed_body, expected);
+    }
+
+    #[tokio::test]
+    async fn regression_disallow_version_prefix_leakage_to_caller() {
+        let context = RpcContext::for_tests();
+        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
+            .run()
+            .await
+            .unwrap();
+
+        let client = TestClientBuilder::default()
+            .address(address)
+            .endpoint("/rpc/v0.4".into())
+            .build()
+            .unwrap();
+
+        let res = client
+            .request::<serde_json::Value>("v0.4_starknet_chainId", json!([]))
+            .await;
+
+        assert!(
+            matches!(res, Err(Error::Call(CallError::Custom(e))) if e.code() == METHOD_NOT_FOUND_CODE)
+        );
     }
 }
