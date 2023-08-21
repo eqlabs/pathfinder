@@ -21,6 +21,13 @@ impl RpcResponse {
         output: Err(RpcError::InvalidRequest),
         id: RequestId::Null,
     };
+
+    pub fn method_not_found(id: RequestId, method: String) -> Self {
+        Self {
+            output: Err(RpcError::MethodNotFound { method }),
+            id,
+        }
+    }
 }
 
 pub type RpcResult = Result<Value, RpcError>;

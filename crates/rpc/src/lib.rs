@@ -93,7 +93,6 @@ impl RpcServer {
 
     /// Starts the HTTP-RPC server.
     pub fn run_axum(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
-        use crate::jsonrpc::rpc_handler;
         use axum::routing::{get, post};
 
         // TODO: allow OPTIONS

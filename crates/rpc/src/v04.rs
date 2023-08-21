@@ -1,5 +1,4 @@
-use crate::context::RpcContext;
-use crate::jsonrpc::{RpcResult, RpcRouter};
+use crate::jsonrpc::RpcRouter;
 use crate::module::Module;
 
 mod method;

@@ -49,10 +49,10 @@ impl RpcError {
         match self {
             RpcError::ParseError => "Parse error",
             RpcError::InvalidRequest => "Invalid Request",
-            RpcError::MethodNotFound { method } => "Method not found",
+            RpcError::MethodNotFound { .. } => "Method not found",
             RpcError::InvalidParams => "Invalid params",
             RpcError::InternalError(_) => "Internal error",
-            RpcError::ApplicationError { code, message } => message,
+            RpcError::ApplicationError { message, .. } => message,
         }
     }
 }

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use axum::extract::State;
-use axum::headers::ContentType;
+use axum::async_trait;
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::{async_trait, TypedHeader};
-use futures::Future;
+use futures::{Future, FutureExt};
+use http::HeaderValue;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -58,7 +58,120 @@ impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
 
     fn call(self, req: axum::http::Request<axum::body::Body>, state: RpcContext) -> Self::Future {
         Box::pin(async move {
-            todo!();
+            // Only allow json content.
+            const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
+            match req.headers().get(http::header::CONTENT_TYPE) {
+                Some(header) if header == APPLICATION_JSON => {}
+                Some(_other) => return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(),
+                None => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        "Missing `Content-Type: application/json` header".to_string(),
+                    )
+                        .into_response()
+                }
+            }
+
+            /// Used to parse the outer shell of an JSON RPC request.
+            ///
+            /// The specification requires differentiating between invalid json and invalid individual requests
+            /// within the json. This intermediary type let's us handle this.
+            #[derive(Debug, Deserialize)]
+            #[serde(untagged)]
+            enum RawRequest {
+                // This must come first as otherwise a batch request will get parsed as a Value::Array
+                Batch(Vec<Value>),
+                Single(Value),
+            }
+
+            let body = match hyper::body::to_bytes(req.into_body()).await {
+                Ok(body) => body,
+                Err(e) => {
+                    tracing::trace!(reason=%e, "Failed to buffer body");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to buffer request body".to_string(),
+                    )
+                        .into_response();
+                }
+            };
+
+            // TODO: what HTTP codes should the rpc errors get?
+            let Ok(raw_request) = serde_json::from_slice::<RawRequest>(&body) else {
+                return RpcResponse::PARSE_ERROR.into_response();
+            };
+
+            match raw_request {
+                RawRequest::Single(request) => {
+                    let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
+                        return serde_json::to_string(&RpcResponse::INVALID_REQUEST).unwrap().into_response();
+                    };
+
+                    // Ignore notification requests.
+                    let Some(id) = request.id else {
+                        return ().into_response();
+                    };
+
+
+                    let Some(method) = self.methods.get(request.method.as_str()) else {
+                        return RpcResponse::method_not_found(id, request.method).into_response();
+                    };
+                    let method = method.invoke(state, request.params);
+                    let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
+
+                    let output = match result {
+                        Ok(output) => output,
+                        Err(e) => {
+                            dbg!(e.type_id());
+                            Err(RpcError::InternalError(anyhow::anyhow!("Task panic'd")))
+                        },
+                    };
+
+                    RpcResponse { output, id }.into_response()
+                }
+                RawRequest::Batch(requests) => {
+                    // An empty batch is invalid
+                    if requests.is_empty() {
+                        return serde_json::to_string(&RpcResponse::INVALID_REQUEST)
+                            .unwrap()
+                            .into_response();
+                    }
+
+                    let mut responses = Vec::new();
+
+                    for request in requests {
+                        let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
+                            responses.push(RpcResponse::INVALID_REQUEST);
+                            continue;
+                        };
+
+                        // Ignore notification requests.
+                        let Some(id) = request.id else {
+                            continue;
+                        };
+
+                        let Some(method) = self.methods.get(request.method.as_str()) else {
+                            responses.push(RpcResponse::method_not_found(id, request.method));
+                            continue;
+                        };
+
+                        let method = method.invoke(state.clone(), request.params);
+                        let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
+                        let output = match result {
+                            Ok(output) => output,
+                            Err(e) => Err(RpcError::InternalError(anyhow::anyhow!("Task panic'd"))),
+                        };
+                        responses.push(RpcResponse { output, id });
+                    }
+
+                    // All requests were notifications.
+                    if responses.is_empty() {
+                        return ().into_response();
+                    }
+
+                    serde_json::to_string(&responses).unwrap().into_response()
+                }
+            }
         })
     }
 }
@@ -312,114 +425,6 @@ mod sealed {
 #[async_trait]
 pub trait RpcMethodHandler {
     async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
-}
-
-/// An axum handler for a JSON RPC endpoint.
-///
-/// Specify the RPC methods by implementing [RpcMethodHandler].
-///
-/// ```rust
-/// let router = axum::Router::new()
-///     .route("/", post(rpc_handler::<ExampleHandler>));
-/// ```
-pub async fn rpc_handler<H: RpcMethodHandler>(
-    State(state): State<RpcContext>,
-    TypedHeader(content_type): TypedHeader<ContentType>,
-    bytes: axum::body::Bytes,
-) -> impl IntoResponse {
-    // Only allow json content.
-    if content_type != ContentType::json() {
-        return axum::http::StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
-    }
-
-    /// Used to parse the outer shell of an JSON RPC request.
-    ///
-    /// The specification requires differentiating between invalid json and invalid individual requests
-    /// within the json. This intermediary type let's us handle this.
-    #[derive(Debug, Deserialize)]
-    #[serde(untagged)]
-    enum RawRequest {
-        // This must come first as otherwise a batch request will get parsed as a Value::Array
-        Batch(Vec<Value>),
-        Single(Value),
-    }
-
-    // TODO: what HTTP codes should the rpc errors get?
-
-    let Ok(raw_request) = serde_json::from_slice::<RawRequest>(&bytes) else {
-        return RpcResponse::PARSE_ERROR.into_response();
-    };
-
-    match raw_request {
-        RawRequest::Single(request) => {
-            let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
-                return serde_json::to_string(&RpcResponse::INVALID_REQUEST).unwrap().into_response();
-            };
-
-            // Ignore notification requests.
-            let Some(id) = request.id else {
-                // TODO: should this just be closed connection?
-                return ().into_response();
-            };
-
-            // Use tokio spawn to handle panics. This could be done by catch_unwind but RpcContext
-            // contains a mutex which is not unwindsafe and I'm not smart enough to figure it out.
-            let result = tokio::spawn(async move {
-                H::call_method(&request.method, state, request.params).await
-            })
-            .await;
-
-            let output = match result {
-                Ok(output) => output,
-                Err(e) => Err(RpcError::InternalError(anyhow::anyhow!(e))),
-            };
-
-            RpcResponse { output, id }.into_response()
-        }
-        RawRequest::Batch(requests) => {
-            // An empty batch is invalid
-            if requests.is_empty() {
-                return serde_json::to_string(&RpcResponse::INVALID_REQUEST)
-                    .unwrap()
-                    .into_response();
-            }
-
-            let mut responses = Vec::new();
-
-            for request in requests {
-                let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
-                    responses.push(RpcResponse::INVALID_REQUEST);
-                    continue;
-                };
-
-                // Ignore notification requests.
-                let Some(id) = request.id else {
-                    continue;
-                };
-
-                // Use tokio spawn to handle panics. This could be done by catch_unwind but RpcContext
-                // contains a mutex which is not unwindsafe and I'm not smart enough to figure it out.
-                let state2 = state.clone();
-                let result = tokio::spawn(async move {
-                    H::call_method(&request.method, state2, request.params).await
-                })
-                .await;
-                let output = match result {
-                    Ok(output) => output,
-                    Err(e) => Err(RpcError::InternalError(anyhow::anyhow!(e))),
-                };
-                responses.push(RpcResponse { output, id });
-            }
-
-            // All requests were notifications.
-            if responses.is_empty() {
-                // TODO: should this just be closed connection?
-                return ().into_response();
-            }
-
-            return serde_json::to_string(&responses).unwrap().into_response();
-        }
-    }
 }
 
 #[cfg(test)]
@@ -762,7 +767,7 @@ mod tests {
                     {"jsonrpc": "2.0", "result": ["hello", 5], "id": "9"}
                 ]
             );
-            assert_eq!(res, expected);
+            pretty_assertions::assert_eq!(res, expected);
         }
 
         #[tokio::test]
@@ -943,7 +948,14 @@ mod tests {
                 panic!("Oh no!");
             }
 
-            RpcRouter::builder().register("panic", always_panic).build()
+            fn always_success() -> &'static str {
+                "Success"
+            }
+
+            RpcRouter::builder()
+                .register("panic", always_panic)
+                .register("success", always_success)
+                .build()
         }
 
         #[tokio::test]
@@ -977,7 +989,7 @@ mod tests {
                 .json(&serde_json::json!(
                     [
                         {"jsonrpc": "2.0", "method": "panic", "id": 1},
-                        {"jsonrpc": "2.0", "method": "no panic", "id": 2},
+                        {"jsonrpc": "2.0", "method": "success", "id": 2},
                     ]
                 ))
                 .send()

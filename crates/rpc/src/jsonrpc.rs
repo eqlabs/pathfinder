@@ -5,7 +5,7 @@ mod router;
 
 pub use error::RpcError;
 pub use response::{RpcResponse, RpcResult};
-pub use router::{rpc_handler, IntoRpcMethod, RpcMethodHandler, RpcRouter, RpcRouterBuilder};
+pub use router::{IntoRpcMethod, RpcMethodHandler, RpcRouter, RpcRouterBuilder};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RequestId {
