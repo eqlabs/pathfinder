@@ -504,10 +504,11 @@ mod tests {
     #[tokio::test]
     async fn regression_disallow_version_prefix_leakage_to_caller() {
         let context = RpcContext::for_tests();
-        let (_server_handle, address) = RpcServer::new("127.0.0.1:0".parse().unwrap(), context)
-            .run()
-            .await
-            .unwrap();
+        let (_server_handle, address) =
+            RpcServer::new("127.0.0.1:0".parse().unwrap(), context, DefaultVersion::V03)
+                .run()
+                .await
+                .unwrap();
 
         let client = TestClientBuilder::default()
             .address(address)
