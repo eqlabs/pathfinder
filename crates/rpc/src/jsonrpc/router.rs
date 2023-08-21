@@ -46,6 +46,34 @@ impl RpcRouter {
     pub fn builder() -> RpcRouterBuilder {
         RpcRouterBuilder::default()
     }
+
+    /// Parses and executes a request. Returns [None] if its a notification.
+    async fn run_request(&self, state: RpcContext, request: Value) -> Option<RpcResponse> {
+        let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
+                return Some(RpcResponse::INVALID_REQUEST);
+            };
+
+        // Ignore notification requests.
+        let Some(id) = request.id else {
+            return None;
+        };
+
+        let Some(method) = self.methods.get(request.method.as_str()) else {
+            return Some(RpcResponse::method_not_found(id, request.method));
+        };
+        let method = method.invoke(state, request.params);
+        let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
+
+        let output = match result {
+            Ok(output) => output,
+            Err(_e) => {
+                tracing::warn!(method=request.method, "RPC method panic'd");
+                Err(RpcError::InternalError(anyhow::anyhow!("Method panic'd")))
+            }
+        };
+
+        Some(RpcResponse { output, id })
+    }
 }
 
 #[axum::async_trait]
@@ -53,6 +81,9 @@ pub trait RpcMethod: Send + Sync {
     async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult;
 }
 
+// Ideally this would have been an axum handler function, but turning the RPC router into
+// an async fn proved to be above my knowledge. This works and is pretty straight-forward,
+// but one does have to manually deal with body and header checks.
 impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
     type Future = std::pin::Pin<Box<dyn Future<Output = axum::response::Response> + Send>>;
 
@@ -102,66 +133,23 @@ impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
             };
 
             match raw_request {
-                RawRequest::Single(request) => {
-                    let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
-                        return serde_json::to_string(&RpcResponse::INVALID_REQUEST).unwrap().into_response();
-                    };
-
-                    // Ignore notification requests.
-                    let Some(id) = request.id else {
-                        return ().into_response();
-                    };
-
-
-                    let Some(method) = self.methods.get(request.method.as_str()) else {
-                        return RpcResponse::method_not_found(id, request.method).into_response();
-                    };
-                    let method = method.invoke(state, request.params);
-                    let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
-
-                    let output = match result {
-                        Ok(output) => output,
-                        Err(e) => {
-                            dbg!(e.type_id());
-                            Err(RpcError::InternalError(anyhow::anyhow!("Task panic'd")))
-                        },
-                    };
-
-                    RpcResponse { output, id }.into_response()
-                }
+                RawRequest::Single(request) => match self.run_request(state, request).await {
+                    Some(response) => response.into_response(),
+                    None => ().into_response(),
+                },
                 RawRequest::Batch(requests) => {
                     // An empty batch is invalid
                     if requests.is_empty() {
-                        return serde_json::to_string(&RpcResponse::INVALID_REQUEST)
-                            .unwrap()
-                            .into_response();
+                        return RpcResponse::INVALID_REQUEST.into_response();
                     }
 
                     let mut responses = Vec::new();
 
                     for request in requests {
-                        let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
-                            responses.push(RpcResponse::INVALID_REQUEST);
-                            continue;
-                        };
-
-                        // Ignore notification requests.
-                        let Some(id) = request.id else {
-                            continue;
-                        };
-
-                        let Some(method) = self.methods.get(request.method.as_str()) else {
-                            responses.push(RpcResponse::method_not_found(id, request.method));
-                            continue;
-                        };
-
-                        let method = method.invoke(state.clone(), request.params);
-                        let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
-                        let output = match result {
-                            Ok(output) => output,
-                            Err(e) => Err(RpcError::InternalError(anyhow::anyhow!("Task panic'd"))),
-                        };
-                        responses.push(RpcResponse { output, id });
+                        // Notifications return none and are skipped.
+                        if let Some(response) = self.run_request(state.clone(), request).await {
+                            responses.push(response);
+                        }
                     }
 
                     // All requests were notifications.
