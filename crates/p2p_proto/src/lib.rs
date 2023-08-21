@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 pub mod proto {
     pub mod block {
         include!(concat!(env!("OUT_DIR"), "/starknet.block.rs"));
