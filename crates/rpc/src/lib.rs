@@ -116,10 +116,21 @@ impl RpcServer {
         let server = axum::Server::from_tcp(listener).context("Binding server to tcp listener")?;
 
         async fn handle_middleware_errors(err: axum::BoxError) -> (http::StatusCode, String) {
-            // TODO: handle timeout error
-            // TODO: handle concurrency limit error
-            // TODO: handle CORS error
-            todo!()
+            use http::StatusCode;
+            if err.is::<tower::timeout::error::Elapsed>() {
+                (
+                    StatusCode::REQUEST_TIMEOUT,
+                    "Request took too long".to_string(),
+                )
+            } else {
+                // TODO: confirm this isn't too verbose.
+                tracing::warn!(error=err, "Unhandled middleware error");
+
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Internal error"),
+                )
+            }
         }
 
         let middleware = tower::ServiceBuilder::new()
@@ -130,6 +141,7 @@ impl RpcServer {
             .concurrency_limit(self.max_connections)
             .layer(DefaultBodyLimit::max(REQUEST_MAX_SIZE))
             .timeout(REQUEST_TIMEOUT)
+            .layer(tower_http::trace::TraceLayer::new_for_http())
             .option_layer(self.cors);
 
         /// Returns success for requests with an empty body without reading
@@ -151,9 +163,7 @@ impl RpcServer {
             .route("/rpc/v0.4", post(v04::rpc_router()))
             .route("/rpc/pathfinder/v0.1", post(pathfinder::rpc_router()))
             .layer(middleware)
-            // TODO: metrics
             // TODO: websockets
-            // TODO: tracing
             .with_state(self.context);
 
         let server_handle = tokio::spawn(async move {
