@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - RPC v0.3 `starknet_estimateFee` example
+- RPC method names could be prefixed with API version
 
 ## [0.7.2] - 2023-08-16
 
