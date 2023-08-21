@@ -6375,6 +6375,7 @@ dependencies = [
  "mimalloc",
  "mockall",
  "p2p",
+ "p2p_proto",
  "p2p_proto_v0",
  "pathfinder-common",
  "pathfinder-compiler",
