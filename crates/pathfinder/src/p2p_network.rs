@@ -146,16 +146,16 @@ async fn handle_p2p_event(
             use p2p_proto_v0::sync::{Request, Response};
             let response = match request {
                 Request::GetBlockHeaders(r) => {
-                    Response::BlockHeaders(sync_handlers::get_block_headers(r, storage).await?)
+                    Response::BlockHeaders(sync_handlers::v0::get_block_headers(r, storage).await?)
                 }
                 Request::GetBlockBodies(r) => {
-                    Response::BlockBodies(sync_handlers::get_block_bodies(r, storage).await?)
+                    Response::BlockBodies(sync_handlers::v0::get_block_bodies(r, storage).await?)
                 }
                 Request::GetStateDiffs(r) => {
-                    Response::StateDiffs(sync_handlers::get_state_diffs(r, storage).await?)
+                    Response::StateDiffs(sync_handlers::v0::get_state_diffs(r, storage).await?)
                 }
                 Request::GetClasses(r) => {
-                    Response::Classes(sync_handlers::get_classes(r, storage).await?)
+                    Response::Classes(sync_handlers::v0::get_classes(r, storage).await?)
                 }
                 Request::Status(incoming_status) => {
                     // Use status as fallback until the first head propagation message received
