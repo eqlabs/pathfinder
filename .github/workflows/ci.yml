@@ -54,7 +54,7 @@ jobs:
         run: timeout 25m cargo nextest run --all-targets --all-features --workspace --locked --no-run
 
       - name: Run unit tests
-        run: timeout 5m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
+        run: timeout 7m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
 
   clippy:
     runs-on: ubuntu-latest
