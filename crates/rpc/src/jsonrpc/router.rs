@@ -17,11 +17,12 @@ use crate::jsonrpc::response::{RpcResponse, RpcResult};
 #[derive(Clone)]
 pub struct RpcRouter {
     methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
+    version: &'static str,
 }
 
-#[derive(Default)]
 pub struct RpcRouterBuilder {
     methods: HashMap<&'static str, Box<dyn RpcMethod>>,
+    version: &'static str,
 }
 
 impl RpcRouterBuilder {
@@ -36,15 +37,28 @@ impl RpcRouterBuilder {
     }
 
     pub fn build(self) -> RpcRouter {
+        // Intentionally leak the hashmap to give it a static lifetime.
+        //
+        // Since the router is expected to be long lived, this shouldn't be an issue.
         let methods = Box::new(self.methods);
         let methods = Box::leak(methods);
-        RpcRouter { methods }
+        RpcRouter {
+            methods,
+            version: self.version,
+        }
+    }
+
+    fn new(version: &'static str) -> Self {
+        RpcRouterBuilder {
+            methods: Default::default(),
+            version,
+        }
     }
 }
 
 impl RpcRouter {
-    pub fn builder() -> RpcRouterBuilder {
-        RpcRouterBuilder::default()
+    pub fn builder(version: &'static str) -> RpcRouterBuilder {
+        RpcRouterBuilder::new(version)
     }
 
     /// Parses and executes a request. Returns [None] if its a notification.
@@ -58,9 +72,13 @@ impl RpcRouter {
             return None;
         };
 
-        let Some(method) = self.methods.get(request.method.as_str()) else {
+        // Also grab the method_name as it is a static str, which is required by the metrics.
+        let Some((&method_name, method)) = self.methods.get_key_value(request.method.as_str()) else {
             return Some(RpcResponse::method_not_found(id, request.method));
         };
+
+        metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version);
+
         let method = method.invoke(state, request.params);
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
@@ -71,6 +89,10 @@ impl RpcRouter {
                 Err(RpcError::InternalError(anyhow::anyhow!("Method panic'd")))
             }
         };
+
+        if output.is_err() {
+            metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => self.version);
+        }
 
         Some(RpcResponse { output, id })
     }
@@ -476,7 +498,7 @@ mod tests {
                 ]))
             }
 
-            RpcRouter::builder()
+            RpcRouter::builder("vTEST")
                 .register("subtract", subtract)
                 .register("sum", sum)
                 .register("get_data", get_data)
@@ -944,7 +966,7 @@ mod tests {
                 "Success"
             }
 
-            RpcRouter::builder()
+            RpcRouter::builder("vTest")
                 .register("panic", always_panic)
                 .register("success", always_success)
                 .build()
@@ -1005,7 +1027,7 @@ mod tests {
             Ok(json!("Success"))
         }
 
-        let router = RpcRouter::builder()
+        let router = RpcRouter::builder("vTEST")
             .register("success", always_success)
             .build();
 

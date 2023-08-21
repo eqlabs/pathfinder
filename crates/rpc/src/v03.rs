@@ -92,7 +92,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
 
 #[rustfmt::skip]
 pub fn rpc_router() -> RpcRouter {
-    RpcRouter::builder()
+    RpcRouter::builder("v0.3")
         .register("starknet_addDeclareTransaction"           ,v02_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction"     ,v02_method::add_deploy_account_transaction)
         .register("starknet_addInvokeTransaction"            ,v02_method::add_invoke_transaction)

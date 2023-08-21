@@ -103,7 +103,7 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
 
 #[rustfmt::skip]
 pub fn rpc_router() -> RpcRouter {
-    RpcRouter::builder()
+    RpcRouter::builder("v0.4")
         .register("starknet_blockHashAndNumber"              , v02_method::block_hash_and_number)
         .register("starknet_blockNumber"                     , v02_method::block_number)
         .register("starknet_call"                            , v02_method::call)
