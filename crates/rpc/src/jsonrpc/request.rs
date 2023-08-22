@@ -1,16 +1,14 @@
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::value::RawValue;
 
 use crate::jsonrpc::RequestId;
 
 use std::borrow::Cow;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct RpcRequest<'a> {
     pub method: &'a str,
-    // This is allowed to be missing but to reduce the indirection we
-    // map None to to null in the deserialization implementation.
-    pub params: Value,
+    pub params: Option<&'a RawValue>,
     pub id: RequestId<'a>,
 }
 
@@ -42,8 +40,8 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
             #[serde(default, borrow, deserialize_with = "deserialize_some")]
             id: Option<Option<IdHelper<'a>>>,
             method: &'a str,
-            #[serde(default)]
-            params: Value,
+            #[serde(default, borrow)]
+            params: Option<&'a RawValue>,
         }
 
         // Any value that is present is considered Some value, including null.
@@ -81,8 +79,17 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use serde_json::value::to_raw_value;
 
     use super::*;
+
+    impl PartialEq for RpcRequest<'_> {
+        fn eq(&self, other: &Self) -> bool {
+            self.method == other.method
+                && self.id == other.id
+                && self.params.map(|x| x.get()) == other.params.map(|x| x.get())
+        }
+    }
 
     #[test]
     fn with_null_id() {
@@ -92,10 +99,14 @@ mod tests {
             "params": [1,2,3],
             "id": null
         });
+
+        let params = json!([1, 2, 3]);
+        let params = to_raw_value(&params).unwrap();
+
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: json!([1, 2, 3]),
+            params: Some(&params),
             id: RequestId::Null,
         };
         assert_eq!(result, expected);
@@ -109,10 +120,14 @@ mod tests {
             "params": [1,2,3],
             "id": "text"
         });
+
+        let params = json!([1, 2, 3]);
+        let params = to_raw_value(&params).unwrap();
+
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: json!([1, 2, 3]),
+            params: Some(&params),
             id: RequestId::String("text".into()),
         };
         assert_eq!(result, expected);
@@ -126,10 +141,14 @@ mod tests {
             "params": [1,2,3],
             "id": 456
         });
+
+        let params = json!([1, 2, 3]);
+        let params = to_raw_value(&params).unwrap();
+
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: json!([1, 2, 3]),
+            params: Some(&params),
             id: RequestId::Number(456),
         };
         assert_eq!(result, expected);
@@ -142,10 +161,14 @@ mod tests {
             "method": "sum",
             "params": [1,2,3]
         });
+
+        let params = json!([1, 2, 3]);
+        let params = to_raw_value(&params).unwrap();
+
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: json!([1, 2, 3]),
+            params: Some(&params),
             id: RequestId::Notification,
         };
         assert_eq!(result, expected);
@@ -179,10 +202,11 @@ mod tests {
             "method": "sum",
             "id": 456
         });
+
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: json!(null),
+            params: None,
             id: RequestId::Number(456),
         };
         assert_eq!(result, expected);

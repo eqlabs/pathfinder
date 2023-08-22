@@ -17,12 +17,12 @@ use crate::jsonrpc::response::{RpcResponse, RpcResult};
 
 #[derive(Clone)]
 pub struct RpcRouter {
-    methods: &'static HashMap<&'static str, Box<dyn RpcMethod<'static>>>,
+    methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
     version: &'static str,
 }
 
 pub struct RpcRouterBuilder {
-    methods: HashMap<&'static str, Box<dyn RpcMethod<'static>>>,
+    methods: HashMap<&'static str, Box<dyn RpcMethod>>,
     version: &'static str,
 }
 
@@ -84,7 +84,9 @@ impl RpcRouter {
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version);
 
-        let method = method.invoke(state, request.params);
+        let params = request.params.map(|x| x.get()).unwrap_or_default();
+
+        let method = method.invoke(state, params);
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
         let output = match result {
@@ -107,8 +109,8 @@ impl RpcRouter {
 }
 
 #[axum::async_trait]
-pub trait RpcMethod<'a>: Send + Sync {
-    async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult<'a>;
+pub trait RpcMethod: Send + Sync {
+    async fn invoke(&self, state: RpcContext, input: &str) -> RpcResult;
 }
 
 // Ideally this would have been an axum handler function, but turning the RPC router into
@@ -202,15 +204,15 @@ impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
 ///
 /// The generics allow us to achieve a form of variadic specilization and can be ignored by callers.
 /// See [sealed::Sealed] to add more method signatures or more information on how this works.
-pub trait IntoRpcMethod<'a, I, O, S>: sealed::Sealed<'a, I, O, S> {
-    fn into_method(self) -> Box<dyn RpcMethod<'a>>;
+pub trait IntoRpcMethod<'a, I, O, S>: sealed::Sealed<I, O, S> {
+    fn into_method(self) -> Box<dyn RpcMethod>;
 }
 
 impl<'a, T, I, O, S> IntoRpcMethod<'a, I, O, S> for T
 where
-    T: sealed::Sealed<'a, I, O, S>,
+    T: sealed::Sealed<I, O, S>,
 {
-    fn into_method(self) -> Box<dyn RpcMethod<'a>> {
+    fn into_method(self) -> Box<dyn RpcMethod> {
         sealed::Sealed::<I, O, S>::into_method(self)
     }
 }
@@ -234,38 +236,38 @@ mod sealed {
     /// ```
     /// Sealed<I = (), S = (), O = ((), Ouput)>
     /// ```
-    pub trait Sealed<'a, I, O, S> {
-        fn into_method(self) -> Box<dyn RpcMethod<'a>>;
+    pub trait Sealed<I, O, S> {
+        fn into_method(self) -> Box<dyn RpcMethod>;
     }
 
     /// ```
     /// async fn example(RpcContext, impl Deserialize) -> Result<Output, Into<RpcError>>
     /// ```
-    impl<'a, F, Input, Output, Error, Fut> Sealed<'a, ((), Input), ((), Output), ((), RpcContext)> for F
+    impl<'a, F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ((), RpcContext)> for F
     where
         F: Fn(RpcContext, Input) -> Fut + Sync + Send + 'static,
         Input: DeserializeOwned + Send + Sync + 'static,
         Output: Serialize + Send + Sync + 'static,
-        Error: Into<RpcError<'a>> + Send + Sync + 'static,
+        Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        fn into_method(self) -> Box<dyn RpcMethod<'a>> {
+        fn into_method(self) -> Box<dyn RpcMethod> {
             struct Helper<F, Input, Output, Error> {
                 f: F,
                 _marker: PhantomData<(Input, Output, Error)>,
             }
 
             #[axum::async_trait]
-            impl<'a, F, Input, Output, Error, Fut> RpcMethod<'a> for Helper<F, Input, Output, Error>
+            impl<'a, F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
             where
                 F: Fn(RpcContext, Input) -> Fut + Sync + Send,
                 Input: DeserializeOwned + Send + Sync,
                 Output: Serialize + Send + Sync,
-                Error: Into<RpcError<'a>> + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult<'a> {
-                    let input = serde_json::from_value::<Input>(input)
+                async fn invoke(&self, state: RpcContext, input: &str) -> RpcResult {
+                    let input = serde_json::from_str::<Input>(input)
                         .map_err(|_| RpcError::InvalidParams)?;
                     let output = (self.f)(state, input).await.map_err(Into::into)?;
                     serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
@@ -283,31 +285,31 @@ mod sealed {
     /// async fn example(impl Deserialize) -> Result<Output, Into<RpcError>>
     /// ```
     #[async_trait]
-    impl<'a, F, Input, Output, Error, Fut> Sealed<'a, ((), Input), ((), Output), ()> for F
+    impl<'a, F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ()> for F
     where
         F: Fn(Input) -> Fut + Sync + Send + 'static,
         Input: DeserializeOwned + Sync + Send + 'static,
         Output: Serialize + Sync + Send + 'static,
-        Error: Into<RpcError<'a>> + Sync + Send + 'static,
+        Error: Into<RpcError> + Sync + Send + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        fn into_method(self) -> Box<dyn RpcMethod<'a>> {
+        fn into_method(self) -> Box<dyn RpcMethod> {
             struct Helper<F, Input, Output, Error> {
                 f: F,
                 _marker: PhantomData<(Input, Output, Error)>,
             }
 
             #[axum::async_trait]
-            impl<'a, F, Input, Output, Error, Fut> RpcMethod<'a> for Helper<F, Input, Output, Error>
+            impl<'a, F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
             where
                 F: Fn(Input) -> Fut + Sync + Send,
                 Input: DeserializeOwned + Send + Sync,
                 Output: Serialize + Send + Sync,
-                Error: Into<RpcError<'a>> + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult<'a> {
-                    let input = serde_json::from_value::<Input>(input)
+                async fn invoke(&self, _state: RpcContext, input: &str) -> RpcResult {
+                    let input = serde_json::from_str::<Input>(input)
                         .map_err(|_| RpcError::InvalidParams)?;
                     let output = (self.f)(input).await.map_err(Into::into)?;
                     serde_json::to_value(output).map_err(|e| RpcError::InternalError(e.into()))
@@ -325,29 +327,29 @@ mod sealed {
     /// async fn example(RpcContext) -> Result<Output, Into<RpcError>>
     /// ```
     #[async_trait]
-    impl<'a, F, Output, Error, Fut> Sealed<'a, (), ((), Output), ((), RpcContext)> for F
+    impl<'a, F, Output, Error, Fut> Sealed<(), ((), Output), ((), RpcContext)> for F
     where
         F: Fn(RpcContext) -> Fut + Sync + Send + 'static,
         Output: Serialize + Sync + Send + 'static,
-        Error: Into<RpcError<'a>> + Send + Sync + 'static,
+        Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        fn into_method(self) -> Box<dyn RpcMethod<'a>> {
+        fn into_method(self) -> Box<dyn RpcMethod> {
             struct Helper<F, Output, Error> {
                 f: F,
                 _marker: PhantomData<(Output, Error)>,
             }
 
             #[axum::async_trait]
-            impl<'a, F, Output, Error, Fut> RpcMethod<'a> for Helper<F, Output, Error>
+            impl<'a, F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
             where
                 F: Fn(RpcContext) -> Fut + Sync + Send,
                 Output: Serialize + Send + Sync,
-                Error: Into<RpcError<'a>> + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke(&self, state: RpcContext, input: Value) -> RpcResult<'a> {
-                    if !input.is_null() {
+                async fn invoke(&self, state: RpcContext, input: &str) -> RpcResult {
+                    if !is_empty_params(input) {
                         return Err(RpcError::InvalidParams);
                     }
                     let output = (self.f)(state).await.map_err(Into::into)?;
@@ -363,32 +365,32 @@ mod sealed {
     }
 
     /// ```
-    /// async fn example() -> Result<Output, Into<RpcError>>
+    /// asy$nc fn example() -> Result<Output, Into<RpcError>>
     /// ```
     #[async_trait]
-    impl<'a, F, Output, Error, Fut> Sealed<'a, (), (), ((), Output)> for F
+    impl<'a, F, Output, Error, Fut> Sealed<(), (), ((), Output)> for F
     where
         F: Fn() -> Fut + Sync + Send + 'static,
         Output: Serialize + Sync + Send + 'static,
-        Error: Into<RpcError<'a>> + Sync + Send + 'static,
+        Error: Into<RpcError> + Sync + Send + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
     {
-        fn into_method(self) -> Box<dyn RpcMethod<'a>> {
+        fn into_method(self) -> Box<dyn RpcMethod> {
             struct Helper<F, Output, Error> {
                 f: F,
                 _marker: PhantomData<(Output, Error)>,
             }
 
             #[axum::async_trait]
-            impl<'a, F, Output, Error, Fut> RpcMethod<'a> for Helper<F, Output, Error>
+            impl<'a, F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
             where
                 F: Fn() -> Fut + Sync + Send,
                 Output: Serialize + Send + Sync,
-                Error: Into<RpcError<'a>> + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
             {
-                async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult<'a> {
-                    if !input.is_null() {
+                async fn invoke(&self, _state: RpcContext, input: &str) -> RpcResult {
+                    if !is_empty_params(input) {
                         return Err(RpcError::InvalidParams);
                     }
                     let output = (self.f)().await.map_err(Into::into)?;
@@ -407,22 +409,22 @@ mod sealed {
     /// fn example() -> &'static str
     /// ```
     #[async_trait]
-    impl<'a, F> Sealed<'a, (), (), ((), (), &'static str)> for F
+    impl<'a, F> Sealed<(), (), ((), (), &'static str)> for F
     where
         F: Fn() -> &'static str + Sync + Send + 'static,
     {
-        fn into_method(self) -> Box<dyn RpcMethod<'a>> {
+        fn into_method(self) -> Box<dyn RpcMethod> {
             struct Helper<F> {
                 f: F,
             }
 
             #[axum::async_trait]
-            impl<'a, F> RpcMethod<'a> for Helper<F>
+            impl<'a, F> RpcMethod for Helper<F>
             where
                 F: Fn() -> &'static str + Sync + Send,
             {
-                async fn invoke(&self, _state: RpcContext, input: Value) -> RpcResult<'a> {
-                    if !input.is_null() {
+                async fn invoke(&self, _state: RpcContext, input: &str) -> RpcResult {
+                    if !is_empty_params(input) {
                         return Err(RpcError::InvalidParams);
                     }
                     let output = (self.f)();
@@ -432,6 +434,30 @@ mod sealed {
             Box::new(Helper { f: self })
         }
     }
+}
+
+fn is_empty_params(params: &str) -> bool {
+    if params.is_empty() {
+        return true;
+    }
+
+    let params = params.trim().as_bytes();
+    let first = params.first();
+    let last = params.last();
+
+    let is_array = first == Some(&b'[') && last == Some(&b']');
+    let is_object = first == Some(&b'{') && last == Some(&b'}');
+
+    if is_array || is_object {
+        return params
+            .iter()
+            .skip(1)
+            .rev()
+            .skip(1)
+            .all(u8::is_ascii_whitespace);
+    }
+
+    false
 }
 
 /// Handles invoking an RPC route's methods.
@@ -444,6 +470,8 @@ pub trait RpcMethodHandler {
 
 #[cfg(test)]
 mod tests {
+    use crate::jsonrpc::router::is_empty_params;
+
     use super::*;
     use serde::Deserialize;
     use serde_json::json;
@@ -875,7 +903,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_non_json_content_header() {
-        async fn always_success(_ctx: RpcContext) -> RpcResult<'static> {
+        async fn always_success(_ctx: RpcContext) -> RpcResult {
             Ok(json!("Success"))
         }
 
@@ -889,7 +917,7 @@ mod tests {
         let res = client
             .post(url.clone())
             .body(
-                serde_json::json!(
+                json!(
                     {"jsonrpc": "2.0", "method": "any", "id": 1}
                 )
                 .to_string(),
@@ -901,5 +929,65 @@ mod tests {
             .status();
 
         assert_eq!(res, reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[test]
+    fn empty_params() {
+        assert!(!is_empty_params("params"));
+        assert!(!is_empty_params("[a]"));
+        assert!(!is_empty_params("{b}"));
+
+        assert!(is_empty_params("[]"));
+        assert!(is_empty_params("{}"));
+        assert!(is_empty_params("[     ]"));
+        assert!(is_empty_params("{  }"));
+
+        assert!(is_empty_params(r#"[
+
+        ]"#));
+    }
+
+    #[tokio::test]
+    async fn with_no_params() {
+        fn always_success() -> &'static str {
+            "Success"
+        }
+
+        let router = RpcRouter::builder("vTEST")
+            .register("success", always_success)
+            .build();
+
+        let url = spawn_server(router).await;
+
+        let expected = json!({"jsonrpc": "2.0", "result": "Success", "id": 1});
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(url.clone())
+            .json(&json!(
+                {"jsonrpc": "2.0", "method": "success", "id": 1}
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+
+        assert_eq!(res, expected);
+
+        let res = client
+            .post(url.clone())
+            .json(&json!(
+                {"jsonrpc": "2.0", "method": "success", "id": 1, "params": []}
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+
+        assert_eq!(res, expected);
     }
 }

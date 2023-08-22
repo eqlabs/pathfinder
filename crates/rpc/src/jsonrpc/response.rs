@@ -7,7 +7,7 @@ use crate::jsonrpc::RequestId;
 
 #[derive(Debug, PartialEq)]
 pub struct RpcResponse<'a> {
-    pub output: RpcResult<'a>,
+    pub output: RpcResult,
     pub id: RequestId<'a>,
 }
 
@@ -22,15 +22,15 @@ impl<'a> RpcResponse<'a> {
         id: RequestId::Null,
     };
 
-    pub const fn method_not_found(id: RequestId<'a>, method: &'a str) -> RpcResponse<'a> {
+    pub const fn method_not_found(id: RequestId<'a>, _method: &'a str) -> RpcResponse<'a> {
         Self {
-            output: Err(RpcError::MethodNotFound { method }),
+            output: Err(RpcError::MethodNotFound {  }),
             id,
         }
     }
 }
 
-pub type RpcResult<'a> = Result<Value, RpcError<'a>>;
+pub type RpcResult = Result<Value, RpcError>;
 
 impl Serialize for RpcResponse<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
