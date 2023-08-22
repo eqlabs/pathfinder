@@ -80,6 +80,7 @@ pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
 pretty_assertions = { workspace = true }
+progressed = "0.2.1"
 proptest = "1.2.0"
 rand = { workspace = true }
 rand_chacha = "0.3.1"

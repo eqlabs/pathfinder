@@ -589,7 +589,6 @@ Node: {node:?}
     /// The visitor function receives the node being visited, as well as the full path to that node.
     ///
     /// Upon successful non-breaking visit of the tree, `None` will be returned.
-    #[allow(dead_code)]
     pub fn dfs<X, VisitorFn>(
         &self,
         storage: &impl Storage,
