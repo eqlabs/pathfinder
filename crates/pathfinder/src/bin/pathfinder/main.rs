@@ -134,16 +134,13 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
         "Creating python process for call handling. Have you setup our Python dependencies?",
     )?;
 
-    let shared = pathfinder_rpc::gas_price::Cached::new(pathfinder_context.gateway.clone());
-
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
     )
-    .with_call_handling(call_handle)
-    .with_eth_gas_price(shared);
+    .with_call_handling(call_handle);
     let context = match config.poll_pending {
         true => context.with_pending_data(pending_state.clone()),
         false => context,

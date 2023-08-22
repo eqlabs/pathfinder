@@ -37,7 +37,7 @@ pub struct RpcContext {
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
     pub call_handle: Option<ext_py::Handle>,
-    pub eth_gas_price: Option<gas_price::Cached>,
+    pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
     pub version: RpcVersion,
 }
@@ -55,7 +55,7 @@ impl RpcContext {
             chain_id,
             pending_data: None,
             call_handle: None,
-            eth_gas_price: None,
+            eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             version: RpcVersion::default(),
         }
@@ -116,13 +116,6 @@ impl RpcContext {
     pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
         Self {
             call_handle: Some(call_handle),
-            ..self
-        }
-    }
-
-    pub fn with_eth_gas_price(self, gas_price: gas_price::Cached) -> Self {
-        Self {
-            eth_gas_price: Some(gas_price),
             ..self
         }
     }
