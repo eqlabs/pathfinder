@@ -1,4 +1,8 @@
-use std::{collections::HashSet, num::NonZeroU32, ops::ControlFlow};
+use std::{
+    collections::{HashMap, HashSet},
+    num::NonZeroU32,
+    ops::ControlFlow,
+};
 
 use anyhow::Context;
 use bitvec::{prelude::Msb0, slice::BitSlice, vec::BitVec};
@@ -45,14 +49,12 @@ fn main() -> anyhow::Result<()> {
 
     let mut tree = StorageCommitmentTree::load(&tx, block_header.storage_commitment)?;
 
-    let mut global_internal_node_count = 0_usize;
-    let mut contract_states = vec![];
+    let mut global_nodes: HashMap<BitVec<u8, Msb0>, InternalNode> = Default::default();
 
-    let mut visitor_fn = |node: &InternalNode, _path: &BitSlice<u8, Msb0>| {
+    let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
         match node {
-            InternalNode::Binary(_) | InternalNode::Edge(_) => global_internal_node_count += 1,
-            InternalNode::Leaf(contract_address) => {
-                contract_states.push(ContractStateHash(*contract_address))
+            InternalNode::Binary(_) | InternalNode::Edge(_) | InternalNode::Leaf(_) => {
+                global_nodes.insert(path.to_bitvec(), node.clone());
             }
             InternalNode::Unresolved(_) => {}
         };
@@ -61,47 +63,43 @@ fn main() -> anyhow::Result<()> {
 
     tree.dfs(&mut visitor_fn)?;
 
-    println!(
-        "Global tree: internal {}, leaf {}",
-        global_internal_node_count,
-        contract_states.len()
-    );
+    println!("Global tree nodes: {}", global_nodes.len());
 
-    let mut contract_storage_internal_nodes: HashSet<BitVec<u8, Msb0>> = Default::default();
-    let mut contract_storage_leaves: HashSet<BitVec<u8, Msb0>> = Default::default();
+    // let mut contract_storage_internal_nodes: HashSet<BitVec<u8, Msb0>> = Default::default();
+    // let mut contract_storage_leaves: HashSet<BitVec<u8, Msb0>> = Default::default();
 
-    for contract_index in progressed::ProgressBar::new(0..contract_states.len())
-        .set_title("Checking contract state tries")
-    {
-        let contract_state_hash = contract_states.get(contract_index).unwrap();
-        let (contract_root, _, _) = tx
-            .contract_state(*contract_state_hash)?
-            .context("Getting contract state")?;
+    // for contract_index in progressed::ProgressBar::new(0..contract_states.len())
+    //     .set_title("Checking contract state tries")
+    // {
+    //     let contract_state_hash = contract_states.get(contract_index).unwrap();
+    //     let (contract_root, _, _) = tx
+    //         .contract_state(*contract_state_hash)?
+    //         .context("Getting contract state")?;
 
-        let mut tree = ContractsStorageTree::load(&tx, contract_root);
+    //     let mut tree = ContractsStorageTree::load(&tx, contract_root);
 
-        let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
-            match node {
-                InternalNode::Binary(_) | InternalNode::Edge(_) => {
-                    contract_storage_internal_nodes.insert(path.to_bitvec());
-                }
-                InternalNode::Leaf(_) => {
-                    contract_storage_leaves.insert(path.to_bitvec());
-                }
-                InternalNode::Unresolved(_) => {}
-            };
+    //     let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
+    //         match node {
+    //             InternalNode::Binary(_) | InternalNode::Edge(_) => {
+    //                 contract_storage_internal_nodes.insert(path.to_bitvec());
+    //             }
+    //             InternalNode::Leaf(_) => {
+    //                 contract_storage_leaves.insert(path.to_bitvec());
+    //             }
+    //             InternalNode::Unresolved(_) => {}
+    //         };
 
-            ControlFlow::Continue::<(), Visit>(Default::default())
-        };
+    //         ControlFlow::Continue::<(), Visit>(Default::default())
+    //     };
 
-        tree.dfs(&mut visitor_fn)?;
-    }
+    //     tree.dfs(&mut visitor_fn)?;
+    // }
 
-    println!(
-        "Contracts tree: internal {}, leaf {}",
-        contract_storage_internal_nodes.len(),
-        contract_storage_leaves.len()
-    );
+    // println!(
+    //     "Contracts tree: internal {}, leaf {}",
+    //     contract_storage_internal_nodes.len(),
+    //     contract_storage_leaves.len()
+    // );
 
     Ok(())
 }
