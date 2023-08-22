@@ -212,6 +212,9 @@ fn classes(
             break;
         };
 
+        // This is a temporary measure to avoid exceeding the max size of a protobuf message.
+        let class = zstd::bulk::compress(&class, 0)?;
+
         classes.push(p2p_proto::common::RawClass { class });
     }
 
@@ -219,8 +222,8 @@ fn classes(
 }
 
 /// Workaround for the orphan rule - implement conversion fns for types ourside our crate.
-mod conv {
-    pub(super) mod header {
+pub(crate) mod conv {
+    pub(crate) mod header {
         use pathfinder_common::BlockHeader;
 
         pub fn from(

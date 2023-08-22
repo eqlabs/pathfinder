@@ -1,12 +1,12 @@
 //! Starknet L2 sequencer client.
 use pathfinder_common::{
-    BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
+    BlockHash, BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
     ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
 use starknet_gateway_types::{
-    error::SequencerError,
+    error::{KnownStarknetErrorCode, SequencerError, StarknetError, StarknetErrorCode},
     reply,
     request::add_transaction::{
         AddTransaction, ContractDefinition, Declare, DeployAccount, InvokeFunction,
@@ -112,6 +112,34 @@ pub trait GatewayApi: Sync {
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::DeployAccountResponse, SequencerError> {
         unimplemented!();
+    }
+
+    /// This is a **temporary** measure to keep the sync logic unchanged
+    ///
+    /// TODO remove when p2p friendly sync is implemented
+    async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
+        match self.block(BlockId::Latest).await? {
+            reply::MaybePendingBlock::Block(b) => Ok((b.block_number, b.block_hash)),
+            reply::MaybePendingBlock::Pending(_) => {
+                // Let's say it sort of suits the situation
+                Err(SequencerError::StarknetError(StarknetError {
+                    code: StarknetErrorCode::Known(KnownStarknetErrorCode::BlockNotFound),
+                    message: "Sequencer client got a pending block instead of latest".into(),
+                }))
+            }
+        }
+    }
+}
+
+/// This is a **temporary** measure to keep the sync logic unchanged
+///
+/// TODO remove when p2p friendly sync is implemented
+#[allow(unused_variables)]
+#[cfg_attr(feature = "test-utils", mockall::automock)]
+#[async_trait::async_trait]
+pub trait GossipApi: Sync {
+    async fn propagate_head(&self, block_number: BlockNumber, block_hash: BlockHash) {
+        // Intentionally does nothing for default impl
     }
 }
 
@@ -576,6 +604,12 @@ impl GatewayApi for Client {
             .await
     }
 }
+
+#[async_trait::async_trait]
+impl GossipApi for Client {}
+
+#[async_trait::async_trait]
+impl GossipApi for () {}
 
 pub mod test_utils {
     use super::Client;

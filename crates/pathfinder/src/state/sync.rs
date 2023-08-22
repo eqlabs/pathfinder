@@ -20,14 +20,12 @@ use pathfinder_rpc::{
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use stark_hash::Felt;
-use starknet_gateway_client::GatewayApi;
+use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply::PendingBlock;
-use starknet_gateway_types::{
-    pending::PendingData,
-    reply::{Block, MaybePendingBlock},
-};
+use starknet_gateway_types::{pending::PendingData, reply::Block};
 
 use std::future::Future;
+use std::time::Instant;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -78,6 +76,7 @@ pub struct SyncContext<G, E> {
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: WebsocketSenders,
     pub block_cache_size: usize,
+    pub restart_delay: Duration,
 }
 
 impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
@@ -115,7 +114,7 @@ pub async fn sync<Ethereum, SequencerClient, F1, F2, L1Sync, L2Sync>(
 ) -> anyhow::Result<()>
 where
     Ethereum: EthereumApi + Clone + Send + 'static,
-    SequencerClient: GatewayApi + Clone + Send + Sync + 'static,
+    SequencerClient: GatewayApi + GossipApi + Clone + Send + Sync + 'static,
     F1: Future<Output = anyhow::Result<()>> + Send + 'static,
     F2: Future<Output = anyhow::Result<()>> + Send + 'static,
     L1Sync: FnMut(mpsc::Sender<SyncEvent>, L1SyncContext<Ethereum>) -> F1,
@@ -144,6 +143,7 @@ where
         block_validation_mode: _,
         websocket_txs: _,
         block_cache_size,
+        restart_delay,
     } = context.clone();
 
     let mut db_conn = storage
@@ -260,7 +260,7 @@ where
                 let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain);
 
                 l2_handle = tokio::spawn(async move {
-                    tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
+                    tokio::time::sleep(restart_delay).await;
                     fut.await
                 });
                 tracing::info!("L2 sync process restarted.");
@@ -551,26 +551,24 @@ async fn latest_n_blocks(
 }
 
 /// Periodically updates sync state with the latest block height.
+///
+/// If feature `p2p` is enabled and node type is `proxy`
+/// propagates latest head after every change or otherwise every 2 minutes.
 async fn update_sync_status_latest(
     state: Arc<SyncState>,
-    sequencer: impl GatewayApi,
+    sequencer: impl GatewayApi + GossipApi,
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
     poll_interval: Duration,
 ) -> anyhow::Result<()> {
-    use pathfinder_common::BlockId;
-
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
+    let mut last_propagated = Instant::now();
 
     loop {
-        match sequencer.block(BlockId::Latest).await {
-            Ok(MaybePendingBlock::Block(block)) => {
-                let latest = {
-                    let latest_hash = block.block_hash;
-                    let latest_num = block.block_number;
-                    NumberedBlock::from((latest_hash, latest_num))
-                };
-                // Update the sync status.
+        match sequencer.head().await {
+            Ok((block_number, block_hash)) => {
+                let latest = NumberedBlock::from((block_hash, block_number));
+
                 match &mut *state.status.write().await {
                     sync_status @ Syncing::False(_) => {
                         *sync_status = Syncing::Status(syncing::Status {
@@ -582,6 +580,8 @@ async fn update_sync_status_latest(
                         metrics::gauge!("current_block", starting.number.get() as f64);
                         metrics::gauge!("highest_block", latest.number.get() as f64);
 
+                        propagate_head(&sequencer, &mut last_propagated, latest).await;
+
                         tracing::debug!(
                             status=%sync_status,
                             "Updated sync status",
@@ -590,7 +590,10 @@ async fn update_sync_status_latest(
                     Syncing::Status(status) => {
                         if status.highest.hash != latest.hash {
                             status.highest = latest;
+
                             metrics::gauge!("highest_block", latest.number.get() as f64);
+
+                            propagate_head(&sequencer, &mut last_propagated, latest).await;
 
                             tracing::debug!(
                                 %status,
@@ -599,9 +602,11 @@ async fn update_sync_status_latest(
                         }
                     }
                 }
-            }
-            Ok(MaybePendingBlock::Pending(_)) => {
-                tracing::error!("Latest block returned 'pending'");
+
+                // duplicate_cache_time for gossipsub defaults to 1 minute
+                if last_propagated.elapsed() > Duration::from_secs(120) {
+                    propagate_head(&sequencer, &mut last_propagated, latest).await;
+                }
             }
             Err(e) => {
                 tracing::error!(error=%e, "Failed to fetch latest block");
@@ -610,6 +615,15 @@ async fn update_sync_status_latest(
 
         tokio::time::sleep(poll_interval).await;
     }
+}
+
+async fn propagate_head(
+    gossiper: &impl GossipApi,
+    last_propagated: &mut Instant,
+    head: NumberedBlock,
+) {
+    _ = gossiper.propagate_head(head.number, head.hash).await;
+    *last_propagated = Instant::now();
 }
 
 async fn l1_update(
@@ -717,6 +731,7 @@ async fn l2_update(
             .into_iter()
             .zip(block.transaction_receipts.into_iter())
             .collect::<Vec<_>>();
+
         transaction
             .insert_transaction_data(header.hash, header.number, &transaction_data)
             .context("Insert transaction data into database")?;
@@ -746,7 +761,9 @@ async fn l2_update(
         }
 
         transaction.commit().context("Commit database transaction")
-    })
+    })?;
+
+    Ok(())
 }
 
 async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {

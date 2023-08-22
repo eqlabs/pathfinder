@@ -162,8 +162,8 @@ async fn main() -> anyhow::Result<()> {
                 };
                 p2p_client.send_sync_response(channel, response).await;
             }
-            p2p::Event::BlockPropagation(block_propagation) => {
-                tracing::info!(?block_propagation, "Block Propagation");
+            p2p::Event::BlockPropagation { from, message } => {
+                tracing::info!(?from, ?message, "Block Propagation");
             }
             p2p::Event::Test(_) => {}
         }

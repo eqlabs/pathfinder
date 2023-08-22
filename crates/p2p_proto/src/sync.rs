@@ -1,3 +1,5 @@
+use std::fmt::{Display, Write};
+
 use fake::Dummy;
 use stark_hash::Felt;
 
@@ -15,7 +17,11 @@ pub enum Request {
     Status(Status),
 }
 
-const MAX_UNCOMPRESSED_MESSAGE_SIZE: usize = 1024 * 1024;
+// FIXME !!! even block bodies on testnet2 get too bit at some point
+// FIXME !!! this is going to be fixed ASAP along with the update
+// FIXME !!! of the proto files as now we don't have a decent
+// FIXME !!! way to handle message partitioning
+const MAX_UNCOMPRESSED_MESSAGE_SIZE: usize = 20 * 1024 * 1024;
 
 impl Request {
     pub fn from_protobuf_encoding(bytes: &[u8]) -> std::io::Result<Self> {
@@ -171,6 +177,46 @@ pub enum Response {
     StateDiffs(StateDiffs),
     Classes(Classes),
     Status(Status),
+}
+
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Response::BlockHeaders(BlockHeaders { headers }) => {
+                write!(f, "BlockHeaders[len={};block-numbers:", headers.len())?;
+                for header in headers {
+                    write!(f, "{},", header.number)?;
+                }
+                f.write_char(']')
+            }
+            Response::BlockBodies(BlockBodies { block_bodies }) => {
+                write!(f, "BlockBodies[len={}]", block_bodies.len())
+            }
+            Response::StateDiffs(StateDiffs {
+                block_state_updates,
+            }) => {
+                write!(
+                    f,
+                    "StateDiffs[len={};block-hashes:",
+                    block_state_updates.len()
+                )?;
+                for diff in block_state_updates {
+                    write!(f, "{},", diff.block_hash)?;
+                }
+                f.write_char(']')
+            }
+            Response::Classes(Classes { classes }) => {
+                write!(f, "Classes[len={};compressed-class-sizes:", classes.len())?;
+                for class in classes {
+                    write!(f, "{},", class.class.len())?;
+                }
+                f.write_char(']')
+            }
+            Response::Status(Status { height, hash, .. }) => {
+                write!(f, "Status{{height:{height},hash:{hash},...}}")
+            }
+        }
+    }
 }
 
 impl Response {

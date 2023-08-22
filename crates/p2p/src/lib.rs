@@ -4,16 +4,19 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use delay_map::HashSetDelay;
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::identity::Keypair;
 use libp2p::kad::record::Key;
 use libp2p::kad::{BootstrapError, BootstrapOk, KademliaEvent, QueryId, QueryResult};
+use libp2p::multiaddr::Protocol;
 use libp2p::request_response::{self, RequestId, ResponseChannel};
 use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::Multiaddr;
 use libp2p::{identify, PeerId};
+use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 mod behaviour;
@@ -35,14 +38,14 @@ pub fn new(
     peers: Arc<RwLock<peers::Peers>>,
     periodic_cfg: PeriodicTaskConfig,
 ) -> (Client, EventReceiver, MainLoop) {
-    let peer_id = keypair.public().to_peer_id();
+    let my_peer_id = keypair.public().to_peer_id();
 
     let (behaviour, relay_transport) = behaviour::Behaviour::new(&keypair);
 
     let swarm = SwarmBuilder::with_executor(
         transport::create(&keypair, relay_transport),
         behaviour,
-        peer_id,
+        my_peer_id,
         executor::TokioExecutor(),
     )
     .build();
@@ -53,6 +56,7 @@ pub fn new(
     (
         Client {
             sender: command_sender,
+            my_peer_id,
         },
         event_receiver,
         MainLoop::new(swarm, command_receiver, event_sender, peers, periodic_cfg),
@@ -83,9 +87,295 @@ impl Default for PeriodicTaskConfig {
     }
 }
 
+/// _High level_ client for p2p interaction.
+/// Frees the caller from managing peers manually.
+#[derive(Clone, Debug)]
+pub struct SyncClient {
+    client: Client,
+    block_propagation_topic: String,
+    peers_with_sync_capability: Arc<RwLock<HashSet<PeerId>>>,
+    last_update: Arc<RwLock<std::time::Instant>>,
+    // FIXME
+    _peers: Arc<RwLock<peers::Peers>>,
+}
+
+pub type HeadTx = tokio::sync::watch::Sender<Option<(BlockNumber, BlockHash)>>;
+pub type HeadRx = tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>;
+
+// FIXME make sure the api looks reasonable from the perspective of
+// the __user__, which is the sync driving algo/entity
+impl SyncClient {
+    pub fn new(
+        client: Client,
+        block_propagation_topic: String,
+        peers: Arc<RwLock<peers::Peers>>,
+    ) -> Self {
+        Self {
+            client,
+            block_propagation_topic,
+            peers_with_sync_capability: Default::default(),
+            last_update: Arc::new(RwLock::new(
+                std::time::Instant::now()
+                    .checked_sub(Duration::from_secs(55))
+                    .unwrap(),
+            )),
+            _peers: peers,
+        }
+    }
+
+    // Propagate new L2 head header
+    pub async fn propagate_new_header(
+        &self,
+        header: p2p_proto::common::BlockHeader,
+    ) -> anyhow::Result<()> {
+        tracing::debug!(block_number=%header.number, topic=%self.block_propagation_topic,
+            "Propagating header"
+        );
+
+        self.client
+            .publish_propagation_message(
+                &self.block_propagation_topic,
+                p2p_proto::propagation::Message::NewBlockHeader(
+                    p2p_proto::propagation::NewBlockHeader { header },
+                ),
+            )
+            .await
+    }
+
+    async fn get_update_peers_with_sync_capability(&self) -> Vec<PeerId> {
+        use rand::seq::SliceRandom;
+
+        if self.last_update.read().await.clone().elapsed() > Duration::from_secs(60) {
+            let mut peers = self
+                .client
+                .get_capability_providers("core/blocks-sync/1")
+                .await
+                .unwrap_or_default();
+
+            let _i_should_have_the_capability_too = peers.remove(&self.client.my_peer_id);
+            debug_assert!(_i_should_have_the_capability_too);
+
+            let mut peers_with_sync_capability = self.peers_with_sync_capability.write().await;
+            *peers_with_sync_capability = peers;
+
+            let mut last_update = self.last_update.write().await;
+            *last_update = std::time::Instant::now();
+        }
+
+        let peers_with_sync_capability = self.peers_with_sync_capability.read().await;
+        let mut peers = peers_with_sync_capability
+            .iter()
+            .map(Clone::clone)
+            .collect::<Vec<_>>();
+        peers.shuffle(&mut rand::thread_rng());
+        peers
+    }
+
+    pub async fn block_headers(
+        &self,
+        // start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
+        start_block: BlockNumber, // TODO number or hash
+        num_blocks: usize,        // FIXME, use range?
+    ) -> Option<Vec<p2p_proto::common::BlockHeader>> {
+        if num_blocks == 0 {
+            return Some(Vec::new());
+        }
+
+        let count: u64 = num_blocks.try_into().ok()?;
+
+        for peer in self.get_update_peers_with_sync_capability().await {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetBlockHeaders(p2p_proto::sync::GetBlockHeaders {
+                        start_block: start_block.get(),
+                        count,
+                        size_limit: u64::MAX, // FIXME
+                        direction: p2p_proto::sync::Direction::Forward,
+                    }),
+                )
+                .await;
+
+            match response {
+                Ok(p2p_proto::sync::Response::BlockHeaders(x)) => {
+                    if x.headers.is_empty() {
+                        tracing::debug!(%peer, "Got empty block headers response");
+                        continue;
+                    } else {
+                        return Some(x.headers);
+                    }
+                }
+                Ok(_) => {
+                    tracing::debug!(%peer, "Got unexpected response to GetBlockHeaders");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "GetBlockHeaders failed");
+                    continue;
+                }
+            }
+        }
+
+        tracing::debug!(%start_block, %num_blocks, "No peers with block headers found for");
+
+        None
+    }
+
+    pub async fn block_bodies(
+        &self,
+        start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
+        num_blocks: usize,           // FIXME, use range?
+    ) -> Option<Vec<p2p_proto::common::BlockBody>> {
+        if num_blocks == 0 {
+            return Some(Vec::new());
+        }
+
+        let count: u64 = num_blocks.try_into().ok()?;
+
+        for peer in self.get_update_peers_with_sync_capability().await {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetBlockBodies(p2p_proto::sync::GetBlockBodies {
+                        start_block: start_block_hash.0,
+                        count,
+                        size_limit: u64::MAX, // FIXME
+                        direction: p2p_proto::sync::Direction::Forward,
+                    }),
+                )
+                .await;
+
+            match response {
+                Ok(p2p_proto::sync::Response::BlockBodies(x)) => {
+                    if x.block_bodies.is_empty() {
+                        tracing::debug!(%peer, "Got empty block bodies response");
+                        continue;
+                    } else {
+                        return Some(x.block_bodies);
+                    }
+                }
+                Ok(_) => {
+                    tracing::debug!(%peer, "Got unexpected response to GetBlockBodies");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "GetBlockBodies failed");
+                    continue;
+                }
+            }
+        }
+
+        tracing::debug!(%start_block_hash, %num_blocks, "No peers with block bodies found for");
+
+        None
+    }
+
+    pub async fn state_updates(
+        &self,
+        start_block_hash: BlockHash, // FIXME, hash to avoid DB lookup
+        num_blocks: usize,           // FIXME, use range?
+    ) -> Option<Vec<p2p_proto::sync::BlockStateUpdateWithHash>> {
+        if num_blocks == 0 {
+            return Some(Vec::new());
+        }
+
+        let count: u64 = num_blocks.try_into().ok()?;
+
+        for peer in self.get_update_peers_with_sync_capability().await {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetStateDiffs(p2p_proto::sync::GetStateDiffs {
+                        start_block: start_block_hash.0,
+                        count,
+                        size_limit: u64::MAX, // FIXME
+                        direction: p2p_proto::sync::Direction::Forward,
+                    }),
+                )
+                .await;
+            match response {
+                Ok(p2p_proto::sync::Response::StateDiffs(x)) => {
+                    if x.block_state_updates.is_empty() {
+                        tracing::debug!(%peer, "Got empty state updates response");
+                        continue;
+                    } else {
+                        return Some(x.block_state_updates);
+                    }
+                }
+                Ok(_) => {
+                    tracing::debug!(%peer, "Got unexpected response to GetStateDiffs");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "GetStateDiffs failed");
+                    continue;
+                }
+            }
+        }
+
+        tracing::debug!(%start_block_hash, %num_blocks, "No peers with state updates found for");
+
+        None
+    }
+
+    pub async fn contract_classes(
+        &self,
+        class_hashes: Vec<ClassHash>,
+    ) -> Option<p2p_proto::sync::Classes> {
+        if class_hashes.is_empty() {
+            return Some(p2p_proto::sync::Classes {
+                classes: Vec::new(),
+            });
+        }
+
+        let class_hashes = class_hashes.into_iter().map(|x| x.0).collect::<Vec<_>>();
+
+        for peer in self.get_update_peers_with_sync_capability().await {
+            let response = self
+                .client
+                .send_sync_request(
+                    peer,
+                    p2p_proto::sync::Request::GetClasses(p2p_proto::sync::GetClasses {
+                        class_hashes: class_hashes.clone(),
+                        size_limit: u64::MAX, // FIXME
+                    }),
+                )
+                .await;
+            match response {
+                Ok(p2p_proto::sync::Response::Classes(x)) => {
+                    if x.classes.is_empty() {
+                        tracing::debug!(%peer, "Got empty classes response");
+                        continue;
+                    } else {
+                        return Some(x);
+                    }
+                }
+                Ok(_) => {
+                    tracing::debug!(%peer, "Got unexpected response to GetClasses");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "GetStateDiffs failed");
+                    continue;
+                }
+            }
+        }
+
+        tracing::debug!(?class_hashes, "No peers with classes found for");
+
+        None
+    }
+}
+
+/// _Low level_ client for p2p interaction.
+/// For syncing use [`SyncClient`] instead.
 #[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<Command>,
+    my_peer_id: PeerId,
 }
 
 impl Client {
@@ -121,6 +411,30 @@ impl Client {
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
+    }
+
+    pub async fn get_capability_providers(
+        &self,
+        capability: &str,
+    ) -> anyhow::Result<HashSet<PeerId>> {
+        let (sender, mut receiver) = mpsc::channel(1);
+        self.sender
+            .send(Command::GetCapabilityProviders {
+                capability: capability.to_owned(),
+                sender,
+            })
+            .await
+            .expect("Command receiver not to be dropped");
+
+        let mut providers = HashSet::new();
+
+        while let Some(partial_result) = receiver.recv().await {
+            let more_providers =
+                partial_result.with_context(|| format!("Getting providers for {capability}"))?;
+            providers.extend(more_providers.into_iter());
+        }
+
+        Ok(providers)
     }
 
     pub async fn subscribe_topic(&self, topic: &str) -> anyhow::Result<()> {
@@ -171,7 +485,7 @@ impl Client {
         self.sender
             .send(Command::PublishPropagationMessage {
                 topic,
-                message: Box::new(message),
+                message: message.into(),
                 sender,
             })
             .await
@@ -209,6 +523,10 @@ enum Command {
         capability: String,
         sender: EmptyResultSender,
     },
+    GetCapabilityProviders {
+        capability: String,
+        sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>>>,
+    },
     SubscribeTopic {
         topic: IdentTopic,
         sender: EmptyResultSender,
@@ -238,10 +556,6 @@ enum Command {
 #[derive(Debug)]
 pub enum TestCommand {
     GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
-    GetProviders {
-        key: Vec<u8>,
-        sender: mpsc::Sender<Result<HashSet<PeerId>, ()>>,
-    },
 }
 
 #[derive(Debug)]
@@ -257,7 +571,10 @@ pub enum Event {
         request: p2p_proto::sync::Request,
         channel: ResponseChannel<p2p_proto::sync::Response>,
     },
-    BlockPropagation(p2p_proto::propagation::Message),
+    BlockPropagation {
+        from: PeerId,
+        message: Box<p2p_proto::propagation::Message>,
+    },
     /// For testing purposes only
     Test(TestEvent),
 }
@@ -276,21 +593,23 @@ pub enum TestEvent {
 pub type EventReceiver = mpsc::Receiver<Event>;
 
 pub struct MainLoop {
+    bootstrap_cfg: BootstrapConfig,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
-
     peers: Arc<RwLock<peers::Peers>>,
-
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_block_sync_requests:
         HashMap<RequestId, oneshot::Sender<anyhow::Result<p2p_proto::sync::Response>>>,
     pending_block_sync_status_requests: HashSet<RequestId>,
-
     request_sync_status: HashSetDelay<PeerId>,
-
-    bootstrap_cfg: BootstrapConfig,
+    pending_queries: PendingQueries,
     _pending_test_queries: TestQueries,
+}
+
+#[derive(Debug, Default)]
+struct PendingQueries {
+    pub get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>>>>,
 }
 
 impl MainLoop {
@@ -302,6 +621,7 @@ impl MainLoop {
         periodic_cfg: PeriodicTaskConfig,
     ) -> Self {
         Self {
+            bootstrap_cfg: periodic_cfg.bootstrap,
             swarm,
             command_receiver,
             event_sender,
@@ -310,7 +630,7 @@ impl MainLoop {
             pending_block_sync_requests: Default::default(),
             pending_block_sync_status_requests: Default::default(),
             request_sync_status: HashSetDelay::new(periodic_cfg.status_period),
-            bootstrap_cfg: periodic_cfg.bootstrap,
+            pending_queries: Default::default(),
             _pending_test_queries: Default::default(),
         }
     }
@@ -321,11 +641,51 @@ impl MainLoop {
         let mut bootstrap_interval =
             tokio::time::interval_at(bootstrap_start, self.bootstrap_cfg.period);
 
+        let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
+        let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
+        let me = *self.swarm.local_peer_id();
+
         loop {
             let bootstrap_interval_tick = bootstrap_interval.tick();
             tokio::pin!(bootstrap_interval_tick);
 
+            let network_status_interval_tick = network_status_interval.tick();
+            tokio::pin!(network_status_interval_tick);
+
+            let peer_status_interval_tick = peer_status_interval.tick();
+            tokio::pin!(peer_status_interval_tick);
+
             tokio::select! {
+                _ = network_status_interval_tick => {
+                    let network_info = self.swarm.network_info();
+                    let num_peers = network_info.num_peers();
+                    let connection_counters = network_info.connection_counters();
+                    let num_established_connections = connection_counters.num_established();
+                    let num_pending_connections = connection_counters.num_pending();
+                    tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
+                }
+                _ = peer_status_interval_tick => {
+                    let dht = self.swarm.behaviour_mut().kademlia
+                        .kbuckets()
+                        // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
+                        .map(|kbucket_ref| {
+                            kbucket_ref
+                                .iter()
+                                .map(|entry_ref| *entry_ref.node.key.preimage())
+                                .collect::<Vec<_>>()
+                        })
+                        .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
+                        .collect::<HashSet<_>>();
+                    let guard = self.peers.read().await;
+                    let connected = guard.connected().collect::<Vec<_>>();
+
+                    tracing::info!(
+                        "Peer status: me {}, connected {:?}, dht {:?}",
+                        me,
+                        connected,
+                        dht,
+                    );
+                }
                 _ = bootstrap_interval_tick => {
                     tracing::debug!("Doing periodical bootstrap");
                     _ = self.swarm.behaviour_mut().kademlia.bootstrap();
@@ -469,16 +829,19 @@ impl MainLoop {
             })) => {
                 match p2p_proto::propagation::Message::from_protobuf_encoding(message.data.as_ref())
                 {
-                    Ok(event) => {
+                    Ok(decoded_message) => {
                         tracing::debug!(
                             "Gossipsub Event Message: [id={}][peer={}] {:?} ({} bytes)",
                             id,
                             peer_id,
-                            event,
+                            decoded_message,
                             message.data.len()
                         );
                         self.event_sender
-                            .send(Event::BlockPropagation(event))
+                            .send(Event::BlockPropagation {
+                                from: peer_id,
+                                message: decoded_message.into(),
+                            })
                             .await?;
                     }
                     Err(e) => {
@@ -522,8 +885,57 @@ impl MainLoop {
                                     )
                                     .await;
                                 }
+                                QueryResult::GetProviders(result) => {
+                                    use libp2p::kad::GetProvidersOk;
+
+                                    let result = match result {
+                                        Ok(GetProvidersOk::FoundProviders {
+                                            providers, ..
+                                        }) => Ok(providers),
+                                        Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
+                                            ..
+                                        }) => Ok(Default::default()),
+                                        Err(e) => Err(e.into()),
+                                    };
+
+                                    let sender = self
+                                        .pending_queries
+                                        .get_providers
+                                        .remove(&id)
+                                        .expect("Query to be pending");
+
+                                    sender
+                                        .send(result)
+                                        .await
+                                        .expect("Receiver not to be dropped");
+                                }
                                 _ => self.test_query_completed(id, result).await,
                             }
+                        } else if let QueryResult::GetProviders(result) = result {
+                            use libp2p::kad::GetProvidersOk;
+
+                            let result = match result {
+                                Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
+                                    Ok(providers)
+                                }
+                                Ok(_) => Ok(Default::default()),
+                                Err(_) => {
+                                    unreachable!(
+                                        "when a query times out libp2p makes it the last stage"
+                                    )
+                                }
+                            };
+
+                            let sender = self
+                                .pending_queries
+                                .get_providers
+                                .get(&id)
+                                .expect("Query to be pending");
+
+                            sender
+                                .send(result)
+                                .await
+                                .expect("Receiver not to be dropped");
                         } else {
                             self.test_query_progressed(id, result).await;
                         }
@@ -579,7 +991,6 @@ impl MainLoop {
                         request_id,
                         response,
                     } => {
-                        tracing::debug!(?response, %peer, "Received block sync response");
                         if self.pending_block_sync_status_requests.remove(&request_id) {
                             // this was a status response, handle this internally
                             if let p2p_proto::sync::Response::Status(status) = response {
@@ -629,7 +1040,15 @@ impl MainLoop {
             // test purposes
             // ===========================
             event => {
-                tracing::trace!(?event, "Ignoring event");
+                match &event {
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        let my_peerid = *self.swarm.local_peer_id();
+                        let address = address.clone().with(Protocol::P2p(my_peerid.into()));
+
+                        tracing::debug!(%address, "New listen");
+                    }
+                    _ => tracing::trace!(?event, "Ignoring event"),
+                }
                 self.handle_event_for_test(event).await;
                 Ok(())
             }
@@ -681,6 +1100,13 @@ impl MainLoop {
                     Err(e) => sender.send(Err(e)),
                 };
             }
+            Command::GetCapabilityProviders { capability, sender } => {
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .get_capability_providers(&capability);
+                self.pending_queries.get_providers.insert(query_id, sender);
+            }
             Command::SubscribeTopic { topic, sender } => {
                 let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {
                     Ok(_) => {
@@ -695,7 +1121,7 @@ impl MainLoop {
                 request,
                 sender,
             } => {
-                tracing::debug!(?request, "Sending block sync request");
+                tracing::debug!(?request, "Sending sync request");
 
                 let request_id = self
                     .swarm
@@ -707,7 +1133,7 @@ impl MainLoop {
             Command::SendSyncResponse { channel, response } => {
                 // This might fail, but we're just ignoring it. In case of failure a
                 // RequestResponseEvent::InboundFailure will or has been be emitted.
-                tracing::debug!(?response, "Sending block sync response");
+                tracing::debug!(%response, "Sending sync response");
 
                 let _ = self
                     .swarm
@@ -716,7 +1142,7 @@ impl MainLoop {
                     .send_response(channel, response);
             }
             Command::SendSyncStatusRequest { peer_id, status } => {
-                tracing::debug!(?status, "Sending block sync status");
+                tracing::debug!(?status, "Sending sync status request");
 
                 let request_id = self
                     .swarm

@@ -237,10 +237,7 @@ async fn provide_capability() {
     // no other event to rely on
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // sha256("blah")
-    let key =
-        hex::decode("8b7df143d91c716ecfa5fc1730022f6b421b05cedee8fd52b1fc65a96030ad52").unwrap();
-    let providers = peer2.client.for_test().get_providers(key).await.unwrap();
+    let providers = peer2.client.get_capability_providers("blah").await.unwrap();
 
     assert_eq!(providers, [peer1.peer_id].into());
 }
@@ -267,7 +264,7 @@ async fn subscription_and_propagation() {
     });
 
     let mut propagated_to_peer2 = filter_events(peer2.event_receiver, |event| match event {
-        Event::BlockPropagation(message) => Some(message),
+        Event::BlockPropagation { message, .. } => Some(message),
         _ => None,
     });
 
@@ -288,7 +285,7 @@ async fn subscription_and_propagation() {
             .await
             .unwrap();
 
-        let msg = propagated_to_peer2.recv().await.unwrap();
+        let msg = *propagated_to_peer2.recv().await.unwrap();
 
         assert_eq!(msg, expected);
     }

@@ -5,7 +5,7 @@ use libp2p::{
     swarm::SwarmEvent,
     PeerId,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone)]
@@ -27,25 +27,6 @@ impl Client {
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
-    }
-
-    pub async fn get_providers(&self, key: Vec<u8>) -> Result<HashSet<PeerId>, ()> {
-        let (sender, mut receiver) = mpsc::channel(1);
-        self.sender
-            .send(Command::_Test(TestCommand::GetProviders { key, sender }))
-            .await
-            .expect("Command receiver not to be dropped");
-
-        let mut providers = HashSet::new();
-
-        while let Some(partial_result) = receiver.recv().await {
-            match partial_result {
-                Ok(more_providers) => providers.extend(more_providers.into_iter()),
-                Err(_) => return Err(()),
-            }
-        }
-
-        Ok(providers)
     }
 }
 
@@ -77,7 +58,7 @@ pub(super) async fn handle_event<E: std::fmt::Debug>(
 pub(super) async fn handle_command(
     behavior: &mut behaviour::Behaviour,
     command: TestCommand,
-    pending_test_queries: &mut PendingQueries,
+    _pending_test_queries: &mut PendingQueries,
 ) {
     match command {
         TestCommand::GetPeersFromDHT(sender) => {
@@ -95,10 +76,6 @@ pub(super) async fn handle_command(
                 .collect::<HashSet<_>>();
             sender.send(peers).expect("Receiver not to be dropped")
         }
-        TestCommand::GetProviders { key, sender } => {
-            let query_id = behavior.kademlia.get_providers(key.into());
-            pending_test_queries.get_providers.insert(query_id, sender);
-        }
     }
 }
 
@@ -110,73 +87,33 @@ pub(super) async fn send_event(event_sender: &mpsc::Sender<Event>, event: TestEv
 }
 
 pub(super) async fn query_completed(
-    pending_test_queries: &mut PendingQueries,
+    _pending_test_queries: &mut PendingQueries,
     event_sender: &mpsc::Sender<Event>,
-    id: QueryId,
+    _id: QueryId,
     result: QueryResult,
 ) {
-    match result {
-        QueryResult::GetProviders(result) => {
-            use libp2p::kad::GetProvidersOk;
+    if let QueryResult::StartProviding(result) = result {
+        use libp2p::kad::AddProviderOk;
 
-            let result = match result {
-                Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
-                Ok(GetProvidersOk::FinishedWithNoAdditionalRecord { .. }) => Ok(Default::default()),
-                Err(_) => Err(()),
-            };
-
-            let sender = pending_test_queries
-                .get_providers
-                .remove(&id)
-                .expect("Query to be pending");
-
-            sender
-                .send(result)
-                .await
-                .expect("Receiver not to be dropped");
-        }
-        QueryResult::StartProviding(result) => {
-            use libp2p::kad::AddProviderOk;
-
-            let result = match result {
-                Ok(AddProviderOk { key }) => Ok(key),
-                Err(error) => Err(error.into_key()),
-            };
-            send_event(event_sender, TestEvent::StartProvidingCompleted(result)).await
-        }
-        _ => {}
+        let result = match result {
+            Ok(AddProviderOk { key }) => Ok(key),
+            Err(error) => Err(error.into_key()),
+        };
+        send_event(event_sender, TestEvent::StartProvidingCompleted(result)).await
     }
 }
 
 pub(super) async fn query_progressed(
-    pending_test_queries: &PendingQueries,
-    id: QueryId,
-    result: QueryResult,
+    _pending_test_queries: &PendingQueries,
+    _id: QueryId,
+    _result: QueryResult,
 ) {
-    if let QueryResult::GetProviders(result) = result {
-        use libp2p::kad::GetProvidersOk;
-
-        let result = match result {
-            Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
-            Ok(_) => Ok(Default::default()),
-            Err(_) => {
-                unreachable!("when a query times out libp2p makes it the last stage")
-            }
-        };
-
-        let sender = pending_test_queries
-            .get_providers
-            .get(&id)
-            .expect("Query to be pending");
-
-        sender
-            .send(result)
-            .await
-            .expect("Receiver not to be dropped");
-    }
+    // QueryResult::GetProviders used to be handled here, but now just keeping this fn
+    // as a placeholder for future query types in tests.
 }
 
 #[derive(Debug, Default)]
 pub(super) struct PendingQueries {
-    pub get_providers: HashMap<QueryId, mpsc::Sender<Result<HashSet<PeerId>, ()>>>,
+    // QueryResult::GetProviders used to be handled here, but now just keeping this struct
+    // as a placeholder for future query types in tests.
 }
