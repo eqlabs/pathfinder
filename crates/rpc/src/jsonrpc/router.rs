@@ -73,13 +73,13 @@ impl RpcRouter {
             };
 
         // Ignore notification requests.
-        let Some(id) = request.id else {
+        if request.id.is_notification() {
             return None;
-        };
+        }
 
         // Also grab the method_name as it is a static str, which is required by the metrics.
         let Some((&method_name, method)) = self.methods.get_key_value(request.method.as_str()) else {
-            return Some(RpcResponse::method_not_found(id, request.method));
+            return Some(RpcResponse::method_not_found(request.id, request.method));
         };
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version);
@@ -99,7 +99,10 @@ impl RpcRouter {
             metrics::increment_counter!("rpc_method_calls_failed_total", "method" => method_name, "version" => self.version);
         }
 
-        Some(RpcResponse { output, id })
+        Some(RpcResponse {
+            output,
+            id: request.id,
+        })
     }
 }
 
@@ -819,7 +822,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: Some(RequestId::Null),
+                id: RequestId::Null,
             };
             assert_eq!(result, expected);
         }
@@ -836,7 +839,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: Some(RequestId::String("text".into())),
+                id: RequestId::String("text".into()),
             };
             assert_eq!(result, expected);
         }
@@ -853,7 +856,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: Some(RequestId::Number(456)),
+                id: RequestId::Number(456),
             };
             assert_eq!(result, expected);
         }
@@ -869,7 +872,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: None,
+                id: RequestId::Notification,
             };
             assert_eq!(result, expected);
         }
@@ -906,7 +909,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!(null),
-                id: Some(RequestId::Number(456)),
+                id: RequestId::Number(456),
             };
             assert_eq!(result, expected);
         }

@@ -12,4 +12,11 @@ pub enum RequestId<'a> {
     Number(i64),
     String(std::borrow::Cow<'a, str>),
     Null,
+    Notification,
+}
+
+impl RequestId<'_> {
+    pub fn is_notification(&self) -> bool {
+        self == &RequestId::Notification
+    }
 }

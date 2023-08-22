@@ -11,8 +11,7 @@ pub struct RpcRequest<'a> {
     // This is allowed to be missing but to reduce the indirection we
     // map None to to null in the deserialization implementation.
     pub params: Value,
-    // TODO: remove the option
-    pub id: Option<RequestId<'a>>,
+    pub id: RequestId<'a>,
 }
 
 impl<'de> Deserialize<'de> for RpcRequest<'de> {
@@ -65,12 +64,10 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
         }
 
         let id = match helper.id {
-            Some(inner) => match inner {
-                Some(IdHelper::Number(x)) => Some(RequestId::Number(x)),
-                Some(IdHelper::String(x)) => Some(RequestId::String(x)),
-                None => Some(RequestId::Null),
-            },
-            None => None,
+            Some(Some(IdHelper::Number(x))) => RequestId::Number(x),
+            Some(Some(IdHelper::String(x))) => RequestId::String(x),
+            Some(None) => RequestId::Null,
+            None => RequestId::Notification,
         };
 
         Ok(Self {

@@ -51,6 +51,8 @@ impl Serialize for RpcResponse<'_> {
             RequestId::Number(x) => obj.serialize_entry("id", &x)?,
             RequestId::String(x) => obj.serialize_entry("id", &x)?,
             RequestId::Null => obj.serialize_entry("id", &Value::Null)?,
+            RequestId::Notification => {},
+            
         };
 
         obj.end()
