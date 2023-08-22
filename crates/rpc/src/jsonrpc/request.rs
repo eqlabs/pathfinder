@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 #[derive(Debug, PartialEq)]
 pub struct RpcRequest<'a> {
-    pub method: String,
+    pub method: &'a str,
     // This is allowed to be missing but to reduce the indirection we
     // map None to to null in the deserialization implementation.
     pub params: Value,
@@ -41,7 +41,7 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
             // used to parse the null case.
             #[serde(default, borrow, deserialize_with = "deserialize_some")]
             id: Option<Option<IdHelper<'a>>>,
-            method: String,
+            method: &'a str,
             #[serde(default)]
             params: Value,
         }
@@ -94,7 +94,7 @@ mod tests {
         });
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
-            method: "sum".to_owned(),
+            method: "sum",
             params: json!([1, 2, 3]),
             id: RequestId::Null,
         };
@@ -111,7 +111,7 @@ mod tests {
         });
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
-            method: "sum".to_owned(),
+            method: "sum",
             params: json!([1, 2, 3]),
             id: RequestId::String("text".into()),
         };
@@ -128,7 +128,7 @@ mod tests {
         });
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
-            method: "sum".to_owned(),
+            method: "sum",
             params: json!([1, 2, 3]),
             id: RequestId::Number(456),
         };
@@ -144,7 +144,7 @@ mod tests {
         });
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
-            method: "sum".to_owned(),
+            method: "sum",
             params: json!([1, 2, 3]),
             id: RequestId::Notification,
         };
@@ -181,7 +181,7 @@ mod tests {
         });
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
-            method: "sum".to_owned(),
+            method: "sum",
             params: json!(null),
             id: RequestId::Number(456),
         };

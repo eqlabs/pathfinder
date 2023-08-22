@@ -1,16 +1,16 @@
 use serde::Serialize;
 
 #[derive(Debug)]
-pub enum RpcError {
+pub enum RpcError<'a> {
     ParseError,
     InvalidRequest,
-    MethodNotFound { method: String },
+    MethodNotFound { method: &'a str },
     InvalidParams,
     InternalError(anyhow::Error),
     ApplicationError { code: i32, message: String },
 }
 
-impl PartialEq for RpcError {
+impl PartialEq for RpcError<'_> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (
@@ -33,7 +33,7 @@ impl PartialEq for RpcError {
     }
 }
 
-impl RpcError {
+impl RpcError<'_> {
     pub fn code(&self) -> i32 {
         match self {
             RpcError::ParseError => -32700,
@@ -57,7 +57,7 @@ impl RpcError {
     }
 }
 
-impl Serialize for RpcError {
+impl Serialize for RpcError<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -71,7 +71,7 @@ impl Serialize for RpcError {
     }
 }
 
-impl<E> From<E> for RpcError
+impl<E> From<E> for RpcError<'_>
 where
     E: Into<crate::error::RpcError>,
 {
