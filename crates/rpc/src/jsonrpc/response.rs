@@ -6,12 +6,12 @@ use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::RequestId;
 
 #[derive(Debug, PartialEq)]
-pub struct RpcResponse {
+pub struct RpcResponse<'a> {
     pub output: RpcResult,
-    pub id: RequestId,
+    pub id: RequestId<'a>,
 }
 
-impl RpcResponse {
+impl<'a> RpcResponse<'a> {
     pub const PARSE_ERROR: Self = Self {
         output: Err(RpcError::ParseError),
         id: RequestId::Null,
@@ -22,7 +22,7 @@ impl RpcResponse {
         id: RequestId::Null,
     };
 
-    pub const fn method_not_found(id: RequestId, method: String) -> Self {
+    pub const fn method_not_found(id: RequestId<'a>, method: String) -> Self {
         Self {
             output: Err(RpcError::MethodNotFound { method }),
             id,
@@ -32,7 +32,7 @@ impl RpcResponse {
 
 pub type RpcResult = Result<Value, RpcError>;
 
-impl Serialize for RpcResponse {
+impl Serialize for RpcResponse<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -57,7 +57,7 @@ impl Serialize for RpcResponse {
     }
 }
 
-impl IntoResponse for RpcResponse {
+impl IntoResponse for RpcResponse<'_> {
     fn into_response(self) -> axum::response::Response {
         serde_json::to_vec(&self).unwrap().into_response()
     }

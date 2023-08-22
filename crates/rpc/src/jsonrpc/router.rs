@@ -6,7 +6,8 @@ use axum::response::IntoResponse;
 use futures::{Future, FutureExt};
 use http::HeaderValue;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use serde_json::value::RawValue;
 use serde_json::Value;
 
 use crate::context::RpcContext;
@@ -62,8 +63,12 @@ impl RpcRouter {
     }
 
     /// Parses and executes a request. Returns [None] if its a notification.
-    async fn run_request(&self, state: RpcContext, request: Value) -> Option<RpcResponse> {
-        let Ok(request) = serde_json::from_value::<RpcRequest>(request) else {
+    async fn run_request<'a>(
+        &self,
+        state: RpcContext,
+        request: &'a str,
+    ) -> Option<RpcResponse<'a>> {
+        let Ok(request) = serde_json::from_str::<RpcRequest>(request) else {
                 return Some(RpcResponse::INVALID_REQUEST);
             };
 
@@ -125,18 +130,6 @@ impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
                 }
             }
 
-            /// Used to parse the outer shell of an JSON RPC request.
-            ///
-            /// The specification requires differentiating between invalid json and invalid individual requests
-            /// within the json. This intermediary type let's us handle this.
-            #[derive(Debug, Deserialize)]
-            #[serde(untagged)]
-            enum RawRequest {
-                // This must come first as otherwise a batch request will get parsed as a Value::Array
-                Batch(Vec<Value>),
-                Single(Value),
-            }
-
             let body = match hyper::body::to_bytes(req.into_body()).await {
                 Ok(body) => body,
                 Err(e) => {
@@ -149,38 +142,43 @@ impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
                 }
             };
 
-            // TODO: what HTTP codes should the rpc errors get?
-            let Ok(raw_request) = serde_json::from_slice::<RawRequest>(&body) else {
-                return RpcResponse::PARSE_ERROR.into_response();
-            };
+            // Unfortunately due to this https://github.com/serde-rs/json/issues/497
+            // we cannot use an enum with borrowed raw values inside to do a single deserialization
+            // for us. Instead we have to distinguish manually between a single request and a batch
+            // request which we do by checking the first byte.
+            if body.as_ref().first() != Some(&b'[') {
+                let Ok(request) = serde_json::from_slice::<&RawValue>(&body) else {
+                    return RpcResponse::PARSE_ERROR.into_response();
+                };
 
-            match raw_request {
-                RawRequest::Single(request) => match self.run_request(state, request).await {
+                match self.run_request(state, request.get()).await {
                     Some(response) => response.into_response(),
                     None => ().into_response(),
-                },
-                RawRequest::Batch(requests) => {
-                    // An empty batch is invalid
-                    if requests.is_empty() {
-                        return RpcResponse::INVALID_REQUEST.into_response();
-                    }
-
-                    let mut responses = Vec::new();
-
-                    for request in requests {
-                        // Notifications return none and are skipped.
-                        if let Some(response) = self.run_request(state.clone(), request).await {
-                            responses.push(response);
-                        }
-                    }
-
-                    // All requests were notifications.
-                    if responses.is_empty() {
-                        return ().into_response();
-                    }
-
-                    serde_json::to_string(&responses).unwrap().into_response()
                 }
+            } else {
+                let Ok(requests) = serde_json::from_slice::<Vec<&RawValue>>(&body) else {
+                    return RpcResponse::PARSE_ERROR.into_response();
+                };
+
+                if requests.is_empty() {
+                    return RpcResponse::INVALID_REQUEST.into_response();
+                }
+
+                let mut responses = Vec::new();
+
+                for request in requests {
+                    // Notifications return none and are skipped.
+                    if let Some(response) = self.run_request(state.clone(), request.get()).await {
+                        responses.push(response);
+                    }
+                }
+
+                // All requests were notifications.
+                if responses.is_empty() {
+                    return ().into_response();
+                }
+
+                serde_json::to_string(&responses).unwrap().into_response()
             }
         })
     }
@@ -445,6 +443,7 @@ pub trait RpcMethodHandler {
 mod tests {
     use super::*;
     use crate::jsonrpc::RequestId;
+    use serde::Deserialize;
     use serde_json::json;
 
     async fn spawn_server(router: RpcRouter) -> String {
@@ -837,7 +836,7 @@ mod tests {
             let expected = RpcRequest {
                 method: "sum".to_owned(),
                 params: json!([1, 2, 3]),
-                id: Some(RequestId::String("text".to_owned())),
+                id: Some(RequestId::String("text".into())),
             };
             assert_eq!(result, expected);
         }

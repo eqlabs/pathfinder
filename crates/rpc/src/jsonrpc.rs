@@ -8,8 +8,8 @@ pub use response::{RpcResponse, RpcResult};
 pub use router::{IntoRpcMethod, RpcMethodHandler, RpcRouter, RpcRouterBuilder};
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum RequestId {
+pub enum RequestId<'a> {
     Number(i64),
-    String(String),
+    String(std::borrow::Cow<'a, str>),
     Null,
 }
