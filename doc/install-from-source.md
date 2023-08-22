@@ -39,8 +39,15 @@ rustup update
 `pathfinder` compilation need additional libraries to be installed (C compiler, linker, other deps)
 
 ```bash
-sudo apt install build-essential libgmp-dev pkg-config libssl-dev
+sudo apt install build-essential libgmp-dev pkg-config libssl-dev protobuf-compiler
 ```
+
+Make sure `protoc` version is at least `3.15`
+```bash
+protoc --version # must be >= 3.15
+```
+
+Alternatively you can grab the latest `protoc` from the [releases page](https://github.com/protocolbuffers/protobuf/releases).
 
 ## Clone `pathfinder`
 
