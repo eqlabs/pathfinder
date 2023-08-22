@@ -52,7 +52,7 @@ impl FieldElement {
     }
 
     /// Transforms [FieldElement] into little endian bit representation.
-    pub fn into_bits(mut self) -> BitArray<Lsb0, [u64; 4]> {
+    pub fn into_bits(mut self) -> BitArray<[u64; 4], Lsb0> {
         #[cfg(not(target_endian = "little"))]
         {
             unimplemented!("untested and probably unimplemented: big-endian targets")
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn bits_zero() {
         let zero = FieldElement::zero().into_bits();
-        let expected = BitArray::<Lsb0, [u64; 4]>::default();
+        let expected = BitArray::<[u64; 4], Lsb0>::default();
 
         assert_eq!(zero, expected);
     }
@@ -94,7 +94,7 @@ mod tests {
     fn bits_one() {
         let one = FieldElement::one().into_bits();
 
-        let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
+        let mut expected = BitArray::<[u64; 4], Lsb0>::default();
         expected.set(0, true);
 
         assert_eq!(one, expected);
@@ -104,7 +104,7 @@ mod tests {
     fn bits_two() {
         let two = (FieldElement::one() + FieldElement::one()).into_bits();
 
-        let mut expected = BitArray::<Lsb0, [u64; 4]>::default();
+        let mut expected = BitArray::<[u64; 4], Lsb0>::default();
         expected.set(1, true);
 
         assert_eq!(two, expected);

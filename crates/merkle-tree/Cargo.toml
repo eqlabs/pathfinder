@@ -8,7 +8,7 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-bitvec = "0.20.4"
+bitvec = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }
 rand = "0.8"

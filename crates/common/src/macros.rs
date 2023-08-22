@@ -175,7 +175,7 @@ macro_rules! felt_newtypes {
                     &self.0
                 }
 
-                pub fn view_bits(&self) -> &bitvec::slice::BitSlice<bitvec::order::Msb0, u8> {
+                pub fn view_bits(&self) -> &bitvec::slice::BitSlice<u8, bitvec::order::Msb0> {
                     self.0.view_bits()
                 }
             }

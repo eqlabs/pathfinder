@@ -9,7 +9,7 @@ full-serde = []
 
 [dependencies]
 anyhow = { workspace = true }
-bitvec = "0.20.4"
+bitvec = { workspace = true }
 fake = { version = "2.5.0", features = ["derive"] }
 metrics = { version = "0.20.1" }
 num-bigint = { version = "0.4.3", features = ["serde"] }
@@ -18,7 +18,10 @@ primitive-types = { version = "0.12.1", features = ["serde"] }
 rand = { version = "0.8.5" }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 serde_with = { workspace = true }
 sha3 = "0.10"
 stark_curve = { path = "../stark_curve" }
@@ -27,4 +30,7 @@ stark_poseidon = { path = "../stark_poseidon" }
 thiserror = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "8", default-features = false, features = ["git", "gitcl"] }
+vergen = { version = "8", default-features = false, features = [
+    "git",
+    "gitcl",
+] }

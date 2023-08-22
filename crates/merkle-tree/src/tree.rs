@@ -153,7 +153,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn set(
         &mut self,
         storage: &impl Storage,
-        key: &BitSlice<Msb0, u8>,
+        key: &BitSlice<u8, Msb0>,
         value: Felt,
     ) -> anyhow::Result<()> {
         if value == Felt::ZERO {
@@ -290,7 +290,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     fn delete_leaf(
         &mut self,
         storage: &impl Storage,
-        key: &BitSlice<Msb0, u8>,
+        key: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<()> {
         // Algorithm explanation:
         //
@@ -375,7 +375,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn get(
         &self,
         storage: &impl Storage,
-        key: &BitSlice<Msb0, u8>,
+        key: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Option<Felt>> {
         let result = self
             .traverse(storage, key)?
@@ -401,7 +401,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn get_proof(
         &self,
         storage: &impl Storage,
-        key: &BitSlice<Msb0, u8>,
+        key: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Vec<TrieNode>> {
         let mut nodes = self.traverse(storage, key)?;
 
@@ -450,7 +450,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     fn traverse(
         &self,
         storage: &impl Storage,
-        dst: &BitSlice<Msb0, u8>,
+        dst: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Vec<Rc<RefCell<InternalNode>>>> {
         if self.root.borrow().is_empty() {
             return Ok(Vec::new());
@@ -572,19 +572,19 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         visitor_fn: &mut VisitorFn,
     ) -> anyhow::Result<Option<X>>
     where
-        VisitorFn: FnMut(&InternalNode, &BitSlice<Msb0, u8>) -> ControlFlow<X, Visit>,
+        VisitorFn: FnMut(&InternalNode, &BitSlice<u8, Msb0>) -> ControlFlow<X, Visit>,
     {
         use bitvec::prelude::bitvec;
 
         #[allow(dead_code)]
         struct VisitedNode {
             node: Rc<RefCell<InternalNode>>,
-            path: BitVec<Msb0, u8>,
+            path: BitVec<u8, Msb0>,
         }
 
         let mut visiting = vec![VisitedNode {
             node: self.root.clone(),
-            path: bitvec![Msb0, u8;],
+            path: bitvec![u8, Msb0;],
         }];
 
         loop {
@@ -787,9 +787,9 @@ mod tests {
 
         #[test]
         fn binary_middle() {
-            let key0 = bitvec![Msb0, u8; 0; 251];
+            let key0 = bitvec![u8, Msb0; 0; 251];
 
-            let mut key1 = bitvec![Msb0, u8; 0; 251];
+            let mut key1 = bitvec![u8, Msb0; 0; 251];
             key1.set(50, true);
 
             let value0 = felt!("0xabc");
@@ -808,7 +808,7 @@ mod tests {
                 .cloned()
                 .expect("root should be an edge");
 
-            let expected_path = bitvec![Msb0, u8; 0; 50];
+            let expected_path = bitvec![u8, Msb0; 0; 50];
             assert_eq!(edge.path, expected_path);
             assert_eq!(edge.height, 0);
 
@@ -849,9 +849,9 @@ mod tests {
 
         #[test]
         fn binary_root() {
-            let key0 = bitvec![Msb0, u8; 0; 251];
+            let key0 = bitvec![u8, Msb0; 0; 251];
 
-            let mut key1 = bitvec![Msb0, u8; 0; 251];
+            let mut key1 = bitvec![u8, Msb0; 0; 251];
             key1.set(0, true);
 
             let value0 = felt!("0xabc");
@@ -1274,7 +1274,7 @@ mod tests {
             let storage = TestStorage::default();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<Msb0, u8>| {
+            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
                 visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
@@ -1293,7 +1293,7 @@ mod tests {
             uut.set(&storage, key.view_bits(), value).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<Msb0, u8>| {
+            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
                 visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
@@ -1309,7 +1309,7 @@ mod tests {
                             path: key.view_bits().into(),
                             child: Rc::new(RefCell::new(InternalNode::Leaf(value)))
                         }),
-                        bitvec![Msb0, u8;]
+                        bitvec![u8, Msb0;]
                     ),
                     (InternalNode::Leaf(value), key.view_bits().into())
                 ],
@@ -1331,7 +1331,7 @@ mod tests {
             uut.set(&storage, key_left.view_bits(), value_left).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<Msb0, u8>| {
+            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
                 visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
@@ -1349,16 +1349,16 @@ mod tests {
                     left: Rc::new(RefCell::new(expected_2.0.clone())),
                     right: Rc::new(RefCell::new(expected_3.0.clone())),
                 }),
-                bitvec![Msb0, u8; 0; 250],
+                bitvec![u8, Msb0; 0; 250],
             );
             let expected_0 = (
                 InternalNode::Edge(EdgeNode {
                     hash: None,
                     height: 0,
-                    path: bitvec![Msb0, u8; 0; 250],
+                    path: bitvec![u8, Msb0; 0; 250],
                     child: Rc::new(RefCell::new(expected_1.0.clone())),
                 }),
-                bitvec![Msb0, u8;],
+                bitvec![u8, Msb0;],
             );
 
             pretty_assertions::assert_eq!(
@@ -1384,7 +1384,7 @@ mod tests {
             uut.set(&storage, key_b.view_bits(), value_b).unwrap();
 
             let mut visited = vec![];
-            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<Msb0, u8>| {
+            let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
                 visited.push((node.clone(), path.to_bitvec()));
                 ControlFlow::Continue::<(), Visit>(Default::default())
             };
@@ -1399,9 +1399,9 @@ mod tests {
             // 3 4 6
             // a b c
 
-            let path_to_0 = bitvec![Msb0, u8;];
+            let path_to_0 = bitvec![u8, Msb0;];
             let path_to_1 = {
-                let mut p = bitvec![Msb0, u8; 0; 249];
+                let mut p = bitvec![u8, Msb0; 0; 249];
                 *p.get_mut(246).unwrap() = true;
                 p
             };
@@ -1415,7 +1415,7 @@ mod tests {
                 InternalNode::Edge(EdgeNode {
                     hash: None,
                     height: 250,
-                    path: bitvec![Msb0, u8; 1; 1],
+                    path: bitvec![u8, Msb0; 1; 1],
                     child: Rc::new(RefCell::new(expected_6.0.clone())),
                 }),
                 path_to_5,
@@ -1497,7 +1497,7 @@ mod tests {
         /// 3. check that the expected_hash is `value` (we should've reached the leaf)
         fn verify_proof(
             root: Felt,
-            key: &BitSlice<Msb0, u8>,
+            key: &BitSlice<u8, Msb0>,
             value: Felt,
             proofs: &[TrieNode],
         ) -> Option<Membership> {
@@ -1507,7 +1507,7 @@ mod tests {
             }
 
             let mut expected_hash = root;
-            let mut remaining_path: &BitSlice<Msb0, u8> = key;
+            let mut remaining_path: &BitSlice<u8, Msb0> = key;
 
             for proof_node in proofs.iter() {
                 // Hash mismatch? Return None.
@@ -1597,7 +1597,7 @@ mod tests {
 
             /// Calls `get_proof` and `verify_proof` on every key/value pair in the random_tree.
             fn verify(&mut self) {
-                let keys_bits: Vec<&BitSlice<Msb0, u8>> =
+                let keys_bits: Vec<&BitSlice<u8, Msb0>> =
                     self.keys.iter().map(|k| k.view_bits()).collect();
                 let proofs = get_proofs(&keys_bits, &self.tree, &self.storage).unwrap();
                 keys_bits
@@ -1613,7 +1613,7 @@ mod tests {
 
         /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
         fn get_proofs<H: FeltHash, const HEIGHT: usize>(
-            keys: &'_ [&BitSlice<Msb0, u8>],
+            keys: &'_ [&BitSlice<u8, Msb0>],
             tree: &MerkleTree<H, HEIGHT>,
             storage: &impl Storage,
         ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
@@ -1850,7 +1850,7 @@ mod tests {
                 .filter(|key| !keys_set.contains(key)) // Filter out duplicates if there are any
                 .collect();
 
-            let keys_bits: Vec<&BitSlice<Msb0, u8>> =
+            let keys_bits: Vec<&BitSlice<u8, Msb0>> =
                 inexistent_keys.iter().map(|k| k.view_bits()).collect();
             let proofs = get_proofs(&keys_bits, &random_tree.tree, &random_tree.storage).unwrap();
             keys_bits
@@ -1877,7 +1877,7 @@ mod tests {
                 .filter(|value| !values_set.contains(value)) // Filter out duplicates if there are any
                 .collect();
 
-            let keys_bits: Vec<&BitSlice<Msb0, u8>> =
+            let keys_bits: Vec<&BitSlice<u8, Msb0>> =
                 random_tree.keys.iter().map(|k| k.view_bits()).collect();
             let proofs =
                 get_proofs(&keys_bits[..], &random_tree.tree, &random_tree.storage).unwrap();

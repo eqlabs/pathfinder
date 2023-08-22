@@ -15,7 +15,7 @@ pub fn stark_hash(a: Felt, b: Felt) -> Felt {
 
     // Preprocessed material is lookup-tables for each chunk of bits
     let table_size = (1 << CURVE_CONSTS_BITS) - 1;
-    let add_points = |acc: &mut ProjectivePoint, bits: &BitSlice<_, u64>, prep: &[AffinePoint]| {
+    let add_points = |acc: &mut ProjectivePoint, bits: &BitSlice<u64, _>, prep: &[AffinePoint]| {
         bits.chunks(CURVE_CONSTS_BITS)
             .enumerate()
             .for_each(|(i, v)| {

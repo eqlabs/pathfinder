@@ -18,7 +18,7 @@ p2p = ["dep:p2p", "dep:p2p_proto"]
 [dependencies]
 anyhow = { workspace = true }
 async-trait = "0.1.59"
-bitvec = "0.20.4"
+bitvec = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { version = "0.1.8", optional = true }
 futures = { version = "0.3", default-features = false, features = ["std"] }

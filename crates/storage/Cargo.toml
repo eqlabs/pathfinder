@@ -9,7 +9,7 @@ rust-version = "1.62"
 [dependencies]
 anyhow = { workspace = true }
 base64 = "0.13.1"
-bitvec = "0.20.4"
+bitvec = { workspace = true }
 const_format = { workspace = true }
 data-encoding = "2.3.3"
 fake = { version = "2.5.0", features = ["derive"] }
