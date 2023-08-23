@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - RPC v0.3 `starknet_estimateFee` example
 - RPC method names could be prefixed with API version
+- `starknet_getNonce` returns invalid values when queried by hash
 
 ### Added
 

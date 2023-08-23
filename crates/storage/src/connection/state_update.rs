@@ -362,10 +362,11 @@ pub(super) fn contract_nonce(
         ),
         BlockId::Hash(hash) => tx.inner().query_row(
             r"SELECT nonce FROM nonce_updates
-                JOIN canonical_blocks ON canonical_blocks.number = nonce_updates.block_number
-                WHERE canonical_blocks.hash = ?
+                WHERE contract_address = ? AND block_number <= (
+                    SELECT number FROM canonical_blocks WHERE hash = ?
+                )
                 ORDER BY block_number DESC LIMIT 1",
-            params![&hash],
+            params![&contract_address, &hash],
             |row| row.get_contract_nonce(0),
         ),
     }
