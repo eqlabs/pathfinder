@@ -586,8 +586,10 @@ mod tests {
 
             let header = BlockHeader::builder().finalize_with_hash(block_hash_bytes!(b"hash"));
             let contract_adress = contract_address_bytes!(b"contract address");
+            let contract_adress2 = contract_address_bytes!(b"contract address 2");
             let state_update = StateUpdate::default()
                 .with_contract_nonce(contract_adress, contract_nonce_bytes!(b"nonce value"))
+                .with_contract_nonce(contract_adress2, contract_nonce_bytes!(b"nonce value 2"))
                 .with_storage_update(
                     contract_adress,
                     storage_address_bytes!(b"storage address"),
@@ -607,12 +609,37 @@ mod tests {
             let (mut db, state_update, header) = setup();
             let tx = db.transaction().unwrap();
 
-            // Valid contract nonce
+            // Valid 1st contract nonce
             let (contract, expected) = state_update
                 .contract_updates
                 .iter()
                 .filter_map(|(addr, update)| update.nonce.map(|n| (*addr, n)))
                 .next()
+                .unwrap();
+
+            let latest = contract_nonce(&tx, contract, BlockId::Latest)
+                .unwrap()
+                .unwrap();
+            assert_eq!(latest, expected);
+
+            let by_number = contract_nonce(&tx, contract, header.number.into())
+                .unwrap()
+                .unwrap();
+            assert_eq!(by_number, expected);
+
+            let by_hash = contract_nonce(&tx, contract, header.hash.into())
+                .unwrap()
+                .unwrap();
+            assert_eq!(by_hash, expected);
+
+            // Valid 2nd contract nonce. This exercises a bug where we didn't actually
+            // use the contract address when querying by hash. Checking an additional
+            // contract guards against only having a single entree to find.
+            let (contract, expected) = state_update
+                .contract_updates
+                .iter()
+                .filter_map(|(addr, update)| update.nonce.map(|n| (*addr, n)))
+                .nth(1)
                 .unwrap();
 
             let latest = contract_nonce(&tx, contract, BlockId::Latest)
