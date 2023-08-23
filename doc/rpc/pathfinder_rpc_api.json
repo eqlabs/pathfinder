@@ -174,7 +174,7 @@
                 {
                     "description": "ID of the subscription that should be terminated",
                     "required": true,
-                    "type": "bool"
+                    "type": "number"
                 }
             ],
             "paramStructure": "by-position",
