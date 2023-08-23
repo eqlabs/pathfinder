@@ -1,4 +1,5 @@
 use crate::gas_price;
+use crate::websocket::types::WebsocketSenders;
 use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
@@ -39,6 +40,7 @@ pub struct RpcContext {
     pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
     pub version: RpcVersion,
+    pub websocket: WebsocketSenders,
 }
 
 impl RpcContext {
@@ -58,6 +60,7 @@ impl RpcContext {
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             version: RpcVersion::default(),
+            websocket: WebsocketSenders::with_capacity(0),
         }
     }
 
@@ -114,5 +117,26 @@ impl RpcContext {
         let context = Self::for_tests();
         let pending_data = super::test_utils::create_pending_data(context.storage.clone()).await;
         context.with_pending_data(pending_data)
+    }
+
+    pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
+        Self {
+            call_handle: Some(call_handle),
+            ..self
+        }
+    }
+
+    pub fn with_eth_gas_price(self, gas_price: gas_price::Cached) -> Self {
+        Self {
+            eth_gas_price: Some(gas_price),
+            ..self
+        }
+    }
+
+    pub fn with_websocket(self, websocket: WebsocketSenders) -> Self {
+        Self {
+            websocket: websocket,
+            ..self
+        }
     }
 }

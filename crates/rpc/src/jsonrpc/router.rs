@@ -436,7 +436,10 @@ mod sealed {
     }
 }
 
-fn is_empty_params(params: &str) -> bool {
+/// Returns true if params represents an empty set of json parameters. 
+/// This includes an empty string, empty sequence `[]` and empty object `{}`
+/// and allows for any amount of whitespace.
+pub fn is_empty_params(params: &str) -> bool {
     if params.is_empty() {
         return true;
     }
