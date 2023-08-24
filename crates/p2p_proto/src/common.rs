@@ -156,20 +156,17 @@ impl TryFromProtobuf<proto::common::ChainId> for ChainId {
 
 impl ToProtobuf<proto::common::BlockId> for BlockId {
     fn to_protobuf(self) -> proto::common::BlockId {
-        match self {
-            BlockId::Hash(hash) => proto::common::BlockId {
+        use proto::common::block_id::{HashAndHeight, Id};
+        use proto::common::BlockId;
+        let id = Some(match self {
+            Self::Hash(hash) => Id::Hash(hash.to_protobuf()),
+            Self::Height(height) => Id::Height(height),
+            Self::HashAndHeight(hash, height) => Id::HashAndHeight(HashAndHeight {
                 hash: Some(hash.to_protobuf()),
-                height: None,
-            },
-            BlockId::Height(height) => proto::common::BlockId {
-                hash: None,
-                height: Some(height),
-            },
-            BlockId::HashAndHeight(hash, height) => proto::common::BlockId {
-                hash: Some(hash.to_protobuf()),
-                height: Some(height),
-            },
-        }
+                height,
+            }),
+        });
+        BlockId { id }
     }
 }
 
@@ -178,18 +175,27 @@ impl TryFromProtobuf<proto::common::BlockId> for BlockId {
         input: proto::common::BlockId,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        let proto::common::BlockId { hash, height } = input;
+        use proto::common::block_id::{HashAndHeight, Id};
 
-        match (hash, height) {
-            (None, None) => Err(std::io::Error::new(
+        let id = input.id.ok_or_else(|| {
+            std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Empty block id {field_name}"),
-            )),
-            (None, Some(height)) => Ok(Self::Height(height)),
-            (Some(hash), None) => Hash::try_from_protobuf(hash, field_name).map(Self::Hash),
-            (Some(hash), Some(height)) => {
-                let hash = Hash::try_from_protobuf(hash, field_name)?;
-                Ok(Self::HashAndHeight(hash, height))
+            )
+        })?;
+
+        match id {
+            Id::Hash(hash) => Hash::try_from_protobuf(hash, field_name).map(Self::Hash),
+            Id::Height(height) => Ok(Self::Height(height)),
+            Id::HashAndHeight(HashAndHeight { hash, height }) => {
+                let hash = hash.ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("hash missing in block id {field_name}"),
+                    )
+                })?;
+                Hash::try_from_protobuf(hash, field_name)
+                    .map(|hash| Self::HashAndHeight(hash, height))
             }
         }
     }
