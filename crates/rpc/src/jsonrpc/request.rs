@@ -215,11 +215,11 @@ mod tests {
         use super::*;
 
         #[rstest::rstest]
-        #[case::array               ("[]")]
-        #[case::array_with_spaces   ("[     ]")]
-        #[case::array_with_newlines ("[ \n   ]")]
-        #[case::object              ("{}")]
-        #[case::object_with_spaces  ("{   }")]
+        #[case::array("[]")]
+        #[case::array_with_spaces("[     ]")]
+        #[case::array_with_newlines("[ \n   ]")]
+        #[case::object("{}")]
+        #[case::object_with_spaces("{   }")]
         #[case::object_with_newlines("{  \n  }")]
         fn empty(#[case] s: &str) {
             let raw_value = RawValue::from_string(dbg!(s).to_owned()).unwrap();

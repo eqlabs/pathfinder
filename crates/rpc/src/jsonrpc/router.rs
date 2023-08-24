@@ -464,9 +464,28 @@ mod tests {
         url
     }
 
+    /// Spawns an RPC server with the given router and queries it with the given request.
+    async fn serve_and_query(router: RpcRouter, request: Value) -> Value {
+        let url = spawn_server(router).await;
+
+        let client = reqwest::Client::new();
+        client
+            .post(url.clone())
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+    }
+
     mod specification_tests {
         //! Test cases lifted directly from the [RPC specification](https://www.jsonrpc.org/specification).
         use super::*;
+        use pretty_assertions::assert_eq;
+        use rstest::rstest;
+        use serde_json::json;
 
         fn spec_router() -> RpcRouter {
             crate::error::generate_rpc_error_subset!(ExampleError:);
@@ -504,100 +523,86 @@ mod tests {
                 .build()
         }
 
+        #[rstest]
+        #[case::with_positional_params(
+            json!({"jsonrpc": "2.0", "method": "subtract", "params": [42, 23], "id": 2}),
+            json!({"jsonrpc": "2.0", "result": 19, "id": 2}),
+        )]
+        #[case::with_positional_params_switched(
+            json!({"jsonrpc": "2.0", "method": "subtract", "params": [23, 42], "id": 2}),
+            json!({"jsonrpc": "2.0", "result": -19, "id": 2}),
+        )]
+        #[case::with_named_params(
+            json!({"jsonrpc": "2.0", "method": "subtract", "params": {"subtrahend": 23, "minuend": 42}, "id": 3}),
+            json!({"jsonrpc": "2.0", "result": 19, "id": 3}),
+        )]
+        #[case::with_named_params_switched(
+            json!({"jsonrpc": "2.0", "method": "subtract", "params": {"minuend": 42, "subtrahend": 23}, "id": 4}),
+            json!({"jsonrpc": "2.0", "result": 19, "id": 4}),
+        )]
+        #[case::non_existent_method(
+            json!({"jsonrpc": "2.0", "method": "foobar", "id": "1"}),
+            json!({"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "1"}),
+        )]
+        #[case::invalid_request_object(
+            json!({"jsonrpc": "2.0", "method": 1, "params": "bar"}),
+            json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}),
+        )]
+        #[case::empty_batch(
+            json!([]),
+            json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}),
+        )]
+        #[case::invalid_batch_single(
+            json!([1]),
+            json!([{"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}]),
+        )]
+        #[case::invalid_batch_multiple(
+            json!([1, 2, 3]),
+            json!([
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
+            ]),
+        )]
+        #[case::batch(
+            json!([
+                {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
+                {"jsonrpc": "2.0", "method": "notify_hello", "params": [7]},
+                {"jsonrpc": "2.0", "method": "subtract", "params": [42,23], "id": "2"},
+                {"foo": "boo"},
+                {"jsonrpc": "2.0", "method": "foo.get", "params": {"name": "myself"}, "id": "5"},
+                {"jsonrpc": "2.0", "method": "get_data", "id": "9"}
+            ]),
+            json!([
+                {"jsonrpc": "2.0", "result": 7, "id": "1"},
+                {"jsonrpc": "2.0", "result": 19, "id": "2"},
+                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
+                {"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "5"},
+                {"jsonrpc": "2.0", "result": ["hello", 5], "id": "9"}
+            ]),
+        )]
         #[tokio::test]
-        async fn with_positional_params() {
-            let url = spawn_server(spec_router()).await;
+        async fn specification_test(#[case] request: Value, #[case] expected: Value) {
+            let response = serve_and_query(spec_router(), request).await;
 
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!(
-                    {"jsonrpc": "2.0", "method": "subtract", "params": [42, 23], "id": 2}
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "result": 19, "id": 2});
-            assert_eq!(res, expected);
-
-            let res = client
-                .post(url)
-                .json(&serde_json::json!(
-                    {"jsonrpc": "2.0", "method": "subtract", "params": [23, 42], "id": 2}
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "result": -19, "id": 2});
-            assert_eq!(res, expected);
+            assert_eq!(response, expected);
         }
 
+        #[rstest]
+        #[case::with_params(json!({"jsonrpc": "2.0", "method": "update", "params": [1,2,3,4,5]}))]
+        #[case::without_params(json!({"jsonrpc": "2.0", "method": "foobar"}))]
+        #[case::batch(json!([
+            {"jsonrpc": "2.0", "method": "notify_sum", "params": [1,2,4]},
+            {"jsonrpc": "2.0", "method": "notify_hello", "params": [7]}
+        ]))]
         #[tokio::test]
-        async fn with_named_params() {
+        async fn notifications(#[case] request: Value) {
             let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
                 .post(url.clone())
-                .json(&serde_json::json!(
-                    {"jsonrpc": "2.0", "method": "subtract", "params": {"subtrahend": 23, "minuend": 42}, "id": 3}
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "result": 19, "id": 3});
-            assert_eq!(res, expected);
-
-            let res = client
-                .post(url)
-                .json(&serde_json::json!(
-                    {"jsonrpc": "2.0", "method": "subtract", "params": {"minuend": 42, "subtrahend": 23}, "id": 4}
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "result": 19, "id": 4});
-            assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn notification() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!(
-                    {"jsonrpc": "2.0", "method": "update", "params": [1,2,3,4,5]}
-                ))
-                .send()
-                .await
-                .unwrap();
-
-            assert_eq!(res.content_length(), Some(0));
-
-            // --> {"jsonrpc": "2.0", "method": "foobar"}
-            let res = client
-                .post(url)
-                .json(&serde_json::json!(
-                    {"jsonrpc": "2.0", "method": "foobar"}
-                ))
+                .json(&request)
                 .send()
                 .await
                 .unwrap();
@@ -605,35 +610,22 @@ mod tests {
             assert_eq!(res.content_length(), Some(0));
         }
 
+        #[rstest]
+        #[case::single(r#"{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]"#)]
+        #[case::batch(
+            r#"[
+            {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
+            {"jsonrpc": "2.0", "method"
+         ]"#
+        )]
         #[tokio::test]
-        async fn non_existent_method() {
+        async fn invalid_json(#[case] request: &'static str) {
             let url = spawn_server(spec_router()).await;
 
             let client = reqwest::Client::new();
             let res = client
                 .post(url.clone())
-                .json(&serde_json::json!(
-                    {"jsonrpc": "2.0", "method": "foobar", "id": "1"}
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "1"});
-            assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn invalid_json() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .body(r#"{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]"#)
+                .body(request)
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .send()
                 .await
@@ -644,163 +636,6 @@ mod tests {
 
             let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": null});
             assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn invalid_request_object() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!({"jsonrpc": "2.0", "method": 1, "params": "bar"}))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null});
-            assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn invalid_json_batch() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .body(
-                    r#"[
-                    {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
-                    {"jsonrpc": "2.0", "method"
-                 ]"#,
-                )
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": null});
-            assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn empty_batch() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!([]))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null});
-            assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn invalid_batch() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!([1]))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!([
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
-            ]);
-            assert_eq!(res, expected);
-
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!([1, 2, 3]))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!([
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
-                {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}
-            ]);
-            assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn batch() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!(
-                    [
-                        {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
-                        {"jsonrpc": "2.0", "method": "notify_hello", "params": [7]},
-                        {"jsonrpc": "2.0", "method": "subtract", "params": [42,23], "id": "2"},
-                        {"foo": "boo"},
-                        {"jsonrpc": "2.0", "method": "foo.get", "params": {"name": "myself"}, "id": "5"},
-                        {"jsonrpc": "2.0", "method": "get_data", "id": "9"}
-                    ]
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
-
-            let expected = serde_json::json!(
-                [
-                    {"jsonrpc": "2.0", "result": 7, "id": "1"},
-                    {"jsonrpc": "2.0", "result": 19, "id": "2"},
-                    {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null},
-                    {"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "5"},
-                    {"jsonrpc": "2.0", "result": ["hello", 5], "id": "9"}
-                ]
-            );
-            pretty_assertions::assert_eq!(res, expected);
-        }
-
-        #[tokio::test]
-        async fn batch_all_notifications() {
-            let url = spawn_server(spec_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!(
-                    [
-                        {"jsonrpc": "2.0", "method": "notify_sum", "params": [1,2,4]},
-                        {"jsonrpc": "2.0", "method": "notify_hello", "params": [7]}
-                    ]
-                ))
-                .send()
-                .await
-                .unwrap();
-
-            assert_eq!(res.content_length(), Some(0));
         }
     }
 
@@ -824,50 +659,34 @@ mod tests {
 
         #[tokio::test]
         async fn panic_is_internal_error() {
-            let url = spawn_server(panic_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!(
+            let response = serve_and_query(
+                panic_router(),
+                json!(
                     {"jsonrpc": "2.0", "method": "panic", "id": 1}
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
+                ),
+            )
+            .await;
 
             let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1});
-            assert_eq!(res, expected);
+            assert_eq!(response, expected);
         }
 
         #[tokio::test]
         async fn panic_in_batch_is_isolated() {
-            let url = spawn_server(panic_router()).await;
-
-            let client = reqwest::Client::new();
-            let res = client
-                .post(url.clone())
-                .json(&serde_json::json!(
-                    [
-                        {"jsonrpc": "2.0", "method": "panic", "id": 1},
-                        {"jsonrpc": "2.0", "method": "success", "id": 2},
-                    ]
-                ))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap();
+            let response = serve_and_query(
+                panic_router(),
+                json!([
+                    {"jsonrpc": "2.0", "method": "panic", "id": 1},
+                    {"jsonrpc": "2.0", "method": "success", "id": 2},
+                ]),
+            )
+            .await;
 
             let expected = serde_json::json!([
                 {"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1},
                 {"jsonrpc": "2.0", "result": "Success", "id": 2},
             ]);
-            assert_eq!(res, expected);
+            assert_eq!(response, expected);
         }
     }
 
