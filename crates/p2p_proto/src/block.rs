@@ -1,4 +1,5 @@
 use crate::common::{Address, BlockId, ChainId, Hash, Merkle, Signature};
+use crate::state::StateDiff;
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use std::time::{Duration, SystemTime};
@@ -119,4 +120,44 @@ impl ToProtobuf<i32> for Direction {
 #[protobuf(name = "crate::proto::block::GetSignatures")]
 pub struct GetSignatures {
     pub id: BlockId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GetBlocksResponse {
+    BlockHeader(BlockHeader),
+    StateDiff(StateDiff),
+}
+
+impl ToProtobuf<proto::block::GetBlocksResponse> for GetBlocksResponse {
+    fn to_protobuf(self) -> proto::block::GetBlocksResponse {
+        use proto::block::get_blocks_response::Response::{Diff, Header};
+        proto::block::GetBlocksResponse {
+            response: Some(match self {
+                Self::BlockHeader(header) => Header(header.to_protobuf()),
+                Self::StateDiff(diff) => Diff(diff.to_protobuf()),
+            }),
+        }
+    }
+}
+
+impl TryFromProtobuf<proto::block::GetBlocksResponse> for GetBlocksResponse {
+    fn try_from_protobuf(
+        input: proto::block::GetBlocksResponse,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        use proto::block::get_blocks_response::Response::{Diff, Header};
+        let response = input.response.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Empty GetBlocksResponse {field_name}"),
+            )
+        })?;
+
+        Ok(match response {
+            Header(header) => {
+                Self::BlockHeader(BlockHeader::try_from_protobuf(header, field_name)?)
+            }
+            Diff(diff) => Self::StateDiff(StateDiff::try_from_protobuf(diff, field_name)?),
+        })
+    }
 }
