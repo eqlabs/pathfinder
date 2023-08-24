@@ -4,9 +4,9 @@ mod response;
 mod router;
 
 pub use error::RpcError;
-pub use response::{RpcResponse, RpcResult};
-pub use router::{IntoRpcMethod, RpcMethodHandler, RpcRouter, RpcRouterBuilder, is_empty_params};
 pub use request::RpcRequest;
+pub use response::{RpcResponse, RpcResult};
+pub use router::{IntoRpcMethod, RpcMethodHandler, RpcRouter, RpcRouterBuilder};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum RequestId<'a> {

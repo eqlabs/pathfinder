@@ -24,7 +24,7 @@ impl<'a> RpcResponse<'a> {
 
     pub const fn method_not_found(id: RequestId<'a>, _method: &'a str) -> RpcResponse<'a> {
         Self {
-            output: Err(RpcError::MethodNotFound {  }),
+            output: Err(RpcError::MethodNotFound {}),
             id,
         }
     }

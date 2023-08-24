@@ -3,7 +3,7 @@ use axum::extract::{State, WebSocketUpgrade};
 use axum::response::Response;
 
 use crate::context::RpcContext;
-use crate::jsonrpc::{is_empty_params, RpcError, RpcRequest, RpcResponse};
+use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
 use crate::module::Module;
 use crate::websocket::types::BlockHeader;
 
@@ -74,8 +74,7 @@ async fn handle_socket(mut socket: WebSocket, state: RpcContext) {
                     ),
                     "pathfinder_subscribe_newHeads" => {
                         // Params must be empty.
-                        let params = request.params.map(|x| x.get()).unwrap_or_default();
-                        if is_empty_params(params) {
+                        if request.params.is_empty() {
                             let id = next_id;
                             next_id += 1;
                             header_subscription = Some(id);
@@ -85,20 +84,13 @@ async fn handle_socket(mut socket: WebSocket, state: RpcContext) {
                             Err(RpcError::InvalidParams)
                         }
                     }
-                    "pathfinder_unsubscribe_newHeads" => match request.params {
-                        None => Err(RpcError::InvalidParams),
-                        Some(params) => match serde_json::from_str::<u32>(params.get()) {
-                            Ok(id) => {
-                                if Some(id) == header_subscription {
-                                    header_subscription.take();
-                                    Ok(serde_json::Value::Bool(true))
-                                } else {
-                                    Ok(serde_json::Value::Bool(false))
-                                }
-                            }
-                            Err(_) => Err(RpcError::InvalidParams),
-                        },
-                    },
+                    "pathfinder_unsubscribe_newHeads" => {
+                        match request.params.deserialize::<u32>() {
+                            Ok(id) if Some(id) == header_subscription => Ok(serde_json::Value::Bool(true)),
+                            Ok(_) => Ok(serde_json::Value::Bool(false)),
+                            Err(_) => Err(RpcError::InvalidParams)
+                        }
+                    }
                     _ => Err(RpcError::MethodNotFound),
                 };
 

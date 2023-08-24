@@ -1,15 +1,58 @@
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-use crate::jsonrpc::RequestId;
+use crate::jsonrpc::{RequestId, RpcError};
 
 use std::borrow::Cow;
 
 #[derive(Debug)]
 pub struct RpcRequest<'a> {
     pub method: &'a str,
-    pub params: Option<&'a RawValue>,
+    pub params: RawParams<'a>,
     pub id: RequestId<'a>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct RawParams<'a> {
+    #[serde(borrow)]
+    inner: Option<&'a RawValue>,
+}
+
+impl<'a> RawParams<'a> {
+    /// Returns true if there are no params or the list of params is empty.
+    pub fn is_empty(&self) -> bool {
+        let Some(params) = self.inner else {
+            return true;
+        };
+
+        let params = params.get().trim().as_bytes();
+        if params.is_empty() {
+            return true;
+        }
+
+        let first = params.first();
+        let last = params.last();
+
+        let is_array = first == Some(&b'[') && last == Some(&b']');
+        let is_object = first == Some(&b'{') && last == Some(&b'}');
+
+        if is_array || is_object {
+            return params
+                .iter()
+                .skip(1)
+                .rev()
+                .skip(1)
+                .all(u8::is_ascii_whitespace);
+        }
+
+        false
+    }
+
+    pub fn deserialize<T: Deserialize<'a>>(self) -> Result<T, RpcError> {
+        let s = self.inner.map(|x| x.get()).unwrap_or_default();
+
+        serde_json::from_str::<T>(s).map_err(|_| RpcError::InvalidParams)
+    }
 }
 
 impl<'de> Deserialize<'de> for RpcRequest<'de> {
@@ -41,7 +84,7 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
             id: Option<Option<IdHelper<'a>>>,
             method: &'a str,
             #[serde(default, borrow)]
-            params: Option<&'a RawValue>,
+            params: RawParams<'a>,
         }
 
         // Any value that is present is considered Some value, including null.
@@ -50,12 +93,10 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
             T: Deserialize<'de> + std::fmt::Debug,
             D: serde::Deserializer<'de>,
         {
-            Deserialize::deserialize(deserializer).map(|x| Some(dbg!(x)))
+            Deserialize::deserialize(deserializer).map(|x| Some(x))
         }
 
-        println!("here");
-        let helper = Helper::deserialize(deserializer).map_err(|e| dbg!(e))?;
-        println!("here2");
+        let helper = Helper::deserialize(deserializer)?;
 
         if helper.jsonrpc != "2.0" {
             return Err(D::Error::custom("Jsonrpc version must be 2.0"));
@@ -85,9 +126,13 @@ mod tests {
 
     impl PartialEq for RpcRequest<'_> {
         fn eq(&self, other: &Self) -> bool {
-            self.method == other.method
-                && self.id == other.id
-                && self.params.map(|x| x.get()) == other.params.map(|x| x.get())
+            self.method == other.method && self.id == other.id && self.params == other.params
+        }
+    }
+
+    impl PartialEq for RawParams<'_> {
+        fn eq(&self, other: &Self) -> bool {
+            self.inner.map(|x| x.get()) == other.inner.map(|x| x.get())
         }
     }
 
@@ -106,7 +151,9 @@ mod tests {
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: Some(&params),
+            params: RawParams {
+                inner: Some(&params),
+            },
             id: RequestId::Null,
         };
         assert_eq!(result, expected);
@@ -127,7 +174,9 @@ mod tests {
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: Some(&params),
+            params: RawParams {
+                inner: Some(&params),
+            },
             id: RequestId::String("text".into()),
         };
         assert_eq!(result, expected);
@@ -148,7 +197,9 @@ mod tests {
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: Some(&params),
+            params: RawParams {
+                inner: Some(&params),
+            },
             id: RequestId::Number(456),
         };
         assert_eq!(result, expected);
@@ -168,7 +219,9 @@ mod tests {
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: Some(&params),
+            params: RawParams {
+                inner: Some(&params),
+            },
             id: RequestId::Notification,
         };
         assert_eq!(result, expected);
@@ -206,9 +259,51 @@ mod tests {
         let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
             method: "sum",
-            params: None,
+            params: RawParams { inner: None },
             id: RequestId::Number(456),
         };
         assert_eq!(result, expected);
+    }
+
+    mod raw_params {
+        use super::*;
+
+        #[rstest::rstest]
+        #[case::array("[]")]
+        #[case::array_with_spaces("[     ]")]
+        #[case::array_with_newlines(
+            r"[ 
+
+
+        ]"
+        )]
+        #[case::object("{}")]
+        #[case::object_with_spaces("{   }")]
+        #[case::object_with_newlines(
+            r"{ 
+
+            
+        }"
+        )]
+        fn empty(#[case] s: &str) {
+            let raw_value = RawValue::from_string(s.to_owned()).unwrap();
+            let uut = RawParams {
+                inner: Some(&raw_value),
+            };
+
+            assert!(uut.is_empty());
+        }
+
+        #[rstest::rstest]
+        #[case::array("[123]")]
+        #[case::object(r#"{"a": 123}"#)]
+        fn not_empty(#[case] s: &str) {
+            let raw_value = RawValue::from_string(s.to_owned()).unwrap();
+            let uut = RawParams {
+                inner: Some(&raw_value),
+            };
+
+            assert!(!uut.is_empty());
+        }
     }
 }
