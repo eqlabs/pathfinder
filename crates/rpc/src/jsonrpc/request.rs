@@ -7,21 +7,18 @@ use std::borrow::Cow;
 
 #[derive(Debug)]
 pub struct RpcRequest<'a> {
-    pub method: &'a str,
+    pub method: Cow<'a, str>,
     pub params: RawParams<'a>,
     pub id: RequestId<'a>,
 }
 
 #[derive(Debug, Default, Deserialize)]
-pub struct RawParams<'a> {
-    #[serde(borrow)]
-    inner: Option<&'a RawValue>,
-}
+pub struct RawParams<'a>(#[serde(borrow)] Option<&'a RawValue>);
 
 impl<'a> RawParams<'a> {
     /// Returns true if there are no params or the list of params is empty.
     pub fn is_empty(&self) -> bool {
-        let Some(params) = self.inner else {
+        let Some(params) = self.0 else {
             return true;
         };
 
@@ -49,7 +46,7 @@ impl<'a> RawParams<'a> {
     }
 
     pub fn deserialize<T: Deserialize<'a>>(self) -> Result<T, RpcError> {
-        let s = self.inner.map(|x| x.get()).unwrap_or_default();
+        let s = self.0.map(|x| x.get()).unwrap_or_default();
 
         serde_json::from_str::<T>(s).map_err(|_| RpcError::InvalidParams)
     }
@@ -82,7 +79,7 @@ impl<'de> Deserialize<'de> for RpcRequest<'de> {
             // used to parse the null case.
             #[serde(default, borrow, deserialize_with = "deserialize_some")]
             id: Option<Option<IdHelper<'a>>>,
-            method: &'a str,
+            method: Cow<'a, str>,
             #[serde(default, borrow)]
             params: RawParams<'a>,
         }
@@ -122,6 +119,8 @@ mod tests {
     use serde_json::json;
     use serde_json::value::to_raw_value;
 
+    use rstest::rstest;
+
     use super::*;
 
     impl PartialEq for RpcRequest<'_> {
@@ -132,99 +131,43 @@ mod tests {
 
     impl PartialEq for RawParams<'_> {
         fn eq(&self, other: &Self) -> bool {
-            self.inner.map(|x| x.get()) == other.inner.map(|x| x.get())
+            self.0.map(|x| x.get()) == other.0.map(|x| x.get())
         }
     }
 
-    #[test]
-    fn with_null_id() {
-        let json = json!({
-            "jsonrpc": "2.0",
-            "method": "sum",
-            "params": [1,2,3],
-            "id": null
-        });
-
+    #[rstest]
+    #[case::null        (Some(json!(null)),   RequestId::Null)]
+    #[case::string      (Some(json!("text")), RequestId::String("text".into()))]
+    #[case::number      (Some(json!(456)),    RequestId::Number(456))]
+    #[case::notification(None, RequestId::Notification)]
+    fn request_id(#[case] id: Option<serde_json::Value>, #[case] expected: RequestId) {
         let params = json!([1, 2, 3]);
+        let request = if let Some(id) = id {
+            json!({
+                "jsonrpc": "2.0",
+                "method": "sum",
+                "params": params,
+                "id": id
+            })
+        } else {
+            json!({
+                "jsonrpc": "2.0",
+                "method": "sum",
+                "params": params,
+            })
+        }
+        .to_string();
+
+        let request = serde_json::from_str::<RpcRequest>(&request).unwrap();
+
         let params = to_raw_value(&params).unwrap();
-
-        let result = RpcRequest::deserialize(json).unwrap();
         let expected = RpcRequest {
-            method: "sum",
-            params: RawParams {
-                inner: Some(&params),
-            },
-            id: RequestId::Null,
+            method: "sum".into(),
+            params: RawParams(Some(&params)),
+            id: expected,
         };
-        assert_eq!(result, expected);
-    }
 
-    #[test]
-    fn with_string_id() {
-        let json = json!({
-            "jsonrpc": "2.0",
-            "method": "sum",
-            "params": [1,2,3],
-            "id": "text"
-        });
-
-        let params = json!([1, 2, 3]);
-        let params = to_raw_value(&params).unwrap();
-
-        let result = RpcRequest::deserialize(json).unwrap();
-        let expected = RpcRequest {
-            method: "sum",
-            params: RawParams {
-                inner: Some(&params),
-            },
-            id: RequestId::String("text".into()),
-        };
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn with_number_id() {
-        let json = json!({
-            "jsonrpc": "2.0",
-            "method": "sum",
-            "params": [1,2,3],
-            "id": 456
-        });
-
-        let params = json!([1, 2, 3]);
-        let params = to_raw_value(&params).unwrap();
-
-        let result = RpcRequest::deserialize(json).unwrap();
-        let expected = RpcRequest {
-            method: "sum",
-            params: RawParams {
-                inner: Some(&params),
-            },
-            id: RequestId::Number(456),
-        };
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn notification() {
-        let json = json!({
-            "jsonrpc": "2.0",
-            "method": "sum",
-            "params": [1,2,3]
-        });
-
-        let params = json!([1, 2, 3]);
-        let params = to_raw_value(&params).unwrap();
-
-        let result = RpcRequest::deserialize(json).unwrap();
-        let expected = RpcRequest {
-            method: "sum",
-            params: RawParams {
-                inner: Some(&params),
-            },
-            id: RequestId::Notification,
-        };
-        assert_eq!(result, expected);
+        assert_eq!(request, expected);
     }
 
     #[test]
@@ -233,8 +176,9 @@ mod tests {
             "method": "sum",
             "params": [1,2,3],
             "id": 456
-        });
-        RpcRequest::deserialize(json).unwrap_err();
+        })
+        .to_string();
+        serde_json::from_str::<RpcRequest>(&json).unwrap_err();
     }
 
     #[test]
@@ -244,8 +188,9 @@ mod tests {
             "method": "sum",
             "params": [1,2,3],
             "id": 456
-        });
-        RpcRequest::deserialize(json).unwrap_err();
+        })
+        .to_string();
+        serde_json::from_str::<RpcRequest>(&json).unwrap_err();
     }
 
     #[test]
@@ -254,12 +199,13 @@ mod tests {
             "jsonrpc": "2.0",
             "method": "sum",
             "id": 456
-        });
+        })
+        .to_string();
 
-        let result = RpcRequest::deserialize(json).unwrap();
+        let result = serde_json::from_str::<RpcRequest>(&json).unwrap();
         let expected = RpcRequest {
-            method: "sum",
-            params: RawParams { inner: None },
+            method: "sum".into(),
+            params: RawParams(None),
             id: RequestId::Number(456),
         };
         assert_eq!(result, expected);
@@ -269,27 +215,15 @@ mod tests {
         use super::*;
 
         #[rstest::rstest]
-        #[case::array("[]")]
-        #[case::array_with_spaces("[     ]")]
-        #[case::array_with_newlines(
-            r"[ 
-
-
-        ]"
-        )]
-        #[case::object("{}")]
-        #[case::object_with_spaces("{   }")]
-        #[case::object_with_newlines(
-            r"{ 
-
-            
-        }"
-        )]
+        #[case::array               ("[]")]
+        #[case::array_with_spaces   ("[     ]")]
+        #[case::array_with_newlines ("[ \n   ]")]
+        #[case::object              ("{}")]
+        #[case::object_with_spaces  ("{   }")]
+        #[case::object_with_newlines("{  \n  }")]
         fn empty(#[case] s: &str) {
-            let raw_value = RawValue::from_string(s.to_owned()).unwrap();
-            let uut = RawParams {
-                inner: Some(&raw_value),
-            };
+            let raw_value = RawValue::from_string(dbg!(s).to_owned()).unwrap();
+            let uut = RawParams(Some(&raw_value));
 
             assert!(uut.is_empty());
         }
@@ -299,9 +233,7 @@ mod tests {
         #[case::object(r#"{"a": 123}"#)]
         fn not_empty(#[case] s: &str) {
             let raw_value = RawValue::from_string(s.to_owned()).unwrap();
-            let uut = RawParams {
-                inner: Some(&raw_value),
-            };
+            let uut = RawParams(Some(&raw_value));
 
             assert!(!uut.is_empty());
         }

@@ -60,7 +60,7 @@ impl RpcContext {
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             version: RpcVersion::default(),
-            websocket: WebsocketSenders::with_capacity(0),
+            websocket: WebsocketSenders::with_capacity(1),
         }
     }
 

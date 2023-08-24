@@ -78,8 +78,8 @@ impl RpcRouter {
         }
 
         // Also grab the method_name as it is a static str, which is required by the metrics.
-        let Some((&method_name, method)) = self.methods.get_key_value(request.method) else {
-            return Some(RpcResponse::method_not_found(request.id, request.method));
+        let Some((&method_name, method)) = self.methods.get_key_value(request.method.as_ref()) else {
+            return Some(RpcResponse::method_not_found(request.id));
         };
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version);
@@ -90,7 +90,7 @@ impl RpcRouter {
         let output = match result {
             Ok(output) => output,
             Err(_e) => {
-                tracing::warn!(method = request.method, "RPC method panic'd");
+                tracing::warn!(method=%request.method, "RPC method panic'd");
                 Err(RpcError::InternalError(anyhow::anyhow!("Method panic'd")))
             }
         };

@@ -22,9 +22,9 @@ impl<'a> RpcResponse<'a> {
         id: RequestId::Null,
     };
 
-    pub const fn method_not_found(id: RequestId<'a>, _method: &'a str) -> RpcResponse<'a> {
+    pub const fn method_not_found(id: RequestId<'a>) -> RpcResponse<'a> {
         Self {
-            output: Err(RpcError::MethodNotFound {}),
+            output: Err(RpcError::MethodNotFound),
             id,
         }
     }

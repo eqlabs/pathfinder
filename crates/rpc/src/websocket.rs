@@ -67,7 +67,7 @@ async fn handle_socket(mut socket: WebSocket, state: RpcContext) {
                     }
                 };
 
-                let response = match request.method {
+                let response = match request.method.as_ref() {
                     // TODO: this should be a formal error in the spec instead of an internal error.
                     "pathfinder_subscribe_newHeads" if header_subscription.is_some() => Err(
                         RpcError::InternalError(anyhow::anyhow!("Header subscription already active")),
