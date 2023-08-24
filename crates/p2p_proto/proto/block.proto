@@ -4,6 +4,7 @@ package starknet.block;
 
 import "common.proto";
 import "google/protobuf/timestamp.proto";
+import "state.proto";
 
 // for now, we assume a small consensus, so this fits in 1M. Else, these will be repeated
 message Signatures {
@@ -66,4 +67,12 @@ message GetBlocks {
 
 message GetSignatures {
     starknet.common.BlockID id = 1;
+}
+
+// FIXME this will be added to the spec
+message GetBlocksResponse {
+    oneof response {
+        BlockHeader header = 1;
+        starknet.state.StateDiff diff = 2;
+    }
 }
