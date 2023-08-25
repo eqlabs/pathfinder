@@ -31,16 +31,14 @@
                     "schema": {
                         "$ref": "#/components/schemas/BLOCK_ID"
                     }
-                },
-                {
+                }, {
                     "name": "contract_address",
                     "description": "The address of the contract",
                     "required": true,
                     "schema": {
                         "$ref": "#/components/schemas/ADDRESS"
                     }
-                },
-                {
+                }, {
                     "name": "keys",
                     "description": "The storage element addresses to gather proofs for",
                     "required": true,
@@ -101,17 +99,10 @@
                                     }
                                 }
                             },
-                            "required": [
-                                "class_hash",
-                                "nonce",
-                                "root",
-                                "contract_state_hash_version"
-                            ]
+                            "required": ["class_hash", "nonce", "root", "contract_state_hash_version"]
                         }
                     },
-                    "required": [
-                        "contract_proof"
-                    ]
+                    "required": ["contract_proof"]
                 }
             },
             "errors": [
@@ -143,43 +134,59 @@
             }
         },
         {
-            "name": "pathfinder_subscribe_newHeads",
-            "summary": "Subscribe to new head events on WebSocket",
-            "description": "Fires a notification each time a new header is appended to the chain.",
-            "params": [],
-            "result": {
-                "name": "result",
-                "description": "Subscription ID",
-                "type": "number"
-            }
-        },
-        {
-            "name": "pathfinder_subscription_newHead",
-            "summary": "New header event notification",
-            "description": "Incoming notification from server when new header is appended to the chain.",
-            "params": [],
-            "result": {
-                "name": "result",
-                "description": "Newly added block header.",
+            "name": "pathfinder_subscribe",
+            "summary": "Create a subscription for specific events",
+            "description": "Fires a notification each time an event occurs.",
+            "params": {
+                "description": "The kind of event to subscribe to",
+                "required": true,
                 "schema": {
-                    "$ref": "#/components/schemas/WebsocketEventNewHead"
+                    "oneof": [
+                        {
+                            "title": "New header events",
+                            "description": "Fires a notification each time a new header is appended to the chain.",
+                            "type": "string",
+                            "enum": ["newHeaders"]
+                        }
+                    ]
+                }
+            },
+            "result": {
+                "description": "Subscription ID",
+                "type": "integer",
+                "required": true
+            }
+        }, {
+            "name": "pathfinder_subscription",
+            "summary": "Event notification",
+            "description": "Incoming notification whose content depends on the originating subscription type.",
+            "params": {
+                "subscription": {
+                    "description": "The subscription ID which fired this event.",
+                    "type": "integer",
+                    "required": true
+                },
+                "result": {
+                    "oneof": [
+                        {
+                            "description": "Event fired by a newHeaders subscription",
+                            "schema": {
+                                "$ref": "#/components/schemas/WebsocketEventNewHead"
+                            }
+                        }
+                    ]
                 }
             }
-        },
-        {
-            "name": "pathfinder_unsubscribe_newHeads",
-            "summary": "Unsubscribe from new head events on WebSocket",
-            "description": "Terminates new head notifications.",
-            "params": [
-                {
-                    "description": "ID of the subscription that should be terminated",
-                    "required": true,
-                    "type": "number"
-                }
-            ],
-            "paramStructure": "by-position",
+        }, {
+            "name": "pathfinder_unsubscribe",
+            "summary": "Stops a subscription",
+            "description": "Terminates event notifications from a subscription",
+            "params": {
+                "description": "ID of the subscription that should be terminated",
+                "required": true,
+                "type": "integer"
+            },
             "result": {
-                "name": "result",
                 "description": "Flag indicating if subscription was terminated successfully",
                 "type": "bool"
             }
@@ -198,16 +205,14 @@
                                 "$ref": "#/components/schemas/BLOCK_HASH"
                             }
                         }
-                    },
-                    {
+                    }, {
                         "type": "object",
                         "properties": {
                             "block_number": {
                                 "$ref": "#/components/schemas/BLOCK_NUMBER"
                             }
                         }
-                    },
-                    {
+                    }, {
                         "$ref": "#/components/schemas/BLOCK_TAG"
                     }
                 ]
@@ -215,10 +220,7 @@
             "BLOCK_TAG": {
                 "type": "string",
                 "description": "A tag specifying a dynamic reference to a block",
-                "enum": [
-                    "latest",
-                    "pending"
-                ]
+                "enum": ["latest", "pending"]
             },
             "FELT": {
                 "type": "string",
@@ -250,8 +252,7 @@
                 "oneof": [
                     {
                         "$ref": "#/components/schemas/BINARY_NODE"
-                    },
-                    {
+                    }, {
                         "$ref": "#/components/schemas/EDGE_NODE"
                     }
                 ]
@@ -271,15 +272,10 @@
                                 "$ref": "#/components/schemas/FELT"
                             }
                         },
-                        "required": [
-                            "left",
-                            "right"
-                        ]
+                        "required": ["left", "right"]
                     }
                 },
-                "required": [
-                    "binary"
-                ]
+                "required": ["binary"]
             },
             "EDGE_NODE": {
                 "type": "object",
@@ -303,21 +299,13 @@
                                         "type": "integer"
                                     }
                                 },
-                                "required": [
-                                    "value",
-                                    "len"
-                                ]
+                                "required": ["value", "len"]
                             }
                         },
-                        "required": [
-                            "child",
-                            "path"
-                        ]
+                        "required": ["child", "path"]
                     }
                 },
-                "required": [
-                    "edge"
-                ]
+                "required": ["edge"]
             },
             "TXN_HASH": {
                 "$ref": "#/components/schemas/FELT",
@@ -390,10 +378,7 @@
                             "type": "integer"
                         }
                     },
-                    "required": [
-                        "limit",
-                        "requested"
-                    ]
+                    "required": ["limit", "requested"]
                 }
             }
         }

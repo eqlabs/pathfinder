@@ -28,6 +28,13 @@ impl<'a> RpcResponse<'a> {
             id,
         }
     }
+
+    pub const fn invalid_params(id: RequestId<'a>) -> RpcResponse<'a> {
+        Self {
+            output: Err(RpcError::InvalidParams),
+            id,
+        }
+    }
 }
 
 pub type RpcResult = Result<Value, RpcError>;
