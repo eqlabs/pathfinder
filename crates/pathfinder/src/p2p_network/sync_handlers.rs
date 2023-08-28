@@ -1,5 +1,6 @@
 //! Sync related data retrieval from storage as requested by other p2p clients
 
+use super::conv::ToProto;
 use anyhow::Context;
 use p2p_proto::block::GetBlocksResponse;
 use pathfinder_common::{BlockHash, BlockNumber};
@@ -79,7 +80,7 @@ fn headers_and_diffs(
 
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
 
-    let mut responses = Default::default();
+    let mut responses = Vec::new();
 
     while let Some(block_number) = next_block_number {
         if limit == 0 {
@@ -91,14 +92,14 @@ fn headers_and_diffs(
             break;
         };
 
-        // TODO conv
+        responses.push(GetBlocksResponse::BlockHeader(header.to_proto()));
 
         let Some(diff) = tx.state_update(block_number.into())? else {
             // No such block
             break;
         };
 
-        // TODO conv
+        responses.push(GetBlocksResponse::StateDiff(diff.to_proto()));
 
         limit -= 1;
         next_block_number = get_next_block_number(block_number, step, request.direction);
