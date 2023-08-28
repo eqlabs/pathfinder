@@ -394,13 +394,12 @@ pub async fn download_new_classes(
                 let Some(casm_hash) = state_update
                     .declared_sierra_classes
                     .iter()
-                    .find_map(|(sierra, casm)| {
-                        (sierra.0 == class_hash.0).then_some(*casm)
-                    }) else {
-                        // This can occur if the sierra was in here as a deploy contract, if the class was
-                        // declared in a previous block but not yet persisted by the database.
-                        continue;
-                    };
+                    .find_map(|(sierra, casm)| (sierra.0 == class_hash.0).then_some(*casm))
+                else {
+                    // This can occur if the sierra was in here as a deploy contract, if the class was
+                    // declared in a previous block but not yet persisted by the database.
+                    continue;
+                };
                 tx_event
                     .send(SyncEvent::SierraClass {
                         sierra_definition,

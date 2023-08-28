@@ -37,9 +37,10 @@ pub async fn get_transaction_status(
 
         let Some((_, receipt, block_hash)) = db_tx
             .transaction_with_receipt(input.transaction_hash)
-            .context("Fetching receipt from database")? else {
-                return anyhow::Ok(None);
-            };
+            .context("Fetching receipt from database")?
+        else {
+            return anyhow::Ok(None);
+        };
 
         if receipt.execution_status == ExecutionStatus::Reverted {
             return Ok(Some(TransactionStatus::Reverted));

@@ -138,12 +138,9 @@ pub(super) fn state_update(
     tx: &Transaction<'_>,
     block: BlockId,
 ) -> anyhow::Result<Option<StateUpdate>> {
-    let Some((
-        block_number,
-        block_hash,
-        state_commitment,
-        parent_state_commitment
-    )) = block_details(tx, block).context("Querying block header")? else {
+    let Some((block_number, block_hash, state_commitment, parent_state_commitment)) =
+        block_details(tx, block).context("Querying block header")?
+    else {
         return Ok(None);
     };
 
