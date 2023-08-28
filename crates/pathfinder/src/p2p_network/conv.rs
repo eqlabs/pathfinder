@@ -1,12 +1,24 @@
 //! Workaround for the orphan rule - implement conversion fns for types ourside our crate.
 
-use pathfinder_common::{BlockHeader, StateUpdate};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
-trait ToProto<T> {
+use pathfinder_common::{
+    state_update::{ContractClassUpdate, ContractUpdate, SystemContractUpdate},
+    BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
+    ContractAddress, ContractNonce, EventCommitment, GasPrice, SequencerAddress, StarknetVersion,
+    StateCommitment, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
+    TransactionCommitment,
+};
+use stark_hash::Felt;
+
+pub trait ToProto<T> {
     fn to_proto(self) -> T;
 }
 
-trait TryFromProto<T> {
+pub trait TryFromProto<T> {
     fn try_from_proto(proto: T) -> anyhow::Result<Self>
     where
         Self: Sized;
@@ -14,27 +26,164 @@ trait TryFromProto<T> {
 
 impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
     fn to_proto(self) -> p2p_proto::block::BlockHeader {
+        use p2p_proto::common::{Address, BlockId, ChainId, Hash, Merkle};
+        const ZERO_MERKLE: Merkle = Merkle {
+            n_leaves: 0,
+            root: Hash(Felt::ZERO),
+        };
         p2p_proto::block::BlockHeader {
-            parent_block: todo!(),
-            time: todo!(),
-            sequencer_address: todo!(),
-            state_diffs: todo!(),
-            state: todo!(),
-            proof_fact: todo!(),
-            transactions: todo!(),
-            events: todo!(),
-            receipts: todo!(),
-            protocol_version: todo!(),
-            chain_id: todo!(),
+            parent_block: BlockId::Hash(Hash(self.parent_hash.0)),
+            time: SystemTime::UNIX_EPOCH // TODO just pass the number somehow for now 🤦
+                .checked_add(Duration::from_secs(self.timestamp.get()))
+                .unwrap()
+                .into(),
+            sequencer_address: Address(self.sequencer_address.0),
+            // FIXME: all of those zeros
+            state_diffs: ZERO_MERKLE,
+            state: ZERO_MERKLE,
+            proof_fact: Hash(Felt::ZERO),
+            transactions: ZERO_MERKLE,
+            events: ZERO_MERKLE,
+            receipts: ZERO_MERKLE,
+            protocol_version: 0,
+            chain_id: ChainId(Felt::ZERO),
         }
     }
 }
 
 impl ToProto<p2p_proto::state::StateDiff> for StateUpdate {
     fn to_proto(self) -> p2p_proto::state::StateDiff {
-        p2p_proto::state::StateDiff {
-            tree_id: todo!(),
-            contract_diffs: todo!(),
+        use p2p_proto::common::Address;
+        use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
+        StateDiff {
+            tree_id: 0, // TODO there will initially be 2 trees, dunno which id is which
+            contract_diffs: self
+                .system_contract_updates
+                .into_iter()
+                .map(|(address, update)| {
+                    let address = Address(address.0);
+                    let values = update
+                        .storage
+                        .into_iter()
+                        .map(|(storage_address, storage_value)| ContractStoredValue {
+                            key: storage_address.0,
+                            value: storage_value.0,
+                        })
+                        .collect();
+                    let class_hash = Felt::ZERO;
+                    let nonce = Felt::ZERO; // FIXME cannot distinguish between None and real 0 nonce
+                    ContractDiff {
+                        address,
+                        nonce,
+                        class_hash,
+                        values,
+                    }
+                })
+                .chain(self.contract_updates.into_iter().map(|(address, update)| {
+                    let address = Address(address.0);
+                    let ContractUpdate {
+                        storage,
+                        class,
+                        nonce,
+                    } = update;
+                    let values = storage
+                        .into_iter()
+                        .map(|(storage_address, storage_value)| ContractStoredValue {
+                            key: storage_address.0,
+                            value: storage_value.0,
+                        })
+                        .collect();
+                    let class_hash = class.map(|c| c.class_hash()).unwrap_or_default().0;
+                    let nonce = nonce.unwrap_or_default().0;
+                    ContractDiff {
+                        address,
+                        nonce,
+                        class_hash,
+                        values,
+                    }
+                }))
+                .collect(),
+            // FIXME missing: declared classes cairo & sierra, replaced classes, old and new state commitments
         }
+    }
+}
+
+impl TryFromProto<p2p_proto::block::BlockHeader> for BlockHeader {
+    fn try_from_proto(proto: p2p_proto::block::BlockHeader) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        use p2p_proto::common::BlockId;
+        Ok(Self {
+            hash: BlockHash::ZERO, // FIXME
+            parent_hash: match proto.parent_block {
+                BlockId::Hash(h) => BlockHash(h.0),
+                BlockId::Height(_) => {
+                    todo!("FIXME right now pathfinder is sending hashes, not heights")
+                }
+                BlockId::HashAndHeight(h, _) => BlockHash(h.0),
+            },
+            number: BlockNumber::GENESIS, // FIXME
+            timestamp: BlockTimestamp::new(
+                proto.time.duration_since(SystemTime::UNIX_EPOCH)?.as_secs(),
+            )
+            .unwrap(), // FIXME
+            gas_price: GasPrice::ZERO,    // FIXME
+            sequencer_address: SequencerAddress(proto.sequencer_address.0),
+            starknet_version: StarknetVersion::default(), // FIXME
+            class_commitment: ClassCommitment::ZERO,      // FIXME
+            event_commitment: EventCommitment::ZERO,      // FIXME
+            state_commitment: StateCommitment::ZERO,      // FIXME
+            storage_commitment: StorageCommitment::ZERO,  // FIXME
+            transaction_commitment: TransactionCommitment::ZERO, // FIXME
+            transaction_count: 0,                         // FIXME
+            event_count: 0,                               // FIXME
+        })
+    }
+}
+
+impl TryFromProto<p2p_proto::state::StateDiff> for StateUpdate {
+    fn try_from_proto(proto: p2p_proto::state::StateDiff) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        const SYSTEM_CONTRACT: ContractAddress = ContractAddress::ONE;
+        let mut system_contract_update = SystemContractUpdate {
+            storage: Default::default(),
+        };
+        let mut contract_updates = HashMap::new();
+        proto.contract_diffs.into_iter().for_each(|diff| {
+            if diff.address.0 == SYSTEM_CONTRACT.0 {
+                diff.values.into_iter().for_each(|x| {
+                    system_contract_update
+                        .storage
+                        .insert(StorageAddress(x.key), StorageValue(x.value));
+                });
+            } else {
+                contract_updates.insert(
+                    ContractAddress(diff.address.0),
+                    ContractUpdate {
+                        storage: diff
+                            .values
+                            .into_iter()
+                            .map(|x| (StorageAddress(x.key), StorageValue(x.value)))
+                            .collect(),
+                        class: (diff.class_hash != ClassHash::ZERO.0)
+                            .then_some(ContractClassUpdate::Deploy(ClassHash(diff.class_hash))), // FIXME - need db to check if deploy or replace
+                        nonce: Some(ContractNonce(diff.nonce)), // FIXME unable to determine if 0 was intended or means None
+                    },
+                );
+            }
+        });
+
+        Ok(Self {
+            block_hash: BlockHash::ZERO,                    // FIXME
+            parent_state_commitment: StateCommitment::ZERO, // FIXME
+            state_commitment: StateCommitment::ZERO,        // FIXME
+            contract_updates,
+            system_contract_updates: [(SYSTEM_CONTRACT, system_contract_update)].into(),
+            declared_cairo_classes: Default::default(), // FIXME
+            declared_sierra_classes: Default::default(), // FIXME
+        })
     }
 }
