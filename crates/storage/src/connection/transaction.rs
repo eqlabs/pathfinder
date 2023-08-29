@@ -390,7 +390,7 @@ mod tests {
 
         let body = transactions
             .into_iter()
-            .zip(receipts.into_iter())
+            .zip(receipts)
             .map(|(t, r)| (t, r))
             .collect::<Vec<_>>();
 
