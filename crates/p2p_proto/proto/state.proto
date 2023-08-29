@@ -15,8 +15,8 @@ message StateDiff
     // a bit more efficient than the state sync separation
     message ContractDiff {
         starknet.common.Address address = 1;
-        starknet.common.Felt252 nonce = 2;
-        starknet.common.Felt252 class_hash = 3; // can change for replace_class or new contract
+        optional starknet.common.Felt252 nonce = 2;
+        optional starknet.common.Felt252 class_hash = 3; // can change for replace_class or new contract
         repeated ContractStoredValue values = 4;
     }
 

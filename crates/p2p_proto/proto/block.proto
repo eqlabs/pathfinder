@@ -40,6 +40,17 @@ message BlockHeader {
     uint32 protocol_version = 10;
 
     starknet.common.ChainID chain_id = 11;
+
+    // FIXME right now we are unable to calculate the block hash either
+    // 1. because it does not carry all the items required for the calculation
+    // 2. or because there are some old blocks for which we simply don't know how to do it
+    // This is why we're adding the block hash here
+    starknet.common.Hash block_hash = 12;
+    // FIXME we also need gas_price and starknet_version, other stuff need to calculate the block hash like
+    // transaction, event, contract storage, class commitments can be taken from responses to respective queries
+    // later in the sync process
+    bytes gas_price = 13; // big endian
+    string starknet_version = 14;
 }
 
 message BlockProof {

@@ -25,6 +25,10 @@ pub struct BlockHeader {
     pub receipts: Merkle,
     pub protocol_version: u32,
     pub chain_id: ChainId,
+    // FIXME extra fields added to make sync work
+    pub block_hash: Hash,
+    pub gas_price: Vec<u8>,
+    pub starknet_version: String,
 }
 
 impl ToProtobuf<::prost_types::Timestamp> for SystemTime {
