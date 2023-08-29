@@ -33,7 +33,7 @@ impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
         };
         p2p_proto::block::BlockHeader {
             parent_block: BlockId::Hash(Hash(self.parent_hash.0)),
-            time: SystemTime::UNIX_EPOCH // TODO just pass the number somehow for now 🤦
+            time: SystemTime::UNIX_EPOCH // FIXME Dunno how to convert
                 .checked_add(Duration::from_secs(self.timestamp.get()))
                 .unwrap()
                 .into(),
@@ -47,6 +47,10 @@ impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
             receipts: ZERO_MERKLE,
             protocol_version: 0,
             chain_id: ChainId(Felt::ZERO),
+            // FIXME extra fields added to make sync work
+            block_hash: Hash(self.hash.0),
+            gas_price: self.gas_price.0.to_be_bytes().into(),
+            starknet_version: self.starknet_version.take_inner(),
         }
     }
 }
@@ -108,6 +112,8 @@ impl ToProto<p2p_proto::state::StateDiff> for StateUpdate {
     }
 }
 
+// FIXME at the moment this implementation is useless due to the massive difference between p2p and internal header representations,
+// I'm not sure we want to keep it at all
 impl TryFromProto<p2p_proto::block::BlockHeader> for BlockHeader {
     fn try_from_proto(proto: p2p_proto::block::BlockHeader) -> anyhow::Result<Self>
     where
@@ -142,6 +148,7 @@ impl TryFromProto<p2p_proto::block::BlockHeader> for BlockHeader {
     }
 }
 
+// FIXME add missing stuff to the proto representation
 impl TryFromProto<p2p_proto::state::StateDiff> for StateUpdate {
     fn try_from_proto(proto: p2p_proto::state::StateDiff) -> anyhow::Result<Self>
     where
