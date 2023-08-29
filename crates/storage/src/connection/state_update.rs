@@ -676,11 +676,13 @@ mod tests {
             let (contract, key, expected) = state_update
                 .contract_updates
                 .iter()
-                .next()
-                .map(|(addr, update)| {
-                    let (key, value) = update.storage.iter().next().unwrap();
-                    (*addr, *key, *value)
+                .flat_map(|(addr, update)| {
+                    update
+                        .storage
+                        .iter()
+                        .map(|(key, value)| (*addr, *key, *value))
                 })
+                .next()
                 .unwrap();
 
             // Valid key and contract.
