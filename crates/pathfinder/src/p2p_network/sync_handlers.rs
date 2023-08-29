@@ -6,9 +6,17 @@ use p2p_proto::block::GetBlocksResponse;
 use pathfinder_common::{BlockHash, BlockNumber};
 use pathfinder_storage::{Storage, Transaction};
 
+#[cfg(test)]
+mod tests;
 pub mod v0;
 
+#[cfg(not(test))]
 const MAX_BLOCKS_COUNT: u64 = 100;
+
+#[cfg(test)]
+const MAX_COUNT_IN_TESTS: u64 = 10;
+#[cfg(test)]
+const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
 type GetBlocksResponseTx = tokio::sync::mpsc::Sender<GetBlocksResponse>;
 type GetBlocksResponseRx = tokio::sync::mpsc::Receiver<GetBlocksResponse>;
@@ -18,8 +26,8 @@ type GetBlocksResponseRx = tokio::sync::mpsc::Receiver<GetBlocksResponse>;
 // 2. retrieve in batches,
 // 3. retrieve in batches, don't wait for the previous batch to finish, send with index to rebuild the correct order in the receiver
 pub async fn get_blocks(
-    request: p2p_proto::block::GetBlocks,
     storage: &Storage,
+    request: p2p_proto::block::GetBlocks,
     reply_tx: GetBlocksResponseTx,
 ) -> anyhow::Result<()> {
     // TODO For really large requests we might want to use smaller batches
