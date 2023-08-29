@@ -76,7 +76,7 @@ pub struct NewBlock {
     pub id: BlockId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::GetBlocks")]
 pub struct GetBlocks {
     pub start: BlockId,
