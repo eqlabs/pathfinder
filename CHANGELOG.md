@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `cairo-lang` upgraded to 0.12.2
 - Cairo compiler upgraded to 2.1.1
+- default RPC API version changed from v0.3 to v0.4
 
 ### Fixed
 
