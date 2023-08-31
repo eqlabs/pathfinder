@@ -32,7 +32,7 @@ pub(crate) async fn execution_state(
     let (gas_price, at_block, pending_timestamp, pending_update) =
         prepare_block(&context, block_id, forced_gas_price).await?;
 
-    let storage = context.storage.clone();
+    let storage = context.execution_storage.clone();
     let span = tracing::Span::current();
 
     let block = tokio::task::spawn_blocking(move || {

@@ -28,6 +28,7 @@ lazy_static = "1.4.0"
 lru = "0.11.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
+num_cpus = "1.15.0"
 p2p = { path = "../p2p", optional = true }
 p2p_proto = { path = "../p2p_proto", optional = true }
 pathfinder-common = { path = "../common" }
@@ -73,7 +74,6 @@ flate2 = "1.0.25"
 http = "0.2.8"
 mimalloc = { version = "0.1.37", default-features = false }
 mockall = "0.11.3"
-num_cpus = "1.15.0"
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }

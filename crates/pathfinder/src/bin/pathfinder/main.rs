@@ -95,11 +95,20 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let rpc_storage = std::cmp::max(10, config.max_rpc_connections.get() / 8);
     let rpc_storage = NonZeroU32::new(rpc_storage).expect("A non-zero minimum is set");
     let rpc_storage = storage_manager.create_pool(rpc_storage).context(
-        r"Creating database connection pool for sync
+        r"Creating database connection pool for RPC
 
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
     )?;
+
+    let execution_storage_pool_size = config.execution_concurrency.unwrap_or_else(|| {
+        std::num::NonZeroU32::new(num_cpus::get() as u32)
+            .expect("The number of CPU cores should be non-zero")
+    });
+    let execution_storage = storage_manager
+        .create_pool(execution_storage_pool_size)
+        .context(r"")?;
+
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
         .context(
@@ -123,6 +132,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
+        execution_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),

@@ -150,8 +150,8 @@ mod tests {
         use super::*;
 
         use pathfinder_common::{
-            felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ChainId, ClassHash,
-            ContractAddress, GasPrice, StateUpdate, StorageAddress, StorageValue,
+            felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ClassHash, ContractAddress,
+            GasPrice, StateUpdate, StorageAddress, StorageValue,
         };
         use pathfinder_storage::Storage;
         use starknet_gateway_test_fixtures::class_definitions::{
@@ -209,10 +209,8 @@ mod tests {
 
             tx.commit().unwrap();
 
-            let sync_state = Arc::new(crate::SyncState::default());
-            let sequencer = starknet_gateway_client::Client::mainnet();
-
-            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
+            let context =
+                RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet).with_storage(storage);
 
             (
                 context,
@@ -445,7 +443,6 @@ mod tests {
         use pathfinder_storage::JournalMode;
         use std::num::NonZeroU32;
         use std::path::PathBuf;
-        use std::sync::Arc;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
@@ -469,8 +466,6 @@ mod tests {
         }
 
         async fn test_context() -> (tempfile::TempDir, RpcContext) {
-            use pathfinder_common::ChainId;
-
             let mut source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             source_path.push("fixtures/mainnet.sqlite");
 
@@ -484,11 +479,10 @@ mod tests {
                 .unwrap()
                 .create_pool(NonZeroU32::new(1).unwrap())
                 .unwrap();
-            let sync_state = Arc::new(crate::SyncState::default());
 
-            let sequencer = starknet_gateway_client::Client::mainnet().disable_retry_for_tests();
+            let context =
+                RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet).with_storage(storage);
 
-            let context = RpcContext::new(storage, sync_state, ChainId::MAINNET, sequencer);
             (db_dir, context)
         }
 

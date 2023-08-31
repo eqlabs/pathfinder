@@ -32,6 +32,7 @@ impl RpcVersion {
 #[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
+    pub execution_storage: Storage,
     pub pending_data: Option<PendingData>,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
@@ -43,12 +44,14 @@ pub struct RpcContext {
 impl RpcContext {
     pub fn new(
         storage: Storage,
+        execution_storage: Storage,
         sync_status: Arc<SyncState>,
         chain_id: ChainId,
         sequencer: SequencerClient,
     ) -> Self {
         Self {
             storage,
+            execution_storage,
             sync_status,
             chain_id,
             pending_data: None,
@@ -70,8 +73,6 @@ impl RpcContext {
     }
 
     pub fn for_tests_on(chain: pathfinder_common::Chain) -> Self {
-        assert_ne!(chain, Chain::Mainnet, "Testing on MainNet?");
-
         use pathfinder_common::Chain;
         let (chain_id, sequencer) = match chain {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet()),
@@ -84,6 +85,7 @@ impl RpcContext {
         let storage = super::test_utils::setup_storage();
         let sync_state = Arc::new(SyncState::default());
         Self::new(
+            storage.clone(),
             storage,
             sync_state,
             chain_id,
@@ -92,7 +94,11 @@ impl RpcContext {
     }
 
     pub fn with_storage(self, storage: Storage) -> Self {
-        Self { storage, ..self }
+        Self {
+            storage: storage.clone(),
+            execution_storage: storage,
+            ..self
+        }
     }
 
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {

@@ -405,8 +405,6 @@ mod tests {
 
     /// Add some dummy state updates to the context for testing
     fn context_with_state_updates() -> (Vec<types::StateUpdate>, RpcContext) {
-        use pathfinder_common::ChainId;
-
         let storage = pathfinder_storage::Storage::in_memory().unwrap();
 
         let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
@@ -414,9 +412,7 @@ mod tests {
             .map(|(_, _, x)| x.into())
             .collect();
 
-        let sync_state = std::sync::Arc::new(crate::SyncState::default());
-        let sequencer = starknet_gateway_client::Client::testnet();
-        let context = RpcContext::new(storage, sync_state, ChainId::TESTNET, sequencer);
+        let context = RpcContext::for_tests().with_storage(storage);
 
         (state_updates, context)
     }
