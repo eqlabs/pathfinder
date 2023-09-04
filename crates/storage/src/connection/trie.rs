@@ -47,20 +47,20 @@ macro_rules! insert_trie {
                 let Some(node) = nodes.get(&hash) else {
                     continue;
                 };
-                let inserted = stmt
+                let ref_count = stmt
                     .execute(params![&hash.as_be_bytes().as_slice(), node])
                     .context("Inserting node")?;
 
-                if inserted == 1 {
+                if ref_count == 1 {
                     count += 1;
+                }
 
-                    match node {
-                        TrieNode::Binary { left, right } => {
-                            to_insert.push(*left);
-                            to_insert.push(*right);
-                        }
-                        TrieNode::Edge { child, .. } => to_insert.push(*child),
+                match node {
+                    TrieNode::Binary { left, right } => {
+                        to_insert.push(*left);
+                        to_insert.push(*right);
                     }
+                    TrieNode::Edge { child, .. } => to_insert.push(*child),
                 }
             }
 

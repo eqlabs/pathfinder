@@ -1,16 +1,13 @@
-use std::{
-    collections::{HashMap, HashSet},
-    num::NonZeroU32,
-    ops::ControlFlow,
-};
+use std::{collections::HashMap, num::NonZeroU32, ops::ControlFlow};
 
 use anyhow::Context;
-use bitvec::{prelude::Msb0, slice::BitSlice, vec::BitVec};
-use pathfinder_common::{BlockNumber, ContractStateHash};
+use bitvec::{prelude::Msb0, slice::BitSlice};
+use pathfinder_common::{trie::TrieNode, BlockNumber, ContractStateHash};
 use pathfinder_merkle_tree::{
     merkle_node::InternalNode, tree::Visit, ContractsStorageTree, StorageCommitmentTree,
 };
 use pathfinder_storage::{BlockId, JournalMode, Storage};
+use stark_hash::Felt;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -49,57 +46,113 @@ fn main() -> anyhow::Result<()> {
 
     let mut tree = StorageCommitmentTree::load(&tx, block_header.storage_commitment)?;
 
-    let mut global_nodes: HashMap<BitVec<u8, Msb0>, InternalNode> = Default::default();
+    let mut global_nodes: HashMap<Felt, (TrieNode, usize)> = Default::default();
+    let mut contract_states = Vec::new();
 
-    let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
+    let mut visitor_fn = |node: &InternalNode, _path: &BitSlice<u8, Msb0>| {
         match node {
-            InternalNode::Binary(_) | InternalNode::Edge(_) | InternalNode::Leaf(_) => {
-                global_nodes.insert(path.to_bitvec(), node.clone());
+            InternalNode::Binary(node) => {
+                let hash = node.hash.unwrap();
+                let trie_node = TrieNode::Binary {
+                    left: node.left.borrow().hash().unwrap(),
+                    right: node.right.borrow().hash().unwrap(),
+                };
+                global_nodes
+                    .entry(hash)
+                    .and_modify(|(_node, refcount)| *refcount += 1)
+                    .or_insert((trie_node, 1));
             }
-            InternalNode::Unresolved(_) => {}
+            InternalNode::Edge(node) => {
+                let hash = node.hash.unwrap();
+                let trie_node = TrieNode::Edge {
+                    child: node.child.borrow().hash().unwrap(),
+                    path: node.path.clone(),
+                };
+                global_nodes
+                    .entry(hash)
+                    .and_modify(|(_node, refcount)| *refcount += 1)
+                    .or_insert((trie_node, 1));
+            }
+            InternalNode::Leaf(_) | InternalNode::Unresolved(_) => {}
         };
+
+        if let InternalNode::Leaf(felt) = node {
+            contract_states.push(ContractStateHash(*felt));
+        }
+
         ControlFlow::Continue::<(), Visit>(Default::default())
     };
 
     tree.dfs(&mut visitor_fn)?;
 
-    println!("Global tree nodes: {}", global_nodes.len());
+    let r = global_nodes
+        .iter()
+        .filter_map(|(_key, (_node, refcount))| if *refcount > 1 { Some(*refcount) } else { None })
+        .count();
 
-    // let mut contract_storage_internal_nodes: HashSet<BitVec<u8, Msb0>> = Default::default();
-    // let mut contract_storage_leaves: HashSet<BitVec<u8, Msb0>> = Default::default();
+    println!(
+        "Global tree nodes: {}, muliple references {}",
+        global_nodes.len(),
+        r
+    );
 
-    // for contract_index in progressed::ProgressBar::new(0..contract_states.len())
-    //     .set_title("Checking contract state tries")
-    // {
-    //     let contract_state_hash = contract_states.get(contract_index).unwrap();
-    //     let (contract_root, _, _) = tx
-    //         .contract_state(*contract_state_hash)?
-    //         .context("Getting contract state")?;
+    let mut contract_storage_nodes: HashMap<Felt, (TrieNode, usize)> = Default::default();
 
-    //     let mut tree = ContractsStorageTree::load(&tx, contract_root);
+    for contract_index in progressed::ProgressBar::new(0..contract_states.len())
+        .set_title("Checking contract state tries")
+    {
+        let contract_state_hash = contract_states.get(contract_index).unwrap();
+        let (contract_root, _, _) = tx
+            .contract_state(*contract_state_hash)?
+            .context("Getting contract state")?;
 
-    //     let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
-    //         match node {
-    //             InternalNode::Binary(_) | InternalNode::Edge(_) => {
-    //                 contract_storage_internal_nodes.insert(path.to_bitvec());
-    //             }
-    //             InternalNode::Leaf(_) => {
-    //                 contract_storage_leaves.insert(path.to_bitvec());
-    //             }
-    //             InternalNode::Unresolved(_) => {}
-    //         };
+        let mut tree = ContractsStorageTree::load(&tx, contract_root);
 
-    //         ControlFlow::Continue::<(), Visit>(Default::default())
-    //     };
+        let mut visitor_fn = |node: &InternalNode, _path: &BitSlice<u8, Msb0>| {
+            match node {
+                InternalNode::Binary(node) => {
+                    let hash = node.hash.unwrap();
+                    let trie_node = TrieNode::Binary {
+                        left: node.left.borrow().hash().unwrap(),
+                        right: node.right.borrow().hash().unwrap(),
+                    };
+                    contract_storage_nodes
+                        .entry(hash)
+                        .and_modify(|(_node, refcount)| *refcount += 1)
+                        .or_insert((trie_node, 1));
+                }
+                InternalNode::Edge(node) => {
+                    let hash = node.hash.unwrap();
+                    let trie_node = TrieNode::Edge {
+                        child: node.child.borrow().hash().unwrap(),
+                        path: node.path.clone(),
+                    };
+                    contract_storage_nodes
+                        .entry(hash)
+                        .and_modify(|(_node, refcount)| *refcount += 1)
+                        .or_insert((trie_node, 1));
+                }
+                InternalNode::Leaf(_) | InternalNode::Unresolved(_) => {}
+            };
 
-    //     tree.dfs(&mut visitor_fn)?;
-    // }
+            ControlFlow::Continue::<(), Visit>(Default::default())
+        };
 
-    // println!(
-    //     "Contracts tree: internal {}, leaf {}",
-    //     contract_storage_internal_nodes.len(),
-    //     contract_storage_leaves.len()
-    // );
+        tree.dfs(&mut visitor_fn)?;
+    }
+
+    let r = contract_storage_nodes
+        .iter()
+        .filter_map(|(_key, (_node, refcount))| if *refcount > 1 { Some(*refcount) } else { None })
+        .count();
+
+    println!(
+        "Contracts tree nodes: {}, multiple references {}",
+        contract_storage_nodes.len(),
+        r
+    );
+
+    drop(tx);
 
     Ok(())
 }
