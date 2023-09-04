@@ -33,36 +33,34 @@ macro_rules! insert_trie {
 
             let mut stmt = tx
                 .prepare_cached(concat!(
-                    "INSERT INTO ",
+                    "INSERT OR IGNORE INTO ",
                     stringify!($table),
-                    "(hash, data, ref_count) VALUES(?, ?, 1) ",
-                    "ON CONFLICT(hash) DO UPDATE SET ref_count=ref_count+1 ",
-                    "RETURNING COALESCE(ref_count, 0)"
+                    "(hash, data) VALUES(?, ?) ",
                 ))
                 .context("Creating insert statement")?;
 
             let mut count = 0;
 
+            // cargo fmt misbehaves on the let some else expression.
+            #[cfg_attr(rustfmt, rustfmt_skip)]
             while let Some(hash) = to_insert.pop() {
                 let Some(node) = nodes.get(&hash) else {
                     continue;
                 };
-                let ref_count: i64 = stmt
-                    .query_row(params![&hash.as_be_bytes().as_slice(), node], |row| {
-                        row.get(0)
-                    })
+                let inserted = stmt
+                    .execute(params![&hash.as_be_bytes().as_slice(), node])
                     .context("Inserting node")?;
 
-                if ref_count == 1 {
+                if inserted == 1 {
                     count += 1;
-                }
 
-                match node {
-                    TrieNode::Binary { left, right } => {
-                        to_insert.push(*left);
-                        to_insert.push(*right);
+                    match node {
+                        TrieNode::Binary { left, right } => {
+                            to_insert.push(*left);
+                            to_insert.push(*right);
+                        }
+                        TrieNode::Edge { child, .. } => to_insert.push(*child),
                     }
-                    TrieNode::Edge { child, .. } => to_insert.push(*child),
                 }
             }
 
