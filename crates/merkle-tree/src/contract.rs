@@ -118,6 +118,14 @@ impl<'tx> StorageCommitmentTree<'tx> {
         Ok((commitment, update.nodes))
     }
 
+    /// Commits the changes and calculates the new node hashes. Returns the new commitment and
+    /// any potentially newly created nodes.
+    pub fn commit_mut(&mut self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, TrieNode>)> {
+        let update = self.tree.commit_mut()?;
+        let commitment = StorageCommitment(update.root);
+        Ok((commitment, update.nodes))
+    }
+
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
     pub fn get_proof(&mut self, address: &ContractAddress) -> anyhow::Result<Vec<TrieNode>> {
         self.tree.get_proof(&self.storage, address.view_bits())
@@ -129,5 +137,9 @@ impl<'tx> StorageCommitmentTree<'tx> {
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
         self.tree.dfs(&self.storage, f)
+    }
+
+    pub fn tree(&self) -> &MerkleTree<PedersenHash, 251> {
+        &self.tree
     }
 }
