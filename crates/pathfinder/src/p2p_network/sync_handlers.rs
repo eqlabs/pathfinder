@@ -24,6 +24,8 @@ const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
 type BlockHeadersTx = tokio::sync::mpsc::Sender<BlockHeadersResponse>;
 type BlockHeadersRx = tokio::sync::mpsc::Receiver<BlockHeadersResponse>;
+type BlockBodiesTx = tokio::sync::mpsc::Sender<BlockBodiesResponse>;
+type BlockBodiesRx = tokio::sync::mpsc::Receiver<BlockBodiesResponse>;
 
 // TODO check which is more performant:
 // 1. retrieve all data from storage, then send it to channel one by one
@@ -36,6 +38,23 @@ pub async fn get_headers(
 ) -> anyhow::Result<()> {
     // TODO For really large requests we might want to use smaller batches
     let responses = spawn_blocking_get(request, storage, headers).await?;
+
+    for response in responses {
+        reply_tx
+            .send(response)
+            .await
+            .context("Sending GetBlocks response")?;
+    }
+
+    Ok(())
+}
+
+pub async fn get_bodies(
+    storage: &Storage,
+    request: GetBlockBodies,
+    reply_tx: BlockBodiesTx,
+) -> anyhow::Result<()> {
+    let responses = spawn_blocking_get(request, storage, bodies).await?;
 
     for response in responses {
         reply_tx
@@ -83,8 +102,55 @@ fn headers(
             block_part: todo!("header.to_proto()"),
         });
 
+        // TODO signatures
+
+        limit -= 1;
+        next_block_number = get_next_block_number(block_number, step, direction);
+    }
+
+    Ok(responses)
+}
+
+fn bodies(
+    tx: Transaction<'_>,
+    request: GetBlockBodies,
+) -> anyhow::Result<Vec<BlockBodiesResponse>> {
+    use p2p_proto::block::Iteration;
+
+    let GetBlockBodies {
+        iteration:
+            Iteration {
+                start,
+                direction,
+                limit,
+                step,
+            },
+    } = request;
+
+    let mut next_block_number = BlockNumber::new(start.0);
+    let mut limit = limit.min(MAX_BLOCKS_COUNT);
+
+    let mut responses = Vec::new();
+
+    while let Some(block_number) = next_block_number {
+        if limit == 0 {
+            break;
+        }
+
+        let Some(state_diff) = tx.state_update(block_number.into())? else {
+            // No such block
+            break;
+        };
+
+        responses.push(BlockBodiesResponse {
+            id: BlockId(block_number.get()),
+            block_part: todo!("state_diff.to_proto()"),
+        });
+
+        // TODO get those classes
+
         // TODO
-        // We're not sending the proof for the header, we're not storing it right now
+        // We're not sending the proof for the block, we're not storing it right now
 
         limit -= 1;
         next_block_number = get_next_block_number(block_number, step, direction);
