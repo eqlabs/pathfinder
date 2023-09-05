@@ -29,7 +29,7 @@ fn get_next_block_number(
 // TODO test other requests too
 mod empty_reply {
     use super::I64_MAX;
-    use crate::p2p_network::sync_handlers::get_blocks;
+    use crate::p2p_network::sync_handlers::get_headers;
     use assert_matches::assert_matches;
     use fake::{Fake, Faker};
     use p2p_proto::block::GetBlocks;
@@ -48,7 +48,7 @@ mod empty_reply {
             ..Faker.fake()
         };
         // Clone the sender to make sure that the channel is not prematurely closed
-        get_blocks(&storage, request, tx.clone()).await.unwrap();
+        get_headers(&storage, request, tx.clone()).await.unwrap();
         // No reply should be sent
         assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
     }
@@ -61,7 +61,7 @@ mod empty_reply {
         };
         let (tx, mut rx) = mpsc::channel(1);
         let storage = Storage::in_memory().unwrap();
-        get_blocks(&storage, request, tx.clone()).await.unwrap();
+        get_headers(&storage, request, tx.clone()).await.unwrap();
         assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
     }
 }
@@ -157,7 +157,7 @@ mod prop {
     mod get_blocks {
         use super::fixtures::storage_with_seed;
         use super::overlapping;
-        use crate::p2p_network::sync_handlers::headers_and_diffs;
+        use crate::p2p_network::sync_handlers::headers;
         use p2p_proto::block::{Direction, GetBlocks};
         use p2p_proto::common::BlockId;
         use proptest::prelude::*;
@@ -179,7 +179,7 @@ mod prop {
 
                 let mut connection = storage.connection().unwrap();
                 let tx = connection.transaction().unwrap();
-                let reply = headers_and_diffs(tx, request).unwrap();
+                let reply = headers(tx, request).unwrap();
             }
         }
     }

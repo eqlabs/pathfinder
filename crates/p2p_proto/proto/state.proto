@@ -31,6 +31,9 @@ message StateDiff
 message Class {
     starknet.common.Hash compiled_hash = 2; // TBD: add also/instead CASM definition (instead of every node compiling)?
     bytes definition = 3; // compressed? size limit or split to chunks.
+    // FIXME these fields will be added in the spec, not sure about their names
+    optional uint32 total_chunks = 4; // Defaults to 1
+    optional uint32 chunk_count = 5;
 }
 
 message Classes {

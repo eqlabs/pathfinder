@@ -31,6 +31,10 @@ pub struct StateDiff {
 pub struct Class {
     pub compiled_hash: Hash,
     pub definition: Vec<u8>,
+    #[optional]
+    pub total_chunks: Option<u32>,
+    #[optional]
+    pub chunk_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
