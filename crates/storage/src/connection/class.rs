@@ -142,12 +142,12 @@ pub(super) fn class_definition(
     Ok(Some(definition))
 }
 
-pub(super) fn class_definition_at(
+pub(super) fn compressed_class_definition_at(
     tx: &Transaction<'_>,
     block_id: BlockId,
     class_hash: ClassHash,
 ) -> anyhow::Result<Option<Vec<u8>>> {
-    let definition = match block_id {
+    match block_id {
         BlockId::Latest => tx.inner().query_row(
             "SELECT definition FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
             params![&class_hash],
@@ -166,8 +166,15 @@ pub(super) fn class_definition_at(
         ),
     }
     .optional()
-    .context("Querying for class definition")?;
+    .context("Querying for class definition")
+}
 
+pub(super) fn class_definition_at(
+    tx: &Transaction<'_>,
+    block_id: BlockId,
+    class_hash: ClassHash,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let definition = compressed_class_definition_at(tx, block_id, class_hash)?;
     let Some(definition) = definition else {
         return Ok(None);
     };

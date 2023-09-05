@@ -1,5 +1,7 @@
 //! Sync related data retrieval from storage as requested by other p2p clients
 
+use std::ops::Deref;
+
 use super::conv::ToProto;
 use anyhow::Context;
 use p2p_proto::block::{
@@ -7,7 +9,7 @@ use p2p_proto::block::{
     GetBlockBodies, GetBlockHeaders,
 };
 use p2p_proto::common::BlockId;
-use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use pathfinder_storage::{Storage, Transaction};
 
 #[cfg(test)]
@@ -142,12 +144,71 @@ fn bodies(
             break;
         };
 
+        let new_classes = state_diff
+            .declared_cairo_classes
+            .iter()
+            .map(|x| *x)
+            .chain(
+                state_diff
+                    .declared_sierra_classes
+                    .keys()
+                    .into_iter()
+                    .map(|x| ClassHash(x.0)),
+            )
+            .collect::<Vec<_>>();
+
         responses.push(BlockBodiesResponse {
             id: BlockId(block_number.get()),
             block_part: todo!("state_diff.to_proto()"),
         });
 
-        // TODO get those classes
+        for class_hash in new_classes {
+            // If we cannot find the class in our storage there was something fundamentally wrong with our sync
+            // TODO maybe we want a fatal error here...?
+            let compressed_definition = tx
+                .compressed_class_definition_at(block_number.into(), class_hash)?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
+                })?;
+
+            // Overhead for 1MiB definition seems to be around 82 bytes, so let's assume 256 bytes for now
+            /*
+            #[cfg(test)]
+            #[test]
+            fn check_additional_size() {
+                use crate::proto::block::{block_bodies_response::BlockPart, BlockBodiesResponse};
+                use crate::proto::common::{BlockId, Hash};
+                use crate::proto::state::{Class, Classes};
+                use prost::Message;
+
+                let msg = BlockBodiesResponse {
+                    id: Some(BlockId { height: u64::MAX }),
+                    block_part: Some(BlockPart::Classes(Classes {
+                        tree_id: u32::MAX,
+                        classes: vec![Class {
+                            compiled_hash: Some(Hash {
+                                elements: vec![0xFF; 32],
+                            }),
+                            definition: vec![0xFF; 1024 * 1024],
+                            total_chunks: Some(u32::MAX),
+                            chunk_count: Some(u32::MAX),
+                        }],
+                    })),
+                };
+
+                let len = msg.encode_length_delimited_to_vec().len();
+                assert_eq!(len - 1024 * 1024, 82);
+            }*/
+
+            // proto::state::Classes is 4 bytes
+
+            // TODO check size of def if shoud be partitioned
+
+            // responses.push(BlockBodiesResponse {
+            //     id: BlockId(block_number.get()),
+            //     block_part: todo!("state_diff.to_proto()"),,
+            // })
+        }
 
         // TODO
         // We're not sending the proof for the block, we're not storing it right now
