@@ -13,7 +13,7 @@ pub struct Address(pub Felt);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub struct ChainId(pub Felt);
 
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub struct BlockId(pub u64);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -22,7 +22,7 @@ pub struct Signature {
     pub parts: Vec<Felt>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::common::Merkle")]
 pub struct Merkle {
     pub n_leaves: u32,

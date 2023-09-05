@@ -14,5 +14,8 @@ prost-types = "0.11.9"
 rand = { version = "0.8.5" }
 stark_hash = { path = "../stark_hash" }
 
+[dev-dependencies]
+rstest = "0.18.2"
+
 [build-dependencies]
 prost-build = "0.11.9"
