@@ -15,7 +15,9 @@ message Signatures {
 // Note: commitments may change to be for the previous blocks like comet/tendermint
 // hash of block header sent to L1
 message BlockHeader {
-    starknet.common.BlockID parent_block = 1;
+    // FIXME BlockID is the height so we need to use a Hash here
+    //starknet.common.BlockID parent_block = 1;
+    starknet.common.Hash parent_block = 1;
 
     google.protobuf.Timestamp time = 2; // TODO: see if this needs to be Felt252 or can be converted
 
@@ -63,27 +65,51 @@ message NewBlock {
     starknet.common.BlockID id = 1;
 }
 
-// result is (BlockHeader, StateDiff*)*
-message GetBlocks {
-    enum Direction {
-        Forward = 0;
-        Backward = 1;
-    }
-    starknet.common.BlockID start = 1; // exclude start from the result
-    Direction direction = 2;
-    uint64 limit = 3;
-    uint64 skip = 4;  // when starting, can send to first node skip=0, limit=100, second skip=100, limit=100, etc.
-    uint64 step = 5; // to allow interleaving from several nodes
-}
-
+// FIXME dunno if this query will stay
 message GetSignatures {
     starknet.common.BlockID id = 1;
 }
 
-// FIXME this will be added to the spec
-message GetBlocksResponse {
-    oneof response {
-        BlockHeader header = 1;
-        starknet.state.StateDiff diff = 2;
+// FIXME based on slack chat, could change a bit
+message Iteration {
+    enum Direction {
+        Forward = 0;
+        Backward = 1;
+    }
+    
+    starknet.common.BlockID start = 1;
+    Direction direction = 2;
+    uint64 limit = 3;
+    optional uint64 step = 4; // to allow interleaving from several nodes    
+}
+
+// result is (BlockHeader, Signature?)* in order of creation (incr/dec)
+message GetBlockHeaders {
+    Iteration iteration = 1;
+}
+
+message BlockHeadersResponse {
+    starknet.common.BlockID id = 1;
+    // bool fin = 2; FIXME specified but unnecessary, EoS is enough
+
+    oneof block_part {
+        BlockHeader header = 3;
+        Signatures signatures = 4;
+    }
+}
+
+// result is (StateDiff*, Classes*, BlockProof?)* currently in creation order (incr/dec), but may change in the future
+message GetBlockBodies {
+    Iteration iteration = 1;
+}
+
+message BlockBodiesResponse {
+    starknet.common.BlockID id = 1;
+    // bool fin = 2; FIXME specified but unnecessary, EoS is enough
+
+    oneof block_part {
+        starknet.state.StateDiff diff = 3;
+        starknet.state.Classes classes = 4;
+        BlockProof proof = 5;
     }
 }

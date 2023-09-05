@@ -14,11 +14,7 @@ pub struct Address(pub Felt);
 pub struct ChainId(pub Felt);
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
-pub enum BlockId {
-    Hash(Hash),
-    Height(u64),
-    HashAndHeight(Hash, u64),
-}
+pub struct BlockId(pub u64);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::common::Signature")]
@@ -156,47 +152,15 @@ impl TryFromProtobuf<proto::common::ChainId> for ChainId {
 
 impl ToProtobuf<proto::common::BlockId> for BlockId {
     fn to_protobuf(self) -> proto::common::BlockId {
-        use proto::common::block_id::{HashAndHeight, Id};
-        use proto::common::BlockId;
-        let id = Some(match self {
-            Self::Hash(hash) => Id::Hash(hash.to_protobuf()),
-            Self::Height(height) => Id::Height(height),
-            Self::HashAndHeight(hash, height) => Id::HashAndHeight(HashAndHeight {
-                hash: Some(hash.to_protobuf()),
-                height,
-            }),
-        });
-        BlockId { id }
+        proto::common::BlockId { height: self.0 }
     }
 }
 
 impl TryFromProtobuf<proto::common::BlockId> for BlockId {
     fn try_from_protobuf(
         input: proto::common::BlockId,
-        field_name: &'static str,
+        _: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::common::block_id::{HashAndHeight, Id};
-
-        let id = input.id.ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Empty block id {field_name}"),
-            )
-        })?;
-
-        match id {
-            Id::Hash(hash) => Hash::try_from_protobuf(hash, field_name).map(Self::Hash),
-            Id::Height(height) => Ok(Self::Height(height)),
-            Id::HashAndHeight(HashAndHeight { hash, height }) => {
-                let hash = hash.ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("hash missing in block id {field_name}"),
-                    )
-                })?;
-                Hash::try_from_protobuf(hash, field_name)
-                    .map(|hash| Self::HashAndHeight(hash, height))
-            }
-        }
+        Ok(BlockId(input.height))
     }
 }

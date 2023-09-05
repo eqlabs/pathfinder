@@ -23,15 +23,7 @@ message ChainID {
 }
 
 message BlockID {
-    message HashAndHeight {
-        Hash hash = 1;
-        uint64 height = 2;
-    }
-    oneof id {
-        Hash hash = 1;
-        uint64 height = 2;
-        HashAndHeight hash_and_height = 3;
-    }
+    uint64 height = 1;
 }
 
 message Signature {
