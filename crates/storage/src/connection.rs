@@ -53,6 +53,11 @@ impl Connection {
         let tx = self.0.transaction_with_behavior(behavior)?;
         Ok(Transaction(tx))
     }
+
+    pub fn rusqlite_transaction(&mut self) -> anyhow::Result<rusqlite::Transaction<'_>> {
+        let tx = self.0.transaction()?;
+        Ok(tx)
+    }
 }
 
 pub struct Transaction<'inner>(rusqlite::Transaction<'inner>);
