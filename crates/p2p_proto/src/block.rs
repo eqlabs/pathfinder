@@ -68,7 +68,7 @@ pub struct Iteration {
 /// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None` or `Some(0)`
 ///
 /// FIXME next spec iteration requires to return error when step is explicitly set to 0 by the requesting party
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Step(u64);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
