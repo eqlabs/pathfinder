@@ -174,9 +174,18 @@ pub mod class_definitions {
     use pathfinder_common::ClassHash;
 
     pub const CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/contract_definition.json");
+    pub const CONTRACT_DEFINITION_CLASS_HASH: ClassHash =
+        class_hash!("050b2148c0d782914e0b12a1a32abe5e398930b7e914f82c65cb7afce0a0ab9b");
     pub const DUMMY_ACCOUNT: &[u8] = bytes_fixture!("contracts/dummy_account.json");
     pub const DUMMY_ACCOUNT_CLASS_HASH: ClassHash =
         class_hash!("0x0791563da22895f1e398b689866718346106c0cc71207a4ada68e6687ce1badf");
+
+    // A "dummy" ERC20 contract that can be used as a fee token contract
+    // https://github.com/starkware-libs/blockifier/blob/3c8ee7f541db035b49fcfb203aa85f8b0b6b42e5/crates/blockifier/ERC20_without_some_syscalls/ERC20/erc20_contract_without_some_syscalls_compiled.json
+    pub const ERC20_CONTRACT_DEFINITION: &[u8] = bytes_fixture!("contracts/erc20_contract.json");
+    pub const ERC20_CONTRACT_DEFINITION_CLASS_HASH: ClassHash =
+        class_hash!("0x013dbe991273192b5573c526cddc27a27decb8525b44536cb0f57b5b2c089b51");
+
     // https://external.integration.starknet.io/feeder_gateway/get_full_contract?blockNumber=latest&contractAddress=0x4ae0618c330c59559a59a27d143dd1c07cd74cf4e5e5a7cd85d53c6bf0e89dc
     pub const INTEGRATION_TEST: &[u8] = bytes_fixture!("contracts/integration-test.json");
     // https://alpha4.starknet.io/feeder_gateway/get_full_contract?contractAddress=0546BA9763D33DC59A070C0D87D94F2DCAFA82C4A93B5E2BF5AE458B0013A9D3
@@ -227,6 +236,18 @@ pub mod class_definitions {
     // https://alpha4.starknet.io/feeder_gateway/get_class_by_hash?classHash=0x03dd9347d22f1ea2d5fbc7bd1f0860c6c334973499f9f1989fcb81bfff5191da
     pub const CAIRO_2_0_0_STACK_OVERFLOW: &[u8] =
         bytes_fixture!("contracts/sierra-2.0.0-stack-overflow.json");
+
+    // A Cairo class from Testnet
+    pub const CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747: &[u8] =
+        bytes_fixture!("contracts/cairo-testnet-0331118f4e4eb8a8ddb0f4493e09612e380ef527991c49a15c42574ab48dd747.json");
+    pub const CAIRO_TESTNET_0331118F4E4EB8A8DDB0F4493E09612E380EF527991C49A15C42574AB48DD747_CLASS_HASH: ClassHash =
+        class_hash!("0x0331118f4e4eb8a8ddb0f4493e09612e380ef527991c49a15c42574ab48dd747");
+
+    // A Sierra class from Testnet
+    pub const SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC: &[u8] =
+        bytes_fixture!("contracts/sierra-testnet-02e62a7336b45fa98668a6275168ce42b085665a9ec16b100d895968691a0bdc.json");
+    pub const SIERRA_TESTNET_02E62A7336B45FA98668A6275168CE42B085665A9EC16B100D895968691A0BDC_CLASS_HASH: ClassHash =
+        class_hash!("0x02e62a7336b45fa98668a6275168ce42b085665a9ec16b100d895968691a0bdc");
 }
 
 pub mod testnet {

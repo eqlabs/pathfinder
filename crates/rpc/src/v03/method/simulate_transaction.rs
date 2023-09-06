@@ -1,24 +1,10 @@
-use crate::{
-    cairo::ext_py::{
-        types::{
-            EntryPointType, FeeEstimate, FunctionInvocation, MsgToL1, TransactionSimulation,
-            TransactionTrace,
-        },
-        CallFailure,
-    },
-    context::RpcContext,
-    v02::{
-        method::call::FunctionCall,
-        types::{reply, request::BroadcastedTransaction},
-    },
-};
+use crate::{context::RpcContext, v02::types::request::BroadcastedTransaction};
 
-use anyhow::anyhow;
-use pathfinder_common::{BlockId, CallParam, ContractAddress, EntryPoint};
+use anyhow::Context;
+use pathfinder_common::{BlockId, CallParam, EntryPoint};
+use pathfinder_executor::{types::TransactionSimulation, CallError};
 use serde::{Deserialize, Serialize};
 use stark_hash::Felt;
-
-use super::common::prepare_handle_and_block;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -39,16 +25,26 @@ crate::error::generate_rpc_error_subset!(
     ContractError
 );
 
-impl From<CallFailure> for SimulateTransactionError {
-    fn from(value: CallFailure) -> Self {
+impl From<CallError> for SimulateTransactionError {
+    fn from(value: CallError) -> Self {
+        use CallError::*;
         match value {
-            CallFailure::NoSuchBlock => Self::BlockNotFound,
-            CallFailure::NoSuchContract => Self::ContractNotFound,
-            CallFailure::InvalidEntryPoint => Self::ContractError,
-            CallFailure::ExecutionFailed(e) => Self::Internal(anyhow!("Execution failed: {e}")),
-            CallFailure::Internal(_) | CallFailure::Shutdown => {
-                Self::Internal(anyhow!("Internal error"))
+            ContractNotFound => Self::ContractNotFound,
+            InvalidMessageSelector => Self::ContractError,
+            Reverted(revert_error) => {
+                Self::Internal(anyhow::anyhow!("Transaction reverted: {}", revert_error))
             }
+            Internal(e) => Self::Internal(e),
+        }
+    }
+}
+
+impl From<crate::executor::ExecutionStateError> for SimulateTransactionError {
+    fn from(error: crate::executor::ExecutionStateError) -> Self {
+        use crate::executor::ExecutionStateError::*;
+        match error {
+            BlockNotFound => Self::BlockNotFound,
+            Internal(e) => Self::Internal(e),
         }
     }
 }
@@ -57,141 +53,69 @@ pub async fn simulate_transaction(
     context: RpcContext,
     input: SimulateTrasactionInput,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
-    let (handle, gas_price, at_block, pending_timestamp, pending_update) =
-        prepare_handle_and_block(&context, input.block_id).await?;
+    let chain_id = context.chain_id;
+
+    let execution_state = crate::executor::execution_state(context, input.block_id, None).await?;
 
     let skip_validate = input
         .simulation_flags
         .0
         .iter()
         .any(|flag| flag == &dto::SimulationFlag::SkipValidate);
-    let txs = handle
-        .simulate_transaction(
-            at_block,
-            gas_price,
-            pending_update,
-            pending_timestamp,
-            input.transactions,
-            skip_validate,
-        )
-        .await?;
 
-    let txs: Result<Vec<dto::SimulatedTransaction>, SimulateTransactionError> =
-        txs.into_iter().map(map_tx).collect();
-    Ok(SimulateTransactionOutput(txs?))
-}
+    let span = tracing::Span::current();
 
-fn map_tx(
-    tx: TransactionSimulation,
-) -> Result<dto::SimulatedTransaction, SimulateTransactionError> {
-    Ok(dto::SimulatedTransaction {
-        fee_estimation: Some(map_fee(tx.fee_estimation)),
-        transaction_trace: Some(map_trace(tx.trace)?),
+    let txs = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+
+        let transactions = input
+            .transactions
+            .iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(tx, chain_id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        pathfinder_executor::simulate(execution_state, transactions, skip_validate, false)
     })
+    .await
+    .context("Simulating transaction")??;
+
+    let txs = txs.into_iter().map(Into::into).collect();
+    Ok(SimulateTransactionOutput(txs))
 }
 
-fn map_fee(fee: FeeEstimate) -> reply::FeeEstimate {
-    reply::FeeEstimate {
-        gas_consumed: fee.gas_consumed,
-        gas_price: fee.gas_price,
-        overall_fee: fee.overall_fee,
-    }
-}
-
-fn map_function_invocation(mut fi: FunctionInvocation) -> dto::FunctionInvocation {
-    use crate::cairo::ext_py::types;
-    dto::FunctionInvocation {
-        call_type: fi.call_type.map(|call_type| match call_type {
-            types::CallType::Call => dto::CallType::Call,
-            types::CallType::Delegate => dto::CallType::LibraryCall,
-        }),
-        caller_address: fi.caller_address,
-        calls: fi
-            .internal_calls
-            .take()
-            .map(|calls| calls.into_iter().map(map_function_invocation).collect()),
-        code_address: fi.class_hash,
-        entry_point_type: fi.entry_point_type.map(Into::into),
-        events: fi.events.map(|events| {
-            events
-                .into_iter()
-                .map(|event| dto::Event {
-                    data: event.data,
-                    keys: event.keys,
-                })
-                .collect()
-        }),
-        messages: fi
-            .messages
-            .map(|messages| map_messages(messages, fi.contract_address)),
-        function_call: FunctionCall {
-            calldata: fi.calldata.into_iter().map(CallParam).collect(),
-            contract_address: fi.contract_address,
-            entry_point_selector: EntryPoint(fi.selector),
-        },
-        result: fi.result,
-    }
-}
-
-fn map_messages(messages: Vec<MsgToL1>, from_address: ContractAddress) -> Vec<dto::MsgToL1> {
-    messages
-        .into_iter()
-        .map(|msg| dto::MsgToL1 {
-            payload: msg.payload,
-            to_address: msg.to_address,
-            from_address: from_address.0,
-        })
-        .collect()
-}
-
-fn map_trace(
-    mut trace: TransactionTrace,
-) -> Result<dto::TransactionTrace, SimulateTransactionError> {
-    let invocations = (
-        trace.validate_invocation.take(),
-        trace.function_invocation.take(),
-        trace.fee_transfer_invocation.take(),
-    );
-    match invocations {
-        (Some(val), Some(fun), fee)
-            if fun.entry_point_type == Some(EntryPointType::Constructor) =>
-        {
-            Ok(dto::TransactionTrace::DeployAccount(
-                dto::DeployAccountTxnTrace {
-                    fee_transfer_invocation: fee.map(map_function_invocation),
-                    validate_invocation: Some(map_function_invocation(val)),
-                    constructor_invocation: Some(map_function_invocation(fun)),
-                },
-            ))
-        }
-        (Some(val), Some(fun), fee) if fun.entry_point_type == Some(EntryPointType::External) => {
-            Ok(dto::TransactionTrace::Invoke(dto::InvokeTxnTrace {
-                fee_transfer_invocation: fee.map(map_function_invocation),
-                validate_invocation: Some(map_function_invocation(val)),
-                execute_invocation: Some(map_function_invocation(fun)),
-            }))
-        }
-        (Some(val), _, fee) => Ok(dto::TransactionTrace::Declare(dto::DeclareTxnTrace {
-            fee_transfer_invocation: fee.map(map_function_invocation),
-            validate_invocation: Some(map_function_invocation(val)),
-        })),
-        (_, Some(fun), _) => Ok(dto::TransactionTrace::L1Handler(dto::L1HandlerTxnTrace {
-            function_invocation: Some(map_function_invocation(fun)),
-        })),
-        _ => Err(SimulateTransactionError::Internal(anyhow!(
-            "Unmatched transaction trace: '{trace:?}'"
-        ))),
-    }
-}
-
-pub mod dto {
+pub(crate) mod dto {
     use serde_with::serde_as;
 
     use crate::felt::RpcFelt;
     use crate::v02::method::call::FunctionCall;
-    use crate::v02::types::reply::FeeEstimate;
 
     use super::*;
+
+    #[serde_as]
+    #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+    // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct FeeEstimate {
+        /// The Ethereum gas cost of the transaction
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub gas_consumed: primitive_types::U256,
+        /// The gas price (in gwei) that was used in the cost estimation (input to fee estimation)
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub gas_price: primitive_types::U256,
+        /// The estimated fee for the transaction (in gwei), product of gas_consumed and gas_price
+        #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+        pub overall_fee: primitive_types::U256,
+    }
+
+    impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
+        fn from(value: pathfinder_executor::types::FeeEstimate) -> Self {
+            Self {
+                gas_consumed: value.gas_consumed,
+                gas_price: value.gas_price,
+                overall_fee: value.overall_fee,
+            }
+        }
+    }
 
     #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
     pub struct SimulationFlags(pub Vec<SimulationFlag>);
@@ -204,11 +128,7 @@ pub mod dto {
         SkipValidate,
     }
 
-    #[serde_with::serde_as]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct Signature(#[serde_as(as = "Vec<RpcFelt>")] pub Vec<Felt>);
-
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub enum CallType {
         #[serde(rename = "CALL")]
         Call,
@@ -216,34 +136,17 @@ pub mod dto {
         LibraryCall,
     }
 
-    #[serde_with::serde_as]
-    #[serde_with::skip_serializing_none]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
-    pub struct FunctionInvocation {
-        #[serde(default)]
-        pub call_type: Option<CallType>,
-        #[serde(default)]
-        #[serde_as(as = "Option<RpcFelt>")]
-        pub caller_address: Option<Felt>,
-        #[serde(default)]
-        pub calls: Option<Vec<FunctionInvocation>>,
-        #[serde(default)]
-        #[serde_as(as = "Option<RpcFelt>")]
-        pub code_address: Option<Felt>,
-        #[serde(default)]
-        pub entry_point_type: Option<EntryPointType>,
-        #[serde(default)]
-        pub events: Option<Vec<Event>>,
-        #[serde(flatten)]
-        pub function_call: FunctionCall,
-        #[serde(default)]
-        pub messages: Option<Vec<MsgToL1>>,
-        #[serde(default)]
-        #[serde_as(as = "Option<Vec<RpcFelt>>")]
-        pub result: Option<Vec<Felt>>,
+    impl From<pathfinder_executor::types::CallType> for CallType {
+        fn from(value: pathfinder_executor::types::CallType) -> Self {
+            use pathfinder_executor::types::CallType::*;
+            match value {
+                Call => Self::Call,
+                Delegate => Self::LibraryCall,
+            }
+        }
     }
 
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub enum EntryPointType {
         #[serde(rename = "CONSTRUCTOR")]
         Constructor,
@@ -253,9 +156,9 @@ pub mod dto {
         L1Handler,
     }
 
-    impl From<crate::cairo::ext_py::types::EntryPointType> for EntryPointType {
-        fn from(value: crate::cairo::ext_py::types::EntryPointType) -> Self {
-            use crate::cairo::ext_py::types::EntryPointType::*;
+    impl From<pathfinder_executor::types::EntryPointType> for EntryPointType {
+        fn from(value: pathfinder_executor::types::EntryPointType) -> Self {
+            use pathfinder_executor::types::EntryPointType::*;
             match value {
                 Constructor => Self::Constructor,
                 External => Self::External,
@@ -265,7 +168,53 @@ pub mod dto {
     }
 
     #[serde_with::serde_as]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[serde_with::skip_serializing_none]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
+    pub struct FunctionInvocation {
+        #[serde(default)]
+        pub call_type: CallType,
+        #[serde_as(as = "RpcFelt")]
+        pub caller_address: Felt,
+        #[serde(default)]
+        pub calls: Vec<FunctionInvocation>,
+        #[serde(default)]
+        #[serde_as(as = "Option<RpcFelt>")]
+        pub code_address: Option<Felt>,
+        #[serde(default)]
+        pub entry_point_type: EntryPointType,
+        #[serde(default)]
+        pub events: Vec<Event>,
+        #[serde(flatten)]
+        pub function_call: FunctionCall,
+        #[serde(default)]
+        pub messages: Vec<MsgToL1>,
+        #[serde(default)]
+        #[serde_as(as = "Vec<RpcFelt>")]
+        pub result: Vec<Felt>,
+    }
+
+    impl From<pathfinder_executor::types::FunctionInvocation> for FunctionInvocation {
+        fn from(fi: pathfinder_executor::types::FunctionInvocation) -> Self {
+            Self {
+                call_type: fi.call_type.into(),
+                caller_address: fi.caller_address,
+                calls: fi.internal_calls.into_iter().map(Into::into).collect(),
+                code_address: fi.class_hash,
+                entry_point_type: fi.entry_point_type.into(),
+                events: fi.events.into_iter().map(Into::into).collect(),
+                function_call: FunctionCall {
+                    contract_address: fi.contract_address,
+                    entry_point_selector: EntryPoint(fi.selector),
+                    calldata: fi.calldata.into_iter().map(CallParam).collect(),
+                },
+                messages: fi.messages.into_iter().map(Into::into).collect(),
+                result: fi.result.into_iter().map(Into::into).collect(),
+            }
+        }
+    }
+
+    #[serde_with::serde_as]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct MsgToL1 {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<Felt>,
@@ -275,8 +224,18 @@ pub mod dto {
         pub from_address: Felt,
     }
 
+    impl From<pathfinder_executor::types::MsgToL1> for MsgToL1 {
+        fn from(value: pathfinder_executor::types::MsgToL1) -> Self {
+            Self {
+                payload: value.payload,
+                to_address: value.to_address,
+                from_address: value.from_address,
+            }
+        }
+    }
+
     #[serde_with::serde_as]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct Event {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<Felt>,
@@ -284,7 +243,16 @@ pub mod dto {
         pub keys: Vec<Felt>,
     }
 
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    impl From<pathfinder_executor::types::Event> for Event {
+        fn from(value: pathfinder_executor::types::Event) -> Self {
+            Self {
+                data: value.data,
+                keys: value.keys,
+            }
+        }
+    }
+
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     #[serde(untagged)]
     pub enum TransactionTrace {
         Declare(DeclareTxnTrace),
@@ -293,8 +261,20 @@ pub mod dto {
         L1Handler(L1HandlerTxnTrace),
     }
 
+    impl From<pathfinder_executor::types::TransactionTrace> for TransactionTrace {
+        fn from(trace: pathfinder_executor::types::TransactionTrace) -> Self {
+            use pathfinder_executor::types::TransactionTrace::*;
+            match trace {
+                Declare(t) => Self::Declare(t.into()),
+                DeployAccount(t) => Self::DeployAccount(t.into()),
+                Invoke(t) => Self::Invoke(t.into()),
+                L1Handler(t) => Self::L1Handler(t.into()),
+            }
+        }
+    }
+
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct DeclareTxnTrace {
         #[serde(default)]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
@@ -302,8 +282,17 @@ pub mod dto {
         pub validate_invocation: Option<FunctionInvocation>,
     }
 
+    impl From<pathfinder_executor::types::DeclareTransactionTrace> for DeclareTxnTrace {
+        fn from(trace: pathfinder_executor::types::DeclareTransactionTrace) -> Self {
+            Self {
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                validate_invocation: trace.validate_invocation.map(Into::into),
+            }
+        }
+    }
+
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct DeployAccountTxnTrace {
         #[serde(default)]
         pub constructor_invocation: Option<FunctionInvocation>,
@@ -313,108 +302,113 @@ pub mod dto {
         pub validate_invocation: Option<FunctionInvocation>,
     }
 
+    impl From<pathfinder_executor::types::DeployAccountTransactionTrace> for DeployAccountTxnTrace {
+        fn from(trace: pathfinder_executor::types::DeployAccountTransactionTrace) -> Self {
+            Self {
+                constructor_invocation: trace.constructor_invocation.map(Into::into),
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+                validate_invocation: trace.validate_invocation.map(Into::into),
+            }
+        }
+    }
+
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct InvokeTxnTrace {
+        #[serde(default)]
+        pub validate_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub execute_invocation: Option<FunctionInvocation>,
         #[serde(default)]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
-        #[serde(default)]
-        pub validate_invocation: Option<FunctionInvocation>,
+    }
+
+    impl From<pathfinder_executor::types::InvokeTransactionTrace> for InvokeTxnTrace {
+        fn from(trace: pathfinder_executor::types::InvokeTransactionTrace) -> Self {
+            Self {
+                validate_invocation: trace.validate_invocation.map(Into::into),
+                execute_invocation: trace.execute_invocation.map(Into::into),
+                fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
+            }
+        }
     }
 
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct L1HandlerTxnTrace {
         #[serde(default)]
         pub function_invocation: Option<FunctionInvocation>,
     }
 
+    impl From<pathfinder_executor::types::L1HandlerTransactionTrace> for L1HandlerTxnTrace {
+        fn from(trace: pathfinder_executor::types::L1HandlerTransactionTrace) -> Self {
+            Self {
+                function_invocation: trace.function_invocation.map(Into::into),
+            }
+        }
+    }
+
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+    #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct SimulatedTransaction {
-        #[serde(default)]
-        pub fee_estimation: Option<FeeEstimate>,
-        #[serde(default)]
-        pub transaction_trace: Option<TransactionTrace>,
+        pub fee_estimation: FeeEstimate,
+        pub transaction_trace: TransactionTrace,
+    }
+
+    impl From<TransactionSimulation> for SimulatedTransaction {
+        fn from(tx: TransactionSimulation) -> Self {
+            dto::SimulatedTransaction {
+                fee_estimation: tx.fee_estimation.into(),
+                transaction_trace: tx.trace.into(),
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
+    use pathfinder_common::{felt, TransactionVersion};
+    use pathfinder_common::{macro_prelude::*, StorageAddress};
+    use starknet_gateway_test_fixtures::class_definitions::DUMMY_ACCOUNT_CLASS_HASH;
 
-    use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, GasPrice,
-        TransactionVersion,
-    };
-    use pathfinder_storage::{JournalMode, Storage};
-    use starknet_gateway_test_fixtures::class_definitions::{
-        DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH,
-    };
-    use tempfile::tempdir;
-
-    use crate::v02::types::reply::FeeEstimate;
+    use crate::v02::method::call::FunctionCall;
+    use crate::v02::types::request::BroadcastedDeployAccountTransaction;
 
     use super::*;
 
     #[tokio::test]
     async fn test_simulate_transaction() {
-        let dir = tempdir().expect("tempdir");
-        let mut db_path = dir.path().to_path_buf();
-        db_path.push("db.sqlite");
+        let transaction = BroadcastedDeployAccountTransaction {
+            contract_address_salt: contract_address_salt!(
+                "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971"
+            ),
+            max_fee: fee!("0x100000000000"),
+            signature: vec![],
+            class_hash: DUMMY_ACCOUNT_CLASS_HASH,
+            nonce: transaction_nonce!("0x0"),
+            version: TransactionVersion::ONE_WITH_QUERY_VERSION,
+            constructor_calldata: vec![],
+        };
 
-        let storage = Storage::migrate(db_path, JournalMode::WAL)
-            .expect("storage")
-            .create_pool(NonZeroU32::new(1).unwrap())
-            .unwrap();
+        let deployed_contract_address = transaction.deployed_contract_address();
+        let account_balance_key =
+            StorageAddress::from_map_name_and_key(b"ERC20_balances", deployed_contract_address.0);
 
-        {
-            let mut db = storage.connection().unwrap();
-            let tx = db.transaction().expect("tx");
+        let (storage, _, _, _) = crate::test_setup::test_storage(|state_update| {
+            state_update.with_storage_update(
+                pathfinder_executor::FEE_TOKEN_ADDRESS,
+                account_balance_key,
+                storage_value!("0x10000000000000000000000000000"),
+            )
+        })
+        .await;
 
-            tx.insert_cairo_class(DUMMY_ACCOUNT_CLASS_HASH, DUMMY_ACCOUNT)
-                .expect("insert class");
-
-            let header = BlockHeader::builder()
-                .with_number(BlockNumber::GENESIS + 1)
-                .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_gas_price(GasPrice(1))
-                .finalize_with_hash(BlockHash::ZERO);
-
-            tx.insert_block_header(&header).unwrap();
-            tx.commit().unwrap();
-        }
-
-        let (call_handle, _join_handle) = crate::cairo::ext_py::start(
-            storage.path().into(),
-            std::num::NonZeroUsize::try_from(1).unwrap(),
-            futures::future::pending(),
-            Chain::Testnet,
-        )
-        .await
-        .unwrap();
-
-        let rpc = RpcContext::for_tests()
-            .with_storage(storage)
-            .with_call_handling(call_handle);
+        let context = RpcContext::for_tests().with_storage(storage);
 
         let input_json = serde_json::json!({
             "block_id": {"block_number": 1},
             "transaction": [
-                {
-                    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
-                    "max_fee": "0x0",
-                    "signature": [],
-                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH,
-                    "nonce": "0x0",
-                    "version": "0x100000000000000000000000000000001",
-                    "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    "constructor_calldata": [],
-                    "type": "DEPLOY_ACCOUNT"
-                }
+                BroadcastedTransaction::DeployAccount(transaction),
             ],
             "simulation_flags": []
         });
@@ -422,63 +416,99 @@ mod tests {
 
         let expected: Vec<dto::SimulatedTransaction> = {
             use dto::*;
-            vec![
-            SimulatedTransaction {
-                fee_estimation: Some(
-                    FeeEstimate {
-                        gas_consumed: 0xc19.into(),
-                        gas_price: 1.into(),
-                        overall_fee: 0xc19.into(),
-                    }
-                ),
-                transaction_trace: Some(
-                    TransactionTrace::DeployAccount(
-                        DeployAccountTxnTrace {
-                            constructor_invocation: Some(
-                                FunctionInvocation {
-                                    call_type: Some(CallType::Call),
-                                    caller_address: Some(felt!("0x0")),
-                                    calls: Some(vec![]),
-                                    code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
-                                    entry_point_type: Some(EntryPointType::Constructor),
-                                    events: Some(vec![]),
-                                    function_call: FunctionCall {
-                                        calldata: vec![],
-                                        contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
-                                        entry_point_selector: entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194"),
+            let transaction =
+                SimulatedTransaction {
+                    fee_estimation:
+                        FeeEstimate {
+                            gas_consumed: 3097.into(),
+                            gas_price: 1.into(),
+                            overall_fee: 3097.into(),
+                        }
+                    ,
+                    transaction_trace:
+                        TransactionTrace::DeployAccount(
+                            DeployAccountTxnTrace {
+                                constructor_invocation: Some(
+                                    FunctionInvocation {
+                                        call_type: CallType::Call,
+                                        caller_address: felt!("0x0"),
+                                        calls: vec![],
+                                        code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                        entry_point_type: EntryPointType::Constructor,
+                                        events: vec![],
+                                        function_call: FunctionCall {
+                                            calldata: vec![],
+                                            contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                            entry_point_selector: entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194"),
+                                        },
+                                        messages: vec![],
+                                        result: vec![],
                                     },
-                                    messages: Some(vec![]),
-                                    result: Some(vec![]),
-                                },
-                            ),
-                            validate_invocation: Some(
-                                FunctionInvocation {
-                                    call_type: Some(CallType::Call),
-                                    caller_address: Some(felt!("0x0")),
-                                    calls: Some(vec![]),
-                                    code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
-                                    entry_point_type: Some(EntryPointType::External),
-                                    events: Some(vec![]),
-                                    function_call: FunctionCall {
-                                        calldata: vec![
-                                            CallParam(DUMMY_ACCOUNT_CLASS_HASH.0),
-                                            call_param!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971"),
+                                ),
+                                validate_invocation: Some(
+                                    FunctionInvocation {
+                                        call_type: CallType::Call,
+                                        caller_address: felt!("0x0"),
+                                        calls: vec![],
+                                        code_address: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                        entry_point_type: EntryPointType::External,
+                                        events: vec![],
+                                        function_call: FunctionCall {
+                                            calldata: vec![
+                                                CallParam(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                                call_param!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971"),
+                                            ],
+                                            contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                            entry_point_selector: entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895"),
+                                        },
+                                        messages: vec![],
+                                        result: vec![],
+                                    },
+                                ),
+                                fee_transfer_invocation: Some(
+                                    FunctionInvocation {
+                                        call_type: CallType::Call,
+                                        caller_address: felt!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                        calls: vec![],
+                                        code_address: Some(
+                                            felt!("0x013DBE991273192B5573C526CDDC27A27DECB8525B44536CB0F57B5B2C089B51"),
+                                        ),
+                                        entry_point_type: EntryPointType::External,
+                                        events: vec![
+                                            Event {
+                                                data: vec![
+                                                    felt!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                                    felt!("0x01176A1BD84444C89232EC27754698E5D2E7E1A7F1539F12027F28B23EC9F3D8"),
+                                                    felt!("0x0000000000000000000000000000000000000000000000000000000000000C19"),
+                                                    felt!("0x0000000000000000000000000000000000000000000000000000000000000000"),
+                                                ],
+                                                keys: vec![
+                                                    felt!("0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"),
+                                                ],
+                                            },
                                         ],
-                                        contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
-                                        entry_point_selector: entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895"),
+                                        function_call: FunctionCall {
+                                            contract_address: contract_address!("0x049D36570D4E46F48E99674BD3FCC84644DDD6B96F7C741B1562B82F9E004DC7"),
+                                            entry_point_selector: entry_point!("0x0083AFD3F4CAEDC6EEBF44246FE54E38C95E3179A5EC9EA81740ECA5B482D12E"),
+                                            calldata: vec![
+                                                call_param!("0x01176A1BD84444C89232EC27754698E5D2E7E1A7F1539F12027F28B23EC9F3D8"),
+                                                call_param!("0x0000000000000000000000000000000000000000000000000000000000000C19"),
+                                                call_param!("0x0000000000000000000000000000000000000000000000000000000000000000"),
+                                            ],
+                                        },
+                                        messages: vec![],
+                                        result: vec![
+                                            felt!("0x0000000000000000000000000000000000000000000000000000000000000001"),
+                                        ],
                                     },
-                                    messages: Some(vec![]),
-                                    result: Some(vec![]),
-                                },
-                            ),
-                            fee_transfer_invocation: None,
-                        },
-                    ),
-                ),
-            }]
+                                ),
+                            },
+                        ),
+                };
+            vec![transaction]
         };
 
-        let result = simulate_transaction(rpc, input).await.expect("result");
+        let result = simulate_transaction(context, input).await.expect("result");
         pretty_assertions::assert_eq!(result.0, expected);
     }
 }

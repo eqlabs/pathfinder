@@ -28,6 +28,7 @@ lazy_static = "1.4.0"
 lru = "0.11.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
+num_cpus = "1.15.0"
 p2p = { path = "../p2p", optional = true }
 p2p_proto = { path = "../p2p_proto", optional = true }
 pathfinder-common = { path = "../common" }
@@ -67,12 +68,17 @@ zstd = "0.12"
 [dev-dependencies]
 assert_matches = { workspace = true }
 const-decoder = "0.3.0"
+crossbeam-channel = "0.5.8"
 fake = { version = "2.5.0", features = ["derive"] }
 flate2 = "1.0.25"
 http = "0.2.8"
+mimalloc = { version = "0.1.37", default-features = false }
 mockall = "0.11.3"
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-executor = { path = "../executor" }
+pathfinder-rpc = { path = "../rpc" }
+pathfinder-storage = { path = "../storage" }
 pretty_assertions = "1.3.0"
 proptest = "1.2.0"
 rand = "0.8"
@@ -80,6 +86,7 @@ rand_chacha = "0.3.1"
 rstest = "0.18.1"
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+starknet_api = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 
 [build-dependencies]

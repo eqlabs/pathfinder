@@ -17,9 +17,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
-    needs: python-starkhash
     steps:
-      # Required for the python environment
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -27,29 +33,6 @@ jobs:
         run: |
           sudo apt-get install -y protobuf-compiler
       - uses: taiki-e/install-action@nextest
-      - uses: actions/setup-python@v4
-        id: setup_python
-        with:
-          python-version: '3.9'
-          cache: 'pip'
-          cache-dependency-path: 'py/requirements*.txt'
-      # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
-      - uses: actions/cache@v3
-        id: python_cache
-        with:
-          path: ${{ env.pythonLocation }}/**/site-packages
-          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}-${{ hashFiles('py/pyproject.toml') }}
-      - run: |
-          pip install -r py/requirements-dev.txt
-          pip install -e py/.
-      # Install fresh starknet_pathfinder_crypto
-      - uses: actions/download-artifact@v3
-        with:
-          name: pathfinder-starkhash-wheels
-      - name: Install Pedersen hash Python wrapper
-        run: |
-          pip install --no-index --force-reinstall ./starknet_pathfinder_crypto-*.whl
-
       - name: Compile unit tests
         run: timeout 25m cargo nextest run --all-targets --all-features --workspace --locked --no-run
 
@@ -124,76 +107,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: check
         run: cargo check
-
-  python:
-    runs-on: ubuntu-latest
-    needs: python-starkhash
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        id: setup_python
-        with:
-          python-version: '3.9'
-          cache: 'pip'
-          cache-dependency-path: 'py/requirements*.txt'
-      # Workaround for setup-python issue #330 (https://github.com/actions/setup-python/issues/330)
-      - uses: actions/cache@v3
-        id: python_cache
-        with:
-          path: ${{ env.pythonLocation }}/**/site-packages
-          key: site-packages-${{ steps.setup_python.outputs.python-version }}-${{ hashFiles('py/requirements*.txt') }}-${{ hashFiles('py/pyproject.toml') }}
-      - name: Install Python dependencies
-        run: |
-          pip install -r py/requirements-dev.txt
-          pip install -e py/.[dev]
-      - uses: actions/download-artifact@v3
-        with:
-          name: pathfinder-starkhash-wheels
-      - name: Install Pedersen hash Python wrapper
-        run: |
-          pip install --no-index --force-reinstall ./starknet_pathfinder_crypto-*.whl
-
-      - name: Test (python)
-        run: |
-          cd py
-          python -m pytest
-
-      - name: Formatting (python)
-        run: |
-          cd py
-          python -m black --check .
-
-      - name: Lints (python)
-        run: |
-          cd py
-          python -m flake8 src/ tests/ tools/
-
-  python-starkhash:
-    name: Compile Python Pedersen hash wrapper
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "crates/stark_hash_python"
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-          cache: 'pip'
-          cache-dependency-path: 'py/requirements*.txt'
-      - uses: messense/maturin-action@v1
-        with:
-          command: build
-          container: off
-          working-directory: crates/stark_hash_python
-          args: --release -o dist
-      - uses: actions/upload-artifact@v3
-        with:
-          name: pathfinder-starkhash-wheels
-          path: crates/stark_hash_python/dist/starknet_pathfinder_crypto*.whl
-          if-no-files-found: error
 
   fuzz_targets:
     runs-on: ubuntu-latest

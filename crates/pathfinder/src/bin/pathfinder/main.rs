@@ -6,7 +6,7 @@ use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::state::SyncContext;
 use pathfinder_lib::{monitoring, state};
-use pathfinder_rpc::{cairo, metrics::logger::RpcMetricsLogger, SyncState};
+use pathfinder_rpc::{metrics::logger::RpcMetricsLogger, SyncState};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -85,26 +85,36 @@ async fn main() -> anyhow::Result<()> {
         .context(
             r"Creating database connection pool for sync.
 
-Hint: This is usually caused by exceeding the file descriptor limit of your sysem.
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
+
     // Set the rpc file connection limit to a fraction of the RPC connections.
     // Having this be too large is counter productive as disk IO will then slow down
     // all queries.
     let rpc_storage = std::cmp::max(10, config.max_rpc_connections.get() / 8);
     let rpc_storage = NonZeroU32::new(rpc_storage).expect("A non-zero minimum is set");
     let rpc_storage = storage_manager.create_pool(rpc_storage).context(
-        r"Creating database connection pool for sync
-        
-Hint: This is usually caused by exceeding the file descriptor limit of your sysem.
+        r"Creating database connection pool for RPC
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
     )?;
+
+    let execution_storage_pool_size = config.execution_concurrency.unwrap_or_else(|| {
+        std::num::NonZeroU32::new(num_cpus::get() as u32)
+            .expect("The number of CPU cores should be non-zero")
+    });
+    let execution_storage = storage_manager
+        .create_pool(execution_storage_pool_size)
+        .context(r"")?;
+
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
         .context(
             r"Creating database connection pool for p2p
-        
-Hint: This is usually caused by exceeding the file descriptor limit of your sysem.
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
 
@@ -120,24 +130,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
     let sync_state = Arc::new(SyncState::default());
     let pending_state = PendingData::default();
 
-    let (call_handle, cairo_handle) = cairo::ext_py::start(
-        rpc_storage.path().into(),
-        config.python_subprocesses,
-        futures::future::pending(),
-        pathfinder_context.network,
-    )
-    .await
-    .context(
-        "Creating python process for call handling. Have you setup our Python dependencies?",
-    )?;
-
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
+        execution_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
-    )
-    .with_call_handling(call_handle);
+    );
+
     let context = match config.poll_pending {
         true => context.with_pending_data(pending_state.clone()),
         false => context,
@@ -209,12 +209,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syse
             match result {
                 Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
                 Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
-            }
-        }
-        result = cairo_handle => {
-            match result {
-                Ok(task_result) => tracing::error!("Cairo process ended unexpected with: {:?}", task_result),
-                Err(err) => tracing::error!("Cairo process ended unexpected; failed to join task handle: {:?}", err),
             }
         }
         _result = rpc_handle.stopped() => {

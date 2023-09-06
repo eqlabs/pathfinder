@@ -1,0 +1,18 @@
+[package]
+name = "pathfinder-executor"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { workspace = true }
+blockifier = { workspace = true }
+cairo-vm = "0.8.2"
+pathfinder-common = { path = "../common" }
+pathfinder-storage = { path = "../storage" }
+primitive-types = { version = "0.12.1", features = ["serde"] }
+stark_hash = { path = "../stark_hash" }
+starknet-gateway-types = { path = "../gateway-types" }
+starknet_api = { workspace = true }
+tracing = { workspace = true }

@@ -1,4 +1,3 @@
-use crate::cairo::ext_py;
 use crate::gas_price;
 use crate::SyncState;
 use pathfinder_common::ChainId;
@@ -33,10 +32,10 @@ impl RpcVersion {
 #[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
+    pub execution_storage: Storage,
     pub pending_data: Option<PendingData>,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
-    pub call_handle: Option<ext_py::Handle>,
     pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
     pub version: RpcVersion,
@@ -45,16 +44,17 @@ pub struct RpcContext {
 impl RpcContext {
     pub fn new(
         storage: Storage,
+        execution_storage: Storage,
         sync_status: Arc<SyncState>,
         chain_id: ChainId,
         sequencer: SequencerClient,
     ) -> Self {
         Self {
             storage,
+            execution_storage,
             sync_status,
             chain_id,
             pending_data: None,
-            call_handle: None,
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
             version: RpcVersion::default(),
@@ -73,8 +73,6 @@ impl RpcContext {
     }
 
     pub fn for_tests_on(chain: pathfinder_common::Chain) -> Self {
-        assert_ne!(chain, Chain::Mainnet, "Testing on MainNet?");
-
         use pathfinder_common::Chain;
         let (chain_id, sequencer) = match chain {
             Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet()),
@@ -87,6 +85,7 @@ impl RpcContext {
         let storage = super::test_utils::setup_storage();
         let sync_state = Arc::new(SyncState::default());
         Self::new(
+            storage.clone(),
             storage,
             sync_state,
             chain_id,
@@ -95,7 +94,11 @@ impl RpcContext {
     }
 
     pub fn with_storage(self, storage: Storage) -> Self {
-        Self { storage, ..self }
+        Self {
+            storage: storage.clone(),
+            execution_storage: storage,
+            ..self
+        }
     }
 
     pub fn with_pending_data(self, pending_data: PendingData) -> Self {
@@ -111,12 +114,5 @@ impl RpcContext {
         let context = Self::for_tests();
         let pending_data = super::test_utils::create_pending_data(context.storage.clone()).await;
         context.with_pending_data(pending_data)
-    }
-
-    pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
-        Self {
-            call_handle: Some(call_handle),
-            ..self
-        }
     }
 }

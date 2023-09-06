@@ -100,6 +100,13 @@ Examples:
     rpc_root_version: RpcVersion,
 
     #[arg(
+        long = "rpc.execution-concurrency",
+        long_help = "The number of Cairo VM executors that can work concurrently. Defaults to the number of CPU cores available.",
+        env = "PATHFINDER_RPC_EXECUTION_CONCURRENCY"
+    )]
+    execution_concurrency: Option<std::num::NonZeroU32>,
+
+    #[arg(
         long = "monitor-address",
         long_help = "The address at which pathfinder will serve monitoring related information",
         value_name = "IP:PORT",
@@ -123,7 +130,7 @@ Examples:
 
     #[arg(
         long = "python-subprocesses",
-        long_help = "Number of Python starknet VMs subprocesses to start",
+        long_help = "This value is now unused and the argument was kept for compatibility reasons",
         default_value = "2",
         env = "PATHFINDER_PYTHON_SUBPROCESSES"
     )]
@@ -405,7 +412,7 @@ pub struct Config {
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub poll_pending: bool,
-    pub python_subprocesses: std::num::NonZeroUsize,
+    pub execution_concurrency: Option<std::num::NonZeroU32>,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroU32,
     pub poll_interval: std::time::Duration,
@@ -581,7 +588,7 @@ impl Config {
             poll_pending: false,
             #[cfg(not(feature = "p2p"))]
             poll_pending: cli.poll_pending,
-            python_subprocesses: cli.python_subprocesses,
+            execution_concurrency: cli.execution_concurrency,
             sqlite_wal: match cli.sqlite_wal {
                 true => JournalMode::WAL,
                 false => JournalMode::Rollback,

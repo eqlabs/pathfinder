@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON-RPC requests with unknown parameters are rejected (unknown params were previously ignored)
 
+### Changed
+
+- Execution is backed by a Rust-based VM improving performance. We no longer depend on Python code in pathfinder.
+
 ## [0.8.0] - 2023-08-30
 
 ### Changed

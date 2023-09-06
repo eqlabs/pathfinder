@@ -376,7 +376,7 @@ fn compute_l1_handler_hash(txn: &L1HandlerTransaction, chain_id: ChainId) -> Tra
 }
 
 #[derive(Copy, Clone, Debug)]
-enum NonceOrClassHash {
+pub enum NonceOrClassHash {
     Nonce(TransactionNonce),
     ClassHash(ClassHash),
     None,
@@ -420,7 +420,7 @@ fn legacy_compute_txn_hash(
 
 /// _Generic_ compute transaction hash for transactions
 #[allow(clippy::too_many_arguments)]
-fn compute_txn_hash(
+pub fn compute_txn_hash(
     prefix: &[u8],
     version: TransactionVersion,
     address: ContractAddress,
