@@ -1,9 +1,10 @@
 //! Sync related data retrieval from storage as requested by other p2p clients
 
+use super::conv::{ToProto, TryFromProto};
 use anyhow::Context;
 use p2p_proto::block::{
-    BlockBodiesResponse, BlockBodiesResponsePart, BlockHeadersResponse, GetBlockBodies,
-    GetBlockHeaders,
+    BlockBodiesResponse, BlockBodiesResponsePart, BlockHeadersResponse, BlockHeadersResponsePart,
+    GetBlockBodies, GetBlockHeaders,
 };
 use p2p_proto::common::{BlockId, Hash};
 use pathfinder_common::{BlockNumber, ClassHash};
@@ -99,7 +100,7 @@ fn headers(
 
         responses.push(BlockHeadersResponse {
             id: BlockId(block_number.get()),
-            block_part: todo!("header.to_proto()"),
+            block_part: BlockHeadersResponsePart::Header(header.to_proto()),
         });
 
         // 2. Get the signatures for this block
@@ -159,7 +160,7 @@ fn bodies(
 
         responses.push(BlockBodiesResponse {
             id: BlockId(block_number.get()),
-            block_part: todo!("state_diff.to_proto()"),
+            block_part: BlockBodiesResponsePart::Diff(state_diff.to_proto()),
         });
 
         // 2. Get the newly declared classes in this block
