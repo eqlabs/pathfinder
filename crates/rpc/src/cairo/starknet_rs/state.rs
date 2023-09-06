@@ -1,9 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress, StateUpdate};
 use primitive_types::U256;
 use starknet_in_rust::{
-    definitions::block_context::BlockContext, state::cached_state::CachedState,
+    definitions::block_context::BlockContext,
+    state::{cached_state::CachedState, contract_class_cache::ContractClassCache},
 };
 
 use super::state_reader::PathfinderStateReader;
@@ -20,9 +21,13 @@ pub struct ExecutionState {
 }
 
 impl ExecutionState {
-    pub(super) fn starknet_state(
+    pub(super) fn starknet_state<C>(
         &mut self,
-    ) -> anyhow::Result<(CachedState<PathfinderStateReader<'_>>, BlockContext)> {
+        contract_class_cache: Arc<C>,
+    ) -> anyhow::Result<(CachedState<PathfinderStateReader<'_>, C>, BlockContext)>
+    where
+        C: ContractClassCache,
+    {
         let block_context = super::block_context::construct_block_context(self)?;
 
         let state_reader = PathfinderStateReader::new(
@@ -31,13 +36,7 @@ impl ExecutionState {
             self.pending_update.is_some(),
         )?;
 
-        let contract_class_cache = HashMap::new();
-        let casm_class_cache = HashMap::new();
-        let mut state = CachedState::new(
-            Arc::new(state_reader),
-            Some(contract_class_cache),
-            Some(casm_class_cache),
-        );
+        let mut state = CachedState::new(Arc::new(state_reader), contract_class_cache);
 
         self.pending_update.as_ref().map(|pending_update| {
             super::pending::apply_pending_update(&mut state, pending_update.as_ref())

@@ -9,6 +9,7 @@ use crate::cairo::starknet_rs::types::{
 };
 use crate::v02::types::request::BroadcastedTransaction;
 
+use super::estimate::CONTRACT_CLASS_CACHE;
 use super::transaction::map_broadcasted_transaction;
 use super::types::{FeeEstimate, TransactionSimulation, TransactionTrace};
 use super::{error::CallError, ExecutionState};
@@ -27,7 +28,8 @@ pub fn simulate(
         .map(|tx| map_broadcasted_transaction(tx, execution_state.chain_id))
         .collect::<Result<Vec<_>, TransactionError>>()?;
 
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let (mut state, block_context) =
+        execution_state.starknet_state(CONTRACT_CLASS_CACHE.clone())?;
 
     let mut simulations = Vec::with_capacity(transactions.len());
     for (transaction_idx, transaction) in transactions.iter().enumerate() {

@@ -8,6 +8,7 @@ use starknet_in_rust::state::ExecutionResourcesManager;
 use starknet_in_rust::utils::Address;
 use starknet_in_rust::{felt::Felt252, EntryPointType};
 
+use super::estimate::CONTRACT_CLASS_CACHE;
 use super::{error::CallError, ExecutionState};
 
 pub fn call(
@@ -16,7 +17,8 @@ pub fn call(
     entry_point_selector: EntryPoint,
     calldata: Vec<CallParam>,
 ) -> Result<Vec<CallResultValue>, CallError> {
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let (mut state, block_context) =
+        execution_state.starknet_state(CONTRACT_CLASS_CACHE.clone())?;
 
     let contract_address = Address(Felt252::from_bytes_be(contract_address.get().as_be_bytes()));
     let calldata = calldata

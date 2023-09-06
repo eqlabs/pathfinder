@@ -8996,9 +8996,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.3.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edfe4732113f66de3d6e9fc77f713b934cfd4b24d43887ca8cbfbe9462ed9119"
+checksum = "3f6e445fbd6bf3826dda26fd64aa5311353b4799c9bd1119d6ec1906be4c73bf"
 dependencies = [
  "cairo-lang-starknet 2.1.0-rc4",
  "derive_more",
@@ -9015,7 +9015,7 @@ dependencies = [
 [[package]]
 name = "starknet_in_rust"
 version = "0.3.1"
-source = "git+https://github.com/lambdaclass/starknet_in_rust?branch=main#08c212b958c7e8336d1150fe1c6e4cc75dad7a2a"
+source = "git+https://github.com/lambdaclass/starknet_in_rust?branch=make-contract-caches-shared#e6933164709800dde5dbf9a2b12b1ecfcc125504"
 dependencies = [
  "anyhow",
  "base64 0.21.2",

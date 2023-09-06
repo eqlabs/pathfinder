@@ -14,7 +14,7 @@ pub(super) fn construct_block_context(
     let mut block_context = BlockContext::default();
     *block_context.starknet_os_config_mut() = starknet_os_config;
     let block_info = block_context.block_info_mut();
-    block_info.gas_price = execution_state.gas_price.as_u64();
+    block_info.gas_price = execution_state.gas_price.as_u128();
     block_info.block_number = execution_state.block_number.get();
     block_info.block_timestamp = execution_state.block_timestamp.get();
     block_info.sequencer_address =

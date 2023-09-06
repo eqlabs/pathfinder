@@ -14,6 +14,10 @@ use super::felt::IntoFelt252;
 use super::transaction::{map_broadcasted_transaction, map_gateway_transaction};
 use super::types::FeeEstimate;
 use super::{error::CallError, ExecutionState};
+use starknet_in_rust::state::contract_class_cache::{
+    ContractClassCache, PermanentContractClassCache,
+};
+use std::sync::Arc;
 
 pub fn estimate_fee(
     execution_state: ExecutionState,
@@ -82,6 +86,10 @@ pub fn estimate_message_fee(
     Ok(result)
 }
 
+lazy_static::lazy_static!(
+    pub static ref CONTRACT_CLASS_CACHE: Arc<PermanentContractClassCache> = Arc::new(PermanentContractClassCache::default());
+);
+
 fn estimate_fee_impl(
     mut execution_state: ExecutionState,
     transactions: Vec<Transaction>,
@@ -89,7 +97,8 @@ fn estimate_fee_impl(
     let gas_price = execution_state.gas_price;
     let block_number = execution_state.block_number;
 
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let (mut state, block_context) =
+        execution_state.starknet_state(CONTRACT_CLASS_CACHE.clone())?;
 
     let mut fees = Vec::with_capacity(transactions.len());
     for (transaction_idx, transaction) in transactions.iter().enumerate() {
@@ -97,7 +106,7 @@ fn estimate_fee_impl(
         let _enter = span.enter();
 
         let transaction_for_simulation =
-            transaction.create_for_simulation(false, false, true, false, false);
+            transaction.create_for_simulation(false, false, true, true, false);
         let tx_info = transaction_for_simulation.execute(&mut state, &block_context, 100_000_000);
 
         match tx_info {
@@ -126,11 +135,15 @@ fn estimate_fee_impl(
             }
             Err(error) => {
                 tracing::error!(%error, %transaction_idx, "Transaction estimation failed");
+                // panic!("{:#?}, {:#?}", transaction_for_simulation, error);
                 return Err(error.into());
             }
         }
 
         state.cache_mut().update_initial_values();
+        state
+            .contract_class_cache()
+            .extend(state.drain_private_contract_class_cache());
     }
     Ok(fees)
 }
