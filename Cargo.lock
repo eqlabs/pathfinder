@@ -5153,9 +5153,9 @@ dependencies = [
 
 [[package]]
 name = "libp2p-identity"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a38d6012784fe4cc14e6d443eb415b11fc7c456dc15d9f0d90d9b70bc7ac3ec1"
+checksum = "686e73aff5e23efbb99bc85340ea6fd8686986aa7b283a881ba182cfca535ca9"
 dependencies = [
  "bs58 0.5.0",
  "log",
@@ -6281,20 +6281,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "p2p_proto_derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "p2p_proto_v0"
+name = "p2p_proto"
 version = "0.1.0"
 dependencies = [
  "fake",
- "libp2p-identity 0.2.2",
+ "libp2p-identity 0.2.3",
  "p2p_proto_derive",
  "prost",
  "prost-build",
