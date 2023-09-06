@@ -2,6 +2,7 @@ use crate::common::{Address, BlockId, ChainId, Hash, Merkle, Signature};
 use crate::state::{Classes, StateDiff};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
+use rand::Rng;
 use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -55,21 +56,22 @@ pub enum Direction {
     Backward,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::Iteration")]
 pub struct Iteration {
     pub start: BlockId,
     pub direction: Direction,
     pub limit: u64,
-    // #[optional]
-    // pub step: Option<u64>,
     pub step: Step,
 }
 
+/// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None` or `Some(0)`
+///
+/// FIXME next spec iteration requires to return error when step is explicitly set to 0 by the requesting party
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Step(u64);
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::GetBlockHeaders")]
 pub struct GetBlockHeaders {
     pub iteration: Iteration,
@@ -88,7 +90,7 @@ pub enum BlockHeadersResponsePart {
     Signatures(Signatures),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::GetBlockBodies")]
 pub struct GetBlockBodies {
     pub iteration: Iteration,
@@ -183,6 +185,12 @@ impl From<Option<u64>> for Step {
         // the client does not know what it's actually doing :P
         let step = if step == 0 { 1 } else { step };
         Self(step)
+    }
+}
+
+impl<T> Dummy<T> for Step {
+    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(rng.gen_range(1u64..=u64::MAX))
     }
 }
 
