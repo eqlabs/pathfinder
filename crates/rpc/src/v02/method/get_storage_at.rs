@@ -5,6 +5,7 @@ use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetStorageAtInput {
     pub contract_address: ContractAddress,
     pub key: StorageAddress,

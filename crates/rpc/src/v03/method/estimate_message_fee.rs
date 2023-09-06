@@ -8,6 +8,7 @@ use serde::Deserialize;
 use super::common::prepare_handle_and_block;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct EstimateMessageFeeInput {
     pub message: FunctionCall,
     pub sender_address: EthereumAddress,

@@ -6,6 +6,7 @@ use crate::v02::types::reply::FeeEstimate;
 use crate::v03::method::estimate_message_fee::EstimateMessageFeeError;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct EstimateMessageFeeInput {
     message: MsgFromL1,
     block_id: BlockId,

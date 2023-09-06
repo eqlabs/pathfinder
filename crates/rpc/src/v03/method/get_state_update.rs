@@ -3,6 +3,7 @@ use anyhow::{anyhow, Context};
 use pathfinder_common::BlockId;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetStateUpdateInput {
     block_id: BlockId,
 }

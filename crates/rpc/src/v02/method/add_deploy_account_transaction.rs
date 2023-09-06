@@ -13,6 +13,7 @@ pub enum Transaction {
 }
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct AddDeployAccountTransactionInput {
     deploy_account_transaction: Transaction,
 }

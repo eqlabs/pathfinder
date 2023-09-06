@@ -25,12 +25,14 @@ impl From<crate::cairo::ext_py::CallFailure> for CallError {
 }
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CallInput {
     request: FunctionCall,
     block_id: BlockId,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,

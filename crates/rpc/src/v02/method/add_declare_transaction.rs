@@ -56,6 +56,7 @@ pub enum Transaction {
 }
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct AddDeclareTransactionInput {
     declare_transaction: Transaction,
     // An undocumented parameter that we forward to the sequencer API

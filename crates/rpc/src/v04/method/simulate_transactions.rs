@@ -21,6 +21,7 @@ use stark_hash::Felt;
 use super::common::prepare_handle_and_block;
 
 #[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct SimulateTrasactionInput {
     block_id: BlockId,
     transactions: Vec<BroadcastedTransaction>,

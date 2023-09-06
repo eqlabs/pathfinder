@@ -13,6 +13,7 @@ pub enum Transaction {
 }
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct AddInvokeTransactionInput {
     invoke_transaction: Transaction,
 }

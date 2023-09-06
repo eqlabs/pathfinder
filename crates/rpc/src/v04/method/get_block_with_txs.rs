@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
+#[serde(deny_unknown_fields)]
 pub struct GetBlockInput {
     block_id: BlockId,
 }
