@@ -17,18 +17,18 @@ p2p = ["dep:base64", "dep:p2p", "dep:p2p_proto_v0", "dep:zeroize"]
 
 [dependencies]
 anyhow = { workspace = true }
-async-trait = "0.1.59"
+async-trait = "0.1.73"
 base64 = { version = "0.13.1", optional = true }
 bitvec = { workspace = true }
-bytes = "1.3.0"
+bytes = "1.4.0"
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
-console-subscriber = { version = "0.1.8", optional = true }
+console-subscriber = { version = "0.1.10", optional = true }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
-lru = "0.11.0"
+lru = "0.11.1"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
-num_cpus = "1.15.0"
+num_cpus = "1.16.0"
 p2p = { path = "../p2p", optional = true }
 p2p_proto_v0 = { path = "../p2p_proto_v0", optional = true }
 pathfinder-common = { path = "../common" }
@@ -40,7 +40,7 @@ pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
 primitive-types = "0.12.1"
-reqwest = { version = "0.11.13", features = ["json"] }
+reqwest = { version = "0.11.20", features = ["json"] }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
@@ -50,40 +50,40 @@ serde_json = { workspace = true, features = [
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
-tempfile = "3.4"
-thiserror = "1.0.40"
-time = { version = "0.3.20", features = ["macros"] }
+tempfile = "3.8"
+thiserror = "1.0.48"
+time = { version = "0.3.28", features = ["macros"] }
 tokio = { workspace = true, features = ["process"] }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.16", features = [
+tracing-subscriber = { version = "0.3.17", features = [
     "env-filter",
     "time",
     "ansi",
 ] }
-url = "2.3.1"
-warp = "0.3.3"
-zeroize = { version = "1.3.0", optional = true }
+url = "2.4.1"
+warp = "0.3.5"
+zeroize = { version = "1.6.0", optional = true }
 zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = { workspace = true }
 const-decoder = "0.3.0"
 crossbeam-channel = "0.5.8"
-fake = { version = "2.5.0", features = ["derive"] }
-flate2 = "1.0.25"
-http = "0.2.8"
-mimalloc = { version = "0.1.37", default-features = false }
-mockall = "0.11.3"
+fake = { version = "2.8.0", features = ["derive"] }
+flate2 = "1.0.27"
+http = "0.2.9"
+mimalloc = { version = "0.1.38", default-features = false }
+mockall = "0.11.4"
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
-pretty_assertions = "1.3.0"
+pretty_assertions = "1.4.0"
 proptest = "1.2.0"
 rand = "0.8"
 rand_chacha = "0.3.1"
-rstest = "0.18.1"
+rstest = "0.18.2"
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet_api = { workspace = true }

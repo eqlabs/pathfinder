@@ -10,10 +10,10 @@ full-serde = []
 [dependencies]
 anyhow = { workspace = true }
 bitvec = { workspace = true }
-fake = { version = "2.5.0", features = ["derive"] }
+fake = { version = "2.8.0", features = ["derive"] }
 metrics = { version = "0.20.1" }
-num-bigint = { version = "0.4.3", features = ["serde"] }
-paste = "1.0.12"
+num-bigint = { version = "0.4.4", features = ["serde"] }
+paste = "1.0.14"
 primitive-types = { version = "0.12.1", features = ["serde"] }
 rand = { version = "0.8.5" }
 semver = { workspace = true }

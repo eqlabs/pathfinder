@@ -11,8 +11,8 @@ anyhow = { workspace = true }
 base64 = "0.13.1"
 bitvec = { workspace = true }
 const_format = { workspace = true }
-data-encoding = "2.3.3"
-fake = { version = "2.5.0", features = ["derive"] }
+data-encoding = "2.4.0"
+fake = { version = "2.8.0", features = ["derive"] }
 hex = "0.4.3"
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
@@ -40,4 +40,4 @@ zstd = "0.12"
 
 [dev-dependencies]
 assert_matches = { workspace = true }
-tempfile = "3.4"
+tempfile = "3.6"
