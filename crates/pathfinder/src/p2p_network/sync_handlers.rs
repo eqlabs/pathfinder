@@ -1,15 +1,12 @@
 //! Sync related data retrieval from storage as requested by other p2p clients
 
-use std::ops::Deref;
-
-use super::conv::ToProto;
 use anyhow::Context;
 use p2p_proto::block::{
-    BlockBodiesResponse, BlockBodiesResponsePart, BlockHeadersResponse, BlockHeadersResponsePart,
-    GetBlockBodies, GetBlockHeaders,
+    BlockBodiesResponse, BlockBodiesResponsePart, BlockHeadersResponse, GetBlockBodies,
+    GetBlockHeaders,
 };
-use p2p_proto::common::BlockId;
-use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
+use p2p_proto::common::{BlockId, Hash};
+use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::{Storage, Transaction};
 
 #[cfg(test)]
@@ -94,6 +91,7 @@ fn headers(
             break;
         }
 
+        // 1. Get the block header
         let Some(header) = tx.block_header(block_number.into())? else {
             // No such block
             break;
@@ -104,7 +102,8 @@ fn headers(
             block_part: todo!("header.to_proto()"),
         });
 
-        // TODO signatures
+        // 2. Get the signatures for this block
+        // TODO we don't have signatures yet
 
         limit -= 1;
         next_block_number = get_next_block_number(block_number, step, direction);
@@ -139,6 +138,7 @@ fn bodies(
             break;
         }
 
+        // 1. Get the state diff for the block
         let Some(state_diff) = tx.state_update(block_number.into())? else {
             // No such block
             break;
@@ -162,62 +162,198 @@ fn bodies(
             block_part: todo!("state_diff.to_proto()"),
         });
 
-        for class_hash in new_classes {
-            // If we cannot find the class in our storage there was something fundamentally wrong with our sync
-            // TODO maybe we want a fatal error here...?
-            let compressed_definition = tx
-                .compressed_class_definition_at(block_number.into(), class_hash)?
-                .ok_or_else(|| {
-                    anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
-                })?;
+        // 2. Get the newly declared classes in this block
+        let get_compressed_definition =
+            |block_number: BlockNumber, class_hash| -> anyhow::Result<Vec<u8>> {
+                let definition = tx
+                    .compressed_class_definition_at(block_number.into(), class_hash)?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
+                    })?;
+                Ok(definition)
+            };
 
-            // Overhead for 1MiB definition seems to be around 82 bytes, so let's assume 256 bytes for now
-            /*
-            #[cfg(test)]
-            #[test]
-            fn check_additional_size() {
-                use crate::proto::block::{block_bodies_response::BlockPart, BlockBodiesResponse};
-                use crate::proto::common::{BlockId, Hash};
-                use crate::proto::state::{Class, Classes};
-                use prost::Message;
+        classes(
+            block_number,
+            new_classes,
+            &mut responses,
+            get_compressed_definition,
+        )?;
 
-                let msg = BlockBodiesResponse {
-                    id: Some(BlockId { height: u64::MAX }),
-                    block_part: Some(BlockPart::Classes(Classes {
-                        tree_id: u32::MAX,
-                        classes: vec![Class {
-                            compiled_hash: Some(Hash {
-                                elements: vec![0xFF; 32],
-                            }),
-                            definition: vec![0xFF; 1024 * 1024],
-                            total_chunks: Some(u32::MAX),
-                            chunk_count: Some(u32::MAX),
-                        }],
-                    })),
-                };
-
-                let len = msg.encode_length_delimited_to_vec().len();
-                assert_eq!(len - 1024 * 1024, 82);
-            }*/
-
-            // proto::state::Classes is 4 bytes
-
-            // TODO check size of def if shoud be partitioned
-
-            // responses.push(BlockBodiesResponse {
-            //     id: BlockId(block_number.get()),
-            //     block_part: todo!("state_diff.to_proto()"),,
-            // })
-        }
-
-        // TODO
-        // We're not sending the proof for the block, we're not storing it right now
+        // 3. Get the proof for block
+        // FIXME
+        // We're not sending the proof for the block, as we're not storing it right now
 
         limit -= 1;
         next_block_number = get_next_block_number(block_number, step, direction);
     }
 
     Ok(responses)
+}
+
+/// Helper function to get a range of classes from storage and put them into messages taking into account the 1MiB encoded message size limit.
+///
+/// - If N consecutive classes are small enough to fit into a single message, then they will be put in a single message.
+/// - If a class is too big to fit into a single message, then it will be split into chunks and each chunk will be put into a separate message.
+/// - The function is not greedy, which means that no artificial chunking will be done to fill in the message size limit.
+fn classes(
+    block_number: BlockNumber,
+    mut new_classes: Vec<ClassHash>,
+    responses: &mut Vec<BlockBodiesResponse>,
+    class_definition_getter: impl Fn(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
+) -> anyhow::Result<()> {
+    /// It's generally safe to assume:
+    /// N classes == 22 + 60 * N bytes
+    ///
+    /// Please see this test for more details:
+    /// [`p2p_proto::check_classes_message_overhead`]
+    const PER_MESSAGE_OVERHEAD: usize = 22;
+    const PER_CLASS_OVERHEAD: usize = 60;
+    const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
+    let mut estimated_message_size = PER_MESSAGE_OVERHEAD;
+    let mut classes_for_this_msg = Vec::new();
+
+    while !new_classes.is_empty() {
+        // 1. Let's take the next class definition from storage
+        // We don't really care about the order as the source is a hash set/map so it's randomized anyway
+        let class_hash = new_classes.pop().expect("vec is not empty");
+
+        let compressed_definition = class_definition_getter(block_number, class_hash)?;
+
+        // 2. Let's check if this definition needs to be chunked
+        if (PER_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
+            < MESSAGE_SIZE_LIMIT
+        {
+            // 2.A Ok this definition is small enough but we can still exceed the limit for the entire
+            // message if we have already accumulated some previous "small" class definitions
+            estimated_message_size += PER_CLASS_OVERHEAD + compressed_definition.len();
+
+            if estimated_message_size < MESSAGE_SIZE_LIMIT {
+                // 2.A.A Ok, it fits, let's add it to the message but don't send the message yet
+                classes_for_this_msg.push((class_hash, compressed_definition));
+                // --> 1.
+            } else {
+                // 2.A.B Current definition would be too much for the current message, so send what we have accumulated so far
+                debug_assert!(!classes_for_this_msg.is_empty());
+                debug_assert_eq!(
+                    estimated_message_size,
+                    // What we have accumulated so far
+                    classes_for_this_msg.iter().fold(
+                                PER_MESSAGE_OVERHEAD,
+                                |acc, (_, compressed_definition)| acc
+                                    + PER_CLASS_OVERHEAD
+                                    + compressed_definition.len()
+                            ) +
+                            // Current definition that didn't fit
+                            (PER_MESSAGE_OVERHEAD + compressed_definition.len()),
+                );
+                responses.push(block_bodies_response::take_from_class_definitions(
+                    block_number,
+                    &mut classes_for_this_msg,
+                ));
+                // Buffer for accumulating class definitions for a new message is guaranteed to be empty now
+                debug_assert!(classes_for_this_msg.is_empty());
+
+                // Now we reset the counter and start over with the current definition that didn't fit
+                estimated_message_size = PER_MESSAGE_OVERHEAD;
+                classes_for_this_msg.push((class_hash, compressed_definition));
+                // --> 1.
+            }
+        } else {
+            // 2.B Ok, so the current definition is too big to fit into a single message
+
+            // But first we need to send what we've already accumulated so far
+            if !classes_for_this_msg.is_empty() {
+                responses.push(block_bodies_response::take_from_class_definitions(
+                    block_number,
+                    &mut classes_for_this_msg,
+                ));
+            }
+            // Buffer for accumulating class definitions for a new message is guaranteed to be empty now
+            debug_assert!(classes_for_this_msg.is_empty());
+
+            // Now we can take care of the current class definition
+            // This class definition is too big, we need to chunk it and send each chunk in a separate message
+            const CHUNK_SIZE_LIMIT: usize =
+                MESSAGE_SIZE_LIMIT - PER_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
+
+            let mut chunk_iter = compressed_definition.chunks(CHUNK_SIZE_LIMIT).enumerate();
+            let chunk_count = chunk_iter.len().try_into()?;
+
+            while let Some((i, chunk)) = chunk_iter.next() {
+                let chunk_idx = i
+                    .try_into()
+                    .expect("chunk_count conversion succeeded, so chunk_count should too");
+                // One chunk per message, we don't care if the last chunk is smaller
+                // as we don't want to artificially break the next class definition into pieces
+                responses.push(block_bodies_response::from_class_definition_chunk(
+                    block_number,
+                    class_hash,
+                    chunk,
+                    chunk_count,
+                    chunk_idx,
+                ));
+            }
+            // Now we reset the counter and start over with a clean slate
+            estimated_message_size = PER_MESSAGE_OVERHEAD;
+            // --> 1.
+        }
+    }
+
+    Ok(())
+}
+
+mod block_bodies_response {
+    use super::*;
+
+    /// It is assumed that the chunk is not empty
+    pub fn from_class_definition_chunk(
+        block_number: BlockNumber,
+        class_hash: ClassHash,
+        chunk: &[u8],
+        chunk_count: u32,
+        chunk_idx: u32,
+    ) -> BlockBodiesResponse {
+        use p2p_proto::state::{Class, Classes};
+        BlockBodiesResponse {
+            id: BlockId(block_number.get()),
+            block_part: BlockBodiesResponsePart::Classes(Classes {
+                tree_id: 0, // FIXME
+                classes: vec![Class {
+                    compiled_hash: Hash(class_hash.0),
+                    definition: chunk.to_vec(),
+                    total_chunks: Some(chunk_count),
+                    chunk_count: Some(chunk_idx),
+                }],
+            }),
+        }
+    }
+
+    /// Pops all elements from `class_definitions` leaving the vector empty as if it was just `clear()`-ed,
+    /// so that later on it can be reused.
+    pub fn take_from_class_definitions(
+        block_number: BlockNumber,
+        class_definitions: &mut Vec<(ClassHash, Vec<u8>)>,
+    ) -> BlockBodiesResponse {
+        use p2p_proto::state::{Class, Classes};
+        let classes = class_definitions
+            .drain(..)
+            .rev()
+            .map(|(class_hash, definition)| Class {
+                compiled_hash: Hash(class_hash.0),
+                definition,
+                total_chunks: None,
+                chunk_count: None,
+            })
+            .collect();
+        BlockBodiesResponse {
+            id: BlockId(block_number.get()),
+            block_part: BlockBodiesResponsePart::Classes(Classes {
+                tree_id: 0, // FIXME
+                classes,
+            }),
+        }
+    }
 }
 
 async fn spawn_blocking_get<Request, Response, Getter>(
