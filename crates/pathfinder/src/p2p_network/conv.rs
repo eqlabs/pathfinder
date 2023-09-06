@@ -32,7 +32,7 @@ impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
             root: Hash(Felt::ZERO),
         };
         p2p_proto::block::BlockHeader {
-            parent_block: BlockId::Hash(Hash(self.parent_hash.0)),
+            parent_block: Hash(self.parent_hash.0),
             time: SystemTime::UNIX_EPOCH // FIXME Dunno how to convert
                 .checked_add(Duration::from_secs(self.timestamp.get()))
                 .unwrap()
@@ -119,16 +119,9 @@ impl TryFromProto<p2p_proto::block::BlockHeader> for BlockHeader {
     where
         Self: Sized,
     {
-        use p2p_proto::common::BlockId;
         Ok(Self {
             hash: BlockHash::ZERO, // FIXME
-            parent_hash: match proto.parent_block {
-                BlockId::Hash(h) => BlockHash(h.0),
-                BlockId::Height(_) => {
-                    todo!("FIXME right now pathfinder is sending hashes, not heights")
-                }
-                BlockId::HashAndHeight(h, _) => BlockHash(h.0),
-            },
+            parent_hash: BlockHash(proto.parent_block.0),
             number: BlockNumber::GENESIS, // FIXME
             timestamp: BlockTimestamp::new(
                 proto.time.duration_since(SystemTime::UNIX_EPOCH)?.as_secs(),
