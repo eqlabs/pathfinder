@@ -6,7 +6,7 @@ license = "MIT"
 build = "build.rs"
 
 [dependencies]
-fake = { version = "2.5.0", features = ["derive"] }
+fake = { version = "2.8.0", features = ["derive"] }
 libp2p-identity = { version = "0.2.2", features = ["peerid"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 prost = "0.11.0"
@@ -15,4 +15,4 @@ rand = { version = "0.8.5" }
 stark_hash = { path = "../stark_hash" }
 
 [build-dependencies]
-prost-build = "0.11.0"
+prost-build = "0.11.9"
