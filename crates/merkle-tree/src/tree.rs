@@ -968,6 +968,53 @@ mod tests {
         }
 
         #[test]
+        fn common_subtree() {
+            let key0 = felt!("0x0").view_bits().to_bitvec();
+            let key1 = felt!("0x1").view_bits().to_bitvec();
+            let key2 = felt!("0x2").view_bits().to_bitvec();
+            let key3 = felt!("0x3").view_bits().to_bitvec();
+            let value = felt!("0xabcd");
+
+            let mut uut = TestTree::empty();
+            let storage = TestStorage::default();
+
+            uut.set(&storage, &key0, value).unwrap();
+            uut.set(&storage, &key1, value).unwrap();
+            uut.set(&storage, &key2, value).unwrap();
+            uut.set(&storage, &key3, value).unwrap();
+
+            // The tree should consist of an edge node, terminating in a binary node connecting to
+            // two binary nodes -- which share the same hash.
+            let edge = uut
+                .root
+                .borrow()
+                .as_edge()
+                .cloned()
+                .expect("root should be an edge");
+            // The edge's path will be the full key path excluding the final two bits.
+            // The final two bits are represented by the following binary nodes.
+            let mut expected_path = key0.to_bitvec();
+            expected_path.pop();
+            expected_path.pop();
+
+            assert_eq!(edge.path, expected_path);
+            assert_eq!(edge.height, 0);
+
+            let binary = edge
+                .child
+                .borrow()
+                .as_binary()
+                .cloned()
+                .expect("should be a binary node");
+            assert_eq!(binary.height, 249);
+
+            let update = uut.commit().unwrap();
+            dbg!(&update.nodes);
+            // in total four nodes were added, but of those only 3 is unique
+            assert_eq!(update.nodes.len(), 3);
+        }
+
+        #[test]
         fn empty() {
             let uut = TestTree::empty();
             assert_eq!(*uut.root.borrow(), InternalNode::Unresolved(Felt::ZERO));

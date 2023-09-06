@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Context;
-use bitvec::{prelude::Msb0, slice::BitSlice, vec::BitVec};
+use bitvec::{prelude::Msb0, slice::BitSlice, vec::BitVec, view::BitView};
 use pathfinder_common::{trie::TrieNode, BlockNumber, ContractStateHash};
 use pathfinder_merkle_tree::{
     merkle_node::{Direction, InternalNode},
@@ -235,5 +235,77 @@ fn main() -> anyhow::Result<()> {
         r
     );
 
+    drop(tx);
+
+    let tx = db.rusqlite_transaction().unwrap();
+    tx.execute(
+        r"CREATE TABLE tree_global_new (
+        hash        BLOB PRIMARY KEY,
+        data        BLOB,
+        ref_count   INTEGER
+    )",
+        [],
+    )
+    .unwrap();
+
+    let batch_factor = 100_usize;
+    let values_part = "(?, ?, ?),".repeat(batch_factor - 1) + "(?, ?, ?)";
+    let mut batch_stmt = tx
+        .prepare(&format!(
+            "INSERT INTO tree_global_new (hash, data, ref_count) VALUES {}",
+            values_part
+        ))
+        .unwrap();
+
+    let mut stmt = tx
+        .prepare("INSERT INTO tree_global_new (hash, data, ref_count) VALUES (?, ?, ?)")
+        .unwrap();
+
+    let global_nodes: Vec<_> = global_nodes
+        .into_iter()
+        .map(|(hash, (node, refcnt))| (hash, serialize_node(node), refcnt))
+        .collect();
+
+    for chunk in global_nodes.chunks(batch_factor) {
+        if chunk.len() == batch_factor {
+            let mut params = vec![];
+
+            for (hash, node, refcnt) in chunk {
+                params.extend_from_slice(rusqlite::params![hash, node, *refcnt]);
+            }
+
+            batch_stmt.execute(&params[..]).unwrap();
+        } else {
+            for (hash, node, refcnt) in chunk {
+                stmt.execute(rusqlite::params![hash, node, refcnt]).unwrap();
+            }
+        }
+    }
+
     Ok(())
+}
+
+fn serialize_node(node: TrieNode) -> Vec<u8> {
+    let mut buffer = Vec::with_capacity(65);
+
+    match node {
+        TrieNode::Binary { left, right } => {
+            buffer.extend_from_slice(left.as_be_bytes());
+            buffer.extend_from_slice(right.as_be_bytes());
+        }
+        TrieNode::Edge { child, path } => {
+            buffer.extend_from_slice(child.as_be_bytes());
+            // Bit path must be written in MSB format. This means that the LSB
+            // must be in the last bit position. Since we write a fixed number of
+            // bytes (32) but the path length may vary, we have to ensure we are writing
+            // to the end of the slice.
+            buffer.resize(65, 0);
+            buffer[32..][..32].view_bits_mut::<Msb0>()[256 - path.len()..]
+                .copy_from_bitslice(&path);
+
+            buffer[64] = path.len() as u8;
+        }
+    }
+
+    buffer
 }

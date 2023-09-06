@@ -85,6 +85,7 @@ proptest = "1.2.0"
 rand = { workspace = true }
 rand_chacha = "0.3.1"
 rstest = "0.18.2"
+rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet_api = { workspace = true }
