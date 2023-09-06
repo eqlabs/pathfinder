@@ -6,6 +6,7 @@ use pathfinder_common::TransactionHash;
 use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetTransactionByHashInput {
     transaction_hash: TransactionHash,
 }

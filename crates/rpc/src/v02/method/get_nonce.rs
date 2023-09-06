@@ -5,6 +5,7 @@ use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
 use starknet_gateway_types::pending::PendingData;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetNonceInput {
     block_id: BlockId,
     contract_address: ContractAddress,

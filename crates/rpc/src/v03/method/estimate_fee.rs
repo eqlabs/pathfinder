@@ -7,6 +7,7 @@ use pathfinder_common::BlockId;
 use super::common::prepare_handle_and_block;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct EstimateFeeInput {
     request: Vec<BroadcastedTransaction>,
     block_id: BlockId,

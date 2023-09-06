@@ -37,6 +37,7 @@ impl From<GetEventsError> for crate::error::RpcError {
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Clone))]
+#[serde(deny_unknown_fields)]
 pub struct GetEventsInput {
     filter: EventFilter,
 }

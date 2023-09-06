@@ -3,6 +3,7 @@ use anyhow::Context;
 use pathfinder_common::TransactionHash;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetTransactionReceiptInput {
     transaction_hash: TransactionHash,
 }

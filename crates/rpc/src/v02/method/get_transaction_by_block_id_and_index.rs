@@ -5,6 +5,7 @@ use pathfinder_common::{BlockId, TransactionIndex};
 use starknet_gateway_types::reply::transaction::Transaction as GatewayTransaction;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetTransactionByBlockIdAndIndexInput {
     block_id: BlockId,
     index: TransactionIndex,

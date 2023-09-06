@@ -5,6 +5,7 @@ use pathfinder_common::TransactionHash;
 use starknet_gateway_types::reply::transaction::ExecutionStatus;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetTransactionReceiptInput {
     transaction_hash: TransactionHash,
 }

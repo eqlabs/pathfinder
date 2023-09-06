@@ -7,6 +7,7 @@ use starknet_gateway_types::pending::PendingData;
 crate::error::generate_rpc_error_subset!(GetClassError: BlockNotFound, ClassHashNotFound);
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct GetClassInput {
     block_id: BlockId,
     class_hash: ClassHash,
