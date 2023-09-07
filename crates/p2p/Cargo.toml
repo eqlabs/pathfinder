@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = "0.1.73"
-base64 = "0.13.1"
+base64 = { workspace = true }
 delay_map = "0.1.2"
 futures = "0.3.28"
 libp2p = { version = "0.51.3", default-features = false, features = [

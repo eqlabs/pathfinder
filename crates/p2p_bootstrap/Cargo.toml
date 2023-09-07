@@ -8,10 +8,23 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = { workspace = true }
-base64 = "0.13.1"
+base64 = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 futures = "0.3.28"
-libp2p = { version = "0.51.3", default-features = false, features = ["identify", "kad", "noise", "ping", "dns", "tcp", "tokio", "yamux", "autonat", "relay", "dcutr", "macros"] }
+libp2p = { version = "0.51.3", default-features = false, features = [
+    "identify",
+    "kad",
+    "noise",
+    "ping",
+    "dns",
+    "tcp",
+    "tokio",
+    "yamux",
+    "autonat",
+    "relay",
+    "dcutr",
+    "macros",
+] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { version = "1.32.0", features = ["rt-multi-thread", "macros"] }

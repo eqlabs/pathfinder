@@ -8,7 +8,7 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-base64 = "0.13.1"
+base64 = { workspace = true }
 bitvec = { workspace = true }
 const_format = { workspace = true }
 data-encoding = "2.4.0"

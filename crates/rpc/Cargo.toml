@@ -8,7 +8,7 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-base64 = "0.13.1"
+base64 = { workspace = true }
 flate2 = "1.0.27"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 http = "0.2.9"
