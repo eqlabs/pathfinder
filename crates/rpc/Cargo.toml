@@ -17,7 +17,7 @@ jsonrpsee = { version = "0.16.3", default-features = false, features = [
     "jsonrpsee-types",
     "server",
 ] }
-metrics = "0.20.1"
+metrics = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-ethereum = { path = "../ethereum" }
