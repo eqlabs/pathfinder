@@ -8,7 +8,7 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-async-trait = "0.1.73"
+async-trait = { workspace = true }
 const-decoder = "0.3.0"
 hex = "0.4.3"
 keccak-hash = "0.10.0"
