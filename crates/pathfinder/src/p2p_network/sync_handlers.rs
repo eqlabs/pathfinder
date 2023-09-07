@@ -1,6 +1,5 @@
 //! Sync related data retrieval from storage as requested by other p2p clients
-
-use super::conv::{ToProto, TryFromProto};
+use super::conv::ToProto;
 use anyhow::Context;
 use p2p_proto::block::{
     BlockBodiesResponse, BlockBodiesResponsePart, BlockHeadersResponse, BlockHeadersResponsePart,
@@ -100,7 +99,7 @@ fn headers(
 
         responses.push(BlockHeadersResponse {
             id: BlockId(block_number.get()),
-            block_part: BlockHeadersResponsePart::Header(header.to_proto()),
+            block_part: BlockHeadersResponsePart::Header(Box::new(header.to_proto())),
         });
 
         // 2. Get the signatures for this block
@@ -148,12 +147,11 @@ fn bodies(
         let new_classes = state_diff
             .declared_cairo_classes
             .iter()
-            .map(|x| *x)
+            .copied()
             .chain(
                 state_diff
                     .declared_sierra_classes
                     .keys()
-                    .into_iter()
                     .map(|x| ClassHash(x.0)),
             )
             .collect::<Vec<_>>();
@@ -214,11 +212,9 @@ fn classes(
     let mut estimated_message_size = PER_MESSAGE_OVERHEAD;
     let mut classes_for_this_msg = Vec::new();
 
-    while !new_classes.is_empty() {
-        // 1. Let's take the next class definition from storage
-        // We don't really care about the order as the source is a hash set/map so it's randomized anyway
-        let class_hash = new_classes.pop().expect("vec is not empty");
-
+    // 1. Let's take the next class definition from storage
+    // We don't really care about the order as the source is a hash set/map so it's randomized anyway
+    while let Some(class_hash) = new_classes.pop() {
         let compressed_definition = class_definition_getter(block_number, class_hash)?;
 
         // 2. Let's check if this definition needs to be chunked
@@ -278,10 +274,10 @@ fn classes(
             const CHUNK_SIZE_LIMIT: usize =
                 MESSAGE_SIZE_LIMIT - PER_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
 
-            let mut chunk_iter = compressed_definition.chunks(CHUNK_SIZE_LIMIT).enumerate();
+            let chunk_iter = compressed_definition.chunks(CHUNK_SIZE_LIMIT).enumerate();
             let chunk_count = chunk_iter.len().try_into()?;
 
-            while let Some((i, chunk)) = chunk_iter.next() {
+            for (i, chunk) in chunk_iter {
                 let chunk_idx = i
                     .try_into()
                     .expect("chunk_count conversion succeeded, so chunk_count should too");

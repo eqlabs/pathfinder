@@ -26,7 +26,7 @@ pub trait TryFromProto<T> {
 
 impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
     fn to_proto(self) -> p2p_proto::block::BlockHeader {
-        use p2p_proto::common::{Address, BlockId, ChainId, Hash, Merkle};
+        use p2p_proto::common::{Address, ChainId, Hash, Merkle};
         const ZERO_MERKLE: Merkle = Merkle {
             n_leaves: 0,
             root: Hash(Felt::ZERO),
@@ -35,8 +35,7 @@ impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
             parent_block: Hash(self.parent_hash.0),
             time: SystemTime::UNIX_EPOCH // FIXME Dunno how to convert
                 .checked_add(Duration::from_secs(self.timestamp.get()))
-                .unwrap()
-                .into(),
+                .unwrap(),
             sequencer_address: Address(self.sequencer_address.0),
             // FIXME: all of those zeros
             state_diffs: ZERO_MERKLE,
