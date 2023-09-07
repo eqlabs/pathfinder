@@ -1,4 +1,3 @@
-use crate::p2p_network::conv::ToProto;
 use anyhow::Context;
 use p2p_proto_v1::block::{
     BlockBodiesResponse, BlockBodiesResponsePart, BlockHeadersResponse, BlockHeadersResponsePart,
@@ -9,8 +8,11 @@ use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
 
+pub mod conv;
 #[cfg(test)]
 mod tests;
+
+use conv::ToProto;
 
 #[cfg(not(test))]
 const MAX_BLOCKS_COUNT: u64 = 100;
