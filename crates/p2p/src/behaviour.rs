@@ -117,7 +117,7 @@ pub enum Event {
     Identify(Box<identify::Event>),
     Kademlia(KademliaEvent),
     Gossipsub(gossipsub::Event),
-    BlockSync(request_response::Event<p2p_proto::sync::Request, p2p_proto::sync::Response>),
+    BlockSync(request_response::Event<p2p_proto_v0::sync::Request, p2p_proto_v0::sync::Response>),
 }
 
 impl From<relay_client::Event> for Event {
@@ -162,9 +162,11 @@ impl From<gossipsub::Event> for Event {
     }
 }
 
-impl From<request_response::Event<p2p_proto::sync::Request, p2p_proto::sync::Response>> for Event {
+impl From<request_response::Event<p2p_proto_v0::sync::Request, p2p_proto_v0::sync::Response>>
+    for Event
+{
     fn from(
-        event: request_response::Event<p2p_proto::sync::Request, p2p_proto::sync::Response>,
+        event: request_response::Event<p2p_proto_v0::sync::Request, p2p_proto_v0::sync::Response>,
     ) -> Self {
         Event::BlockSync(event)
     }

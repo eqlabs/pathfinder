@@ -5,7 +5,7 @@ use libp2p::PeerId;
 #[derive(Debug, Default)]
 struct Peer {
     connection_status: ConnectionStatus,
-    sync_status: Option<p2p_proto::sync::Status>,
+    sync_status: Option<p2p_proto_v0::sync::Status>,
 }
 
 impl Peer {
@@ -22,7 +22,7 @@ impl Peer {
         };
     }
 
-    pub fn update_sync_status(&mut self, new_status: p2p_proto::sync::Status) {
+    pub fn update_sync_status(&mut self, new_status: p2p_proto_v0::sync::Status) {
         self.sync_status = Some(new_status);
     }
 
@@ -53,7 +53,11 @@ impl Peers {
             .update_connection_status(connection_status);
     }
 
-    pub fn update_sync_status(&mut self, peer_id: &PeerId, sync_status: p2p_proto::sync::Status) {
+    pub fn update_sync_status(
+        &mut self,
+        peer_id: &PeerId,
+        sync_status: p2p_proto_v0::sync::Status,
+    ) {
         self.peers
             .entry(*peer_id)
             .and_modify(|peer| peer.update_sync_status(sync_status));
@@ -107,7 +111,7 @@ impl Peers {
         })
     }
 
-    pub fn syncing(&self) -> impl Iterator<Item = (&PeerId, &p2p_proto::sync::Status)> {
+    pub fn syncing(&self) -> impl Iterator<Item = (&PeerId, &p2p_proto_v0::sync::Status)> {
         self.peers
             .iter()
             .filter_map(|(peer_id, peer)| peer.sync_status.as_ref().map(|status| (peer_id, status)))

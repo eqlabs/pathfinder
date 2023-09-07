@@ -1,0 +1,191 @@
+syntax = "proto3";
+
+package starknet.common;
+
+message FieldElement { bytes elements = 1; }
+
+message EthereumAddress { bytes elements = 1; }
+
+message PeerID { bytes id = 1; }
+
+message BlockHeader {
+  FieldElement hash = 1;
+  FieldElement parent_hash = 2;
+  uint64 number = 3;
+  FieldElement state_commitment = 4;
+  FieldElement storage_commitment = 5;
+  FieldElement class_commitment = 6;
+  FieldElement sequencer_address = 7;
+  uint64 timestamp = 8;
+  FieldElement gas_price = 9;
+  uint32 transaction_count = 10;
+  FieldElement transaction_commitment = 11;
+  uint32 event_count = 12;
+  FieldElement event_commitment = 13;
+  string starknet_version = 14;
+}
+
+message InvokeTransaction {
+  message DeprecatedEntryPoint {
+    oneof type {
+      FieldElement unspecified = 1;
+      FieldElement external = 2;
+      FieldElement l1_handler = 3;
+    }
+  }
+
+  FieldElement sender_address = 1;
+  // Optional, only present in very old transactions
+  DeprecatedEntryPoint deprecated_entry_point_selector = 2;
+  repeated FieldElement calldata = 3;
+  repeated FieldElement signature = 4;
+  FieldElement max_fee = 5;
+  FieldElement nonce = 6;
+  FieldElement version = 7;
+}
+
+message DeclareTransaction {
+  FieldElement class_hash = 1;
+  FieldElement sender_address = 2;
+  FieldElement max_fee = 3;
+  repeated FieldElement signature = 4;
+  FieldElement nonce = 5;
+  FieldElement version = 6;
+  FieldElement casm_hash = 7;
+}
+
+message DeprecatedDeployTransaction {
+  FieldElement class_hash = 1;
+  FieldElement contract_address_salt = 2;
+  repeated FieldElement constructor_calldata = 3;
+  FieldElement version = 4;
+}
+
+message L1HandlerTransaction {
+  FieldElement contract_address = 1;
+  FieldElement entry_point_selector = 2;
+  repeated FieldElement calldata = 3;
+  FieldElement nonce = 4;
+  FieldElement version = 5;
+}
+
+message DeployAccountTransaction {
+  FieldElement contract_address_salt = 1;
+  repeated FieldElement constructor_calldata = 2;
+  FieldElement class_hash = 3;
+  FieldElement max_fee = 4;
+  repeated FieldElement signature = 5;
+  FieldElement nonce = 6;
+  FieldElement version = 7;
+}
+
+message Transaction {
+  oneof txn {
+    InvokeTransaction invoke = 1;
+    DeclareTransaction declare = 2;
+    DeprecatedDeployTransaction deploy = 3;
+    L1HandlerTransaction l1_handler = 4;
+    DeployAccountTransaction deploy_account = 5;
+  }
+}
+
+message MessageToL1 {
+  FieldElement from_address = 1;
+  repeated FieldElement payload = 2;
+  EthereumAddress to_address = 3;
+}
+
+message MessageToL2 {
+  EthereumAddress from_address = 1;
+  repeated FieldElement payload = 2;
+  FieldElement to_address = 3;
+  FieldElement entry_point_selector = 4;
+  FieldElement nonce = 5;
+}
+
+message Event {
+  FieldElement from_address = 1;
+  repeated FieldElement keys = 2;
+  repeated FieldElement data = 3;
+}
+
+message CommonTransactionReceiptProperties {
+  FieldElement transaction_hash = 1;
+  uint32 transaction_index = 2;
+  FieldElement actual_fee = 3;
+  repeated MessageToL1 messages_sent = 4;
+  repeated Event events = 5;
+  // Optional
+  MessageToL2 consumed_message = 6;
+  ExecutionResources execution_resources = 7;
+  // FIXME: the following 2 fields are not yet in the spec
+  ExecutionStatus execution_status = 8;
+  // Empty if execution_status == SUCCEEDED
+  string revert_error = 9;
+}
+
+message ExecutionResources {
+  message BuiltinInstanceCounter {
+    uint64 bitwise_builtin = 1;
+    uint64 ecdsa_builtin = 2;
+    uint64 ec_op_builtin = 3;
+    uint64 output_builtin = 4;
+    uint64 pedersen_builtin = 5;
+    uint64 range_check_builtin = 6;
+    // FIXME: the following 3 fields are not yet in the spec
+    uint64 keccak_builtin = 7;
+    uint64 poseidon_builtin = 8;
+    uint64 segment_arena_builtin = 9;
+  }
+
+  BuiltinInstanceCounter builtin_instance_counter = 1;
+  uint64 n_steps = 2;
+  uint64 n_memory_holes = 3;
+}
+
+enum ExecutionStatus {
+  SUCCEEDED = 0;
+  REVERTED = 1;
+}
+
+message InvokeTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message L1HandlerTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message DeclareTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+}
+
+message DeprecatedDeployTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+  FieldElement contract_address = 2;
+}
+
+message DeployAccountTransactionReceipt {
+  CommonTransactionReceiptProperties common = 1;
+  FieldElement contract_address = 2;
+}
+
+message Receipt {
+  oneof receipt {
+    InvokeTransactionReceipt invoke = 1;
+    L1HandlerTransactionReceipt l1_handler = 2;
+    DeclareTransactionReceipt declare = 3;
+    DeprecatedDeployTransactionReceipt deprecated_deploy = 4;
+    DeployAccountTransactionReceipt deploy_account = 5;
+  }
+}
+
+message BlockBody {
+  repeated Transaction transactions = 1;
+  repeated Receipt receipts = 4;
+}
+
+message RawClass {
+  // FIXME currently carries raw JSON representation
+  bytes class = 1;
+}

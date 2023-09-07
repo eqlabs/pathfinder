@@ -1,28 +1,14 @@
-#[allow(clippy::module_inception)]
+use stark_hash::Felt;
+
 pub mod proto {
-    pub mod block {
-        include!(concat!(env!("OUT_DIR"), "/starknet.block.rs"));
-    }
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
-    pub mod event {
-        include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
+    pub mod propagation {
+        include!(concat!(env!("OUT_DIR"), "/starknet.propagation.rs"));
     }
-    pub mod mempool {
-        include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
-    }
-    pub mod receipt {
-        include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
-    }
-    pub mod snapshot {
-        include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
-    }
-    pub mod state {
-        include!(concat!(env!("OUT_DIR"), "/starknet.state.rs"));
-    }
-    pub mod transaction {
-        include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
+    pub mod sync {
+        include!(concat!(env!("OUT_DIR"), "/starknet.sync.rs"));
     }
 }
 
@@ -54,6 +40,22 @@ impl ToProtobuf<u8> for u8 {
 impl ToProtobuf<String> for String {
     fn to_protobuf(self) -> String {
         self
+    }
+}
+
+impl ToProtobuf<proto::common::FieldElement> for Felt {
+    fn to_protobuf(self) -> proto::common::FieldElement {
+        proto::common::FieldElement {
+            elements: self.to_be_bytes().into(),
+        }
+    }
+}
+
+impl ToProtobuf<proto::common::EthereumAddress> for primitive_types::H160 {
+    fn to_protobuf(self) -> proto::common::EthereumAddress {
+        proto::common::EthereumAddress {
+            elements: self.to_fixed_bytes().into(),
+        }
     }
 }
 
@@ -100,6 +102,39 @@ impl TryFromProtobuf<String> for String {
     }
 }
 
+impl TryFromProtobuf<proto::common::FieldElement> for Felt {
+    fn try_from_protobuf(
+        input: proto::common::FieldElement,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        let stark_hash = Felt::from_be_slice(&input.elements).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid field element {field_name}: {e}"),
+            )
+        })?;
+        Ok(stark_hash)
+    }
+}
+
+impl TryFromProtobuf<proto::common::EthereumAddress> for primitive_types::H160 {
+    fn try_from_protobuf(
+        input: proto::common::EthereumAddress,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        if input.elements.len() != primitive_types::H160::len_bytes() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid length for Ethereum address {field_name}"),
+            ));
+        }
+
+        // from_slice() panics if the input length is incorrect, but we've already checked that
+        let address = primitive_types::H160::from_slice(&input.elements);
+        Ok(address)
+    }
+}
+
 impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Option<U>> for T {
     fn try_from_protobuf(
         input: Option<U>,
@@ -131,11 +166,14 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
 }
 
 use p2p_proto_derive::*;
-pub mod block;
+#[derive(ToProtobuf)]
+#[protobuf(name = "crate::proto::common::Event")]
+struct Event {
+    pub from_address: Felt,
+    pub keys: Vec<Felt>,
+    pub data: Vec<Felt>,
+}
+
 pub mod common;
-pub mod event;
-pub mod mempool;
-pub mod receipt;
-pub mod snapshot;
-pub mod state;
-pub mod transaction;
+pub mod propagation;
+pub mod sync;

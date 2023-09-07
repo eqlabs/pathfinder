@@ -61,7 +61,7 @@ impl BlockLru {
         locked_inner.get(&number).cloned()
     }
 
-    fn clear_if_reorg(&self, header: &p2p_proto::common::BlockHeader) {
+    fn clear_if_reorg(&self, header: &p2p_proto_v0::common::BlockHeader) {
         if let Some(parent_number) = header.number.checked_sub(1) {
             let mut locked_inner = self.inner.lock().unwrap();
             if let Some(parent) = locked_inner.get(&BlockNumber::new_or_panic(parent_number)) {
@@ -252,7 +252,7 @@ impl GatewayApi for HybridClient {
                     )));
                 }
 
-                let p2p_proto::common::RawClass { class } = classes.swap_remove(0);
+                let p2p_proto_v0::common::RawClass { class } = classes.swap_remove(0);
 
                 let class = zstd::decode_all(class.as_slice())
                     .map_err(|_| class_not_found("zstd failed"))?;
@@ -286,7 +286,7 @@ impl GatewayApi for HybridClient {
                     )));
                 }
 
-                let p2p_proto::common::RawClass { class } = classes.swap_remove(0);
+                let p2p_proto_v0::common::RawClass { class } = classes.swap_remove(0);
 
                 let class = zstd::decode_all(class.as_slice())
                     .map_err(|_| class_not_found("zstd failed"))?;
@@ -437,7 +437,7 @@ impl GossipApi for HybridClient {
         match self {
             HybridClient::GatewayProxy { p2p_client, .. } => {
                 match p2p_client
-                    .propagate_new_header(p2p_proto::common::BlockHeader {
+                    .propagate_new_header(p2p_proto_v0::common::BlockHeader {
                         hash: block_hash.0,
                         number: block_number.get(),
                         ..Default::default()
@@ -465,7 +465,9 @@ pub mod conv {
         };
 
         #[allow(unused)]
-        pub fn try_from_p2p(header: p2p_proto::common::BlockHeader) -> anyhow::Result<BlockHeader> {
+        pub fn try_from_p2p(
+            header: p2p_proto_v0::common::BlockHeader,
+        ) -> anyhow::Result<BlockHeader> {
             Ok(BlockHeader {
                 hash: BlockHash(header.hash),
                 parent_hash: BlockHash(header.parent_hash),
@@ -494,7 +496,7 @@ pub mod conv {
 
     pub mod body {
         use anyhow::Context;
-        use p2p_proto::common::{BlockBody, Receipt, Transaction};
+        use p2p_proto_v0::common::{BlockBody, Receipt, Transaction};
         use pathfinder_common::{
             CallParam, CasmHash, ClassHash, ConstructorParam, ContractAddress, ContractAddressSalt,
             EntryPoint, Fee, TransactionHash, TransactionNonce, TransactionSignatureElem,
@@ -513,16 +515,16 @@ pub mod conv {
             }
 
             fn entry_point(
-                entry_point: Option<p2p_proto::common::invoke_transaction::EntryPoint>,
+                entry_point: Option<p2p_proto_v0::common::invoke_transaction::EntryPoint>,
             ) -> anyhow::Result<(EntryPoint, Option<EntryPointType>)> {
                 match entry_point {
-                    Some(p2p_proto::common::invoke_transaction::EntryPoint::Unspecified(e)) => {
+                    Some(p2p_proto_v0::common::invoke_transaction::EntryPoint::Unspecified(e)) => {
                         Ok((EntryPoint(e), None))
                     }
-                    Some(p2p_proto::common::invoke_transaction::EntryPoint::External(e)) => {
+                    Some(p2p_proto_v0::common::invoke_transaction::EntryPoint::External(e)) => {
                         Ok((EntryPoint(e), Some(EntryPointType::External)))
                     }
-                    Some(p2p_proto::common::invoke_transaction::EntryPoint::L1Handler(e)) => {
+                    Some(p2p_proto_v0::common::invoke_transaction::EntryPoint::L1Handler(e)) => {
                         Ok((EntryPoint(e), Some(EntryPointType::L1Handler)))
                     }
                     None => anyhow::bail!("Missing entry point selector for Invoke v0 transaction"),
@@ -738,7 +740,7 @@ pub mod conv {
 
         mod receipt {
             use super::gw;
-            use p2p_proto::common::{
+            use p2p_proto_v0::common::{
                 DeclareTransactionReceipt, DeployAccountTransactionReceipt,
                 DeployTransactionReceipt, ExecutionStatus, InvokeTransactionReceipt,
                 L1HandlerTransactionReceipt, Receipt,
@@ -852,7 +854,7 @@ pub mod conv {
     pub mod state_update {
         use std::collections::HashMap;
 
-        use p2p_proto::sync::BlockStateUpdateWithHash;
+        use p2p_proto_v0::sync::BlockStateUpdateWithHash;
         use pathfinder_common::{
             BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
             StateCommitment, StorageAddress, StorageValue,

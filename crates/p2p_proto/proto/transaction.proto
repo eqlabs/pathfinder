@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package starknet.transaction;
+
+import "common.proto";
+
+message TransactionCommon {
+    starknet.common.Felt252 nonce = 1; // FFU: volition will also add the selected state tree
+    starknet.common.Felt252 version = 2;
+}
+
+message L2TransactionCommon {
+    starknet.common.Address sender = 1;
+    starknet.common.Signature signature = 2;
+    starknet.common.Felt252 max_fee = 4; // FFU: may change according to fee market spec
+}
+
+message InvokeTransaction
+{
+    repeated starknet.common.Felt252 calldata = 1; // not streaming this, meaning limited to ~30K felts.
+}
+
+
+message DeclareTransaction
+{
+    starknet.common.Hash class_hash = 1;
+    starknet.common.Hash compiled_hash = 2;
+}
+
+message L2Transaction {
+    L2TransactionCommon common = 1;
+    oneof txn {
+        InvokeTransaction invoke = 2;
+        DeclareTransaction declare = 3;
+    }
+}
+
+
+message L1HandlerTransaction {
+    starknet.common.Address contract = 1;
+    starknet.common.Felt252 entry_point_selector = 2;
+    repeated starknet.common.Felt252 calldata = 3;
+}
+
+// NOTE: not keeping old tx types for clarity
+// TODO: add DeployAccountTransaction
+
+message Transaction
+{
+    TransactionCommon common = 1;
+    oneof txn {
+        L2Transaction l2Transaction = 2;
+        L1HandlerTransaction l1handler = 3;
+    }
+}
+
+
+
+message GetTransactions {
+    starknet.common.BlockID id = 1;
+}
+
+// can be several in a single reply
+message Transactions {
+    repeated Transaction transactions = 2;
+}

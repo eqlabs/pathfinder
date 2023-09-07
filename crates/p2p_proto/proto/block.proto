@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package starknet.block;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+// for now, we assume a small consensus, so this fits in 1M. Else, these will be repeated
+message Signatures {
+    starknet.common.BlockID id = 1;
+    repeated starknet.common.Signature signatures = 2; // can be more explicit here about the signature structure as this is not part of account abstraction
+}
+
+// Note: commitments may change to be for the previous blocks like comet/tendermint
+// hash of block header sent to L1
+message BlockHeader {
+    starknet.common.BlockID parent_block = 1;
+
+    google.protobuf.Timestamp time = 2; // TODO: see if this needs to be Felt252 or can be converted
+
+    starknet.common.Address sequencer_address = 3;
+
+    starknet.common.Merkle state_diffs = 4; //  By order of (contract, key), taking last in case of duplicates.
+                            // This means the proposer needs to sort after finishing the block (TBD: patricia? )
+
+    // State is optional and appears every X blocks for the last block. This is to support
+    // snapshot sync and also so that light nodes can sync on state without state diffs.
+    starknet.common.Merkle state = 5; // hash of contract and class patricia tries. Same as in L1. Later more trees will be included
+
+    starknet.common.Hash proof_fact = 6; // for Kth block behind. A hash of the output of the proof
+
+    // The following merkles can be built on the fly while sequencing/validating txs.
+    starknet.common.Merkle transactions = 7; // By order of execution
+
+    starknet.common.Merkle events = 8; // By order of issuance.
+
+    starknet.common.Merkle receipts = 9; // By order of issuance.
+
+    uint32 protocol_version = 10;
+
+    starknet.common.ChainID chain_id = 11;
+}
+
+message BlockProof {
+    bytes proof = 1; // proof size is currently 142K
+}
+
+// sent to all peers (except the ones this was received from, if any).
+// for a fraction of peers, also send the GetBlocks response (as if they asked for it for this block)
+message NewBlock {
+    starknet.common.BlockID id = 1;
+}
+
+// result is (BlockHeader, StateDiff*)*
+message GetBlocks {
+    enum Direction {
+        Forward = 0;
+        Backward = 1;
+    }
+    starknet.common.BlockID start = 1; // exclude start from the result
+    Direction direction = 2;
+    uint64 limit = 3;
+    uint64 skip = 4;  // when starting, can send to first node skip=0, limit=100, second skip=100, limit=100, etc.
+    uint64 step = 5; // to allow interleaving from several nodes
+}
+
+message GetSignatures {
+    starknet.common.BlockID id = 1;
+}

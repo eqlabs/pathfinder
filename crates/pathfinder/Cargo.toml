@@ -13,7 +13,7 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 rpc-full-serde = []
-p2p = ["dep:base64", "dep:p2p", "dep:p2p_proto", "dep:zeroize"]
+p2p = ["dep:base64", "dep:p2p", "dep:p2p_proto_v0", "dep:zeroize"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -30,7 +30,7 @@ metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 num_cpus = "1.15.0"
 p2p = { path = "../p2p", optional = true }
-p2p_proto = { path = "../p2p_proto", optional = true }
+p2p_proto_v0 = { path = "../p2p_proto_v0", optional = true }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-ethereum = { path = "../ethereum" }

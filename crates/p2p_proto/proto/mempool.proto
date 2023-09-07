@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package starknet.mempool;
+
+import "common.proto";
+import "transaction.proto";
+
+// Support also non-validating node that wants to know of the mempool (e.g. to estimate fee in case of first price)
+// Result is PooledTransactions+
+message GetPooledTransactions
+{
+    message Hashes {
+        repeated starknet.common.Hash hashes = 1;
+    }
+    oneof known {
+        Hashes txs = 1; // for mempool of 2000 txs, this will be 64K. Can use Hash32 instead (8K)...
+        uint64 marker = 2; // since last returned marker.
+    }
+}
+
+message NewPooledTransactions {
+    repeated starknet.transaction.Transaction transactions = 1;
+
+    uint64 marker = 2; // optional, if the peer supports that.
+}
+
+// TBD: trusted. Alternative is to sync on transactions or on contract diff (remove key-value) to get latest nonce
+message IncludedTransactions { // those txs no longer in the pool since they were included.
+                              // just send the hash. (note: a node should remove txs with same/lower nonce)
+                              // TBD: Merkle proofs of contract state instead?
+    repeated starknet.common.Hash transactions = 1;
+
+    uint64 marker = 2; // should be the same as New
+}

@@ -20,8 +20,8 @@ pub struct BlockSyncCodec();
 #[async_trait]
 impl Codec for BlockSyncCodec {
     type Protocol = BlockSyncProtocol;
-    type Request = p2p_proto::sync::Request;
-    type Response = p2p_proto::sync::Response;
+    type Request = p2p_proto_v0::sync::Request;
+    type Response = p2p_proto_v0::sync::Response;
 
     async fn read_request<T>(
         &mut self,
