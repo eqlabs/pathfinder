@@ -86,7 +86,7 @@ pub struct BlockHeadersResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlockHeadersResponsePart {
-    Header(BlockHeader),
+    Header(Box<BlockHeader>),
     Signatures(Signatures),
 }
 
@@ -223,7 +223,9 @@ impl TryFromProtobuf<proto::block::block_headers_response::BlockPart> for BlockH
     ) -> Result<Self, std::io::Error> {
         use proto::block::block_headers_response::BlockPart::{Header, Signatures};
         Ok(match input {
-            Header(header) => Self::Header(BlockHeader::try_from_protobuf(header, field_name)?),
+            Header(header) => Self::Header(Box::new(BlockHeader::try_from_protobuf(
+                header, field_name,
+            )?)),
             Signatures(signatures) => {
                 Self::Signatures(self::Signatures::try_from_protobuf(signatures, field_name)?)
             }

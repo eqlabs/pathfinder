@@ -11,7 +11,9 @@ use tokio::sync::RwLock;
 use tracing::Instrument;
 
 pub mod client;
+#[allow(dead_code)]
 pub(crate) mod conv;
+#[allow(dead_code)]
 mod sync_handlers;
 
 // Silence clippy

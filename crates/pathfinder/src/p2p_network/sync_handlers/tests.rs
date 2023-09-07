@@ -32,12 +32,10 @@ fn get_next_block_number(
 
 // TODO test other requests too
 mod empty_reply {
-    use super::I64_MAX;
     use crate::p2p_network::sync_handlers::get_headers;
     use assert_matches::assert_matches;
     use fake::{Fake, Faker};
-    use p2p_proto::block::{GetBlockBodies, GetBlockHeaders, Iteration};
-    use p2p_proto::common::BlockId;
+    use p2p_proto::block::{GetBlockHeaders, Iteration};
     use pathfinder_storage::Storage;
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::error::TryRecvError;
