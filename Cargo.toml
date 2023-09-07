@@ -55,6 +55,7 @@ semver = "1.0.18"
 serde = "=1.0.188"
 serde_json = "1.0.105"
 serde_with = "3.0.0"
+sha3 = "0.10"
 # This one needs to match the version used by blockifier
 starknet_api = "0.4.1"
 thiserror = "1.0.48"
