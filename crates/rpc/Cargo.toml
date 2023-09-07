@@ -10,7 +10,7 @@ rust-version = "1.62"
 anyhow = { workspace = true }
 base64 = { workspace = true }
 flate2 = { workspace = true }
-futures = { version = "0.3", default-features = false, features = ["std"] }
+futures = { workspace = true }
 http = "0.2.9"
 hyper = "0.14.27"
 jsonrpsee = { version = "0.16.3", default-features = false, features = [
