@@ -8,20 +8,20 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-fake = { version = "2.5.0", features = ["derive"] }
-lazy_static = "1.4.0"
+fake = { workspace = true }
+lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-serde = { path = "../serde" }
-primitive-types = "0.12.1"
-rand = { version = "0.8.5" }
-reqwest = "0.11.13"
+primitive-types = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",
     "raw_value",
 ] }
 serde_with = { workspace = true }
-sha3 = "0.10"
+sha3 = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
 thiserror = { workspace = true }
@@ -29,8 +29,5 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
-# Due to pathfinder_common::starkhash!() usage
-fake = { version = "2.5.0", features = ["derive"] }
-rand = { version = "0.8.5" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }

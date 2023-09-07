@@ -8,10 +8,10 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 anyhow = { workspace = true }
 blockifier = { workspace = true }
-cairo-vm = "0.8.2"
+cairo-vm = "0.8.7"
 pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }
-primitive-types = { version = "0.12.1", features = ["serde"] }
+primitive-types = { workspace = true, features = ["serde"] }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-types = { path = "../gateway-types" }
 starknet_api = { workspace = true }

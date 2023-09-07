@@ -8,20 +8,20 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-base64 = "0.13.1"
+base64 = { workspace = true }
 bitvec = { workspace = true }
 const_format = { workspace = true }
-data-encoding = "2.3.3"
-fake = { version = "2.5.0", features = ["derive"] }
-hex = "0.4.3"
-lazy_static = "1.4.0"
+data-encoding = "2.4.0"
+fake = { workspace = true }
+hex = { workspace = true }
+lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
-primitive-types = "0.12.1"
+primitive-types = { workspace = true }
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.21.0"
-rand = { version = "0.8.5" }
+rand = { workspace = true }
 rusqlite = { version = "0.28.0", features = ["bundled", "functions"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
@@ -29,15 +29,15 @@ serde_json = { workspace = true, features = [
     "raw_value",
 ] }
 serde_with = { workspace = true }
-sha3 = "0.10"
+sha3 = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-zstd = "0.12"
+zstd = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
-tempfile = "3.4"
+tempfile = "3.6"
