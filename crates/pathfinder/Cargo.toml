@@ -39,7 +39,7 @@ pathfinder-retry = { path = "../retry" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
-primitive-types = "0.12.1"
+primitive-types = { workspace = true }
 reqwest = { version = "0.11.20", features = ["json"] }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

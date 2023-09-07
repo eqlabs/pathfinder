@@ -18,7 +18,7 @@ lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
-primitive-types = "0.12.1"
+primitive-types = { workspace = true }
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.21.0"
 rand = { workspace = true }

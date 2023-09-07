@@ -14,7 +14,7 @@ fake = { workspace = true }
 metrics = { version = "0.20.1" }
 num-bigint = { version = "0.4.4", features = ["serde"] }
 paste = "1.0.14"
-primitive-types = { version = "0.12.1", features = ["serde"] }
+primitive-types = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

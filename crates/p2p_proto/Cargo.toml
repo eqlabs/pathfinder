@@ -9,7 +9,7 @@ build = "build.rs"
 fake = { workspace = true }
 libp2p-identity = { version = "0.2.2", features = ["peerid"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
-primitive-types = "0.12.1"
+primitive-types = { workspace = true }
 prost = "0.11.9"
 prost-types = "0.11.9"
 rand = { workspace = true }
