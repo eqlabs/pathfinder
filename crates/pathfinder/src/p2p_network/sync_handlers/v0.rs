@@ -6,6 +6,10 @@ pub(crate) mod conv;
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod conv;
+#[cfg(test)]
+mod tests;
+
 #[cfg(not(test))]
 const MAX_HEADERS_COUNT: u64 = 1000;
 #[cfg(not(test))]
