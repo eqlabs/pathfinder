@@ -239,7 +239,7 @@ mod prop {
         use super::super::{block_headers, Direction};
         use super::fixtures::storage_with_seed;
         use super::overlapping;
-        use crate::p2p_network::client::conv::header;
+        use crate::p2p_network::client::v0::conv::header;
         use proptest::prelude::*;
 
         proptest! {
@@ -301,7 +301,7 @@ mod prop {
         use super::super::{block_bodies, Direction};
         use super::fixtures::storage_with_seed;
         use super::overlapping;
-        use crate::p2p_network::client::conv::body;
+        use crate::p2p_network::client::v0::conv::body;
         use pathfinder_common::{TransactionNonce, TransactionVersion};
         use proptest::prelude::*;
         use starknet_gateway_types::reply::transaction as gw;
@@ -400,7 +400,7 @@ mod prop {
         use super::super::{state_diffs, Direction};
         use super::fixtures::storage_with_seed;
         use super::overlapping;
-        use crate::p2p_network::client::conv::state_update;
+        use crate::p2p_network::client::v0::conv::state_update;
         use pathfinder_common::StateUpdate;
         use proptest::prelude::*;
         use std::collections::HashMap;
