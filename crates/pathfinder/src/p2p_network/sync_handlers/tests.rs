@@ -1,6 +1,14 @@
+use crate::p2p_network::sync_handlers::{get_bodies, get_headers};
+use assert_matches::assert_matches;
+use fake::{Fake, Faker};
 use p2p_proto::block::{Direction, Step};
+use p2p_proto::block::{GetBlockBodies, GetBlockHeaders, Iteration};
+use p2p_proto::common::BlockId;
 use pathfinder_common::BlockNumber;
+use pathfinder_storage::Storage;
 use rstest::rstest;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TryRecvError;
 
 const I64_MAX: u64 = i64::MAX as u64;
 
@@ -30,43 +38,34 @@ fn get_next_block_number(
     );
 }
 
-// TODO test other requests too
 mod empty_reply {
-    use crate::p2p_network::sync_handlers::get_headers;
-    use assert_matches::assert_matches;
-    use fake::{Fake, Faker};
-    use p2p_proto::block::{GetBlockHeaders, Iteration};
-    use pathfinder_storage::Storage;
-    use tokio::sync::mpsc;
-    use tokio::sync::mpsc::error::TryRecvError;
+    use super::*;
+    #[rustfmt::skip] fn zero_limit() -> Iteration { Iteration { limit: 0, ..Faker.fake() } }
+    #[rustfmt::skip] fn invalid_start() -> Iteration { Iteration { start: BlockId(I64_MAX + 1), ..Faker.fake() } }
 
+    #[rstest]
+    #[case(GetBlockHeaders {iteration: zero_limit()})]
+    #[case(GetBlockHeaders {iteration: invalid_start()})]
     #[tokio::test]
-    async fn limit_is_zero() {
+    async fn headers(#[case] request: GetBlockHeaders) {
         let storage = Storage::in_memory().unwrap();
         let (tx, mut rx) = mpsc::channel(1);
-        let request = GetBlockHeaders {
-            iteration: Iteration {
-                limit: 0,
-                ..Faker.fake()
-            },
-        };
         // Clone the sender to make sure that the channel is not prematurely closed
         get_headers(&storage, request, tx.clone()).await.unwrap();
         // No reply should be sent
         assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
     }
 
+    #[rstest]
+    #[case(GetBlockBodies {iteration: zero_limit()})]
+    #[case(GetBlockBodies {iteration: invalid_start()})]
     #[tokio::test]
-    async fn start_block_larger_than_i64max() {
-        let request = GetBlockHeaders {
-            iteration: Iteration {
-                limit: 0,
-                ..Faker.fake()
-            },
-        };
-        let (tx, mut rx) = mpsc::channel(1);
+    async fn bodies(#[case] request: GetBlockBodies) {
         let storage = Storage::in_memory().unwrap();
-        get_headers(&storage, request, tx.clone()).await.unwrap();
+        let (tx, mut rx) = mpsc::channel(1);
+        // Clone the sender to make sure that the channel is not prematurely closed
+        get_bodies(&storage, request, tx.clone()).await.unwrap();
+        // No reply should be sent
         assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
     }
 }
