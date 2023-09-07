@@ -41,6 +41,7 @@ criterion = "0.5.1"
 fake = { version = "2.8.0", features = ["derive"] }
 flate2 = "1.0.27"
 futures = { version = "0.3", default-features = false, features = ["std"] }
+http = "0.2.9"
 lazy_static = "1.4.0"
 metrics = "0.20.1"
 primitive-types = "0.12.1"
