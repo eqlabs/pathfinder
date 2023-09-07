@@ -56,7 +56,7 @@ pub enum Direction {
     Backward,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::Iteration")]
 pub struct Iteration {
     pub start: BlockId,
@@ -71,7 +71,7 @@ pub struct Iteration {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Step(u64);
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::GetBlockHeaders")]
 pub struct GetBlockHeaders {
     pub iteration: Iteration,
@@ -90,7 +90,7 @@ pub enum BlockHeadersResponsePart {
     Signatures(Signatures),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::block::GetBlockBodies")]
 pub struct GetBlockBodies {
     pub iteration: Iteration,
