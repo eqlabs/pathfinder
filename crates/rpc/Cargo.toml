@@ -54,7 +54,7 @@ zstd = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 bytes = { workspace = true }
-hex = "0.4.3"
+hex = { workspace = true }
 jsonrpsee = { version = "0.16.3", default-features = false, features = [
     "async-client",
     "jsonrpsee-types",

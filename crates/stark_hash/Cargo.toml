@@ -23,7 +23,7 @@ stark_curve = { path = "../stark_curve" }
 [dev-dependencies]
 assert_matches = { workspace = true }
 criterion = { workspace = true }
-hex = "0.4.3"
+hex = { workspace = true }
 pretty_assertions = { workspace = true }
 serde_json = { workspace = true }
 

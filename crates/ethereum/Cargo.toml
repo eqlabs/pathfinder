@@ -10,7 +10,7 @@ rust-version = "1.62"
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 const-decoder = "0.3.0"
-hex = "0.4.3"
+hex = { workspace = true }
 keccak-hash = "0.10.0"
 pathfinder-common = { path = "../common" }
 primitive-types = { workspace = true }
@@ -22,6 +22,5 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-hex = "0.4.3"
 httpmock = "0.6.8"
 tokio = { workspace = true, features = ["macros"] }

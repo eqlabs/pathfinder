@@ -45,7 +45,7 @@ assert_matches = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 env_logger = "0.10.0"
 fake = { workspace = true }
-hex = "0.4.3"
+hex = { workspace = true }
 rand = { workspace = true }
 test-log = { version = "0.2.12", default-features = false, features = [
     "trace",
