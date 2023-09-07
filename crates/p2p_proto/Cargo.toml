@@ -6,7 +6,7 @@ license = "MIT"
 build = "build.rs"
 
 [dependencies]
-fake = { version = "2.8.0", features = ["derive"] }
+fake = { workspace = true }
 libp2p-identity = { version = "0.2.2", features = ["peerid"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 primitive-types = "0.12.1"

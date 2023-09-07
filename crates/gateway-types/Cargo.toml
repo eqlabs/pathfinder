@@ -8,7 +8,7 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-fake = { version = "2.8.0", features = ["derive"] }
+fake = { workspace = true }
 lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
 pathfinder-serde = { path = "../serde" }
@@ -30,7 +30,6 @@ tokio = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 # Due to pathfinder_common::starkhash!() usage
-fake = { version = "2.8.0", features = ["derive"] }
 rand = { version = "0.8.5" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
