@@ -24,7 +24,7 @@ stark_curve = { path = "../stark_curve" }
 assert_matches = { workspace = true }
 criterion = { workspace = true }
 hex = "0.4.3"
-pretty_assertions = "1.4.0"
+pretty_assertions = { workspace = true }
 serde_json = { workspace = true }
 
 [[bench]]

@@ -17,4 +17,4 @@ serde_with = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.0"
+pretty_assertions = { workspace = true }

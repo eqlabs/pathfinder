@@ -79,7 +79,7 @@ pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
-pretty_assertions = "1.4.0"
+pretty_assertions = { workspace = true }
 proptest = "1.2.0"
 rand = { workspace = true }
 rand_chacha = "0.3.1"

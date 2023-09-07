@@ -19,7 +19,10 @@ pathfinder-retry = { path = "../retry" }
 pathfinder-serde = { path = "../serde" }
 reqwest = { version = "0.11.18", features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
 starknet-gateway-types = { path = "../gateway-types" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 tracing = { workspace = true }
@@ -30,10 +33,12 @@ assert_matches = { workspace = true }
 base64 = "0.13.1"
 flate2 = "1.0.27"
 lazy_static = "1.4.0"
-pretty_assertions = "1.4.0"
+pretty_assertions = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-test-log = { version = "0.2.12", default-features = false, features = ["trace"] }
+test-log = { version = "0.2.12", default-features = false, features = [
+    "trace",
+] }
 tracing-subscriber = { workspace = true }
 
 [[test]]
