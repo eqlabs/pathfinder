@@ -1,9 +1,9 @@
-use crate::p2p_network::sync_handlers::{get_bodies, get_headers};
+use crate::p2p_network::sync_handlers::v1::{get_bodies, get_headers};
 use assert_matches::assert_matches;
 use fake::{Fake, Faker};
-use p2p_proto::block::{Direction, Step};
-use p2p_proto::block::{GetBlockBodies, GetBlockHeaders, Iteration};
-use p2p_proto::common::BlockId;
+use p2p_proto_v1::block::{Direction, Step};
+use p2p_proto_v1::block::{GetBlockBodies, GetBlockHeaders, Iteration};
+use p2p_proto_v1::common::BlockId;
 use pathfinder_common::BlockNumber;
 use pathfinder_storage::Storage;
 use rstest::rstest;
@@ -74,7 +74,7 @@ mod empty_reply {
 mod prop {
     /// Fixtures for prop tests
     mod fixtures {
-        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
+        use crate::p2p_network::sync_handlers::v1::MAX_COUNT_IN_TESTS;
         use pathfinder_storage::fake::{with_n_blocks_and_rng, StorageInitializer};
         use pathfinder_storage::Storage;
 
@@ -93,7 +93,7 @@ mod prop {
 
     /// Find overlapping range between the DB and the request
     mod overlapping {
-        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
+        use crate::p2p_network::sync_handlers::v1::MAX_COUNT_IN_TESTS;
         use pathfinder_storage::fake::{StorageInitializer, StorageInitializerItem};
 
         pub fn forward(
@@ -162,8 +162,8 @@ mod prop {
     //     use super::fixtures::storage_with_seed;
     //     use super::overlapping;
     //     use crate::p2p_network::sync_handlers::headers;
-    //     use p2p_proto::block::{Direction, GetBlocks};
-    //     use p2p_proto::common::BlockId;
+    //     use p2p_proto_v1::block::{Direction, GetBlocks};
+    //     use p2p_proto_v1::common::BlockId;
     //     use proptest::prelude::*;
 
     //     proptest! {

@@ -6195,21 +6195,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "p2p_proto"
-version = "0.1.0"
-dependencies = [
- "fake",
- "libp2p-identity 0.2.3",
- "p2p_proto_derive",
- "prost",
- "prost-build",
- "prost-types",
- "rand 0.8.5",
- "rstest",
- "stark_hash",
-]
-
-[[package]]
 name = "p2p_proto_derive"
 version = "0.1.0"
 dependencies = [
@@ -6230,6 +6215,21 @@ dependencies = [
  "rand 0.8.5",
  "stark_hash",
  "zstd",
+]
+
+[[package]]
+name = "p2p_proto_v1"
+version = "0.1.0"
+dependencies = [
+ "fake",
+ "libp2p-identity 0.2.3",
+ "p2p_proto_derive",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "rand 0.8.5",
+ "rstest",
+ "stark_hash",
 ]
 
 [[package]]
@@ -6376,8 +6376,8 @@ dependencies = [
  "mimalloc",
  "mockall",
  "p2p",
- "p2p_proto",
  "p2p_proto_v0",
+ "p2p_proto_v1",
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-ethereum",
