@@ -35,6 +35,7 @@ assert_matches = "1.5.0"
 base64 = "0.13.1"
 bitvec = "1.0.1"
 blockifier = { git = "https://github.com/starkware-libs/blockifier", rev = "ebf48c445b965c5c55b8c724338be7c6e21ffdd4" }
+bytes = "1.4.0"
 clap = "4.1.13"
 const_format = "0.2.31"
 criterion = "0.5.1"
