@@ -24,14 +24,14 @@ pub trait TryFromProto<T> {
         Self: Sized;
 }
 
-impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
-    fn to_proto(self) -> p2p_proto::block::BlockHeader {
-        use p2p_proto::common::{Address, ChainId, Hash, Merkle};
+impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
+    fn to_proto(self) -> p2p_proto_v1::block::BlockHeader {
+        use p2p_proto_v1::common::{Address, ChainId, Hash, Merkle};
         const ZERO_MERKLE: Merkle = Merkle {
             n_leaves: 0,
             root: Hash(Felt::ZERO),
         };
-        p2p_proto::block::BlockHeader {
+        p2p_proto_v1::block::BlockHeader {
             parent_block: Hash(self.parent_hash.0),
             time: SystemTime::UNIX_EPOCH // FIXME Dunno how to convert
                 .checked_add(Duration::from_secs(self.timestamp.get()))
@@ -54,10 +54,10 @@ impl ToProto<p2p_proto::block::BlockHeader> for BlockHeader {
     }
 }
 
-impl ToProto<p2p_proto::state::StateDiff> for StateUpdate {
-    fn to_proto(self) -> p2p_proto::state::StateDiff {
-        use p2p_proto::common::Address;
-        use p2p_proto::state::{ContractDiff, ContractStoredValue, StateDiff};
+impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
+    fn to_proto(self) -> p2p_proto_v1::state::StateDiff {
+        use p2p_proto_v1::common::Address;
+        use p2p_proto_v1::state::{ContractDiff, ContractStoredValue, StateDiff};
         StateDiff {
             tree_id: 0, // TODO there will initially be 2 trees, dunno which id is which
             contract_diffs: self
@@ -113,8 +113,8 @@ impl ToProto<p2p_proto::state::StateDiff> for StateUpdate {
 
 // FIXME at the moment this implementation is useless due to the massive difference between p2p and internal header representations,
 // I'm not sure we want to keep it at all
-impl TryFromProto<p2p_proto::block::BlockHeader> for BlockHeader {
-    fn try_from_proto(proto: p2p_proto::block::BlockHeader) -> anyhow::Result<Self>
+impl TryFromProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
+    fn try_from_proto(proto: p2p_proto_v1::block::BlockHeader) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
@@ -141,8 +141,8 @@ impl TryFromProto<p2p_proto::block::BlockHeader> for BlockHeader {
 }
 
 // FIXME add missing stuff to the proto representation
-impl TryFromProto<p2p_proto::state::StateDiff> for StateUpdate {
-    fn try_from_proto(proto: p2p_proto::state::StateDiff) -> anyhow::Result<Self>
+impl TryFromProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
+    fn try_from_proto(proto: p2p_proto_v1::state::StateDiff) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
