@@ -70,7 +70,7 @@ assert_matches = { workspace = true }
 const-decoder = "0.3.0"
 crossbeam-channel = "0.5.8"
 fake = { workspace = true }
-flate2 = "1.0.27"
+flate2 = { workspace = true }
 http = "0.2.9"
 mimalloc = { version = "0.1.38", default-features = false }
 mockall = "0.11.4"

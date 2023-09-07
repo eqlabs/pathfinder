@@ -31,7 +31,7 @@ warp = { version = "0.3.5" }
 [dev-dependencies]
 assert_matches = { workspace = true }
 base64 = { workspace = true }
-flate2 = "1.0.27"
+flate2 = { workspace = true }
 lazy_static = { workspace = true }
 pretty_assertions = { workspace = true }
 stark_hash = { path = "../stark_hash" }

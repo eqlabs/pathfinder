@@ -39,6 +39,7 @@ clap = "4.1.13"
 const_format = "0.2.31"
 criterion = "0.5.1"
 fake = { version = "2.8.0", features = ["derive"] }
+flate2 = "1.0.27"
 lazy_static = "1.4.0"
 primitive-types = "0.12.1"
 pretty_assertions = "1.4.0"
