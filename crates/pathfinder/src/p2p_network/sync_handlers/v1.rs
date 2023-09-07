@@ -66,7 +66,7 @@ pub async fn get_bodies(
     Ok(())
 }
 
-fn headers(
+pub(crate) fn headers(
     tx: Transaction<'_>,
     request: GetBlockHeaders,
 ) -> anyhow::Result<Vec<BlockHeadersResponse>> {

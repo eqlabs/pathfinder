@@ -3,6 +3,7 @@ use crate::state::{Classes, StateDiff};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use rand::Rng;
+use std::fmt::Display;
 use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -178,13 +179,24 @@ impl Step {
     }
 }
 
-impl From<Option<u64>> for Step {
-    fn from(input: Option<u64>) -> Self {
-        let step = input.unwrap_or(1);
+impl From<u64> for Step {
+    fn from(input: u64) -> Self {
         // step 0 means the step field was actually missing or
         // the client does not know what it's actually doing :P
-        let step = if step == 0 { 1 } else { step };
+        let step = if input == 0 { 1 } else { input };
         Self(step)
+    }
+}
+
+impl From<Option<u64>> for Step {
+    fn from(input: Option<u64>) -> Self {
+        Self::from(input.unwrap_or(1))
+    }
+}
+
+impl Display for Step {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
