@@ -36,7 +36,7 @@ starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-zstd = "0.12"
+zstd = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }

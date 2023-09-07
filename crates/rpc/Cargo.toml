@@ -49,7 +49,7 @@ tower-http = { version = "0.4.4", default-features = false, features = [
     "cors",
 ] }
 tracing = { workspace = true }
-zstd = "0.12"
+zstd = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
