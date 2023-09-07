@@ -46,6 +46,7 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 http = "0.2.9"
 lazy_static = "1.4.0"
 metrics = "0.20.1"
+num-bigint = { version = "0.4.4", features = ["serde"] }
 primitive-types = "0.12.1"
 pretty_assertions = "1.4.0"
 rand = "0.8.5"

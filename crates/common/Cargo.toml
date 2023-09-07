@@ -12,7 +12,7 @@ anyhow = { workspace = true }
 bitvec = { workspace = true }
 fake = { workspace = true }
 metrics = { workspace = true }
-num-bigint = { version = "0.4.4", features = ["serde"] }
+num-bigint = { workspace = true }
 paste = "1.0.14"
 primitive-types = { workspace = true, features = ["serde"] }
 rand = { workspace = true }

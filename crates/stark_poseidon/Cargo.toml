@@ -10,7 +10,7 @@ name = "stark_poseidon"
 path = "src/lib.rs"
 
 [build-dependencies]
-num-bigint = "0.4"
+num-bigint = { workspace = true }
 stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
 
