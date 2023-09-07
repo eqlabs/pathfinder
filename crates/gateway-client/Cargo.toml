@@ -17,7 +17,7 @@ mockall = { version = "0.11.4" }
 pathfinder-common = { path = "../common" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-serde = { path = "../serde" }
-reqwest = { version = "0.11.18", features = ["json"] }
+reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",

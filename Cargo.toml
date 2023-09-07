@@ -49,6 +49,7 @@ metrics = "0.20.1"
 primitive-types = "0.12.1"
 pretty_assertions = "1.4.0"
 rand = "0.8.5"
+reqwest = { version = "0.11.18", features = ["json"] }
 semver = "1.0.18"
 serde = "=1.0.188"
 serde_json = "1.0.105"
