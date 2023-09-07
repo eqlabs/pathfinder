@@ -32,7 +32,7 @@ warp = { version = "0.3.5" }
 assert_matches = { workspace = true }
 base64 = "0.13.1"
 flate2 = "1.0.27"
-lazy_static = "1.4.0"
+lazy_static = { workspace = true }
 pretty_assertions = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }

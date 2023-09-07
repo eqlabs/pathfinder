@@ -14,7 +14,7 @@ const_format = { workspace = true }
 data-encoding = "2.4.0"
 fake = { workspace = true }
 hex = "0.4.3"
-lazy_static = "1.4.0"
+lazy_static = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }
