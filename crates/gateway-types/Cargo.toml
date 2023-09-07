@@ -13,7 +13,7 @@ lazy_static = "1.4.0"
 pathfinder-common = { path = "../common" }
 pathfinder-serde = { path = "../serde" }
 primitive-types = "0.12.1"
-rand = { version = "0.8.5" }
+rand = { workspace = true }
 reqwest = "0.11.18"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
@@ -29,7 +29,5 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
-# Due to pathfinder_common::starkhash!() usage
-rand = { version = "0.8.5" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }

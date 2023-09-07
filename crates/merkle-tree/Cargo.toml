@@ -11,7 +11,7 @@ anyhow = { workspace = true }
 bitvec = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }
-rand = "0.8"
+rand = { workspace = true }
 stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }

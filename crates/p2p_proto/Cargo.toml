@@ -12,7 +12,7 @@ p2p_proto_derive = { path = "../p2p_proto_derive" }
 primitive-types = "0.12.1"
 prost = "0.11.9"
 prost-types = "0.11.9"
-rand = { version = "0.8.5" }
+rand = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 
 [build-dependencies]

@@ -15,7 +15,7 @@ stark_curve = { path = "../stark_curve" }
 [dependencies]
 bitvec = { workspace = true }
 fake = { workspace = true }
-rand = { version = "0.8.5" }
+rand = { workspace = true }
 rand_core = "0.6.4"
 serde = { workspace = true }
 stark_curve = { path = "../stark_curve" }
