@@ -146,7 +146,7 @@
                             "title": "New header events",
                             "description": "Fires a notification each time a new header is appended to the chain.",
                             "type": "string",
-                            "enum": ["newHeaders"]
+                            "enum": ["headers"]
                         }
                     ]
                 }
@@ -169,9 +169,9 @@
                 "result": {
                     "oneof": [
                         {
-                            "description": "Event fired by a newHeaders subscription",
+                            "description": "Event fired by a headers subscription",
                             "schema": {
-                                "$ref": "#/components/schemas/WebsocketEventNewHead"
+                                "$ref": "#/components/schemas/BLOCK_HEADER"
                             }
                         }
                     ]
@@ -329,32 +329,56 @@
             "BLOCK_HEADER": {
                 "type": "object",
                 "properties": {
-                    "block_hash": {
-                        "type": "string"
-                    },
-                    "block_number": {
-                        "type": "number"
+                    "hash": {
+                        "ref": "#/components/schemas/FELT"
                     },
                     "parent_hash": {
-                        "type": "string"
+                        "ref": "#/components/schemas/FELT"
                     },
-                    "sequencer_address": {
-                        "type": "string"
-                    },
-                    "state_commitment": {
-                        "type": "string"
+                    "number": {
+                        "type": "integer"
                     },
                     "timestamp": {
-                        "type": "number"
+                        "type": "integer"
+                    },
+                    "gas_price": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "sequencer_address": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "starknet_version": {
+                        "ref": "string"
+                    },
+                    "class_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "event_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "state_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "storage_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "transaction_commitment": {
+                        "ref": "#/components/schemas/FELT"
                     }
                 },
                 "required": [
-                    "block_hash",
-                    "block_number",
+                    "hash",
                     "parent_hash",
+                    "number",
+                    "timestamp",
+                    "gas_price",
                     "sequencer_address",
+                    "starknet_version",
+                    "class_commitment",
+                    "event_commitment",
                     "state_commitment",
-                    "timestamp"
+                    "storage_commitment",
+                    "transaction_commitment"
                 ]
             }
         },
