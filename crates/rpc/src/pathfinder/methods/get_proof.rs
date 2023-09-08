@@ -194,8 +194,7 @@ pub async fn get_proof(
             )
         };
 
-        let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&tx, storage_commitment).context("Loading storage trie")?;
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.

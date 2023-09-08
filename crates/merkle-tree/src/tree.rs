@@ -60,7 +60,7 @@ use std::{cell::RefCell, rc::Rc};
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
     root: Rc<RefCell<InternalNode>>,
     _hasher: std::marker::PhantomData<H>,
-    /// If enables, node hashes are verified as they are resolved. This allows 
+    /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
     verify_hashes: bool,
 }
@@ -527,7 +527,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         if self.verify_hashes {
             let calculated_hash = node.hash::<H>();
 
-            anyhow::ensure!(hash == calculated_hash,
+            anyhow::ensure!(
+                hash == calculated_hash,
                 r"Node data is corrupt.
 
 Expected:   {hash}

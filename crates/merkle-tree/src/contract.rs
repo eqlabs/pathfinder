@@ -85,14 +85,11 @@ pub struct StorageCommitmentTree<'tx> {
 }
 
 impl<'tx> StorageCommitmentTree<'tx> {
-    pub fn load(
-        transaction: &'tx Transaction<'tx>,
-        root: StorageCommitment,
-    ) -> anyhow::Result<Self> {
+    pub fn load(transaction: &'tx Transaction<'tx>, root: StorageCommitment) -> Self {
         let tree = MerkleTree::new(root.0);
         let storage = transaction.storage_trie_reader();
 
-        Ok(Self { tree, storage })
+        Self { tree, storage }
     }
 
     pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {

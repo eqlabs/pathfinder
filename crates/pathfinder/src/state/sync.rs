@@ -844,7 +844,6 @@ fn update_starknet_state(
         .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
-        .context("Loading storage trie")?
         .with_verify_hashes(verify_hashes);
 
     for (contract, update) in &state_update.contract_updates {

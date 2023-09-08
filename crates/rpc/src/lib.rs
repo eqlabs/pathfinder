@@ -272,7 +272,7 @@ pub mod test_utils {
             .unwrap();
 
         let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO)).unwrap();
+            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
@@ -291,8 +291,7 @@ pub mod test_utils {
             .insert_storage_trie(storage_commitment0, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, storage_commitment0).unwrap();
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update0,
@@ -324,8 +323,7 @@ pub mod test_utils {
             .insert_storage_trie(storage_commitment1, &nodes)
             .unwrap();
 
-        let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, storage_commitment1).unwrap();
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,

@@ -42,7 +42,8 @@ pub fn update_contract_state(
 
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
-        let mut contract_tree = ContractsStorageTree::load(transaction, old_root).with_verify_hashes(verify_hashes);
+        let mut contract_tree =
+            ContractsStorageTree::load(transaction, old_root).with_verify_hashes(verify_hashes);
         for (key, value) in updates {
             contract_tree
                 .set(*key, *value)
