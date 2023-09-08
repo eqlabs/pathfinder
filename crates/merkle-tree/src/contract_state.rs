@@ -17,6 +17,7 @@ pub fn update_contract_state(
     new_class_hash: Option<ClassHash>,
     storage_commitment_tree: &StorageCommitmentTree<'_>,
     transaction: &Transaction<'_>,
+    verify_hashes: bool,
 ) -> anyhow::Result<ContractStateHash> {
     // Update the contract state tree.
     let state_hash = storage_commitment_tree
@@ -41,7 +42,7 @@ pub fn update_contract_state(
 
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
-        let mut contract_tree = ContractsStorageTree::load(transaction, old_root);
+        let mut contract_tree = ContractsStorageTree::load(transaction, old_root).with_verify_hashes(verify_hashes);
         for (key, value) in updates {
             contract_tree
                 .set(*key, *value)

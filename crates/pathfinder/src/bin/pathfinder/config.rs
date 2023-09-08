@@ -185,6 +185,20 @@ Examples:
     #[cfg(not(feature = "p2p"))]
     #[clap(skip)]
     debug: (),
+
+    #[arg(
+        long = "sync.verify_tree_node_data",
+        long_help = r"When enabled, state tree node hashes are verified when loaded from disk.
+
+This can be used to identify tree node data corruption which is useful when debugging a state commitment mismatch.
+
+This should only be enabled for debugging purposes as it adds substantial processing cost to every block.
+",
+        default_value = "false",
+        env = "PATHFINDER_VERIFY_TREE_NODE_HASHES",
+        value_name = "BOOL"
+    )]
+    verify_tree_node_data: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -419,6 +433,7 @@ pub struct Config {
     pub color: Color,
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
+    pub verify_tree_hashes: bool,
 }
 
 pub struct WebSocket {
@@ -598,6 +613,7 @@ impl Config {
             color: cli.color,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),
+            verify_tree_hashes: cli.verify_tree_node_data,
         }
     }
 }

@@ -280,6 +280,7 @@ pub mod test_utils {
             Some(class0_hash),
             &storage_commitment_tree,
             &db_txn,
+            false,
         )
         .unwrap();
         storage_commitment_tree
@@ -299,6 +300,7 @@ pub mod test_utils {
             Some(class1_hash),
             &storage_commitment_tree,
             &db_txn,
+            false,
         )
         .unwrap();
         storage_commitment_tree
@@ -311,6 +313,7 @@ pub mod test_utils {
             None,
             &storage_commitment_tree,
             &db_txn,
+            false,
         )
         .unwrap();
         storage_commitment_tree
@@ -330,6 +333,7 @@ pub mod test_utils {
             None,
             &storage_commitment_tree,
             &db_txn,
+            false,
         )
         .unwrap();
         storage_commitment_tree
@@ -342,6 +346,7 @@ pub mod test_utils {
             Some(class2_hash),
             &storage_commitment_tree,
             &db_txn,
+            false,
         )
         .unwrap();
         storage_commitment_tree

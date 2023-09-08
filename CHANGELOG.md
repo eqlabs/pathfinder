@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- `--sync.verify_tree_node_data` which enables verifies state tree nodes as they are loaded from disk. This is a debugging tool to identify disk corruption impacting tree node data. This should only be enabled when debugging a state root mismatch.
+
 ## [0.8.1] - 2023-09-07
 
 ### Fixed

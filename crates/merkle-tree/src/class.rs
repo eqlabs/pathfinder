@@ -26,6 +26,11 @@ impl<'tx> ClassCommitmentTree<'tx> {
         Self { tree, storage }
     }
 
+    pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
+        self.tree = self.tree.with_verify_hashes(verify_hashes);
+        self
+    }
+
     /// Adds a leaf node for a Sierra -> CASM commitment.
     ///
     /// Note that the leaf value is _not_ the Cairo hash, but a hashed value based on that.

@@ -37,6 +37,11 @@ impl<'tx> ContractsStorageTree<'tx> {
         Self { tree, storage }
     }
 
+    pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
+        self.tree = self.tree.with_verify_hashes(verify_hashes);
+        self
+    }
+
     #[allow(dead_code)]
     pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
         let value = self.tree.get(&self.storage, address.view_bits())?;
@@ -88,6 +93,11 @@ impl<'tx> StorageCommitmentTree<'tx> {
         let storage = transaction.storage_trie_reader();
 
         Ok(Self { tree, storage })
+    }
+
+    pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
+        self.tree = self.tree.with_verify_hashes(verify_hashes);
+        self
     }
 
     pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {

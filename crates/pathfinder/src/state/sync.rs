@@ -77,6 +77,7 @@ pub struct SyncContext<G, E> {
     pub websocket_txs: WebsocketSenders,
     pub block_cache_size: usize,
     pub restart_delay: Duration,
+    pub verify_tree_hashes: bool,
 }
 
 impl<G, E> From<SyncContext<G, E>> for L1SyncContext<E> {
@@ -144,6 +145,7 @@ where
         websocket_txs: _,
         block_cache_size,
         restart_delay,
+        verify_tree_hashes: _,
     } = context.clone();
 
     let mut db_conn = storage
@@ -208,6 +210,7 @@ where
         storage: context.storage,
         state: context.state,
         pending_data: context.pending_data,
+        verify_tree_hashes: context.verify_tree_hashes,
     };
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context));
 
@@ -326,6 +329,7 @@ struct ConsumerContext {
     pub storage: Storage,
     pub state: Arc<SyncState>,
     pub pending_data: PendingData,
+    pub verify_tree_hashes: bool,
 }
 
 async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> anyhow::Result<()> {
@@ -333,6 +337,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
         storage,
         state,
         pending_data,
+        verify_tree_hashes,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -374,9 +379,16 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     .map(|x| x.1.storage.len())
                     .sum();
                 let update_t = std::time::Instant::now();
-                l2_update(&mut db_conn, *block, tx_comm, ev_comm, *state_update)
-                    .await
-                    .with_context(|| format!("Update L2 state to {block_number}"))?;
+                l2_update(
+                    &mut db_conn,
+                    *block,
+                    tx_comm,
+                    ev_comm,
+                    *state_update,
+                    verify_tree_hashes,
+                )
+                .await
+                .with_context(|| format!("Update L2 state to {block_number}"))?;
                 // This opens a short window where `pending` overlaps with `latest` in storage. Unfortuantely
                 // there is no easy way of having a transaction over both memory and database. sqlite does support
                 // multi-database transactions, but it does not work for WAL mode.
@@ -669,13 +681,14 @@ async fn l2_update(
     transaction_commitment: TransactionCommitment,
     event_commitment: EventCommitment,
     state_update: StateUpdate,
+    verify_tree_hashes: bool,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
         let (storage_commitment, class_commitment) =
-            update_starknet_state(&transaction, &state_update)
+            update_starknet_state(&transaction, &state_update, verify_tree_hashes)
                 .context("Updating Starknet state")?;
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
@@ -822,6 +835,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
 fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
+    verify_hashes: bool,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
     let (storage_commitment, class_commitment) = transaction
         .block_header(pathfinder_storage::BlockId::Latest)
@@ -830,7 +844,8 @@ fn update_starknet_state(
         .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
 
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
-        .context("Loading storage trie")?;
+        .context("Loading storage trie")?
+        .with_verify_hashes(verify_hashes);
 
     for (contract, update) in &state_update.contract_updates {
         let state_hash = update_contract_state(
@@ -840,6 +855,7 @@ fn update_starknet_state(
             update.class.as_ref().map(|x| x.class_hash()),
             &storage_commitment_tree,
             transaction,
+            verify_hashes,
         )
         .context("Update contract state")?;
 
@@ -856,6 +872,7 @@ fn update_starknet_state(
             None,
             &storage_commitment_tree,
             transaction,
+            verify_hashes,
         )
         .context("Update system contract state")?;
 
@@ -874,7 +891,8 @@ fn update_starknet_state(
     tracing::trace!(new_nodes=%count, "Storage trie persisted");
 
     // Add new Sierra classes to class commitment tree.
-    let mut class_commitment_tree = ClassCommitmentTree::load(transaction, class_commitment);
+    let mut class_commitment_tree =
+        ClassCommitmentTree::load(transaction, class_commitment).with_verify_hashes(verify_hashes);
 
     for (sierra, casm) in &state_update.declared_sierra_classes {
         let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(*casm);
@@ -1000,6 +1018,7 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
+            verify_tree_hashes: false,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1042,6 +1061,7 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
+            verify_tree_hashes: false,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1083,6 +1103,7 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
+            verify_tree_hashes: false,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1116,6 +1137,7 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
+            verify_tree_hashes: false,
         };
 
         consumer(event_rx, context).await.unwrap();
@@ -1152,6 +1174,7 @@ mod tests {
             storage,
             state: Arc::new(SyncState::default()),
             pending_data: PendingData::default(),
+            verify_tree_hashes: false,
         };
 
         consumer(event_rx, context).await.unwrap();
