@@ -185,6 +185,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         websocket_txs: rpc_server.get_ws_senders(),
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,
+        verify_tree_hashes: config.verify_tree_hashes,
     };
 
     let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));

@@ -60,6 +60,9 @@ use std::{cell::RefCell, rc::Rc};
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
     root: Rc<RefCell<InternalNode>>,
     _hasher: std::marker::PhantomData<H>,
+    /// If enables, node hashes are verified as they are resolved. This allows
+    /// testing for database corruption.
+    verify_hashes: bool,
 }
 
 /// The result of committing a [MerkleTree]. Contains the new root and any
@@ -77,7 +80,13 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         Self {
             root: root_node,
             _hasher: std::marker::PhantomData,
+            verify_hashes: false,
         }
+    }
+
+    pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
+        self.verify_hashes = verify_hashes;
+        self
     }
 
     pub fn empty() -> Self {
@@ -514,6 +523,21 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         let node = storage
             .get(&hash)?
             .with_context(|| format!("Node at height {height} does not exist: {hash}"))?;
+
+        if self.verify_hashes {
+            let calculated_hash = node.hash::<H>();
+
+            anyhow::ensure!(
+                hash == calculated_hash,
+                r"Node data is corrupt.
+
+Expected:   {hash}
+Calculated: {calculated_hash}
+
+Node: {node:?}
+"
+            );
+        }
 
         let node = match node {
             TrieNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
