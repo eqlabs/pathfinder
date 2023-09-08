@@ -161,9 +161,7 @@ mod prop {
         use super::overlapping;
         use crate::p2p_network::sync_handlers::v1::conv::ToProto;
         use crate::p2p_network::sync_handlers::v1::headers;
-        use p2p_proto_v1::block::{
-            BlockHeadersResponsePart, Direction, GetBlockHeaders, Iteration,
-        };
+        use p2p_proto_v1::block::{BlockHeaderMessage, Direction, GetBlockHeaders, Iteration};
         use p2p_proto_v1::common::BlockId;
         use proptest::prelude::*;
 
@@ -187,7 +185,7 @@ mod prop {
                 let tx = connection.transaction().unwrap();
                 let reply_vec = headers(tx, request).unwrap();
                 let reply_vec = reply_vec.into_iter().map(|reply | match reply.block_part {
-                    BlockHeadersResponsePart::Header(x) => *x,
+                    BlockHeaderMessage::Header(x) => *x,
                     _ => panic!("Wrong reply type"),
                 }).collect::<Vec<_>>();
 

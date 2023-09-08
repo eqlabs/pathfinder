@@ -7,24 +7,24 @@ pub mod proto {
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
-    pub mod event {
-        include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
-    }
-    pub mod mempool {
-        include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
-    }
-    pub mod receipt {
-        include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
-    }
-    pub mod snapshot {
-        include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
-    }
+    // pub mod event {
+    //     include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
+    // }
+    // pub mod mempool {
+    //     include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
+    // }
+    // pub mod receipt {
+    //     include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
+    // }
+    // pub mod snapshot {
+    //     include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
+    // }
     pub mod state {
         include!(concat!(env!("OUT_DIR"), "/starknet.state.rs"));
     }
-    pub mod transaction {
-        include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
-    }
+    // pub mod transaction {
+    //     include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
+    // }
 }
 
 pub trait ToProtobuf<Output>
@@ -134,12 +134,12 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
 use p2p_proto_derive::*;
 pub mod block;
 pub mod common;
-pub mod event;
-pub mod mempool;
-pub mod receipt;
-pub mod snapshot;
+// pub mod event;
+// pub mod mempool;
+// pub mod receipt;
+// pub mod snapshot;
 pub mod state;
-pub mod transaction;
+// pub mod transaction;
 
 // Trying to estimate the overhead of the classes message so that we know what is the limit
 // on compressed class definition size, varint delimiting of the message is taken into account
@@ -158,15 +158,15 @@ fn check_classes_message_overhead(
     #[values((0, 22), (1, 82), (3, 196), (10, 588))] num_classes_expected_overhead: (usize, usize),
 ) {
     let (num_classes, expected_overhead) = num_classes_expected_overhead;
-    use crate::proto::block::{block_bodies_response::BlockPart, BlockBodiesResponse};
-    use crate::proto::common::{BlockId, Hash};
+    use crate::proto::block::{block_bodies_response::BodyMessage, BlockBodiesResponse};
+    use crate::proto::common::Hash;
     use crate::proto::state::{Class, Classes};
     use prost::Message;
     const _1MIB: usize = 1024 * 1024;
     let response = |classes| BlockBodiesResponse {
-        id: Some(BlockId { height: u64::MAX }),
-        block_part: Some(BlockPart::Classes(Classes {
-            tree_id: u32::MAX,
+        block_number: u64::MAX,
+        body_message: Some(BodyMessage::Classes(Classes {
+            domain: u32::MAX,
             classes,
         })),
     };
@@ -175,8 +175,8 @@ fn check_classes_message_overhead(
             elements: vec![0xFF; 32],
         }),
         definition: vec![0xFF; _1MIB],
-        total_chunks: Some(u32::MAX),
-        chunk_count: Some(u32::MAX),
+        total_parts: Some(u32::MAX),
+        part_num: Some(u32::MAX),
     };
     let len = response(vec![class; num_classes])
         .encode_length_delimited_to_vec()

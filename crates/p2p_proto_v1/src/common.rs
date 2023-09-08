@@ -1,25 +1,27 @@
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use libp2p_identity::PeerId;
+use rand::Rng;
 use stark_hash::Felt;
+use std::fmt::Display;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub struct Hash(pub Felt);
 
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::common::Hashes")]
+pub struct Hashes {
+    pub items: Vec<Hash>,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub struct Address(pub Felt);
 
-// Avoid pathfinder_common dependency
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
-pub struct ChainId(pub Felt);
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
-pub struct BlockId(pub u64);
-
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::common::Signature")]
-pub struct Signature {
-    pub parts: Vec<Felt>,
+#[protobuf(name = "crate::proto::common::ConsensusSignature")]
+pub struct ConsensusSignature {
+    pub r: Felt,
+    pub s: Felt,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -27,6 +29,49 @@ pub struct Signature {
 pub struct Merkle {
     pub n_leaves: u32,
     pub root: Hash,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::common::Patricia")]
+pub struct Patricia {
+    pub height: u32,
+    pub root: Hash,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::common::Iteration")]
+pub struct Iteration {
+    pub start_block: u64,
+    pub direction: Direction,
+    pub limit: u64,
+    pub step: Step,
+}
+
+/// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None` or `Some(0)`
+///
+/// FIXME next spec iteration requires to return error when step is explicitly set to 0 by the requesting party
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Step(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Dummy)]
+pub enum Direction {
+    Forward,
+    Backward,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::common::Fin")]
+pub struct Fin {
+    #[optional]
+    pub error: Option<Error>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Dummy)]
+pub enum Error {
+    Busy,
+    TooMuch,
+    Unknown,
+    Pruned,
 }
 
 impl ToProtobuf<proto::common::Felt252> for Felt {
@@ -127,40 +172,109 @@ impl TryFromProtobuf<proto::common::PeerId> for PeerId {
     }
 }
 
-impl ToProtobuf<proto::common::ChainId> for ChainId {
-    fn to_protobuf(self) -> proto::common::ChainId {
-        proto::common::ChainId {
-            id: self.0.to_be_bytes().into(),
+impl Step {
+    pub fn take_inner(self) -> u64 {
+        self.0
+    }
+}
+
+impl From<u64> for Step {
+    fn from(input: u64) -> Self {
+        // step 0 means the step field was actually missing or
+        // the client does not know what it's actually doing :P
+        let step = if input == 0 { 1 } else { input };
+        Self(step)
+    }
+}
+
+impl From<Option<u64>> for Step {
+    fn from(input: Option<u64>) -> Self {
+        Self::from(input.unwrap_or(1))
+    }
+}
+
+impl Display for Step {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T> Dummy<T> for Step {
+    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(rng.gen_range(1u64..=u64::MAX))
+    }
+}
+
+impl ToProtobuf<u64> for Step {
+    fn to_protobuf(self) -> u64 {
+        self.take_inner()
+    }
+}
+
+impl TryFromProtobuf<u64> for Step {
+    fn try_from_protobuf(input: u64, _: &'static str) -> Result<Self, std::io::Error> {
+        Ok(Self::from(input))
+    }
+}
+
+impl ToProtobuf<i32> for Direction {
+    fn to_protobuf(self) -> i32 {
+        use proto::common::iteration::Direction::{Backward, Forward};
+        match self {
+            Direction::Forward => Forward as i32,
+            Direction::Backward => Backward as i32,
         }
     }
 }
 
-impl TryFromProtobuf<proto::common::ChainId> for ChainId {
-    fn try_from_protobuf(
-        input: proto::common::ChainId,
-        field_name: &'static str,
-    ) -> Result<Self, std::io::Error> {
-        let stark_hash = Felt::from_be_slice(&input.id).map_err(|e| {
+impl TryFromProtobuf<i32> for Direction {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+        use proto::common::iteration::{
+            self,
+            Direction::{Backward, Forward},
+        };
+        let input = iteration::Direction::from_i32(input).ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Invalid field element {field_name}: {e}"),
+                format!("Invalid Direction {field_name}"),
             )
         })?;
-        Ok(ChainId(stark_hash))
+        Ok(match input {
+            Backward => Direction::Backward,
+            Forward => Direction::Forward,
+        })
     }
 }
 
-impl ToProtobuf<proto::common::BlockId> for BlockId {
-    fn to_protobuf(self) -> proto::common::BlockId {
-        proto::common::BlockId { height: self.0 }
+impl ToProtobuf<i32> for Error {
+    fn to_protobuf(self) -> i32 {
+        use proto::common::fin::Error::{Busy, Pruned, TooMuch, Unknown};
+        match self {
+            Error::Busy => Busy as i32,
+            Error::TooMuch => TooMuch as i32,
+            Error::Unknown => Unknown as i32,
+            Error::Pruned => Pruned as i32,
+        }
     }
 }
 
-impl TryFromProtobuf<proto::common::BlockId> for BlockId {
-    fn try_from_protobuf(
-        input: proto::common::BlockId,
-        _: &'static str,
-    ) -> Result<Self, std::io::Error> {
-        Ok(BlockId(input.height))
+impl TryFromProtobuf<i32> for Error {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+        use proto::common::fin::{
+            self,
+            Error::{Busy, Pruned, TooMuch, Unknown},
+        };
+        let input = fin::Error::from_i32(input).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid Error {field_name}"),
+            )
+        })?;
+        Ok(match input {
+            Busy => Error::Busy,
+            TooMuch => Error::TooMuch,
+            Unknown => Error::Unknown,
+            Pruned => Error::Pruned,
+        })
     }
 }
