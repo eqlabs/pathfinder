@@ -22,7 +22,7 @@ pub struct ContractDiff {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::state::StateDiff")]
 pub struct StateDiff {
-    pub tree_id: u32,
+    pub domain: u32,
     pub contract_diffs: Vec<ContractDiff>,
 }
 
@@ -32,14 +32,14 @@ pub struct Class {
     pub compiled_hash: Hash,
     pub definition: Vec<u8>,
     #[optional]
-    pub total_chunks: Option<u32>,
+    pub total_parts: Option<u32>,
     #[optional]
-    pub chunk_count: Option<u32>,
+    pub part_num: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::state::Classes")]
 pub struct Classes {
-    pub tree_id: u32,
+    pub domain: u32,
     pub classes: Vec<Class>,
 }

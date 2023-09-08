@@ -1,6 +1,6 @@
 use anyhow::Context;
 use p2p_proto_v1::block::{
-    BlockBodiesResponse, BlockBodiesResponsePart, BlockHeadersResponse, BlockHeadersResponsePart,
+    BlockBodiesResponse, BlockBodyMessage, BlockHeaderMessage, BlockHeadersResponse,
     GetBlockBodies, GetBlockHeaders,
 };
 use p2p_proto_v1::common::{BlockId, Hash};
@@ -100,7 +100,7 @@ pub(crate) fn headers(
 
         responses.push(BlockHeadersResponse {
             id: BlockId(block_number.get()),
-            block_part: BlockHeadersResponsePart::Header(Box::new(header.to_proto())),
+            block_part: BlockHeaderMessage::Header(Box::new(header.to_proto())),
         });
 
         // 2. Get the signatures for this block
@@ -159,7 +159,7 @@ fn bodies(
 
         responses.push(BlockBodiesResponse {
             id: BlockId(block_number.get()),
-            block_part: BlockBodiesResponsePart::Diff(state_diff.to_proto()),
+            block_part: BlockBodyMessage::Diff(state_diff.to_proto()),
         });
 
         // 2. Get the newly declared classes in this block
@@ -302,7 +302,7 @@ fn classes(
 }
 
 mod block_bodies_response {
-    use p2p_proto_v1::block::BlockBodiesResponsePart;
+    use p2p_proto_v1::block::BlockBodyMessage;
 
     use super::*;
 
@@ -317,7 +317,7 @@ mod block_bodies_response {
         use p2p_proto_v1::state::{Class, Classes};
         BlockBodiesResponse {
             id: BlockId(block_number.get()),
-            block_part: BlockBodiesResponsePart::Classes(Classes {
+            block_part: BlockBodyMessage::Classes(Classes {
                 tree_id: 0, // FIXME
                 classes: vec![Class {
                     compiled_hash: Hash(class_hash.0),
@@ -348,7 +348,7 @@ mod block_bodies_response {
             .collect();
         BlockBodiesResponse {
             id: BlockId(block_number.get()),
-            block_part: BlockBodiesResponsePart::Classes(Classes {
+            block_part: BlockBodyMessage::Classes(Classes {
                 tree_id: 0, // FIXME
                 classes,
             }),

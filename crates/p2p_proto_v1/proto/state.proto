@@ -14,13 +14,13 @@ message StateDiff
 {
     // a bit more efficient than the state sync separation
     message ContractDiff {
-        starknet.common.Address address = 1;
-        optional starknet.common.Felt252 nonce = 2;
-        optional starknet.common.Felt252 class_hash = 3; // can change for replace_class or new contract
-        repeated ContractStoredValue values = 4;
+        starknet.common.Address          address    = 1;
+        optional starknet.common.Felt252 nonce      = 2;
+        optional starknet.common.Felt252 class_hash = 3;  // can change for replace_class or new contract
+        repeated ContractStoredValue     values     = 4;
     }
 
-    uint32 tree_id = 1;
+    uint32   domain                      = 1;  // volition state domain
     repeated ContractDiff contract_diffs = 2;
 }
 
@@ -29,14 +29,13 @@ message StateDiff
 // or, make the definitions optional? maybe it is enough to know only that a class exists, not its definition
 // which may be fetched lazily later.
 message Class {
-    starknet.common.Hash compiled_hash = 2; // TBD: add also/instead CASM definition (instead of every node compiling)?
-    bytes definition = 3; // compressed? size limit or split to chunks.
-    // FIXME these fields will be added in the spec, not sure about their names
-    optional uint32 total_chunks = 4; // Defaults to 1
-    optional uint32 chunk_count = 5;
+    starknet.common.Hash compiled_hash      = 2;  // TBD: add also/instead CASM definition (instead of every node compiling)?
+    bytes                definition         = 3;  // compressed? size limit or split to chunks.
+    optional             uint32 total_parts = 4;  // if a class is too large to be sent in one message
+    optional             uint32 part_num    = 5;  // 0 based
 }
 
 message Classes {
-    uint32 tree_id = 1;
+    uint32   domain        = 1;
     repeated Class classes = 2;
 }

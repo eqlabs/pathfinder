@@ -8,51 +8,41 @@ import "state.proto";
 
 // for now, we assume a small consensus, so this fits in 1M. Else, these will be repeated
 message Signatures {
-    starknet.common.BlockID id = 1;
-    repeated starknet.common.Signature signatures = 2; // can be more explicit here about the signature structure as this is not part of account abstraction
+    uint64 block_number = 1;
+
+    repeated starknet.common.ConsensusSignature signatures = 2; //
+                                       // can be more explicit here about the signature structure as this is not part of account abstraction
 }
 
 // Note: commitments may change to be for the previous blocks like comet/tendermint
 // hash of block header sent to L1
 message BlockHeader {
-    // FIXME BlockID is the height so we need to use a Hash here
-    //starknet.common.BlockID parent_block = 1;
-    starknet.common.Hash parent_block = 1;
-
-    google.protobuf.Timestamp time = 2; // TODO: see if this needs to be Felt252 or can be converted
-
-    starknet.common.Address sequencer_address = 3;
-
-    starknet.common.Merkle state_diffs = 4; //  By order of (contract, key), taking last in case of duplicates.
-                            // This means the proposer needs to sort after finishing the block (TBD: patricia? )
-
-    // State is optional and appears every X blocks for the last block. This is to support
-    // snapshot sync and also so that light nodes can sync on state without state diffs.
-    starknet.common.Merkle state = 5; // hash of contract and class patricia tries. Same as in L1. Later more trees will be included
-
-    starknet.common.Hash proof_fact = 6; // for Kth block behind. A hash of the output of the proof
+    starknet.common.Hash      parent_header     = 1;
+    uint64                    number            = 2;
+    google.protobuf.Timestamp time              = 3;   // TODO: see if this needs to be Felt252 or can be converted
+    starknet.common.Address   sequencer_address = 4;
+    starknet.common.Merkle    state_diffs       = 5;   //  By order of (contract, key), taking last in case of duplicates.
+                                                       // This means the proposer needs to sort after finishing the block (TBD: patricia? )
+                                                       // State is optional and appears every X blocks for the last block. This is to support
+                                                       // snapshot sync and also so that light nodes can sync on state without state diffs.
+    starknet.common.Patricia  state             = 6;   // hash of contract and class patricia tries. Same as in L1. Later more trees will be included
+    starknet.common.Hash      proof_fact        = 7;   // for Kth block behind. A hash of the output of the proof
 
     // The following merkles can be built on the fly while sequencing/validating txs.
-    starknet.common.Merkle transactions = 7; // By order of execution
-
-    starknet.common.Merkle events = 8; // By order of issuance.
-
-    starknet.common.Merkle receipts = 9; // By order of issuance.
-
-    uint32 protocol_version = 10;
-
-    starknet.common.ChainID chain_id = 11;
+    starknet.common.Merkle    transactions      = 8;   // By order of execution. TBD: required? the client can execute (powerful machine) and match state diff
+    starknet.common.Merkle    events            = 9;   // By order of issuance. TBD: in receipts?
+    starknet.common.Merkle    receipts          = 10;  // By order of issuance.
 
     // FIXME right now we are unable to calculate the block hash either
     // 1. because it does not carry all the items required for the calculation
     // 2. or because there are some old blocks for which we simply don't know how to do it
     // This is why we're adding the block hash here
-    starknet.common.Hash block_hash = 12;
+    starknet.common.Hash      block_hash        = 11;
     // FIXME we also need gas_price and starknet_version, other stuff need to calculate the block hash like
     // transaction, event, contract storage, class commitments can be taken from responses to respective queries
     // later in the sync process
-    bytes gas_price = 13; // big endian
-    string starknet_version = 14;
+    bytes                     gas_price         = 12; // big endian
+    string                    starknet_version  = 13;
 }
 
 message BlockProof {
@@ -60,56 +50,43 @@ message BlockProof {
 }
 
 // sent to all peers (except the ones this was received from, if any).
-// for a fraction of peers, also send the GetBlocks response (as if they asked for it for this block)
+// for a fraction of peers, also send the GetBlockHeaders and GetBlockBodies response (as if they asked for it for this block)
 message NewBlock {
-    starknet.common.BlockID id = 1;
-}
-
-// FIXME dunno if this query will stay
-message GetSignatures {
-    starknet.common.BlockID id = 1;
-}
-
-// FIXME based on slack chat, could change a bit
-message Iteration {
-    enum Direction {
-        Forward = 0;
-        Backward = 1;
+    oneof maybe_full {
+        uint64               block_number = 1;
+        BlockHeadersResponse header       = 2;
+        BlockBodiesResponse  body         = 3;
     }
-    
-    starknet.common.BlockID start = 1;
-    Direction direction = 2;
-    uint64 limit = 3;
-    optional uint64 step = 4; // to allow interleaving from several nodes    
 }
+
 
 // result is (BlockHeader, Signature?)* in order of creation (incr/dec)
-message GetBlockHeaders {
-    Iteration iteration = 1;
+message BlockHeadersRequest {
+    starknet.common.Iteration iteration = 1;
 }
 
 message BlockHeadersResponse {
-    starknet.common.BlockID id = 1;
-    // bool fin = 2; FIXME specified but unnecessary, EoS is enough
+    uint64 block_number = 1;
 
-    oneof block_part {
-        BlockHeader header = 3;
-        Signatures signatures = 4;
+    oneof header_message {
+        BlockHeader         header     = 2;
+        Signatures          signatures = 3;
+        starknet.common.Fin fin        = 4;
     }
 }
 
 // result is (StateDiff*, Classes*, BlockProof?)* currently in creation order (incr/dec), but may change in the future
-message GetBlockBodies {
-    Iteration iteration = 1;
+message BlockBodiesRequest {
+    starknet.common.Iteration iteration = 1;
 }
 
 message BlockBodiesResponse {
-    starknet.common.BlockID id = 1;
-    // bool fin = 2; FIXME specified but unnecessary, EoS is enough
+    uint64 block_number = 1;
 
-    oneof block_part {
-        starknet.state.StateDiff diff = 3;
-        starknet.state.Classes classes = 4;
-        BlockProof proof = 5;
+    oneof body_message {
+        starknet.state.StateDiff diff    = 2;
+        starknet.state.Classes   classes = 3;
+        BlockProof               proof   = 4;
+        starknet.common.Fin      fin     = 5;
     }
 }
