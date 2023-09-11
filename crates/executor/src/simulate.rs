@@ -73,6 +73,21 @@ pub fn simulate(
     Ok(simulations)
 }
 
+pub fn trace(
+    mut execution_state: ExecutionState,
+    tx: Transaction,
+) -> Result<TransactionTrace, CallError> {
+    let (mut state, block_context) = execution_state.starknet_state()?;
+    let tx_type = transaction_type(&tx);
+    let tx_info = tx.execute(&mut state, &block_context, false, false)?;
+    if let Some(error) = tx_info.revert_error {
+        tracing::info!(%error, "Transaction reverted");
+        return Err(CallError::Reverted(error));
+    }
+    let trace = to_trace(tx_type, tx_info)?;
+    Ok(trace)
+}
+
 enum TransactionType {
     Declare,
     DeployAccount,

@@ -9,6 +9,8 @@ mod get_transaction_receipt;
 mod pending_transactions;
 mod simulate_transactions;
 mod syncing;
+mod trace_block_transactions;
+mod trace_transaction;
 
 pub(super) use add_declare_transaction::add_declare_transaction;
 pub(super) use add_deploy_account_transaction::add_deploy_account_transaction;
@@ -21,3 +23,5 @@ pub(super) use get_transaction_receipt::get_transaction_receipt;
 pub(super) use pending_transactions::pending_transactions;
 pub(super) use simulate_transactions::simulate_transactions;
 pub(super) use syncing::syncing;
+pub(super) use trace_block_transactions::trace_block_transactions;
+pub(super) use trace_transaction::trace_transaction;

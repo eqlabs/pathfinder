@@ -17,6 +17,10 @@ pub enum RpcError {
     TxnHashNotFoundV03,
     #[error("Invalid transaction index in a block")]
     InvalidTxnIndex,
+    #[error("Invalid transaction hash")]
+    InvalidTxnHash,
+    #[error("Invalid block hash")]
+    InvalidBlockHash,
     #[error("Class hash not found")]
     ClassHashNotFound,
     #[error("Transaction hash not found")]
@@ -25,6 +29,8 @@ pub enum RpcError {
     PageSizeTooBig,
     #[error("There are no blocks")]
     NoBlocks,
+    #[error("No trace available")]
+    NoTraceAvailable,
     #[error("The supplied continuation token is invalid or unknown")]
     InvalidContinuationToken,
     #[error("Too many keys provided in a filter")]
@@ -75,10 +81,13 @@ impl RpcError {
             RpcError::BlockNotFound => 24,
             RpcError::TxnHashNotFoundV03 => 25,
             RpcError::InvalidTxnIndex => 27,
+            RpcError::InvalidTxnHash => 25,
+            RpcError::InvalidBlockHash => 26,
             RpcError::ClassHashNotFound => 28,
             RpcError::TxnHashNotFoundV04 => 29,
             RpcError::PageSizeTooBig => 31,
             RpcError::NoBlocks => 32,
+            RpcError::NoTraceAvailable => 10,
             RpcError::InvalidContinuationToken => 33,
             RpcError::TooManyKeysInFilter { .. } => 34,
             RpcError::ContractError => 40,

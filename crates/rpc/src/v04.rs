@@ -76,6 +76,14 @@ pub fn register_methods(module: Module) -> anyhow::Result<Module> {
             v04_method::simulate_transactions,
         )?
         .register_method(
+            "v0.4_starknet_traceTransaction",
+            v04_method::trace_transaction,
+        )?
+        .register_method(
+            "v0.4_starknet_traceBlockTransactions",
+            v04_method::trace_block_transactions,
+        )?
+        .register_method(
             "v0.4_pathfinder_getProof",
             crate::pathfinder::methods::get_proof,
         )?
