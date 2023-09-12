@@ -140,7 +140,7 @@ mod tests {
     #[case::string      (Some(json!("text")), RequestId::String("text".into()))]
     #[case::number      (Some(json!(456)),    RequestId::Number(456))]
     #[case::notification(None, RequestId::Notification)]
-    fn request_id(#[case] id: Option<serde_json::Value>, #[case] expected: RequestId) {
+    fn request_id(#[case] id: Option<serde_json::Value>, #[case] expected: RequestId<'_>) {
         let params = json!([1, 2, 3]);
         let request = if let Some(id) = id {
             json!({
@@ -158,7 +158,7 @@ mod tests {
         }
         .to_string();
 
-        let request = serde_json::from_str::<RpcRequest>(&request).unwrap();
+        let request = serde_json::from_str::<RpcRequest<'_>>(&request).unwrap();
 
         let params = to_raw_value(&params).unwrap();
         let expected = RpcRequest {
@@ -178,7 +178,7 @@ mod tests {
             "id": 456
         })
         .to_string();
-        serde_json::from_str::<RpcRequest>(&json).unwrap_err();
+        serde_json::from_str::<RpcRequest<'_>>(&json).unwrap_err();
     }
 
     #[test]
@@ -190,7 +190,7 @@ mod tests {
             "id": 456
         })
         .to_string();
-        serde_json::from_str::<RpcRequest>(&json).unwrap_err();
+        serde_json::from_str::<RpcRequest<'_>>(&json).unwrap_err();
     }
 
     #[test]
@@ -202,7 +202,7 @@ mod tests {
         })
         .to_string();
 
-        let result = serde_json::from_str::<RpcRequest>(&json).unwrap();
+        let result = serde_json::from_str::<RpcRequest<'_>>(&json).unwrap();
         let expected = RpcRequest {
             method: "sum".into(),
             params: RawParams(None),

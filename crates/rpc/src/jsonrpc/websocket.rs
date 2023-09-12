@@ -54,7 +54,7 @@ async fn read(
             }
         };
 
-        let Ok(request) = serde_json::from_slice::<RpcRequest>(&request) else {
+        let Ok(request) = serde_json::from_slice::<RpcRequest<'_>>(&request) else {
             match msg_sender.try_send(ResponseEvent::InvalidRequest) {
                 Ok(_) => continue,
                 Err(e) => {
@@ -141,7 +141,7 @@ impl SubscriptionManager {
             kind: Cow<'a, str>,
         }
 
-        let Ok(kind) = request_params.deserialize::<Kind>() else {
+        let Ok(kind) = request_params.deserialize::<Kind<'_>>() else {
             return ResponseEvent::InvalidParams(request_id.into());
         };
 
@@ -179,7 +179,7 @@ enum OwnedRequestId {
 }
 
 impl From<RequestId<'_>> for OwnedRequestId {
-    fn from(value: RequestId) -> Self {
+    fn from(value: RequestId<'_>) -> Self {
         match value {
             RequestId::Number(x) => OwnedRequestId::Number(x),
             RequestId::String(x) => OwnedRequestId::String(x.into_owned()),

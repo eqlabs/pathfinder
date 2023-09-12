@@ -312,7 +312,7 @@ mod types {
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
-                    .map(|msg| MessageToL1::from(msg))
+                    .map(MessageToL1::from)
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
             };

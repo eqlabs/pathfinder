@@ -68,7 +68,7 @@ impl RpcRouter {
         state: RpcContext,
         request: &'a str,
     ) -> Option<RpcResponse<'a>> {
-        let Ok(request) = serde_json::from_str::<RpcRequest>(request) else {
+        let Ok(request) = serde_json::from_str::<RpcRequest<'_>>(request) else {
                 return Some(RpcResponse::INVALID_REQUEST);
             };
 
@@ -120,7 +120,7 @@ impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
     fn call(self, req: axum::http::Request<axum::body::Body>, state: RpcContext) -> Self::Future {
         Box::pin(async move {
             // Only allow json content.
-            const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
+            static APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
             match req.headers().get(http::header::CONTENT_TYPE) {
                 Some(header) if header == APPLICATION_JSON => {}
                 Some(_other) => return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(),

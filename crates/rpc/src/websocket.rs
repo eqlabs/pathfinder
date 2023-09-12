@@ -42,7 +42,7 @@ async fn handle_socket(mut socket: WebSocket, state: RpcContext) {
                     }
                 };
 
-                let Ok(request) = serde_json::from_slice::<RpcRequest>(&request) else {
+                let Ok(request) = serde_json::from_slice::<RpcRequest<'_>>(&request) else {
                     if send_response(&mut socket, &RpcResponse::INVALID_REQUEST).await.is_err() {
                         break;
                     } else {

@@ -115,7 +115,10 @@ impl RpcServer {
                 // TODO: confirm this isn't too verbose.
                 tracing::warn!(error = err, "Unhandled middleware error");
 
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("Internal error"))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal error".to_string(),
+                )
             }
         }
 

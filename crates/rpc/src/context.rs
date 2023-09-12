@@ -96,9 +96,6 @@ impl RpcContext {
     }
 
     pub fn with_websocket(self, websocket: WebsocketSenders) -> Self {
-        Self {
-            websocket: websocket,
-            ..self
-        }
+        Self { websocket, ..self }
     }
 }
