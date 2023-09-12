@@ -88,13 +88,6 @@ impl RpcContext {
         context.with_pending_data(pending_data)
     }
 
-    pub fn with_eth_gas_price(self, gas_price: gas_price::Cached) -> Self {
-        Self {
-            eth_gas_price: gas_price,
-            ..self
-        }
-    }
-
     pub fn with_websocket(self, websocket: WebsocketSenders) -> Self {
         Self { websocket, ..self }
     }

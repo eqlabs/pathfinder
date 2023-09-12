@@ -144,10 +144,15 @@ impl RpcServer {
             }
         }
 
+        let default_router = match self.default_version {
+            DefaultVersion::V03 => v03::rpc_router(),
+            DefaultVersion::V04 => v04::rpc_router(),
+        };
+
         let router = axum::Router::new()
             // Also return success for get's with an empty body. These are often
             // used by monitoring bots to check service health.
-            .route("/", get(empty_body).post(v03::rpc_router()))
+            .route("/", get(empty_body).post(default_router))
             .route("/rpc/v0.3", post(v03::rpc_router()))
             .route("/rpc/v0.4", post(v04::rpc_router()))
             .route("/rpc/pathfinder/v0.1", post(pathfinder::rpc_router()))
