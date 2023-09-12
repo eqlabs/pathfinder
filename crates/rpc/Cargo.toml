@@ -8,16 +8,12 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
-axum = { workspace = true, features = ["ws"]}
+axum = { workspace = true, features = ["ws"] }
 base64 = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 hyper = "0.14.27"
-jsonrpsee = { version = "0.16.3", default-features = false, features = [
-    "jsonrpsee-types",
-    "server",
-] }
 metrics = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
@@ -52,11 +48,6 @@ assert_matches = { workspace = true }
 bytes = { workspace = true }
 flate2 = { workspace = true }
 hex = { workspace = true }
-jsonrpsee = { version = "0.16.3", default-features = false, features = [
-    "async-client",
-    "jsonrpsee-types",
-    "server",
-] }
 lazy_static = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = "0.18.2"

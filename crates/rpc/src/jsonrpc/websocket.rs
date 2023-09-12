@@ -60,7 +60,7 @@ async fn read(
                 Err(e) => {
                     tracing::debug!(reason=%e, "Failed to send invalid request response");
                     break;
-                },
+                }
             }
         };
 

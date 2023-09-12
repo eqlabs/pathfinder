@@ -69,8 +69,8 @@ impl RpcRouter {
         request: &'a str,
     ) -> Option<RpcResponse<'a>> {
         let Ok(request) = serde_json::from_str::<RpcRequest<'_>>(request) else {
-                return Some(RpcResponse::INVALID_REQUEST);
-            };
+            return Some(RpcResponse::INVALID_REQUEST);
+        };
 
         // Ignore notification requests.
         if request.id.is_notification() {
@@ -78,7 +78,8 @@ impl RpcRouter {
         }
 
         // Also grab the method_name as it is a static str, which is required by the metrics.
-        let Some((&method_name, method)) = self.methods.get_key_value(request.method.as_ref()) else {
+        let Some((&method_name, method)) = self.methods.get_key_value(request.method.as_ref())
+        else {
             return Some(RpcResponse::method_not_found(request.id));
         };
 
@@ -433,8 +434,6 @@ mod sealed {
 }
 
 /// Handles invoking an RPC route's methods.
-///
-/// See [rpc_handler] for more information.
 #[async_trait]
 pub trait RpcMethodHandler {
     async fn call_method(method: &str, state: RpcContext, params: Value) -> RpcResult;
