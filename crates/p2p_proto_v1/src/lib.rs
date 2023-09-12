@@ -7,18 +7,18 @@ pub mod proto {
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
-    // pub mod event {
+    // pub mod consensus {
     //     include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
     // }
-    // pub mod event {
-    //     include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
-    // }
+    pub mod event {
+        include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
+    }
     // pub mod mempool {
     //     include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
     // }
-    // pub mod receipt {
-    //     include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
-    // }
+    pub mod receipt {
+        include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
+    }
     // pub mod snapshot {
     //     include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
     // }
@@ -137,9 +137,9 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
 use p2p_proto_derive::*;
 pub mod block;
 pub mod common;
-// pub mod event;
+pub mod event;
 // pub mod mempool;
-// pub mod receipt;
+pub mod receipt;
 // pub mod snapshot;
 pub mod state;
 // pub mod transaction;

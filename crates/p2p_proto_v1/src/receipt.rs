@@ -1,11 +1,109 @@
-use crate::{common::BlockId, proto, ToProtobuf, TryFromProtobuf};
+use crate::{
+    common::{Hash, Iteration},
+    proto, ToProtobuf, TryFromProtobuf,
+};
 use fake::Dummy;
 use primitive_types::H160;
 use stark_hash::Felt;
 
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::MessageToL1")]
+pub struct MessageToL1 {
+    pub from_address: Felt,
+    pub payload: Vec<Felt>,
+    pub to_address: EthereumAddress,
+}
+
 // Avoid pathfinder_common dependency
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct EthereumAddress(pub H160);
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::MessageToL2")]
+pub struct MessageToL2 {
+    pub from_address: EthereumAddress,
+    pub payload: Vec<Felt>,
+    pub to_address: Felt,
+    pub entry_point_selector: Felt,
+    pub nonce: Felt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::receipt::ExecutionResources")]
+pub struct ExecutionResources {
+    pub builtins: execution_resources::BuiltinCounter,
+    pub steps: u32,
+    pub memory_holes: u32,
+}
+
+pub mod execution_resources {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+    #[protobuf(name = "crate::proto::receipt::receipt::execution_resources::BuiltinCounter")]
+    pub struct BuiltinCounter {
+        pub bitwise: u32,
+        pub ecdsa: u32,
+        pub ec_op: u32,
+        pub pedersen: u32,
+        pub range_check: u32,
+        pub poseidon: u32,
+        pub keccak: u32,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::receipt::Common")]
+pub struct ReceiptCommon {
+    pub transaction_hash: Hash,
+    pub actual_fee: Felt,
+    pub messages_sent: Vec<MessageToL1>,
+    pub execution_resources: ExecutionResources,
+    pub revert_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::receipt::Invoke")]
+pub struct InvokeTransactionReceipt {
+    pub common: ReceiptCommon,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::receipt::L1Handler")]
+pub struct L1HandlerTransactionReceipt {
+    pub common: ReceiptCommon,
+    pub msg_hash: Hash,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::receipt::Declare")]
+pub struct DeclareTransactionReceipt {
+    pub common: ReceiptCommon,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::receipt::Deploy")]
+pub struct DeployTransactionReceipt {
+    pub common: ReceiptCommon,
+    pub contract_address: Felt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::receipt::DeployAccount")]
+pub struct DeployAccountTransactionReceipt {
+    pub common: ReceiptCommon,
+    pub contract_address: Felt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+
+pub enum Receipt {
+    Invoke(InvokeTransactionReceipt),
+    Declare(DeclareTransactionReceipt),
+    Deploy(DeployTransactionReceipt),
+    DeployAccount(DeployAccountTransactionReceipt),
+    L1Handler(L1HandlerTransactionReceipt),
+}
 
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
@@ -40,146 +138,15 @@ impl TryFromProtobuf<proto::receipt::EthereumAddress> for EthereumAddress {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::MessageToL1")]
-pub struct MessageToL1 {
-    pub from_address: Felt,
-    pub payload: Vec<Felt>,
-    pub to_address: EthereumAddress,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::MessageToL2")]
-pub struct MessageToL2 {
-    pub from_address: EthereumAddress,
-    pub payload: Vec<Felt>,
-    pub to_address: Felt,
-    pub entry_point_selector: Felt,
-    pub nonce: Felt,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::ExecutionResources")]
-pub struct ExecutionResources {
-    pub builtin_instance_counter: execution_resources::BuiltinInstanceCounter,
-    pub n_steps: u64,
-    pub n_memory_holes: u64,
-}
-
-pub mod execution_resources {
-    use super::*;
-
-    #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-    #[protobuf(name = "crate::proto::receipt::execution_resources::BuiltinInstanceCounter")]
-    pub struct BuiltinInstanceCounter {
-        pub bitwise_builtin: u64,
-        pub ecdsa_builtin: u64,
-        pub ec_op_builtin: u64,
-        pub output_builtin: u64,
-        pub pedersen_builtin: u64,
-        pub range_check_builtin: u64,
-        pub keccak_builtin: u64,
-        pub poseidon_builtin: u64,
-        pub segment_arena_builtin: u64,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::CommonTransactionReceiptProperties")]
-pub struct CommonTransactionReceiptProperties {
-    pub transaction_hash: Felt,
-    pub transaction_index: u32,
-    pub actual_fee: Felt,
-    pub messages_sent: Vec<MessageToL1>,
-    #[optional]
-    pub consumed_message: Option<MessageToL2>,
-    pub execution_resources: ExecutionResources,
-    pub execution_status: ExecutionStatus,
-    pub revert_error: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
-pub enum ExecutionStatus {
-    Succeeded,
-    Reverted,
-}
-
-impl TryFromProtobuf<i32> for ExecutionStatus {
-    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
-        let status = proto::receipt::ExecutionStatus::from_i32(input).ok_or(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Failed to convert protobuf output for {field_name}: {input} did not match any known execution status"),
-        ))?;
-
-        match status {
-            proto::receipt::ExecutionStatus::Succeeded => Ok(Self::Succeeded),
-            proto::receipt::ExecutionStatus::Reverted => Ok(Self::Reverted),
-        }
-    }
-}
-
-impl ToProtobuf<proto::receipt::ExecutionStatus> for ExecutionStatus {
-    fn to_protobuf(self) -> proto::receipt::ExecutionStatus {
-        match self {
-            ExecutionStatus::Succeeded => proto::receipt::ExecutionStatus::Succeeded,
-            ExecutionStatus::Reverted => proto::receipt::ExecutionStatus::Reverted,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::InvokeTransactionReceipt")]
-pub struct InvokeTransactionReceipt {
-    pub common: CommonTransactionReceiptProperties,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::L1HandlerTransactionReceipt")]
-pub struct L1HandlerTransactionReceipt {
-    pub common: CommonTransactionReceiptProperties,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::DeclareTransactionReceipt")]
-pub struct DeclareTransactionReceipt {
-    pub common: CommonTransactionReceiptProperties,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::DeprecatedDeployTransactionReceipt")]
-pub struct DeployTransactionReceipt {
-    pub common: CommonTransactionReceiptProperties,
-
-    pub contract_address: Felt,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::DeployAccountTransactionReceipt")]
-pub struct DeployAccountTransactionReceipt {
-    pub common: CommonTransactionReceiptProperties,
-
-    pub contract_address: Felt,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
-
-pub enum Receipt {
-    Invoke(InvokeTransactionReceipt),
-    Declare(DeclareTransactionReceipt),
-    Deploy(DeployTransactionReceipt),
-    DeployAccount(DeployAccountTransactionReceipt),
-    L1Handler(L1HandlerTransactionReceipt),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::GetReceipts")]
-pub struct GetReceipts {
-    pub id: BlockId,
+#[protobuf(name = "crate::proto::receipt::ReceiptsRequest")]
+pub struct ReceiptsRequest {
+    pub iteration: Iteration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::Receipts")]
 pub struct Receipts {
-    pub receipts: Vec<Receipt>,
+    pub items: Vec<Receipt>,
 }
 
 impl TryFromProtobuf<proto::receipt::Receipt> for Receipt {

@@ -5,98 +5,95 @@ package starknet.receipt;
 import "common.proto";
 
 message MessageToL1 {
-  starknet.common.Felt252 from_address = 1;
-  repeated starknet.common.Felt252 payload = 2;
-  EthereumAddress to_address = 3;
+  starknet.common.Felt252          from_address = 1;
+  repeated starknet.common.Felt252 payload      = 2;
+  EthereumAddress                  to_address   = 3;
 }
 
-message EthereumAddress { bytes elements = 1; }
+message EthereumAddress {
+  bytes elements = 1;
+}
 
 message MessageToL2 {
-  EthereumAddress from_address = 1;
-  repeated starknet.common.Felt252 payload = 2;
-  starknet.common.Felt252 to_address = 3;
-  starknet.common.Felt252 entry_point_selector = 4;
-  starknet.common.Felt252 nonce = 5;
-}
-
-message CommonTransactionReceiptProperties {
-  starknet.common.Felt252 transaction_hash = 1;
-  uint32 transaction_index = 2;
-  starknet.common.Felt252 actual_fee = 3;
-  repeated MessageToL1 messages_sent = 4;
-  // repeated Event events = 5; separate
-  // Optional
-  MessageToL2 consumed_message = 5;
-  ExecutionResources execution_resources = 6;
-  // FIXME: the following 2 fields are not yet in the spec
-  ExecutionStatus execution_status = 8;
-  // Empty if execution_status == SUCCEEDED
-  string revert_error = 9;
-}
-
-message ExecutionResources {
-  message BuiltinInstanceCounter {
-    uint64 bitwise_builtin = 1;
-    uint64 ecdsa_builtin = 2;
-    uint64 ec_op_builtin = 3;
-    uint64 output_builtin = 4;
-    uint64 pedersen_builtin = 5;
-    uint64 range_check_builtin = 6;
-    // FIXME: the following 3 fields are not yet in the spec
-    uint64 keccak_builtin = 7;
-    uint64 poseidon_builtin = 8;
-    uint64 segment_arena_builtin = 9;
-  }
-
-  BuiltinInstanceCounter builtin_instance_counter = 1;
-  uint64 n_steps = 2;
-  uint64 n_memory_holes = 3;
-}
-
-// FIXME: added to fix the spec
-enum ExecutionStatus {
-  SUCCEEDED = 0;
-  REVERTED = 1;
-}
-
-// TBD: also deploy of contract?
-message InvokeTransactionReceipt {
-  CommonTransactionReceiptProperties common = 1;
-}
-
-message L1HandlerTransactionReceipt {
-  CommonTransactionReceiptProperties common = 1;
-}
-
-message DeclareTransactionReceipt {
-  CommonTransactionReceiptProperties common = 1;
-}
-
-message DeprecatedDeployTransactionReceipt {
-  CommonTransactionReceiptProperties common = 1;
-  starknet.common.Felt252 contract_address = 2;
-}
-
-message DeployAccountTransactionReceipt {
-  CommonTransactionReceiptProperties common = 1;
-  starknet.common.Felt252 contract_address = 2;
+  EthereumAddress                  from_address         = 1;
+  repeated starknet.common.Felt252 payload              = 2;
+  starknet.common.Felt252          to_address           = 3;
+  starknet.common.Felt252          entry_point_selector = 4;
+  starknet.common.Felt252          nonce                = 5;
 }
 
 message Receipt {
+  message ExecutionResources {
+    message BuiltinCounter {
+      uint32 bitwise     = 1;
+      uint32 ecdsa       = 2;
+      uint32 ec_op       = 3;
+      uint32 pedersen    = 4;
+      uint32 range_check = 5;
+      uint32 poseidon    = 6;
+      uint32 keccak      = 7;
+    }
+
+    BuiltinCounter builtins     = 1;
+    uint32         steps        = 2;
+    uint32         memory_holes = 3;
+  }
+
+  message Common {
+    starknet.common.Hash    transaction_hash    = 1;
+    starknet.common.Felt252 actual_fee          = 2;
+    repeated MessageToL1    messages_sent       = 3;
+    ExecutionResources      execution_resources = 4;
+    string                  revert_reason       = 5;
+  }
+
+
+  message Invoke {
+    Common common = 1;
+  }
+
+  message L1Handler {
+    Common               common   = 1;
+    starknet.common.Hash msg_hash = 2;
+  }
+
+  message Declare {
+    Common common = 1;
+  }
+
+  message Deploy {
+    Common                  common           = 1;
+    starknet.common.Felt252 contract_address = 2;
+  }
+
+  message DeployAccount {
+    Common                  common           = 1;
+    starknet.common.Felt252 contract_address = 2;
+  }
+
   oneof receipt {
-    InvokeTransactionReceipt invoke = 1;
-    L1HandlerTransactionReceipt l1_handler = 2;
-    DeclareTransactionReceipt declare = 3;
-    DeprecatedDeployTransactionReceipt deprecated_deploy = 4;
-    DeployAccountTransactionReceipt deploy_account = 5;
+    Invoke        invoke            = 1;
+    L1Handler     l1_handler        = 2;
+    Declare       declare           = 3;
+    Deploy        deprecated_deploy = 4;
+    DeployAccount deploy_account    = 5;
   }
 }
 
-message GetReceipts {
-  starknet.common.BlockID id = 1;
+message ReceiptsRequest {
+  starknet.common.Iteration iteration = 1;
 }
 
 message Receipts {
-    repeated Receipt receipts = 1;
+    repeated Receipt items = 2;
+}
+
+message ReceiptsResponse {
+  uint64               block_number = 1;
+  starknet.common.Hash block_hash   = 2;
+
+  oneof responses {
+    Receipts            receipts = 3;
+    starknet.common.Fin fin      = 4;
+  }
 }
