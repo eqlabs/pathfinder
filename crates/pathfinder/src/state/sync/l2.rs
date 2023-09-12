@@ -35,7 +35,7 @@ pub struct BlockChain {
     /// The earliest block in the chain.
     tail: BlockNumber,
 
-    map: HashMap<BlockNumber, (BlockHash, StateCommitment, StarknetVersion)>,
+    map: HashMap<BlockNumber, (BlockHash, StateCommitment)>,
 }
 
 impl BlockChain {
@@ -47,7 +47,7 @@ impl BlockChain {
 
     pub fn with_capacity(
         capacity: usize,
-        blocks: Vec<(BlockNumber, BlockHash, StateCommitment, StarknetVersion)>,
+        blocks: Vec<(BlockNumber, BlockHash, StateCommitment)>,
     ) -> Self {
         let skip = blocks.len().saturating_sub(capacity);
         let blocks = &blocks[skip..];
@@ -56,25 +56,16 @@ impl BlockChain {
         let tail = blocks.first().map(|b| b.0).unwrap_or_default();
 
         let mut map = HashMap::with_capacity(capacity);
-        map.extend(blocks.iter().cloned().map(|(a, b, c, d)| (a, (b, c, d))));
+        map.extend(blocks.iter().cloned().map(|(a, b, c)| (a, (b, c))));
 
         Self { head, tail, map }
     }
 
-    pub fn get<'a>(
-        &'a self,
-        block: &BlockNumber,
-    ) -> Option<&'a (BlockHash, StateCommitment, StarknetVersion)> {
+    pub fn get<'a>(&'a self, block: &BlockNumber) -> Option<&'a (BlockHash, StateCommitment)> {
         self.map.get(block)
     }
 
-    pub fn push(
-        &mut self,
-        number: BlockNumber,
-        hash: BlockHash,
-        commitment: StateCommitment,
-        starknet_version: StarknetVersion,
-    ) {
+    pub fn push(&mut self, number: BlockNumber, hash: BlockHash, commitment: StateCommitment) {
         for i in number.get()..=self.head.get() {
             self.map.remove(&BlockNumber::new_or_panic(i));
         }
@@ -83,8 +74,7 @@ impl BlockChain {
             self.map.remove(&self.tail);
             self.tail += 1;
         }
-        self.map
-            .insert(number, (hash, commitment, starknet_version));
+        self.map.insert(number, (hash, commitment));
 
         self.head = number;
     }
@@ -105,7 +95,7 @@ pub struct L2SyncContext<GatewayClient> {
 pub async fn sync<GatewayClient>(
     tx_event: mpsc::Sender<SyncEvent>,
     context: L2SyncContext<GatewayClient>,
-    mut head: Option<(BlockNumber, BlockHash, StateCommitment, StarknetVersion)>,
+    mut head: Option<(BlockNumber, BlockHash, StateCommitment)>,
     mut blocks: BlockChain,
 ) -> anyhow::Result<()>
 where
@@ -158,7 +148,7 @@ where
                             (next_block, next_state_update) = pending::poll_pending(
                                 tx_event.clone(),
                                 &sequencer,
-                                (head.1, head.2, head.3.clone()),
+                                (head.1, head.2),
                                 interval,
                                 storage.clone(),
                             )
@@ -188,8 +178,8 @@ where
                     };
 
                     match &head {
-                        Some((number, hash, commitment, starknet_version)) => {
-                            blocks.push(*number, *hash, *commitment, starknet_version.clone())
+                        Some((number, hash, commitment)) => {
+                            blocks.push(*number, *hash, *commitment)
                         }
                         None => blocks.reset_to_genesis(),
                     }
@@ -215,9 +205,7 @@ where
                 .context("L2 reorg")?;
 
                 match &head {
-                    Some((number, hash, commitment, starknet_version)) => {
-                        blocks.push(*number, *hash, *commitment, starknet_version.clone())
-                    }
+                    Some((number, hash, commitment)) => blocks.push(*number, *hash, *commitment),
                     None => blocks.reset_to_genesis(),
                 }
 
@@ -266,18 +254,8 @@ where
         .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         let t_declare = t_declare.elapsed();
 
-        head = Some((
-            next,
-            block_hash,
-            state_update.state_commitment,
-            block.starknet_version.clone(),
-        ));
-        blocks.push(
-            next,
-            block_hash,
-            state_update.state_commitment,
-            block.starknet_version.clone(),
-        );
+        head = Some((next, block_hash, state_update.state_commitment));
+        blocks.push(next, block_hash, state_update.state_commitment);
 
         let timings = Timings {
             block_download: t_block,
@@ -547,17 +525,17 @@ async fn download_block(
 }
 
 async fn reorg(
-    head: &(BlockNumber, BlockHash, StateCommitment, StarknetVersion),
+    head: &(BlockNumber, BlockHash, StateCommitment),
     chain: Chain,
     chain_id: ChainId,
     tx_event: &mpsc::Sender<SyncEvent>,
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
     blocks: &BlockChain,
-) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StarknetVersion)>> {
+) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
-    let mut reorg_tail = head.clone();
+    let mut reorg_tail = *head;
 
     let new_head = loop {
         if reorg_tail.0 == BlockNumber::GENESIS {
@@ -582,22 +560,12 @@ async fn reorg(
         .with_context(|| format!("Download block {previous_block_number} from sequencer"))?
         {
             DownloadBlock::Block(block, _) if block.block_hash == previous.0 => {
-                break Some((
-                    previous_block_number,
-                    previous.0,
-                    previous.1,
-                    previous.2.clone(),
-                ));
+                break Some((previous_block_number, previous.0, previous.1));
             }
             _ => {}
         };
 
-        reorg_tail = (
-            previous_block_number,
-            previous.0,
-            previous.1,
-            previous.2.clone(),
-        );
+        reorg_tail = (previous_block_number, previous.0, previous.1);
     };
 
     let reorg_tail = new_head
@@ -661,8 +629,6 @@ mod tests {
         const BLOCK2_NUMBER: BlockNumber = BlockNumber::new_or_panic(2);
         const BLOCK3_NUMBER: BlockNumber = BlockNumber::new_or_panic(3);
         const BLOCK4_NUMBER: BlockNumber = BlockNumber::new_or_panic(4);
-
-        const STARKNET_VERSION: &str = "0.12.1";
 
         fn spawn_sync_default(
             tx_event: mpsc::Sender<SyncEvent>,
@@ -1036,20 +1002,10 @@ mod tests {
                 let _jh = tokio::spawn(sync(
                     tx_event,
                     context,
-                    Some((
-                        BLOCK0_NUMBER,
-                        *BLOCK0_HASH,
-                        *GLOBAL_ROOT0,
-                        STARKNET_VERSION.to_owned().into(),
-                    )),
+                    Some((BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)),
                     BlockChain::with_capacity(
                         100,
-                        vec![(
-                            BLOCK0_NUMBER,
-                            *BLOCK0_HASH,
-                            *GLOBAL_ROOT0,
-                            STARKNET_VERSION.to_owned().into(),
-                        )],
+                        vec![(BLOCK0_NUMBER, *BLOCK0_HASH, *GLOBAL_ROOT0)],
                     ),
                 ));
 
@@ -2044,8 +2000,6 @@ mod tests {
 
         use crate::state::l2::BlockChain;
 
-        const STARKNET_VERSION: &str = "0.12.1";
-
         #[test]
         fn circular_buffer_integrity() {
             let mut uut = BlockChain::with_capacity(
@@ -2055,19 +2009,16 @@ mod tests {
                         BlockNumber::new_or_panic(1),
                         block_hash!("0x11"),
                         state_commitment!("0x21"),
-                        STARKNET_VERSION.to_owned().into(),
                     ),
                     (
                         BlockNumber::new_or_panic(2),
                         block_hash!("0x13"),
                         state_commitment!("0x41"),
-                        STARKNET_VERSION.to_owned().into(),
                     ),
                     (
                         BlockNumber::new_or_panic(3),
                         block_hash!("0x15"),
                         state_commitment!("0x61"),
-                        STARKNET_VERSION.to_owned().into(),
                     ),
                 ],
             );
@@ -2079,7 +2030,6 @@ mod tests {
                 BlockNumber::new_or_panic(4),
                 block_hash!("0x17"),
                 state_commitment!("0x81"),
-                STARKNET_VERSION.to_owned().into(),
             );
 
             assert!(uut.get(&BlockNumber::new_or_panic(1)).is_none());
@@ -2097,19 +2047,16 @@ mod tests {
                         BlockNumber::new_or_panic(1),
                         block_hash!("0x11"),
                         state_commitment!("0x21"),
-                        STARKNET_VERSION.to_owned().into(),
                     ),
                     (
                         BlockNumber::new_or_panic(2),
                         block_hash!("0x13"),
                         state_commitment!("0x41"),
-                        STARKNET_VERSION.to_owned().into(),
                     ),
                     (
                         BlockNumber::new_or_panic(3),
                         block_hash!("0x15"),
                         state_commitment!("0x61"),
-                        STARKNET_VERSION.to_owned().into(),
                     ),
                 ],
             );

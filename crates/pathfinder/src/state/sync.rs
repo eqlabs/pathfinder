@@ -6,8 +6,8 @@ mod pending;
 use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-    EventCommitment, GasPrice, SequencerAddress, SierraHash, StarknetVersion, StateCommitment,
-    StateUpdate, StorageCommitment, TransactionCommitment,
+    EventCommitment, GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate,
+    StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -121,7 +121,7 @@ where
     L2Sync: FnOnce(
             mpsc::Sender<SyncEvent>,
             L2SyncContext<SequencerClient>,
-            Option<(BlockNumber, BlockHash, StateCommitment, StarknetVersion)>,
+            Option<(BlockNumber, BlockHash, StateCommitment)>,
             BlockChain,
         ) -> F2
         + Copy,
@@ -158,25 +158,17 @@ where
         let l2_head = tx
             .block_header(pathfinder_storage::BlockId::Latest)
             .context("Fetching latest block header from database")?
-            .map(|header| {
-                (
-                    header.number,
-                    header.hash,
-                    header.state_commitment,
-                    header.starknet_version,
-                )
-            });
+            .map(|header| (header.number, header.hash, header.state_commitment));
 
         Ok(l2_head)
     })?;
 
     // Start update sync-status process.
-    let (starting_block_num, starting_block_hash, _, _) = l2_head.clone().unwrap_or((
+    let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
         // Seems a better choice for an invalid block number than 0
         BlockNumber::MAX,
         BlockHash(Felt::ZERO),
         StateCommitment(Felt::ZERO),
-        StarknetVersion::default(),
     ));
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
@@ -253,7 +245,7 @@ where
                     tx.block_header(pathfinder_storage::BlockId::Latest)
                 })
                 .context("Query L2 head from database")?
-                .map(|block| (block.number, block.hash, block.state_commitment, block.starknet_version));
+                .map(|block| (block.number, block.hash, block.state_commitment));
 
                 let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size).await.context("Fetching latest blocks from storage")?;
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
@@ -514,7 +506,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
 async fn latest_n_blocks(
     connection: &mut Connection,
     n: usize,
-) -> anyhow::Result<Vec<(BlockNumber, BlockHash, StateCommitment, StarknetVersion)>> {
+) -> anyhow::Result<Vec<(BlockNumber, BlockHash, StateCommitment)>> {
     tokio::task::block_in_place(|| {
         let tx = connection
             .transaction()
@@ -529,12 +521,7 @@ async fn latest_n_blocks(
                 break;
             };
 
-            blocks.push((
-                header.number,
-                header.hash,
-                header.state_commitment,
-                header.starknet_version,
-            ));
+            blocks.push((header.number, header.hash, header.state_commitment));
 
             if header.number == BlockNumber::GENESIS {
                 break;
