@@ -5,7 +5,8 @@ fn main() -> Result<()> {
         &[
             "proto/block.proto",
             "proto/common.proto",
-            // "proto/event.proto",
+            // "proto/consensus.proto",
+            "proto/event.proto",
             // "proto/mempool.proto",
             // "proto/receipt.proto",
             // "proto/snapshot.proto",

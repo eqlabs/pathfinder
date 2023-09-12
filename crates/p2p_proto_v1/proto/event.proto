@@ -5,16 +5,26 @@ package starknet.event;
 import "common.proto";
 
 message Event {
-    starknet.common.Felt252 from_address = 1;
+    starknet.common.Felt252  from_address = 1;
     repeated starknet.common.Felt252 keys = 2;
     repeated starknet.common.Felt252 data = 3;
 }
 
-message GetEvents {
-    starknet.common.BlockID id = 1;
+message EventsRequest {
+    starknet.common.Iteration iteration = 1;
 }
 
 // can be several in a single reply
-message Events {
-    repeated Event events = 2;
+message EventsResponse {
+    message Events {
+        repeated Event items = 1;
+    }
+
+    uint64               block_number = 1;
+    starknet.common.Hash block_hash   = 2;
+
+    oneof responses {
+        Events              events = 3;
+        starknet.common.Fin fin    = 4;
+    }
 }

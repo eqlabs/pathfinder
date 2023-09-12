@@ -8,6 +8,9 @@ pub mod proto {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
     // pub mod event {
+    //     include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
+    // }
+    // pub mod event {
     //     include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     // }
     // pub mod mempool {
@@ -144,10 +147,10 @@ pub mod state;
 // Trying to estimate the overhead of the classes message so that we know what is the limit
 // on compressed class definition size, varint delimiting of the message is taken into account
 //
-// 0 classes == 22 bytes
-// 1 x 1MiB class == 82 bytes; 60 bytes/class
-// 3 x 1MiB class == 196 bytes; 58 bytes/class
-// 10 x 1MiB class == 588 bytes; 59 bytes/class
+// 0 classes == 20 bytes
+// 1 x 1MiB class == 80 bytes; 60 bytes/class
+// 3 x 1MiB class == 194 bytes; 58 bytes/class
+// 10 x 1MiB class == 586 bytes; 57 bytes/class
 //
 // It's generally safe to assume:
 // N classes == 22 + 60 * N bytes
@@ -155,7 +158,7 @@ pub mod state;
 #[rstest::rstest]
 #[test]
 fn check_classes_message_overhead(
-    #[values((0, 22), (1, 82), (3, 196), (10, 588))] num_classes_expected_overhead: (usize, usize),
+    #[values((0, 20), (1, 80), (3, 194), (10, 586))] num_classes_expected_overhead: (usize, usize),
 ) {
     let (num_classes, expected_overhead) = num_classes_expected_overhead;
     use crate::proto::block::{block_bodies_response::BodyMessage, BlockBodiesResponse};
