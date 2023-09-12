@@ -70,17 +70,13 @@ mod tests {
 
     mod parsing {
         use super::*;
-
-        use jsonrpsee::types::Params;
+        use serde_json::json;
 
         #[test]
         fn positional_args() {
-            let positional = r#"[
-                "0xdeadbeef"
-            ]"#;
-            let positional = Params::new(Some(positional));
+            let positional = json!(["0xdeadbeef"]);
 
-            let input = positional.parse::<GetTransactionByHashInput>().unwrap();
+            let input = serde_json::from_value::<GetTransactionByHashInput>(positional).unwrap();
             assert_eq!(
                 input,
                 GetTransactionByHashInput {
@@ -91,12 +87,10 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named_args = r#"{
+            let named_args = json!({
                 "transaction_hash": "0xdeadbeef"
-            }"#;
-            let named_args = Params::new(Some(named_args));
-
-            let input = named_args.parse::<GetTransactionByHashInput>().unwrap();
+            });
+            let input = serde_json::from_value::<GetTransactionByHashInput>(named_args).unwrap();
             assert_eq!(
                 input,
                 GetTransactionByHashInput {

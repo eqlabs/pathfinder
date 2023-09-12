@@ -112,57 +112,7 @@ impl RpcError {
             RpcError::UnsupportedContractClassVersion => 62,
             RpcError::UnexpectedError { .. } => 63,
             RpcError::ProofLimitExceeded { .. } => 10000,
-            RpcError::GatewayError(_) | RpcError::Internal(_) => {
-                jsonrpsee::types::error::ErrorCode::InternalError.code()
-            }
-        }
-    }
-}
-
-impl From<RpcError> for jsonrpsee::core::error::Error {
-    fn from(err: RpcError) -> Self {
-        use jsonrpsee::types::error::{CallError, ErrorObject};
-
-        match err {
-            RpcError::ProofLimitExceeded { limit, requested } => {
-                #[derive(serde::Serialize)]
-                struct Data {
-                    limit: u32,
-                    requested: u32,
-                }
-
-                let data = Data { limit, requested };
-
-                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
-                    .into()
-            }
-            RpcError::TooManyKeysInFilter { limit, requested } => {
-                #[derive(serde::Serialize)]
-                struct Data {
-                    limit: usize,
-                    requested: usize,
-                }
-
-                let data = Data { limit, requested };
-
-                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
-                    .into()
-            }
-            RpcError::NoTraceAvailable(status) => {
-                #[derive(serde::Serialize)]
-                struct Data {
-                    status: TraceError,
-                }
-                let data = Data { status };
-                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
-                    .into()
-            }
-            other => CallError::Custom(ErrorObject::owned(
-                other.code(),
-                other.to_string(),
-                None::<()>,
-            ))
-            .into(),
+            RpcError::GatewayError(_) | RpcError::Internal(_) => -32603,
         }
     }
 }

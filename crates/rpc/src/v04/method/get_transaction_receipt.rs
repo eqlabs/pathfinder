@@ -28,8 +28,7 @@ pub async fn get_transaction_receipt(
         });
 
         if let Some((receipt, transaction)) = receipt_transaction {
-            let pending =
-                types::PendingTransactionReceipt::from(receipt, &transaction, context.version);
+            let pending = types::PendingTransactionReceipt::from(receipt, &transaction);
             return Ok(types::MaybePendingTransactionReceipt::Pending(pending));
         };
     }
@@ -73,7 +72,6 @@ pub async fn get_transaction_receipt(
                 block_hash,
                 block_number,
                 transaction,
-                context.version,
             ),
         ))
     });
@@ -82,7 +80,6 @@ pub async fn get_transaction_receipt(
 }
 
 pub mod types {
-    use crate::context::RpcVersion;
     use crate::felt::{RpcFelt, RpcFelt251};
     use crate::v02::types::reply::BlockStatus;
     use pathfinder_common::{
@@ -218,7 +215,6 @@ pub mod types {
             block_hash: BlockHash,
             block_number: BlockNumber,
             transaction: starknet_gateway_types::reply::transaction::Transaction,
-            rpc_version: RpcVersion,
         ) -> Self {
             let common = CommonTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -230,7 +226,7 @@ pub mod types {
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
-                    .map(|msg| MessageToL1::from(msg, rpc_version))
+                    .map(MessageToL1::from)
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
                 revert_reason: receipt.revert_error,
@@ -331,7 +327,6 @@ pub mod types {
         pub fn from(
             receipt: starknet_gateway_types::reply::transaction::Receipt,
             transaction: &starknet_gateway_types::reply::transaction::Transaction,
-            rpc_version: RpcVersion,
         ) -> Self {
             let common = CommonPendingTransactionReceiptProperties {
                 transaction_hash: receipt.transaction_hash,
@@ -341,7 +336,7 @@ pub mod types {
                 messages_sent: receipt
                     .l2_to_l1_messages
                     .into_iter()
-                    .map(|msg| MessageToL1::from(msg, rpc_version))
+                    .map(MessageToL1::from)
                     .collect(),
                 events: receipt.events.into_iter().map(Event::from).collect(),
                 revert_reason: receipt.revert_error,
@@ -372,12 +367,7 @@ pub mod types {
     #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct MessageToL1 {
-        // RPC spec v0.3: `MSG_TO_L1` has a new mandatory `from_address` field.
-        // This way it works for both versions without copying much code around.
-        #[serde_as(as = "Option<RpcFelt251>")]
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub from_address: Option<ContractAddress>,
+        pub from_address: ContractAddress,
         #[serde_as(as = "EthereumAddressAsHexStr")]
         pub to_address: EthereumAddress,
         #[serde_as(as = "Vec<RpcFelt>")]
@@ -385,9 +375,9 @@ pub mod types {
     }
 
     impl MessageToL1 {
-        fn from(msg: L2ToL1Message, rpc_version: RpcVersion) -> Self {
+        fn from(msg: L2ToL1Message) -> Self {
             Self {
-                from_address: (!matches!(rpc_version, RpcVersion::V02)).then_some(msg.from_address),
+                from_address: msg.from_address,
                 to_address: msg.to_address,
                 payload: msg.payload,
             }
@@ -475,17 +465,13 @@ mod tests {
 
     mod parsing {
         use super::*;
-
-        use jsonrpsee::types::Params;
+        use serde_json::json;
 
         #[test]
         fn positional_args() {
-            let positional = r#"[
-                "0xdeadbeef"
-            ]"#;
-            let positional = Params::new(Some(positional));
+            let positional = json!(["0xdeadbeef"]);
 
-            let input = positional.parse::<GetTransactionReceiptInput>().unwrap();
+            let input = serde_json::from_value::<GetTransactionReceiptInput>(positional).unwrap();
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
@@ -496,12 +482,11 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named_args = r#"{
+            let named_args = json!({
                 "transaction_hash": "0xdeadbeef"
-            }"#;
-            let named_args = Params::new(Some(named_args));
+            });
 
-            let input = named_args.parse::<GetTransactionReceiptInput>().unwrap();
+            let input = serde_json::from_value::<GetTransactionReceiptInput>(named_args).unwrap();
             assert_eq!(
                 input,
                 GetTransactionReceiptInput {
@@ -564,45 +549,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn success_v02() {
-        let context = RpcContext::for_tests().with_version("v0.2");
-        let input = GetTransactionReceiptInput {
-            transaction_hash: transaction_hash_bytes!(b"txn 6"),
-        };
-
-        let result = get_transaction_receipt(context, input).await.unwrap();
-        use types::*;
-        assert_eq!(
-            result,
-            MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(
-                InvokeTransactionReceipt {
-                    common: CommonTransactionReceiptProperties {
-                        transaction_hash: transaction_hash_bytes!(b"txn 6"),
-                        actual_fee: Fee::ZERO,
-                        block_hash: block_hash_bytes!(b"latest"),
-                        block_number: BlockNumber::new_or_panic(2),
-                        messages_sent: vec![MessageToL1 {
-                            from_address: None, // RPC v0.2 does not have this field
-                            to_address: EthereumAddress(H160::zero()),
-                            payload: vec![
-                                l2_to_l1_message_payload_elem!("0x1"),
-                                l2_to_l1_message_payload_elem!("0x2"),
-                                l2_to_l1_message_payload_elem!("0x3"),
-                            ],
-                        }],
-                        events: vec![],
-                        execution_status: ExecutionStatus::Succeeded,
-                        finality_status: FinalityStatus::AcceptedOnL2,
-                        revert_reason: None,
-                    }
-                }
-            ))
-        )
-    }
-
-    #[tokio::test]
     async fn success_v03() {
-        let context = RpcContext::for_tests().with_version("v0.3");
+        let context = RpcContext::for_tests();
         let input = GetTransactionReceiptInput {
             transaction_hash: transaction_hash_bytes!(b"txn 6"),
         };
@@ -619,7 +567,7 @@ mod tests {
                         block_hash: block_hash_bytes!(b"latest"),
                         block_number: BlockNumber::new_or_panic(2),
                         messages_sent: vec![MessageToL1 {
-                            from_address: Some(contract_address!("0xcafebabe")),
+                            from_address: contract_address!("0xcafebabe"),
                             to_address: EthereumAddress(H160::zero()),
                             payload: vec![
                                 l2_to_l1_message_payload_elem!("0x1"),
@@ -639,9 +587,7 @@ mod tests {
 
     #[tokio::test]
     async fn pending() {
-        let context = RpcContext::for_tests_with_pending()
-            .await
-            .with_version("v0.3");
+        let context = RpcContext::for_tests_with_pending().await;
         let transaction_hash = transaction_hash_bytes!(b"pending tx hash 0");
         let input = GetTransactionReceiptInput { transaction_hash };
 
@@ -683,9 +629,7 @@ mod tests {
 
     #[tokio::test]
     async fn reverted() {
-        let context = RpcContext::for_tests_with_pending()
-            .await
-            .with_version("v0.3");
+        let context = RpcContext::for_tests_with_pending().await;
         let input = GetTransactionReceiptInput {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };
@@ -728,9 +672,7 @@ mod tests {
 
     #[tokio::test]
     async fn json_output() {
-        let context = RpcContext::for_tests_with_pending()
-            .await
-            .with_version("v0.3");
+        let context = RpcContext::for_tests_with_pending().await;
         let input = GetTransactionReceiptInput {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };

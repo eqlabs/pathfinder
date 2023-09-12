@@ -245,6 +245,7 @@ mod tests {
         mod v1 {
             use super::super::*;
             use crate::v02::types::request::BroadcastedDeclareTransactionV1;
+            use serde_json::json;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -261,25 +262,17 @@ mod tests {
 
             #[test]
             fn positional_args() {
-                use jsonrpsee::types::Params;
-
-                let positional = format!(
-                    r#"[
-                        {{
-                            "type": "DECLARE",
-                            "version": "0x1",
-                            "max_fee": "0x1",
-                            "signature": [],
-                            "nonce": "0x0",
-                            "contract_class": {},
-                            "sender_address": "0x1"
-                        }}
-                    ]"#,
-                    CONTRACT_CLASS_JSON.clone()
-                );
-                let positional = Params::new(Some(&positional));
-
-                let input = positional.parse::<AddDeclareTransactionInput>().unwrap();
+                let positional = json!([{
+                    "type": "DECLARE",
+                    "version": "0x1",
+                    "max_fee": "0x1",
+                    "signature": [],
+                    "nonce": "0x0",
+                    "contract_class": CONTRACT_CLASS.clone(),
+                    "sender_address": "0x1"
+                }]);
+                let input =
+                    serde_json::from_value::<AddDeclareTransactionInput>(positional).unwrap();
                 let expected = AddDeclareTransactionInput {
                     declare_transaction: test_declare_txn(),
                     token: None,
@@ -289,26 +282,19 @@ mod tests {
 
             #[test]
             fn named_args() {
-                use jsonrpsee::types::Params;
-
-                let named = format!(
-                    r#"{{
-                        "declare_transaction": {{
-                            "type": "DECLARE",
-                            "version": "0x1",
-                            "max_fee": "0x1",
-                            "signature": [],
-                            "nonce": "0x0",
-                            "contract_class": {},
-                            "sender_address": "0x1"
-                        }},
-                        "token": "token"
-                    }}"#,
-                    CONTRACT_CLASS_JSON.clone()
-                );
-                let named = Params::new(Some(&named));
-
-                let input = named.parse::<AddDeclareTransactionInput>().unwrap();
+                let named = json!({
+                    "declare_transaction": {
+                        "type": "DECLARE",
+                        "version": "0x1",
+                        "max_fee": "0x1",
+                        "signature": [],
+                        "nonce": "0x0",
+                        "contract_class": CONTRACT_CLASS.clone(),
+                        "sender_address": "0x1"
+                    },
+                    "token": "token"
+                });
+                let input = serde_json::from_value::<AddDeclareTransactionInput>(named).unwrap();
                 let expected = AddDeclareTransactionInput {
                     declare_transaction: test_declare_txn(),
                     token: Some("token".to_owned()),
@@ -320,6 +306,7 @@ mod tests {
         mod v2 {
             use super::super::*;
             use crate::v02::types::request::BroadcastedDeclareTransactionV2;
+            use serde_json::json;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -337,26 +324,19 @@ mod tests {
 
             #[test]
             fn positional_args() {
-                use jsonrpsee::types::Params;
+                let positional = json!([{
+                    "type": "DECLARE",
+                    "version": "0x2",
+                    "max_fee": "0x1",
+                    "signature": [],
+                    "nonce": "0x0",
+                    "contract_class": SIERRA_CLASS.clone(),
+                    "sender_address": "0x1",
+                    "compiled_class_hash": "0x1"
+                }]);
 
-                let positional = format!(
-                    r#"[
-                        {{
-                            "type": "DECLARE",
-                            "version": "0x2",
-                            "max_fee": "0x1",
-                            "signature": [],
-                            "nonce": "0x0",
-                            "contract_class": {},
-                            "sender_address": "0x1",
-                            "compiled_class_hash": "0x1"
-                        }}
-                    ]"#,
-                    SIERRA_CLASS_JSON.clone()
-                );
-                let positional = Params::new(Some(&positional));
-
-                let input = positional.parse::<AddDeclareTransactionInput>().unwrap();
+                let input =
+                    serde_json::from_value::<AddDeclareTransactionInput>(positional).unwrap();
                 let expected = AddDeclareTransactionInput {
                     declare_transaction: test_declare_txn(),
                     token: None,
@@ -366,27 +346,21 @@ mod tests {
 
             #[test]
             fn named_args() {
-                use jsonrpsee::types::Params;
+                let named = json!({
+                    "declare_transaction": {
+                        "type": "DECLARE",
+                        "version": "0x2",
+                        "max_fee": "0x1",
+                        "signature": [],
+                        "nonce": "0x0",
+                        "contract_class": SIERRA_CLASS.clone(),
+                        "sender_address": "0x1",
+                        "compiled_class_hash": "0x1"
+                    },
+                    "token": "token"
+                });
 
-                let named = format!(
-                    r#"{{
-                        "declare_transaction": {{
-                            "type": "DECLARE",
-                            "version": "0x2",
-                            "max_fee": "0x1",
-                            "signature": [],
-                            "nonce": "0x0",
-                            "contract_class": {},
-                            "sender_address": "0x1",
-                            "compiled_class_hash": "0x1"
-                        }},
-                        "token": "token"
-                    }}"#,
-                    SIERRA_CLASS_JSON.clone()
-                );
-                let named = Params::new(Some(&named));
-
-                let input = named.parse::<AddDeclareTransactionInput>().unwrap();
+                let input = serde_json::from_value::<AddDeclareTransactionInput>(named).unwrap();
                 let expected = AddDeclareTransactionInput {
                     declare_transaction: test_declare_txn(),
                     token: Some("token".to_owned()),

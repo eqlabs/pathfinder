@@ -5,23 +5,17 @@ mod executor;
 mod felt;
 pub mod gas_price;
 mod jsonrpc;
-pub mod metrics;
 pub mod middleware;
-mod module;
 mod pathfinder;
-pub mod test_client;
 #[cfg(test)]
-pub(crate) mod test_setup;
+mod test_setup;
 pub mod v02;
 pub mod v03;
 pub mod v04;
 pub mod websocket;
 
-pub use middleware::versioning::DefaultVersion;
-
 pub use executor::compose_executor_transaction;
 
-use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use crate::websocket::types::WebsocketSenders;
 use anyhow::Context;
@@ -32,7 +26,6 @@ use axum::response::IntoResponse;
 use context::RpcContext;
 use http::Request;
 use hyper::Body;
-use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use pathfinder_common::AllowedOrigins;
 use std::num::NonZeroUsize;
 use std::{net::SocketAddr, result::Result};
@@ -42,10 +35,14 @@ use tower_http::cors::CorsLayer;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
+pub enum DefaultVersion {
+    V03,
+    V04,
+}
+
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,
-    logger: MaybeRpcMetricsLogger,
     max_connections: usize,
     cors: Option<CorsLayer>,
     ws_senders: Option<WebsocketSenders>,
@@ -57,18 +54,10 @@ impl RpcServer {
         Self {
             addr,
             context,
-            logger: MaybeRpcMetricsLogger::NoOp,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             cors: None,
             ws_senders: None,
             default_version,
-        }
-    }
-
-    pub fn with_logger(self, middleware: RpcMetricsLogger) -> Self {
-        Self {
-            logger: MaybeRpcMetricsLogger::Logger(middleware),
-            ..self
         }
     }
 
@@ -92,7 +81,7 @@ impl RpcServer {
     }
 
     /// Starts the HTTP-RPC server.
-    pub fn run_axum(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
+    pub fn spawn(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use axum::routing::{get, post};
 
         // TODO: allow OPTIONS
@@ -171,69 +160,6 @@ impl RpcServer {
         });
 
         Ok((server_handle, addr))
-    }
-
-    /// Starts the HTTP-RPC server.
-    pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
-        const TEN_MB: u32 = 10 * 1024 * 1024;
-
-        let server = match self.ws_senders {
-				Some(_) => ServerBuilder::default(),
-				None => ServerBuilder::default().http_only(),
-			}
-            .max_connections(self.max_connections as u32)
-            .max_request_body_size(TEN_MB)
-            .set_logger(self.logger)
-            .set_middleware(tower::ServiceBuilder::new()
-                .option_layer(self.cors)
-                .map_result(middleware::versioning::try_map_errors_to_responses)
-                .filter_async({
-                    let default_version = self.default_version;
-
-                    move |request: Request<Body>| async move {
-					// skip method_name checks for websocket handshake
-					if request.headers().get("sec-websocket-key").is_some() {
-						return Ok(request);
-					}
-
-                    middleware::versioning::prefix_rpc_method_names_with_version(request, TEN_MB, default_version).await
-                }})
-            )
-            .build(self.addr)
-            .await
-            .map_err(|e| match e {
-                jsonrpsee::core::Error::Transport(_) => {
-                    use std::error::Error;
-
-                    if let Some(inner) = e.source().and_then(|inner| inner.downcast_ref::<std::io::Error>()) {
-                        if let std::io::ErrorKind::AddrInUse = inner.kind() {
-                            return anyhow::Error::new(e)
-                                .context(format!("RPC address is already in use: {}.
-
-Hint: This usually means you are already running another instance of pathfinder.
-Hint: If this happens when upgrading, make sure to shut down the first one first.
-Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr));
-                        }
-                    }
-
-                    anyhow::Error::new(e)
-                }
-                _ => anyhow::Error::new(e),
-            })?;
-        let local_addr = server.local_addr()?;
-
-        let module = crate::module::Module::new(self.context);
-        let module = v03::register_methods(module)?;
-        let module = v04::register_methods(module)?;
-        let module = pathfinder::register_methods(module)?;
-        let module = match &self.ws_senders {
-            Some(ws_senders) => websocket::register_subscriptions(module, ws_senders.clone())?,
-            None => module,
-        };
-
-        let methods = module.build();
-
-        Ok(server.start(methods).map(|handle| (handle, local_addr))?)
     }
 
     pub fn get_ws_senders(&self) -> WebsocketSenders {
@@ -830,7 +756,9 @@ mod tests {
             // of health check. Test that we return success for such queries.
             let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
             let context = RpcContext::for_tests();
-            let (_jh, addr) = RpcServer::new(addr, context).run_axum().unwrap();
+            let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+                .spawn()
+                .unwrap();
 
             let url = format!("http://{addr}/");
 

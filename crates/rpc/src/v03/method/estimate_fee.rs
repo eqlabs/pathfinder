@@ -103,6 +103,7 @@ pub(crate) mod tests {
 
     mod parsing {
         use super::*;
+        use serde_json::json;
 
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
@@ -119,9 +120,7 @@ pub(crate) mod tests {
 
         #[test]
         fn positional_args() {
-            use jsonrpsee::types::Params;
-
-            let positional = r#"[
+            let positional = json!([
                 [
                     {
                         "type": "INVOKE",
@@ -138,10 +137,9 @@ pub(crate) mod tests {
                     }
                 ],
                 { "block_hash": "0xabcde" }
-            ]"#;
-            let positional = Params::new(Some(positional));
+            ]);
 
-            let input = positional.parse::<EstimateFeeInput>().unwrap();
+            let input = serde_json::from_value::<EstimateFeeInput>(positional).unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
                 block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),
@@ -151,9 +149,7 @@ pub(crate) mod tests {
 
         #[test]
         fn named_args() {
-            use jsonrpsee::types::Params;
-
-            let named_args = r#"{
+            let named_args = json!({
                 "request": [
                     {
                         "type": "INVOKE",
@@ -170,10 +166,8 @@ pub(crate) mod tests {
                     }
                 ],
                 "block_id": { "block_hash": "0xabcde" }
-            }"#;
-            let named_args = Params::new(Some(named_args));
-
-            let input = named_args.parse::<EstimateFeeInput>().unwrap();
+            });
+            let input = serde_json::from_value::<EstimateFeeInput>(named_args).unwrap();
             let expected = EstimateFeeInput {
                 request: vec![test_invoke_txn()],
                 block_id: BlockId::Hash(BlockHash(felt!("0xabcde"))),

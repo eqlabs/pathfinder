@@ -94,17 +94,16 @@ mod tests {
 
     mod parsing {
         use super::*;
-        use jsonrpsee::types::Params;
+        use serde_json::json;
 
         #[test]
         fn positional_args() {
-            let positional = r#"[
+            let positional = json!([
                 { "block_hash": "0xabcde" },
                 "0x12345"
-            ]"#;
-            let positional = Params::new(Some(positional));
+            ]);
 
-            let input = positional.parse::<GetClassInput>().unwrap();
+            let input = serde_json::from_value::<GetClassInput>(positional).unwrap();
             let expected = GetClassInput {
                 block_id: block_hash!("0xabcde").into(),
                 class_hash: class_hash!("0x12345"),
@@ -114,13 +113,12 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named = r#"{
+            let named = json!({
                 "block_id": { "block_hash": "0xabcde" },
                 "class_hash": "0x12345"
-            }"#;
-            let named = Params::new(Some(named));
+            });
 
-            let input = named.parse::<GetClassInput>().unwrap();
+            let input = serde_json::from_value::<GetClassInput>(named).unwrap();
             let expected = GetClassInput {
                 block_id: block_hash!("0xabcde").into(),
                 class_hash: class_hash!("0x12345"),

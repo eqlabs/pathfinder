@@ -16,7 +16,6 @@ use tokio_stream::wrappers::BroadcastStream;
 use crate::context::RpcContext;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcResponse};
-use crate::module::Module;
 use crate::websocket::types::{BlockHeader, WebsocketSenders};
 
 pub async fn websocket_handler(ws: WebSocketUpgrade, State(state): State<RpcContext>) -> Response {

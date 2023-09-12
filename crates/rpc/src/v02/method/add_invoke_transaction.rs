@@ -114,37 +114,33 @@ mod tests {
 
     mod parsing {
         use super::*;
+        use serde_json::json;
 
         #[test]
         fn positional_args() {
-            use jsonrpsee::types::Params;
+            let positional = json!([{
+                "type": "INVOKE",
+                "version": "0x1",
+                "max_fee": "0x4f388496839",
+                "signature": [
+                    "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
+                    "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
+                ],
+                "nonce": "0x1",
+                "sender_address": "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
+                "calldata": [
+                    "0x1",
+                    "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
+                    "0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
+                    "0x0",
+                    "0x1",
+                    "0x1",
+                    "0x2b",
+                    "0x0"
+                ]
+            }]);
 
-            let positional = r#"[
-                {
-                    "type": "INVOKE",
-                    "version": "0x1",
-                    "max_fee": "0x4f388496839",
-                    "signature": [
-                        "0x07dd3a55d94a0de6f3d6c104d7e6c88ec719a82f4e2bbc12587c8c187584d3d5",
-                        "0x071456dded17015d1234779889d78f3e7c763ddcfd2662b19e7843c7542614f8"
-                    ],
-                    "nonce": "0x1",
-                    "sender_address": "0x023371b227eaecd8e8920cd429357edddd2cd0f3fee6abaacca08d3ab82a7cdd",
-                    "calldata": [
-                        "0x1",
-                        "0x0677bb1cdc050e8d63855e8743ab6e09179138def390676cc03c484daf112ba1",
-                        "0x0362398bec32bc0ebb411203221a35a0301193a96f317ebe5e40be9f60d15320",
-                        "0x0",
-                        "0x1",
-                        "0x1",
-                        "0x2b",
-                        "0x0"
-                    ]
-                }
-            ]"#;
-            let positional = Params::new(Some(positional));
-
-            let input = positional.parse::<AddInvokeTransactionInput>().unwrap();
+            let input = serde_json::from_value::<AddInvokeTransactionInput>(positional).unwrap();
             let expected = AddInvokeTransactionInput {
                 invoke_transaction: test_invoke_txn(),
             };
@@ -153,9 +149,7 @@ mod tests {
 
         #[test]
         fn named_args() {
-            use jsonrpsee::types::Params;
-
-            let named = r#"{
+            let named = json!({
                 "invoke_transaction": {
                     "type": "INVOKE",
                     "version": "0x1",
@@ -177,10 +171,9 @@ mod tests {
                         "0x0"
                     ]
                 }
-            }"#;
-            let named = Params::new(Some(named));
+            });
 
-            let input = named.parse::<AddInvokeTransactionInput>().unwrap();
+            let input = serde_json::from_value::<AddInvokeTransactionInput>(named).unwrap();
             let expected = AddInvokeTransactionInput {
                 invoke_transaction: test_invoke_txn(),
             };

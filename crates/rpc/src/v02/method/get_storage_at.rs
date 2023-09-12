@@ -92,7 +92,8 @@ pub async fn get_storage_at(
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use jsonrpsee::types::Params;
+    use serde_json::json;
+
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{ContractAddress, StorageAddress};
 
@@ -100,26 +101,19 @@ mod tests {
     ///
     /// `BlockId` parsing is tested in [`get_block`][crate::rpc::v02::method::get_block::tests::parsing]
     /// and is not repeated here.
-    #[test]
-    fn parsing() {
+    #[rstest::rstest]
+    #[case::positional(json!(["1", "2", "latest"]))]
+    #[case::named(json!({"contract_address": "0x1", "key": "0x2", "block_id": "latest"}))]
+    fn parsing(#[case] input: serde_json::Value) {
         let expected = GetStorageAtInput {
             contract_address: contract_address!("0x1"),
             key: storage_address!("0x2"),
             block_id: BlockId::Latest,
         };
 
-        [
-            r#"["1", "2", "latest"]"#,
-            r#"{"contract_address": "0x1", "key": "0x2", "block_id": "latest"}"#,
-        ]
-        .into_iter()
-        .enumerate()
-        .for_each(|(i, input)| {
-            let actual = Params::new(Some(input))
-                .parse::<GetStorageAtInput>()
-                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
-            assert_eq!(actual, expected, "test case {i}: {input}");
-        });
+        let input = serde_json::from_value::<GetStorageAtInput>(input).unwrap();
+
+        assert_eq!(input, expected);
     }
 
     type TestCaseHandler = Box<dyn Fn(usize, &Result<StorageValue, GetStorageAtError>)>;

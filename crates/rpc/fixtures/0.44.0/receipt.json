@@ -8,6 +8,7 @@
         "block_number": 3,
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x55",
                 "payload": [
                     "0x6"
@@ -45,6 +46,7 @@
         "block_number": 3,
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x55",
                 "payload": [
                     "0x6"
@@ -72,6 +74,7 @@
         "block_number": 3,
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x55",
                 "payload": [
                     "0x6"
@@ -99,6 +102,7 @@
         "block_number": 3,
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x55",
                 "payload": [
                     "0x6"
@@ -124,6 +128,7 @@
         "actual_fee": "0x2",
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x5",
                 "payload": [
                     "0x6"
@@ -148,6 +153,7 @@
         "actual_fee": "0x2",
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x5",
                 "payload": [
                     "0x6"
@@ -172,6 +178,7 @@
         "actual_fee": "0x2",
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x5",
                 "payload": [
                     "0x6"
@@ -196,6 +203,7 @@
         "actual_fee": "0x2",
         "messages_sent": [
             {
+                "from_address": "0x789",
                 "to_address": "0x5",
                 "payload": [
                     "0x6"

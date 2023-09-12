@@ -8,28 +8,6 @@ use std::sync::Arc;
 
 type SequencerClient = starknet_gateway_client::Client;
 
-#[derive(Copy, Clone, Default)]
-pub enum RpcVersion {
-    #[default]
-    Undefined,
-    V01,
-    V02,
-    V03,
-    V04,
-}
-
-impl RpcVersion {
-    fn parse(s: &str) -> Self {
-        match s {
-            "v0.1" => Self::V01,
-            "v0.2" => Self::V02,
-            "v0.3" => Self::V03,
-            "v0.4" => Self::V04,
-            _ => Self::default(),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct RpcContext {
     pub storage: Storage,
@@ -39,7 +17,6 @@ pub struct RpcContext {
     pub chain_id: ChainId,
     pub eth_gas_price: gas_price::Cached,
     pub sequencer: SequencerClient,
-    pub version: RpcVersion,
     pub websocket: WebsocketSenders,
 }
 
@@ -59,15 +36,7 @@ impl RpcContext {
             pending_data: None,
             eth_gas_price: gas_price::Cached::new(sequencer.clone()),
             sequencer,
-            version: RpcVersion::default(),
             websocket: WebsocketSenders::with_capacity(1),
-        }
-    }
-
-    pub(crate) fn with_version(self, version: &str) -> Self {
-        Self {
-            version: RpcVersion::parse(version),
-            ..self
         }
     }
 
@@ -119,16 +88,9 @@ impl RpcContext {
         context.with_pending_data(pending_data)
     }
 
-    pub fn with_call_handling(self, call_handle: ext_py::Handle) -> Self {
-        Self {
-            call_handle: Some(call_handle),
-            ..self
-        }
-    }
-
     pub fn with_eth_gas_price(self, gas_price: gas_price::Cached) -> Self {
         Self {
-            eth_gas_price: Some(gas_price),
+            eth_gas_price: gas_price,
             ..self
         }
     }

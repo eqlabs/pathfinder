@@ -97,17 +97,16 @@ mod tests {
 
     mod parsing {
         use super::*;
-        use jsonrpsee::types::Params;
+        use serde_json::json;
 
         #[test]
         fn positional_args() {
-            let positional = r#"[
+            let positional = json!([
                 { "contract_address": "0xabcde", "entry_point_selector": "0xee", "calldata": ["0x1234", "0x2345"] },
                 { "block_hash": "0xbbbbbbbb" }
-            ]"#;
-            let positional = Params::new(Some(positional));
+            ]);
 
-            let input = positional.parse::<CallInput>().unwrap();
+            let input = serde_json::from_value::<CallInput>(positional).unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -121,13 +120,12 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named = r#"{
+            let named = json!({
                 "request": { "contract_address": "0xabcde", "entry_point_selector": "0xee", "calldata": ["0x1234", "0x2345"] },
                 "block_id": { "block_hash": "0xbbbbbbbb" }
-            }"#;
-            let named = Params::new(Some(named));
+            });
 
-            let input = named.parse::<CallInput>().unwrap();
+            let input = serde_json::from_value::<CallInput>(named).unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),

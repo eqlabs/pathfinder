@@ -160,12 +160,11 @@ mod tests {
 
     mod parsing {
         use super::*;
+        use serde_json::json;
 
         #[test]
         fn positional_args() {
-            use jsonrpsee::types::Params;
-
-            let positional = r#"[
+            let positional = json!([
                 {
                     "type": "INVOKE",
                     "version": "0x1",
@@ -187,10 +186,9 @@ mod tests {
                         "0x0"
                     ]
                 }
-            ]"#;
-            let positional = Params::new(Some(positional));
+            ]);
 
-            let input = positional.parse::<AddInvokeTransactionInput>().unwrap();
+            let input = serde_json::from_value::<AddInvokeTransactionInput>(positional).unwrap();
             let expected = AddInvokeTransactionInput {
                 invoke_transaction: test_invoke_txn(),
             };
@@ -199,9 +197,7 @@ mod tests {
 
         #[test]
         fn named_args() {
-            use jsonrpsee::types::Params;
-
-            let named = r#"{
+            let named = json!({
                 "invoke_transaction": {
                     "type": "INVOKE",
                     "version": "0x1",
@@ -223,10 +219,9 @@ mod tests {
                         "0x0"
                     ]
                 }
-            }"#;
-            let named = Params::new(Some(named));
+            });
 
-            let input = named.parse::<AddInvokeTransactionInput>().unwrap();
+            let input = serde_json::from_value::<AddInvokeTransactionInput>(named).unwrap();
             let expected = AddInvokeTransactionInput {
                 invoke_transaction: test_invoke_txn(),
             };

@@ -46,7 +46,7 @@ pub struct GetEventsInput {
 
 /// Contains event filter parameters passed to `starknet_getEvents`.
 #[serde_with::skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Default, Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EventFilter {
     #[serde(default)]
@@ -642,55 +642,51 @@ mod tests {
         types::{EmittedEvent, GetEventsResult},
         *,
     };
-    use jsonrpsee::types::Params;
+    use serde_json::json;
+
     use pathfinder_common::felt;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_storage::test_utils;
     use pretty_assertions::assert_eq;
 
-    #[test]
-    fn parsing() {
-        let optional_present = EventFilter {
-            from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
-            to_block: Some(BlockId::Latest),
-            address: Some(contract_address!("0x1")),
-            keys: vec![vec![event_key!("0x2")], vec![]],
-            chunk_size: 3,
-            continuation_token: Some("4".to_string()),
+    #[rstest::rstest]
+    #[case::positional_with_optionals(json!([{
+        "from_block":{"block_number":0},
+        "to_block":"latest",
+        "address":"0x1",
+        "keys":[["0x2"],[]],
+        "chunk_size":3,
+        "continuation_token":"4"}]), true
+    )]
+    #[case::named_with_optionals(json!({"filter":{
+        "from_block":{"block_number":0},
+        "to_block":"latest",
+        "address":"0x1","keys":[["0x2"],[]],
+        "chunk_size":3,
+        "continuation_token":"4"}}), true
+    )]
+    #[case::positional_without_optionals(json!([{"chunk_size":5}]), false)]
+    #[case::named_without_optionals(json!({"filter":{"chunk_size":5}}), false)]
+    fn parsing(#[case] input: serde_json::Value, #[case] with_optionals: bool) {
+        let filter = if with_optionals {
+            EventFilter {
+                from_block: Some(BlockId::Number(BlockNumber::new_or_panic(0))),
+                to_block: Some(BlockId::Latest),
+                address: Some(contract_address!("0x1")),
+                keys: vec![vec![event_key!("0x2")], vec![]],
+                chunk_size: 3,
+                continuation_token: Some("4".to_string()),
+            }
+        } else {
+            EventFilter {
+                chunk_size: 5,
+                ..Default::default()
+            }
         };
-        let optional_absent = EventFilter {
-            from_block: None,
-            to_block: None,
-            address: None,
-            keys: vec![],
-            chunk_size: 5,
-            continuation_token: None,
-        };
+        let expected = GetEventsInput { filter };
 
-        [
-            (
-                r#"[{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":[["0x2"],[]],"chunk_size":3,"continuation_token":"4"}]"#,
-                optional_present.clone(),
-            ),
-            (
-                r#"{"filter":{"from_block":{"block_number":0},"to_block":"latest","address":"0x1","keys":[["0x2"],[]],"chunk_size":3,"continuation_token":"4"}}"#,
-                optional_present
-            ),
-            (r#"[{"chunk_size":5}]"#, optional_absent.clone()),
-            (r#"{"filter":{"chunk_size":5}}"#, optional_absent),
-        ]
-        .into_iter()
-        .enumerate()
-        .for_each(|(i, (input, expected))| {
-            let actual = Params::new(Some(input))
-                .parse::<GetEventsInput>()
-                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
-            assert_eq!(
-                actual,
-                GetEventsInput { filter: expected },
-                "test case {i}: {input}"
-            );
-        });
+        let input = serde_json::from_value::<GetEventsInput>(input).unwrap();
+        assert_eq!(input, expected);
     }
 
     #[test]
@@ -750,12 +746,8 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
-                keys: vec![],
                 chunk_size: test_utils::NUM_EVENTS,
-                continuation_token: None,
+                ..Default::default()
             },
         };
         let result = get_events(context, input).await.unwrap();
@@ -802,10 +794,8 @@ mod tests {
             filter: EventFilter {
                 from_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
                 to_block: Some(BlockNumber::new_or_panic(BLOCK_NUMBER as u64).into()),
-                address: None,
-                keys: vec![],
                 chunk_size: test_utils::NUM_EVENTS,
-                continuation_token: None,
+                ..Default::default()
             },
         };
 
@@ -831,10 +821,8 @@ mod tests {
             filter: EventFilter {
                 from_block: Some(BlockId::Latest),
                 to_block: Some(BlockId::Latest),
-                address: None,
-                keys: vec![],
                 chunk_size: test_utils::NUM_EVENTS,
-                continuation_token: None,
+                ..Default::default()
             },
         };
 
@@ -857,12 +845,8 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
-                keys: vec![],
                 chunk_size: pathfinder_storage::PAGE_SIZE_LIMIT + 1,
-                continuation_token: None,
+                ..Default::default()
             },
         };
         let error = get_events(context, input).await.unwrap_err();
@@ -885,12 +869,9 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
                 keys,
                 chunk_size: 10,
-                continuation_token: None,
+                ..Default::default()
             },
         };
         let error = get_events(context, input).await.unwrap_err();
@@ -914,12 +895,9 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 1,
-                continuation_token: None,
+                ..Default::default()
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -933,12 +911,10 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 2,
                 continuation_token: Some("2-1".to_string()),
+                ..Default::default()
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -952,12 +928,10 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 3,
                 continuation_token: Some("2-3".to_string()),
+                ..Default::default()
             },
         };
         let result = get_events(context.clone(), input).await.unwrap();
@@ -972,13 +946,11 @@ mod tests {
         // nonexistent page
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: None,
-                to_block: None,
-                address: None,
                 keys: keys_for_expected_events.clone(),
                 chunk_size: 1,
                 // Offset pointing to after the last event
                 continuation_token: Some("2-6".to_string()),
+                ..Default::default()
             },
         };
         let error = get_events(context, input).await.unwrap_err();
@@ -998,10 +970,8 @@ mod tests {
                 filter: EventFilter {
                     from_block: Some(BlockId::Pending),
                     to_block: Some(BlockId::Latest),
-                    address: None,
-                    keys: vec![],
                     chunk_size: 100,
-                    continuation_token: None,
+                    ..Default::default()
                 },
             };
             let result = get_events(context, input).await.unwrap();
@@ -1014,12 +984,9 @@ mod tests {
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
-                    from_block: None,
                     to_block: Some(BlockId::Latest),
-                    address: None,
-                    keys: vec![],
                     chunk_size: 1024,
-                    continuation_token: None,
+                    ..Default::default()
                 },
             };
 
@@ -1050,12 +1017,9 @@ mod tests {
 
             let mut input = GetEventsInput {
                 filter: EventFilter {
-                    from_block: None,
                     to_block: Some(BlockId::Pending),
-                    address: None,
-                    keys: vec![],
                     chunk_size: 1024,
-                    continuation_token: None,
+                    ..Default::default()
                 },
             };
 
@@ -1160,12 +1124,9 @@ mod tests {
 
             let all_non_pending_filter = GetEventsInput {
                 filter: EventFilter {
-                    from_block: None,
                     to_block: Some(BlockId::Latest),
-                    address: None,
-                    keys: vec![],
                     chunk_size: 1024,
-                    continuation_token: None,
+                    ..Default::default()
                 },
             };
 
