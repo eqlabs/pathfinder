@@ -5,13 +5,13 @@ fn main() -> Result<()> {
         &[
             "proto/block.proto",
             "proto/common.proto",
-            // "proto/consensus.proto",
+            "proto/consensus.proto",
             "proto/event.proto",
-            // "proto/mempool.proto",
+            "proto/mempool.proto",
             "proto/receipt.proto",
-            // "proto/snapshot.proto",
-            // "proto/state.proto",
-            // "proto/transaction.proto",
+            "proto/snapshot.proto",
+            "proto/state.proto",
+            "proto/transaction.proto",
         ],
         &["proto"],
     )?;

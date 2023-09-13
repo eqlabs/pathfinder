@@ -178,18 +178,27 @@ impl Step {
     }
 }
 
+impl Default for Step {
+    fn default() -> Self {
+        Self(1)
+    }
+}
+
 impl From<u64> for Step {
     fn from(input: u64) -> Self {
         // step 0 means the step field was actually missing or
         // the client does not know what it's actually doing :P
-        let step = if input == 0 { 1 } else { input };
-        Self(step)
+        if input == 0 {
+            Default::default()
+        } else {
+            Self(input)
+        }
     }
 }
 
 impl From<Option<u64>> for Step {
     fn from(input: Option<u64>) -> Self {
-        Self::from(input.unwrap_or(1))
+        Self::from(input.unwrap_or_default())
     }
 }
 

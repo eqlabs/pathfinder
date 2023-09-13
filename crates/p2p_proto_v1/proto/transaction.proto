@@ -4,63 +4,155 @@ package starknet.transaction;
 
 import "common.proto";
 
-message TransactionCommon {
-    starknet.common.Felt252 nonce = 1; // FFU: volition will also add the selected state tree
-    starknet.common.Felt252 version = 2;
+message ResourceLimits {
+    starknet.common.Felt252 max_amount         = 1;
+    starknet.common.Felt252 max_price_per_unit = 2;
 }
 
-message L2TransactionCommon {
-    starknet.common.Address sender = 1;
-    starknet.common.Signature signature = 2;
-    starknet.common.Felt252 max_fee = 4; // FFU: may change according to fee market spec
+message AccountSignature {
+    repeated starknet.common.Felt252 parts = 1;
 }
-
-message InvokeTransaction
-{
-    repeated starknet.common.Felt252 calldata = 1; // not streaming this, meaning limited to ~30K felts.
-}
-
-
-message DeclareTransaction
-{
-    starknet.common.Hash class_hash = 1;
-    starknet.common.Hash compiled_hash = 2;
-}
-
-message L2Transaction {
-    L2TransactionCommon common = 1;
-    oneof txn {
-        InvokeTransaction invoke = 2;
-        DeclareTransaction declare = 3;
-    }
-}
-
-
-message L1HandlerTransaction {
-    starknet.common.Address contract = 1;
-    starknet.common.Felt252 entry_point_selector = 2;
-    repeated starknet.common.Felt252 calldata = 3;
-}
-
-// NOTE: not keeping old tx types for clarity
-// TODO: add DeployAccountTransaction
 
 message Transaction
 {
-    TransactionCommon common = 1;
+    message DeclareV0 {
+        starknet.common.Address sender     = 1;
+        starknet.common.Felt252 max_fee    = 2;
+        AccountSignature        signature  = 3;
+        starknet.common.Hash    class_hash = 4;
+    }
+
+    message DeclareV1 {
+        starknet.common.Address sender     = 1;
+        starknet.common.Felt252 max_fee    = 2;
+        AccountSignature        signature  = 3;
+        starknet.common.Hash    class_hash = 4;
+        starknet.common.Felt252 nonce      = 5;
+    }
+
+    message DeclareV2 {
+        starknet.common.Address sender              = 1;
+        starknet.common.Felt252 max_fee             = 2;
+        AccountSignature        signature           = 3;
+        starknet.common.Hash    class_hash          = 4;
+        starknet.common.Felt252 nonce               = 5;
+        starknet.common.Felt252 compiled_class_hash = 6;
+    }
+
+    message DeclareV3 {
+        starknet.common.Address sender              = 1;
+        starknet.common.Felt252 max_fee             = 2;
+        AccountSignature        signature           = 3;
+        starknet.common.Hash    class_hash          = 4;
+        starknet.common.Felt252 nonce               = 5;
+        starknet.common.Felt252 compiled_class_hash = 6;
+        ResourceLimits          l1_gas              = 7;
+        ResourceLimits          l2_gas              = 8;
+        starknet.common.Felt252 tip                 = 9;
+        starknet.common.Address paymaster           = 10;
+        string                  nonce_domain        = 11;
+        string                  fee_domain          = 12;
+    }
+
+    message Deploy {
+        starknet.common.Hash             class_hash   = 1;
+        starknet.common.Felt252          address_salt = 2;
+        repeated starknet.common.Felt252 calldata     = 3;
+    }
+
+    message DeployAccountV1 {
+        starknet.common.Felt252          max_fee      = 1;
+        AccountSignature                 signature    = 2;
+        starknet.common.Hash             class_hash   = 3;
+        starknet.common.Felt252          nonce        = 4;
+        starknet.common.Felt252          address_salt = 5;
+        repeated starknet.common.Felt252 calldata     = 6;
+    }
+
+    message DeployAccountV3 {
+        starknet.common.Felt252          max_fee      = 1;
+        AccountSignature                 signature    = 2;
+        starknet.common.Hash             class_hash   = 3;
+        starknet.common.Felt252          nonce        = 4;
+        starknet.common.Felt252          address_salt = 5;
+        repeated starknet.common.Felt252 calldata     = 6;
+        ResourceLimits                   l1_gas       = 7;
+        ResourceLimits                   l2_gas       = 8;
+        starknet.common.Felt252          tip          = 9;
+        starknet.common.Address          paymaster    = 10;
+        string                           nonce_domain = 11;
+        string                           fee_domain   = 12;
+    }
+
+    message InvokeV0 {
+        starknet.common.Felt252          max_fee              = 1;
+        AccountSignature                 signature            = 2;
+        starknet.common.Address          address              = 3;
+        starknet.common.Felt252          entry_point_selector = 4;
+        repeated starknet.common.Felt252 calldata             = 5;
+    }
+
+    message InvokeV1 {
+        starknet.common.Address          sender     = 1;
+        starknet.common.Felt252          max_fee    = 2;
+        AccountSignature                 signature  = 3;
+        starknet.common.Hash             class_hash = 4;
+        repeated starknet.common.Felt252 calldata   = 5;
+    }
+
+    message InvokeV3 {
+        starknet.common.Address          sender       = 1;
+        starknet.common.Felt252          max_fee      = 2;
+        AccountSignature                 signature    = 3;
+        starknet.common.Hash             class_hash   = 4;
+        repeated starknet.common.Felt252 calldata     = 5;
+        ResourceLimits                   l1_gas       = 6;
+        ResourceLimits                   l2_gas       = 7;
+        starknet.common.Felt252          tip          = 8;
+        starknet.common.Address          paymaster    = 9;
+        string                           nonce_domain = 10;
+        string                           fee_domain   = 11;
+    }
+
+    message L1HandlerV1 {
+        starknet.common.Felt252  nonce                = 1;
+        starknet.common.Address  address              = 2;
+        starknet.common.Felt252  entry_point_selector = 3;
+        repeated starknet.common.Felt252 calldata     = 5;
+    }
+
     oneof txn {
-        L2Transaction l2Transaction = 2;
-        L1HandlerTransaction l1handler = 3;
+        DeclareV0       declare_v0        = 1;
+        DeclareV1       declare_v1        = 2;
+        DeclareV2       declare_v2        = 3;
+        DeclareV3       declare_v3        = 4;
+        Deploy          deploy            = 5;
+        DeployAccountV1 deploy_account_v1 = 6;
+        DeployAccountV3 deploy_account_v3 = 7;
+        InvokeV0        invoke_v0         = 8;
+        InvokeV1        invoke_v1         = 9;
+        InvokeV3        invoke_v3         = 10;
+        L1HandlerV1     l1_handler        = 11;
     }
 }
 
-
-
-message GetTransactions {
-    starknet.common.BlockID id = 1;
+// TBD: can support a flag to return tx hashes only, good for standalone mempool to remove them,
+// or any node that keeps track of transaction streaming in the consensus.
+message TransactionsRequest {
+    starknet.common.Iteration iteration = 1;
 }
 
 // can be several in a single reply
 message Transactions {
-    repeated Transaction transactions = 2;
+    repeated Transaction items = 2;
+}
+
+message TransactionsResponse {
+    uint64               block_number = 1;
+    starknet.common.Hash block_hash   = 2;
+
+    oneof responses {
+        Transactions        transactions = 3;
+        starknet.common.Fin fin          = 4;
+    }
 }

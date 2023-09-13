@@ -7,27 +7,27 @@ pub mod proto {
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
-    // pub mod consensus {
-    //     include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
-    // }
+    pub mod consensus {
+        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
+    }
     pub mod event {
         include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     }
-    // pub mod mempool {
-    //     include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
-    // }
+    pub mod mempool {
+        include!(concat!(env!("OUT_DIR"), "/starknet.mempool.rs"));
+    }
     pub mod receipt {
         include!(concat!(env!("OUT_DIR"), "/starknet.receipt.rs"));
     }
-    // pub mod snapshot {
-    //     include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
-    // }
+    pub mod snapshot {
+        include!(concat!(env!("OUT_DIR"), "/starknet.snapshot.rs"));
+    }
     pub mod state {
         include!(concat!(env!("OUT_DIR"), "/starknet.state.rs"));
     }
-    // pub mod transaction {
-    //     include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
-    // }
+    pub mod transaction {
+        include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -51,6 +51,18 @@ impl ToProtobuf<u32> for u32 {
 
 impl ToProtobuf<u8> for u8 {
     fn to_protobuf(self) -> u8 {
+        self
+    }
+}
+
+impl ToProtobuf<i32> for i32 {
+    fn to_protobuf(self) -> i32 {
+        self
+    }
+}
+
+impl ToProtobuf<bool> for bool {
+    fn to_protobuf(self) -> bool {
         self
     }
 }
@@ -92,8 +104,20 @@ impl TryFromProtobuf<u32> for u32 {
     }
 }
 
+impl TryFromProtobuf<i32> for i32 {
+    fn try_from_protobuf(input: i32, _field_name: &'static str) -> Result<Self, std::io::Error> {
+        Ok(input)
+    }
+}
+
 impl TryFromProtobuf<u8> for u8 {
     fn try_from_protobuf(input: u8, _field_name: &'static str) -> Result<Self, std::io::Error> {
+        Ok(input)
+    }
+}
+
+impl TryFromProtobuf<bool> for bool {
+    fn try_from_protobuf(input: bool, _field_name: &'static str) -> Result<Self, std::io::Error> {
         Ok(input)
     }
 }
@@ -137,12 +161,13 @@ impl<T: TryFromProtobuf<U>, U> TryFromProtobuf<Vec<U>> for Vec<T> {
 use p2p_proto_derive::*;
 pub mod block;
 pub mod common;
+pub mod consensus;
 pub mod event;
-// pub mod mempool;
+pub mod mempool;
 pub mod receipt;
-// pub mod snapshot;
+pub mod snapshot;
 pub mod state;
-// pub mod transaction;
+pub mod transaction;
 
 // Trying to estimate the overhead of the classes message so that we know what is the limit
 // on compressed class definition size, varint delimiting of the message is taken into account
@@ -153,7 +178,7 @@ pub mod state;
 // 10 x 1MiB class == 586 bytes; 57 bytes/class
 //
 // It's generally safe to assume:
-// N classes == 22 + 60 * N bytes
+// N classes == 20 + 60 * N bytes
 #[cfg(test)]
 #[rstest::rstest]
 #[test]
