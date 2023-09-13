@@ -1,5 +1,5 @@
 use crate::{
-    common::{Hash, Iteration},
+    common::{Fin, Hash, Iteration},
     proto, ToProtobuf, TryFromProtobuf,
 };
 use fake::Dummy;
@@ -105,6 +105,33 @@ pub enum Receipt {
     L1Handler(L1HandlerTransactionReceipt),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::ReceiptsRequest")]
+pub struct ReceiptsRequest {
+    pub iteration: Iteration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::Receipts")]
+pub struct Receipts {
+    pub items: Vec<Receipt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::receipt::ReceiptsResponse")]
+pub struct ReceiptsResponse {
+    pub block_number: u64,
+    pub block_hash: Hash,
+    #[rename(responses)]
+    pub kind: ReceiptsResponseKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+pub enum ReceiptsResponseKind {
+    Receipts(Receipts),
+    Fin(Fin),
+}
+
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self(H160::random_using(rng))
@@ -135,18 +162,6 @@ impl TryFromProtobuf<proto::receipt::EthereumAddress> for EthereumAddress {
         let address = primitive_types::H160::from_slice(&input.elements);
         Ok(Self(address))
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::ReceiptsRequest")]
-pub struct ReceiptsRequest {
-    pub iteration: Iteration,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::receipt::Receipts")]
-pub struct Receipts {
-    pub items: Vec<Receipt>,
 }
 
 impl TryFromProtobuf<proto::receipt::Receipt> for Receipt {
@@ -198,5 +213,32 @@ impl ToProtobuf<proto::receipt::Receipt> for Receipt {
             Receipt::L1Handler(r) => L1Handler(r.to_protobuf()),
         });
         proto::receipt::Receipt { receipt }
+    }
+}
+
+impl ToProtobuf<proto::receipt::receipts_response::Responses> for ReceiptsResponseKind {
+    fn to_protobuf(self) -> proto::receipt::receipts_response::Responses {
+        use proto::receipt::receipts_response::Responses::{Fin, Receipts};
+        match self {
+            ReceiptsResponseKind::Receipts(r) => Receipts(r.to_protobuf()),
+            ReceiptsResponseKind::Fin(f) => Fin(f.to_protobuf()),
+        }
+    }
+}
+
+impl TryFromProtobuf<proto::receipt::receipts_response::Responses> for ReceiptsResponseKind {
+    fn try_from_protobuf(
+        input: proto::receipt::receipts_response::Responses,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        use proto::receipt::receipts_response::Responses::{Fin, Receipts};
+        match input {
+            Receipts(r) => Ok(ReceiptsResponseKind::Receipts(
+                TryFromProtobuf::try_from_protobuf(r, field_name)?,
+            )),
+            Fin(f) => Ok(ReceiptsResponseKind::Fin(
+                TryFromProtobuf::try_from_protobuf(f, field_name)?,
+            )),
+        }
     }
 }

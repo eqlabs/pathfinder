@@ -1,9 +1,9 @@
 use anyhow::Context;
 use p2p_proto_v1::block::{
-    BlockBodiesResponse, BlockBodyMessage, BlockHeaderMessage, BlockHeadersResponse,
-    GetBlockBodies, GetBlockHeaders,
+    BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeaderMessage,
+    BlockHeadersRequest, BlockHeadersResponse,
 };
-use p2p_proto_v1::common::{BlockId, Hash};
+use p2p_proto_v1::common::{Hash, Iteration};
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
@@ -33,7 +33,7 @@ type BlockBodiesRx = tokio::sync::mpsc::Receiver<BlockBodiesResponse>;
 // 3. retrieve in batches, don't wait for the previous batch to finish, send with index to rebuild the correct order in the receiver
 pub async fn get_headers(
     storage: &Storage,
-    request: GetBlockHeaders,
+    request: BlockHeadersRequest,
     reply_tx: BlockHeadersTx,
 ) -> anyhow::Result<()> {
     // TODO For really large requests we might want to use smaller batches
@@ -51,7 +51,7 @@ pub async fn get_headers(
 
 pub async fn get_bodies(
     storage: &Storage,
-    request: GetBlockBodies,
+    request: BlockBodiesRequest,
     reply_tx: BlockBodiesTx,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, bodies).await?;
@@ -68,21 +68,19 @@ pub async fn get_bodies(
 
 pub(crate) fn headers(
     tx: Transaction<'_>,
-    request: GetBlockHeaders,
+    request: BlockHeadersRequest,
 ) -> anyhow::Result<Vec<BlockHeadersResponse>> {
-    use p2p_proto_v1::block::Iteration;
-
-    let GetBlockHeaders {
+    let BlockHeadersRequest {
         iteration:
             Iteration {
-                start,
+                start_block,
                 direction,
                 limit,
                 step,
             },
     } = request;
 
-    let mut next_block_number = BlockNumber::new(start.0);
+    let mut next_block_number = BlockNumber::new(start_block);
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
 
     let mut responses = Vec::new();
@@ -203,11 +201,11 @@ fn classes(
     class_definition_getter: impl Fn(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
 ) -> anyhow::Result<()> {
     /// It's generally safe to assume:
-    /// N classes == 22 + 60 * N bytes
+    /// N classes == 20 + 60 * N bytes
     ///
     /// Please see this test for more details:
     /// [`p2p_proto_v0::check_classes_message_overhead`]
-    const PER_MESSAGE_OVERHEAD: usize = 22;
+    const PER_MESSAGE_OVERHEAD: usize = 20;
     const PER_CLASS_OVERHEAD: usize = 60;
     const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
     let mut estimated_message_size = PER_MESSAGE_OVERHEAD;
