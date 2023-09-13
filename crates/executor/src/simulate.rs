@@ -73,7 +73,7 @@ pub fn simulate(
     Ok(simulations)
 }
 
-pub fn trace(
+pub fn trace_one(
     mut execution_state: ExecutionState,
     tx: Transaction,
 ) -> Result<TransactionTrace, CallError> {
@@ -86,6 +86,27 @@ pub fn trace(
     }
     let trace = to_trace(tx_type, tx_info)?;
     Ok(trace)
+}
+
+pub fn trace_all(
+    mut execution_state: ExecutionState,
+    txs: Vec<Transaction>,
+) -> Result<Vec<TransactionTrace>, CallError> {
+    let (mut state, block_context) = execution_state.starknet_state()?;
+
+    let mut ret = Vec::with_capacity(txs.len());
+    for tx in txs {
+        let tx_type = transaction_type(&tx);
+        let tx_info = tx.execute(&mut state, &block_context, false, false)?;
+        if let Some(error) = tx_info.revert_error {
+            tracing::info!(%error, "Transaction reverted");
+            return Err(CallError::Reverted(error));
+        }
+        let trace = to_trace(tx_type, tx_info)?;
+        ret.push(trace);
+    }
+
+    Ok(ret)
 }
 
 enum TransactionType {
