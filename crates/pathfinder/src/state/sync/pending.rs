@@ -25,184 +25,6 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     head: (
         pathfinder_common::BlockHash,
         pathfinder_common::StateCommitment,
-        pathfinder_common::StarknetVersion,
-    ),
-    poll_interval: std::time::Duration,
-    storage: Storage,
-) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
-    const V_0_12_1: semver::Version = semver::Version::new(0, 12, 1);
-    let (block_hash, state_commitment, starknet_version) = head;
-    match starknet_version.parse_as_semver() {
-        Ok(Some(version)) => match version {
-            v if v > V_0_12_1 => {
-                poll_pending_0_12_2(
-                    tx_event,
-                    sequencer,
-                    (block_hash, state_commitment),
-                    poll_interval,
-                    storage,
-                )
-                .await
-            }
-            _ => {
-                poll_pending_pre_0_12_2(
-                    tx_event,
-                    sequencer,
-                    (block_hash, state_commitment),
-                    poll_interval,
-                    storage,
-                )
-                .await
-            }
-        },
-        Ok(None) | Err(_) => {
-            poll_pending_pre_0_12_2(
-                tx_event,
-                sequencer,
-                (block_hash, state_commitment),
-                poll_interval,
-                storage,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn poll_pending_pre_0_12_2<S: GatewayApi + Clone + Send + 'static>(
-    tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
-    sequencer: &S,
-    head: (
-        pathfinder_common::BlockHash,
-        pathfinder_common::StateCommitment,
-    ),
-    poll_interval: std::time::Duration,
-    storage: Storage,
-) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
-    let mut prev_block: Option<Arc<PendingBlock>> = None;
-    let mut prev_state_update: Option<Arc<StateUpdate>> = None;
-
-    let gateway_copy = sequencer.clone();
-    let mut block_task = tokio::spawn(async move {
-        gateway_copy
-            .block(BlockId::Pending)
-            .await
-            .context("Downloading pending block")
-    });
-    let gateway_copy = sequencer.clone();
-    let mut update_task = tokio::spawn(async move {
-        gateway_copy
-            .state_update(BlockId::Pending)
-            .await
-            .context("Downloading pending block")
-    });
-
-    let mut t_update = Instant::now();
-    let mut t_block = Instant::now();
-
-    loop {
-        let mut changed = false;
-
-        tokio::select! {
-            block = &mut block_task => {
-                match block.context("Joining block download task")?? {
-                    MaybePendingBlock::Block(block) if block.block_hash == head.0 => {
-                        // Sequencer `pending` may return the latest full block for quite some time, so ignore it.
-                        tracing::trace!(hash=%block.block_hash, "Found current head from pending mode");
-                    }
-                    MaybePendingBlock::Block(block) => {
-                        tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
-                        return Ok((Some(block), None));
-                    }
-                    MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
-                        tracing::trace!(
-                            pending=%pending.parent_hash, head=%head.0,
-                            "Pending block's parent hash does not match head, exiting pending mode"
-                        );
-                        return Ok((None, None));
-                    }
-                    MaybePendingBlock::Pending(pending) => {
-                        let replace = prev_block.as_ref()
-                            .map(|prev| pending.transactions.len() > prev.transactions.len())
-                            .unwrap_or(true);
-
-                        if replace {
-                            prev_block = Some(Arc::new(pending));
-                            changed = true;
-                            tracing::trace!("Pending block data changed");
-                        } else {
-                            tracing::trace!("No change in pending block data");
-                        }
-                    },
-                }
-
-                let gateway_copy = sequencer.clone();
-                block_task = tokio::spawn(async move {
-                    tokio::time::sleep_until(t_block + poll_interval).await;
-                    gateway_copy
-                        .block(BlockId::Pending)
-                        .await
-                        .context("Downloading pending block")
-                });
-                t_block = Instant::now();
-            },
-
-            state_update = &mut update_task => {
-                let  state_update = state_update.context("Joining state update download task")??;
-
-                if state_update.block_hash != pathfinder_common::BlockHash::ZERO {
-                    tracing::trace!("Found full state update, exiting pending mode.");
-                    return Ok((None, Some(state_update)));
-                } else if state_update.parent_state_commitment != head.1 {
-                    tracing::trace!(pending=%state_update.parent_state_commitment, head=%head.1, "Pending state update's old root does not match head, exiting pending mode.");
-                    return Ok((None, None));
-                }
-
-                let replace = prev_state_update.as_ref()
-                    .map(|prev| state_update.change_count() > prev.change_count())
-                    .unwrap_or(true);
-
-                if replace {
-                    prev_state_update = Some(Arc::new(state_update));
-                    changed = true;
-                    tracing::trace!("Pending state update changed");
-                } else {
-                    tracing::trace!("No change in pending state update");
-                }
-
-                let gateway_copy = sequencer.clone();
-                update_task = tokio::spawn(async move {
-                    tokio::time::sleep_until(t_update + poll_interval).await;
-                    gateway_copy
-                        .state_update(BlockId::Pending)
-                        .await
-                        .context("Downloading state update block")
-                });
-                t_update = Instant::now();
-            }
-        }
-
-        if let (true, Some(block), Some(update)) = (changed, &prev_block, &prev_state_update) {
-            download_classes_and_emit_event(
-                &tx_event,
-                sequencer,
-                &storage,
-                block.clone(),
-                update.clone(),
-            )
-            .await?;
-        }
-    }
-}
-
-// Fetches the pending block _and_ state update in a single request.
-// Starknet 0.12.2 introduced a feeder gateway API for fetching both the block and the state update, so
-// that we get _consistent_ data.
-async fn poll_pending_0_12_2<S: GatewayApi + Clone + Send + 'static>(
-    tx_event: tokio::sync::mpsc::Sender<SyncEvent>,
-    sequencer: &S,
-    head: (
-        pathfinder_common::BlockHash,
-        pathfinder_common::StateCommitment,
     ),
     poll_interval: std::time::Duration,
     storage: Storage,
@@ -212,6 +34,9 @@ async fn poll_pending_0_12_2<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
+        // Fetches the pending block _and_ state update in a single request.
+        // Starknet 0.12.2 introduced a feeder gateway API for fetching both the block and the state update, so
+        // that we get _consistent_ data.
         let (block, state_update) = sequencer
             .state_update_with_block(BlockId::Pending)
             .await
@@ -230,6 +55,15 @@ async fn poll_pending_0_12_2<S: GatewayApi + Clone + Send + 'static>(
                 tracing::trace!(
                     pending=%pending.parent_hash, head=%head.0,
                     "Pending block's parent hash does not match head, exiting pending mode"
+                );
+                return Ok((None, None));
+            }
+            MaybePendingBlock::Pending(pending)
+                if state_update.parent_state_commitment != head.1 =>
+            {
+                tracing::trace!(
+                    pending=%pending.parent_hash, head=%head.0,
+                    "Pending state update's parent state commitment does not match head, exiting pending mode"
                 );
                 return Ok((None, None));
             }
@@ -309,7 +143,6 @@ mod tests {
 
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
-    const STARKNET_VERSION: &str = "0.12.1";
 
     lazy_static::lazy_static!(
         pub static ref NEXT_BLOCK: Block = Block{
@@ -364,11 +197,13 @@ mod tests {
 
         // Give a pending state update and full block.
         sequencer
-            .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Block(NEXT_BLOCK.clone())));
-        sequencer
-            .expect_state_update()
-            .returning(move |_| Ok(PENDING_UPDATE.clone()));
+            .expect_state_update_with_block()
+            .returning(move |_| {
+                Ok((
+                    MaybePendingBlock::Block(NEXT_BLOCK.clone()),
+                    PENDING_UPDATE.clone(),
+                ))
+            });
 
         let sequencer = Arc::new(sequencer);
 
@@ -376,7 +211,7 @@ mod tests {
             poll_pending(
                 tx,
                 &sequencer,
-                (PARENT_HASH, PARENT_ROOT, STARKNET_VERSION.to_owned().into()),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Storage::in_memory().unwrap(),
             )
@@ -393,46 +228,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exits_on_full_state_diff() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockGatewayApi::new();
-
-        // Construct some full diff
-        let full_diff = PENDING_UPDATE
-            .clone()
-            .with_block_hash(NEXT_BLOCK.block_hash)
-            .with_state_commitment(state_commitment!("0x12"));
-        let full_diff_copy = full_diff.clone();
-
-        sequencer
-            .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
-        sequencer
-            .expect_state_update()
-            .returning(move |_| Ok(full_diff_copy.clone()));
-        let sequencer = Arc::new(sequencer);
-
-        let jh = tokio::spawn(async move {
-            poll_pending(
-                tx,
-                &sequencer,
-                (PARENT_HASH, PARENT_ROOT, STARKNET_VERSION.to_owned().into()),
-                std::time::Duration::ZERO,
-                Storage::in_memory().unwrap(),
-            )
-            .await
-        });
-
-        let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
-            .await
-            .expect("Channel should be dropped");
-        assert_matches!(result, None);
-
-        let (_, full_state_update) = jh.await.unwrap().unwrap();
-        assert_eq!(full_state_update.unwrap(), full_diff);
-    }
-
-    #[tokio::test]
     async fn exits_on_block_discontinuity() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let mut sequencer = MockGatewayApi::new();
@@ -440,18 +235,20 @@ mod tests {
         let mut pending_block = PENDING_BLOCK.clone();
         pending_block.parent_hash = block_hash!("0xFFFFFF");
         sequencer
-            .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(pending_block.clone())));
-        sequencer
-            .expect_state_update()
-            .returning(move |_| Ok(PENDING_UPDATE.clone()));
+            .expect_state_update_with_block()
+            .returning(move |_| {
+                Ok((
+                    MaybePendingBlock::Pending(pending_block.clone()),
+                    PENDING_UPDATE.clone(),
+                ))
+            });
         let sequencer = Arc::new(sequencer);
 
         let jh = tokio::spawn(async move {
             poll_pending(
                 tx,
                 &sequencer,
-                (PARENT_HASH, PARENT_ROOT, STARKNET_VERSION.to_owned().into()),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Storage::in_memory().unwrap(),
             )
@@ -470,23 +267,24 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         let mut sequencer = MockGatewayApi::new();
 
-        sequencer
-            .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
-
         let disconnected_diff = PENDING_UPDATE
             .clone()
             .with_parent_state_commitment(state_commitment_bytes!(b"different old root"));
         sequencer
-            .expect_state_update()
-            .returning(move |_| Ok(disconnected_diff.clone()));
+            .expect_state_update_with_block()
+            .returning(move |_| {
+                Ok((
+                    MaybePendingBlock::Pending(PENDING_BLOCK.clone()),
+                    disconnected_diff.clone(),
+                ))
+            });
         let sequencer = Arc::new(sequencer);
 
         let jh = tokio::spawn(async move {
             poll_pending(
                 tx,
                 &sequencer,
-                (PARENT_HASH, PARENT_ROOT, STARKNET_VERSION.to_owned().into()),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Storage::in_memory().unwrap(),
             )
@@ -506,38 +304,6 @@ mod tests {
         let mut sequencer = MockGatewayApi::new();
 
         sequencer
-            .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
-        sequencer
-            .expect_state_update()
-            .returning(move |_| Ok(PENDING_UPDATE.clone()));
-
-        let sequencer = Arc::new(sequencer);
-        let _jh = tokio::spawn(async move {
-            poll_pending(
-                tx,
-                &sequencer,
-                (PARENT_HASH, PARENT_ROOT, STARKNET_VERSION.to_owned().into()),
-                std::time::Duration::ZERO,
-                Storage::in_memory().unwrap(),
-            )
-            .await
-        });
-
-        let result = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
-            .await
-            .expect("Event should be emitted")
-            .unwrap();
-
-        assert_matches!(result, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == *PENDING_UPDATE);
-    }
-
-    #[tokio::test]
-    async fn success_with_state_update_with_block_endpoint() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockGatewayApi::new();
-
-        sequencer
             .expect_state_update_with_block()
             .returning(move |_| {
                 Ok((
@@ -551,7 +317,7 @@ mod tests {
             poll_pending(
                 tx,
                 &sequencer,
-                (PARENT_HASH, PARENT_ROOT, "0.12.2".to_owned().into()),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Storage::in_memory().unwrap(),
             )
@@ -610,26 +376,27 @@ mod tests {
             static ref COUNT: std::sync::Mutex<usize>  = Default::default();
         );
 
-        sequencer.expect_block().returning(move |_| {
-            let mut count = COUNT.lock().unwrap();
-            *count += 1;
-
-            match *count {
-                1 => Ok(MaybePendingBlock::Pending(b0_copy.clone())),
-                2 => Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())),
-                _ => Ok(MaybePendingBlock::Pending(b1_copy.clone())),
-            }
-        });
         sequencer
-            .expect_state_update()
-            .returning(move |_| Ok(PENDING_UPDATE.clone()));
+            .expect_state_update_with_block()
+            .returning(move |_| {
+                let mut count = COUNT.lock().unwrap();
+                *count += 1;
+
+                let block = match *count {
+                    1 => MaybePendingBlock::Pending(b0_copy.clone()),
+                    2 => MaybePendingBlock::Pending(PENDING_BLOCK.clone()),
+                    _ => MaybePendingBlock::Pending(b1_copy.clone()),
+                };
+
+                Ok((block, PENDING_UPDATE.clone()))
+            });
 
         let sequencer = Arc::new(sequencer);
         let _jh = tokio::spawn(async move {
             poll_pending(
                 tx,
                 &sequencer,
-                (PARENT_HASH, PARENT_ROOT, STARKNET_VERSION.to_owned().into()),
+                (PARENT_HASH, PARENT_ROOT),
                 std::time::Duration::ZERO,
                 Storage::in_memory().unwrap(),
             )
@@ -649,71 +416,5 @@ mod tests {
             .unwrap();
 
         assert_matches!(result2, SyncEvent::Pending(block, diff) if *block == b1 && *diff == *PENDING_UPDATE);
-    }
-
-    #[tokio::test]
-    async fn ignores_inconsistent_gateway_state_update() {
-        // In this test the gateway mock sends inconsistent state update data.
-        //
-        // It first sends a state update with 1 more update, then 0 then 2.
-        // We expect the middle one to be ignored.
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-        let mut sequencer = MockGatewayApi::new();
-
-        let b0 = PENDING_UPDATE.clone().with_storage_update(
-            contract_address!("0x1"),
-            storage_address!("0x2"),
-            storage_value!("0x123"),
-        );
-        let b0_copy = b0.clone();
-
-        let b1 = b0
-            .clone()
-            .with_contract_nonce(contract_address!("0x1"), contract_nonce!("0x99"));
-        let b1_copy = b1.clone();
-
-        lazy_static::lazy_static!(
-            static ref COUNT: std::sync::Mutex<usize>  = Default::default();
-        );
-
-        sequencer.expect_state_update().returning(move |_| {
-            let mut count = COUNT.lock().unwrap();
-            *count += 1;
-
-            match *count {
-                1 => Ok(b0_copy.clone()),
-                2 => Ok(PENDING_UPDATE.clone()),
-                _ => Ok(b1_copy.clone()),
-            }
-        });
-        sequencer
-            .expect_block()
-            .returning(move |_| Ok(MaybePendingBlock::Pending(PENDING_BLOCK.clone())));
-
-        let sequencer = Arc::new(sequencer);
-        let _jh = tokio::spawn(async move {
-            poll_pending(
-                tx,
-                &sequencer,
-                (PARENT_HASH, PARENT_ROOT, STARKNET_VERSION.to_owned().into()),
-                std::time::Duration::ZERO,
-                Storage::in_memory().unwrap(),
-            )
-            .await
-        });
-
-        let result1 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
-            .await
-            .expect("Event should be emitted")
-            .unwrap();
-
-        assert_matches!(result1, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == b0);
-
-        let result2 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
-            .await
-            .expect("Event should be emitted")
-            .unwrap();
-
-        assert_matches!(result2, SyncEvent::Pending(block, diff) if *block == *PENDING_BLOCK && *diff == b1);
     }
 }
