@@ -195,10 +195,6 @@ The `path` of the URL used to access the JSON-RPC server determines which versio
 
 Note that the pathfinder extension is versioned separately from the Starknet specification itself.
 
-### API `v0.4.0`
-
-`starknet_simulateTransactions` currently always requires the `SKIP_FEE_CHARGE` flag until we upgrade to using starknet-in-rust as our execution engine.
-
 ### pathfinder extension API
 
 You can find the API specification [here](doc/rpc/pathfinder_rpc_api.json).
