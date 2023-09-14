@@ -4,7 +4,7 @@ use pathfinder_storage::BlockId;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinError;
 
-use crate::{context::RpcContext, executor::ExecutionStateError, map_gateway_transaction};
+use crate::{context::RpcContext, executor::ExecutionStateError, compose_executor_transaction};
 
 use super::simulate_transactions::dto::TransactionTrace;
 
@@ -73,7 +73,7 @@ pub async fn trace_block_transactions(
 
             let transactions = transactions
                 .into_iter()
-                .map(|transaction| map_gateway_transaction(transaction, &tx))
+                .map(|transaction| compose_executor_transaction(transaction, &tx))
                 .collect::<anyhow::Result<Vec<_>, _>>()?;
 
             Ok::<_, TraceBlockTransactionsError>(

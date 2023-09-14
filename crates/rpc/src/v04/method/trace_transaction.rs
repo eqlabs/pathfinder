@@ -3,7 +3,7 @@ use pathfinder_executor::{CallError, Transaction};
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinError;
 
-use crate::{context::RpcContext, executor::ExecutionStateError, map_gateway_transaction};
+use crate::{context::RpcContext, executor::ExecutionStateError, compose_executor_transaction};
 
 use super::simulate_transactions::dto::TransactionTrace;
 
@@ -71,7 +71,7 @@ pub async fn trace_transaction(
 
             let transactions = transactions
                 .into_iter()
-                .map(|transaction| map_gateway_transaction(transaction, &tx))
+                .map(|transaction| compose_executor_transaction(transaction, &tx))
                 .collect::<anyhow::Result<Vec<_>, _>>()?;
 
             Ok::<_, TraceTransactionError>(

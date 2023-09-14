@@ -18,7 +18,7 @@ pub mod websocket;
 
 pub use middleware::versioning::DefaultVersion;
 
-pub use executor::map_gateway_transaction;
+pub use executor::compose_executor_transaction;
 
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;

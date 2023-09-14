@@ -383,7 +383,9 @@ pub(crate) fn map_broadcasted_transaction(
     }
 }
 
-pub fn map_gateway_transaction(
+/// Build the executor transaction out of the gateway one
+/// while pulling necessary data from the DB along the way.
+pub fn compose_executor_transaction(
     transaction: starknet_gateway_types::reply::transaction::Transaction,
     db_transaction: &pathfinder_storage::Transaction<'_>,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
