@@ -33,7 +33,7 @@ impl From<CallError> for TraceTransactionError {
     fn from(value: CallError) -> Self {
         match value {
             CallError::ContractNotFound | CallError::InvalidMessageSelector => {
-                Self::Internal(anyhow::anyhow!("Failed to trase the block's transactions"))
+                Self::Internal(anyhow::anyhow!("Failed to trace the block's transactions"))
             }
             CallError::Reverted(e) => Self::Internal(anyhow::anyhow!("Transaction reverted: {e}")),
             CallError::Internal(e) => Self::Internal(e),
