@@ -1,19 +1,19 @@
 use std::{
     collections::{HashMap, VecDeque},
     num::NonZeroU32,
-    ops::ControlFlow,
 };
 
 use anyhow::Context;
-use bitvec::{prelude::Msb0, slice::BitSlice, vec::BitVec, view::BitView};
+use bitvec::{prelude::Msb0, vec::BitVec, view::BitView};
+use mimalloc::MiMalloc;
 use pathfinder_common::{trie::TrieNode, BlockNumber, ContractStateHash};
-use pathfinder_merkle_tree::{
-    merkle_node::{Direction, InternalNode},
-    tree::Visit,
-    ContractsStorageTree, StorageCommitmentTree,
-};
+use pathfinder_merkle_tree::merkle_node::Direction;
 use pathfinder_storage::{BlockId, JournalMode, Storage};
+use rusqlite::params;
 use stark_hash::Felt;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -53,18 +53,22 @@ fn main() -> anyhow::Result<()> {
     let storage_trie_reader = tx.storage_trie_reader();
 
     let mut global_nodes: HashMap<Felt, (TrieNode, usize)> = Default::default();
-    let mut contract_states = Vec::new();
+    let mut contract_state_hashes = Vec::new();
 
     let mut to_visit = VecDeque::new();
     to_visit.push_back((block_header.storage_commitment.0, BitVec::new()));
     while let Some((felt, current_path)) = to_visit.pop_front() {
         if current_path.len() == 251 {
-            contract_states.push(felt);
+            contract_state_hashes.push(felt);
             continue;
         }
 
-        let node = storage_trie_reader.get(&felt)?.unwrap();
-        match &node {
+        let (node, _) = global_nodes
+            .entry(felt)
+            .and_modify(|(_node, refcount)| *refcount += 1)
+            .or_insert_with(|| (storage_trie_reader.get(&felt).unwrap().unwrap(), 1));
+
+        match node {
             TrieNode::Binary { left, right } => {
                 let mut path_left: BitVec<u8, Msb0> = current_path.clone();
                 path_left.push(Direction::Left.into());
@@ -79,68 +83,17 @@ fn main() -> anyhow::Result<()> {
                 to_visit.push_back((*child, path_edge));
             }
         }
-
-        global_nodes
-            .entry(felt)
-            .and_modify(|(_node, refcount)| *refcount += 1)
-            .or_insert((node, 1));
     }
 
-    // let mut visitor_fn = |node: &InternalNode, _path: &BitSlice<u8, Msb0>| {
-    //     match node {
-    //         InternalNode::Binary(node) => {
-    //             let hash = node.hash.unwrap();
-    //             let trie_node = TrieNode::Binary {
-    //                 left: node.left.borrow().hash().unwrap(),
-    //                 right: node.right.borrow().hash().unwrap(),
-    //             };
-    //             global_nodes
-    //                 .entry(hash)
-    //                 .and_modify(|(_node, refcount)| *refcount += 1)
-    //                 .or_insert((trie_node, 1));
-    //         }
-    //         InternalNode::Edge(node) => {
-    //             let hash = node.hash.unwrap();
-    //             let trie_node = TrieNode::Edge {
-    //                 child: node.child.borrow().hash().unwrap(),
-    //                 path: node.path.clone(),
-    //             };
-    //             global_nodes
-    //                 .entry(hash)
-    //                 .and_modify(|(_node, refcount)| *refcount += 1)
-    //                 .or_insert((trie_node, 1));
-    //         }
-    //         InternalNode::Leaf(_) | InternalNode::Unresolved(_) => {}
-    //     };
-
-    //     if let InternalNode::Leaf(felt) = node {
-    //         contract_states.push(ContractStateHash(*felt));
-    //     }
-
-    //     ControlFlow::Continue::<(), Visit>(Default::default())
-    // };
-
-    // tree.dfs(&mut visitor_fn)?;
-
-    let r = global_nodes
-        .iter()
-        .filter_map(|(_key, (_node, refcount))| if *refcount > 1 { Some(*refcount) } else { None })
-        .count();
-
-    println!(
-        "Global tree nodes: {}, muliple references {}",
-        global_nodes.len(),
-        r
-    );
+    println!("Global tree nodes: {}", global_nodes.len(),);
 
     let contract_trie_reader = tx.contract_trie_reader();
-
     let mut contract_storage_nodes: HashMap<Felt, (TrieNode, usize)> = Default::default();
 
-    for contract_index in progressed::ProgressBar::new(0..contract_states.len())
+    for contract_index in progressed::ProgressBar::new(0..contract_state_hashes.len())
         .set_title("Checking contract state tries")
     {
-        let contract_state_hash = contract_states.get(contract_index).unwrap();
+        let contract_state_hash = contract_state_hashes.get(contract_index).unwrap();
         let (contract_root, _, _) = tx
             .contract_state(ContractStateHash(*contract_state_hash))?
             .context("Getting contract state")?;
@@ -157,8 +110,12 @@ fn main() -> anyhow::Result<()> {
                 continue;
             }
 
-            let node = contract_trie_reader.get(&felt)?.unwrap();
-            match &node {
+            let (node, _) = contract_storage_nodes
+                .entry(felt)
+                .and_modify(|(_node, refcount)| *refcount += 1)
+                .or_insert_with(|| (contract_trie_reader.get(&felt).unwrap().unwrap(), 1));
+
+            match node {
                 TrieNode::Binary { left, right } => {
                     let mut path_left: BitVec<u8, Msb0> = current_path.clone();
                     path_left.push(Direction::Left.into());
@@ -173,119 +130,69 @@ fn main() -> anyhow::Result<()> {
                     to_visit.push_back((*child, path_edge));
                 }
             }
-
-            contract_storage_nodes
-                .entry(felt)
-                .and_modify(|(_node, refcount)| *refcount += 1)
-                .or_insert((node, 1));
         }
     }
 
-    // for contract_index in progressed::ProgressBar::new(0..contract_states.len())
-    //     .set_title("Checking contract state tries")
-    // {
-    //     let contract_state_hash = contract_states.get(contract_index).unwrap();
-    //     let (contract_root, _, _) = tx
-    //         .contract_state(*contract_state_hash)?
-    //         .context("Getting contract state")?;
-
-    //     let mut tree = ContractsStorageTree::load(&tx, contract_root);
-
-    //     let mut visitor_fn = |node: &InternalNode, _path: &BitSlice<u8, Msb0>| {
-    //         match node {
-    //             InternalNode::Binary(node) => {
-    //                 let hash = node.hash.unwrap();
-    //                 let trie_node = TrieNode::Binary {
-    //                     left: node.left.borrow().hash().unwrap(),
-    //                     right: node.right.borrow().hash().unwrap(),
-    //                 };
-    //                 contract_storage_nodes
-    //                     .entry(hash)
-    //                     .and_modify(|(_node, refcount)| *refcount += 1)
-    //                     .or_insert((trie_node, 1));
-    //             }
-    //             InternalNode::Edge(node) => {
-    //                 let hash = node.hash.unwrap();
-    //                 let trie_node = TrieNode::Edge {
-    //                     child: node.child.borrow().hash().unwrap(),
-    //                     path: node.path.clone(),
-    //                 };
-    //                 contract_storage_nodes
-    //                     .entry(hash)
-    //                     .and_modify(|(_node, refcount)| *refcount += 1)
-    //                     .or_insert((trie_node, 1));
-    //             }
-    //             InternalNode::Leaf(_) | InternalNode::Unresolved(_) => {}
-    //         };
-
-    //         ControlFlow::Continue::<(), Visit>(Default::default())
-    //     };
-
-    //     tree.dfs(&mut visitor_fn)?;
-    // }
-
-    let r = contract_storage_nodes
-        .iter()
-        .filter_map(|(_key, (_node, refcount))| if *refcount > 1 { Some(*refcount) } else { None })
-        .count();
-
-    println!(
-        "Contracts tree nodes: {}, multiple references {}",
-        contract_storage_nodes.len(),
-        r
-    );
+    println!("Contracts tree nodes: {}", contract_storage_nodes.len(),);
 
     drop(tx);
 
     let tx = db.rusqlite_transaction().unwrap();
-    tx.execute(
-        r"CREATE TABLE tree_global_new (
+    tx.execute_batch(
+        r"DROP TABLE IF EXISTS tree_global_new;
+        CREATE TABLE IF NOT EXISTS tree_global_new (
         hash        BLOB PRIMARY KEY,
         data        BLOB,
         ref_count   INTEGER
-    )",
-        [],
+    );",
     )
     .unwrap();
-
-    let batch_factor = 100_usize;
-    let values_part = "(?, ?, ?),".repeat(batch_factor - 1) + "(?, ?, ?)";
-    let mut batch_stmt = tx
-        .prepare(&format!(
-            "INSERT INTO tree_global_new (hash, data, ref_count) VALUES {}",
-            values_part
-        ))
-        .unwrap();
 
     let mut stmt = tx
         .prepare("INSERT INTO tree_global_new (hash, data, ref_count) VALUES (?, ?, ?)")
         .unwrap();
 
-    let global_nodes: Vec<_> = global_nodes
-        .into_iter()
-        .map(|(hash, (node, refcnt))| (hash, serialize_node(node), refcnt))
-        .collect();
-
-    for chunk in global_nodes.chunks(batch_factor) {
-        if chunk.len() == batch_factor {
-            let mut params = vec![];
-
-            for (hash, node, refcnt) in chunk {
-                params.extend_from_slice(rusqlite::params![hash, node, *refcnt]);
-            }
-
-            batch_stmt.execute(&params[..]).unwrap();
-        } else {
-            for (hash, node, refcnt) in chunk {
-                stmt.execute(rusqlite::params![hash, node, refcnt]).unwrap();
-            }
-        }
+    for (hash, (node, ref_cnt)) in
+        progressed::ProgressBar::new(global_nodes.iter()).set_title("Writing global tree nodes")
+    {
+        stmt.execute(params![hash.as_be_bytes(), serialize_node(node), ref_cnt])
+            .unwrap();
     }
+
+    drop(stmt);
+
+    tx.commit().unwrap();
+
+    let tx = db.rusqlite_transaction().unwrap();
+    tx.execute_batch(
+        r"DROP TABLE IF EXISTS tree_contracts_new;
+        CREATE TABLE IF NOT EXISTS tree_contracts_new (
+        hash        BLOB PRIMARY KEY,
+        data        BLOB,
+        ref_count   INTEGER
+    );",
+    )
+    .unwrap();
+
+    let mut stmt = tx
+        .prepare("INSERT INTO tree_contracts_new (hash, data, ref_count) VALUES (?, ?, ?)")
+        .unwrap();
+
+    for (hash, (node, ref_cnt)) in progressed::ProgressBar::new(contract_storage_nodes.iter())
+        .set_title("Writing contract tree nodes")
+    {
+        stmt.execute(params![hash.as_be_bytes(), serialize_node(node), ref_cnt])
+            .unwrap();
+    }
+
+    drop(stmt);
+
+    tx.commit().unwrap();
 
     Ok(())
 }
 
-fn serialize_node(node: TrieNode) -> Vec<u8> {
+fn serialize_node(node: &TrieNode) -> Vec<u8> {
     let mut buffer = Vec::with_capacity(65);
 
     match node {
