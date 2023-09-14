@@ -245,7 +245,7 @@ pub(crate) fn map_broadcasted_transaction(
 
                 let tx = pathfinder_executor::Transaction::from_api(
                     starknet_api::transaction::Transaction::Declare(
-                        starknet_api::transaction::DeclareTransaction::V0(tx),
+                        starknet_api::transaction::DeclareTransaction::V1(tx),
                     ),
                     starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
                     Some(contract_class),
