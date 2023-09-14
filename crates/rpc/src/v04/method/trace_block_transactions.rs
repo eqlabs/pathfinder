@@ -4,7 +4,7 @@ use pathfinder_storage::BlockId;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinError;
 
-use crate::{context::RpcContext, executor::ExecutionStateError, compose_executor_transaction};
+use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
 
 use super::simulate_transactions::dto::TransactionTrace;
 
