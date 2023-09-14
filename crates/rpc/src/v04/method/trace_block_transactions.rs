@@ -51,7 +51,7 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    let (hashes, transactions) = {
+    let transactions: Vec<_> = {
         let mut db = context.storage.connection()?;
         let tx = db.transaction()?;
 
@@ -68,7 +68,7 @@ pub async fn trace_block_transactions(
             .map(|transaction| map_gateway_transaction(transaction, &tx))
             .collect::<anyhow::Result<Vec<_>, _>>()?;
 
-        (hashes, transactions)
+        hashes.into_iter().zip(transactions.into_iter()).collect()
     };
 
     let execution_state =
@@ -78,8 +78,7 @@ pub async fn trace_block_transactions(
 
     let result = traces
         .into_iter()
-        .zip(hashes.into_iter())
-        .map(|(trace, hash)| Trace {
+        .map(|(hash, trace)| Trace {
             transaction_hash: hash,
             trace_root: trace.into(),
         })

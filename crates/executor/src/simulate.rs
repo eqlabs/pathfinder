@@ -2,6 +2,7 @@ use blockifier::{
     transaction::transaction_execution::Transaction,
     transaction::{errors::TransactionExecutionError, transactions::ExecutableTransaction},
 };
+use pathfinder_common::TransactionHash;
 use primitive_types::U256;
 
 use crate::types::{
@@ -75,35 +76,40 @@ pub fn simulate(
 
 pub fn trace_one(
     mut execution_state: ExecutionState,
-    tx: Transaction,
+    txs: Vec<(TransactionHash, Transaction)>,
+    tx_hash: TransactionHash,
 ) -> Result<TransactionTrace, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
-    let tx_type = transaction_type(&tx);
-    let tx_info = tx.execute(&mut state, &block_context, false, false)?;
-    if let Some(error) = tx_info.revert_error {
-        tracing::info!(%error, "Transaction reverted");
-        return Err(CallError::Reverted(error));
+
+    let mut ret = Vec::with_capacity(txs.len());
+    for (hash, tx) in txs {
+        let tx_type = transaction_type(&tx);
+        let tx_info = tx.execute(&mut state, &block_context, false, false)?;
+        let trace = to_trace(tx_type, tx_info)?;
+        if hash == tx_hash {
+            return Ok(trace);
+        }
+        ret.push(trace);
     }
-    let trace = to_trace(tx_type, tx_info)?;
-    Ok(trace)
+
+    Err(CallError::Internal(anyhow::anyhow!(
+        "TX hash not found: {}",
+        tx_hash
+    )))
 }
 
 pub fn trace_all(
     mut execution_state: ExecutionState,
-    txs: Vec<Transaction>,
-) -> Result<Vec<TransactionTrace>, CallError> {
+    txs: Vec<(TransactionHash, Transaction)>,
+) -> Result<Vec<(TransactionHash, TransactionTrace)>, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
     let mut ret = Vec::with_capacity(txs.len());
-    for tx in txs {
+    for (hash, tx) in txs {
         let tx_type = transaction_type(&tx);
         let tx_info = tx.execute(&mut state, &block_context, false, false)?;
-        if let Some(error) = tx_info.revert_error {
-            tracing::info!(%error, "Transaction reverted");
-            return Err(CallError::Reverted(error));
-        }
         let trace = to_trace(tx_type, tx_info)?;
-        ret.push(trace);
+        ret.push((hash, trace));
     }
 
     Ok(ret)
