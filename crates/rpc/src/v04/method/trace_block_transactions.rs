@@ -2,6 +2,7 @@ use pathfinder_common::{BlockHash, TransactionHash};
 use pathfinder_executor::CallError;
 use pathfinder_storage::BlockId;
 use serde::{Deserialize, Serialize};
+use tokio::task::JoinError;
 
 use crate::{context::RpcContext, executor::ExecutionStateError, map_gateway_transaction};
 
@@ -47,34 +48,48 @@ impl From<CallError> for TraceBlockTransactionsError {
     }
 }
 
+impl From<JoinError> for TraceBlockTransactionsError {
+    fn from(e: JoinError) -> Self {
+        Self::Internal(anyhow::anyhow!("Join error: {e}"))
+    }
+}
+
 pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
     let transactions: Vec<_> = {
         let mut db = context.storage.connection()?;
-        let tx = db.transaction()?;
+        tokio::task::spawn_blocking(move || {
+            let tx = db.transaction()?;
 
-        let (transactions, _): (Vec<_>, Vec<_>) = tx
-            .transaction_data_for_block(BlockId::Hash(input.block_hash))?
-            .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?
-            .into_iter()
-            .unzip();
+            let (transactions, _): (Vec<_>, Vec<_>) = tx
+                .transaction_data_for_block(BlockId::Hash(input.block_hash))?
+                .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?
+                .into_iter()
+                .unzip();
 
-        let hashes = transactions.iter().map(|tx| tx.hash()).collect::<Vec<_>>();
+            let hashes = transactions.iter().map(|tx| tx.hash()).collect::<Vec<_>>();
 
-        let transactions = transactions
-            .into_iter()
-            .map(|transaction| map_gateway_transaction(transaction, &tx))
-            .collect::<anyhow::Result<Vec<_>, _>>()?;
+            let transactions = transactions
+                .into_iter()
+                .map(|transaction| map_gateway_transaction(transaction, &tx))
+                .collect::<anyhow::Result<Vec<_>, _>>()?;
 
-        hashes.into_iter().zip(transactions.into_iter()).collect()
+            Ok::<_, TraceBlockTransactionsError>(
+                hashes.into_iter().zip(transactions.into_iter()).collect(),
+            )
+        })
+        .await??
     };
 
     let execution_state =
         crate::executor::execution_state(context, pathfinder_common::BlockId::Latest, None).await?;
 
-    let traces = pathfinder_executor::trace_all(execution_state, transactions)?;
+    let traces = tokio::task::spawn_blocking(move || {
+        pathfinder_executor::trace_all(execution_state, transactions)
+    })
+    .await??;
 
     let result = traces
         .into_iter()
