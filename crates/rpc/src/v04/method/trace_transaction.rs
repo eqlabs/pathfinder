@@ -8,7 +8,7 @@ use super::simulate_transactions::dto::TransactionTrace;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct TraceTrasactionInput {
+pub struct TraceTransactionInput {
     transaction_hash: TransactionHash,
 }
 
@@ -43,7 +43,7 @@ impl From<CallError> for TraceTransactionError {
 
 pub async fn trace_transaction(
     context: RpcContext,
-    input: TraceTrasactionInput,
+    input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
     let transaction = {
         let mut db = context.storage.connection()?;
