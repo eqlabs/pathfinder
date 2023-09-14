@@ -45,10 +45,7 @@ fn main() -> anyhow::Result<()> {
         .block_header(BlockNumber::new_or_panic(block_number).into())?
         .context("Getting block header")?;
 
-    println!(
-        "Checking block number {}, storage root {}",
-        block_number, block_header.storage_commitment
-    );
+    tracing::info!(%block_number, storage_commitment=%block_header.storage_commitment, "Checking merkle tries at");
 
     let storage_trie_reader = tx.storage_trie_reader();
 
@@ -85,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("Global tree nodes: {}", global_nodes.len(),);
+    tracing::info!(num=%global_nodes.len(), "Global tree nodes traversed");
 
     let contract_trie_reader = tx.contract_trie_reader();
     let mut contract_storage_nodes: HashMap<Felt, (TrieNode, usize)> = Default::default();
@@ -133,7 +130,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("Contracts tree nodes: {}", contract_storage_nodes.len(),);
+    tracing::info!(num=%contract_storage_nodes.len(), "Contracts tree nodes traversed");
 
     drop(tx);
 
