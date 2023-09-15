@@ -118,6 +118,29 @@ impl TryFromProtobuf<::prost_types::Timestamp> for SystemTime {
     }
 }
 
+impl BlockHeaderMessage {
+    pub fn into_header(self) -> Option<BlockHeader> {
+        match self {
+            Self::Header(header) => Some(*header),
+            _ => None,
+        }
+    }
+
+    pub fn into_signatures(self) -> Option<Signatures> {
+        match self {
+            Self::Signatures(signatures) => Some(signatures),
+            _ => None,
+        }
+    }
+
+    pub fn into_fin(self) -> Option<Fin> {
+        match self {
+            Self::Fin(fin) => Some(fin),
+            _ => None,
+        }
+    }
+}
+
 impl ToProtobuf<proto::block::block_headers_response::HeaderMessage> for BlockHeaderMessage {
     fn to_protobuf(self) -> proto::block::block_headers_response::HeaderMessage {
         use proto::block::block_headers_response::HeaderMessage::{Fin, Header, Signatures};

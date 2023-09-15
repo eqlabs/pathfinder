@@ -3,7 +3,7 @@ use p2p_proto_v1::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeaderMessage,
     BlockHeadersRequest, BlockHeadersResponse,
 };
-use p2p_proto_v1::common::{Hash, Iteration};
+use p2p_proto_v1::common::{Direction, Hash, Iteration, Step};
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
@@ -97,8 +97,8 @@ pub(crate) fn headers(
         };
 
         responses.push(BlockHeadersResponse {
-            id: BlockId(block_number.get()),
-            block_part: BlockHeaderMessage::Header(Box::new(header.to_proto())),
+            block_number: block_number.get(),
+            header_message: BlockHeaderMessage::Header(Box::new(header.to_proto())),
         });
 
         // 2. Get the signatures for this block
@@ -113,21 +113,19 @@ pub(crate) fn headers(
 
 fn bodies(
     tx: Transaction<'_>,
-    request: GetBlockBodies,
+    request: BlockBodiesRequest,
 ) -> anyhow::Result<Vec<BlockBodiesResponse>> {
-    use p2p_proto_v1::block::Iteration;
-
-    let GetBlockBodies {
+    let BlockBodiesRequest {
         iteration:
             Iteration {
-                start,
+                start_block,
                 direction,
                 limit,
                 step,
             },
     } = request;
 
-    let mut next_block_number = BlockNumber::new(start.0);
+    let mut next_block_number = BlockNumber::new(start_block);
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
 
     let mut responses = Vec::new();
@@ -156,8 +154,8 @@ fn bodies(
             .collect::<Vec<_>>();
 
         responses.push(BlockBodiesResponse {
-            id: BlockId(block_number.get()),
-            block_part: BlockBodyMessage::Diff(state_diff.to_proto()),
+            block_number: block_number.get(),
+            body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
         });
 
         // 2. Get the newly declared classes in this block
@@ -282,7 +280,7 @@ fn classes(
                     .expect("chunk_count conversion succeeded, so chunk_count should too");
                 // One chunk per message, we don't care if the last chunk is smaller
                 // as we don't want to artificially break the next class definition into pieces
-                responses.push(block_bodies_response::from_class_definition_chunk(
+                responses.push(block_bodies_response::from_class_definition_part(
                     block_number,
                     class_hash,
                     chunk,
@@ -305,23 +303,23 @@ mod block_bodies_response {
     use super::*;
 
     /// It is assumed that the chunk is not empty
-    pub fn from_class_definition_chunk(
+    pub fn from_class_definition_part(
         block_number: BlockNumber,
         class_hash: ClassHash,
-        chunk: &[u8],
-        chunk_count: u32,
-        chunk_idx: u32,
+        part: &[u8],
+        parts_count: u32,
+        part_idx: u32,
     ) -> BlockBodiesResponse {
         use p2p_proto_v1::state::{Class, Classes};
         BlockBodiesResponse {
-            id: BlockId(block_number.get()),
-            block_part: BlockBodyMessage::Classes(Classes {
-                tree_id: 0, // FIXME
+            block_number: block_number.get(),
+            body_message: BlockBodyMessage::Classes(Classes {
+                domain: 0, // FIXME
                 classes: vec![Class {
                     compiled_hash: Hash(class_hash.0),
-                    definition: chunk.to_vec(),
-                    total_chunks: Some(chunk_count),
-                    chunk_count: Some(chunk_idx),
+                    definition: part.to_vec(),
+                    total_parts: Some(parts_count),
+                    part_num: Some(part_idx),
                 }],
             }),
         }
@@ -340,14 +338,14 @@ mod block_bodies_response {
             .map(|(class_hash, definition)| Class {
                 compiled_hash: Hash(class_hash.0),
                 definition,
-                total_chunks: None,
-                chunk_count: None,
+                total_parts: None,
+                part_num: None,
             })
             .collect();
         BlockBodiesResponse {
-            id: BlockId(block_number.get()),
-            block_part: BlockBodyMessage::Classes(Classes {
-                tree_id: 0, // FIXME
+            block_number: block_number.get(),
+            body_message: BlockBodyMessage::Classes(Classes {
+                domain: 0, // FIXME
                 classes,
             }),
         }
@@ -386,16 +384,15 @@ where
 /// None is returned if we're out-of-bounds.
 fn get_next_block_number(
     current: BlockNumber,
-    step: p2p_proto_v1::block::Step,
-    direction: p2p_proto_v1::block::Direction,
+    step: Step,
+    direction: Direction,
 ) -> Option<BlockNumber> {
-    use p2p_proto_v1::block::Direction::{Backward, Forward};
     match direction {
-        Forward => current
+        Direction::Forward => current
             .get()
             .checked_add(step.take_inner())
             .and_then(BlockNumber::new),
-        Backward => current
+        Direction::Backward => current
             .get()
             .checked_sub(step.take_inner())
             .and_then(BlockNumber::new),
