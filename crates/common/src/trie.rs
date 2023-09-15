@@ -7,7 +7,7 @@ use crate::hash::FeltHash;
 /// A node in a Starknet patricia-merkle trie.
 ///
 /// See pathfinders merkle-tree crate for more information.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum TrieNode {
     Binary { left: Felt, right: Felt },
     Edge { child: Felt, path: BitVec<u8, Msb0> },
@@ -26,6 +26,23 @@ impl TrieNode {
                 let length = Felt::from_be_bytes(length).unwrap();
                 H::hash(*child, path) + length
             }
+        }
+    }
+}
+
+impl std::fmt::Debug for TrieNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Binary { left, right } => f
+                .debug_struct("Binary")
+                .field("left", &left.to_hex_str())
+                .field("right", &right.to_hex_str())
+                .finish(),
+            Self::Edge { child, path } => f
+                .debug_struct("Edge")
+                .field("child", &child.to_hex_str())
+                .field("path", &(path.len(), Felt::from_bits(path).unwrap().to_hex_str()))
+                .finish(),
         }
     }
 }
