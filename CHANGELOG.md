@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- JSON-RPC requests containing a Cairo 0 class definition were requiring the `debug_info` property to be present in the input program. This was a regression caused by the execution engine change. 
+
 ### Added
 
 - `--sync.verify_tree_node_data` which enables verifies state tree nodes as they are loaded from disk. This is a debugging tool to identify disk corruption impacting tree node data. This should only be enabled when debugging a state root mismatch.

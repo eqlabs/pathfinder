@@ -216,8 +216,18 @@ impl CairoContractClass {
             .read_to_end(&mut program)
             .context("Decompressing program")?;
 
-        let program: serde_json::Value =
+        let mut program: serde_json::Value =
             serde_json::from_slice(&program).context("Parsing program JSON")?;
+
+        // Workaround: starknet_api::deprecated_contract_class::Program requires `debug_info` to be present
+        // otherwise parsing will fail. We just add an empty string if it's missing from program.
+        let program_object = program
+            .as_object_mut()
+            .context("Program attribute was not an object")?;
+
+        if !program_object.contains_key("debug_info") {
+            program_object.insert("debug_info".to_owned(), serde_json::json!(""));
+        }
 
         let json = serde_json::json!({
             "program": program,
@@ -517,6 +527,32 @@ mod tests {
 
             let class = ContractClass::from_definition_bytes(CONTRACT_DEFINITION).unwrap();
             assert_eq!(class.class_hash().unwrap(), class_hash);
+        }
+    }
+
+    mod contract_class_serialization {
+
+        use pathfinder_executor::parse_deprecated_class_definition;
+
+        use crate::v02::types::CairoContractClass;
+
+        #[test]
+        fn convert_deprecated_class_definition_without_debug_info_into_starknet_api_type() {
+            let definition = br#"{
+                "program": "H4sIAAAAAAAC/5WPzQqDMBCE32XPIklPxVcpJURd2wWzCZu1FCTv3qiF9urcZphvf1bwqkL9opihu90b6BealfjrhhgSzSjuhZIpMnRgWntpLTQwevVH60msFVhLAzQiK01U60cQPLHLQ0xYWed26yqdhMIWmffV/Mlac07bJYITCvKAdTz7B0pd/Qv3V0r5AMLJpd3rAAAA",
+                "entry_points_by_type": {
+                  "CONSTRUCTOR":[],
+                  "EXTERNAL":[],
+                  "L1_HANDLER":[]
+                },
+                "abi": []
+              }"#;
+
+            let contract_class: CairoContractClass = serde_json::from_slice(definition).unwrap();
+
+            let serialized_definition = contract_class.serialize_to_json().unwrap();
+
+            parse_deprecated_class_definition(serialized_definition).unwrap();
         }
     }
 }
