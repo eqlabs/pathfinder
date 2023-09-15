@@ -90,17 +90,22 @@ struct Inner {
     pool: Pool<SqliteConnectionManager>,
 }
 
-pub struct StorageManager(PathBuf);
+pub struct StorageManager {
+    database_path: PathBuf,
+    journal_mode: JournalMode,
+}
 
 impl StorageManager {
     pub fn create_pool(&self, capacity: NonZeroU32) -> anyhow::Result<Storage> {
-        let pool_manager = SqliteConnectionManager::file(&self.0).with_init(setup_connection);
+        let journal_mode = self.journal_mode;
+        let pool_manager = SqliteConnectionManager::file(&self.database_path)
+            .with_init(move |connection| setup_connection(connection, journal_mode));
         let pool = Pool::builder()
             .max_size(capacity.get())
             .build(pool_manager)?;
 
         Ok(Storage(Inner {
-            database_path: Arc::new(self.0.clone()),
+            database_path: Arc::new(self.database_path.clone()),
             pool,
         }))
     }
@@ -119,15 +124,19 @@ impl Storage {
     ) -> anyhow::Result<StorageManager> {
         let mut connection = rusqlite::Connection::open(&database_path)
             .context("Opening DB for setting journal mode")?;
-        setup_connection(&mut connection).context("Setting up database connection")?;
         setup_journal_mode(&mut connection, journal_mode).context("Setting journal mode")?;
+        setup_connection(&mut connection, journal_mode)
+            .context("Setting up database connection")?;
         migrate_database(&mut connection).context("Migrate database")?;
         connection
             .close()
             .map_err(|(_connection, error)| error)
             .context("Closing DB after setting journal mode")?;
 
-        Ok(StorageManager(database_path))
+        Ok(StorageManager {
+            database_path,
+            journal_mode,
+        })
     }
 
     /// Returns a new Sqlite [Connection] to the database.
@@ -183,14 +192,15 @@ fn setup_journal_mode(
                 None,
                 "journal_size_limit",
                 (1024usize * 1024 * 1024).to_string(),
-            )?;
-            // According to the documentation NORMAL is a good choice for WAL mode.
-            connection.pragma_update(None, "synchronous", "normal")
+            )
         }
     }
 }
 
-fn setup_connection(connection: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
+fn setup_connection(
+    connection: &mut rusqlite::Connection,
+    journal_mode: JournalMode,
+) -> Result<(), rusqlite::Error> {
     // enable foreign keys
     connection.set_db_config(
         rusqlite::config::DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY,
@@ -211,6 +221,17 @@ fn setup_connection(connection: &mut rusqlite::Connection) -> Result<(), rusqlit
             Ok(base64_felts_to_index_prefixed_base32_felts(base64_felts))
         },
     )?;
+
+    match journal_mode {
+        JournalMode::Rollback => {
+            // According to the documentation FULL is the recommended setting for rollback mode.
+            connection.pragma_update(None, "synchronous", "full")?;
+        }
+        JournalMode::WAL => {
+            // According to the documentation NORMAL is a good choice for WAL mode.
+            connection.pragma_update(None, "synchronous", "normal")?;
+        }
+    };
 
     Ok(())
 }
@@ -350,7 +371,7 @@ mod tests {
     #[test]
     fn full_migration() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        setup_connection(&mut conn).unwrap();
+        setup_connection(&mut conn, JournalMode::Rollback).unwrap();
         migrate_database(&mut conn).unwrap();
         let version = schema_version(&conn).unwrap();
         let expected = schema::migrations().len() + schema::BASE_SCHEMA_REVISION;
@@ -360,7 +381,7 @@ mod tests {
     #[test]
     fn migration_fails_if_db_is_newer() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        setup_connection(&mut conn).unwrap();
+        setup_connection(&mut conn, JournalMode::Rollback).unwrap();
 
         // Force the schema to a newer version
         let current_version = schema::migrations().len();
