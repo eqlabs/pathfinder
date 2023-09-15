@@ -47,6 +47,40 @@ fn main() -> anyhow::Result<()> {
 
     tracing::info!(%block_number, storage_commitment=%block_header.storage_commitment, "Checking merkle tries at");
 
+    let class_trie_reader = tx.class_trie_reader();
+
+    let mut class_nodes: HashMap<Felt, (TrieNode, usize)> = Default::default();
+
+    let mut to_visit = VecDeque::new();
+    to_visit.push_back((block_header.class_commitment.0, BitVec::new()));
+    while let Some((felt, current_path)) = to_visit.pop_front() {
+        if current_path.len() == 251 {
+            continue;
+        }
+
+        let (node, _) = class_nodes
+            .entry(felt)
+            .and_modify(|(_node, refcount)| *refcount += 1)
+            .or_insert_with(|| (class_trie_reader.get(&felt).unwrap().unwrap(), 1));
+
+        match node {
+            TrieNode::Binary { left, right } => {
+                let mut path_left: BitVec<u8, Msb0> = current_path.clone();
+                path_left.push(Direction::Left.into());
+                to_visit.push_back((*left, path_left));
+                let mut path_right = current_path.clone();
+                path_right.push(Direction::Right.into());
+                to_visit.push_back((*right, path_right));
+            }
+            TrieNode::Edge { child, path } => {
+                let mut path_edge = current_path.clone();
+                path_edge.extend_from_bitslice(path);
+                to_visit.push_back((*child, path_edge));
+            }
+        }
+    }
+    tracing::info!(num=%class_nodes.len(), "Class tree nodes traversed");
+
     let storage_trie_reader = tx.storage_trie_reader();
 
     let mut global_nodes: HashMap<Felt, (TrieNode, usize)> = Default::default();
@@ -136,6 +170,34 @@ fn main() -> anyhow::Result<()> {
 
     let tx = db.rusqlite_transaction().unwrap();
     tx.execute_batch(
+        r"DROP TABLE IF EXISTS tree_class_new;
+        CREATE TABLE IF NOT EXISTS tree_class_new (
+        hash        BLOB PRIMARY KEY,
+        data        BLOB,
+        ref_count   INTEGER
+    );",
+    )
+    .unwrap();
+
+    let mut stmt = tx
+        .prepare("INSERT INTO tree_class_new (hash, data, ref_count) VALUES (?, ?, ?)")
+        .unwrap();
+
+    for (hash, (node, ref_cnt)) in
+        progressed::ProgressBar::new(class_nodes.iter()).set_title("Writing class tree nodes")
+    {
+        stmt.execute(params![hash.as_be_bytes(), serialize_node(node), ref_cnt])
+            .unwrap();
+    }
+
+    drop(stmt);
+
+    tx.commit().unwrap();
+
+    tracing::info!("Class tree nodes written");
+
+    let tx = db.rusqlite_transaction().unwrap();
+    tx.execute_batch(
         r"DROP TABLE IF EXISTS tree_global_new;
         CREATE TABLE IF NOT EXISTS tree_global_new (
         hash        BLOB PRIMARY KEY,
@@ -159,6 +221,8 @@ fn main() -> anyhow::Result<()> {
     drop(stmt);
 
     tx.commit().unwrap();
+
+    tracing::info!("Global tree nodes written");
 
     let tx = db.rusqlite_transaction().unwrap();
     tx.execute_batch(
@@ -185,6 +249,8 @@ fn main() -> anyhow::Result<()> {
     drop(stmt);
 
     tx.commit().unwrap();
+
+    tracing::info!("Contract tree nodes written");
 
     Ok(())
 }
