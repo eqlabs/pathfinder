@@ -15,7 +15,7 @@ pub struct Felt([u8; 32]);
 
 impl std::fmt::Debug for Felt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StarkHash({self})")
+        f.write_str(&self.to_hex_str())
     }
 }
 
