@@ -62,7 +62,7 @@ jsonrpsee = { version = "0.16.3", default-features = false, features = [
 ] }
 lazy_static = { workspace = true }
 pretty_assertions = { workspace = true }
-rstest = "0.18.2"
+rstest = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 tempfile = "3.6"
 test-log = { version = "0.2.12", default-features = false, features = [
