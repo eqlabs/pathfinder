@@ -3,10 +3,9 @@ pub mod conv {
 
     use pathfinder_common::{
         state_update::{ContractClassUpdate, ContractUpdate, SystemContractUpdate},
-        BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ClassCommitment, ClassHash,
-        ContractAddress, ContractNonce, EventCommitment, GasPrice, SequencerAddress,
-        StarknetVersion, StateCommitment, StateUpdate, StorageAddress, StorageCommitment,
-        StorageValue, TransactionCommitment,
+        BlockHash, BlockNumber, BlockTimestamp, ClassHash, ContractAddress, ContractNonce,
+        GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StateUpdate, StorageAddress,
+        StorageValue,
     };
 
     pub trait TryFromProto<T> {
@@ -15,31 +14,51 @@ pub mod conv {
             Self: Sized;
     }
 
-    // FIXME at the moment this implementation is useless due to the massive difference between p2p and internal header representations,
-    // I'm not sure we want to keep it at all
+    // Simple block header meant for the temporary p2p client hidden behind
+    // the gateway client api, ie. does not contain any commitments
+    // TODO: remove this once proper p2p friendly sync is implemented
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct BlockHeader {
+        pub hash: BlockHash,
+        pub parent_hash: BlockHash,
+        pub number: BlockNumber,
+        pub timestamp: BlockTimestamp,
+        pub gas_price: GasPrice,
+        pub sequencer_address: SequencerAddress,
+        pub starknet_version: StarknetVersion,
+    }
+
+    impl From<pathfinder_common::BlockHeader> for BlockHeader {
+        fn from(h: pathfinder_common::BlockHeader) -> Self {
+            Self {
+                hash: h.hash,
+                parent_hash: h.parent_hash,
+                number: h.number,
+                timestamp: h.timestamp,
+                gas_price: h.gas_price,
+                sequencer_address: h.sequencer_address,
+                starknet_version: h.starknet_version,
+            }
+        }
+    }
+
     impl TryFromProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
         fn try_from_proto(proto: p2p_proto_v1::block::BlockHeader) -> anyhow::Result<Self>
         where
             Self: Sized,
         {
             Ok(Self {
-                hash: BlockHash::ZERO, // FIXME
-                parent_hash: BlockHash(proto.parent_block.0),
-                number: BlockNumber::GENESIS, // FIXME
+                hash: BlockHash(proto.block_hash.0),
+                parent_hash: BlockHash(proto.parent_header.0),
+                number: BlockNumber::new(proto.number)
+                    .ok_or(anyhow::anyhow!("Invalid block number > i64::MAX"))?,
                 timestamp: BlockTimestamp::new(
                     proto.time.duration_since(SystemTime::UNIX_EPOCH)?.as_secs(),
                 )
-                .unwrap(), // FIXME
-                gas_price: GasPrice::ZERO,    // FIXME
+                .ok_or(anyhow::anyhow!("Invalid block timestamp"))?,
+                gas_price: GasPrice::from_be_slice(proto.gas_price.as_slice())?,
                 sequencer_address: SequencerAddress(proto.sequencer_address.0),
-                starknet_version: StarknetVersion::default(), // FIXME
-                class_commitment: ClassCommitment::ZERO,      // FIXME
-                event_commitment: EventCommitment::ZERO,      // FIXME
-                state_commitment: StateCommitment::ZERO,      // FIXME
-                storage_commitment: StorageCommitment::ZERO,  // FIXME
-                transaction_commitment: TransactionCommitment::ZERO, // FIXME
-                transaction_count: 0,                         // FIXME
-                event_count: 0,                               // FIXME
+                starknet_version: StarknetVersion::from(proto.starknet_version),
             })
         }
     }

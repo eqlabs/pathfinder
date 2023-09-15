@@ -3,7 +3,7 @@ use fake::Dummy;
 use libp2p_identity::PeerId;
 use rand::Rng;
 use stark_hash::Felt;
-use std::fmt::Display;
+use std::{fmt::Display, num::NonZeroU64};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub struct Hash(pub Felt);
@@ -48,10 +48,8 @@ pub struct Iteration {
 }
 
 /// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None` or `Some(0)`
-///
-/// FIXME next spec iteration requires to return error when step is explicitly set to 0 by the requesting party
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Step(u64);
+pub struct Step(NonZeroU64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Dummy)]
 pub enum Direction {
@@ -174,25 +172,13 @@ impl TryFromProtobuf<proto::common::PeerId> for PeerId {
 
 impl Step {
     pub fn take_inner(self) -> u64 {
-        self.0
-    }
-}
-
-impl Default for Step {
-    fn default() -> Self {
-        Self(1)
+        self.0.get()
     }
 }
 
 impl From<u64> for Step {
     fn from(input: u64) -> Self {
-        // step 0 means the step field was actually missing or
-        // the client does not know what it's actually doing :P
-        if input == 0 {
-            Default::default()
-        } else {
-            Self(input)
-        }
+        Self(NonZeroU64::new(input).unwrap_or(NonZeroU64::MIN))
     }
 }
 
@@ -210,7 +196,7 @@ impl Display for Step {
 
 impl<T> Dummy<T> for Step {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        Self(rng.gen_range(1u64..=u64::MAX))
+        Self(rng.gen())
     }
 }
 

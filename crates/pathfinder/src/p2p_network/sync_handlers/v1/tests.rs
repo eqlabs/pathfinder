@@ -1,8 +1,8 @@
 use crate::p2p_network::sync_handlers::v1::{get_bodies, get_headers};
 use assert_matches::assert_matches;
 use fake::{Fake, Faker};
-use p2p_proto_v1::block::{Direction, GetBlockBodies, GetBlockHeaders, Iteration, Step};
-use p2p_proto_v1::common::BlockId;
+use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
+use p2p_proto_v1::common::{Direction, Iteration, Step};
 use pathfinder_common::BlockNumber;
 use pathfinder_storage::Storage;
 use rstest::rstest;
@@ -39,31 +39,36 @@ fn get_next_block_number(
 
 mod empty_reply {
     use super::*;
+    use rand::Rng;
     #[rustfmt::skip] fn zero_limit() -> Iteration { Iteration { limit: 0, ..Faker.fake() } }
-    #[rustfmt::skip] fn invalid_start() -> Iteration { Iteration { start: BlockId(I64_MAX + 1), ..Faker.fake() } }
+    #[rustfmt::skip] fn invalid_start() -> Iteration { Iteration { start_block: rand::thread_rng().gen_range(I64_MAX + 1..=u64::MAX), ..Faker.fake() } }
 
     #[rstest]
-    #[case(GetBlockHeaders {iteration: zero_limit()})]
-    #[case(GetBlockHeaders {iteration: invalid_start()})]
+    #[case(zero_limit())]
+    #[case(invalid_start())]
     #[tokio::test]
-    async fn headers(#[case] request: GetBlockHeaders) {
+    async fn headers(#[case] iteration: Iteration) {
         let storage = Storage::in_memory().unwrap();
         let (tx, mut rx) = mpsc::channel(1);
         // Clone the sender to make sure that the channel is not prematurely closed
-        get_headers(&storage, request, tx.clone()).await.unwrap();
+        get_headers(&storage, BlockHeadersRequest { iteration }, tx.clone())
+            .await
+            .unwrap();
         // No reply should be sent
         assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
     }
 
     #[rstest]
-    #[case(GetBlockBodies {iteration: zero_limit()})]
-    #[case(GetBlockBodies {iteration: invalid_start()})]
+    #[case(zero_limit())]
+    #[case(invalid_start())]
     #[tokio::test]
-    async fn bodies(#[case] request: GetBlockBodies) {
+    async fn bodies(#[case] iteration: Iteration) {
         let storage = Storage::in_memory().unwrap();
         let (tx, mut rx) = mpsc::channel(1);
         // Clone the sender to make sure that the channel is not prematurely closed
-        get_bodies(&storage, request, tx.clone()).await.unwrap();
+        get_bodies(&storage, BlockBodiesRequest { iteration }, tx.clone())
+            .await
+            .unwrap();
         // No reply should be sent
         assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
     }
@@ -71,6 +76,38 @@ mod empty_reply {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
+    use crate::p2p_network::client::v1::conv::{BlockHeader, TryFromProto};
+    use crate::p2p_network::sync_handlers::v1::headers;
+    use p2p_proto_v1::block::BlockHeadersRequest;
+    use p2p_proto_v1::common::{Direction, Iteration};
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn get_headers((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+            // These are the headers that we expect to be read from the db
+            let expected = match direction {
+                Direction::Forward => overlapping::forward(in_db, start_block, limit, step).map(|(h, _, _)| h.into()).collect::<Vec<_>>(),
+                Direction::Backward => overlapping::backward(in_db, start_block, limit, step, num_blocks).map(|(h, _, _)| h.into()).collect::<Vec<_>>(),
+            };
+            // Run the handler
+            let request = BlockHeadersRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let reply = headers(tx, request).unwrap();
+            // Extract headers from the reply
+            let actual = reply.into_iter().map(|reply | {
+                let header = reply.header_message.into_header().unwrap();
+                assert_eq!(reply.block_number, header.number);
+                BlockHeader::try_from_proto(header)
+            }).collect::<anyhow::Result<Vec<_>>>().unwrap();
+
+            prop_assert_eq!(actual, expected);
+        }
+    }
+
     /// Fixtures for prop tests
     mod fixtures {
         use crate::p2p_network::sync_handlers::v1::MAX_COUNT_IN_TESTS;
@@ -93,7 +130,7 @@ mod prop {
     /// Find overlapping range between the DB and the request
     mod overlapping {
         use crate::p2p_network::sync_handlers::v1::MAX_COUNT_IN_TESTS;
-        use p2p_proto_v1::block::Step;
+        use p2p_proto_v1::common::Step;
         use pathfinder_storage::fake::{StorageInitializer, StorageInitializerItem};
 
         pub fn forward(
@@ -108,12 +145,35 @@ mod prop {
                 .step_by(step.take_inner().try_into().unwrap())
                 .take(std::cmp::min(limit, MAX_COUNT_IN_TESTS).try_into().unwrap())
         }
+
+        pub fn backward(
+            mut from_db: StorageInitializer,
+            start_block: u64,
+            limit: u64,
+            step: Step,
+            num_blocks: u64,
+        ) -> impl Iterator<Item = StorageInitializerItem> {
+            if start_block >= num_blocks {
+                // The is no overlapping range but we want to keep the iterator type in this
+                // branch type-consistent
+                from_db.clear();
+            }
+
+            from_db
+                .into_iter()
+                .take((start_block + 1).try_into().unwrap())
+                .rev()
+                .step_by(step.take_inner().try_into().unwrap())
+                .take(std::cmp::min(limit, MAX_COUNT_IN_TESTS).try_into().unwrap())
+        }
     }
 
-    /// Strategies used in tests
+    /// Building blocks for the ultimate composite strategy used in all property tests
     mod strategy {
+        use crate::p2p_network::sync_handlers::v1::tests::I64_MAX;
+
         use super::fixtures::MAX_NUM_BLOCKS;
-        use p2p_proto_v1::block::Step;
+        use p2p_proto_v1::common::{Direction, Step};
         use proptest::prelude::*;
         use std::ops::Range;
 
@@ -122,10 +182,10 @@ mod prop {
         }
 
         prop_compose! {
-            fn outside(range: Range<u64>)(x in range.end..) -> u64 { x }
+            fn outside_le(range: Range<u64>, max: u64)(x in range.end..=max) -> u64 { x }
         }
 
-        pub fn rarely_outside(range: std::ops::Range<u64>) -> BoxedStrategy<u64> {
+        fn rarely_outside_le(range: std::ops::Range<u64>, max: u64) -> BoxedStrategy<u64> {
             // Empty range will trigger a panic in rand::distributions::Uniform
             if range.is_empty() {
                 return Just(range.start).boxed();
@@ -134,80 +194,30 @@ mod prop {
             prop_oneof![
                 // Occurance 4:1
                 4 => inside(range.clone()),
-                1 => outside(range),
+                1 => outside_le(range, max),
             ]
             .boxed()
         }
 
+        fn rarely_outside(range: std::ops::Range<u64>) -> BoxedStrategy<u64> {
+            rarely_outside_le(range, u64::MAX)
+        }
+
         prop_compose! {
-            pub fn forward()
+            pub fn composite()
                 (num_blocks in 0..MAX_NUM_BLOCKS)
                 (
                     num_blocks in Just(num_blocks),
                     storage_seed in any::<u64>(),
-                    start in rarely_outside(0..num_blocks),
-                    // limit of 0 is handled by a separate test
+                    // out of range (> i64::MAX) start values are tested in `empty_reply::`
+                    start in rarely_outside_le(0..num_blocks, I64_MAX),
+                    // limit of 0 is tested in `empty_reply::`
                     limit in rarely_outside(1..num_blocks),
                     // step is always >= 1
                     step in rarely_outside(1..num_blocks / 4),
-                ) -> (u64, u64, u64, u64, Step) {
-                (num_blocks, storage_seed, start, limit, step.into())
-            }
-        }
-    }
-
-    mod get_headers {
-        use super::fixtures::storage_with_seed;
-        use super::overlapping;
-        use crate::p2p_network::sync_handlers::v1::conv::ToProto;
-        use crate::p2p_network::sync_handlers::v1::headers;
-        use p2p_proto_v1::block::{BlockHeaderMessage, Direction, GetBlockHeaders, Iteration};
-        use p2p_proto_v1::common::BlockId;
-        use proptest::prelude::*;
-
-        proptest! {
-            #[test]
-            fn forward((num_blocks, seed, start, limit, step) in super::strategy::forward()) {
-                eprintln!("num_blocks: {num_blocks} start: {start} limit: {limit} step: {step} seed: {seed}");
-                let (storage, from_db) = storage_with_seed(seed, num_blocks);
-                let from_db = overlapping::forward(from_db, start, limit, step).map(|(header, _, _)| header).collect::<Vec<_>>();
-
-                let request = GetBlockHeaders {
-                    iteration: Iteration {
-                        start: BlockId(start),
-                        limit,
-                        step,
-                        direction: Direction::Forward,
-                    }
-                };
-
-                let mut connection = storage.connection().unwrap();
-                let tx = connection.transaction().unwrap();
-                let reply_vec = headers(tx, request).unwrap();
-                let reply_vec = reply_vec.into_iter().map(|reply | match reply.block_part {
-                    BlockHeaderMessage::Header(x) => *x,
-                    _ => panic!("Wrong reply type"),
-                }).collect::<Vec<_>>();
-
-                prop_assert_eq!(reply_vec.len(), from_db.len());
-
-                // let reply_vec_cloned = reply_vec.clone();
-                // let from_db_cloned = from_db.clone();
-
-                // TODO remove this assertion
-                // This is wrong but just temporary, we should do the converse here - transform the reply into out storage format
-                let from_db = from_db.into_iter().map(ToProto::to_proto).collect::<Vec<_>>();
-                prop_assert_eq!(reply_vec, from_db);
-
-                // FIXME
-                // This fails for now since the conversion code is not fully ready
-                // anyhow this is the correct way since sync_handlers convert from storage to proto
-                // so we should do proto to storage here
-                // use crate::p2p_network::client::v1::conv::TryFromProto;
-                // let reply_vec_cloned = reply_vec_cloned.into_iter().map(pathfinder_common::BlockHeader::try_from_proto)
-                //     .collect::<anyhow::Result<Vec<_>>>().unwrap();
-
-                // prop_assert_eq!(reply_vec_cloned, from_db_cloned);
+                    directon in prop_oneof![Just(Direction::Forward), Just(Direction::Backward)],
+                ) -> (u64, u64, u64, u64, Step, Direction) {
+                (num_blocks, storage_seed, start, limit, step.into(), directon)
             }
         }
     }
