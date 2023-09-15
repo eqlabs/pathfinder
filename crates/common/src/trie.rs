@@ -41,7 +41,10 @@ impl std::fmt::Debug for TrieNode {
             Self::Edge { child, path } => f
                 .debug_struct("Edge")
                 .field("child", &child.to_hex_str())
-                .field("path", &(path.len(), Felt::from_bits(path).unwrap().to_hex_str()))
+                .field(
+                    "path",
+                    &(path.len(), Felt::from_bits(path).unwrap().to_hex_str()),
+                )
                 .finish(),
         }
     }

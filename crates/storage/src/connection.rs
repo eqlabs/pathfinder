@@ -320,6 +320,36 @@ impl<'inner> Transaction<'inner> {
         trie::insert_storage_trie(&self.0, root.0, nodes)
     }
 
+    /// Deletes an instance of the class trie using reference counting.
+    ///
+    /// Returns the leaf nodes that were left dangling by this deletion.
+    pub fn delete_class_trie(
+        &self,
+        root: ClassCommitment,
+    ) -> anyhow::Result<Vec<ClassCommitmentLeafHash>> {
+        trie::delete_class_trie(&self.0, root.0)
+            .map(|x| x.into_iter().map(ClassCommitmentLeafHash).collect())
+    }
+
+    /// Deletes an instance of the contract trie using reference counting.
+    ///
+    /// Returns the leaf nodes that were left dangling by this deletion.
+    pub fn delete_contract_trie(&self, root: ContractRoot) -> anyhow::Result<Vec<StorageValue>> {
+        trie::delete_contract_trie(&self.0, root.0)
+            .map(|x| x.into_iter().map(StorageValue).collect())
+    }
+
+    /// Deletes an instance of the global starknet storage trie using reference counting.
+    ///
+    /// Returns the leaf nodes that were left dangling by this deletion.
+    pub fn delete_storage_trie(
+        &self,
+        root: StorageCommitment,
+    ) -> anyhow::Result<Vec<ContractStateHash>> {
+        trie::delete_storage_trie(&self.0, root.0)
+            .map(|x| x.into_iter().map(ContractStateHash).collect())
+    }
+
     pub fn class_trie_reader(&self) -> ClassTrieReader<'_> {
         ClassTrieReader::new(self)
     }
