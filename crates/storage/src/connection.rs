@@ -222,6 +222,15 @@ impl<'inner> Transaction<'inner> {
         class::insert_cairo_class(self, cairo_hash, definition)
     }
 
+    pub fn insert_cairo_class_at(
+        &self,
+        cairo_hash: ClassHash,
+        definition: &[u8],
+        block_number: BlockNumber,
+    ) -> anyhow::Result<()> {
+        class::insert_cairo_class_at(self, cairo_hash, definition, block_number)
+    }
+
     pub fn insert_class_commitment_leaf(
         &self,
         leaf: &ClassCommitmentLeafHash,

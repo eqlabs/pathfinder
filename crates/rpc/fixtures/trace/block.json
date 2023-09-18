@@ -1,0 +1,58 @@
+{
+  "block_hash": "0x385c9553185c7aadb2afd3d288c7010246aa87602e44a14436d73f5243351a4",
+  "parent_block_hash": "0x3aa816573c6151bad4d514f4fd5a1def74dd14377ef0fc40f3c3a22d06c82e2",
+  "block_number": 1,
+  "state_root": "0x451a8c087cc929b985ecf16669d7fbf80890ec0f8a6333cb4de4cabfce0bc3e",
+  "status": "ACCEPTED_ON_L1",
+  "gas_price": "0x44f44c6af",
+  "timestamp": 1679580147,
+  "sequencer_address": "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
+  "transactions": [
+    {
+      "transaction_hash": "0x6ec0db674cac14f068cd1591e282b119d635b2b87b296fe4b97b2f9137b1ad4",
+      "version": "0x1",
+      "max_fee": "0x500da5716ce5",
+      "signature": [
+        "0x6a6b191a880eb7e1b07622f78df4868f0ceb264828aff78d7c8bb3d180921f3",
+        "0x726edf48ea6206ffe4ee83b35fb29de7884e242fb2330dc10caabcc97e8b53b"
+      ],
+      "nonce": "0x0",
+      "contract_address": "0x325bf20d89b86fafa54be01c3571d3b1bd5562e7ba13e9021e2f4be86c605a1",
+      "contract_address_salt": "0x66945ca3824e5afacc871a14961a6bd25f67288706dcb1085f99a8acd453bf",
+      "class_hash": "0x6f3ec04229f8f9663ee7d5bb9d2e06f213ba8c20eb34c58c25a54ef8fc591cb",
+      "constructor_calldata": [
+        "0x6d1b9433b879895e4d0ce6058c0c4ac66324bb0b18f9a6f7823edc110463169"
+      ],
+      "type": "DEPLOY_ACCOUNT"
+    }
+  ],
+  "transaction_receipts": [
+    {
+      "execution_status": "SUCCEEDED",
+      "transaction_index": 81,
+      "transaction_hash": "0x6ec0db674cac14f068cd1591e282b119d635b2b87b296fe4b97b2f9137b1ad4",
+      "l2_to_l1_messages": [],
+      "events": [
+        {
+          "from_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+          "keys": [
+            "0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9"
+          ],
+          "data": [
+            "0x325bf20d89b86fafa54be01c3571d3b1bd5562e7ba13e9021e2f4be86c605a1",
+            "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
+            "0x48c696671d2d",
+            "0x0"
+          ]
+        }
+      ],
+      "execution_resources": {
+        "n_steps": 41,
+        "builtin_instance_counter": {},
+        "n_memory_holes": 0
+      },
+      "actual_fee": "0x48c696671d2d"
+    }
+  ],
+  "starknet_version": "0.11.0"
+}

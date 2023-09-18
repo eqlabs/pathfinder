@@ -90,3 +90,24 @@ pub async fn trace_transaction(
 
     Ok(TraceTransactionOutput(trace.into()))
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::super::trace_block_transactions::tests::setup_trace_test;
+    use super::*;
+
+    #[tokio::test]
+    async fn test_single_transaction() -> anyhow::Result<()> {
+        let (storage, block, expected) = setup_trace_test()?;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let input = TraceTransactionInput {
+            transaction_hash: block.transactions[0].hash(),
+        };
+        let output = trace_transaction(context, input).await.unwrap();
+        let expected = TraceTransactionOutput(expected);
+
+        pretty_assertions::assert_eq!(output, expected);
+        Ok(())
+    }
+}
