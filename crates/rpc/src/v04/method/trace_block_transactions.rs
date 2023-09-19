@@ -1,6 +1,7 @@
 use pathfinder_common::{BlockHash, TransactionHash};
 use pathfinder_executor::CallError;
 use pathfinder_storage::BlockId;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinError;
 
@@ -58,10 +59,14 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    let transactions: Vec<_> = {
+    let (transactions, gas_price): (Vec<_>, Option<U256>) = {
         let mut db = context.storage.connection()?;
         tokio::task::spawn_blocking(move || {
             let tx = db.transaction()?;
+
+            let gas_price: Option<U256> = tx
+                .block_header(pathfinder_storage::BlockId::Hash(input.block_hash))?
+                .map(|header| U256::from(header.gas_price.0));
 
             let (transactions, _): (Vec<_>, Vec<_>) = tx
                 .transaction_data_for_block(BlockId::Hash(input.block_hash))?
@@ -69,22 +74,18 @@ pub async fn trace_block_transactions(
                 .into_iter()
                 .unzip();
 
-            let hashes = transactions.iter().map(|tx| tx.hash()).collect::<Vec<_>>();
-
             let transactions = transactions
                 .into_iter()
                 .map(|transaction| compose_executor_transaction(transaction, &tx))
                 .collect::<anyhow::Result<Vec<_>, _>>()?;
 
-            Ok::<_, TraceBlockTransactionsError>(
-                hashes.into_iter().zip(transactions.into_iter()).collect(),
-            )
+            Ok::<_, TraceBlockTransactionsError>((transactions, gas_price))
         })
         .await??
     };
 
-    let execution_state =
-        crate::executor::execution_state(context, pathfinder_common::BlockId::Latest, None).await?;
+    let block_id = pathfinder_common::BlockId::Hash(input.block_hash);
+    let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
 
     let traces = tokio::task::spawn_blocking(move || {
         pathfinder_executor::trace_all(execution_state, transactions)
@@ -115,7 +116,7 @@ pub(crate) mod tests {
 
     use pathfinder_common::{
         class_hash, BlockHeader, BlockNumber, BlockTimestamp, CallParam, ContractAddress,
-        EntryPoint,
+        EntryPoint, GasPrice,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_types::reply as gateway;
@@ -137,6 +138,7 @@ pub(crate) mod tests {
         let header = BlockHeader::builder()
             .with_number(block.block_number)
             .with_timestamp(BlockTimestamp::new_or_panic(0))
+            .with_gas_price(block.gas_price.unwrap_or(GasPrice(1)))
             .finalize_with_hash(block.block_hash);
         tx.insert_block_header(&header)?;
 

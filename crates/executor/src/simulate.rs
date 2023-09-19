@@ -5,9 +5,12 @@ use blockifier::{
 use pathfinder_common::TransactionHash;
 use primitive_types::U256;
 
-use crate::types::{
-    DeclareTransactionTrace, DeployAccountTransactionTrace, InvokeTransactionTrace,
-    L1HandlerTransactionTrace,
+use crate::{
+    transaction::transaction_hash,
+    types::{
+        DeclareTransactionTrace, DeployAccountTransactionTrace, InvokeTransactionTrace,
+        L1HandlerTransactionTrace,
+    },
 };
 
 use super::{
@@ -76,36 +79,38 @@ pub fn simulate(
 
 pub fn trace_one(
     mut execution_state: ExecutionState,
-    txs: Vec<(TransactionHash, Transaction)>,
-    tx_hash: TransactionHash,
+    transactions: Vec<Transaction>,
+    target_transaction_hash: TransactionHash,
 ) -> Result<TransactionTrace, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let mut ret = Vec::with_capacity(txs.len());
-    for (hash, tx) in txs {
+    let mut ret = Vec::with_capacity(transactions.len());
+    for tx in transactions {
+        let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
         let tx_info = tx.execute(&mut state, &block_context, false, false)?;
         let trace = to_trace(tx_type, tx_info)?;
-        if hash == tx_hash {
+        if hash == target_transaction_hash {
             return Ok(trace);
         }
         ret.push(trace);
     }
 
     Err(CallError::Internal(anyhow::anyhow!(
-        "TX hash not found: {}",
-        tx_hash
+        "Transaction hash not found: {}",
+        target_transaction_hash
     )))
 }
 
 pub fn trace_all(
     mut execution_state: ExecutionState,
-    txs: Vec<(TransactionHash, Transaction)>,
+    transactions: Vec<Transaction>,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let mut ret = Vec::with_capacity(txs.len());
-    for (hash, tx) in txs {
+    let mut ret = Vec::with_capacity(transactions.len());
+    for tx in transactions {
+        let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
         let tx_info = tx.execute(&mut state, &block_context, false, false)?;
         let trace = to_trace(tx_type, tx_info)?;

@@ -4,7 +4,7 @@
   "block_number": 1,
   "state_root": "0x451a8c087cc929b985ecf16669d7fbf80890ec0f8a6333cb4de4cabfce0bc3e",
   "status": "ACCEPTED_ON_L1",
-  "gas_price": "0x44f44c6af",
+  "gas_price": "0x1",
   "timestamp": 1679580147,
   "sequencer_address": "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
   "transactions": [

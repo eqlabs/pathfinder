@@ -1,5 +1,6 @@
-use pathfinder_common::{BlockId, TransactionHash};
+use pathfinder_common::{BlockHash, BlockId, TransactionHash};
 use pathfinder_executor::{CallError, Transaction};
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinError;
 
@@ -52,7 +53,7 @@ pub async fn trace_transaction(
     context: RpcContext,
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
-    let transactions: Vec<(TransactionHash, Transaction)> = {
+    let (transactions, block_hash, gas_price): (Vec<Transaction>, BlockHash, Option<U256>) = {
         let mut db = context.storage.connection()?;
         tokio::task::spawn_blocking(move || {
             let tx = db.transaction()?;
@@ -61,27 +62,28 @@ pub async fn trace_transaction(
                 .transaction_block_hash(input.transaction_hash)?
                 .ok_or(TraceTransactionError::InvalidTxnHash)?;
 
+            let gas_price: Option<U256> = tx
+                .block_header(pathfinder_storage::BlockId::Hash(block_hash))?
+                .map(|header| U256::from(header.gas_price.0));
+
             let (transactions, _): (Vec<_>, Vec<_>) = tx
                 .transaction_data_for_block(pathfinder_storage::BlockId::Hash(block_hash))?
                 .ok_or(TraceTransactionError::InvalidTxnHash)?
                 .into_iter()
                 .unzip();
 
-            let hashes = transactions.iter().map(|tx| tx.hash()).collect::<Vec<_>>();
-
             let transactions = transactions
                 .into_iter()
                 .map(|transaction| compose_executor_transaction(transaction, &tx))
                 .collect::<anyhow::Result<Vec<_>, _>>()?;
 
-            Ok::<_, TraceTransactionError>(
-                hashes.into_iter().zip(transactions.into_iter()).collect(),
-            )
+            Ok::<_, TraceTransactionError>((transactions, block_hash, gas_price))
         })
         .await??
     };
 
-    let execution_state = crate::executor::execution_state(context, BlockId::Latest, None).await?;
+    let block_id = BlockId::Hash(block_hash);
+    let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
 
     let trace = tokio::task::spawn_blocking(move || {
         pathfinder_executor::trace_one(execution_state, transactions, input.transaction_hash)

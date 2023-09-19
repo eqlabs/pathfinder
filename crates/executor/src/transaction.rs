@@ -4,7 +4,7 @@ use pathfinder_common::TransactionHash;
 
 use super::felt::IntoFelt;
 
-pub(super) fn transaction_hash(transaction: &Transaction) -> TransactionHash {
+pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
     TransactionHash(
         match transaction {
             Transaction::AccountTransaction(tx) => match tx {
