@@ -54,6 +54,7 @@ zstd = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 bytes = { workspace = true }
+flate2 = "1.0.27"
 hex = { workspace = true }
 jsonrpsee = { version = "0.16.3", default-features = false, features = [
     "async-client",
@@ -69,7 +70,6 @@ test-log = { version = "0.2.12", default-features = false, features = [
     "trace",
 ] }
 tracing-subscriber = { workspace = true }
-flate2 = "1.0.27"
 
 [[test]]
 name = "integration-versioning"
