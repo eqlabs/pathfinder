@@ -54,8 +54,9 @@ pub async fn trace_transaction(
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
     let (transactions, block_hash, gas_price): (Vec<Transaction>, BlockHash, Option<U256>) = {
-        let mut db = context.storage.connection()?;
+        let storage = context.storage.clone();
         tokio::task::spawn_blocking(move || {
+            let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
             let block_hash = tx
