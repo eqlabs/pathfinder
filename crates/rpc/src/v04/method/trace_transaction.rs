@@ -5,7 +5,12 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinError;
 
-use crate::{compose_executor_transaction, context::RpcContext, executor::ExecutionStateError};
+use crate::{
+    compose_executor_transaction,
+    context::RpcContext,
+    error::{RpcError, TraceError},
+    executor::ExecutionStateError,
+};
 
 use super::simulate_transactions::dto::TransactionTrace;
 
@@ -18,15 +23,17 @@ pub struct TraceTransactionInput {
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct TraceTransactionOutput(TransactionTrace);
 
-crate::error::generate_rpc_error_subset!(
-    TraceTransactionError: InvalidTxnHash,
-    NoTraceAvailable
-);
+#[derive(Debug)]
+pub enum TraceTransactionError {
+    InvalidTxnHash,
+    NoTraceAvailable(TraceError),
+    Internal(anyhow::Error),
+}
 
 impl From<ExecutionStateError> for TraceTransactionError {
     fn from(value: ExecutionStateError) -> Self {
         match value {
-            ExecutionStateError::BlockNotFound => Self::NoTraceAvailable,
+            ExecutionStateError::BlockNotFound => Self::NoTraceAvailable(TraceError::Rejected),
             ExecutionStateError::Internal(e) => Self::Internal(e),
         }
     }
@@ -36,9 +43,9 @@ impl From<CallError> for TraceTransactionError {
     fn from(value: CallError) -> Self {
         match value {
             CallError::ContractNotFound | CallError::InvalidMessageSelector => {
-                Self::Internal(anyhow::anyhow!("Failed to trace the block's transactions"))
+                Self::NoTraceAvailable(TraceError::Rejected)
             }
-            CallError::Reverted(e) => Self::Internal(anyhow::anyhow!("Transaction reverted: {e}")),
+            CallError::Reverted(_) => Self::NoTraceAvailable(TraceError::Received),
             CallError::Internal(e) => Self::Internal(e),
         }
     }
@@ -47,6 +54,22 @@ impl From<CallError> for TraceTransactionError {
 impl From<JoinError> for TraceTransactionError {
     fn from(e: JoinError) -> Self {
         Self::Internal(anyhow::anyhow!("Join error: {e}"))
+    }
+}
+
+impl From<anyhow::Error> for TraceTransactionError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
+    }
+}
+
+impl From<TraceTransactionError> for RpcError {
+    fn from(value: TraceTransactionError) -> Self {
+        match value {
+            TraceTransactionError::InvalidTxnHash => RpcError::InvalidTxnHash,
+            TraceTransactionError::NoTraceAvailable(status) => RpcError::NoTraceAvailable(status),
+            TraceTransactionError::Internal(e) => RpcError::Internal(e),
+        }
     }
 }
 
