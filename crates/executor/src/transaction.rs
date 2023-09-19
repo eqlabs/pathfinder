@@ -4,6 +4,8 @@ use pathfinder_common::TransactionHash;
 
 use super::felt::IntoFelt;
 
+// This workaround will not be necessary after the PR:
+// https://github.com/starkware-libs/blockifier/pull/927
 pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
     TransactionHash(
         match transaction {
