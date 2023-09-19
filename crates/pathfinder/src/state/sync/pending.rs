@@ -49,7 +49,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
             }
             MaybePendingBlock::Block(block) => {
                 tracing::trace!(hash=%block.block_hash, "Found full block, exiting pending mode.");
-                return Ok((Some(block), None));
+                return Ok((Some(block), Some(state_update)));
             }
             MaybePendingBlock::Pending(pending) if pending.parent_hash != head.0 => {
                 tracing::trace!(
