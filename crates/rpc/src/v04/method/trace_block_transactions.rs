@@ -154,8 +154,8 @@ pub(crate) mod tests {
 
         let class_hash =
             class_hash!("0x6f3ec04229f8f9663ee7d5bb9d2e06f213ba8c20eb34c58c25a54ef8fc591cb");
-        const TEST_CLASS: &[u8] = include_bytes!("../../../fixtures/trace/class.json");
-        tx.insert_cairo_class_at(class_hash, TEST_CLASS, block.block_number)?;
+        let test_class = ungzip(include_bytes!("../../../fixtures/trace/class.json.gzip"));
+        tx.insert_cairo_class_at(class_hash, &test_class, block.block_number)?;
 
         let transaction_data = block
             .transactions
@@ -195,6 +195,15 @@ pub(crate) mod tests {
             validate_invocation: None,
         });
         Ok((storage, block, expected))
+    }
+
+    fn ungzip(src: &[u8]) -> Vec<u8> {
+        use flate2::bufread::GzDecoder;
+        use std::io::Read;
+        let mut decoder = GzDecoder::new(src);
+        let mut target = Vec::new();
+        decoder.read_to_end(&mut target).unwrap();
+        target
     }
 
     #[tokio::test]
