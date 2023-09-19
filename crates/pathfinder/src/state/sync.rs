@@ -24,6 +24,7 @@ use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::{pending::PendingData, reply::Block};
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::time::Instant;
 use std::{sync::Arc, time::Duration};
@@ -833,8 +834,11 @@ fn update_starknet_state(
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
         .with_verify_hashes(verify_hashes);
 
+    let mut contract_state_roots = Vec::new();
+    let mut contract_nodes = HashMap::new();
+
     for (contract, update) in &state_update.contract_updates {
-        let state_hash = update_contract_state(
+        let (state_hash, contract_state_root, nodes) = update_contract_state(
             *contract,
             &update.storage,
             update.nonce,
@@ -845,13 +849,16 @@ fn update_starknet_state(
         )
         .context("Update contract state")?;
 
+        contract_state_roots.push(contract_state_root);
+        contract_nodes.extend(nodes.into_iter());
+
         storage_commitment_tree
             .set(*contract, state_hash)
             .context("Updating storage commitment tree")?;
     }
 
     for (contract, update) in &state_update.system_contract_updates {
-        let state_hash = update_contract_state(
+        let (state_hash, contract_state_root, nodes) = update_contract_state(
             *contract,
             &update.storage,
             None,
@@ -862,10 +869,19 @@ fn update_starknet_state(
         )
         .context("Update system contract state")?;
 
+        contract_state_roots.push(contract_state_root);
+        contract_nodes.extend(nodes.into_iter());
+
         storage_commitment_tree
             .set(*contract, state_hash)
             .context("Updating system contract storage commitment tree")?;
     }
+
+    // Insert contract trie nodes.
+    let count = transaction
+        .insert_contract_trie(&contract_state_roots, &contract_nodes)
+        .context("Persisting contract trie")?;
+    tracing::trace!(new_nodes=%count, "Contract trie persisted");
 
     // Apply storage commitment tree changes.
     let (new_storage_commitment, nodes) = storage_commitment_tree

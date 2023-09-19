@@ -25,11 +25,11 @@ macro_rules! insert_trie {
         /// in the hash map (indicating it is a leaf node, and should not be inserted).
         pub(super) fn $fn_name(
             tx: &rusqlite::Transaction<'_>,
-            root: Felt,
+            roots: &[Felt],
             nodes: &HashMap<Felt, TrieNode>,
         ) -> anyhow::Result<usize> {
             let mut to_insert = Vec::new();
-            to_insert.push(root);
+            to_insert.extend_from_slice(roots);
 
             let mut stmt = tx
                 .prepare_cached(concat!(
@@ -173,7 +173,7 @@ mod tests {
         nodes.insert(edge, edge_node.clone());
         nodes.insert(duplicate, duplicate_node.clone());
 
-        let count = insert_test(&tx, root, &nodes).unwrap();
+        let count = insert_test(&tx, &[root], &nodes).unwrap();
         let db_count: usize = tx
             .query_row("SELECT COUNT(1) FROM tree_test", [], |row| row.get(0))
             .unwrap();
@@ -183,7 +183,7 @@ mod tests {
         assert_eq!(count, db_count);
 
         // Inserting the same trie again should do nothing
-        let count = insert_test(&tx, root, &nodes).unwrap();
+        let count = insert_test(&tx, &[root], &nodes).unwrap();
         assert_eq!(count, 0);
 
         let tx = Transaction::from_inner(tx);

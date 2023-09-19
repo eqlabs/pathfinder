@@ -304,16 +304,17 @@ impl<'inner> Transaction<'inner> {
         root: ClassCommitment,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        trie::insert_class_trie(&self.0, root.0, nodes)
+        trie::insert_class_trie(&self.0, &[root.0], nodes)
     }
 
     /// Stores a single contract's storage trie information using reference counting.
     pub fn insert_contract_trie(
         &self,
-        root: ContractRoot,
+        roots: &[ContractRoot],
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        trie::insert_contract_trie(&self.0, root.0, nodes)
+        let roots: Vec<_> = roots.into_iter().map(|root| root.0).collect();
+        trie::insert_contract_trie(&self.0, &roots, nodes)
     }
 
     /// Stores the global starknet storage trie information using reference counting.
@@ -322,7 +323,7 @@ impl<'inner> Transaction<'inner> {
         root: StorageCommitment,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        trie::insert_storage_trie(&self.0, root.0, nodes)
+        trie::insert_storage_trie(&self.0, &[root.0], nodes)
     }
 
     pub fn class_trie_reader(&self) -> ClassTrieReader<'_> {
