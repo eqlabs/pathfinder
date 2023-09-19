@@ -4,6 +4,7 @@ use p2p_proto_v1::block::{
     BlockHeadersRequest, BlockHeadersResponse,
 };
 use p2p_proto_v1::common::{Direction, Hash, Iteration, Step};
+use p2p_proto_v1::{MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD};
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
@@ -187,42 +188,45 @@ fn bodies(
     Ok(responses)
 }
 
+// /// It's generally safe to assume:
+// /// N classes == 20 + 60 * N bytes
+// ///
+// /// Please see this test for more details:
+// /// [`p2p_proto_v0::check_classes_message_overhead`]
+// const PER_MESSAGE_OVERHEAD: usize = 20;
+// const PER_CLASS_OVERHEAD: usize = 60;
+// const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
+
 /// Helper function to get a range of classes from storage and put them into messages taking into account the 1MiB encoded message size limit.
 ///
 /// - If N consecutive classes are small enough to fit into a single message, then they will be put in a single message.
 /// - If a class is too big to fit into a single message, then it will be split into chunks and each chunk will be put into a separate message.
 /// - The function is not greedy, which means that no artificial chunking will be done to fill in the message size limit.
+/// - `class_definition_getter` assumes that the class definition should always be available in storage, otherwise there is a problem with
+///   the database itself (e.g. it's inconsistent/corrupted, inaccessible, etc.) which is a fatal error
 fn classes(
     block_number: BlockNumber,
-    mut new_classes: Vec<ClassHash>,
+    new_classes: Vec<ClassHash>,
     responses: &mut Vec<BlockBodiesResponse>,
-    class_definition_getter: impl Fn(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
+    mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
 ) -> anyhow::Result<()> {
-    /// It's generally safe to assume:
-    /// N classes == 20 + 60 * N bytes
-    ///
-    /// Please see this test for more details:
-    /// [`p2p_proto_v0::check_classes_message_overhead`]
-    const PER_MESSAGE_OVERHEAD: usize = 20;
-    const PER_CLASS_OVERHEAD: usize = 60;
-    const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
     let mut estimated_message_size = PER_MESSAGE_OVERHEAD;
-    let mut classes_for_this_msg = Vec::new();
+    let mut classes_for_this_msg: Vec<(ClassHash, Vec<u8>)> = Vec::new();
+    let mut new_classes = new_classes.into_iter();
 
     // 1. Let's take the next class definition from storage
-    // We don't really care about the order as the source is a hash set/map so it's randomized anyway
-    while let Some(class_hash) = new_classes.pop() {
+    while let Some(class_hash) = new_classes.next() {
         let compressed_definition = class_definition_getter(block_number, class_hash)?;
 
         // 2. Let's check if this definition needs to be chunked
         if (PER_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
-            < MESSAGE_SIZE_LIMIT
+            <= MESSAGE_SIZE_LIMIT
         {
             // 2.A Ok this definition is small enough but we can still exceed the limit for the entire
             // message if we have already accumulated some previous "small" class definitions
             estimated_message_size += PER_CLASS_OVERHEAD + compressed_definition.len();
 
-            if estimated_message_size < MESSAGE_SIZE_LIMIT {
+            if estimated_message_size <= MESSAGE_SIZE_LIMIT {
                 // 2.A.A Ok, it fits, let's add it to the message but don't send the message yet
                 classes_for_this_msg.push((class_hash, compressed_definition));
                 // --> 1.
@@ -234,12 +238,12 @@ fn classes(
                     // What we have accumulated so far
                     classes_for_this_msg.iter().fold(
                                 PER_MESSAGE_OVERHEAD,
-                                |acc, (_, compressed_definition)| acc
+                                |acc, (_, x)| acc
                                     + PER_CLASS_OVERHEAD
-                                    + compressed_definition.len()
+                                    + x.len()
                             ) +
                             // Current definition that didn't fit
-                            (PER_MESSAGE_OVERHEAD + compressed_definition.len()),
+                            (PER_CLASS_OVERHEAD + compressed_definition.len()),
                 );
                 responses.push(block_bodies_response::take_from_class_definitions(
                     block_number,
@@ -249,7 +253,8 @@ fn classes(
                 debug_assert!(classes_for_this_msg.is_empty());
 
                 // Now we reset the counter and start over with the current definition that didn't fit
-                estimated_message_size = PER_MESSAGE_OVERHEAD;
+                estimated_message_size =
+                    PER_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len();
                 classes_for_this_msg.push((class_hash, compressed_definition));
                 // --> 1.
             }
@@ -277,7 +282,7 @@ fn classes(
             for (i, chunk) in chunk_iter {
                 let chunk_idx = i
                     .try_into()
-                    .expect("chunk_count conversion succeeded, so chunk_count should too");
+                    .expect("chunk_count conversion succeeded, so chunk_idx should too");
                 // One chunk per message, we don't care if the last chunk is smaller
                 // as we don't want to artificially break the next class definition into pieces
                 responses.push(block_bodies_response::from_class_definition_part(
@@ -293,6 +298,15 @@ fn classes(
             // --> 1.
         }
     }
+
+    // 3. Send the remaining accumulated classes if there are any
+    if !classes_for_this_msg.is_empty() {
+        responses.push(block_bodies_response::take_from_class_definitions(
+            block_number,
+            &mut classes_for_this_msg,
+        ));
+    }
+    debug_assert!(classes_for_this_msg.is_empty());
 
     Ok(())
 }
@@ -334,7 +348,6 @@ mod block_bodies_response {
         use p2p_proto_v1::state::{Class, Classes};
         let classes = class_definitions
             .drain(..)
-            .rev()
             .map(|(class_hash, definition)| Class {
                 compiled_hash: Hash(class_hash.0),
                 definition,

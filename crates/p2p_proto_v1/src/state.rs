@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::common::{Address, Hash};
 use crate::{ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
@@ -26,7 +28,7 @@ pub struct StateDiff {
     pub contract_diffs: Vec<ContractDiff>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::state::Class")]
 pub struct Class {
     pub compiled_hash: Hash,
@@ -35,6 +37,17 @@ pub struct Class {
     pub total_parts: Option<u32>,
     #[optional]
     pub part_num: Option<u32>,
+}
+
+impl Debug for Class {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Class")
+            .field("compiled_hash", &self.compiled_hash)
+            .field("definition.len", &self.definition.len())
+            .field("total_parts", &self.total_parts)
+            .field("part_num", &self.part_num)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

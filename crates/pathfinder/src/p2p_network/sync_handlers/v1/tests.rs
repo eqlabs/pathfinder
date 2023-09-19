@@ -222,3 +222,120 @@ mod prop {
         }
     }
 }
+
+mod classes {
+    use crate::p2p_network::sync_handlers::v1::classes;
+    use fake::{Fake, Faker};
+    use pathfinder_common::ClassHash;
+
+    #[test]
+    fn empty_input_yields_empty_output() {
+        let mut responses = vec![];
+        assert!(classes(Faker.fake(), vec![], &mut responses, |_, _| Ok(vec![]),).is_ok());
+        assert!(responses.is_empty());
+    }
+
+    #[test]
+    fn getter_error_yields_error() {
+        let mut responses = vec![];
+        assert!(classes(
+            Faker.fake(),
+            vec![Faker.fake()],
+            &mut responses,
+            |_, _| anyhow::bail!("getter failed"),
+        )
+        .is_err());
+        assert!(responses.is_empty());
+    }
+
+    #[test]
+    fn batching_and_partitioning() {
+        use p2p_proto_v1::block::BlockBodyMessage::Classes;
+        use p2p_proto_v1::common::Hash;
+        use p2p_proto_v1::state::Class;
+        use p2p_proto_v1::{MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD};
+
+        // Max size of definition that can be stored in one message
+        const FULL: usize = MESSAGE_SIZE_LIMIT - PER_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
+        const SMALL: usize = FULL / 10;
+        const BIG: usize = MESSAGE_SIZE_LIMIT * 3;
+        let not_full = fake::vec![u8; 1..FULL];
+
+        let block_number = Faker.fake();
+        let defs = vec![
+            // Small ones are batched
+            fake::vec![u8; 1..=SMALL],
+            fake::vec![u8; 1..=SMALL],
+            // The biggest that fits into one msg is not artificially partitioned and glued to the previous message
+            fake::vec![u8; FULL],
+            // Two that fit exactly into one msg
+            fake::vec![u8; FULL - not_full.len() - PER_CLASS_OVERHEAD],
+            not_full,
+            // A small one has to be put in the next message as there's no space left
+            fake::vec![u8; 1..=SMALL],
+            // Big one, should be chunked, but the first chunk should not be glued to the previous message
+            fake::vec![u8; BIG],
+            // Small one again, is not glued to the last chunk of the previous partitioned definition, no matter how small that chunk is
+            fake::vec![u8; 1..=SMALL],
+        ];
+        let class_hashes = fake::vec![ClassHash; defs.len()];
+        let mut def_it = defs.clone().into_iter();
+        let class_definition_getter = |_, _| Ok(def_it.next().unwrap());
+
+        let mut responses = vec![];
+        // UUT
+        assert!(classes(
+            block_number,
+            class_hashes.clone(),
+            &mut responses,
+            class_definition_getter,
+        )
+        .is_ok());
+
+        // Extract class definition responses, perform basic checks
+        let responses = responses
+            .into_iter()
+            .map(|r| {
+                assert_eq!(r.block_number, block_number.get());
+                match r.body_message {
+                    Classes(c) => {
+                        assert_eq!(c.domain, 0, "FIXME figure out what the domain id should be");
+                        c.classes
+                    }
+                    _ => panic!("unexpected message type"),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let definition = |i| Class {
+            compiled_hash: Hash((class_hashes[i] as ClassHash).0),
+            definition: (&defs[i] as &Vec<u8>).clone(),
+            total_parts: None,
+            part_num: None,
+        };
+        let part = |i, d: &[u8], t, p| Class {
+            definition: d.to_vec(),
+            total_parts: Some(t),
+            part_num: Some(p),
+            ..definition(i)
+        };
+        // Small ones are batched
+        assert_eq!(responses[0], vec![definition(0), definition(1),]);
+        // The biggest that fits into one msg is not artificially partitioned and glued to the previous message
+        assert_eq!(responses[1], vec![definition(2)]);
+        // Two that fit exactly into one msg
+        assert_eq!(responses[2], vec![definition(3), definition(4)]);
+        // A small one has to be put in the next message as there's no space left
+        assert_eq!(responses[3], vec![definition(5)]);
+        // Big one, should be chunked, but the first chunk should not be glued to the previous message
+        assert_eq!(responses[4], vec![part(6, &defs[6][..FULL], 4, 0),]);
+        assert_eq!(responses[5], vec![part(6, &defs[6][FULL..2 * FULL], 4, 1),]);
+        assert_eq!(
+            responses[6],
+            vec![part(6, &defs[6][2 * FULL..3 * FULL], 4, 2),]
+        );
+        assert_eq!(responses[7], vec![part(6, &defs[6][3 * FULL..], 4, 3),]);
+        // Small one again, is not glued to the last chunk of the previous partitioned definition, no matter how small that chunk is
+        assert_eq!(responses[8], vec![definition(7)]);
+    }
+}
