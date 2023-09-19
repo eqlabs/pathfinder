@@ -1,3 +1,4 @@
+use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockId, TransactionHash};
 use pathfinder_executor::{CallError, Transaction};
 use primitive_types::U256;
@@ -54,8 +55,12 @@ pub async fn trace_transaction(
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
     let (transactions, block_hash, gas_price): (Vec<Transaction>, BlockHash, Option<U256>) = {
+        let span = tracing::Span::current();
+
         let storage = context.storage.clone();
         tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
@@ -80,16 +85,20 @@ pub async fn trace_transaction(
 
             Ok::<_, TraceTransactionError>((transactions, block_hash, gas_price))
         })
-        .await??
+        .await
+        .context("trace_transaction: fetch & map the transaction")??
     };
 
     let block_id = BlockId::Hash(block_hash);
     let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
 
+    let span = tracing::Span::current();
     let trace = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
         pathfinder_executor::trace_one(execution_state, transactions, input.transaction_hash)
     })
-    .await??;
+    .await
+    .context("trace_transaction: execution")??;
 
     Ok(TraceTransactionOutput(trace.into()))
 }

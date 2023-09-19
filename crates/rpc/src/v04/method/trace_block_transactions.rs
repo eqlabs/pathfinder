@@ -1,3 +1,4 @@
+use anyhow::Context;
 use pathfinder_common::{BlockHash, TransactionHash};
 use pathfinder_executor::CallError;
 use pathfinder_storage::BlockId;
@@ -60,8 +61,12 @@ pub async fn trace_block_transactions(
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
     let (transactions, gas_price): (Vec<_>, Option<U256>) = {
+        let span = tracing::Span::current();
+
         let storage = context.storage.clone();
         tokio::task::spawn_blocking(move || {
+            let _g = span.enter();
+
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
@@ -82,16 +87,20 @@ pub async fn trace_block_transactions(
 
             Ok::<_, TraceBlockTransactionsError>((transactions, gas_price))
         })
-        .await??
+        .await
+        .context("trace_block_transactions: fetch block & transactions")??
     };
 
     let block_id = pathfinder_common::BlockId::Hash(input.block_hash);
     let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
 
+    let span = tracing::Span::current();
     let traces = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
         pathfinder_executor::trace_all(execution_state, transactions)
     })
-    .await??;
+    .await
+    .context("trace_block_transactions: execution")??;
 
     let result = traces
         .into_iter()
