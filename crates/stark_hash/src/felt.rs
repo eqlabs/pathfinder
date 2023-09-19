@@ -582,9 +582,7 @@ mod tests {
             let starkhash = Felt::from_hex_str(hex_str).unwrap();
             let result = format!("{starkhash:?}");
 
-            let mut expected = "0".repeat(64 - hex_str.len());
-            expected.push_str(hex_str);
-            let expected = format!("StarkHash({starkhash})");
+            let expected = format!("0x{hex_str}");
 
             assert_eq!(result, expected);
         }

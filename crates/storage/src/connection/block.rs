@@ -78,6 +78,10 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 }
 
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
+    // This needs to happen before block header is purged.
+    tx.prune_state_trie(block)
+        .context("Pruning the state trie")?;
+
     // This table does not have an ON DELETE clause, so we do it manually.
     // TODO: migration to add ON DELETE.
     tx.inner()
@@ -110,7 +114,7 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
         )
         .context("Deleting block from block_headers table")?;
 
-    tx.prune_state_trie(block).context("Pruning the state trie")
+    Ok(())
 }
 
 pub(super) fn block_id(
@@ -320,8 +324,6 @@ mod tests {
             .with_timestamp(BlockTimestamp::new_or_panic(15))
             .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
             .with_event_commitment(event_commitment_bytes!(b"event commitment 2"))
-            .with_class_commitment(class_commitment_bytes!(b"class commitment 2"))
-            .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 2"))
             .with_calculated_state_commitment()
             .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
             .finalize_with_hash(block_hash_bytes!(b"block 2 hash"));

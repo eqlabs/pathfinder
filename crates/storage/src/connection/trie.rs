@@ -571,7 +571,7 @@ mod tests {
         assert_eq!(nodes, db_nodes);
 
         // Second delete should delete everything.
-        let dangling_leaves = delete_test(&tx.inner(), root).unwrap();
+        let dangling_leaves = delete_test(tx.inner(), root).unwrap();
         assert_eq!(dangling_leaves.len(), 2);
 
         let db_root = reader.get(&root).unwrap();
