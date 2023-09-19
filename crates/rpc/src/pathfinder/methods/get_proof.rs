@@ -201,30 +201,23 @@ pub async fn get_proof(
         let contract_proof = storage_commitment_tree.get_proof(&input.contract_address)?;
         let contract_proof = ProofNodes(contract_proof);
 
-        let contract_state_hash = match storage_commitment_tree.get(input.contract_address)? {
-            Some(contract_state_hash) => contract_state_hash,
-            None => {
-                // Contract not found: return the proof of non membership that we generated earlier.
-                return Ok(GetProofOutput {
-                    state_commitment,
-                    class_commitment,
-                    contract_proof,
-                    contract_data: None,
-                });
-            }
-        };
+        let block_number = tx
+            .block_id(block_id)
+            .context("Querying block number")?
+            .context("Block number missing")?
+            .0;
+        let contract_state = tx
+            .contract_state(block_number, input.contract_address)
+            .context("Querying contract state")?;
 
-        let (contract_state_root, class_hash, nonce) = tx
-            .contract_state(contract_state_hash)
-            .context("Get contract state root and nonce")?
-            // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
-            .ok_or_else(|| -> GetProofError {
-                anyhow::anyhow!(
-                    "Root or nonce missing for state_hash={}",
-                    contract_state_hash
-                )
-                .into()
-            })?;
+        let Some((contract_state_root, class_hash, nonce)) = contract_state else {
+            return Ok(GetProofOutput {
+                state_commitment,
+                class_commitment,
+                contract_proof,
+                contract_data: None,
+            });
+        };
 
         let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
 

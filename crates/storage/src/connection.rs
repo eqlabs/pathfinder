@@ -5,7 +5,6 @@ mod class;
 mod ethereum;
 mod event;
 mod reference;
-mod state;
 mod state_update;
 mod transaction;
 mod trie;
@@ -20,12 +19,8 @@ pub use transaction::TransactionStatus;
 
 pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
 
+use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
-use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash,
-    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, SierraHash,
-    StateUpdate, StorageAddress, StorageCommitment, StorageValue, TransactionHash,
-};
 use pathfinder_ethereum::EthereumStateUpdate;
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gateway;
@@ -66,25 +61,12 @@ impl<'inner> Transaction<'inner> {
         Self(tx)
     }
 
-    // TODO: get rid of this in favor of storing contract roots in a separate table similar to
-    //       nonces and storage updates. This would remove the last reliance on navigating the
-    //       global trie -- since this is required to retrieve the state hash, and thereby the
-    //       contract root.
     pub fn contract_state(
         &self,
-        state_hash: ContractStateHash,
+        block: BlockNumber,
+        contract: ContractAddress,
     ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
-        state::contract_state(self, state_hash)
-    }
-
-    pub fn insert_contract_state(
-        &self,
-        state_hash: ContractStateHash,
-        class_hash: ClassHash,
-        root: ContractRoot,
-        nonce: ContractNonce,
-    ) -> anyhow::Result<()> {
-        state::insert_contract_state(self, state_hash, class_hash, root, nonce)
+        state_update::contract_state(self, block, contract)
     }
 
     pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
@@ -298,17 +280,19 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: ClassCommitment,
         nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
-        trie::insert_class_trie(&self.0, root.0, nodes)
+    ) -> anyhow::Result<()> {
+        trie::insert_class_trie(self, root, nodes)
     }
 
     /// Stores a single contract's storage trie information using reference counting.
     pub fn insert_contract_trie(
         &self,
+        block: BlockNumber,
+        contract: ContractAddress,
         root: ContractRoot,
         nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
-        trie::insert_contract_trie(&self.0, root.0, nodes)
+    ) -> anyhow::Result<()> {
+        trie::insert_contract_trie(self, block, contract, root, nodes)
     }
 
     /// Stores the global starknet storage trie information using reference counting.
@@ -316,38 +300,8 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: StorageCommitment,
         nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
-        trie::insert_storage_trie(&self.0, root.0, nodes)
-    }
-
-    /// Deletes an instance of the class trie using reference counting.
-    ///
-    /// Returns the leaf nodes that were left dangling by this deletion.
-    pub fn delete_class_trie(
-        &self,
-        root: ClassCommitment,
-    ) -> anyhow::Result<Vec<ClassCommitmentLeafHash>> {
-        trie::delete_class_trie(&self.0, root.0)
-            .map(|x| x.into_iter().map(ClassCommitmentLeafHash).collect())
-    }
-
-    /// Deletes an instance of the contract trie using reference counting.
-    ///
-    /// Returns the leaf nodes that were left dangling by this deletion.
-    pub fn delete_contract_trie(&self, root: ContractRoot) -> anyhow::Result<Vec<StorageValue>> {
-        trie::delete_contract_trie(&self.0, root.0)
-            .map(|x| x.into_iter().map(StorageValue).collect())
-    }
-
-    /// Deletes an instance of the global starknet storage trie using reference counting.
-    ///
-    /// Returns the leaf nodes that were left dangling by this deletion.
-    pub fn delete_storage_trie(
-        &self,
-        root: StorageCommitment,
-    ) -> anyhow::Result<Vec<ContractStateHash>> {
-        trie::delete_storage_trie(&self.0, root.0)
-            .map(|x| x.into_iter().map(ContractStateHash).collect())
+    ) -> anyhow::Result<()> {
+        trie::insert_storage_trie(self, root, nodes)
     }
 
     pub fn class_trie_reader(&self) -> ClassTrieReader<'_> {
@@ -360,6 +314,10 @@ impl<'inner> Transaction<'inner> {
 
     pub fn contract_trie_reader(&self) -> ContractTrieReader<'_> {
         ContractTrieReader::new(self)
+    }
+
+    pub fn prune_state_trie(&self, block: BlockNumber) -> anyhow::Result<()> {
+        trie::prune_state_tries(self, block)
     }
 
     pub fn insert_state_update(

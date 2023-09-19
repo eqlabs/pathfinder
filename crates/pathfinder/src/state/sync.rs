@@ -837,22 +837,32 @@ fn update_starknet_state(
     state_update: &StateUpdate,
     verify_hashes: bool,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
-    let (storage_commitment, class_commitment) = transaction
+    let (block_number, storage_commitment, class_commitment) = transaction
         .block_header(pathfinder_storage::BlockId::Latest)
         .context("Querying latest state commitment")?
-        .map(|header| (header.storage_commitment, header.class_commitment))
-        .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
+        .map(|header| {
+            (
+                header.number,
+                header.storage_commitment,
+                header.class_commitment,
+            )
+        })
+        .unwrap_or((
+            BlockNumber::GENESIS,
+            StorageCommitment::ZERO,
+            ClassCommitment::ZERO,
+        ));
 
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
         .with_verify_hashes(verify_hashes);
 
     for (contract, update) in &state_update.contract_updates {
         let state_hash = update_contract_state(
+            block_number,
             *contract,
             &update.storage,
             update.nonce,
             update.class.as_ref().map(|x| x.class_hash()),
-            &storage_commitment_tree,
             transaction,
             verify_hashes,
         )
@@ -865,11 +875,11 @@ fn update_starknet_state(
 
     for (contract, update) in &state_update.system_contract_updates {
         let state_hash = update_contract_state(
+            block_number,
             *contract,
             &update.storage,
             None,
             None,
-            &storage_commitment_tree,
             transaction,
             verify_hashes,
         )
@@ -884,10 +894,10 @@ fn update_starknet_state(
     let (new_storage_commitment, nodes) = storage_commitment_tree
         .commit()
         .context("Apply storage commitment tree updates")?;
-    let count = transaction
+    transaction
         .insert_storage_trie(new_storage_commitment, &nodes)
         .context("Persisting storage trie")?;
-    tracing::trace!(new_nodes=%count, "Storage trie persisted");
+    tracing::trace!("Storage trie persisted");
 
     // Add new Sierra classes to class commitment tree.
     let mut class_commitment_tree =
@@ -909,10 +919,10 @@ fn update_starknet_state(
     let (class_commitment, nodes) = class_commitment_tree
         .commit()
         .context("Apply class commitment tree updates")?;
-    let count = transaction
+    transaction
         .insert_class_trie(class_commitment, &nodes)
         .context("Persisting class trie")?;
-    tracing::trace!(new_nodes=%count, "Class trie persisted");
+    tracing::trace!("Class trie persisted");
 
     Ok((new_storage_commitment, class_commitment))
 }
@@ -1182,5 +1192,241 @@ mod tests {
         let definition = tx.class_definition(ClassHash(class_hash)).unwrap().unwrap();
 
         assert_eq!(definition, expected_definition);
+    }
+
+    mod prune_state {
+        /// Ensures state pruning works as intended by checking that a tree is no longer accesible after it has been pruned.
+        /// For this, it is enough to test that the tree's root is not readible, that the rest of the tree is correctly
+        /// pruned is already tested within the storage layer.
+        use crate::state::sync::update_starknet_state;
+
+        use super::*;
+
+        #[test]
+        fn class_trie() {
+            // Insert a block with no class trie. This represents the blocks before cairo 1 classes
+            // were introduced.
+            let state_update_0 = StateUpdate::default();
+
+            // Insert a single class.
+            let state_update_1 = StateUpdate::default().with_declared_sierra_class(
+                sierra_hash_bytes!(b"class number zero"),
+                casm_hash_bytes!(b"casm hash zero"),
+            );
+
+            // Add another two classes.
+            let state_update_2 = StateUpdate::default()
+                .with_declared_sierra_class(
+                    sierra_hash_bytes!(b"another one"),
+                    casm_hash_bytes!(b"this is a hash casmm"),
+                )
+                .with_declared_sierra_class(
+                    sierra_hash_bytes!(b"and here we go another one"),
+                    casm_hash_bytes!(b"with its hash casmm"),
+                );
+
+            // A block with no changes to the class trie.
+            let state_update_3 = StateUpdate::default();
+
+            let mut conn = pathfinder_storage::Storage::in_memory()
+                .unwrap()
+                .connection()
+                .unwrap();
+            let tx = conn.transaction().unwrap();
+
+            let (storage_0, class_0) = update_starknet_state(&tx, &state_update_0, false).unwrap();
+            let state_commitment_0 = StateCommitment::calculate(storage_0, class_0);
+            let header_0 = BlockHeader::builder()
+                .with_state_commitment(state_commitment_0)
+                .with_storage_commitment(storage_0)
+                .with_class_commitment(class_0)
+                .finalize_with_hash(block_hash_bytes!(b"genesis hash"));
+            tx.insert_block_header(&header_0).unwrap();
+
+            let (storage_1, class_1) = update_starknet_state(&tx, &state_update_1, false).unwrap();
+            let state_commitment_1 = StateCommitment::calculate(storage_1, class_1);
+            let header_1 = header_0
+                .child_builder()
+                .with_state_commitment(state_commitment_1)
+                .with_storage_commitment(storage_1)
+                .with_class_commitment(class_1)
+                .finalize_with_hash(block_hash_bytes!(b"one hash"));
+            tx.insert_block_header(&header_1).unwrap();
+
+            let (storage_2, class_2) = update_starknet_state(&tx, &state_update_2, false).unwrap();
+            let state_commitment_2 = StateCommitment::calculate(storage_2, class_2);
+            let header_2 = header_1
+                .child_builder()
+                .with_state_commitment(state_commitment_2)
+                .with_storage_commitment(storage_2)
+                .with_class_commitment(class_2)
+                .finalize_with_hash(block_hash_bytes!(b"two hash"));
+            tx.insert_block_header(&header_2).unwrap();
+
+            let (storage_3, class_3) = update_starknet_state(&tx, &state_update_3, false).unwrap();
+            let state_commitment_3 = StateCommitment::calculate(storage_3, class_3);
+            let header_3 = header_2
+                .child_builder()
+                .with_state_commitment(state_commitment_3)
+                .with_storage_commitment(storage_3)
+                .with_class_commitment(class_3)
+                .finalize_with_hash(block_hash_bytes!(b"three hash"));
+            tx.insert_block_header(&header_3).unwrap();
+
+            // Block 2 contained no class changes and therefore the trie should remain unaltered.
+            assert_eq!(class_2, class_3);
+
+            // The first class trie should be missing as we no classes are present yet.
+            let reader = tx.class_trie_reader();
+            assert!(reader.get(&class_0.0).unwrap().is_none());
+            assert!(reader.get(&class_1.0).unwrap().is_some());
+            assert!(reader.get(&class_2.0).unwrap().is_some());
+
+            // After deleting the 1st block, nothing should have changed.
+            tx.prune_state_trie(header_0.number).unwrap();
+            assert!(reader.get(&class_0.0).unwrap().is_none());
+            assert!(reader.get(&class_1.0).unwrap().is_some());
+            assert!(reader.get(&class_2.0).unwrap().is_some());
+
+            // After deleting the 2nd block, it's class trie should no longer be readible.
+            tx.prune_state_trie(header_1.number).unwrap();
+            assert!(reader.get(&class_0.0).unwrap().is_none());
+            assert!(reader.get(&class_1.0).unwrap().is_none());
+            assert!(reader.get(&class_2.0).unwrap().is_some());
+
+            // After deleting the 3rd block, it's class trie should _still_ be readible as
+            // it is also the next block's trie.
+            tx.prune_state_trie(header_2.number).unwrap();
+            assert!(reader.get(&class_0.0).unwrap().is_none());
+            assert!(reader.get(&class_1.0).unwrap().is_none());
+            assert!(reader.get(&class_2.0).unwrap().is_some());
+
+            // After deleting the final block, no class trie should be readible.
+            tx.prune_state_trie(header_3.number).unwrap();
+            assert!(reader.get(&class_0.0).unwrap().is_none());
+            assert!(reader.get(&class_1.0).unwrap().is_none());
+            assert!(reader.get(&class_2.0).unwrap().is_none());
+        }
+
+        #[test]
+        fn storage_trie() {
+            // The chain can start with no storage changes.
+            let state_update_0 = StateUpdate::default();
+
+            // Insert a single contract with a single storage update.
+            let state_update_1 = StateUpdate::default()
+                .with_deployed_contract(
+                    contract_address_bytes!(b"address zero"),
+                    class_hash_bytes!(b"class"),
+                )
+                .with_storage_update(
+                    contract_address_bytes!(b"address zero"),
+                    storage_address_bytes!(b"storage addr"),
+                    storage_value_bytes!(b"this a value"),
+                );
+
+            // Insert two more contracts, one of which has the same storage root as the initial contract.
+            let state_update_2 = StateUpdate::default()
+                .with_deployed_contract(
+                    contract_address_bytes!(b"another contract"),
+                    class_hash_bytes!(b"class"),
+                )
+                .with_storage_update(
+                    contract_address_bytes!(b"another contract"),
+                    storage_address_bytes!(b"storage addr"),
+                    storage_value_bytes!(b"this a value"),
+                )
+                .with_deployed_contract(
+                    contract_address_bytes!(b"another contract again"),
+                    class_hash_bytes!(b"different class"),
+                )
+                .with_storage_update(
+                    contract_address_bytes!(b"another contract again"),
+                    storage_address_bytes!(b"storage addr"),
+                    storage_value_bytes!(b"this a value"),
+                );
+
+            // A block with no changes to the storage trie.
+            let state_update_3 = StateUpdate::default();
+
+            let mut conn = pathfinder_storage::Storage::in_memory()
+                .unwrap()
+                .connection()
+                .unwrap();
+            let tx = conn.transaction().unwrap();
+
+            let (storage_0, class_0) = update_starknet_state(&tx, &state_update_0, false).unwrap();
+            let state_commitment_0 = StateCommitment::calculate(storage_0, class_0);
+            let header_0 = BlockHeader::builder()
+                .with_state_commitment(state_commitment_0)
+                .with_storage_commitment(storage_0)
+                .with_class_commitment(class_0)
+                .finalize_with_hash(block_hash_bytes!(b"genesis hash"));
+            tx.insert_block_header(&header_0).unwrap();
+
+            let (storage_1, class_1) = update_starknet_state(&tx, &state_update_1, false).unwrap();
+            let state_commitment_1 = StateCommitment::calculate(storage_1, class_1);
+            let header_1 = header_0
+                .child_builder()
+                .with_state_commitment(state_commitment_1)
+                .with_storage_commitment(storage_1)
+                .with_class_commitment(class_1)
+                .finalize_with_hash(block_hash_bytes!(b"one hash"));
+            tx.insert_block_header(&header_1).unwrap();
+
+            let (storage_2, class_2) = update_starknet_state(&tx, &state_update_2, false).unwrap();
+            let state_commitment_2 = StateCommitment::calculate(storage_2, class_2);
+            let header_2 = header_1
+                .child_builder()
+                .with_state_commitment(state_commitment_2)
+                .with_storage_commitment(storage_2)
+                .with_class_commitment(class_2)
+                .finalize_with_hash(block_hash_bytes!(b"two hash"));
+            tx.insert_block_header(&header_2).unwrap();
+
+            let (storage_3, class_3) = update_starknet_state(&tx, &state_update_3, false).unwrap();
+            let state_commitment_3 = StateCommitment::calculate(storage_3, class_3);
+            let header_3 = header_2
+                .child_builder()
+                .with_state_commitment(state_commitment_3)
+                .with_storage_commitment(storage_3)
+                .with_class_commitment(class_3)
+                .finalize_with_hash(block_hash_bytes!(b"three hash"));
+            tx.insert_block_header(&header_3).unwrap();
+
+            // Block 2 contained no storage changes and therefore the trie should remain unaltered.
+            assert_eq!(storage_2, storage_3);
+
+            // The first trie should be missing as there is no storage trie yet.
+            let reader = tx.storage_trie_reader();
+            assert!(reader.get(&storage_0.0).unwrap().is_none());
+            assert!(reader.get(&storage_1.0).unwrap().is_some());
+            assert!(reader.get(&storage_2.0).unwrap().is_some());
+
+            // After deleting the 1st block, nothing should have changed.
+            tx.prune_state_trie(header_0.number).unwrap();
+            assert!(reader.get(&storage_0.0).unwrap().is_none());
+            assert!(reader.get(&storage_1.0).unwrap().is_some());
+            assert!(reader.get(&storage_2.0).unwrap().is_some());
+
+            // After deleting the 2nd block, it's storage trie should no longer be readible.
+            tx.prune_state_trie(header_1.number).unwrap();
+            assert!(reader.get(&storage_0.0).unwrap().is_none());
+            assert!(reader.get(&storage_1.0).unwrap().is_none());
+            assert!(reader.get(&storage_2.0).unwrap().is_some());
+
+            // After deleting the 3rd block, it's storage trie should _still_ be readible as
+            // it is also the next block's trie.
+            tx.prune_state_trie(header_2.number).unwrap();
+            assert!(reader.get(&storage_0.0).unwrap().is_none());
+            assert!(reader.get(&storage_1.0).unwrap().is_none());
+            assert!(reader.get(&storage_2.0).unwrap().is_some());
+
+            // After deleting the final block, no storage trie should be readible.
+            tx.prune_state_trie(header_3.number).unwrap();
+            assert!(reader.get(&storage_0.0).unwrap().is_none());
+            assert!(reader.get(&storage_1.0).unwrap().is_none());
+            assert!(reader.get(&storage_2.0).unwrap().is_none());
+        }
     }
 }

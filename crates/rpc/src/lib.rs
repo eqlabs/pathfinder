@@ -274,11 +274,11 @@ pub mod test_utils {
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
         let contract_state_hash = update_contract_state(
+            BlockNumber::GENESIS,
             contract0_addr,
             &contract0_update,
             Some(contract_nonce!("0x1")),
             Some(class0_hash),
-            &storage_commitment_tree,
             &db_txn,
             false,
         )
@@ -293,11 +293,11 @@ pub mod test_utils {
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
         let contract_state_hash = update_contract_state(
+            BlockNumber::GENESIS + 1,
             contract1_addr,
             &contract1_update0,
             None,
             Some(class1_hash),
-            &storage_commitment_tree,
             &db_txn,
             false,
         )
@@ -306,11 +306,11 @@ pub mod test_utils {
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let contract_state_hash = update_contract_state(
+            BlockNumber::GENESIS + 1,
             contract1_addr,
             &contract1_update1,
             None,
             None,
-            &storage_commitment_tree,
             &db_txn,
             false,
         )
@@ -325,11 +325,11 @@ pub mod test_utils {
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
         let contract_state_hash = update_contract_state(
+            BlockNumber::GENESIS + 2,
             contract1_addr,
             &contract1_update2,
             Some(contract_nonce!("0x10")),
             None,
-            &storage_commitment_tree,
             &db_txn,
             false,
         )
@@ -338,11 +338,11 @@ pub mod test_utils {
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let contract_state_hash = update_contract_state(
+            BlockNumber::GENESIS + 2,
             contract2_addr,
             &HashMap::new(),
             Some(contract_nonce!("0xfeed")),
             Some(class2_hash),
-            &storage_commitment_tree,
             &db_txn,
             false,
         )

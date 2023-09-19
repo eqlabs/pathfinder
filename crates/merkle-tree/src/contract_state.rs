@@ -1,37 +1,31 @@
 use std::collections::HashMap;
 
-use crate::{ContractsStorageTree, StorageCommitmentTree};
+use crate::ContractsStorageTree;
 use anyhow::Context;
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, StorageAddress,
-    StorageValue,
+    BlockNumber, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+    StorageAddress, StorageValue,
 };
 use pathfinder_storage::Transaction;
 use stark_hash::{stark_hash, Felt};
 
 /// Updates a contract's state with and returns the resulting [ContractStateHash].
 pub fn update_contract_state(
+    block_number: BlockNumber,
     contract_address: ContractAddress,
     updates: &HashMap<StorageAddress, StorageValue>,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
-    storage_commitment_tree: &StorageCommitmentTree<'_>,
     transaction: &Transaction<'_>,
     verify_hashes: bool,
 ) -> anyhow::Result<ContractStateHash> {
-    // Update the contract state tree.
-    let state_hash = storage_commitment_tree
-        .get(contract_address)
-        .context("Get contract state hash from global state tree")?
-        .unwrap_or(ContractStateHash(Felt::ZERO));
-
     // Fetch contract's previous root, class hash and nonce.
     //
     // If the contract state does not exist yet (new contract):
     // Contract root defaults to ZERO because that is the default merkle tree value.
     // Contract nonce defaults to ZERO because that is its historical value before being added in 0.10.
     let (old_root, old_class_hash, old_nonce) = transaction
-        .contract_state(state_hash)
+        .contract_state(block_number, contract_address)
         .context("Read contract root and nonce from contracts state table")?
         .map_or_else(
             || (ContractRoot::ZERO, None, ContractNonce::ZERO),
@@ -52,10 +46,10 @@ pub fn update_contract_state(
         let (contract_root, nodes) = contract_tree
             .commit()
             .context("Apply contract storage tree changes")?;
-        let count = transaction
-            .insert_contract_trie(contract_root, &nodes)
+        transaction
+            .insert_contract_trie(block_number, contract_address, contract_root, &nodes)
             .context("Persisting contract trie")?;
-        tracing::trace!(contract=%contract_address, new_nodes=%count, "Persisted contract trie");
+        tracing::trace!(contract=%contract_address, "Persisted contract trie");
 
         contract_root
     } else {
@@ -73,10 +67,6 @@ pub fn update_contract_state(
             .context("Class hash is unknown for new contract")?
     };
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
-
-    transaction
-        .insert_contract_state(contract_state_hash, class_hash, new_root, new_nonce)
-        .context("Insert constract state hash into contracts state table")?;
 
     Ok(contract_state_hash)
 }

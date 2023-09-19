@@ -1,32 +1,119 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use pathfinder_common::trie::TrieNode;
+use pathfinder_common::{
+    BlockNumber, ClassCommitment, ContractAddress, ContractRoot, StorageCommitment,
+};
 use stark_hash::Felt;
 
 use crate::prelude::*;
 
 generate_trie_methods!(
-    insert_class_trie,
-    delete_class_trie,
+    insert_class_trie_impl,
+    prune_class_trie,
     tree_class,
     ClassTrieReader,
     251
 );
 generate_trie_methods!(
-    insert_contract_trie,
-    delete_contract_trie,
+    insert_contract_trie_impl,
+    prune_contract_trie,
     tree_contracts,
     ContractTrieReader,
     251
 );
 generate_trie_methods!(
-    insert_storage_trie,
-    delete_storage_trie,
+    insert_storage_trie_impl,
+    prune_storage_trie,
     tree_global,
     StorageTrieReader,
     251
 );
+
+pub(super) fn prune_state_tries(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
+    let header = tx
+        .block_header(block.into())
+        .context("Querying block header")?
+        .context("Block header missing")?;
+
+    prune_class_trie(tx.inner(), header.class_commitment.0).context("Pruning class trie")?;
+    prune_storage_trie(tx.inner(), header.storage_commitment.0).context("Pruning storage trie")?;
+
+    // Pruning the contract tries is a bit more complex. We can only prune those trie's whose
+    // roots change in the _next_ block.
+    let mut change_stmt = tx
+        .inner()
+        .prepare_cached("SELECT contract_address FROM contract_roots WHERE block_number = ?")
+        .context("Preparing contract address query")?;
+
+    let contracts = change_stmt
+        .query_map(params![&(block + 1)], |row| row.get_contract_address(0))
+        .context("Querying contract addresses")?
+        .collect::<Result<HashSet<_>, _>>()
+        .context("Iterating over contract address rows")?;
+
+    let mut root_stmt = tx
+        .inner()
+        .prepare_cached("SELECT contract_root FROM contract_roots WHERE block_number <= ? AND contract_address = ?")
+        .context("Preparing contract root query")?;
+
+    let mut roots = Vec::with_capacity(contracts.len());
+    for address in contracts {
+        let root = root_stmt
+            .query_row(params![&block, &address], |row| row.get_contract_root(0))
+            .optional()
+            .with_context(|| format!("Querying contract root {address}"))?;
+
+        if let Some(root) = root {
+            roots.push(root);
+        }
+    }
+
+    for root in roots {
+        prune_contract_trie(tx.inner(), root.0).context("Pruning contract trie")?;
+    }
+
+    Ok(())
+}
+
+pub(super) fn insert_contract_trie(
+    tx: &Transaction<'_>,
+    block: BlockNumber,
+    contract: ContractAddress,
+    root: ContractRoot,
+    nodes: &HashMap<Felt, TrieNode>,
+) -> anyhow::Result<()> {
+    insert_contract_trie_impl(tx.inner(), root.0, nodes)?;
+
+    // This information is coupled to the contract trie itself. This is an implementation detail
+    // for how we are able to prune contract tries, and therefore it is embedded alongside the
+    // actual trie insertion instead of as a stand-alone function.
+    tx.inner()
+        .execute(
+            "INSERT INTO contract_roots (block_number, contract_address, contract_root) VALUES (?, ?, ?)", 
+            params![&block, &contract, &root]
+        )
+        .context("Inserting contract root")?;
+
+    Ok(())
+}
+
+pub(super) fn insert_class_trie(
+    tx: &Transaction<'_>,
+    root: ClassCommitment,
+    nodes: &HashMap<Felt, TrieNode>,
+) -> anyhow::Result<()> {
+    insert_class_trie_impl(tx.inner(), root.0, nodes)
+}
+
+pub(super) fn insert_storage_trie(
+    tx: &Transaction<'_>,
+    root: StorageCommitment,
+    nodes: &HashMap<Felt, TrieNode>,
+) -> anyhow::Result<()> {
+    insert_storage_trie_impl(tx.inner(), root.0, nodes)
+}
 
 /// Generates methods for inserting and deleting a tree from storage, as well as reading node data.
 macro_rules! generate_trie_methods {
@@ -36,11 +123,11 @@ macro_rules! generate_trie_methods {
         ///
         /// Uses reference counting to track the number of references to a specific node. This allows us
         /// to delete trees.
-        pub(super) fn $insert_fn(
+        fn $insert_fn(
             tx: &rusqlite::Transaction<'_>,
             root: Felt,
             nodes: &HashMap<Felt, TrieNode>,
-        ) -> anyhow::Result<usize> {
+        ) -> anyhow::Result<()> {
             // Insert a node with reference count of one, or increment the count if node already exists.
             // Returns the new reference count so we can identify if this was a new insert or an update.
             let mut insert_or_update = tx
@@ -63,9 +150,6 @@ macro_rules! generate_trie_methods {
                 ))
                 .context("Creating increment reference count statement")?;
 
-            // Track the number of new nodes inserted.
-            let mut count = 0;
-
             // Tracks which nodes we need to process instead of using a recursive approach.
             let mut to_process = Vec::new();
             to_process.push((0, root));
@@ -87,8 +171,6 @@ macro_rules! generate_trie_methods {
 
                         // Only process its children if it was a new node, which it is if its reference count is one.
                         if ref_count == 1 {
-                            count += 1;
-
                             match node {
                                 TrieNode::Binary { left, right } => {
                                     let child_height = height + 1;
@@ -120,14 +202,16 @@ macro_rules! generate_trie_methods {
                 }
             }
 
-            Ok(count)
+            Ok(())
         }
 
         /// Deletes a tree from storage using reference counting.
-        pub(super) fn $delete_fn(
-            tx: &rusqlite::Transaction<'_>,
-            root: Felt,
-        ) -> anyhow::Result<Vec<Felt>> {
+        fn $delete_fn(tx: &rusqlite::Transaction<'_>, root: Felt) -> anyhow::Result<Vec<Felt>> {
+            // Empty trie's are not stored.
+            if root.is_zero() {
+                return Ok(Vec::new());
+            }
+
             // Decrement the node's reference count. Returns the node's
             // rowid so that subsequent lookups don't require searching by hash.
             let mut decrement_count = tx
@@ -375,14 +459,13 @@ mod tests {
         .unwrap();
 
         let (root, nodes) = simple_tree;
-        let count = insert_test(&tx, root, &nodes).unwrap();
+        insert_test(&tx, root, &nodes).unwrap();
 
         let tx = Transaction::from_inner(tx);
         let reader = TestTrieReader::new(&tx);
         let db_nodes = reader.get_all(root).unwrap();
 
         assert_eq!(nodes, db_nodes);
-        assert_eq!(count, nodes.len());
     }
 
     #[rstest::rstest]
@@ -398,16 +481,14 @@ mod tests {
         .unwrap();
 
         let (root, nodes) = simple_tree;
-        let count = insert_test(&tx, root, &nodes).unwrap();
-        let count2 = insert_test(&tx, root, &nodes).unwrap();
+        insert_test(&tx, root, &nodes).unwrap();
+        insert_test(&tx, root, &nodes).unwrap();
 
         let tx = Transaction::from_inner(tx);
         let reader = TestTrieReader::new(&tx);
         let db_nodes = reader.get_all(root).unwrap();
 
         assert_eq!(nodes, db_nodes);
-        assert_eq!(count, nodes.len());
-        assert_eq!(count2, 0);
     }
 
     #[rstest::rstest]
@@ -477,6 +558,13 @@ mod tests {
         // First simple delete should do nothing except decrement reference count because
         // we inserted simple twice.
         let dangling_leaves = delete_test(tx.inner(), root).unwrap();
+        assert!(dangling_leaves.is_empty());
+
+        let db_nodes = reader.get_all(root).unwrap();
+        assert_eq!(nodes, db_nodes);
+
+        // Deleting an empty trie should work but do nothing.
+        let dangling_leaves = delete_test(tx.inner(), Felt::ZERO).unwrap();
         assert!(dangling_leaves.is_empty());
 
         let db_nodes = reader.get_all(root).unwrap();

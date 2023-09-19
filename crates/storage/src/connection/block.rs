@@ -110,7 +110,7 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
         )
         .context("Deleting block from block_headers table")?;
 
-    Ok(())
+    tx.prune_state_trie(block).context("Pruning the state trie")
 }
 
 pub(super) fn block_id(

@@ -1,9 +1,6 @@
 use anyhow::Context;
+use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
-use pathfinder_common::{
-    BlockHash, BlockNumber, ClassHash, ContractAddress, ContractNonce, SierraHash, StateCommitment,
-    StateUpdate, StorageAddress, StorageCommitment, StorageValue,
-};
 
 use crate::{prelude::*, BlockId};
 
@@ -403,6 +400,40 @@ pub(super) fn contract_class_hash(
     }
     .optional()
     .map_err(|e| e.into())
+}
+
+pub fn contract_state(
+    tx: &Transaction<'_>,
+    block: BlockNumber,
+    contract_address: ContractAddress,
+) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
+    let root = tx.inner()
+        .query_row(
+            "SELECT contract_root FROM contract_roots WHERE block_number <= ? AND contract_address = ?", 
+            params![&block, &contract_address], |row| {
+                row.get_contract_root(0)
+            }
+        )
+        .optional().context("Querying contract root")?;
+
+    // We have to use the contract root to determine whether a contract exists
+    // at this block or not. The class cannot be used as system contracts have
+    // no class.
+    let Some(root) = root else {
+        return Ok(None);
+    };
+
+    let class = tx
+        .contract_class_hash(block.into(), contract_address)
+        .context("Querying class hash")?
+        .unwrap_or_default();
+
+    let nonce = tx
+        .contract_nonce(contract_address, block.into())
+        .context("Querying contract nonce")?
+        .unwrap_or_default();
+
+    Ok(Some((root, class, nonce)))
 }
 
 #[cfg(test)]
