@@ -175,7 +175,7 @@ fn main() -> anyhow::Result<()> {
         hash        BLOB PRIMARY KEY,
         data        BLOB,
         ref_count   INTEGER
-    );",
+    ) WITHOUT ROWID;",
     )
     .unwrap();
 
@@ -203,7 +203,7 @@ fn main() -> anyhow::Result<()> {
         hash        BLOB PRIMARY KEY,
         data        BLOB,
         ref_count   INTEGER
-    );",
+    ) WITHOUT ROWID;",
     )
     .unwrap();
 
@@ -231,7 +231,7 @@ fn main() -> anyhow::Result<()> {
         hash        BLOB PRIMARY KEY,
         data        BLOB,
         ref_count   INTEGER
-    );",
+    ) WITHOUT ROWID;",
     )
     .unwrap();
 
