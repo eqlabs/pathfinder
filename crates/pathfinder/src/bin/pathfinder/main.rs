@@ -22,8 +22,16 @@ use crate::config::NetworkConfig;
 mod config;
 mod update;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(8 * 1024 * 1024)
+        .build()
+        .unwrap()
+        .block_on(async { async_main().await })
+}
+
+async fn async_main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         // Disable all dependency logs by default.
         std::env::set_var("RUST_LOG", "pathfinder=info");
