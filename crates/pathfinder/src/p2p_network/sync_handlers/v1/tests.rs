@@ -76,10 +76,13 @@ mod empty_reply {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::v1::conv::{BlockHeader, TryFromProto};
-    use crate::p2p_network::sync_handlers::v1::headers;
-    use p2p_proto_v1::block::BlockHeadersRequest;
-    use p2p_proto_v1::common::{Direction, Iteration};
+    use std::collections::HashMap;
+
+    use crate::p2p_network::client::v1::conv::{BlockHeader, StateUpdate, TryFromProto};
+    use crate::p2p_network::sync_handlers::v1::{bodies, headers};
+    use p2p_proto_v1::block::{BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest};
+    use p2p_proto_v1::common::Iteration;
+    use pathfinder_common::{BlockNumber, ClassHash};
     use proptest::prelude::*;
 
     proptest! {
@@ -89,22 +92,66 @@ mod prop {
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
+            // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
-            let expected = match direction {
-                Direction::Forward => overlapping::forward(in_db, start_block, limit, step).map(|(h, _, _)| h.into()).collect::<Vec<_>>(),
-                Direction::Backward => overlapping::backward(in_db, start_block, limit, step, num_blocks).map(|(h, _, _)| h.into()).collect::<Vec<_>>(),
-            };
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(h, _, _, _, _)| h.into()).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start_block, limit, step, direction, } };
-            let reply = headers(tx, request).unwrap();
-            // Extract headers from the reply
-            let actual = reply.into_iter().map(|reply | {
+            let replies = headers(tx, request).unwrap();
+            // Extract headers from the replies
+            let actual = replies.into_iter().map(|reply | {
                 let header = reply.header_message.into_header().unwrap();
                 assert_eq!(reply.block_number, header.number);
                 BlockHeader::try_from_proto(header)
             }).collect::<anyhow::Result<Vec<_>>>().unwrap();
 
             prop_assert_eq!(actual, expected);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn get_bodies((num_blocks, db_seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(db_seed, num_blocks);
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+            // Get the overlapping set between the db and the request
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(header, _, state_update, cairo_defs, sierra_defs)|
+                    (
+                        header.number,
+                        (state_update.into(),
+                        cairo_defs.into_iter().chain(sierra_defs.into_iter().map(|(h, d)| (ClassHash(h.0), d))).collect())
+                    )
+            ).collect::<HashMap<BlockNumber, (StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
+            // Run the handler
+            let request = BlockBodiesRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let mut replies = bodies(tx, request).unwrap().into_iter();
+            // Collect replies into a set of (block_number, state_update, definitions)
+            let mut actual = HashMap::new();
+            while let Some(reply) = replies.next() {
+                match reply.body_message {
+                    BlockBodyMessage::Diff(d) => {
+                        let state_update = StateUpdate::try_from_proto(d).unwrap();
+                        actual.insert(BlockNumber::new(reply.block_number).unwrap(), (state_update, HashMap::new()));
+                    },
+                    BlockBodyMessage::Classes(c) => {
+                        // Classes coming after a state diff should be for the same block
+                        let entry = actual.get_mut(&BlockNumber::new(reply.block_number).unwrap()).unwrap();
+                        entry.1.extend(c.classes.into_iter().map(|c|
+                            (
+                                ClassHash(c.compiled_hash.0),
+                                zstd::decode_all(&c.definition[..]).unwrap()
+                            )
+                        ));
+                    },
+                    _ => panic!("unexpected message type"),
+                }
+            }
+
+            pretty_assertions::assert_eq!(actual, expected);
         }
     }
 
@@ -130,10 +177,26 @@ mod prop {
     /// Find overlapping range between the DB and the request
     mod overlapping {
         use crate::p2p_network::sync_handlers::v1::MAX_COUNT_IN_TESTS;
-        use p2p_proto_v1::common::Step;
+        use p2p_proto_v1::common::{Direction, Step};
         use pathfinder_storage::fake::{StorageInitializer, StorageInitializerItem};
 
-        pub fn forward(
+        pub fn get(
+            from_db: StorageInitializer,
+            start_block: u64,
+            limit: u64,
+            step: Step,
+            num_blocks: u64,
+            direction: Direction,
+        ) -> StorageInitializer {
+            match direction {
+                Direction::Forward => forward(from_db, start_block, limit, step).collect(),
+                Direction::Backward => {
+                    backward(from_db, start_block, limit, step, num_blocks).collect()
+                }
+            }
+        }
+
+        fn forward(
             from_db: StorageInitializer,
             start_block: u64,
             limit: u64,
@@ -146,7 +209,7 @@ mod prop {
                 .take(std::cmp::min(limit, MAX_COUNT_IN_TESTS).try_into().unwrap())
         }
 
-        pub fn backward(
+        fn backward(
             mut from_db: StorageInitializer,
             start_block: u64,
             limit: u64,

@@ -247,7 +247,7 @@ mod prop {
             fn forward((start, count, seed, num_blocks) in super::strategy::forward()) {
                 let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
-                let from_db = overlapping::forward(from_db, start, count).map(|(header, _, _)| header).collect::<Vec<_>>();
+                let from_db = overlapping::forward(from_db, start, count).map(|(header, _, _, _, _)| header).collect::<Vec<_>>();
 
                 let request = p2p_proto_v0::sync::GetBlockHeaders {
                     start_block: start,
@@ -273,7 +273,7 @@ mod prop {
             fn backward((start, count, seed, num_blocks) in super::strategy::backward()) {
                 let (storage, from_db) = storage_with_seed(seed, num_blocks);
 
-                let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(header, _, _)| header).collect::<Vec<_>>();
+                let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(header, _, _, _, _)| header).collect::<Vec<_>>();
 
                 let request = p2p_proto_v0::sync::GetBlockHeaders {
                     start_block: start,
@@ -338,7 +338,7 @@ mod prop {
                         Default::default()
                     },
                 };
-                let from_db = overlapping::forward(from_db, start, count).map(|(_, body, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
+                let from_db = overlapping::forward(from_db, start, count).map(|(_, body, _, _, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
 
                 let request = p2p_proto_v0::sync::GetBlockBodies {
                     start_block: start_hash.0,
@@ -372,7 +372,7 @@ mod prop {
                     },
                 };
 
-                let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, body, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
+                let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, body, _, _, _)| body.into_iter().map(|(t, r)| (invoke_v0_to_l1_handler(t), r)).unzip()).collect::<Vec<_>>();
 
                 let request = p2p_proto_v0::sync::GetBlockBodies {
                     start_block: start_hash.0,
@@ -417,7 +417,7 @@ mod prop {
                         Default::default()
                     },
                 };
-                let from_db = overlapping::forward(from_db, start, count).map(|(_, _, state_update)|
+                let from_db = overlapping::forward(from_db, start, count).map(|(_, _, state_update, _, _)|
                     (state_update.block_hash.0, state_update)
                 ).collect::<HashMap<_, _>>();
 
@@ -457,7 +457,7 @@ mod prop {
                         Default::default()
                     },
                 };
-                let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, _, state_update)|
+                let from_db = overlapping::backward(from_db, start, count, num_blocks).map(|(_, _, state_update, _, _)|
                     (state_update.block_hash.0, state_update)).collect::<HashMap<_, _>>();
 
                 let request = p2p_proto_v0::sync::GetStateDiffs {

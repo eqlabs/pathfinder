@@ -188,15 +188,6 @@ fn bodies(
     Ok(responses)
 }
 
-// /// It's generally safe to assume:
-// /// N classes == 20 + 60 * N bytes
-// ///
-// /// Please see this test for more details:
-// /// [`p2p_proto_v0::check_classes_message_overhead`]
-// const PER_MESSAGE_OVERHEAD: usize = 20;
-// const PER_CLASS_OVERHEAD: usize = 60;
-// const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
-
 /// Helper function to get a range of classes from storage and put them into messages taking into account the 1MiB encoded message size limit.
 ///
 /// - If N consecutive classes are small enough to fit into a single message, then they will be put in a single message.
