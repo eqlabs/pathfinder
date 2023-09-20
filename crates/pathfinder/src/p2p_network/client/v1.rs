@@ -1,12 +1,10 @@
 pub mod conv {
-    use std::{collections::HashMap, time::SystemTime};
-
     use pathfinder_common::{
-        state_update::{ContractClassUpdate, ContractUpdate, SystemContractUpdate},
-        BlockHash, BlockNumber, BlockTimestamp, ClassHash, ContractAddress, ContractNonce,
-        GasPrice, SequencerAddress, StarknetVersion, StateCommitment, StateUpdate, StorageAddress,
-        StorageValue,
+        state_update::SystemContractUpdate, BlockHash, BlockNumber, BlockTimestamp, ClassHash,
+        ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetVersion,
+        StorageAddress, StorageValue,
     };
+    use std::{collections::HashMap, time::SystemTime};
 
     pub trait TryFromProto<T> {
         fn try_from_proto(proto: T) -> anyhow::Result<Self>
@@ -14,10 +12,11 @@ pub mod conv {
             Self: Sized;
     }
 
-    // Simple block header meant for the temporary p2p client hidden behind
-    // the gateway client api, ie. does not contain any commitments
-    // TODO: remove this once proper p2p friendly sync is implemented
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    /// Simple block header meant for the temporary p2p client hidden behind
+    /// the gateway client api, ie.: does not contain any commitments
+    ///
+    /// TODO: remove this once proper p2p friendly sync is implemented
+    #[derive(Debug, Clone, PartialEq)]
     pub struct BlockHeader {
         pub hash: BlockHash,
         pub parent_hash: BlockHash,
@@ -26,6 +25,55 @@ pub mod conv {
         pub gas_price: GasPrice,
         pub sequencer_address: SequencerAddress,
         pub starknet_version: StarknetVersion,
+    }
+
+    /// Simple state update meant for the temporary p2p client hidden behind
+    /// the gateway client api, ie.:
+    /// - does not contain any commitments
+    /// - does not specify if the class was declared or replaced
+    ///
+    /// TODO: remove this once proper p2p friendly sync is implemented
+    ///
+    /// How to manage this modest state update:
+    /// 1. iterate through contact updates and check in the db if the contract is already there to figure out
+    ///    which are the replaced classes
+    /// 2. take the remaining ones which are then declared and then figure out which is Cairo 0 and which is Sierra
+    #[derive(Default, Debug, Clone, PartialEq)]
+    pub struct StateUpdate {
+        pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
+        pub system_contract_updates: HashMap<ContractAddress, SystemContractUpdate>,
+    }
+
+    #[derive(Default, Debug, Clone, PartialEq)]
+    pub struct ContractUpdate {
+        pub storage: HashMap<StorageAddress, StorageValue>,
+        /// The class associated with this update as the result of either a deploy or class replacement transaction.
+        /// We don't explicitly know if it's one or the other
+        pub class: Option<ClassHash>,
+        pub nonce: Option<ContractNonce>,
+    }
+
+    impl From<pathfinder_common::StateUpdate> for StateUpdate {
+        fn from(s: pathfinder_common::StateUpdate) -> Self {
+            Self {
+                contract_updates: s
+                    .contract_updates
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect(),
+                system_contract_updates: s.system_contract_updates,
+            }
+        }
+    }
+
+    impl From<pathfinder_common::state_update::ContractUpdate> for ContractUpdate {
+        fn from(c: pathfinder_common::state_update::ContractUpdate) -> Self {
+            Self {
+                storage: c.storage,
+                class: c.class.map(|x| x.class_hash()),
+                nonce: c.nonce,
+            }
+        }
     }
 
     impl From<pathfinder_common::BlockHeader> for BlockHeader {
@@ -90,22 +138,16 @@ pub mod conv {
                                 .into_iter()
                                 .map(|x| (StorageAddress(x.key), StorageValue(x.value)))
                                 .collect(),
-                            class: (diff.class_hash != ClassHash::ZERO.0)
-                                .then_some(ContractClassUpdate::Deploy(ClassHash(diff.class_hash))), // FIXME - need db to check if deploy or replace
-                            nonce: Some(ContractNonce(diff.nonce)), // FIXME unable to determine if 0 was intended or means None
+                            class: diff.class_hash.map(ClassHash),
+                            nonce: diff.nonce.map(ContractNonce),
                         },
                     );
                 }
             });
 
             Ok(Self {
-                block_hash: BlockHash::ZERO,                    // FIXME
-                parent_state_commitment: StateCommitment::ZERO, // FIXME
-                state_commitment: StateCommitment::ZERO,        // FIXME
                 contract_updates,
                 system_contract_updates: [(SYSTEM_CONTRACT, system_contract_update)].into(),
-                declared_cairo_classes: Default::default(), // FIXME
-                declared_sierra_classes: Default::default(), // FIXME
             })
         }
     }

@@ -141,6 +141,36 @@ impl BlockHeaderMessage {
     }
 }
 
+impl BlockBodyMessage {
+    pub fn into_state_diff(self) -> Option<StateDiff> {
+        match self {
+            Self::Diff(diff) => Some(diff),
+            _ => None,
+        }
+    }
+
+    pub fn into_classes(self) -> Option<Classes> {
+        match self {
+            Self::Classes(classes) => Some(classes),
+            _ => None,
+        }
+    }
+
+    pub fn into_proof(self) -> Option<BlockProof> {
+        match self {
+            Self::Proof(proof) => Some(proof),
+            _ => None,
+        }
+    }
+
+    pub fn into_fin(self) -> Option<Fin> {
+        match self {
+            Self::Fin(fin) => Some(fin),
+            _ => None,
+        }
+    }
+}
+
 impl ToProtobuf<proto::block::block_headers_response::HeaderMessage> for BlockHeaderMessage {
     fn to_protobuf(self) -> proto::block::block_headers_response::HeaderMessage {
         use proto::block::block_headers_response::HeaderMessage::{Fin, Header, Signatures};

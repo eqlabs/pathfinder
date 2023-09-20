@@ -60,12 +60,10 @@ impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
                             value: storage_value.0,
                         })
                         .collect();
-                    let class_hash = Felt::ZERO;
-                    let nonce = Felt::ZERO; // FIXME cannot distinguish between None and real 0 nonce
                     ContractDiff {
                         address,
-                        nonce,
-                        class_hash,
+                        nonce: None,
+                        class_hash: None,
                         values,
                     }
                 })
@@ -83,12 +81,10 @@ impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
                             value: storage_value.0,
                         })
                         .collect();
-                    let class_hash = class.map(|c| c.class_hash()).unwrap_or_default().0;
-                    let nonce = nonce.unwrap_or_default().0;
                     ContractDiff {
                         address,
-                        nonce,
-                        class_hash,
+                        nonce: nonce.map(|n| n.0),
+                        class_hash: class.map(|c| c.class_hash().0),
                         values,
                     }
                 }))

@@ -409,7 +409,7 @@ mod tests {
 
         let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
             .into_iter()
-            .map(|(_, _, x)| x.into())
+            .map(|(_, _, x, _, _)| x.into())
             .collect();
 
         let context = RpcContext::for_tests().with_storage(storage);

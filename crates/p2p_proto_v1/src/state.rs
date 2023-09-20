@@ -16,8 +16,10 @@ pub struct ContractStoredValue {
 #[protobuf(name = "crate::proto::state::state_diff::ContractDiff")]
 pub struct ContractDiff {
     pub address: Address,
-    pub nonce: Felt,
-    pub class_hash: Felt,
+    #[optional]
+    pub nonce: Option<Felt>,
+    #[optional]
+    pub class_hash: Option<Felt>,
     pub values: Vec<ContractStoredValue>,
 }
 
