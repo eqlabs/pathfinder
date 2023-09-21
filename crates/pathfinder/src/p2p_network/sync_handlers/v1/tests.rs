@@ -72,18 +72,21 @@ mod empty_reply {
         // No reply should be sent
         assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
     }
+
+    // TODO transactions, receipts, events
 }
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use std::collections::HashMap;
-
     use crate::p2p_network::client::v1::conv::{BlockHeader, StateUpdate, TryFromProto};
-    use crate::p2p_network::sync_handlers::v1::{bodies, headers};
+    use crate::p2p_network::sync_handlers::v1::{bodies, headers, transactions};
     use p2p_proto_v1::block::{BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest};
     use p2p_proto_v1::common::Iteration;
+    use p2p_proto_v1::transaction::TransactionsRequest;
+    use pathfinder_common::transaction::{Transaction, TransactionVariant};
     use pathfinder_common::{BlockNumber, ClassHash};
     use proptest::prelude::*;
+    use std::collections::HashMap;
 
     proptest! {
         #[test]
@@ -103,8 +106,8 @@ mod prop {
             let actual = replies.into_iter().map(|reply | {
                 let header = reply.header_message.into_header().unwrap();
                 assert_eq!(reply.block_number, header.number);
-                BlockHeader::try_from_proto(header)
-            }).collect::<anyhow::Result<Vec<_>>>().unwrap();
+                BlockHeader::try_from_proto(header).unwrap()
+            }).collect::<Vec<_>>();
 
             prop_assert_eq!(actual, expected);
         }
@@ -152,6 +155,43 @@ mod prop {
             }
 
             pretty_assertions::assert_eq!(actual, expected);
+        }
+    }
+    /*
+    pub struct TransactionsResponse {
+        pub block_number: u64,
+        pub block_hash: Hash,
+        #[rename(responses)]
+        pub kind: TransactionsResponseKind,
+    }
+    */
+
+    proptest! {
+        #[test]
+        fn get_transactions((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+            // Compute the overlapping set between the db and the request
+            // These are the transactions that we expect to be read from the db
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(h, tr, _, _, _)|
+                    (
+                        // h.into(),
+                        tr.into_iter().map(|(t, _)| Transaction::from(t).variant).collect::<Vec<_>>()
+                    )
+            ).collect::<Vec<_>>();
+            // Run the handler
+            let request = TransactionsRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let replies = transactions(tx, request).unwrap();
+            // Extract transactions from the replies
+            let actual = replies.into_iter().map(|reply | {
+                let transactions = reply.kind.into_transactions().unwrap();
+                transactions.items.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
+            }).collect::<Vec<_>>();
+
+            prop_assert_eq!(actual, expected);
         }
     }
 

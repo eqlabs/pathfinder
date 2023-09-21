@@ -1,8 +1,15 @@
 pub mod conv {
     use pathfinder_common::{
-        state_update::SystemContractUpdate, BlockHash, BlockNumber, BlockTimestamp, ClassHash,
-        ContractAddress, ContractNonce, GasPrice, SequencerAddress, StarknetVersion,
-        StorageAddress, StorageValue,
+        state_update::SystemContractUpdate,
+        transaction::{
+            DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
+            DeployTransaction, EntryPointType, InvokeTransactionV0, InvokeTransactionV1,
+            L1HandlerTransaction, TransactionVariant,
+        },
+        BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam,
+        ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, Fee, GasPrice,
+        SequencerAddress, StarknetVersion, StorageAddress, StorageValue, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use std::{collections::HashMap, time::SystemTime};
 
@@ -36,8 +43,8 @@ pub mod conv {
     ///
     /// How to manage this modest state update:
     /// 1. iterate through contact updates and check in the db if the contract is already there to figure out
-    ///    which are the replaced classes
-    /// 2. take the remaining ones which are then declared and then figure out which is Cairo 0 and which is Sierra
+    ///    if it means replacement or declaration
+    /// 2. take the remaining ones which are then treated as declared and then figure out which is Cairo 0 and which is Sierra
     #[derive(Default, Debug, Clone, PartialEq)]
     pub struct StateUpdate {
         pub contract_updates: HashMap<ContractAddress, ContractUpdate>,
@@ -148,6 +155,122 @@ pub mod conv {
             Ok(Self {
                 contract_updates,
                 system_contract_updates: [(SYSTEM_CONTRACT, system_contract_update)].into(),
+            })
+        }
+    }
+
+    impl TryFromProto<p2p_proto_v1::transaction::Transaction> for TransactionVariant {
+        fn try_from_proto(proto: p2p_proto_v1::transaction::Transaction) -> anyhow::Result<Self>
+        where
+            Self: Sized,
+        {
+            use p2p_proto_v1::transaction::Transaction::*;
+
+            Ok(match proto {
+                DeclareV0(x) => TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+                    class_hash: ClassHash(x.class_hash.0),
+                    max_fee: Fee(x.max_fee),
+                    nonce: TransactionNonce::ZERO, // TODO checkme
+                    sender_address: ContractAddress::ZERO, // TODO checkme,
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                }),
+                DeclareV1(x) => TransactionVariant::DeclareV1(DeclareTransactionV0V1 {
+                    class_hash: ClassHash(x.class_hash.0),
+                    max_fee: Fee(x.max_fee),
+                    nonce: TransactionNonce(x.nonce),
+                    sender_address: ContractAddress(x.sender.0),
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                }),
+                DeclareV2(x) => TransactionVariant::DeclareV2(DeclareTransactionV2 {
+                    class_hash: ClassHash(x.class_hash.0),
+                    max_fee: Fee(x.max_fee),
+                    nonce: TransactionNonce(x.nonce),
+                    sender_address: ContractAddress(x.sender.0),
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                    compiled_class_hash: CasmHash(x.compiled_class_hash),
+                }),
+                DeclareV3(_) => unimplemented!(),
+                Deploy(x) => TransactionVariant::Deploy(DeployTransaction {
+                    contract_address: ContractAddress(x.address.0),
+                    contract_address_salt: ContractAddressSalt(x.address_salt),
+                    class_hash: ClassHash(x.class_hash.0),
+                    constructor_calldata: x.calldata.into_iter().map(ConstructorParam).collect(),
+                    version: match x.version {
+                        0 => TransactionVersion::ZERO,
+                        1 => TransactionVersion::ONE,
+                        _ => anyhow::bail!("Invalid deploy transaction version"),
+                    },
+                }),
+                DeployAccountV1(x) => TransactionVariant::DeployAccount(DeployAccountTransaction {
+                    contract_address: ContractAddress(x.address.0),
+                    max_fee: Fee(x.max_fee),
+                    version: TransactionVersion::ONE,
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                    nonce: TransactionNonce(x.nonce),
+                    contract_address_salt: ContractAddressSalt(x.address_salt),
+                    constructor_calldata: x.calldata.into_iter().map(CallParam).collect(),
+                    class_hash: ClassHash(x.class_hash.0),
+                }),
+                DeployAccountV3(_) => unimplemented!(),
+                InvokeV0(x) => TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    calldata: x.calldata.into_iter().map(CallParam).collect(),
+                    sender_address: ContractAddress(x.address.0),
+                    entry_point_selector: EntryPoint(x.entry_point_selector),
+                    entry_point_type: x.entry_point_type.map(|x| {
+                        use p2p_proto_v1::transaction::EntryPointType::{External, L1Handler};
+                        match x {
+                            External => EntryPointType::External,
+                            L1Handler => EntryPointType::L1Handler,
+                        }
+                    }),
+                    max_fee: Fee(x.max_fee),
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                }),
+                InvokeV1(x) => TransactionVariant::InvokeV1(InvokeTransactionV1 {
+                    calldata: x.calldata.into_iter().map(CallParam).collect(),
+                    sender_address: ContractAddress(x.sender.0),
+                    max_fee: Fee(x.max_fee),
+                    signature: x
+                        .signature
+                        .parts
+                        .into_iter()
+                        .map(TransactionSignatureElem)
+                        .collect(),
+                    nonce: TransactionNonce(x.nonce),
+                }),
+                InvokeV3(_) => unimplemented!(),
+                L1HandlerV1(x) => TransactionVariant::L1Handler(L1HandlerTransaction {
+                    contract_address: ContractAddress(x.address.0),
+                    entry_point_selector: EntryPoint(x.entry_point_selector),
+                    nonce: TransactionNonce(x.nonce),
+                    calldata: x.calldata.into_iter().map(CallParam).collect(),
+                    version: TransactionVersion::ONE,
+                }),
             })
         }
     }
