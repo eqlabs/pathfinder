@@ -4,10 +4,14 @@ use p2p_proto_v1::block::{
     BlockHeadersRequest, BlockHeadersResponse,
 };
 use p2p_proto_v1::common::{Direction, Hash, Iteration, Step};
+use p2p_proto_v1::event::{EventsRequest, EventsResponse};
+use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponse};
 use p2p_proto_v1::{MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD};
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
+use tokio::sync::mpsc;
 
 pub mod conv;
 #[cfg(test)]
@@ -23,11 +27,6 @@ const MAX_COUNT_IN_TESTS: u64 = 10;
 #[cfg(test)]
 const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
-type BlockHeadersTx = tokio::sync::mpsc::Sender<BlockHeadersResponse>;
-type BlockHeadersRx = tokio::sync::mpsc::Receiver<BlockHeadersResponse>;
-type BlockBodiesTx = tokio::sync::mpsc::Sender<BlockBodiesResponse>;
-type BlockBodiesRx = tokio::sync::mpsc::Receiver<BlockBodiesResponse>;
-
 // TODO check which is more performant:
 // 1. retrieve all data from storage, then send it to channel one by one
 // 2. retrieve in batches,
@@ -35,36 +34,46 @@ type BlockBodiesRx = tokio::sync::mpsc::Receiver<BlockBodiesResponse>;
 pub async fn get_headers(
     storage: &Storage,
     request: BlockHeadersRequest,
-    reply_tx: BlockHeadersTx,
+    tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
-    // TODO For really large requests we might want to use smaller batches
     let responses = spawn_blocking_get(request, storage, headers).await?;
-
-    for response in responses {
-        reply_tx
-            .send(response)
-            .await
-            .context("Sending GetBlocks response")?;
-    }
-
-    Ok(())
+    send(tx, responses).await
 }
 
 pub async fn get_bodies(
     storage: &Storage,
     request: BlockBodiesRequest,
-    reply_tx: BlockBodiesTx,
+    tx: mpsc::Sender<BlockBodiesResponse>,
 ) -> anyhow::Result<()> {
     let responses = spawn_blocking_get(request, storage, bodies).await?;
+    send(tx, responses).await
+}
 
-    for response in responses {
-        reply_tx
-            .send(response)
-            .await
-            .context("Sending GetBlocks response")?;
-    }
+pub async fn get_transactions(
+    storage: &Storage,
+    request: TransactionsRequest,
+    tx: mpsc::Sender<TransactionsResponse>,
+) -> anyhow::Result<()> {
+    let responses = spawn_blocking_get(request, storage, transactions).await?;
+    send(tx, responses).await
+}
 
-    Ok(())
+pub async fn get_receipts(
+    storage: &Storage,
+    request: ReceiptsRequest,
+    tx: mpsc::Sender<ReceiptsResponse>,
+) -> anyhow::Result<()> {
+    let responses = spawn_blocking_get(request, storage, receipts).await?;
+    send(tx, responses).await
+}
+
+pub async fn get_events(
+    storage: &Storage,
+    request: EventsRequest,
+    tx: mpsc::Sender<EventsResponse>,
+) -> anyhow::Result<()> {
+    let responses = spawn_blocking_get(request, storage, events).await?;
+    send(tx, responses).await
 }
 
 pub(crate) fn headers(
@@ -186,6 +195,27 @@ fn bodies(
     }
 
     Ok(responses)
+}
+
+pub(crate) fn transactions(
+    tx: Transaction<'_>,
+    request: TransactionsRequest,
+) -> anyhow::Result<Vec<TransactionsResponse>> {
+    todo!()
+}
+
+pub(crate) fn receipts(
+    tx: Transaction<'_>,
+    request: ReceiptsRequest,
+) -> anyhow::Result<Vec<ReceiptsResponse>> {
+    todo!()
+}
+
+pub(crate) fn events(
+    tx: Transaction<'_>,
+    request: EventsRequest,
+) -> anyhow::Result<Vec<EventsResponse>> {
+    todo!()
 }
 
 /// Helper function to get a range of classes from storage and put them into messages taking into account the 1MiB encoded message size limit.
@@ -381,6 +411,18 @@ where
     })
     .await
     .context("Database read panic or shutting down")?
+}
+
+async fn send<T>(tx: mpsc::Sender<T>, seq: Vec<T>) -> anyhow::Result<()>
+where
+    T: Send + 'static,
+    tokio::sync::mpsc::error::SendError<T>: Sync,
+{
+    for elem in seq {
+        tx.send(elem).await.context("Sending response")?;
+    }
+
+    Ok(())
 }
 
 /// Returns next block number considering direction.

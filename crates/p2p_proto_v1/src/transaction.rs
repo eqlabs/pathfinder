@@ -19,32 +19,32 @@ pub struct AccountSignature {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeclareV0")]
 pub struct DeclareV0 {
-    sender: Address,
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
+    pub sender: Address,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub class_hash: Hash,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeclareV1")]
 
 pub struct DeclareV1 {
-    sender: Address,
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
-    nonce: Felt,
+    pub sender: Address,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub class_hash: Hash,
+    pub nonce: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeclareV2")]
 pub struct DeclareV2 {
-    sender: Address,
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
-    nonce: Felt,
-    compiled_class_hash: Felt,
+    pub sender: Address,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub class_hash: Hash,
+    pub nonce: Felt,
+    pub compiled_class_hash: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -67,20 +67,25 @@ pub struct DeclareV3 {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::Deploy")]
 pub struct Deploy {
-    class_hash: Hash,
-    address_salt: Felt,
-    calldata: Vec<Felt>,
+    pub class_hash: Hash,
+    pub address_salt: Felt,
+    pub calldata: Vec<Felt>,
+    // FIXME added missing fields
+    pub address: Address,
+    pub version: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeployAccountV1")]
 pub struct DeployAccountV1 {
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
-    nonce: Felt,
-    address_salt: Felt,
-    calldata: Vec<Felt>,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub class_hash: Hash,
+    pub nonce: Felt,
+    pub address_salt: Felt,
+    pub calldata: Vec<Felt>,
+    // FIXME added missing field
+    pub address: Address,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -103,21 +108,32 @@ pub struct DeployAccountV3 {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::InvokeV0")]
 pub struct InvokeV0 {
-    max_fee: Felt,
-    signature: AccountSignature,
-    address: Address,
-    entry_point_selector: Felt,
-    calldata: Vec<Felt>,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    pub address: Address,
+    pub entry_point_selector: Felt,
+    pub calldata: Vec<Felt>,
+    // FIXME added missing field
+    #[optional]
+    pub entry_point_type: Option<EntryPointType>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Dummy)]
+pub enum EntryPointType {
+    External,
+    L1Handler,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::InvokeV1")]
 pub struct InvokeV1 {
-    sender: Address,
-    max_fee: Felt,
-    signature: AccountSignature,
-    class_hash: Hash,
-    calldata: Vec<Felt>,
+    pub sender: Address,
+    pub max_fee: Felt,
+    pub signature: AccountSignature,
+    // FIXME incorrect field
+    // pub class_hash: Hash,
+    pub nonce: Felt,
+    pub calldata: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -139,10 +155,10 @@ pub struct InvokeV3 {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::L1HandlerV1")]
 pub struct L1HandlerV1 {
-    nonce: Felt,
-    address: Address,
-    entry_point_selector: Felt,
-    calldata: Vec<Felt>,
+    pub nonce: Felt,
+    pub address: Address,
+    pub entry_point_selector: Felt,
+    pub calldata: Vec<Felt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
@@ -162,29 +178,45 @@ pub enum Transaction {
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::TransactionsRequest")]
-struct TransactionsRequest {
-    iteration: Iteration,
+pub struct TransactionsRequest {
+    pub iteration: Iteration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::Transactions")]
 pub struct Transactions {
-    items: Vec<Transaction>,
+    pub items: Vec<Transaction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::TransactionsResponse")]
 pub struct TransactionsResponse {
-    block_number: u64,
-    block_hash: Hash,
+    pub block_number: u64,
+    pub block_hash: Hash,
     #[rename(responses)]
-    kind: TransactionsResponseKind,
+    pub kind: TransactionsResponseKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum TransactionsResponseKind {
     Transactions(Transactions),
     Fin(Fin),
+}
+
+impl TransactionsResponseKind {
+    pub fn into_transactions(self) -> Option<Transactions> {
+        match self {
+            Self::Transactions(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    pub fn into_fin(self) -> Option<Fin> {
+        match self {
+            Self::Fin(t) => Some(t),
+            _ => None,
+        }
+    }
 }
 
 impl ToProtobuf<proto::transaction::Transaction> for Transaction {
@@ -272,5 +304,30 @@ impl TryFromProtobuf<proto::transaction::transactions_response::Responses>
             }
             Fin(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::Fin),
         }
+    }
+}
+
+impl ToProtobuf<i32> for EntryPointType {
+    fn to_protobuf(self) -> i32 {
+        match self {
+            EntryPointType::External => 0,
+            EntryPointType::L1Handler => 1,
+        }
+    }
+}
+
+impl TryFromProtobuf<i32> for EntryPointType {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+        use proto::transaction::transaction::EntryPointType::{External, L1Handler};
+        let t = proto::transaction::transaction::EntryPointType::from_i32(input).ok_or(
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid value for field {field_name}: {input}"),
+            ),
+        )?;
+        Ok(match t {
+            External => Self::External,
+            L1Handler => Self::L1Handler,
+        })
     }
 }

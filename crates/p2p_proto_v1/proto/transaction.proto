@@ -58,6 +58,9 @@ message Transaction
         starknet.common.Hash             class_hash   = 1;
         starknet.common.Felt252          address_salt = 2;
         repeated starknet.common.Felt252 calldata     = 3;
+        // FIXME added missing fields
+        starknet.common.Address          address      = 4;
+        uint32                           version      = 5;
     }
 
     message DeployAccountV1 {
@@ -67,6 +70,8 @@ message Transaction
         starknet.common.Felt252          nonce        = 4;
         starknet.common.Felt252          address_salt = 5;
         repeated starknet.common.Felt252 calldata     = 6;
+        // FIXME added missing fields
+        starknet.common.Address          address      = 7;
     }
 
     message DeployAccountV3 {
@@ -90,13 +95,22 @@ message Transaction
         starknet.common.Address          address              = 3;
         starknet.common.Felt252          entry_point_selector = 4;
         repeated starknet.common.Felt252 calldata             = 5;
+        // FIXME added missing fields
+        optional EntryPointType          entry_point_type     = 6;
+    }
+
+    enum EntryPointType {
+        EXTERNAL = 0;
+        L1_HANDLER = 1;
     }
 
     message InvokeV1 {
         starknet.common.Address          sender     = 1;
         starknet.common.Felt252          max_fee    = 2;
         AccountSignature                 signature  = 3;
-        starknet.common.Hash             class_hash = 4;
+        // FIXME incorrect field
+        // starknet.common.Hash             class_hash = 4;
+        starknet.common.Felt252          nonce      = 4;
         repeated starknet.common.Felt252 calldata   = 5;
     }
 
