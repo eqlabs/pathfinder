@@ -1,13 +1,6 @@
-use crate::p2p_network::sync_handlers::v1::{get_bodies, get_headers};
-use assert_matches::assert_matches;
-use fake::{Fake, Faker};
-use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
-use p2p_proto_v1::common::{Direction, Iteration, Step};
+use p2p_proto_v1::common::{Direction, Step};
 use pathfinder_common::BlockNumber;
-use pathfinder_storage::Storage;
 use rstest::rstest;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TryRecvError;
 
 const I64_MAX: u64 = i64::MAX as u64;
 
@@ -38,42 +31,61 @@ fn get_next_block_number(
 }
 
 mod empty_reply {
-    use super::*;
+    use super::I64_MAX;
+    use crate::p2p_network::sync_handlers::v1::{
+        get_bodies, get_events, get_headers, get_receipts, get_transactions,
+    };
+    use assert_matches::assert_matches;
+    use fake::{Fake, Faker};
+    use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
+    use p2p_proto_v1::common::Iteration;
+    use p2p_proto_v1::event::EventsRequest;
+    use p2p_proto_v1::receipt::ReceiptsRequest;
+    use p2p_proto_v1::transaction::TransactionsRequest;
+    use pathfinder_storage::Storage;
     use rand::Rng;
-    #[rustfmt::skip] fn zero_limit() -> Iteration { Iteration { limit: 0, ..Faker.fake() } }
-    #[rustfmt::skip] fn invalid_start() -> Iteration { Iteration { start_block: rand::thread_rng().gen_range(I64_MAX + 1..=u64::MAX), ..Faker.fake() } }
+    use rstest::rstest;
+    use tokio::sync::mpsc;
+    use tokio::sync::mpsc::error::TryRecvError;
 
-    #[rstest]
-    #[case(zero_limit())]
-    #[case(invalid_start())]
-    #[tokio::test]
-    async fn headers(#[case] iteration: Iteration) {
-        let storage = Storage::in_memory().unwrap();
-        let (tx, mut rx) = mpsc::channel(1);
-        // Clone the sender to make sure that the channel is not prematurely closed
-        get_headers(&storage, BlockHeadersRequest { iteration }, tx.clone())
-            .await
-            .unwrap();
-        // No reply should be sent
-        assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
+    fn zero_limit() -> Iteration {
+        Iteration {
+            limit: 0,
+            ..Faker.fake()
+        }
     }
 
-    #[rstest]
-    #[case(zero_limit())]
-    #[case(invalid_start())]
-    #[tokio::test]
-    async fn bodies(#[case] iteration: Iteration) {
-        let storage = Storage::in_memory().unwrap();
-        let (tx, mut rx) = mpsc::channel(1);
-        // Clone the sender to make sure that the channel is not prematurely closed
-        get_bodies(&storage, BlockBodiesRequest { iteration }, tx.clone())
-            .await
-            .unwrap();
-        // No reply should be sent
-        assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
+    fn invalid_start() -> Iteration {
+        Iteration {
+            start_block: rand::thread_rng().gen_range(I64_MAX + 1..=u64::MAX),
+            ..Faker.fake()
+        }
     }
 
-    // TODO transactions, receipts, events
+    macro_rules! define_test {
+        ($name:ident, $uut_name:ident, $request:tt) => {
+            #[rstest]
+            #[case(zero_limit())]
+            #[case(invalid_start())]
+            #[tokio::test]
+            async fn $name(#[case] iteration: Iteration) {
+                let storage = Storage::in_memory().unwrap();
+                let (tx, mut rx) = mpsc::channel(1);
+                // Clone the sender to make sure that the channel is not prematurely closed
+                $uut_name(&storage, $request { iteration }, tx.clone())
+                    .await
+                    .unwrap();
+                // No reply should be sent
+                assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
+            }
+        };
+    }
+
+    define_test!(headers, get_headers, BlockHeadersRequest);
+    define_test!(bodies, get_bodies, BlockBodiesRequest);
+    define_test!(transactions, get_transactions, TransactionsRequest);
+    define_test!(receipts, get_receipts, ReceiptsRequest);
+    define_test!(events, get_events, EventsRequest);
 }
 
 /// Property tests, grouped to be immediately visible when executed
@@ -157,14 +169,6 @@ mod prop {
             pretty_assertions::assert_eq!(actual, expected);
         }
     }
-    /*
-    pub struct TransactionsResponse {
-        pub block_number: u64,
-        pub block_hash: Hash,
-        #[rename(responses)]
-        pub kind: TransactionsResponseKind,
-    }
-    */
 
     proptest! {
         #[test]
@@ -176,11 +180,8 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the transactions that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, tr, _, _, _)|
-                    (
-                        // h.into(),
-                        tr.into_iter().map(|(t, _)| Transaction::from(t).variant).collect::<Vec<_>>()
-                    )
+                .map(|(_, tr, _, _, _)|
+                    tr.into_iter().map(|(t, _)| Transaction::from(t).variant).collect::<Vec<_>>()
             ).collect::<Vec<_>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start_block, limit, step, direction, } };
