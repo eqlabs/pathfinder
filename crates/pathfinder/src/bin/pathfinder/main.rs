@@ -276,6 +276,7 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
 
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
         .with_target(pretty_log)
         .with_timer(time_fmt)
         .with_ansi(color.is_color_enabled());

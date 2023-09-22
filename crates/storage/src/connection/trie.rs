@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::sync::MutexGuard;
 
 use anyhow::Context;
+use cached::Cached;
 use pathfinder_common::trie::TrieNode;
 use stark_hash::Felt;
 
+use crate::connection::{GlobalTrieNodeCache, TrieNodeLRUCache};
 use crate::prelude::*;
 
 insert_trie!(insert_class_trie, tree_class, ClassTrieReader);
@@ -27,6 +30,7 @@ macro_rules! insert_trie {
             tx: &rusqlite::Transaction<'_>,
             root: Felt,
             nodes: &HashMap<Felt, TrieNode>,
+            node_cache: GlobalTrieNodeCache,
         ) -> anyhow::Result<usize> {
             let mut to_insert = Vec::new();
             to_insert.push(root);
@@ -47,6 +51,9 @@ macro_rules! insert_trie {
                 let Some(node) = nodes.get(&hash) else {
                     continue;
                 };
+
+                node_cache.locked_cache().cache_set(hash, node.clone());
+                
                 let inserted = stmt
                     .execute(params![&hash.as_be_bytes().as_slice(), node])
                     .context("Inserting node")?;
@@ -67,18 +74,25 @@ macro_rules! insert_trie {
             Ok(count)
         }
 
-        pub struct $reader_struct<'tx>(&'tx Transaction<'tx>);
+        pub struct $reader_struct<'tx> {
+            tx: &'tx Transaction<'tx>,
+            node_cache: GlobalTrieNodeCache,
+        }
 
         impl<'tx> $reader_struct<'tx> {
-            pub(super) fn new(tx: &'tx Transaction<'tx>) -> Self {
-                Self(tx)
+            pub(super) fn new(tx: &'tx Transaction<'tx>, node_cache: GlobalTrieNodeCache) -> Self {
+                Self { tx, node_cache }
             }
 
-            pub fn get(&self, node: &stark_hash::Felt) -> anyhow::Result<Option<TrieNode>> {
+            pub fn get(&self, hash: &stark_hash::Felt) -> anyhow::Result<Option<TrieNode>> {
+                if let Some(trie_node) = self.node_cache.locked_cache().cache_get(hash) {
+                    return Ok(Some(trie_node.clone()));
+                }
+
                 // We rely on sqlite caching the statement here. Storing the statement would be nice,
                 // however that leads to &mut requirements or interior mutable work-arounds.
                 let mut stmt = self
-                    .0
+                    .tx
                     .inner()
                     .prepare_cached(concat!(
                         "SELECT data FROM ",
@@ -88,10 +102,14 @@ macro_rules! insert_trie {
                     .context("Creating get statement")?;
 
                 let node: Option<TrieNode> = stmt
-                    .query_row(params![&node.as_be_bytes().as_slice()], |row| {
+                    .query_row(params![&hash.as_be_bytes().as_slice()], |row| {
                         row.get_trie_node(0)
                     })
                     .optional()?;
+
+                if let Some(trie_node) = &node {
+                    self.node_cache.locked_cache().cache_set(*hash, trie_node.clone());
+                }
 
                 Ok(node)
             }
@@ -173,7 +191,9 @@ mod tests {
         nodes.insert(edge, edge_node.clone());
         nodes.insert(duplicate, duplicate_node.clone());
 
-        let count = insert_test(&tx, root, &nodes).unwrap();
+        let node_cache = GlobalTrieNodeCache::default();
+
+        let count = insert_test(&tx, root, &nodes, node_cache.clone()).unwrap();
         let db_count: usize = tx
             .query_row("SELECT COUNT(1) FROM tree_test", [], |row| row.get(0))
             .unwrap();
@@ -183,12 +203,12 @@ mod tests {
         assert_eq!(count, db_count);
 
         // Inserting the same trie again should do nothing
-        let count = insert_test(&tx, root, &nodes).unwrap();
+        let count = insert_test(&tx, root, &nodes, node_cache).unwrap();
         assert_eq!(count, 0);
 
         let tx = Transaction::from_inner(tx);
 
-        let reader = TestTrieReader::new(&tx);
+        let reader = TestTrieReader::new(&tx, GlobalTrieNodeCache::default());
 
         let root = reader.get(&root).unwrap().unwrap();
         assert_eq!(root, root_node);
