@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::sync::MutexGuard;
 
 use anyhow::Context;
 use cached::Cached;
 use pathfinder_common::trie::TrieNode;
 use stark_hash::Felt;
 
-use crate::connection::{GlobalTrieNodeCache, TrieNodeLRUCache};
+use crate::connection::GlobalTrieNodeCache;
 use crate::prelude::*;
 
 insert_trie!(insert_class_trie, tree_class, ClassTrieReader);
@@ -52,21 +51,22 @@ macro_rules! insert_trie {
                     continue;
                 };
 
-                node_cache.locked_cache().cache_set(hash, node.clone());
-                
-                let inserted = stmt
-                    .execute(params![&hash.as_be_bytes().as_slice(), node])
-                    .context("Inserting node")?;
+                if node_cache.locked_cache().cache_set(hash, node.clone()).is_none() {
+                    // not yet in cache, insert into db
+                    let inserted = stmt
+                        .execute(params![&hash.as_be_bytes().as_slice(), node])
+                        .context("Inserting node")?;
 
-                if inserted == 1 {
-                    count += 1;
+                    if inserted == 1 {
+                        count += 1;
 
-                    match node {
-                        TrieNode::Binary { left, right } => {
-                            to_insert.push(*left);
-                            to_insert.push(*right);
+                        match node {
+                            TrieNode::Binary { left, right } => {
+                                to_insert.push(*left);
+                                to_insert.push(*right);
+                            }
+                            TrieNode::Edge { child, .. } => to_insert.push(*child),
                         }
-                        TrieNode::Edge { child, .. } => to_insert.push(*child),
                     }
                 }
             }
@@ -108,7 +108,9 @@ macro_rules! insert_trie {
                     .optional()?;
 
                 if let Some(trie_node) = &node {
-                    self.node_cache.locked_cache().cache_set(*hash, trie_node.clone());
+                    self.node_cache
+                        .locked_cache()
+                        .cache_set(*hash, trie_node.clone());
                 }
 
                 Ok(node)

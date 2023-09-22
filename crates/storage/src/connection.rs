@@ -61,37 +61,33 @@ pub type TrieNodeLRUCache = cached::stores::SizedCache<Felt, TrieNode>;
 pub struct GlobalTrieNodeCache(pub Arc<Mutex<TrieNodeLRUCache>>);
 
 impl GlobalTrieNodeCache {
-    const SIZE: usize = 10_000_000;
+    const SIZE: usize = 10_000;
+
+    pub fn with_size(size: usize) -> Self {
+        Self(Arc::new(Mutex::new(cached::stores::SizedCache::with_size(
+            size,
+        ))))
+    }
 
     fn locked_cache(&self) -> MutexGuard<'_, TrieNodeLRUCache> {
         self.0.lock().expect("Global node cache is poisoned")
-    }
-
-    fn log_stats(&self) {
-        use cached::Cached;
-        let (size, hits, misses) = {
-            let cache = self.locked_cache();
-            (
-                cache.cache_size(),
-                cache.cache_hits().unwrap_or_default(),
-                cache.cache_misses().unwrap_or_default(),
-            )
-        };
-
-        tracing::debug!(%size, %hits, %misses, "Global node cache statistics");
     }
 }
 
 impl Default for GlobalTrieNodeCache {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(cached::stores::SizedCache::with_size(
-            Self::SIZE,
-        ))))
+        Self::with_size(Self::SIZE)
     }
 }
 
+const STORAGE_NODE_CACHE_SIZE: usize = 3_000_000;
+const CONTRACT_NODE_CACHE_SIZE: usize = 7_000_000;
+const CLASS_NODE_CACHE_SIZE: usize = 50_000;
+
 lazy_static::lazy_static!(
-    static ref GLOBAL_NODE_CACHE: GlobalTrieNodeCache = Default::default();
+    static ref STORAGE_NODE_CACHE: GlobalTrieNodeCache = GlobalTrieNodeCache::with_size(STORAGE_NODE_CACHE_SIZE);
+    static ref CONTRACT_NODE_CACHE: GlobalTrieNodeCache = GlobalTrieNodeCache::with_size(CONTRACT_NODE_CACHE_SIZE);
+    static ref CLASS_NODE_CACHE: GlobalTrieNodeCache = GlobalTrieNodeCache::with_size(CLASS_NODE_CACHE_SIZE);
 );
 
 pub struct Transaction<'inner>(rusqlite::Transaction<'inner>);
@@ -338,7 +334,7 @@ impl<'inner> Transaction<'inner> {
         root: ClassCommitment,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        trie::insert_class_trie(&self.0, root.0, nodes, GLOBAL_NODE_CACHE.clone())
+        trie::insert_class_trie(&self.0, root.0, nodes, CLASS_NODE_CACHE.clone())
     }
 
     /// Stores a single contract's storage trie information using reference counting.
@@ -347,7 +343,7 @@ impl<'inner> Transaction<'inner> {
         root: ContractRoot,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        trie::insert_contract_trie(&self.0, root.0, nodes, GLOBAL_NODE_CACHE.clone())
+        trie::insert_contract_trie(&self.0, root.0, nodes, CONTRACT_NODE_CACHE.clone())
     }
 
     /// Stores the global starknet storage trie information using reference counting.
@@ -356,20 +352,19 @@ impl<'inner> Transaction<'inner> {
         root: StorageCommitment,
         nodes: &HashMap<Felt, TrieNode>,
     ) -> anyhow::Result<usize> {
-        trie::insert_storage_trie(&self.0, root.0, nodes, GLOBAL_NODE_CACHE.clone())
+        trie::insert_storage_trie(&self.0, root.0, nodes, STORAGE_NODE_CACHE.clone())
     }
 
     pub fn class_trie_reader(&self) -> ClassTrieReader<'_> {
-        ClassTrieReader::new(self, GLOBAL_NODE_CACHE.clone())
+        ClassTrieReader::new(self, CLASS_NODE_CACHE.clone())
     }
 
     pub fn storage_trie_reader(&self) -> StorageTrieReader<'_> {
-        GLOBAL_NODE_CACHE.log_stats();
-        StorageTrieReader::new(self, GLOBAL_NODE_CACHE.clone())
+        StorageTrieReader::new(self, STORAGE_NODE_CACHE.clone())
     }
 
     pub fn contract_trie_reader(&self) -> ContractTrieReader<'_> {
-        ContractTrieReader::new(self, GLOBAL_NODE_CACHE.clone())
+        ContractTrieReader::new(self, CONTRACT_NODE_CACHE.clone())
     }
 
     pub fn insert_state_update(
