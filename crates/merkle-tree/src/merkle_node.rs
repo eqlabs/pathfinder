@@ -17,7 +17,7 @@ pub enum InternalNode {
     /// A node that has not been fetched from storage yet.
     ///
     /// As such, all we know is its hash.
-    Unresolved(Felt),
+    Unresolved(u32),
     /// A branch node with exactly two children.
     Binary(BinaryNode),
     /// Describes a path connecting two other nodes.
@@ -142,6 +142,7 @@ impl BinaryNode {
 }
 
 impl InternalNode {
+    pub const EMPTY: Self = Self::Unresolved(u32::MAX);
     /// Convenience function which sets the inner node's hash to [None], if
     /// applicable.
     ///
@@ -159,10 +160,7 @@ impl InternalNode {
     ///
     /// This can occur for the root node in an empty graph.
     pub fn is_empty(&self) -> bool {
-        match self {
-            InternalNode::Unresolved(hash) => hash == &Felt::ZERO,
-            _ => false,
-        }
+        matches!(self, &Self::Unresolved(u32::MAX))
     }
 
     pub fn is_binary(&self) -> bool {
@@ -185,7 +183,7 @@ impl InternalNode {
 
     pub fn hash(&self) -> Option<Felt> {
         match self {
-            InternalNode::Unresolved(hash) => Some(*hash),
+            InternalNode::Unresolved(_) => None,
             InternalNode::Binary(binary) => binary.hash,
             InternalNode::Edge(edge) => edge.hash,
             InternalNode::Leaf(value) => Some(*value),
@@ -328,8 +326,8 @@ mod tests {
             let left = felt!("0x1234");
             let right = felt!("0xabcd");
 
-            let left = Rc::new(RefCell::new(InternalNode::Unresolved(left)));
-            let right = Rc::new(RefCell::new(InternalNode::Unresolved(right)));
+            let left = Rc::new(RefCell::new(InternalNode::Leaf(left)));
+            let right = Rc::new(RefCell::new(InternalNode::Leaf(right)));
 
             let mut uut = BinaryNode {
                 hash: None,
@@ -360,7 +358,7 @@ mod tests {
             )
             .unwrap();
             let child = felt!("0x1234ABCD");
-            let child = Rc::new(RefCell::new(InternalNode::Unresolved(child)));
+            let child = Rc::new(RefCell::new(InternalNode::Leaf(child)));
             // Path = 42 in binary.
             let path = bitvec![u8, Msb0; 1, 0, 1, 0, 1, 0];
 

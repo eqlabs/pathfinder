@@ -31,8 +31,17 @@ pub struct ContractsStorageTree<'tx> {
 
 impl<'tx> ContractsStorageTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> Self {
-        let tree = MerkleTree::new(root.0);
         let storage = transaction.contract_trie_reader();
+        let tree = if root.0.is_zero() {
+            MerkleTree::empty()
+        } else {
+            // TODO: remove unwrap.
+            let root = storage
+                .get_root(root.0)
+                .expect("query contract root should succeed")
+                .expect("contract root should exist");
+            MerkleTree::new(root)
+        };
 
         Self { tree, storage }
     }
@@ -60,7 +69,7 @@ impl<'tx> ContractsStorageTree<'tx> {
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, TrieNode>)> {
-        let update = self.tree.commit()?;
+        let update = self.tree.commit(&self.storage)?;
         let commitment = ContractRoot(update.root);
         Ok((commitment, update.nodes))
     }
@@ -86,8 +95,17 @@ pub struct StorageCommitmentTree<'tx> {
 
 impl<'tx> StorageCommitmentTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: StorageCommitment) -> Self {
-        let tree = MerkleTree::new(root.0);
         let storage = transaction.storage_trie_reader();
+        let tree = if root.0.is_zero() {
+            MerkleTree::empty()
+        } else {
+            // TODO: remove unwrap.
+            let root = storage
+                .get_root(root.0)
+                .expect("query storage root should succeed")
+                .expect("storage root should exist");
+            MerkleTree::new(root)
+        };
 
         Self { tree, storage }
     }
@@ -113,7 +131,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, TrieNode>)> {
-        let update = self.tree.commit()?;
+        let update = self.tree.commit(&self.storage)?;
         let commitment = StorageCommitment(update.root);
         Ok((commitment, update.nodes))
     }

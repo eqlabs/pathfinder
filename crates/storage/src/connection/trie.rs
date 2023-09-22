@@ -1,14 +1,18 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
+use bitvec::prelude::Msb0;
+use bitvec::vec::BitVec;
 use pathfinder_common::trie::TrieNode;
 use stark_hash::Felt;
 
+use bincode::Options;
+
 use crate::prelude::*;
 
-insert_trie!(insert_class_trie, tree_class, ClassTrieReader);
-insert_trie!(insert_contract_trie, tree_contracts, ContractTrieReader);
-insert_trie!(insert_storage_trie, tree_global, StorageTrieReader);
+insert_trie!(insert_class_trie, trir_class, ClassTrieReader);
+insert_trie!(insert_contract_trie, trie_contracts, ContractTrieReader);
+insert_trie!(insert_storage_trie, trie_storage, StorageTrieReader);
 
 /// Creates the sql for inserting a node or incrementing its reference count if it already exists, returning
 /// the final reference count.
@@ -27,44 +31,99 @@ macro_rules! insert_trie {
             tx: &rusqlite::Transaction<'_>,
             root: Felt,
             nodes: &HashMap<Felt, TrieNode>,
-        ) -> anyhow::Result<usize> {
-            let mut to_insert = Vec::new();
-            to_insert.push(root);
+        ) -> anyhow::Result<u32> {
+            if root.is_zero() {
+                // TODO: what should actually happen here?
+                return Ok(u32::MAX);
+            }
 
             let mut stmt = tx
                 .prepare_cached(concat!(
-                    "INSERT OR IGNORE INTO ",
+                    "INSERT INTO ",
                     stringify!($table),
-                    "(hash, data) VALUES(?, ?) ",
+                    " (hash, data) VALUES(?, ?) RETURNING idx",
                 ))
                 .context("Creating insert statement")?;
 
-            let mut count = 0;
+            let mut to_insert = Vec::new();
+            let mut to_process = vec![root];
 
-            // cargo fmt misbehaves on the let some else expression.
-            #[cfg_attr(rustfmt, rustfmt_skip)]
-            while let Some(hash) = to_insert.pop() {
+            while let Some(hash) = to_process.pop() {
                 let Some(node) = nodes.get(&hash) else {
                     continue;
                 };
-                let inserted = stmt
-                    .execute(params![&hash.as_be_bytes().as_slice(), node])
-                    .context("Inserting node")?;
 
-                if inserted == 1 {
-                    count += 1;
+                to_insert.push(hash);
 
-                    match node {
-                        TrieNode::Binary { left, right } => {
-                            to_insert.push(*left);
-                            to_insert.push(*right);
-                        }
-                        TrieNode::Edge { child, .. } => to_insert.push(*child),
+                match node {
+                    TrieNode::Binary { left, right } => {
+                        to_process.push(*left);
+                        to_process.push(*right);
+                    }
+                    TrieNode::Edge { child, .. } => {
+                        to_process.push(*child);
                     }
                 }
             }
 
-            Ok(count)
+            let mut indices = HashMap::new();
+
+            // Insert nodes in reverse to ensure children always have an assigned index for the parent to use.
+            for hash in to_insert.into_iter().rev() {
+                let node = nodes
+                    .get(&hash)
+                    .expect("Node must exist as hash is dependent on this");
+
+                let variant = match node {
+                    TrieNode::Binary { left, right } => {
+                        let ileft = indices.get(left);
+                        let iright = indices.get(right);
+
+                        match (ileft, iright) {
+                            (Some(left), Some(right)) => StoredNodeVariant::Binary {
+                                left: *left as u32,
+                                right: *right as u32,
+                            },
+                            (None, None) => StoredNodeVariant::BinaryLeaf {
+                                left: *left,
+                                right: *right,
+                            },
+                            mismatch => {
+                                panic!("Both children should be some or none: {mismatch:?}")
+                            }
+                        }
+                    }
+                    TrieNode::Edge { child, path } => match indices.get(child) {
+                        Some(child) => StoredNodeVariant::Edge {
+                            child: *child as u32,
+                            path: path.clone(),
+                        },
+                        None => StoredNodeVariant::EdgeLeaf {
+                            child: *child,
+                            path: path.clone(),
+                        },
+                    },
+                };
+
+                let data = bincode::DefaultOptions::new()
+                    .serialize(&variant)
+                    .context("Serializing node data")?;
+
+                let idx: u32 = stmt
+                    .query_row(params![&hash.as_be_bytes().as_slice(), &data], |row| {
+                        row.get(0)
+                    })
+                    .context("Inserting node")?;
+
+                indices.insert(hash, idx);
+            }
+
+            dbg!(&indices);
+            dbg!(root);
+
+            Ok(*indices
+                .get(&root)
+                .expect("Root index must exist as we just inserted it"))
         }
 
         pub struct $reader_struct<'tx>(&'tx Transaction<'tx>);
@@ -74,31 +133,77 @@ macro_rules! insert_trie {
                 Self(tx)
             }
 
-            pub fn get(&self, node: &stark_hash::Felt) -> anyhow::Result<Option<TrieNode>> {
+            pub fn get_root(&self, hash: stark_hash::Felt) -> anyhow::Result<Option<u32>> {
+                let mut stmt = self
+                    .0
+                    .inner()
+                    .prepare_cached(concat!(
+                        "SELECT idx FROM ",
+                        stringify!($table),
+                        " WHERE hash = ?",
+                    ))
+                    .context("Creating get statement")?;
+
+                let index: Option<u32> = stmt
+                    .query_row(params![&hash.as_be_bytes().as_slice()], |row| row.get(0))
+                    .optional()?;
+
+                Ok(index)
+            }
+
+            pub fn get(&self, node: u32) -> anyhow::Result<Option<StoredNode>> {
                 // We rely on sqlite caching the statement here. Storing the statement would be nice,
                 // however that leads to &mut requirements or interior mutable work-arounds.
                 let mut stmt = self
                     .0
                     .inner()
                     .prepare_cached(concat!(
-                        "SELECT data FROM ",
+                        "SELECT data, hash FROM ",
                         stringify!($table),
-                        " WHERE hash = ?",
+                        " WHERE idx = ?",
                     ))
                     .context("Creating get statement")?;
 
-                let node: Option<TrieNode> = stmt
-                    .query_row(params![&node.as_be_bytes().as_slice()], |row| {
-                        row.get_trie_node(0)
+                let node: Option<(Vec<u8>, Felt)> = stmt
+                    .query_row(params![&node], |row| {
+                        let data = row.get(0)?;
+                        let hash = row.get_felt(1)?;
+
+                        Ok((data, hash))
                     })
                     .optional()?;
 
-                Ok(node)
+                let Some((variant, hash)) = node else {
+                    return Ok(None);
+                };
+
+                let variant: StoredNodeVariant = bincode::DefaultOptions::new()
+                    .deserialize(&variant)
+                    .context("Parsing node data")?;
+
+                let node = StoredNode { variant, hash };
+
+                Ok(Some(node))
             }
         }
     };
 }
 use insert_trie;
+
+#[derive(Clone, Debug)]
+pub struct StoredNode {
+    pub hash: Felt,
+    pub variant: StoredNodeVariant,
+}
+
+// TODO: optimise path serde. Its wasteful to store the order and offsets etc.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum StoredNodeVariant {
+    Binary { left: u32, right: u32 },
+    Edge { child: u32, path: BitVec<u8, Msb0> },
+    BinaryLeaf { left: Felt, right: Felt },
+    EdgeLeaf { child: Felt, path: BitVec<u8, Msb0> },
+}
 
 #[cfg(test)]
 mod tests {
@@ -131,16 +236,16 @@ mod tests {
         let mut db = rusqlite::Connection::open_in_memory().unwrap();
         let tx = db.transaction().unwrap();
         tx.execute(
-            "CREATE TABLE tree_test(hash BLOB PRIMARY KEY, data BLOB, ref_count INTEGER)",
+            "CREATE TABLE tree_test(idx INTEGER PRIMARY KEY, hash BLOB NOT NULL, data BLOB)",
             [],
         )
         .unwrap();
 
-        let root = felt_bytes!(b"root node");
+        let root_hash = felt_bytes!(b"root node");
         let l_child = felt_bytes!(b"left child");
         let r_child = felt_bytes!(b"right child");
-        let edge = felt_bytes!(b"edge node");
-        let duplicate = felt_bytes!(b"duplicate");
+        let edge_hash = felt_bytes!(b"edge node");
+        let duplicate_hash = felt_bytes!(b"duplicate");
         // These must not get inserted.
         let leaf_1 = felt_bytes!(b"leaf 1");
         let leaf_2 = felt_bytes!(b"leaf 2");
@@ -149,17 +254,20 @@ mod tests {
             left: l_child,
             right: r_child,
         };
+        let l_node_path = bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1];
         let l_node = TrieNode::Edge {
-            child: duplicate,
-            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1],
+            child: duplicate_hash,
+            path: l_node_path.clone(),
         };
+        let r_node_path = bitvec::bitvec![u8, Msb0; 1, 0, 1, 1];
         let r_node = TrieNode::Edge {
-            child: edge,
-            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1],
+            child: edge_hash,
+            path: r_node_path.clone(),
         };
+        let edge_node_path = bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1, 1, 1];
         let edge_node = TrieNode::Edge {
-            child: duplicate,
-            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1, 1, 1],
+            child: duplicate_hash,
+            path: edge_node_path.clone(),
         };
         let duplicate_node = TrieNode::Binary {
             left: leaf_1,
@@ -167,43 +275,82 @@ mod tests {
         };
 
         let mut nodes = HashMap::new();
-        nodes.insert(root, root_node.clone());
+        nodes.insert(root_hash, root_node.clone());
         nodes.insert(l_child, l_node.clone());
         nodes.insert(r_child, r_node.clone());
-        nodes.insert(edge, edge_node.clone());
-        nodes.insert(duplicate, duplicate_node.clone());
+        nodes.insert(edge_hash, edge_node.clone());
+        nodes.insert(duplicate_hash, duplicate_node.clone());
 
-        let count = insert_test(&tx, root, &nodes).unwrap();
+        let iroot = insert_test(&tx, root_hash, &nodes).unwrap();
         let db_count: usize = tx
             .query_row("SELECT COUNT(1) FROM tree_test", [], |row| row.get(0))
             .unwrap();
 
-        // We expect inserts for the root, left and right children, edge and duplicate node.
-        assert_eq!(count, 5);
-        assert_eq!(count, db_count);
+        // We expect inserts for the root, left and right children, edge and 2x duplicate node.
+        assert_eq!(db_count, 6);
 
-        // Inserting the same trie again should do nothing
-        let count = insert_test(&tx, root, &nodes).unwrap();
-        assert_eq!(count, 0);
+        // Inserting the same trie again should double every node.
+        let iroot2 = insert_test(&tx, root_hash, &nodes).unwrap();
+        let db_count: usize = tx
+            .query_row("SELECT COUNT(1) FROM tree_test", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(db_count, 12);
+        assert_ne!(iroot, iroot2);
 
         let tx = Transaction::from_inner(tx);
 
         let reader = TestTrieReader::new(&tx);
 
-        let root = reader.get(&root).unwrap().unwrap();
-        assert_eq!(root, root_node);
-        let l_child = reader.get(&l_child).unwrap().unwrap();
-        assert_eq!(l_child, l_node);
-        let r_child = reader.get(&r_child).unwrap().unwrap();
-        assert_eq!(r_child, r_node);
-        let edge = reader.get(&edge).unwrap().unwrap();
-        assert_eq!(edge, edge_node);
-        let duplicate = reader.get(&duplicate).unwrap().unwrap();
-        assert_eq!(duplicate, duplicate_node);
+        // Ensure the root node is correct.
+        let root = reader.get(iroot).unwrap().unwrap();
+        assert_eq!(root.hash, root_hash);
+        let StoredNodeVariant::Binary { left, right } = root.variant else {
+            panic!("Root was not a binary node");
+        };
 
-        let leaf_1 = reader.get(&leaf_1).unwrap();
-        assert!(leaf_1.is_none());
-        let leaf_2 = reader.get(&leaf_2).unwrap();
-        assert!(leaf_2.is_none());
+        // l_node
+        let left = reader.get(left).unwrap().unwrap();
+        assert_eq!(left.hash, l_child);
+        let StoredNodeVariant::Edge { child, path } = left.variant else {
+            panic!("l_node was not an edge node");
+        };
+        assert_eq!(path, l_node_path);
+        let iduplicate = child;
+
+        // r_node
+        let right = reader.get(right).unwrap().unwrap();
+        assert_eq!(right.hash, r_child);
+        let StoredNodeVariant::Edge { child, path } = right.variant else {
+            panic!("r_node was not an edge node");
+        };
+        assert_eq!(path, r_node_path);
+        let iedge = child;
+
+        // duplicate
+        let duplicate = reader.get(iduplicate).unwrap().unwrap();
+        assert_eq!(duplicate.hash, duplicate_hash);
+        let StoredNodeVariant::BinaryLeaf { left, right } = duplicate.variant else {
+            panic!("Root was not a binary node");
+        };
+        assert_eq!(left, leaf_1);
+        assert_eq!(right, leaf_2);
+
+        // edge_node (points to a different duplicate)
+        let edge = reader.get(iedge).unwrap().unwrap();
+        assert_eq!(edge.hash, edge_hash);
+        let StoredNodeVariant::Edge { child, path } = edge.variant else {
+            panic!("r_node was not an edge node");
+        };
+        assert_eq!(path, edge_node_path);
+        let iduplicate2 = child;
+
+        // duplicate 2
+        let duplicate = reader.get(iduplicate2).unwrap().unwrap();
+        assert_eq!(duplicate.hash, duplicate_hash);
+        let StoredNodeVariant::BinaryLeaf { left, right } = duplicate.variant else {
+            panic!("Root was not a binary node");
+        };
+        assert_eq!(left, leaf_1);
+        assert_eq!(right, leaf_2);
     }
 }

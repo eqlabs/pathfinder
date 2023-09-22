@@ -20,8 +20,18 @@ pub struct ClassCommitmentTree<'tx> {
 
 impl<'tx> ClassCommitmentTree<'tx> {
     pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
-        let tree = MerkleTree::new(root.0);
         let storage = transaction.class_trie_reader();
+
+        let tree = if root.0.is_zero() {
+            MerkleTree::empty()
+        } else {
+            // TODO: remove unwrap.
+            let root = storage
+                .get_root(root.0)
+                .expect("query class root should succeed")
+                .expect("class root should exist");
+            MerkleTree::new(root)
+        };
 
         Self { tree, storage }
     }
@@ -43,7 +53,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
     pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, TrieNode>)> {
-        let update = self.tree.commit()?;
+        let update = self.tree.commit(&self.storage)?;
 
         let commitment = ClassCommitment(update.root);
         Ok((commitment, update.nodes))

@@ -50,8 +50,10 @@ pub fn verify_block_hash(
     let transaction_final_hash_type =
         TransactionCommitmentFinalHashType::for_version(&block.starknet_version)?;
     let transaction_commitment =
-        calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)?;
-    let event_commitment = calculate_event_commitment(&block.transaction_receipts)?;
+        calculate_transaction_commitment(&block.transactions, transaction_final_hash_type)
+            .context("Calculating transaction commitment")?;
+    let event_commitment = calculate_event_commitment(&block.transaction_receipts)
+        .context("Calculating event commitment")?;
 
     let verified = if meta_info.uses_pre_0_7_hash_algorithm(block.block_number) {
         anyhow::ensure!(

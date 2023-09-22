@@ -18,7 +18,9 @@ pub use event::*;
 
 pub use transaction::TransactionStatus;
 
-pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
+pub use trie::{
+    ClassTrieReader, ContractTrieReader, StorageTrieReader, StoredNode, StoredNodeVariant,
+};
 
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
@@ -292,7 +294,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: ClassCommitment,
         nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
+    ) -> anyhow::Result<u32> {
         trie::insert_class_trie(&self.0, root.0, nodes)
     }
 
@@ -301,7 +303,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: ContractRoot,
         nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
+    ) -> anyhow::Result<u32> {
         trie::insert_contract_trie(&self.0, root.0, nodes)
     }
 
@@ -310,7 +312,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: StorageCommitment,
         nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
+    ) -> anyhow::Result<u32> {
         trie::insert_storage_trie(&self.0, root.0, nodes)
     }
 
