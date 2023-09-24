@@ -84,7 +84,6 @@ pub fn trace_one(
 ) -> Result<TransactionTrace, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let mut ret = Vec::with_capacity(transactions.len());
     for tx in transactions {
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
@@ -93,7 +92,6 @@ pub fn trace_one(
         if hash == target_transaction_hash {
             return Ok(trace);
         }
-        ret.push(trace);
     }
 
     Err(CallError::Internal(anyhow::anyhow!(
