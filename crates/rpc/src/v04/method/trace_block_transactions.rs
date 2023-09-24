@@ -222,7 +222,7 @@ pub(crate) mod tests {
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V0(
                             gateway::transaction::DeclareTransactionV0V1 {
-                                class_hash: class_hash.clone(),
+                                class_hash,
                                 max_fee: declare.max_fee,
                                 nonce: TransactionNonce::default(),
                                 sender_address: declare.sender_address,
@@ -241,7 +241,7 @@ pub(crate) mod tests {
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V1(
                             gateway::transaction::DeclareTransactionV0V1 {
-                                class_hash: class_hash.clone(),
+                                class_hash,
                                 max_fee: declare.max_fee,
                                 nonce: TransactionNonce::default(),
                                 sender_address: declare.sender_address,
@@ -260,7 +260,7 @@ pub(crate) mod tests {
                     starknet_gateway_types::reply::transaction::Transaction::Declare(
                         gateway::transaction::DeclareTransaction::V2(
                             gateway::transaction::DeclareTransactionV2 {
-                                class_hash: class_hash.clone(),
+                                class_hash,
                                 max_fee: declare.max_fee,
                                 nonce: TransactionNonce::default(),
                                 sender_address: declare.sender_address,
