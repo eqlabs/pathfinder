@@ -105,7 +105,7 @@ pub mod dto {
     pub struct SimulationFlags(pub Vec<SimulationFlag>);
 
     #[serde_as]
-    #[derive(Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     // #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct FeeEstimate {
@@ -138,7 +138,7 @@ pub mod dto {
         SkipValidate,
     }
 
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub enum CallType {
         #[serde(rename = "CALL")]
         Call,
@@ -158,7 +158,7 @@ pub mod dto {
 
     #[serde_with::serde_as]
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct FunctionInvocation {
         #[serde(default)]
         pub call_type: CallType,
@@ -203,7 +203,7 @@ pub mod dto {
         }
     }
 
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub enum EntryPointType {
         #[serde(rename = "CONSTRUCTOR")]
         Constructor,
@@ -225,7 +225,7 @@ pub mod dto {
     }
 
     #[serde_with::serde_as]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct MsgToL1 {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<Felt>,
@@ -246,7 +246,7 @@ pub mod dto {
     }
 
     #[serde_with::serde_as]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct Event {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<Felt>,
@@ -263,7 +263,7 @@ pub mod dto {
         }
     }
 
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     #[serde(untagged)]
     pub enum TransactionTrace {
         Declare(DeclareTxnTrace),
@@ -285,7 +285,7 @@ pub mod dto {
     }
 
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct DeclareTxnTrace {
         #[serde(default)]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
@@ -303,7 +303,7 @@ pub mod dto {
     }
 
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct DeployAccountTxnTrace {
         #[serde(default)]
         pub constructor_invocation: Option<FunctionInvocation>,
@@ -324,7 +324,7 @@ pub mod dto {
     }
 
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct InvokeTxnTrace {
         #[serde(default)]
         pub execute_invocation: Option<FunctionInvocation>,
@@ -345,7 +345,7 @@ pub mod dto {
     }
 
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct L1HandlerTxnTrace {
         #[serde(default)]
         pub function_invocation: Option<FunctionInvocation>,
@@ -360,7 +360,7 @@ pub mod dto {
     }
 
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct SimulatedTransaction {
         #[serde(default)]
         pub fee_estimation: FeeEstimate,
@@ -379,7 +379,7 @@ pub mod dto {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::v02::method::call::FunctionCall;
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
@@ -480,17 +480,19 @@ mod tests {
         pretty_assertions::assert_eq!(result.0, expected);
     }
 
-    mod fixtures {
+    pub(crate) mod fixtures {
         use pathfinder_common::{CasmHash, ClassHash, ContractAddress};
 
         use super::*;
 
-        const SIERRA_DEFINITION: &[u8] =
+        pub const SIERRA_DEFINITION: &[u8] =
             include_bytes!("../../../fixtures/contracts/storage_access.json");
-        const SIERRA_HASH: ClassHash =
+        pub const SIERRA_HASH: ClassHash =
             class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
-        const CASM_HASH: CasmHash =
+        pub const CASM_HASH: CasmHash =
             casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+        pub const CASM_DEFINITION: &[u8] =
+            include_bytes!("../../../fixtures/contracts/storage_access.casm");
         const MAX_FEE: Fee = Fee(Felt::from_u64(10_000_000));
         pub const DEPLOYED_CONTRACT_ADDRESS: ContractAddress =
             contract_address!("0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7");
@@ -1102,7 +1104,7 @@ mod tests {
         }
     }
 
-    async fn setup_storage() -> (
+    pub(crate) async fn setup_storage() -> (
         Storage,
         BlockHeader,
         ContractAddress,

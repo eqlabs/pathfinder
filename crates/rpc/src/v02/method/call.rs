@@ -40,7 +40,7 @@ pub struct CallInput {
     block_id: BlockId,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
+#[derive(Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,

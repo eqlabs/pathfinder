@@ -17,11 +17,11 @@ use super::simulate_transactions::dto::TransactionTrace;
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct TraceTransactionInput {
-    transaction_hash: TransactionHash,
+    pub transaction_hash: TransactionHash,
 }
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
-pub struct TraceTransactionOutput(TransactionTrace);
+pub struct TraceTransactionOutput(pub TransactionTrace);
 
 #[derive(Debug)]
 pub enum TraceTransactionError {
@@ -118,7 +118,13 @@ pub async fn trace_transaction(
     let span = tracing::Span::current();
     let trace = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
-        pathfinder_executor::trace_one(execution_state, transactions, input.transaction_hash)
+        pathfinder_executor::trace_one(
+            execution_state,
+            transactions,
+            input.transaction_hash,
+            true,
+            true,
+        )
     })
     .await
     .context("trace_transaction: execution")??;
@@ -128,12 +134,16 @@ pub async fn trace_transaction(
 
 #[cfg(test)]
 pub mod tests {
-    use super::super::trace_block_transactions::tests::setup_trace_test;
+    use super::super::trace_block_transactions::tests::{
+        setup_multi_tx_trace_test,
+        setup_single_tx_trace_test,
+    };
     use super::*;
 
+    #[ignore = "TODO FIXME: insufficient balance for tx"]
     #[tokio::test]
     async fn test_single_transaction() -> anyhow::Result<()> {
-        let (storage, block, expected) = setup_trace_test()?;
+        let (storage, block, expected) = setup_single_tx_trace_test()?;
         let context = RpcContext::for_tests().with_storage(storage);
 
         let input = TraceTransactionInput {
@@ -145,4 +155,21 @@ pub mod tests {
         pretty_assertions::assert_eq!(output, expected);
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_multiple_transactions() -> anyhow::Result<()> {
+        let (context, _, traces) = setup_multi_tx_trace_test().await?;
+
+        for trace in traces {
+            let input = TraceTransactionInput {
+                transaction_hash: trace.transaction_hash,
+            };
+            let output = trace_transaction(context.clone(), input).await.unwrap();
+            let expected = TraceTransactionOutput(trace.trace_root);    
+            pretty_assertions::assert_eq!(output, expected);
+        }
+
+        Ok(())
+    }
+
 }

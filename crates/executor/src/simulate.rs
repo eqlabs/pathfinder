@@ -81,13 +81,15 @@ pub fn trace_one(
     mut execution_state: ExecutionState,
     transactions: Vec<Transaction>,
     target_transaction_hash: TransactionHash,
+    charge_fee: bool,
+    validate: bool,
 ) -> Result<TransactionTrace, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
     for tx in transactions {
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
-        let tx_info = tx.execute(&mut state, &block_context, false, false)?;
+        let tx_info = tx.execute(&mut state, &block_context, charge_fee, validate)?;
         let trace = to_trace(tx_type, tx_info)?;
         if hash == target_transaction_hash {
             return Ok(trace);
@@ -103,6 +105,8 @@ pub fn trace_one(
 pub fn trace_all(
     mut execution_state: ExecutionState,
     transactions: Vec<Transaction>,
+    charge_fee: bool,
+    validate: bool,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
@@ -110,7 +114,7 @@ pub fn trace_all(
     for tx in transactions {
         let hash = transaction_hash(&tx);
         let tx_type = transaction_type(&tx);
-        let tx_info = tx.execute(&mut state, &block_context, false, false)?;
+        let tx_info = tx.execute(&mut state, &block_context, charge_fee, validate)?;
         let trace = to_trace(tx_type, tx_info)?;
         ret.push((hash, trace));
     }
