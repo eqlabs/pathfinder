@@ -135,8 +135,7 @@ pub async fn trace_transaction(
 #[cfg(test)]
 pub mod tests {
     use super::super::trace_block_transactions::tests::{
-        setup_multi_tx_trace_test,
-        setup_single_tx_trace_test,
+        setup_multi_tx_trace_test, setup_single_tx_trace_test,
     };
     use super::*;
 
@@ -165,11 +164,10 @@ pub mod tests {
                 transaction_hash: trace.transaction_hash,
             };
             let output = trace_transaction(context.clone(), input).await.unwrap();
-            let expected = TraceTransactionOutput(trace.trace_root);    
+            let expected = TraceTransactionOutput(trace.trace_root);
             pretty_assertions::assert_eq!(output, expected);
         }
 
         Ok(())
     }
-
 }

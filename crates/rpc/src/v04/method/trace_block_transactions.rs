@@ -134,7 +134,8 @@ pub(crate) mod tests {
 
     use super::*;
 
-    pub(crate) fn setup_single_tx_trace_test() -> anyhow::Result<(Storage, gateway::Block, TransactionTrace)> {
+    pub(crate) fn setup_single_tx_trace_test(
+    ) -> anyhow::Result<(Storage, gateway::Block, TransactionTrace)> {
         const TEST_BLOCK: &str = include_str!("../../../fixtures/trace/block.json");
         let block: gateway::Block = serde_json::from_str(TEST_BLOCK)?;
 
@@ -306,7 +307,8 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) async fn setup_multi_tx_trace_test() -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
+    pub(crate) async fn setup_multi_tx_trace_test(
+    ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
         use super::super::simulate_transactions::tests::fixtures;
         use super::super::simulate_transactions::tests::setup_storage;
 
