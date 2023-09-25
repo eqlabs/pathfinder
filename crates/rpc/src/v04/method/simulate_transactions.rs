@@ -323,11 +323,22 @@ pub mod dto {
         }
     }
 
+    #[derive(Clone, Debug, Default, Serialize, Eq, PartialEq)]
+    #[serde(untagged)]
+    pub enum ExecuteInvocation {
+        #[default]
+        Empty,
+        FunctionInvocation(FunctionInvocation),
+        RevertedReason {
+            reverted_reason: String,
+        },
+    }
+
     #[serde_with::skip_serializing_none]
     #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct InvokeTxnTrace {
         #[serde(default)]
-        pub execute_invocation: Option<FunctionInvocation>,
+        pub execute_invocation: ExecuteInvocation,
         #[serde(default)]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
         #[serde(default)]
@@ -338,7 +349,17 @@ pub mod dto {
         fn from(trace: pathfinder_executor::types::InvokeTransactionTrace) -> Self {
             Self {
                 validate_invocation: trace.validate_invocation.map(Into::into),
-                execute_invocation: trace.execute_invocation.map(Into::into),
+                execute_invocation: match trace.execute_invocation {
+                    pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(Some(
+                        function_invocation,
+                    )) => ExecuteInvocation::FunctionInvocation(function_invocation.into()),
+                    pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(None) => {
+                        ExecuteInvocation::Empty
+                    }
+                    pathfinder_executor::types::ExecuteInvocation::RevertedReason(
+                        reverted_reason,
+                    ) => ExecuteInvocation::RevertedReason { reverted_reason },
+                },
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             }
         }
@@ -708,10 +729,12 @@ pub(crate) mod tests {
                             account_contract_address,
                             universal_deployer_address,
                         )),
-                        execute_invocation: Some(universal_deployer_execute(
-                            account_contract_address,
-                            universal_deployer_address,
-                        )),
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(
+                            universal_deployer_execute(
+                                account_contract_address,
+                                universal_deployer_address,
+                            ),
+                        ),
                         fee_transfer_invocation: Some(universal_deployer_fee_transfer(
                             account_contract_address,
                             last_block_header,
@@ -735,10 +758,12 @@ pub(crate) mod tests {
                             account_contract_address,
                             universal_deployer_address,
                         )),
-                        execute_invocation: Some(universal_deployer_execute(
-                            account_contract_address,
-                            universal_deployer_address,
-                        )),
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(
+                            universal_deployer_execute(
+                                account_contract_address,
+                                universal_deployer_address,
+                            ),
+                        ),
                         fee_transfer_invocation: None,
                     }),
                 }
@@ -757,10 +782,12 @@ pub(crate) mod tests {
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: None,
-                        execute_invocation: Some(universal_deployer_execute(
-                            account_contract_address,
-                            universal_deployer_address,
-                        )),
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(
+                            universal_deployer_execute(
+                                account_contract_address,
+                                universal_deployer_address,
+                            ),
+                        ),
                         fee_transfer_invocation: Some(universal_deployer_fee_transfer(
                             account_contract_address,
                             last_block_header,
@@ -946,7 +973,7 @@ pub(crate) mod tests {
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: Some(invoke_validate(account_contract_address)),
-                        execute_invocation: Some(invoke_execute(
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(invoke_execute(
                             account_contract_address,
                             test_storage_value,
                         )),
@@ -970,7 +997,7 @@ pub(crate) mod tests {
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: Some(invoke_validate(account_contract_address)),
-                        execute_invocation: Some(invoke_execute(
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(invoke_execute(
                             account_contract_address,
                             test_storage_value,
                         )),
@@ -992,7 +1019,7 @@ pub(crate) mod tests {
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
                         validate_invocation: None,
-                        execute_invocation: Some(invoke_execute(
+                        execute_invocation: ExecuteInvocation::FunctionInvocation(invoke_execute(
                             account_contract_address,
                             test_storage_value,
                         )),

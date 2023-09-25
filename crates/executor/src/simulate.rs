@@ -8,8 +8,8 @@ use primitive_types::U256;
 use crate::{
     transaction::transaction_hash,
     types::{
-        DeclareTransactionTrace, DeployAccountTransactionTrace, InvokeTransactionTrace,
-        L1HandlerTransactionTrace,
+        DeclareTransactionTrace, DeployAccountTransactionTrace, ExecuteInvocation,
+        InvokeTransactionTrace, L1HandlerTransactionTrace,
     },
 };
 
@@ -156,10 +156,10 @@ fn to_trace(
         .validate_call_info
         .map(TryInto::try_into)
         .transpose()?;
-    let function_invocation = execution_info
+    let maybe_function_invocation = execution_info
         .execute_call_info
         .map(TryInto::try_into)
-        .transpose()?;
+        .transpose();
     let fee_transfer_invocation = execution_info
         .fee_transfer_call_info
         .map(TryInto::try_into)
@@ -173,17 +173,21 @@ fn to_trace(
         TransactionType::DeployAccount => {
             TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
                 validate_invocation,
-                constructor_invocation: function_invocation,
+                constructor_invocation: maybe_function_invocation?,
                 fee_transfer_invocation,
             })
         }
         TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
             validate_invocation,
-            execute_invocation: function_invocation,
+            execute_invocation: if let Some(reason) = execution_info.revert_error {
+                ExecuteInvocation::RevertedReason(reason)
+            } else {
+                ExecuteInvocation::FunctionInvocation(maybe_function_invocation?)
+            },
             fee_transfer_invocation,
         }),
         TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
-            function_invocation,
+            function_invocation: maybe_function_invocation?,
         }),
     };
 

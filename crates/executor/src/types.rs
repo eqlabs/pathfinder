@@ -48,9 +48,15 @@ pub struct DeployAccountTransactionTrace {
 }
 
 #[derive(Debug)]
+pub enum ExecuteInvocation {
+    FunctionInvocation(Option<FunctionInvocation>),
+    RevertedReason(String),
+}
+
+#[derive(Debug)]
 pub struct InvokeTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
-    pub execute_invocation: Option<FunctionInvocation>,
+    pub execute_invocation: ExecuteInvocation,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
 }
 
@@ -100,6 +106,7 @@ impl TryFrom<blockifier::execution::call_info::CallInfo> for FunctionInvocation 
     fn try_from(
         call_info: blockifier::execution::call_info::CallInfo,
     ) -> Result<Self, Self::Error> {
+        println!("CALL_INFO: {call_info:#?}");
         call_info.get_sorted_l2_to_l1_payloads_length()?;
         let messages = ordered_l2_to_l1_messages(&call_info);
 
