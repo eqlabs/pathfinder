@@ -92,42 +92,6 @@ pub(super) fn insert_events(
     Ok(())
 }
 
-pub fn event_count(
-    tx: &Transaction<'_>,
-    from_block: Option<BlockNumber>,
-    to_block: Option<BlockNumber>,
-    contract_address: Option<ContractAddress>,
-    keys: &dyn KeyFilter,
-) -> anyhow::Result<usize> {
-    let strategy = select_query_strategy(
-        tx,
-        from_block.as_ref(),
-        to_block.as_ref(),
-        contract_address.as_ref(),
-        keys,
-    )?;
-
-    let (query, params) = event_query(
-        "SELECT COUNT(1) FROM starknet_events",
-        from_block.as_ref(),
-        to_block.as_ref(),
-        contract_address.as_ref(),
-        keys,
-        strategy,
-    );
-
-    let params = params
-        .iter()
-        .map(|(s, x)| (*s, x as &dyn rusqlite::ToSql))
-        .collect::<Vec<_>>();
-
-    let count: usize = tx
-        .inner()
-        .query_row(&query, params.as_slice(), |row| row.get(0))?;
-
-    Ok(count)
-}
-
 pub(super) fn get_events<K: KeyFilter>(
     tx: &Transaction<'_>,
     filter: &EventFilter<K>,
@@ -1143,66 +1107,6 @@ mod tests {
                 is_last_page: true,
             }
         );
-    }
-
-    #[test]
-    fn event_count_by_block() {
-        let (storage, _) = test_utils::setup_test_storage();
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        let block = Some(BlockNumber::new_or_panic(2));
-
-        let count = event_count(&tx, block, block, None, &V03KeyFilter::new(vec![])).unwrap();
-        assert_eq!(count, test_utils::EVENTS_PER_BLOCK);
-    }
-
-    #[test]
-    fn event_count_from_contract() {
-        let (storage, test_data) = test_utils::setup_test_storage();
-        let events = test_data.events;
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        let addr = events[0].from_address;
-        let expected = events
-            .iter()
-            .filter(|event| event.from_address == addr)
-            .count();
-
-        let count = event_count(
-            &tx,
-            Some(BlockNumber::GENESIS),
-            Some(BlockNumber::MAX),
-            Some(addr),
-            &V03KeyFilter::new(vec![]),
-        )
-        .unwrap();
-        assert_eq!(count, expected);
-    }
-
-    #[test]
-    fn event_count_by_key() {
-        let (storage, test_data) = test_utils::setup_test_storage();
-        let emitted_events = test_data.events;
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        let key = emitted_events[27].keys[0];
-        let expected = emitted_events
-            .iter()
-            .filter(|event| event.keys.contains(&key))
-            .count();
-
-        let count = event_count(
-            &tx,
-            Some(BlockNumber::GENESIS),
-            Some(BlockNumber::MAX),
-            None,
-            &V03KeyFilter::new(vec![vec![key]]),
-        )
-        .unwrap();
-        assert_eq!(count, expected);
     }
 
     #[test]

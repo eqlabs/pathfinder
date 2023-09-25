@@ -191,16 +191,6 @@ impl<'inner> Transaction<'inner> {
         event::get_events(self, filter)
     }
 
-    pub fn event_count(
-        &self,
-        from_block: Option<BlockNumber>,
-        to_block: Option<BlockNumber>,
-        contract_address: Option<ContractAddress>,
-        keys: &dyn KeyFilter,
-    ) -> anyhow::Result<usize> {
-        event::event_count(self, from_block, to_block, contract_address, keys)
-    }
-
     pub fn insert_sierra_class(
         &self,
         sierra_hash: &SierraHash,
