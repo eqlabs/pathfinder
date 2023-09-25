@@ -1,7 +1,10 @@
 //! Workaround for the orphan rule - implement conversion fns for types ourside our crate.
 use std::time::{Duration, SystemTime};
 
-use pathfinder_common::{state_update::ContractUpdate, BlockHeader, StateUpdate};
+use pathfinder_common::{
+    state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
+    TransactionVersion,
+};
 use stark_hash::Felt;
 
 pub trait ToProto<T> {
@@ -90,6 +93,97 @@ impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
                 }))
                 .collect(),
             // FIXME missing: declared classes cairo & sierra, replaced classes
+        }
+    }
+}
+
+impl ToProto<p2p_proto_v1::transaction::Transaction> for Transaction {
+    fn to_proto(self) -> p2p_proto_v1::transaction::Transaction {
+        use p2p_proto_v1::common::{Address, Hash};
+        use p2p_proto_v1::transaction as proto;
+        use p2p_proto_v1::transaction::AccountSignature;
+        use pathfinder_common::transaction::TransactionVariant::{
+            DeclareV0, DeclareV1, DeclareV2, Deploy, DeployAccount, InvokeV0, InvokeV1, L1Handler,
+        };
+        match self.variant {
+            DeclareV0(x) => proto::Transaction::DeclareV0(proto::DeclareV0 {
+                sender: Address(x.sender_address.0),
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+            }),
+            DeclareV1(x) => proto::Transaction::DeclareV1(proto::DeclareV1 {
+                sender: Address(x.sender_address.0),
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+            }),
+            DeclareV2(x) => proto::Transaction::DeclareV2(proto::DeclareV2 {
+                sender: Address(x.sender_address.0),
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                compiled_class_hash: x.compiled_class_hash.0,
+            }),
+            Deploy(x) => proto::Transaction::Deploy(proto::Deploy {
+                class_hash: Hash(x.class_hash.0),
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                address: Address(x.contract_address.0),
+                // Only these two values are allowed in storage
+                version: if x.version.is_zero() { 0 } else { 1 },
+            }),
+            DeployAccount(x) => proto::Transaction::DeployAccountV1(proto::DeployAccountV1 {
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                class_hash: Hash(x.class_hash.0),
+                nonce: x.nonce.0,
+                address_salt: x.contract_address_salt.0,
+                calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
+                address: Address(x.contract_address.0),
+            }),
+            InvokeV0(x) => proto::Transaction::InvokeV0(proto::InvokeV0 {
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                address: Address(x.sender_address.0),
+                entry_point_selector: x.entry_point_selector.0,
+                calldata: x.calldata.into_iter().map(|c| c.0).collect(),
+                entry_point_type: x.entry_point_type.map(|e| {
+                    use pathfinder_common::transaction::EntryPointType::{External, L1Handler};
+                    match e {
+                        External => proto::EntryPointType::External,
+                        L1Handler => proto::EntryPointType::L1Handler,
+                    }
+                }),
+            }),
+            InvokeV1(x) => proto::Transaction::InvokeV1(proto::InvokeV1 {
+                sender: Address(x.sender_address.0),
+                max_fee: x.max_fee.0,
+                signature: AccountSignature {
+                    parts: x.signature.into_iter().map(|s| s.0).collect(),
+                },
+                nonce: x.nonce.0,
+                calldata: x.calldata.into_iter().map(|c| c.0).collect(),
+            }),
+            L1Handler(x) => proto::Transaction::L1HandlerV1(proto::L1HandlerV1 {
+                nonce: x.nonce.0,
+                address: Address(x.contract_address.0),
+                entry_point_selector: x.entry_point_selector.0,
+                calldata: x.calldata.into_iter().map(|c| c.0).collect(),
+            }),
         }
     }
 }

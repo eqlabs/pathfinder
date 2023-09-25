@@ -23,6 +23,7 @@ pub struct DeclareV0 {
     pub max_fee: Felt,
     pub signature: AccountSignature,
     pub class_hash: Hash,
+    pub nonce: Felt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
