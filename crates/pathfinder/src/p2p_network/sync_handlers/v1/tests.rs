@@ -216,8 +216,7 @@ mod prop {
                 transactions.items.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
             }).collect::<Vec<_>>();
 
-            pretty_assertions::assert_eq!(actual, expected);
-            // prop_assert_eq!(actual, expected);
+            prop_assert_eq!(actual, expected);
         }
     }
 

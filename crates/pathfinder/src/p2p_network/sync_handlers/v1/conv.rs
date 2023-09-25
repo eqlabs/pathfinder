@@ -1,11 +1,19 @@
 //! Workaround for the orphan rule - implement conversion fns for types ourside our crate.
-use std::time::{Duration, SystemTime};
-
+use p2p_proto_v1::common::{Address, Hash, Merkle, Patricia};
+use p2p_proto_v1::receipt::EthereumAddress;
+use p2p_proto_v1::receipt::{
+    execution_resources::BuiltinCounter, DeclareTransactionReceipt,
+    DeployAccountTransactionReceipt, DeployTransactionReceipt, ExecutionResources,
+    InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1, MessageToL2, ReceiptCommon,
+};
+use p2p_proto_v1::state::{ContractDiff, ContractStoredValue, StateDiff};
+use p2p_proto_v1::transaction::AccountSignature;
 use pathfinder_common::{
     state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
-    TransactionVersion,
 };
 use stark_hash::Felt;
+use starknet_gateway_types::reply::transaction as gw;
+use std::time::{Duration, SystemTime};
 
 pub trait ToProto<T> {
     fn to_proto(self) -> T;
@@ -13,7 +21,6 @@ pub trait ToProto<T> {
 
 impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
     fn to_proto(self) -> p2p_proto_v1::block::BlockHeader {
-        use p2p_proto_v1::common::{Address, Hash, Merkle, Patricia};
         const ZERO_MERKLE: Merkle = Merkle {
             n_leaves: 0,
             root: Hash(Felt::ZERO),
@@ -46,8 +53,6 @@ impl ToProto<p2p_proto_v1::block::BlockHeader> for BlockHeader {
 
 impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
     fn to_proto(self) -> p2p_proto_v1::state::StateDiff {
-        use p2p_proto_v1::common::Address;
-        use p2p_proto_v1::state::{ContractDiff, ContractStoredValue, StateDiff};
         StateDiff {
             domain: 0, // FIXME there will initially be 2 trees, dunno which id is which
             contract_diffs: self
@@ -99,9 +104,7 @@ impl ToProto<p2p_proto_v1::state::StateDiff> for StateUpdate {
 
 impl ToProto<p2p_proto_v1::transaction::Transaction> for Transaction {
     fn to_proto(self) -> p2p_proto_v1::transaction::Transaction {
-        use p2p_proto_v1::common::{Address, Hash};
         use p2p_proto_v1::transaction as proto;
-        use p2p_proto_v1::transaction::AccountSignature;
         use pathfinder_common::transaction::TransactionVariant::{
             DeclareV0, DeclareV1, DeclareV2, Deploy, DeployAccount, InvokeV0, InvokeV1, L1Handler,
         };
@@ -183,6 +186,99 @@ impl ToProto<p2p_proto_v1::transaction::Transaction> for Transaction {
                 address: Address(x.contract_address.0),
                 entry_point_selector: x.entry_point_selector.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
+            }),
+        }
+    }
+}
+
+impl ToProto<p2p_proto_v1::receipt::Receipt> for (gw::Transaction, gw::Receipt) {
+    fn to_proto(self) -> p2p_proto_v1::receipt::Receipt {
+        use p2p_proto_v1::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
+        let common = ReceiptCommon {
+            transaction_hash: Hash(self.1.transaction_hash.0),
+            actual_fee: self.1.actual_fee.unwrap_or_default().0, // TODO optional?
+            messages_sent: self
+                .1
+                .l2_to_l1_messages
+                .into_iter()
+                .map(|m| MessageToL1 {
+                    from_address: m.from_address.0,
+                    payload: m.payload.into_iter().map(|p| p.0).collect(),
+                    to_address: EthereumAddress(m.to_address.0),
+                })
+                .collect(),
+            execution_resources: {
+                let e = self.1.execution_resources.unwrap_or_default();
+                // Assumption: the values are small enough to fit into u32
+                ExecutionResources {
+                    builtins: BuiltinCounter {
+                        bitwise: e
+                            .builtin_instance_counter
+                            .bitwise_builtin
+                            .try_into()
+                            .unwrap(),
+                        ecdsa: e.builtin_instance_counter.ecdsa_builtin.try_into().unwrap(),
+                        ec_op: e.builtin_instance_counter.ec_op_builtin.try_into().unwrap(),
+                        pedersen: e
+                            .builtin_instance_counter
+                            .pedersen_builtin
+                            .try_into()
+                            .unwrap(),
+                        range_check: e
+                            .builtin_instance_counter
+                            .range_check_builtin
+                            .try_into()
+                            .unwrap(),
+                        poseidon: e
+                            .builtin_instance_counter
+                            .poseidon_builtin
+                            .try_into()
+                            .unwrap(),
+                        keccak: e
+                            .builtin_instance_counter
+                            .keccak_builtin
+                            .try_into()
+                            .unwrap(),
+                        output: e
+                            .builtin_instance_counter
+                            .output_builtin
+                            .try_into()
+                            .unwrap(),
+                        segment_arena: e
+                            .builtin_instance_counter
+                            .segment_arena_builtin
+                            .try_into()
+                            .unwrap(),
+                    },
+                    steps: e.n_steps.try_into().unwrap(),
+                    memory_holes: e.n_memory_holes.try_into().unwrap(),
+                }
+            },
+            revert_reason: self.1.revert_error.unwrap_or_default(),
+            consumed_message: self.1.l1_to_l2_consumed_message.map(|x| MessageToL2 {
+                from_address: EthereumAddress(x.from_address.0),
+                payload: x.payload.into_iter().map(|p| p.0).collect(),
+                to_address: x.to_address.0,
+                entry_point_selector: x.selector.0,
+                // TODO option?
+                nonce: x.nonce.unwrap_or_default().0,
+            }),
+        };
+
+        match self.0 {
+            gw::Transaction::Declare(_) => Declare(DeclareTransactionReceipt { common }),
+            gw::Transaction::Deploy(x) => Deploy(DeployTransactionReceipt {
+                common,
+                contract_address: x.contract_address.0,
+            }),
+            gw::Transaction::DeployAccount(x) => DeployAccount(DeployAccountTransactionReceipt {
+                common,
+                contract_address: x.contract_address.0,
+            }),
+            gw::Transaction::Invoke(_) => Invoke(InvokeTransactionReceipt { common }),
+            gw::Transaction::L1Handler(_) => L1Handler(L1HandlerTransactionReceipt {
+                common,
+                msg_hash: Hash(Felt::ZERO), // TODO what is this
             }),
         }
     }

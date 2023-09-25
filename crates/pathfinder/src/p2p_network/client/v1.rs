@@ -1,4 +1,8 @@
 pub mod conv {
+    use p2p_proto_v1::receipt::{
+        DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
+        InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1,
+    };
     use pathfinder_common::{
         state_update::SystemContractUpdate,
         transaction::{
@@ -7,10 +11,12 @@ pub mod conv {
             L1HandlerTransaction, TransactionVariant,
         },
         BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, Fee, GasPrice,
+        ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EthereumAddress, Fee,
+        GasPrice, L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem,
         SequencerAddress, StarknetVersion, StorageAddress, StorageValue, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
+    use starknet_gateway_types::reply::transaction as gw;
     use std::{collections::HashMap, time::SystemTime};
 
     pub trait TryFromProto<T> {
@@ -58,6 +64,16 @@ pub mod conv {
         /// We don't explicitly know if it's one or the other
         pub class: Option<ClassHash>,
         pub nonce: Option<ContractNonce>,
+    }
+
+    /// Represents a simplified receipt (events excluded).
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Receipt {
+        pub actual_fee: Fee,
+        pub execution_resources: gw::ExecutionResources,
+        pub l1_to_l2_consumed_message: Option<gw::L1ToL2Message>,
+        pub l2_to_l1_messages: Vec<gw::L2ToL1Message>,
+        pub revert_error: Option<String>,
     }
 
     impl From<pathfinder_common::StateUpdate> for StateUpdate {
@@ -279,6 +295,80 @@ pub mod conv {
                     version: TransactionVersion::ZERO,
                 }),
             })
+        }
+    }
+
+    impl TryFromProto<p2p_proto_v1::receipt::Receipt> for Receipt {
+        fn try_from_proto(proto: p2p_proto_v1::receipt::Receipt) -> anyhow::Result<Self>
+        where
+            Self: Sized,
+        {
+            use p2p_proto_v1::receipt::Receipt::{
+                Declare, Deploy, DeployAccount, Invoke, L1Handler,
+            };
+
+            match proto {
+                Invoke(InvokeTransactionReceipt { common })
+                | Declare(DeclareTransactionReceipt { common })
+                | L1Handler(L1HandlerTransactionReceipt { common, .. })
+                | Deploy(DeployTransactionReceipt { common, .. })
+                | DeployAccount(DeployAccountTransactionReceipt { common, .. }) => Ok(Self {
+                    actual_fee: Fee(common.actual_fee),
+                    execution_resources: gw::ExecutionResources {
+                        builtin_instance_counter: gw::BuiltinCounters {
+                            output_builtin: common.execution_resources.builtins.output.into(),
+                            pedersen_builtin: common.execution_resources.builtins.pedersen.into(),
+                            range_check_builtin: common
+                                .execution_resources
+                                .builtins
+                                .range_check
+                                .into(),
+                            ecdsa_builtin: common.execution_resources.builtins.ecdsa.into(),
+                            bitwise_builtin: common.execution_resources.builtins.bitwise.into(),
+                            ec_op_builtin: common.execution_resources.builtins.ec_op.into(),
+                            keccak_builtin: common.execution_resources.builtins.keccak.into(),
+                            poseidon_builtin: common.execution_resources.builtins.poseidon.into(),
+                            segment_arena_builtin: common
+                                .execution_resources
+                                .builtins
+                                .segment_arena
+                                .into(),
+                        },
+                        n_steps: common.execution_resources.steps.into(),
+                        n_memory_holes: common.execution_resources.memory_holes.into(),
+                    },
+                    l1_to_l2_consumed_message: match common.consumed_message {
+                        Some(x) => Some(gw::L1ToL2Message {
+                            from_address: EthereumAddress(x.from_address.0),
+                            payload: x
+                                .payload
+                                .into_iter()
+                                .map(L1ToL2MessagePayloadElem)
+                                .collect(),
+                            selector: EntryPoint(x.entry_point_selector),
+                            to_address: ContractAddress::new(x.to_address).ok_or_else(|| {
+                                anyhow::anyhow!("Invalid contract address > u32::MAX")
+                            })?,
+                            nonce: Some(L1ToL2MessageNonce(x.nonce)),
+                        }),
+                        None => None,
+                    },
+                    l2_to_l1_messages: common
+                        .messages_sent
+                        .into_iter()
+                        .map(|x| gw::L2ToL1Message {
+                            from_address: ContractAddress(x.from_address),
+                            payload: x
+                                .payload
+                                .into_iter()
+                                .map(L2ToL1MessagePayloadElem)
+                                .collect(),
+                            to_address: EthereumAddress(x.to_address.0),
+                        })
+                        .collect(),
+                    revert_error: (!common.revert_reason.is_empty()).then(|| common.revert_reason),
+                }),
+            }
         }
     }
 }

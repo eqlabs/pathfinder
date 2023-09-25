@@ -25,13 +25,15 @@ message MessageToL2 {
 message Receipt {
   message ExecutionResources {
     message BuiltinCounter {
-      uint32 bitwise     = 1;
-      uint32 ecdsa       = 2;
-      uint32 ec_op       = 3;
-      uint32 pedersen    = 4;
-      uint32 range_check = 5;
-      uint32 poseidon    = 6;
-      uint32 keccak      = 7;
+      uint32 bitwise       = 1;
+      uint32 ecdsa         = 2;
+      uint32 ec_op         = 3;
+      uint32 pedersen      = 4;
+      uint32 range_check   = 5;
+      uint32 poseidon      = 6;
+      uint32 keccak        = 7;
+      uint32 output        = 8;
+      uint32 segment_arena = 9;
     }
 
     BuiltinCounter builtins     = 1;
@@ -45,6 +47,8 @@ message Receipt {
     repeated MessageToL1    messages_sent       = 3;
     ExecutionResources      execution_resources = 4;
     string                  revert_reason       = 5;
+    // FIXME this was missing
+    optional MessageToL2    consumed_message    = 6;
   }
 
 
