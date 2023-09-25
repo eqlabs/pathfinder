@@ -77,7 +77,7 @@ pub async fn trace_transaction(
     context: RpcContext,
     input: TraceTransactionInput,
 ) -> Result<TraceTransactionOutput, TraceTransactionError> {
-    let (transactions, block_hash, gas_price): (Vec<Transaction>, BlockHash, Option<U256>) = {
+    let (transactions, parent_block_hash, gas_price): (Vec<Transaction>, BlockHash, Option<U256>) = {
         let span = tracing::Span::current();
 
         let storage = context.storage.clone();
@@ -91,9 +91,15 @@ pub async fn trace_transaction(
                 .transaction_block_hash(input.transaction_hash)?
                 .ok_or(TraceTransactionError::InvalidTxnHash)?;
 
-            let gas_price: Option<U256> = tx
-                .block_header(pathfinder_storage::BlockId::Hash(block_hash))?
-                .map(|header| U256::from(header.gas_price.0));
+            let header = tx.block_header(pathfinder_storage::BlockId::Hash(block_hash))?;
+
+            let parent_block_hash = header
+                .as_ref()
+                .map(|h| h.parent_hash)
+                .ok_or(TraceTransactionError::InvalidTxnHash)?;
+
+            let gas_price: Option<U256> =
+                header.as_ref().map(|header| U256::from(header.gas_price.0));
 
             let (transactions, _): (Vec<_>, Vec<_>) = tx
                 .transaction_data_for_block(pathfinder_storage::BlockId::Hash(block_hash))?
@@ -106,13 +112,13 @@ pub async fn trace_transaction(
                 .map(|transaction| compose_executor_transaction(transaction, &tx))
                 .collect::<anyhow::Result<Vec<_>, _>>()?;
 
-            Ok::<_, TraceTransactionError>((transactions, block_hash, gas_price))
+            Ok::<_, TraceTransactionError>((transactions, parent_block_hash, gas_price))
         })
         .await
         .context("trace_transaction: fetch & map the transaction")??
     };
 
-    let block_id = BlockId::Hash(block_hash);
+    let block_id = BlockId::Hash(parent_block_hash);
     let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
 
     let span = tracing::Span::current();

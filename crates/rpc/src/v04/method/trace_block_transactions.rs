@@ -60,7 +60,7 @@ pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
-    let (transactions, gas_price): (Vec<_>, Option<U256>) = {
+    let (transactions, gas_price, parent_block_hash): (Vec<_>, Option<U256>, BlockHash) = {
         let span = tracing::Span::current();
 
         let storage = context.storage.clone();
@@ -70,9 +70,15 @@ pub async fn trace_block_transactions(
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
-            let gas_price: Option<U256> = tx
-                .block_header(pathfinder_storage::BlockId::Hash(input.block_hash))?
-                .map(|header| U256::from(header.gas_price.0));
+            let header = tx.block_header(pathfinder_storage::BlockId::Hash(input.block_hash))?;
+
+            let parent_block_hash = header
+                .as_ref()
+                .map(|h| h.parent_hash)
+                .ok_or(TraceBlockTransactionsError::InvalidBlockHash)?;
+
+            let gas_price: Option<U256> =
+                header.as_ref().map(|header| U256::from(header.gas_price.0));
 
             let (transactions, _): (Vec<_>, Vec<_>) = tx
                 .transaction_data_for_block(BlockId::Hash(input.block_hash))?
@@ -85,13 +91,13 @@ pub async fn trace_block_transactions(
                 .map(|transaction| compose_executor_transaction(transaction, &tx))
                 .collect::<anyhow::Result<Vec<_>, _>>()?;
 
-            Ok::<_, TraceBlockTransactionsError>((transactions, gas_price))
+            Ok::<_, TraceBlockTransactionsError>((transactions, gas_price, parent_block_hash))
         })
         .await
         .context("trace_block_transactions: fetch block & transactions")??
     };
 
-    let block_id = pathfinder_common::BlockId::Hash(input.block_hash);
+    let block_id = pathfinder_common::BlockId::Hash(parent_block_hash);
     let execution_state = crate::executor::execution_state(context, block_id, gas_price).await?;
 
     let span = tracing::Span::current();
@@ -116,7 +122,7 @@ pub async fn trace_block_transactions(
 #[cfg(test)]
 pub(crate) mod tests {
     use pathfinder_common::{
-        felt, BlockHeader, ChainId, SierraHash, TransactionIndex, TransactionNonce,
+        felt, BlockHeader, ChainId, GasPrice, SierraHash, TransactionIndex, TransactionNonce,
     };
     use starknet_gateway_types::reply::{
         self as gateway,
@@ -264,9 +270,25 @@ pub(crate) mod tests {
             .transaction_trace,
         ];
 
-        {
+        let next_block_header = {
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
+
+            tx.insert_sierra_class(
+                &SierraHash(fixtures::SIERRA_HASH.0),
+                fixtures::SIERRA_DEFINITION,
+                &fixtures::CASM_HASH,
+                fixtures::CASM_DEFINITION,
+                "compiler version",
+            )?;
+
+            let next_block_header = BlockHeader::builder()
+                .with_number(last_block_header.number + 1)
+                .with_gas_price(GasPrice(1))
+                .with_parent_hash(last_block_header.hash)
+                .finalize_with_hash(BlockHash(felt!("0x1")));
+            tx.insert_block_header(&next_block_header)?;
+
             let dummy_receipt: Receipt = Receipt {
                 actual_fee: None,
                 events: vec![],
@@ -279,23 +301,18 @@ pub(crate) mod tests {
                 revert_error: None,
             };
             tx.insert_transaction_data(
-                last_block_header.hash,
-                last_block_header.number,
+                next_block_header.hash,
+                next_block_header.number,
                 &[
                     (transactions[0].clone().into(), dummy_receipt.clone()),
                     (transactions[1].clone().into(), dummy_receipt.clone()),
                     (transactions[2].clone().into(), dummy_receipt.clone()),
                 ],
             )?;
-            tx.insert_sierra_class(
-                &SierraHash(fixtures::SIERRA_HASH.0),
-                fixtures::SIERRA_DEFINITION,
-                &fixtures::CASM_HASH,
-                fixtures::CASM_DEFINITION,
-                "compiler version",
-            )?;
             tx.commit()?;
-        }
+
+            next_block_header
+        };
 
         let traces = vec![
             Trace {
@@ -313,15 +330,15 @@ pub(crate) mod tests {
             },
         ];
 
-        Ok((context, last_block_header, traces))
+        Ok((context, next_block_header, traces))
     }
 
     #[tokio::test]
     async fn test_multiple_transactions() -> anyhow::Result<()> {
-        let (context, last_block_header, traces) = setup_multi_tx_trace_test().await?;
+        let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
-            block_hash: last_block_header.hash,
+            block_hash: next_block_header.hash,
         };
         let output = trace_block_transactions(context, input).await.unwrap();
         let expected = TraceBlockTransactionsOutput(traces);
