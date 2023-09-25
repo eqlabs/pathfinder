@@ -191,6 +191,10 @@ impl<'inner> Transaction<'inner> {
         event::get_events(self, filter)
     }
 
+    pub fn event_count_for_block(&self, block: BlockId) -> anyhow::Result<usize> {
+        event::event_count_for_block(self, block)
+    }
+
     pub fn insert_sierra_class(
         &self,
         sierra_hash: &SierraHash,

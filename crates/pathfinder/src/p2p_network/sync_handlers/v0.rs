@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
-use pathfinder_storage::{Storage, Transaction, V03KeyFilter};
+use pathfinder_storage::{Storage, Transaction};
 
 #[cfg(not(test))]
 const MAX_HEADERS_COUNT: u64 = 1000;
@@ -103,13 +103,7 @@ fn block_headers(
             .try_into()
             .context("Number of transactions exceeds 32 bits")?;
 
-        // TODO check if there are faster ways to do this
-        let event_count = tx.event_count(
-            block_number.into(),
-            block_number.into(),
-            None,
-            &V03KeyFilter::new(vec![]),
-        )?;
+        let event_count = tx.event_count_for_block(block_number.into())?;
 
         headers.push(conv::header::from(
             header,

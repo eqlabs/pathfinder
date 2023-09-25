@@ -1,5 +1,5 @@
 use crate::params::ToSql;
-use crate::prelude::*;
+use crate::{prelude::*, BlockId};
 
 use anyhow::Context;
 use pathfinder_common::event::Event;
@@ -90,6 +90,39 @@ pub(super) fn insert_events(
         .context("Insert events into events table")?;
     }
     Ok(())
+}
+
+pub(super) fn event_count_for_block(tx: &Transaction<'_>, block: BlockId) -> anyhow::Result<usize> {
+    match block {
+        BlockId::Number(number) => tx
+            .inner()
+            .query_row(
+                "SELECT COUNT(*) FROM starknet_events
+                WHERE block_number = ?1",
+                params![&number],
+                |row| row.get(0),
+            )
+            .context("Counting events"),
+        BlockId::Hash(hash) => tx
+            .inner()
+            .query_row(
+                "SELECT COUNT(*) FROM starknet_events
+                JOIN block_headers ON starknet_events.block_number = block_headers.number
+                WHERE block_headers.hash = ?1",
+                params![&hash],
+                |row| row.get(0),
+            )
+            .context("Counting transactions"),
+        BlockId::Latest => {
+            // First get the latest block
+            let block = match tx.block_id(BlockId::Latest)? {
+                Some((number, _)) => number,
+                None => return Ok(0),
+            };
+
+            event_count_for_block(tx, block.into())
+        }
+    }
 }
 
 pub(super) fn get_events<K: KeyFilter>(
@@ -1147,5 +1180,27 @@ mod tests {
             ),
             None => assert_eq!(result, None),
         }
+    }
+
+    #[test]
+    fn event_count_for_block() {
+        let (storage, test_data) = test_utils::setup_test_storage();
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        assert_eq!(
+            tx.event_count_for_block(BlockId::Latest).unwrap(),
+            test_utils::EVENTS_PER_BLOCK
+        );
+        assert_eq!(
+            tx.event_count_for_block(BlockId::Number(BlockNumber::new_or_panic(1)))
+                .unwrap(),
+            test_utils::EVENTS_PER_BLOCK
+        );
+        assert_eq!(
+            tx.event_count_for_block(BlockId::Hash(test_data.headers.first().unwrap().hash))
+                .unwrap(),
+            test_utils::EVENTS_PER_BLOCK
+        );
     }
 }
