@@ -49,6 +49,8 @@ pub mod execution_resources {
         pub range_check: u32,
         pub poseidon: u32,
         pub keccak: u32,
+        pub output: u32,
+        pub segment_arena: u32,
     }
 }
 
@@ -60,6 +62,8 @@ pub struct ReceiptCommon {
     pub messages_sent: Vec<MessageToL1>,
     pub execution_resources: ExecutionResources,
     pub revert_reason: String,
+    #[optional]
+    pub consumed_message: Option<MessageToL2>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

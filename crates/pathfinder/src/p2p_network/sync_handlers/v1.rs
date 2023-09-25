@@ -5,7 +5,7 @@ use p2p_proto_v1::block::{
 };
 use p2p_proto_v1::common::{Direction, Hash, Iteration, Step};
 use p2p_proto_v1::event::{EventsRequest, EventsResponse};
-use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponse};
+use p2p_proto_v1::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
 use p2p_proto_v1::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
 };
@@ -255,7 +255,47 @@ pub(crate) fn receipts(
     tx: Transaction<'_>,
     request: ReceiptsRequest,
 ) -> anyhow::Result<Vec<ReceiptsResponse>> {
-    todo!()
+    let ReceiptsRequest {
+        iteration:
+            Iteration {
+                start_block,
+                direction,
+                limit,
+                step,
+            },
+    } = request;
+
+    let mut next_block_number = BlockNumber::new(start_block);
+    let mut limit = limit.min(MAX_BLOCKS_COUNT);
+
+    let mut responses = Vec::new();
+
+    while let Some(block_number) = next_block_number {
+        if limit == 0 {
+            break;
+        }
+
+        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+            break;
+        };
+
+        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+            break;
+        };
+
+        responses.push(ReceiptsResponse {
+            block_number: block_number.get(),
+            block_hash: Hash(block_hash.0),
+            kind: ReceiptsResponseKind::Receipts(Receipts {
+                items: txn_data.into_iter().map(|x| x.to_proto()).collect(),
+            }),
+        });
+
+        limit -= 1;
+        next_block_number = get_next_block_number(block_number, step, direction);
+    }
+
+    Ok(responses)
 }
 
 pub(crate) fn events(
