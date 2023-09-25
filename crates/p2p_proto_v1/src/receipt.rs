@@ -142,6 +142,22 @@ impl<T> Dummy<T> for EthereumAddress {
     }
 }
 
+impl ReceiptsResponseKind {
+    pub fn into_receipts(self) -> Option<Receipts> {
+        match self {
+            Self::Receipts(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn into_fin(self) -> Option<Fin> {
+        match self {
+            Self::Fin(f) => Some(f),
+            _ => None,
+        }
+    }
+}
+
 impl ToProtobuf<proto::receipt::EthereumAddress> for EthereumAddress {
     fn to_protobuf(self) -> proto::receipt::EthereumAddress {
         proto::receipt::EthereumAddress {

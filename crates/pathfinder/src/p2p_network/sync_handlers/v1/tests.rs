@@ -90,13 +90,14 @@ mod empty_reply {
 
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
-    use crate::p2p_network::client::v1::conv::{BlockHeader, StateUpdate, TryFromProto};
-    use crate::p2p_network::sync_handlers::v1::{bodies, headers, transactions};
+    use crate::p2p_network::client::v1::conv::{self as simplified, TryFromProto};
+    use crate::p2p_network::sync_handlers::v1::{bodies, headers, receipts, transactions};
     use p2p_proto_v1::block::{BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest};
     use p2p_proto_v1::common::Iteration;
+    use p2p_proto_v1::receipt::ReceiptsRequest;
     use p2p_proto_v1::transaction::TransactionsRequest;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
-    use pathfinder_common::{BlockNumber, ClassHash};
+    use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
     use proptest::prelude::*;
     use std::collections::HashMap;
 
@@ -118,7 +119,7 @@ mod prop {
             let actual = replies.into_iter().map(|reply | {
                 let header = reply.header_message.into_header().unwrap();
                 assert_eq!(reply.block_number, header.number);
-                BlockHeader::try_from_proto(header).unwrap()
+                simplified::BlockHeader::try_from_proto(header).unwrap()
             }).collect::<Vec<_>>();
 
             prop_assert_eq!(actual, expected);
@@ -140,7 +141,7 @@ mod prop {
                         (state_update.into(),
                         cairo_defs.into_iter().chain(sierra_defs.into_iter().map(|(h, d)| (ClassHash(h.0), d))).collect())
                     )
-            ).collect::<HashMap<BlockNumber, (StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
+            ).collect::<HashMap<BlockNumber, (simplified::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start_block, limit, step, direction, } };
             let mut replies = bodies(tx, request).unwrap().into_iter();
@@ -149,7 +150,7 @@ mod prop {
             while let Some(reply) = replies.next() {
                 match reply.body_message {
                     BlockBodyMessage::Diff(d) => {
-                        let state_update = StateUpdate::try_from_proto(d).unwrap();
+                        let state_update = simplified::StateUpdate::try_from_proto(d).unwrap();
                         actual.insert(BlockNumber::new(reply.block_number).unwrap(), (state_update, HashMap::new()));
                     },
                     BlockBodyMessage::Classes(c) => {
@@ -204,16 +205,58 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the transactions that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(_, tr, _, _, _)|
-                    tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t)).variant).collect::<Vec<_>>()
+                .map(|(h, tr, _, _, _)|
+                    (
+                        h.number,
+                        h.hash,
+                        tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t)).variant).collect::<Vec<_>>()
+                    )
             ).collect::<Vec<_>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start_block, limit, step, direction, } };
             let replies = transactions(tx, request).unwrap();
             // Extract transactions from the replies
             let actual = replies.into_iter().map(|reply | {
-                let transactions = reply.kind.into_transactions().unwrap();
-                transactions.items.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
+                let transactions = reply.kind.into_transactions().unwrap().items;
+                (
+                    BlockNumber::new(reply.block_number).unwrap(),
+                    BlockHash(reply.block_hash.0),
+                    transactions.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
+                )
+            }).collect::<Vec<_>>();
+
+            prop_assert_eq!(actual, expected);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn get_receipts((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+            // Compute the overlapping set between the db and the request
+            // These are the transactions that we expect to be read from the db
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(h, tr, _, _, _)|
+                    (
+                        h.number,
+                        h.hash,
+                        tr.into_iter().map(|(_, r)| r.into()).collect::<Vec<_>>()
+                    )
+            ).collect::<Vec<_>>();
+            // Run the handler
+            let request = ReceiptsRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let replies = receipts(tx, request).unwrap();
+            // Extract transactions from the replies
+            let actual = replies.into_iter().map(|reply | {
+                let receipts = reply.kind.into_receipts().unwrap().items;
+                (
+                    BlockNumber::new(reply.block_number).unwrap(),
+                    BlockHash(reply.block_hash.0),
+                    receipts.into_iter().map(|r| simplified::Receipt::try_from_proto(r).unwrap()).collect::<Vec<_>>()
+                )
             }).collect::<Vec<_>>();
 
             prop_assert_eq!(actual, expected);

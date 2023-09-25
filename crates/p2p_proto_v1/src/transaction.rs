@@ -214,7 +214,7 @@ impl TransactionsResponseKind {
 
     pub fn into_fin(self) -> Option<Fin> {
         match self {
-            Self::Fin(t) => Some(t),
+            Self::Fin(f) => Some(f),
             _ => None,
         }
     }
