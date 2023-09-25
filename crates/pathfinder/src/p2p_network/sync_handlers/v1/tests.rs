@@ -166,7 +166,31 @@ mod prop {
                 }
             }
 
-            pretty_assertions::assert_eq!(actual, expected);
+            prop_assert_eq!(actual, expected);
+        }
+    }
+
+    mod workaround {
+        use pathfinder_common::{TransactionNonce, TransactionVersion};
+        use starknet_gateway_types::reply::transaction as gw;
+
+        // Align with the deserialization workaround to avoid false negative mismatches
+        pub fn for_legacy_l1_handlers(tx: gw::Transaction) -> gw::Transaction {
+            match tx {
+                gw::Transaction::Invoke(gw::InvokeTransaction::V0(tx))
+                    if tx.entry_point_type == Some(gw::EntryPointType::L1Handler) =>
+                {
+                    gw::Transaction::L1Handler(gw::L1HandlerTransaction {
+                        contract_address: tx.sender_address,
+                        entry_point_selector: tx.entry_point_selector,
+                        nonce: TransactionNonce::ZERO,
+                        calldata: tx.calldata,
+                        transaction_hash: tx.transaction_hash,
+                        version: TransactionVersion::ZERO,
+                    })
+                }
+                x => x,
+            }
         }
     }
 
@@ -181,7 +205,7 @@ mod prop {
             // These are the transactions that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(_, tr, _, _, _)|
-                    tr.into_iter().map(|(t, _)| Transaction::from(t).variant).collect::<Vec<_>>()
+                    tr.into_iter().map(|(t, _)| Transaction::from(workaround::for_legacy_l1_handlers(t)).variant).collect::<Vec<_>>()
             ).collect::<Vec<_>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start_block, limit, step, direction, } };
@@ -192,7 +216,8 @@ mod prop {
                 transactions.items.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
             }).collect::<Vec<_>>();
 
-            prop_assert_eq!(actual, expected);
+            pretty_assertions::assert_eq!(actual, expected);
+            // prop_assert_eq!(actual, expected);
         }
     }
 

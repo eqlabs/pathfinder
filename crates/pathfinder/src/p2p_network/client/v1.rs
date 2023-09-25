@@ -170,8 +170,8 @@ pub mod conv {
                 DeclareV0(x) => TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
                     class_hash: ClassHash(x.class_hash.0),
                     max_fee: Fee(x.max_fee),
-                    nonce: TransactionNonce::ZERO, // TODO checkme
-                    sender_address: ContractAddress::ZERO, // TODO checkme,
+                    nonce: TransactionNonce(x.nonce),
+                    sender_address: ContractAddress(x.sender.0),
                     signature: x
                         .signature
                         .parts
@@ -269,7 +269,14 @@ pub mod conv {
                     entry_point_selector: EntryPoint(x.entry_point_selector),
                     nonce: TransactionNonce(x.nonce),
                     calldata: x.calldata.into_iter().map(CallParam).collect(),
-                    version: TransactionVersion::ONE,
+                    // TODO there's a bug in the spec, all available L1 handler transactions up to now (Sep '23)
+                    // carry version 0
+                    // e.g.
+                    // @block 10k
+                    // https://alpha-mainnet.starknet.io/feeder_gateway/get_transaction?transactionHash=0x02e42cd5f71a2b09547083f82e267ac2f37ba71e09fa868ffce90d141531c3ba
+                    // @block ~261k
+                    // https://alpha-mainnet.starknet.io/feeder_gateway/get_transaction?transactionHash=0x02e42cd5f71a2b09547083f82e267ac2f37ba71e09fa868ffce90d141531c3ba
+                    version: TransactionVersion::ZERO,
                 }),
             })
         }

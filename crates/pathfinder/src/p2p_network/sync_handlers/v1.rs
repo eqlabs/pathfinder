@@ -6,7 +6,9 @@ use p2p_proto_v1::block::{
 use p2p_proto_v1::common::{Direction, Hash, Iteration, Step};
 use p2p_proto_v1::event::{EventsRequest, EventsResponse};
 use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponse};
-use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto_v1::transaction::{
+    Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
+};
 use p2p_proto_v1::{MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD};
 use pathfinder_common::{BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
@@ -201,7 +203,52 @@ pub(crate) fn transactions(
     tx: Transaction<'_>,
     request: TransactionsRequest,
 ) -> anyhow::Result<Vec<TransactionsResponse>> {
-    todo!()
+    let TransactionsRequest {
+        iteration:
+            Iteration {
+                start_block,
+                direction,
+                limit,
+                step,
+            },
+    } = request;
+
+    let mut next_block_number = BlockNumber::new(start_block);
+    let mut limit = limit.min(MAX_BLOCKS_COUNT);
+
+    let mut responses = Vec::new();
+
+    while let Some(block_number) = next_block_number {
+        if limit == 0 {
+            break;
+        }
+
+        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+            break;
+        };
+
+        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+            break;
+        };
+
+        responses.push(TransactionsResponse {
+            block_number: block_number.get(),
+            block_hash: Hash(block_hash.0),
+            kind: TransactionsResponseKind::Transactions(Transactions {
+                items: txn_data
+                    .into_iter()
+                    .map(|(txn, _)| {
+                        pathfinder_common::transaction::Transaction::from(txn).to_proto()
+                    })
+                    .collect(),
+            }),
+        });
+
+        limit -= 1;
+        next_block_number = get_next_block_number(block_number, step, direction);
+    }
+
+    Ok(responses)
 }
 
 pub(crate) fn receipts(

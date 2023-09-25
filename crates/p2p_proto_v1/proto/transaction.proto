@@ -20,6 +20,10 @@ message Transaction
         starknet.common.Felt252 max_fee    = 2;
         AccountSignature        signature  = 3;
         starknet.common.Hash    class_hash = 4;
+        // FIXME added missing field
+        // example:
+        // https://alpha4.starknet.io/feeder_gateway/get_transaction?transactionHash=0x6d346ba207eb124355960c19c737698ad37a3c920a588b741e0130ff5bd4d6d
+        starknet.common.Felt252 nonce      = 5;
     }
 
     message DeclareV1 {
@@ -146,6 +150,7 @@ message Transaction
         InvokeV0        invoke_v0         = 8;
         InvokeV1        invoke_v1         = 9;
         InvokeV3        invoke_v3         = 10;
+        // FIXME as of Sep '23 there are only V0 transactions
         L1HandlerV1     l1_handler        = 11;
     }
 }
