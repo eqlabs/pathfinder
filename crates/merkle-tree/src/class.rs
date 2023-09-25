@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
-use pathfinder_storage::{ClassTrieReader, Transaction};
+use pathfinder_storage::{ClassTrieReader, Node, Transaction};
 use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
@@ -19,19 +18,16 @@ pub struct ClassCommitmentTree<'tx> {
 }
 
 impl<'tx> ClassCommitmentTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
+    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
         let storage = transaction.class_trie_reader();
+        let tree = MerkleTree::empty();
 
-        let tree = if root.0.is_zero() {
-            MerkleTree::empty()
-        } else {
-            // TODO: remove unwrap.
-            let root = storage
-                .get_root(root.0)
-                .expect("query class root should succeed")
-                .expect("class root should exist");
-            MerkleTree::new(root)
-        };
+        Self { tree, storage }
+    }
+
+    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
+        let storage = transaction.class_trie_reader();
+        let tree = MerkleTree::new(root);
 
         Self { tree, storage }
     }
@@ -52,7 +48,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, TrieNode>)> {
+    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, Node>)> {
         let update = self.tree.commit(&self.storage)?;
 
         let commitment = ClassCommitment(update.root);

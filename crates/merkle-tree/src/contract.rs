@@ -14,7 +14,7 @@ use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, StorageAddress, StorageCommitment,
     StorageValue,
 };
-use pathfinder_storage::{ContractTrieReader, StorageTrieReader, Transaction};
+use pathfinder_storage::{ContractTrieReader, Node, StorageTrieReader, Transaction};
 use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -30,18 +30,16 @@ pub struct ContractsStorageTree<'tx> {
 }
 
 impl<'tx> ContractsStorageTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> Self {
+    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
         let storage = transaction.contract_trie_reader();
-        let tree = if root.0.is_zero() {
-            MerkleTree::empty()
-        } else {
-            // TODO: remove unwrap.
-            let root = storage
-                .get_root(root.0)
-                .expect("query contract root should succeed")
-                .expect("contract root should exist");
-            MerkleTree::new(root)
-        };
+        let tree = MerkleTree::empty();
+
+        Self { tree, storage }
+    }
+
+    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
+        let storage = transaction.contract_trie_reader();
+        let tree = MerkleTree::new(root);
 
         Self { tree, storage }
     }
@@ -68,7 +66,7 @@ impl<'tx> ContractsStorageTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, TrieNode>)> {
+    pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, Node>)> {
         let update = self.tree.commit(&self.storage)?;
         let commitment = ContractRoot(update.root);
         Ok((commitment, update.nodes))
@@ -94,18 +92,16 @@ pub struct StorageCommitmentTree<'tx> {
 }
 
 impl<'tx> StorageCommitmentTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: StorageCommitment) -> Self {
+    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
         let storage = transaction.storage_trie_reader();
-        let tree = if root.0.is_zero() {
-            MerkleTree::empty()
-        } else {
-            // TODO: remove unwrap.
-            let root = storage
-                .get_root(root.0)
-                .expect("query storage root should succeed")
-                .expect("storage root should exist");
-            MerkleTree::new(root)
-        };
+        let tree = MerkleTree::empty();
+
+        Self { tree, storage }
+    }
+
+    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
+        let storage = transaction.storage_trie_reader();
+        let tree = MerkleTree::new(root);
 
         Self { tree, storage }
     }
@@ -130,7 +126,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, TrieNode>)> {
+    pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, Node>)> {
         let update = self.tree.commit(&self.storage)?;
         let commitment = StorageCommitment(update.root);
         Ok((commitment, update.nodes))

@@ -31,6 +31,10 @@ impl crate::storage::Storage for NullStorage {
     fn get(&self, _: u32) -> anyhow::Result<Option<StoredNode>> {
         Ok(None)
     }
+
+    fn hash(&self, _: u32) -> anyhow::Result<Option<Felt>> {
+        Ok(None)
+    }
 }
 
 impl TransactionOrEventTree {

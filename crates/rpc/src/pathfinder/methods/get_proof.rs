@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use anyhow::{anyhow, Context};
 use pathfinder_common::trie::TrieNode;
 use serde::{Deserialize, Serialize};
@@ -146,112 +148,113 @@ pub async fn get_proof(
     context: RpcContext,
     input: GetProofInput,
 ) -> Result<GetProofOutput, GetProofError> {
-    const MAX_KEYS: usize = 100;
-    if input.keys.len() > MAX_KEYS {
-        return Err(GetProofError::ProofLimitExceeded {
-            limit: MAX_KEYS as u32,
-            requested: input.keys.len() as u32,
-        });
-    }
+    todo!()
+    // const MAX_KEYS: usize = 100;
+    // if input.keys.len() > MAX_KEYS {
+    //     return Err(GetProofError::ProofLimitExceeded {
+    //         limit: MAX_KEYS as u32,
+    //         requested: input.keys.len() as u32,
+    //     });
+    // }
 
-    let block_id = match input.block_id {
-        BlockId::Pending => {
-            return Err(GetProofError::Internal(anyhow!(
-                "'pending' is not currently supported by this method!"
-            )))
-        }
-        other => other.try_into().expect("Only pending cast should fail"),
-    };
+    // let block_id = match input.block_id {
+    //     BlockId::Pending => {
+    //         return Err(GetProofError::Internal(anyhow!(
+    //             "'pending' is not currently supported by this method!"
+    //         )))
+    //     }
+    //     other => other.try_into().expect("Only pending cast should fail"),
+    // };
 
-    let storage = context.storage.clone();
-    let span = tracing::Span::current();
+    // let storage = context.storage.clone();
+    // let span = tracing::Span::current();
 
-    let jh = tokio::task::spawn_blocking(move || {
-        let _g = span.enter();
-        let mut db = storage
-            .connection()
-            .context("Opening database connection")?;
+    // let jh = tokio::task::spawn_blocking(move || {
+    //     let _g = span.enter();
+    //     let mut db = storage
+    //         .connection()
+    //         .context("Opening database connection")?;
 
-        let tx = db.transaction().context("Creating database transaction")?;
+    //     let tx = db.transaction().context("Creating database transaction")?;
 
-        // Use internal error to indicate that the process of querying for a particular block failed,
-        // which is not the same as being sure that the block is not in the db.
-        let (storage_commitment, class_commitment) = tx
-            .block_header(block_id)
-            .context("Fetching block header")?
-            .map(|header| (header.storage_commitment, header.class_commitment))
-            .ok_or(GetProofError::BlockNotFound)?;
+    //     // Use internal error to indicate that the process of querying for a particular block failed,
+    //     // which is not the same as being sure that the block is not in the db.
+    //     let (storage_commitment, class_commitment) = tx
+    //         .block_header(block_id)
+    //         .context("Fetching block header")?
+    //         .map(|header| (header.storage_commitment, header.class_commitment))
+    //         .ok_or(GetProofError::BlockNotFound)?;
 
-        let (state_commitment, class_commitment) = if class_commitment == ClassCommitment::ZERO {
-            (None, None)
-        } else {
-            (
-                Some(StateCommitment::calculate(
-                    storage_commitment,
-                    class_commitment,
-                )),
-                Some(class_commitment),
-            )
-        };
+    //     let (state_commitment, class_commitment) = if class_commitment == ClassCommitment::ZERO {
+    //         (None, None)
+    //     } else {
+    //         (
+    //             Some(StateCommitment::calculate(
+    //                 storage_commitment,
+    //                 class_commitment,
+    //             )),
+    //             Some(class_commitment),
+    //         )
+    //     };
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
+    //     let mut storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
 
-        // Generate a proof for this contract. If the contract does not exist, this will
-        // be a "non membership" proof.
-        let contract_proof = storage_commitment_tree.get_proof(&input.contract_address)?;
-        let contract_proof = ProofNodes(contract_proof);
+    //     // Generate a proof for this contract. If the contract does not exist, this will
+    //     // be a "non membership" proof.
+    //     let contract_proof = storage_commitment_tree.get_proof(&input.contract_address)?;
+    //     let contract_proof = ProofNodes(contract_proof);
 
-        let contract_state_hash = match storage_commitment_tree.get(input.contract_address)? {
-            Some(contract_state_hash) => contract_state_hash,
-            None => {
-                // Contract not found: return the proof of non membership that we generated earlier.
-                return Ok(GetProofOutput {
-                    state_commitment,
-                    class_commitment,
-                    contract_proof,
-                    contract_data: None,
-                });
-            }
-        };
+    //     let contract_state_hash = match storage_commitment_tree.get(input.contract_address)? {
+    //         Some(contract_state_hash) => contract_state_hash,
+    //         None => {
+    //             // Contract not found: return the proof of non membership that we generated earlier.
+    //             return Ok(GetProofOutput {
+    //                 state_commitment,
+    //                 class_commitment,
+    //                 contract_proof,
+    //                 contract_data: None,
+    //             });
+    //         }
+    //     };
 
-        let (contract_state_root, class_hash, nonce) = tx
-            .contract_state(contract_state_hash)
-            .context("Get contract state root and nonce")?
-            // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
-            .ok_or_else(|| -> GetProofError {
-                anyhow::anyhow!(
-                    "Root or nonce missing for state_hash={}",
-                    contract_state_hash
-                )
-                .into()
-            })?;
+    //     let (contract_state_root, class_hash, nonce) = tx
+    //         .contract_state(contract_state_hash)
+    //         .context("Get contract state root and nonce")?
+    //         // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
+    //         .ok_or_else(|| -> GetProofError {
+    //             anyhow::anyhow!(
+    //                 "Root or nonce missing for state_hash={}",
+    //                 contract_state_hash
+    //             )
+    //             .into()
+    //         })?;
 
-        let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
+    //     let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
 
-        let storage_proofs = input
-            .keys
-            .iter()
-            .map(|k| contract_state_tree.get_proof(k.view_bits()).map(ProofNodes))
-            .collect::<anyhow::Result<Vec<_>>>()
-            .context("Get proof from contract state treee")?;
+    //     let storage_proofs = input
+    //         .keys
+    //         .iter()
+    //         .map(|k| contract_state_tree.get_proof(k.view_bits()).map(ProofNodes))
+    //         .collect::<anyhow::Result<Vec<_>>>()
+    //         .context("Get proof from contract state treee")?;
 
-        let contract_data = ContractData {
-            class_hash,
-            nonce,
-            root: contract_state_root,
-            contract_state_hash_version: Felt::ZERO, // Currently, this is defined as 0. Might change in the future.
-            storage_proofs,
-        };
+    //     let contract_data = ContractData {
+    //         class_hash,
+    //         nonce,
+    //         root: contract_state_root,
+    //         contract_state_hash_version: Felt::ZERO, // Currently, this is defined as 0. Might change in the future.
+    //         storage_proofs,
+    //     };
 
-        Ok(GetProofOutput {
-            state_commitment,
-            class_commitment,
-            contract_proof,
-            contract_data: Some(contract_data),
-        })
-    });
+    //     Ok(GetProofOutput {
+    //         state_commitment,
+    //         class_commitment,
+    //         contract_proof,
+    //         contract_data: Some(contract_data),
+    //     })
+    // });
 
-    jh.await.context("Database read panic or shutting down")?
+    // jh.await.context("Database read panic or shutting down")?
 }
 
 #[cfg(test)]
