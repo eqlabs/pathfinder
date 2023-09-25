@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockNumber, CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash};
+use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash};
 
 use crate::{prelude::*, BlockId};
 
@@ -64,28 +64,6 @@ pub(super) fn insert_cairo_class(
         .execute(
             r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
             params![&cairo_hash, &definition],
-        )
-        .context("Inserting cairo definition")?;
-
-    Ok(())
-}
-
-pub(super) fn insert_cairo_class_at(
-    transaction: &Transaction<'_>,
-    cairo_hash: ClassHash,
-    definition: &[u8],
-    block_number: BlockNumber,
-) -> anyhow::Result<()> {
-    let mut compressor = zstd::bulk::Compressor::new(10).context("Creating zstd compressor")?;
-    let definition = compressor
-        .compress(definition)
-        .context("Compressing cairo definition")?;
-
-    transaction
-        .inner()
-        .execute(
-            r"INSERT OR IGNORE INTO class_definitions (hash,  definition, block_number) VALUES (?, ?, ?)",
-            params![&cairo_hash, &definition, &block_number],
         )
         .context("Inserting cairo definition")?;
 
