@@ -33,7 +33,9 @@ pub enum TraceTransactionError {
 impl From<ExecutionStateError> for TraceTransactionError {
     fn from(value: ExecutionStateError) -> Self {
         match value {
-            ExecutionStateError::BlockNotFound => Self::Internal(anyhow::anyhow!("Block not found")),
+            ExecutionStateError::BlockNotFound => {
+                Self::Internal(anyhow::anyhow!("Block not found"))
+            }
             ExecutionStateError::Internal(e) => Self::Internal(e),
         }
     }
@@ -43,7 +45,9 @@ impl From<CallError> for TraceTransactionError {
     fn from(value: CallError) -> Self {
         match value {
             CallError::ContractNotFound => Self::Internal(anyhow::anyhow!("Contract not found")),
-            CallError::InvalidMessageSelector => Self::Internal(anyhow::anyhow!("Invalid message selector")),
+            CallError::InvalidMessageSelector => {
+                Self::Internal(anyhow::anyhow!("Invalid message selector"))
+            }
             CallError::Reverted(reason) => Self::Internal(anyhow::anyhow!("Reverted: {reason}")),
             CallError::Internal(e) => Self::Internal(e),
         }
