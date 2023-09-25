@@ -196,7 +196,7 @@ impl ToProto<p2p_proto_v1::receipt::Receipt> for (gw::Transaction, gw::Receipt) 
         use p2p_proto_v1::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         let common = ReceiptCommon {
             transaction_hash: Hash(self.1.transaction_hash.0),
-            actual_fee: self.1.actual_fee.unwrap_or_default().0, // TODO optional?
+            actual_fee: self.1.actual_fee.unwrap_or_default().0,
             messages_sent: self
                 .1
                 .l2_to_l1_messages

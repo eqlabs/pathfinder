@@ -1,7 +1,7 @@
 pub mod conv {
     use p2p_proto_v1::receipt::{
         DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
-        InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1,
+        InvokeTransactionReceipt, L1HandlerTransactionReceipt,
     };
     use pathfinder_common::{
         state_update::SystemContractUpdate,
@@ -66,14 +66,41 @@ pub mod conv {
         pub nonce: Option<ContractNonce>,
     }
 
-    /// Represents a simplified receipt (events excluded).
+    /// Represents a simplified receipt (events and execution status excluded).
     #[derive(Clone, Debug, PartialEq)]
     pub struct Receipt {
         pub actual_fee: Fee,
         pub execution_resources: gw::ExecutionResources,
         pub l1_to_l2_consumed_message: Option<gw::L1ToL2Message>,
         pub l2_to_l1_messages: Vec<gw::L2ToL1Message>,
-        pub revert_error: Option<String>,
+        // Empty means not reverted
+        pub revert_error: String,
+    }
+
+    impl From<starknet_gateway_types::reply::transaction::Receipt> for Receipt {
+        fn from(r: starknet_gateway_types::reply::transaction::Receipt) -> Self {
+            Self {
+                actual_fee: r.actual_fee.unwrap_or_default(),
+                execution_resources: r.execution_resources.unwrap_or_default(),
+                l1_to_l2_consumed_message: r.l1_to_l2_consumed_message,
+                l2_to_l1_messages: r.l2_to_l1_messages,
+                revert_error: r.revert_error.unwrap_or_default(),
+            }
+        }
+    }
+
+    impl From<pathfinder_common::BlockHeader> for BlockHeader {
+        fn from(h: pathfinder_common::BlockHeader) -> Self {
+            Self {
+                hash: h.hash,
+                parent_hash: h.parent_hash,
+                number: h.number,
+                timestamp: h.timestamp,
+                gas_price: h.gas_price,
+                sequencer_address: h.sequencer_address,
+                starknet_version: h.starknet_version,
+            }
+        }
     }
 
     impl From<pathfinder_common::StateUpdate> for StateUpdate {
@@ -95,20 +122,6 @@ pub mod conv {
                 storage: c.storage,
                 class: c.class.map(|x| x.class_hash()),
                 nonce: c.nonce,
-            }
-        }
-    }
-
-    impl From<pathfinder_common::BlockHeader> for BlockHeader {
-        fn from(h: pathfinder_common::BlockHeader) -> Self {
-            Self {
-                hash: h.hash,
-                parent_hash: h.parent_hash,
-                number: h.number,
-                timestamp: h.timestamp,
-                gas_price: h.gas_price,
-                sequencer_address: h.sequencer_address,
-                starknet_version: h.starknet_version,
             }
         }
     }
@@ -366,7 +379,7 @@ pub mod conv {
                             to_address: EthereumAddress(x.to_address.0),
                         })
                         .collect(),
-                    revert_error: (!common.revert_reason.is_empty()).then(|| common.revert_reason),
+                    revert_error: common.revert_reason,
                 }),
             }
         }

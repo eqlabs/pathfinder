@@ -204,7 +204,7 @@ pub mod transaction {
     }
 
     /// Represents execution resources for L2 transaction.
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ExecutionResources {
         pub builtin_instance_counter: BuiltinCounters,
@@ -212,10 +212,20 @@ pub mod transaction {
         pub n_memory_holes: u64,
     }
 
+    impl<T> Dummy<T> for ExecutionResources {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                builtin_instance_counter: Faker.fake_with_rng(rng),
+                n_steps: rng.next_u32() as u64,
+                n_memory_holes: rng.next_u32() as u64,
+            }
+        }
+    }
+
     // This struct purposefully allows for unknown fields as it is not critical to
     // store these counters perfectly. Failure would be far more costly than simply
     // ignoring them.
-    #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(default)]
     pub struct BuiltinCounters {
         pub output_builtin: u64,
@@ -227,6 +237,22 @@ pub mod transaction {
         pub keccak_builtin: u64,
         pub poseidon_builtin: u64,
         pub segment_arena_builtin: u64,
+    }
+
+    impl<T> Dummy<T> for BuiltinCounters {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+            Self {
+                output_builtin: rng.next_u32() as u64,
+                pedersen_builtin: rng.next_u32() as u64,
+                range_check_builtin: rng.next_u32() as u64,
+                ecdsa_builtin: rng.next_u32() as u64,
+                bitwise_builtin: rng.next_u32() as u64,
+                ec_op_builtin: rng.next_u32() as u64,
+                keccak_builtin: rng.next_u32() as u64,
+                poseidon_builtin: rng.next_u32() as u64,
+                segment_arena_builtin: rng.next_u32() as u64,
+            }
+        }
     }
 
     /// Represents deserialized L1 to L2 message.
