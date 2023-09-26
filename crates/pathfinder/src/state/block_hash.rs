@@ -1,4 +1,4 @@
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
 use pathfinder_common::{
     BlockHash, BlockNumber, BlockTimestamp, Chain, ChainId, EventCommitment, SequencerAddress,
@@ -312,27 +312,37 @@ pub fn calculate_transaction_commitment(
     transactions: &[Transaction],
     final_hash_type: TransactionCommitmentFinalHashType,
 ) -> Result<TransactionCommitment> {
+    use rayon::prelude::*;
+
+    let mut final_hashes = Vec::new();
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            final_hashes = transactions
+                .par_iter()
+                .map(|tx| match final_hash_type {
+                    TransactionCommitmentFinalHashType::Normal => {
+                        calculate_transaction_hash_with_signature(tx)
+                    }
+                    TransactionCommitmentFinalHashType::SignatureIncludedForInvokeOnly => {
+                        calculate_transaction_hash_with_signature_pre_0_11_1(tx)
+                    }
+                })
+                .collect();
+        })
+    });
+
     let mut tree = TransactionOrEventTree::default();
 
-    transactions
-        .iter()
+    final_hashes
+        .into_iter()
         .enumerate()
-        .try_for_each(|(idx, tx)| {
+        .try_for_each(|(idx, final_hash)| {
             let idx: u64 = idx
                 .try_into()
                 .expect("too many transactions while calculating commitment");
-            let final_hash = match final_hash_type {
-                TransactionCommitmentFinalHashType::Normal => {
-                    calculate_transaction_hash_with_signature(tx)
-                }
-                TransactionCommitmentFinalHashType::SignatureIncludedForInvokeOnly => {
-                    calculate_transaction_hash_with_signature_pre_0_11_1(tx)
-                }
-            };
-            tree.set(idx, final_hash)?;
-            Result::<_, Error>::Ok(())
+            tree.set(idx, final_hash)
         })
-        .context("Failed to create transaction commitment tree")?;
+        .context("Building transaction commitment tree")?;
 
     Ok(TransactionCommitment(tree.commit()?))
 }
@@ -400,21 +410,31 @@ fn calculate_signature_hash(signature: &[TransactionSignatureElem]) -> Felt {
 /// constructed by adding the (event_index, event_hash) key-value pairs to the
 /// tree and computing the root hash.
 pub fn calculate_event_commitment(transaction_receipts: &[Receipt]) -> Result<EventCommitment> {
+    use rayon::prelude::*;
+
+    let mut event_hashes = Vec::new();
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            event_hashes = transaction_receipts
+                .par_iter()
+                .flat_map(|receipt| receipt.events.par_iter())
+                .map(calculate_event_hash)
+                .collect();
+        })
+    });
+
     let mut tree = TransactionOrEventTree::default();
 
-    transaction_receipts
-        .iter()
-        .flat_map(|receipt| receipt.events.iter())
+    event_hashes
+        .into_iter()
         .enumerate()
-        .try_for_each(|(idx, e)| {
+        .try_for_each(|(idx, hash)| {
             let idx: u64 = idx
                 .try_into()
                 .expect("too many events in transaction receipt");
-            let event_hash = calculate_event_hash(e);
-            tree.set(idx, event_hash)?;
-            Result::<_, Error>::Ok(())
+            tree.set(idx, hash)
         })
-        .context("Failed to create event commitment tree")?;
+        .context("Building event commitment tree")?;
 
     Ok(EventCommitment(tree.commit()?))
 }
