@@ -146,10 +146,11 @@ mod prop {
             ).collect::<HashMap<BlockNumber, (simplified::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start_block, limit, step, direction, } };
-            let mut replies = bodies(tx, request).unwrap().into_iter();
+            let replies = bodies(tx, request).unwrap().into_iter();
             // Collect replies into a set of (block_number, state_update, definitions)
             let mut actual = HashMap::new();
-            while let Some(reply) = replies.next() {
+
+            for reply in replies {
                 match reply.body_message {
                     BlockBodyMessage::Diff(d) => {
                         let state_update = simplified::StateUpdate::try_from_proto(d).unwrap();
