@@ -11,6 +11,13 @@ pub struct Event {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[protobuf(name = "crate::proto::event::TxnEvents")]
+pub struct TxnEvents {
+    pub events: Vec<Event>,
+    pub transaction_hash: Hash,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::event::EventsRequest")]
 pub struct EventsRequest {
     pub iteration: Iteration,
@@ -19,7 +26,7 @@ pub struct EventsRequest {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::event::events_response::Events")]
 pub struct Events {
-    pub items: Vec<Event>,
+    pub items: Vec<TxnEvents>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
@@ -34,6 +41,22 @@ pub struct EventsResponse {
 pub enum Responses {
     Events(Events),
     Fin(Fin),
+}
+
+impl Responses {
+    pub fn into_events(self) -> Option<Events> {
+        match self {
+            Responses::Events(events) => Some(events),
+            Responses::Fin(_) => None,
+        }
+    }
+
+    pub fn into_fin(self) -> Option<Fin> {
+        match self {
+            Responses::Events(_) => None,
+            Responses::Fin(fin) => Some(fin),
+        }
+    }
 }
 
 impl ToProtobuf<proto::event::events_response::Responses> for Responses {

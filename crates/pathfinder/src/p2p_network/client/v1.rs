@@ -4,6 +4,7 @@ pub mod conv {
         InvokeTransactionReceipt, L1HandlerTransactionReceipt,
     };
     use pathfinder_common::{
+        event::Event,
         state_update::SystemContractUpdate,
         transaction::{
             DeclareTransactionV0V1, DeclareTransactionV2, DeployAccountTransaction,
@@ -11,10 +12,10 @@ pub mod conv {
             L1HandlerTransaction, TransactionVariant,
         },
         BlockHash, BlockNumber, BlockTimestamp, CallParam, CasmHash, ClassHash, ConstructorParam,
-        ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EthereumAddress, Fee,
-        GasPrice, L1ToL2MessageNonce, L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem,
-        SequencerAddress, StarknetVersion, StorageAddress, StorageValue, TransactionNonce,
-        TransactionSignatureElem, TransactionVersion,
+        ContractAddress, ContractAddressSalt, ContractNonce, EntryPoint, EthereumAddress,
+        EventData, EventKey, Fee, GasPrice, L1ToL2MessageNonce, L1ToL2MessagePayloadElem,
+        L2ToL1MessagePayloadElem, SequencerAddress, StarknetVersion, StorageAddress, StorageValue,
+        TransactionNonce, TransactionSignatureElem, TransactionVersion,
     };
     use starknet_gateway_types::reply::transaction as gw;
     use std::{collections::HashMap, time::SystemTime};
@@ -382,6 +383,19 @@ pub mod conv {
                     revert_error: common.revert_reason,
                 }),
             }
+        }
+    }
+
+    impl TryFromProto<p2p_proto_v1::event::Event> for Event {
+        fn try_from_proto(proto: p2p_proto_v1::event::Event) -> anyhow::Result<Self>
+        where
+            Self: Sized,
+        {
+            Ok(Self {
+                from_address: ContractAddress(proto.from_address),
+                keys: proto.keys.into_iter().map(EventKey).collect(),
+                data: proto.data.into_iter().map(EventData).collect(),
+            })
         }
     }
 }

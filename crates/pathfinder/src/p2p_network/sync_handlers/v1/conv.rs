@@ -8,8 +8,9 @@ use p2p_proto_v1::receipt::{
 };
 use p2p_proto_v1::state::{ContractDiff, ContractStoredValue, StateDiff};
 use p2p_proto_v1::transaction::AccountSignature;
+use pathfinder_common::TransactionHash;
 use pathfinder_common::{
-    state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
+    event::Event, state_update::ContractUpdate, transaction::Transaction, BlockHeader, StateUpdate,
 };
 use stark_hash::Felt;
 use starknet_gateway_types::reply::transaction as gw;
@@ -280,6 +281,25 @@ impl ToProto<p2p_proto_v1::receipt::Receipt> for (gw::Transaction, gw::Receipt) 
                 common,
                 msg_hash: Hash(Felt::ZERO), // TODO what is this
             }),
+        }
+    }
+}
+
+impl ToProto<p2p_proto_v1::event::Event> for Event {
+    fn to_proto(self) -> p2p_proto_v1::event::Event {
+        p2p_proto_v1::event::Event {
+            from_address: self.from_address.0,
+            keys: self.keys.into_iter().map(|k| k.0).collect(),
+            data: self.data.into_iter().map(|d| d.0).collect(),
+        }
+    }
+}
+
+impl ToProto<p2p_proto_v1::event::TxnEvents> for (TransactionHash, Vec<Event>) {
+    fn to_proto(self) -> p2p_proto_v1::event::TxnEvents {
+        p2p_proto_v1::event::TxnEvents {
+            transaction_hash: Hash(self.0 .0),
+            events: self.1.into_iter().map(ToProto::to_proto).collect(),
         }
     }
 }
