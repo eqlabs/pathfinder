@@ -91,13 +91,15 @@ mod empty_reply {
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
     use crate::p2p_network::client::v1::conv::{self as simplified, TryFromProto};
-    use crate::p2p_network::sync_handlers::v1::{bodies, headers, receipts, transactions};
+    use crate::p2p_network::sync_handlers::v1::{bodies, events, headers, receipts, transactions};
     use p2p_proto_v1::block::{BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest};
     use p2p_proto_v1::common::Iteration;
+    use p2p_proto_v1::event::EventsRequest;
     use p2p_proto_v1::receipt::ReceiptsRequest;
     use p2p_proto_v1::transaction::TransactionsRequest;
+    use pathfinder_common::event::Event;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
-    use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
+    use pathfinder_common::{BlockHash, BlockNumber, ClassHash, TransactionHash};
     use proptest::prelude::*;
     use std::collections::HashMap;
 
@@ -256,6 +258,45 @@ mod prop {
                     BlockNumber::new(reply.block_number).unwrap(),
                     BlockHash(reply.block_hash.0),
                     receipts.into_iter().map(|r| simplified::Receipt::try_from_proto(r).unwrap()).collect::<Vec<_>>()
+                )
+            }).collect::<Vec<_>>();
+
+            prop_assert_eq!(actual, expected);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn get_events((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
+            // Fake storage with a given number of blocks
+            let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+            let mut connection = storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+            // Compute the overlapping set between the db and the request
+            // These are the events that we expect to be read from the db
+            // Extract tuples (block_number, block_hash, [events{txn#1}, events{txn#2}, ...])
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
+                .map(|(h, tr, _, _, _)|
+                    (
+                        h.number,
+                        h.hash,
+                        tr.into_iter().map(|(_, r)| (r.transaction_hash, r.events)).collect::<Vec<_>>()
+                    )
+            ).collect::<Vec<_>>();
+            // Run the handler
+            let request = EventsRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let replies = events(tx, request).unwrap();
+            // Extract events from the replies
+            let actual = replies.into_iter().map(|reply | {
+                let events = reply.responses.into_events().unwrap().items;
+                (
+                    BlockNumber::new(reply.block_number).unwrap(),
+                    BlockHash(reply.block_hash.0),
+                    events.into_iter().map(|e|
+                        (
+                            TransactionHash(e.transaction_hash.0),
+                            e.events.into_iter().map(|e| Event::try_from_proto(e).unwrap()).collect::<Vec<_>>()
+                        )).collect::<Vec<_>>()
                 )
             }).collect::<Vec<_>>();
 
