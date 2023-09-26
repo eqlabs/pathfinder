@@ -826,6 +826,22 @@ mod tests {
         }
 
         /// Convenience wrapper
+        fn expect_block_header(
+            mock: &mut MockGatewayApi,
+            seq: &mut mockall::Sequence,
+            block: BlockId,
+            returned_result: Result<(BlockNumber, BlockHash), SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_block_header()
+                .with(eq(block))
+                .times(1)
+                .in_sequence(seq)
+                .return_once(move |_| returned_result);
+        }
+
+        /// Convenience wrapper
         fn expect_state_update(
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
@@ -1092,11 +1108,11 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at genesis
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(BLOCK0_V2.clone().into()),
+                    Ok((BLOCK0_V2.block_number, BLOCK0_V2.block_hash)),
                 );
 
                 // Finally the L2 sync task is downloading the new genesis block
@@ -1129,11 +1145,11 @@ mod tests {
                 );
 
                 // Indicate that we are still staying at the head - the latest block matches our head
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(BLOCK0_V2.clone().into()),
+                    Ok((BLOCK0_V2.block_number, BLOCK0_V2.block_hash)),
                 );
 
                 // Let's run the UUT
@@ -1253,12 +1269,13 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at genesis by setting the latest on the new genesis block
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(BLOCK0_V2.clone().into()),
+                    Ok((BLOCK0_V2.block_number, BLOCK0_V2.block_hash)),
                 );
+
                 // Then the L2 sync task goes back block by block to find the last block where the block hash matches the DB
                 expect_block(
                     &mut mock,
@@ -1316,11 +1333,11 @@ mod tests {
                     BLOCK2_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(block1_v2.clone().into()),
+                    Ok((block1_v2.block_number, block1_v2.block_hash)),
                 );
 
                 // Run the UUT
@@ -1499,11 +1516,11 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at block #1
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(block1_v2.clone().into()),
+                    Ok((block1_v2.block_number, block1_v2.block_hash)),
                 );
 
                 // L2 sync task goes back block by block to find where the block hash matches the DB
@@ -1561,11 +1578,11 @@ mod tests {
                     BLOCK3_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(block2_v2.clone().into()),
+                    Ok((block2_v2.block_number, block2_v2.block_hash)),
                 );
 
                 // Run the UUT
@@ -1701,11 +1718,11 @@ mod tests {
 
                 // L2 sync task is then looking if reorg occured
                 // We indicate that reorg started at block #2
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(block2_v2.clone().into()),
+                    Ok((block2_v2.block_number, block2_v2.block_hash)),
                 );
 
                 // L2 sync task goes back block by block to find where the block hash matches the DB
@@ -1738,11 +1755,11 @@ mod tests {
                     BLOCK3_NUMBER.into(),
                     Err(block_not_found()),
                 );
-                expect_block(
+                expect_block_header(
                     &mut mock,
                     &mut seq,
                     BlockId::Latest,
-                    Ok(block2_v2.clone().into()),
+                    Ok((block2_v2.block_number, block2_v2.block_hash)),
                 );
 
                 // Run the UUT

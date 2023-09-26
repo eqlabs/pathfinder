@@ -6,7 +6,7 @@ use pathfinder_common::{
 };
 use reqwest::Url;
 use starknet_gateway_types::{
-    error::{KnownStarknetErrorCode, SequencerError, StarknetError, StarknetErrorCode},
+    error::SequencerError,
     reply,
     request::add_transaction::{
         AddTransaction, ContractDefinition, Declare, DeployAccount, InvokeFunction,
@@ -29,6 +29,13 @@ pub trait GatewayApi: Sync {
         &self,
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
+        unimplemented!()
+    }
+
+    async fn block_header(
+        &self,
+        block: BlockId,
+    ) -> Result<(BlockNumber, BlockHash), SequencerError> {
         unimplemented!()
     }
 
@@ -118,16 +125,7 @@ pub trait GatewayApi: Sync {
     ///
     /// TODO remove when p2p friendly sync is implemented
     async fn head(&self) -> Result<(BlockNumber, BlockHash), SequencerError> {
-        match self.block(BlockId::Latest).await? {
-            reply::MaybePendingBlock::Block(b) => Ok((b.block_number, b.block_hash)),
-            reply::MaybePendingBlock::Pending(_) => {
-                // Let's say it sort of suits the situation
-                Err(SequencerError::StarknetError(StarknetError {
-                    code: StarknetErrorCode::Known(KnownStarknetErrorCode::BlockNotFound),
-                    message: "Sequencer client got a pending block instead of latest".into(),
-                }))
-            }
-        }
+        self.block_header(BlockId::Latest).await
     }
 }
 
@@ -154,6 +152,13 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.as_ref().block_without_retry(block).await
+    }
+
+    async fn block_header(
+        &self,
+        block: BlockId,
+    ) -> Result<(BlockNumber, BlockHash), SequencerError> {
+        self.as_ref().block_header(block).await
     }
 
     async fn class_by_hash(&self, class_hash: ClassHash) -> Result<bytes::Bytes, SequencerError> {
@@ -402,6 +407,29 @@ impl GatewayApi for Client {
         block: BlockId,
     ) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.block_with_retry_behaviour(block, false).await
+    }
+
+    async fn block_header(
+        &self,
+        block: BlockId,
+    ) -> Result<(BlockNumber, BlockHash), SequencerError> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        pub struct BlockHeader {
+            pub block_hash: BlockHash,
+            pub block_number: BlockNumber,
+        }
+
+        let header: BlockHeader = self
+            .feeder_gateway_request()
+            .get_block()
+            .with_block(block)
+            .add_param("headerOnly", "true")
+            .with_retry(self.retry)
+            .get()
+            .await?;
+
+        Ok((header.block_number, header.block_hash))
     }
 
     /// Gets class for a particular class hash.
