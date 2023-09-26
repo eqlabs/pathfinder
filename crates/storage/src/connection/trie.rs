@@ -6,7 +6,6 @@ use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
 use stark_hash::Felt;
 
-use bincode::Options;
 
 use crate::prelude::*;
 
@@ -169,13 +168,24 @@ macro_rules! insert_trie {
 
             let mut indices = HashMap::new();
 
+            // Reusable (and oversized) buffer for encoding.
+            let mut buffer = vec![0u8; 256];
+
             // Insert nodes in reverse to ensure children always have an assigned index for the parent to use.
             for hash in to_insert.into_iter().rev() {
                 let node = nodes
                     .get(&hash)
                     .expect("Node must exist as hash is dependent on this");
 
-                let data = node.serialize(&indices).context("Serializing node")?;
+                let node = node.into_stored(&indices)?;
+
+                // Do not use serialize() as this will invoke serialization twice.
+                // https://github.com/bincode-org/bincode/issues/401
+                let length =
+                    bincode::encode_into_slice(&node, &mut buffer, bincode::config::standard())
+                        .context("Encoding node")?;
+
+                let data = &buffer[..length];
 
                 let idx: u32 = stmt
                     .query_row(params![&hash.as_be_bytes().as_slice(), &data], |row| {
@@ -219,9 +229,10 @@ macro_rules! insert_trie {
                     return Ok(None);
                 };
 
-                let node = bincode::DefaultOptions::new()
-                    .deserialize(&data)
-                    .context("Parsing node data")?;
+                let node: StoredNode =
+                    bincode::borrow_decode_from_slice(&data, bincode::config::standard())
+                        .context("Parsing node data")?
+                        .0;
 
                 Ok(Some(node))
             }
@@ -248,7 +259,6 @@ macro_rules! insert_trie {
 }
 use insert_trie;
 
-// TODO: optimise path serde. Its wasteful to store the order and offsets etc.
 #[derive(Clone, Debug)]
 pub enum Node {
     Binary {
@@ -275,7 +285,7 @@ pub enum Child {
     Hash(Felt),
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub enum StoredNode {
     Binary { left: u32, right: u32 },
     Edge { child: u32, path: BitVec<u8, Msb0> },
@@ -283,8 +293,133 @@ pub enum StoredNode {
     LeafEdge { child: Felt, path: BitVec<u8, Msb0> },
 }
 
+#[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
+enum StoredSerde<'a> {
+    Binary {
+        left: u32,
+        right: u32,
+    },
+    Edge {
+        child: u32,
+        path_length: u8,
+        path: Vec<u8>,
+    },
+    LeafBinary {
+        left: &'a [u8],
+        right: &'a [u8],
+    },
+    LeafEdge {
+        child: &'a [u8],
+        path_length: u8,
+        path: Vec<u8>,
+    },
+}
+
+impl<'de> bincode::BorrowDecode<'de> for StoredNode {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        let helper = StoredSerde::borrow_decode(decoder)?;
+
+        let node = match helper {
+            StoredSerde::Binary { left, right } => StoredNode::Binary { left, right },
+            StoredSerde::Edge {
+                child,
+                path_length,
+                path,
+            } => {
+                let mut path = bitvec::vec::BitVec::from_vec(path);
+                path.resize(path_length as usize, false);
+                StoredNode::Edge { child, path }
+            }
+            StoredSerde::LeafBinary { left, right } => {
+                let left = Felt::from_be_slice(left).unwrap();
+                let right = Felt::from_be_slice(right).unwrap();
+                StoredNode::LeafBinary { left, right }
+            }
+            StoredSerde::LeafEdge {
+                child,
+                path_length,
+                path,
+            } => {
+                let mut path = bitvec::vec::BitVec::from_vec(path);
+                path.resize(path_length as usize, false);
+                let child = Felt::from_be_slice(child).unwrap();
+                StoredNode::LeafEdge { child, path }
+            }
+        };
+
+        Ok(node)
+    }
+}
+
+impl bincode::Encode for StoredNode {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        fn minimize_felt(f: &Felt) -> &[u8] {
+            let bytes = f.as_be_bytes();
+            let leading_zeros = bytes.iter().take_while(|x| *x == &0).count();
+            &bytes[leading_zeros..]
+        }
+
+        match self {
+            StoredNode::Binary { left, right } => StoredSerde::Binary {
+                left: *left,
+                right: *right,
+            }
+            .encode(encoder),
+            StoredNode::Edge { child, path } => {
+                let path_length = path.len() as u8;
+
+                let mut path = path.to_owned();
+                path.force_align();
+                let path = path.into_vec();
+
+                StoredSerde::Edge {
+                    child: *child,
+                    path_length,
+                    path,
+                }
+                .encode(encoder)
+            }
+            StoredNode::LeafBinary { left, right } => StoredSerde::LeafBinary {
+                left: minimize_felt(left),
+                right: minimize_felt(right),
+            }
+            .encode(encoder),
+            StoredNode::LeafEdge { child, path } => {
+                let path_length = path.len() as u8;
+
+                let mut path = path.to_owned();
+                path.force_align();
+                let path = path.into_vec();
+
+                StoredSerde::LeafEdge {
+                    child: minimize_felt(child),
+                    path_length,
+                    path,
+                }
+                .encode(encoder)
+            }
+        }
+    }
+}
+
+impl StoredNode {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Binary { .. } => " B",
+            Self::Edge { .. } => " E",
+            Self::LeafBinary { .. } => "LB",
+            Self::LeafEdge { .. } => "LE",
+        }
+    }
+}
+
 impl Node {
-    fn serialize(&self, indices: &HashMap<Felt, u32>) -> anyhow::Result<Vec<u8>> {
+    fn into_stored(&self, indices: &HashMap<Felt, u32>) -> anyhow::Result<StoredNode> {
         let node = match self {
             Node::Binary { left, right } => match (left.clone(), right.clone()) {
                 (left, right) => {
@@ -322,9 +457,7 @@ impl Node {
             },
         };
 
-        bincode::DefaultOptions::new()
-            .serialize(&node)
-            .context("Encoding node")
+        Ok(node)
     }
 }
 
