@@ -502,21 +502,34 @@ async fn download_block(
 
     match result {
         Ok(DownloadBlock::Block(block, commitments)) => {
-            for (i, txn) in block.transactions.iter().enumerate() {
-                match verify(txn, chain_id, block_number) {
-                    starknet_gateway_types::transaction_hash::VerifyResult::Match => {}
-                    starknet_gateway_types::transaction_hash::VerifyResult::Mismatch(actual) =>
-                        anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i} expected {} calculated {}",
-                            txn.hash(),
-                            actual),
-                    starknet_gateway_types::transaction_hash::VerifyResult::NotVerifiable => {
-                        tracing::trace!(
-                            "Skipping transaction verification: block {block_number} idx {i} hash {}",
-                            txn.hash()
-                        )
-                    }
-                }
-            }
+            use rayon::prelude::*;
+
+            let (send, recv) = tokio::sync::oneshot::channel();
+
+            rayon::scope(|s| {
+                s.spawn(|_| {
+                    let result = block.transactions.par_iter().enumerate().try_for_each(|(i, txn)| {
+                        match verify(txn, chain_id, block_number) {
+                            starknet_gateway_types::transaction_hash::VerifyResult::Match => {}
+                            starknet_gateway_types::transaction_hash::VerifyResult::Mismatch(actual) =>
+                                anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i} expected {} calculated {}",
+                                    txn.hash(),
+                                    actual),
+                            starknet_gateway_types::transaction_hash::VerifyResult::NotVerifiable => {
+                                tracing::trace!(
+                                    "Skipping transaction verification: block {block_number} idx {i} hash {}",
+                                    txn.hash()
+                                )
+                            }
+                        };
+                        Ok(())
+                    });
+
+                    let _ = send.send(result);
+                })
+            });
+
+            recv.await.expect("Panic on rayon thread")?;
 
             Ok(DownloadBlock::Block(block, commitments))
         }
