@@ -366,10 +366,10 @@ fn classes(
 ) -> anyhow::Result<()> {
     let mut estimated_message_size = PER_MESSAGE_OVERHEAD;
     let mut classes_for_this_msg: Vec<(ClassHash, Vec<u8>)> = Vec::new();
-    let mut new_classes = new_classes.into_iter();
+    let new_classes = new_classes.into_iter();
 
     // 1. Let's take the next class definition from storage
-    while let Some(class_hash) = new_classes.next() {
+    for class_hash in new_classes {
         let compressed_definition = class_definition_getter(block_number, class_hash)?;
 
         // 2. Let's check if this definition needs to be chunked

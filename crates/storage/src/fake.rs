@@ -100,7 +100,7 @@ pub mod init {
     /// - declared cairo|sierra definitions
     ///     - each declared class has random bytes inserted as its definition
     ///     - all those definitions are **very short and fall far below the soft limit in protobuf
-    ///       encoding of 1MiB**, btw see usage of [`p2p_proto_v1::MESSAGE_SIZE_LIMIT`] et al.
+    ///       encoding of 1MiB**, btw see usage of `p2p_proto_v1::MESSAGE_SIZE_LIMIT` et al.
     ///     - casm definitions for sierra classes are empty
     ///
     ///     
