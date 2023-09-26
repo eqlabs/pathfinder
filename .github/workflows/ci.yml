@@ -30,15 +30,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: Noelware/setup-protoc@1.1.0
-      # - name: Install protoc
-      #   run: |
-      #     sudo apt-get install -y protobuf-compiler
-
-      #     PROTOC_VERSION=$(curl -s "https://api.github.com/repos/protocolbuffers/protobuf/releases/latest" | grep -Po '"tag_name": "v\K[0-9.]+')
-      #     curl -Lo protoc.zip "https://github.com/protocolbuffers/protobuf/releases/latest/download/protoc-${PROTOC_VERSION}-linux-x86_64.zip"
-      #     sudo unzip -q protoc.zip bin/protoc -d /usr/local
-      #     sudo chmod a+x /usr/local/bin/protoc
-      #     rm protoc.zip
       - uses: taiki-e/install-action@nextest
       - name: Compile unit tests
         run: timeout 25m cargo nextest run --all-targets --all-features --workspace --locked --no-run
@@ -55,9 +46,6 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - uses: Noelware/setup-protoc@1.1.0
-      # - name: Install protoc
-      #   run: |
-      #     sudo apt-get install -y protobuf-compiler
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
 
   rustfmt:
@@ -79,9 +67,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: Noelware/setup-protoc@1.1.0
-      # - name: Install protoc
-      #   run: |
-      #     sudo apt-get install -y protobuf-compiler
       - run: cargo doc --no-deps --document-private-items
 
   dep-sort:
@@ -111,9 +96,6 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.MSRV }}
       - uses: Noelware/setup-protoc@1.1.0
-      # - name: Install protoc
-      #   run: |
-      #     sudo apt-get install -y protobuf-compiler
       - uses: Swatinem/rust-cache@v2
       - name: check
         run: cargo check
