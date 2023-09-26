@@ -16,6 +16,7 @@ data-encoding = "2.4.0"
 fake = { workspace = true }
 hex = { workspace = true }
 lazy_static = { workspace = true }
+lru = "0.11.1"
 pathfinder-common = { path = "../common" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-serde = { path = "../serde" }

@@ -1,17 +1,19 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::sync::Mutex;
 
 use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::vec::BitVec;
+use lru::LruCache;
 use pathfinder_common::prelude::*;
 use stark_hash::Felt;
 
-
 use crate::prelude::*;
 
-insert_trie!(insert_class_trie, trie_class, ClassTrieReader);
-insert_trie!(insert_contract_trie, trie_contracts, ContractTrieReader);
-insert_trie!(insert_storage_trie, trie_storage, StorageTrieReader);
+insert_trie!(insert_class_trie, trie_class, ClassTrieReader, CLASS_CACHE);
+insert_trie!(insert_contract_trie, trie_contracts, ContractTrieReader, CONTRACT_CACHE);
+insert_trie!(insert_storage_trie, trie_storage, StorageTrieReader, STORAGE_CACHE);
 
 pub(super) fn class_root_index(
     tx: &Transaction<'_>,
@@ -110,10 +112,16 @@ pub(super) fn insert_contract_root(
     Ok(())
 }
 
+lazy_static::lazy_static!(
+    pub static ref CLASS_CACHE: Mutex<LruCache<u32, StoredNode>> = Mutex::new(LruCache::new(NonZeroUsize::new(5_000).unwrap()));
+    pub static ref CONTRACT_CACHE: Mutex<LruCache<u32, StoredNode>> = Mutex::new(LruCache::new(NonZeroUsize::new(5_000_000).unwrap()));
+    pub static ref STORAGE_CACHE: Mutex<LruCache<u32, StoredNode>> = Mutex::new(LruCache::new(NonZeroUsize::new(1_000_000).unwrap()));
+);
+
 /// Creates the sql for inserting a node or incrementing its reference count if it already exists, returning
 /// the final reference count.
 macro_rules! insert_trie {
-    ($fn_name: ident, $table: ident, $reader_struct: ident) => {
+    ($fn_name: ident, $table: ident, $reader_struct: ident, $cache: ident) => {
         /// Stores the node data for this trie in the `$table` table and returns the number of
         /// new nodes that were added i.e. the nodes not already present in the database.
         ///
@@ -128,6 +136,7 @@ macro_rules! insert_trie {
             root: Felt,
             nodes: &HashMap<Felt, Node>,
         ) -> anyhow::Result<u32> {
+            let mut cache = $cache.lock().unwrap();
             let mut stmt = tx
                 .prepare_cached(concat!(
                     "INSERT INTO ",
@@ -193,6 +202,8 @@ macro_rules! insert_trie {
                     })
                     .context("Inserting node")?;
 
+                cache.put(idx, node);
+
                 indices.insert(hash, idx);
             }
 
@@ -201,18 +212,27 @@ macro_rules! insert_trie {
                 .expect("Root index must exist as we just inserted it"))
         }
 
-        pub struct $reader_struct<'tx>(&'tx Transaction<'tx>);
+        pub struct $reader_struct<'tx> {
+            tx: &'tx Transaction<'tx>,
+        }
 
         impl<'tx> $reader_struct<'tx> {
-            pub(super) fn new(tx: &'tx Transaction<'tx>) -> Self {
-                Self(tx)
+            pub(super) fn new(
+                tx: &'tx Transaction<'tx>,
+            ) -> Self {
+                Self { tx }
             }
 
-            pub fn get(&self, node: u32) -> anyhow::Result<Option<StoredNode>> {
+            pub fn get(&self, idx: u32) -> anyhow::Result<Option<StoredNode>> {
+                let mut cache = $cache.lock().unwrap();
+                if let Some(node) = cache.get(&idx) {
+                    return Ok(Some(node.clone()));
+                }
+
                 // We rely on sqlite caching the statement here. Storing the statement would be nice,
                 // however that leads to &mut requirements or interior mutable work-arounds.
                 let mut stmt = self
-                    .0
+                    .tx
                     .inner()
                     .prepare_cached(concat!(
                         "SELECT data FROM ",
@@ -222,7 +242,7 @@ macro_rules! insert_trie {
                     .context("Creating get statement")?;
 
                 let data: Option<Vec<u8>> = stmt
-                    .query_row(params![&node], |row| row.get(0))
+                    .query_row(params![&idx], |row| row.get(0))
                     .optional()?;
 
                 let Some(data) = data else {
@@ -234,6 +254,8 @@ macro_rules! insert_trie {
                         .context("Parsing node data")?
                         .0;
 
+                cache.put(idx, node.clone());
+
                 Ok(Some(node))
             }
 
@@ -241,7 +263,7 @@ macro_rules! insert_trie {
                 // We rely on sqlite caching the statement here. Storing the statement would be nice,
                 // however that leads to &mut requirements or interior mutable work-arounds.
                 let mut stmt = self
-                    .0
+                    .tx
                     .inner()
                     .prepare_cached(concat!(
                         "SELECT hash FROM ",
