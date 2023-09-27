@@ -1,9 +1,9 @@
 //! This code is in an incomplete state and cannot be used as is.
-//! 
+//!
 //! This was an initial attempt at implementing websocket subscription
 //! based support within pathfinder. It was deemed more important
 //! to complete the normal framework without waiting for this, however
-//! this code could inform a proper design. As such the code is left as 
+//! this code could inform a proper design. As such the code is left as
 //! is as a potential to form the skeleton in the future.
 #![allow(dead_code, unused)]
 
@@ -23,7 +23,10 @@ use tokio_stream::wrappers::BroadcastStream;
 use crate::context::RpcContext;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcResponse};
-use crate::websocket::types::{BlockHeader, WebsocketSenders};
+
+use pathfinder_common::prelude::*;
+use pathfinder_serde::GasPriceAsHexStr;
+use starknet_gateway_types::reply::{Block, Status};
 
 pub async fn websocket_handler(ws: WebSocketUpgrade, State(state): State<RpcContext>) -> Response {
     ws.on_upgrade(|socket| handle_socket(socket, state))
@@ -355,5 +358,74 @@ impl Serialize for ResponseEvent {
                 reason,
             } => todo!(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SubscriptionBroadcaster<T>(pub tokio::sync::broadcast::Sender<T>);
+
+impl<T> SubscriptionBroadcaster<T> {
+    pub fn send_if_receiving(&self, value: T) {
+        if self.0.receiver_count() > 0 {
+            let _ = self.0.send(value);
+        }
+    }
+}
+#[serde_with::serde_as]
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockHeader {
+    pub block_hash: BlockHash,
+    pub block_number: BlockNumber,
+
+    #[serde_as(as = "Option<GasPriceAsHexStr>")]
+    #[serde(default)]
+    pub gas_price: Option<GasPrice>,
+    pub parent_block_hash: BlockHash,
+
+    #[serde(default)]
+    pub sequencer_address: Option<SequencerAddress>,
+
+    #[serde(alias = "state_root")]
+    pub state_commitment: StateCommitment,
+    pub status: Status,
+    pub timestamp: BlockTimestamp,
+
+    #[serde(default)]
+    pub starknet_version: StarknetVersion,
+}
+
+impl From<&Block> for BlockHeader {
+    fn from(b: &Block) -> Self {
+        Self {
+            block_hash: b.block_hash,
+            block_number: b.block_number,
+            gas_price: b.gas_price,
+            parent_block_hash: b.parent_block_hash,
+            sequencer_address: b.sequencer_address,
+            state_commitment: b.state_commitment,
+            status: b.status,
+            timestamp: b.timestamp,
+            starknet_version: b.starknet_version.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WebsocketSenders {
+    pub new_head: SubscriptionBroadcaster<BlockHeader>,
+}
+
+impl WebsocketSenders {
+    pub fn with_capacity(capacity: usize) -> WebsocketSenders {
+        WebsocketSenders {
+            new_head: SubscriptionBroadcaster(tokio::sync::broadcast::channel(capacity).0),
+        }
+    }
+}
+
+impl WebsocketSenders {
+    pub fn for_test() -> Self {
+        Self::with_capacity(100)
     }
 }

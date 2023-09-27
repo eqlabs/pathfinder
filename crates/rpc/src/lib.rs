@@ -12,12 +12,11 @@ mod test_setup;
 pub mod v02;
 pub mod v03;
 pub mod v04;
-pub mod websocket;
 
 pub use executor::compose_executor_transaction;
 
+pub use crate::jsonrpc::websocket::{BlockHeader, WebsocketSenders};
 use crate::v02::types::syncing::Syncing;
-use crate::websocket::types::WebsocketSenders;
 use anyhow::Context;
 use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;

@@ -7,7 +7,7 @@ use pathfinder_common::{
     BlockHash, BlockNumber, Chain, ChainId, ClassHash, EventCommitment, StarknetVersion,
     StateCommitment, StateUpdate, TransactionCommitment,
 };
-use pathfinder_rpc::websocket::types::{BlockHeader, WebsocketSenders};
+use pathfinder_rpc::{BlockHeader, WebsocketSenders};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::{
@@ -608,7 +608,7 @@ mod tests {
             ContractAddress, GasPrice, SequencerAddress, StarknetVersion, StateCommitment,
             StorageAddress, StorageValue,
         };
-        use pathfinder_rpc::websocket::types::WebsocketSenders;
+        use pathfinder_rpc::WebsocketSenders;
         use pathfinder_storage::Storage;
         use stark_hash::Felt;
         use starknet_gateway_client::MockGatewayApi;

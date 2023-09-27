@@ -2,7 +2,7 @@ mod error;
 mod request;
 mod response;
 mod router;
-mod websocket;
+pub mod websocket;
 
 pub use error::RpcError;
 pub use request::RpcRequest;

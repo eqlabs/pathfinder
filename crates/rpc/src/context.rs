@@ -1,5 +1,5 @@
 use crate::gas_price;
-use crate::websocket::types::WebsocketSenders;
+use crate::jsonrpc::websocket::WebsocketSenders;
 use crate::SyncState;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
