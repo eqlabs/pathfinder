@@ -113,14 +113,8 @@ pub enum Direction {
 }
 
 impl TryFromProtobuf<i32> for Direction {
-    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
-        let input = proto::sync::Direction::from_i32(input).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse {field_name}"),
-            )
-        })?;
-        Ok(match input {
+    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+        Ok(match TryFrom::try_from(input)? {
             proto::sync::Direction::Backward => Direction::Backward,
             proto::sync::Direction::Forward => Direction::Forward,
         })

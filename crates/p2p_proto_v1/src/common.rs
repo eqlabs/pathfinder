@@ -223,18 +223,9 @@ impl ToProtobuf<i32> for Direction {
 }
 
 impl TryFromProtobuf<i32> for Direction {
-    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
-        use proto::common::iteration::{
-            self,
-            Direction::{Backward, Forward},
-        };
-        let input = iteration::Direction::from_i32(input).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid Direction {field_name}"),
-            )
-        })?;
-        Ok(match input {
+    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+        use proto::common::iteration::Direction::{Backward, Forward};
+        Ok(match TryFrom::try_from(input)? {
             Backward => Direction::Backward,
             Forward => Direction::Forward,
         })
@@ -254,18 +245,9 @@ impl ToProtobuf<i32> for Error {
 }
 
 impl TryFromProtobuf<i32> for Error {
-    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
-        use proto::common::fin::{
-            self,
-            Error::{Busy, Pruned, TooMuch, Unknown},
-        };
-        let input = fin::Error::from_i32(input).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid Error {field_name}"),
-            )
-        })?;
-        Ok(match input {
+    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+        use proto::common::fin::Error::{Busy, Pruned, TooMuch, Unknown};
+        Ok(match TryFrom::try_from(input)? {
             Busy => Error::Busy,
             TooMuch => Error::TooMuch,
             Unknown => Error::Unknown,
