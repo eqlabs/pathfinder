@@ -132,64 +132,6 @@
                     "$ref": "#/components/schemas/TX_GATEWAY_STATUS"
                 }
             }
-        },
-        {
-            "name": "pathfinder_subscribe",
-            "summary": "Create a subscription for specific events",
-            "description": "Fires a notification each time an event occurs.",
-            "params": {
-                "description": "The kind of event to subscribe to",
-                "required": true,
-                "schema": {
-                    "oneof": [
-                        {
-                            "title": "New header events",
-                            "description": "Fires a notification each time a new header is appended to the chain.",
-                            "type": "string",
-                            "enum": ["headers"]
-                        }
-                    ]
-                }
-            },
-            "result": {
-                "description": "Subscription ID",
-                "type": "integer",
-                "required": true
-            }
-        }, {
-            "name": "pathfinder_subscription",
-            "summary": "Event notification",
-            "description": "Incoming notification whose content depends on the originating subscription type.",
-            "params": {
-                "subscription": {
-                    "description": "The subscription ID which fired this event.",
-                    "type": "integer",
-                    "required": true
-                },
-                "result": {
-                    "oneof": [
-                        {
-                            "description": "Event fired by a headers subscription",
-                            "schema": {
-                                "$ref": "#/components/schemas/BLOCK_HEADER"
-                            }
-                        }
-                    ]
-                }
-            }
-        }, {
-            "name": "pathfinder_unsubscribe",
-            "summary": "Stops a subscription",
-            "description": "Terminates event notifications from a subscription",
-            "params": {
-                "description": "ID of the subscription that should be terminated",
-                "required": true,
-                "type": "integer"
-            },
-            "result": {
-                "description": "Flag indicating if subscription was terminated successfully",
-                "type": "bool"
-            }
         }
     ],
     "components": {
