@@ -836,6 +836,8 @@ fn update_starknet_state(
         None => None,
     };
 
+    let _span = tracing::debug_span!("update_contract_trees").entered();
+
     let mut storage_commitment_tree = match storage_root_idx {
         Some(idx) => StorageCommitmentTree::load(transaction, idx),
         None => StorageCommitmentTree::empty(transaction),
@@ -875,6 +877,9 @@ fn update_starknet_state(
             .set(*contract, state_hash)
             .context("Updating system contract storage commitment tree")?;
     }
+    drop(_span);
+
+    let _span = tracing::debug_span!("update_global_tree").entered();
 
     // Apply storage commitment tree changes.
     let (storage_commitment, nodes) = storage_commitment_tree
@@ -890,6 +895,8 @@ fn update_starknet_state(
             .insert_storage_root(block, root_idx)
             .context("Inserting storage root index")?;
     }
+
+    drop(_span);
 
     // Add new Sierra classes to class commitment tree.
     let class_root_idx = match block.parent() {
