@@ -1,3 +1,10 @@
+//! This code is in an incomplete state and cannot be used as is.
+//! 
+//! This was an initial attempt at implementing websocket subscription
+//! based support within pathfinder. It was deemed more important
+//! to complete the normal framework without waiting for this, however
+//! this code could inform a proper design. As such the code is left as 
+//! is as a potential to form the skeleton in the future.
 #![allow(dead_code, unused)]
 
 use std::borrow::Cow;
@@ -41,15 +48,14 @@ async fn read(
     loop {
         let request = match receiver.next().await {
             Some(Ok(x)) => x.into_data(),
+            // Both of these are client disconnects according to the axum example
+            // https://docs.rs/axum/0.6.20/axum/extract/ws/index.html#example
             Some(Err(e)) => {
-                // TODO: what kind of errors lead us here? Should this be a lower level?
-                //       e.g. maybe a broken connection does this? In which case this falls under debug..
-                tracing::debug!(error=%e, "Error receiving websocket message");
-                // TODO: should this be non-fatal instead?
+                tracing::trace!(error=%e, "Client disconnected");
                 break;
             }
             None => {
-                tracing::debug!("Socket closed by client");
+                tracing::trace!("Client disconnected");
                 break;
             }
         };
