@@ -9,6 +9,7 @@ rust-version = "1.62"
 [dependencies]
 anyhow = { workspace = true }
 bitvec = { workspace = true }
+indextree = "4.6.0"
 pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }
 rand = { workspace = true }

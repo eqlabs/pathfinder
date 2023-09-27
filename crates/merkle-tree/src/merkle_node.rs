@@ -4,8 +4,6 @@
 //! For more information about how these Starknet trees are structured, see
 //! [`MerkleTree`](crate::tree::MerkleTree).
 
-use std::{cell::RefCell, rc::Rc};
-
 use bitvec::{order::Msb0, prelude::BitVec, slice::BitSlice};
 use stark_hash::Felt;
 
@@ -32,9 +30,9 @@ pub struct BinaryNode {
     /// The height of this node in the tree.
     pub height: usize,
     /// [Left](Direction::Left) child.
-    pub left: Rc<RefCell<InternalNode>>,
+    pub left: indextree::NodeId,
     /// [Right](Direction::Right) child.
-    pub right: Rc<RefCell<InternalNode>>,
+    pub right: indextree::NodeId,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,7 +42,7 @@ pub struct EdgeNode {
     /// The path this edge takes.
     pub path: BitVec<u8, Msb0>,
     /// The child of this node.
-    pub child: Rc<RefCell<InternalNode>>,
+    pub child: indextree::NodeId,
 }
 
 /// Describes the direction a child of a [BinaryNode] may have.
@@ -103,10 +101,10 @@ impl BinaryNode {
     ///
     /// [Left]: Direction::Left
     /// [Right]: Direction::Right
-    pub fn get_child(&self, direction: Direction) -> Rc<RefCell<InternalNode>> {
+    pub fn get_child(&self, direction: Direction) -> indextree::NodeId {
         match direction {
-            Direction::Left => self.left.clone(),
-            Direction::Right => self.right.clone(),
+            Direction::Left => self.left,
+            Direction::Right => self.right,
         }
     }
 
@@ -208,10 +206,13 @@ mod tests {
 
         #[test]
         fn direction() {
+            let mut arena = indextree::Arena::new();
+            let left = arena.new_node(InternalNode::Leaf(felt!("0xabc")));
+            let right = arena.new_node(InternalNode::Leaf(felt!("0xdef")));
             let uut = BinaryNode {
                 height: 1,
-                left: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc")))),
-                right: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef")))),
+                left,
+                right,
             };
 
             let mut zero_key = bitvec![u8, Msb0; 1; 251];
@@ -229,8 +230,9 @@ mod tests {
 
         #[test]
         fn get_child() {
-            let left = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
-            let right = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef"))));
+            let mut arena = indextree::Arena::new();
+            let left = arena.new_node(InternalNode::Leaf(felt!("0xabc")));
+            let right = arena.new_node(InternalNode::Leaf(felt!("0xdef")));
 
             let uut = BinaryNode {
                 height: 1,
@@ -292,8 +294,9 @@ mod tests {
 
             #[test]
             fn full() {
+                let mut arena = indextree::Arena::new();
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = arena.new_node(InternalNode::Leaf(felt!("0xabc")));
 
                 let uut = EdgeNode {
                     height: 0,
@@ -306,8 +309,9 @@ mod tests {
 
             #[test]
             fn prefix() {
+                let mut arena = indextree::Arena::new();
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = arena.new_node(InternalNode::Leaf(felt!("0xabc")));
 
                 let path = key.view_bits()[..45].to_bitvec();
 
@@ -322,8 +326,9 @@ mod tests {
 
             #[test]
             fn suffix() {
+                let mut arena = indextree::Arena::new();
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = arena.new_node(InternalNode::Leaf(felt!("0xabc")));
 
                 let path = key.view_bits()[50..].to_bitvec();
 
@@ -338,8 +343,9 @@ mod tests {
 
             #[test]
             fn middle_slice() {
+                let mut arena = indextree::Arena::new();
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = arena.new_node(InternalNode::Leaf(felt!("0xabc")));
 
                 let path = key.view_bits()[230..235].to_bitvec();
 

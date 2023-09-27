@@ -50,13 +50,13 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 
     #[allow(dead_code)]
-    pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
+    pub fn get(&mut self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
         let value = self.tree.get(&self.storage, address.view_bits())?;
         Ok(value.map(StorageValue))
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(&self, key: &BitSlice<u8, Msb0>) -> anyhow::Result<Vec<TrieNode>> {
+    pub fn get_proof(&mut self, key: &BitSlice<u8, Msb0>) -> anyhow::Result<Vec<TrieNode>> {
         self.tree.get_proof(&self.storage, key)
     }
 
@@ -111,7 +111,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
         self
     }
 
-    pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
+    pub fn get(&mut self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
         let value = self.tree.get(&self.storage, address.view_bits())?;
         Ok(value.map(ContractStateHash))
     }

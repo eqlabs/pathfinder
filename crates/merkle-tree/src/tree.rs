@@ -54,12 +54,12 @@ use pathfinder_storage::{Node, StoredNode};
 use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
-use std::{cell::RefCell, rc::Rc};
 
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
-    root: Option<Rc<RefCell<InternalNode>>>,
+    root: Option<indextree::NodeId>,
+    arena: indextree::Arena<InternalNode>,
     _hasher: std::marker::PhantomData<H>,
     /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
@@ -77,9 +77,11 @@ pub struct TrieUpdate {
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn new(root: u32) -> Self {
-        let root = Some(Rc::new(RefCell::new(InternalNode::Unresolved(root))));
+        let mut arena = indextree::Arena::new();
+        let root = Some(arena.new_node(InternalNode::Unresolved(root)));
         Self {
             root,
+            arena,
             _hasher: std::marker::PhantomData,
             verify_hashes: false,
         }
@@ -91,8 +93,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     }
 
     pub fn empty() -> Self {
+        let arena = indextree::Arena::new();
         Self {
             root: None,
+            arena,
             _hasher: std::marker::PhantomData,
             verify_hashes: false,
         }
@@ -109,8 +113,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         let mut hashes = HashMap::new();
 
-        let root = if let Some(root) = self.root.as_ref() {
-            match &mut *root.borrow_mut() {
+        let root = if let Some(root) = self.root {
+            match self.arena[root].get() {
                 InternalNode::Unresolved(idx) => {
                     let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
                     self.resolve_hashes(&root, &mut hashes, storage)?;
@@ -144,11 +148,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 hashes.insert(*idx, hash);
             }
             InternalNode::Binary(binary) => {
-                self.resolve_hashes(&binary.left.borrow(), hashes, storage)?;
-                self.resolve_hashes(&binary.right.borrow(), hashes, storage)?;
+                self.resolve_hashes(self.arena[binary.left].get(), hashes, storage)?;
+                self.resolve_hashes(self.arena[binary.right].get(), hashes, storage)?;
             }
             InternalNode::Edge(edge) => {
-                self.resolve_hashes(&edge.child.borrow(), hashes, storage)?
+                self.resolve_hashes(self.arena[edge.child].get(), hashes, storage)?
             }
             InternalNode::Leaf(_) => {}
         }
@@ -182,11 +186,14 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 //     || self.commit_subtree(&binary.left.borrow(), added, hashes),
                 //     || self.commit_subtree(&binary.right.borrow(), added, hashes),
                 // );
-                let left_hash = self.commit_subtree(&binary.left.borrow(), added, hashes)?;
-                let right_hash = self.commit_subtree(&binary.right.borrow(), added, hashes)?;
+                let left = self.arena[binary.left].get();
+                let right = self.arena[binary.right].get();
+
+                let left_hash = self.commit_subtree(left, added, hashes)?;
+                let right_hash = self.commit_subtree(right, added, hashes)?;
                 let hash = BinaryNode::calculate_hash::<H>(left_hash, right_hash);
 
-                let persisted_node = match (&*binary.left.borrow(), &*binary.right.borrow()) {
+                let persisted_node = match (left, right) {
                     (&InternalNode::Leaf(left), &InternalNode::Leaf(right)) => {
                         Node::LeafBinary { left, right }
                     }
@@ -212,17 +219,19 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 hash
             }
             InternalNode::Edge(edge) => {
-                let child_hash = self.commit_subtree(&edge.child.borrow(), added, hashes)?;
+                let child = self.arena[edge.child].get();
+
+                let child_hash = self.commit_subtree(child, added, hashes)?;
 
                 let hash = EdgeNode::calculate_hash::<H>(child_hash, &edge.path);
 
-                let persisted_node = match *edge.child.borrow() {
+                let persisted_node = match child {
                     InternalNode::Leaf(child) => Node::LeafEdge {
-                        child,
+                        child: *child,
                         path: edge.path.clone(),
                     },
                     InternalNode::Unresolved(idx) => Node::Edge {
-                        child: Child::Id(idx),
+                        child: Child::Id(*idx),
                         path: edge.path.clone(),
                     },
                     _ => Node::Edge {
@@ -273,7 +282,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         use InternalNode::*;
         match path.last() {
             Some(node) => {
-                let updated = match &*node.borrow() {
+                let updated = match self.arena[*node].get().clone() {
                     Edge(edge) => {
                         let common = edge.common_path(key);
 
@@ -291,14 +300,14 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         // (this may be edge -> leaf, or just leaf depending).
                         let new_leaf = InternalNode::Leaf(value);
                         let new = match new_path.is_empty() {
-                            true => Rc::new(RefCell::new(new_leaf)),
+                            true => self.arena.new_node(new_leaf),
                             false => {
                                 let new_edge = InternalNode::Edge(EdgeNode {
                                     height: child_height,
                                     path: new_path,
-                                    child: Rc::new(RefCell::new(new_leaf)),
+                                    child: self.arena.new_node(new_leaf),
                                 });
-                                Rc::new(RefCell::new(new_edge))
+                                self.arena.new_node(new_edge)
                             }
                         };
 
@@ -311,7 +320,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                                     path: old_path,
                                     child: edge.child.clone(),
                                 });
-                                Rc::new(RefCell::new(old_edge))
+                                self.arena.new_node(old_edge)
                             }
                         };
 
@@ -333,7 +342,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             false => InternalNode::Edge(EdgeNode {
                                 height: edge.height,
                                 path: common.to_bitvec(),
-                                child: Rc::new(RefCell::new(branch)),
+                                child: self.arena.new_node(branch),
                             }),
                         }
                     }
@@ -344,7 +353,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     }
                 };
 
-                node.swap(&RefCell::new(updated));
+                *self.arena[*node].get_mut() = updated;
             }
             None => {
                 // Getting no travel nodes implies that the tree is empty.
@@ -355,10 +364,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 let edge = InternalNode::Edge(EdgeNode {
                     height: 0,
                     path: key.to_bitvec(),
-                    child: Rc::new(RefCell::new(leaf)),
+                    child: self.arena.new_node(leaf),
                 });
 
-                self.root = Some(Rc::new(RefCell::new(edge)));
+                self.root = Some(self.arena.new_node(edge));
             }
         }
 
@@ -391,75 +400,70 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         // Do nothing if the leaf does not exist.
         match path.last() {
-            Some(node) => match &*node.borrow() {
+            Some(node) => match self.arena[*node].get() {
                 InternalNode::Leaf(_) => {}
                 _ => return Ok(()),
             },
             None => return Ok(()),
         }
 
-        // Go backwards until we hit a branch node.
-        let mut node_iter = path
-            .into_iter()
-            .rev()
-            .skip_while(|node| !node.borrow().is_binary());
+        let mut node_iter = path.into_iter().rev();
 
-        match node_iter.next() {
-            Some(node) => {
-                let new_edge = {
-                    // This node must be a binary node due to the iteration condition.
-                    let binary = node.borrow().as_binary().cloned().unwrap();
-                    // Create an edge node to replace the old binary node
-                    // i.e. with the remaining child (note the direction invert),
-                    //      and a path of just a single bit.
-                    let direction = binary.direction(key).invert();
-                    let child = binary.get_child(direction);
-                    let path = std::iter::once(bool::from(direction)).collect::<BitVec<_, _>>();
-                    let mut edge = EdgeNode {
-                        height: binary.height,
-                        path,
-                        child,
-                    };
-
-                    // Merge the remaining child if it's an edge.
-                    self.merge_edges(storage, &mut edge)?;
-
-                    edge
-                };
-                // Replace the old binary node with the new edge node.
-                node.swap(&RefCell::new(InternalNode::Edge(new_edge)));
+        while let Some(node) = node_iter.next() {
+            // Go backwards until we hit a branch node.
+            if !self.arena[node].get().is_binary() {
+                continue;
             }
-            None => {
-                // We reached the root without a hitting binary node. The new tree
-                // must therefore be empty.
-                self.root = None;
-                return Ok(());
-            }
-        };
 
-        // Check the parent of the new edge. If it is also an edge, then they must merge.
-        if let Some(node) = node_iter.next() {
-            if let InternalNode::Edge(edge) = &mut *node.borrow_mut() {
-                self.merge_edges(storage, edge)?;
+            let new_edge = {
+                // This node must be a binary node due to the iteration condition.
+                let binary = self.arena[node].get().as_binary().cloned().unwrap();
+                // Create an edge node to replace the old binary node
+                // i.e. with the remaining child (note the direction invert),
+                //      and a path of just a single bit.
+                let direction = binary.direction(key).invert();
+                let child = binary.get_child(direction);
+                let path = std::iter::once(bool::from(direction)).collect::<BitVec<_, _>>();
+                EdgeNode {
+                    height: binary.height,
+                    path,
+                    child,
+                }
+            };
+            // Replace the old binary node with the new edge node.
+            *self.arena[node].get_mut() = InternalNode::Edge(new_edge);
+            // Merge the remaining child if it's an edge.
+            self.merge_edges(storage, node)?;
+
+            // Check the parent of the new edge. If it is also an edge, then they must merge.
+            if let Some(node) = node_iter.next() {
+                if let InternalNode::Edge(_) = self.arena[node].get() {
+                    self.merge_edges(storage, node)?;
+                }
             }
+
+            return Ok(());
         }
 
+        // We reached the root without a hitting binary node. The new tree
+        // must therefore be empty.
+        self.root = None;
         Ok(())
     }
 
     /// Returns the value stored at key, or `None` if it does not exist.
     pub fn get(
-        &self,
+        &mut self,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Option<Felt>> {
-        let result = self
-            .traverse(storage, key)?
-            .last()
-            .and_then(|node| match &*node.borrow() {
-                InternalNode::Leaf(value) if !value.is_zero() => Some(*value),
-                _ => None,
-            });
+        let result =
+            self.traverse(storage, key)?
+                .last()
+                .and_then(|node| match self.arena[*node].get() {
+                    InternalNode::Leaf(value) if !value.is_zero() => Some(*value),
+                    _ => None,
+                });
         Ok(result)
     }
 
@@ -475,7 +479,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///   2. the hashes are correct, and
     ///   3. the root hash matches the known root
     pub fn get_proof(
-        &self,
+        &mut self,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Vec<TrieNode>> {
@@ -488,7 +492,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         };
 
         // A leaf node is redudant data as the information for it is already contained in the previous node.
-        if matches!(&*node.borrow(), InternalNode::Leaf(_)) {
+        if matches!(self.arena[*node].get(), InternalNode::Leaf(_)) {
             nodes.pop();
         }
 
@@ -526,11 +530,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// on towards the destination. Nor can it be an [Unresolved](InternalNode::Unresolved) node since this would be
     /// resolved to check if we can travel further.
     fn traverse(
-        &self,
+        &mut self,
         storage: &impl Storage,
         dst: &BitSlice<u8, Msb0>,
-    ) -> anyhow::Result<Vec<Rc<RefCell<InternalNode>>>> {
-        let Some(mut current) = self.root.clone() else {
+    ) -> anyhow::Result<Vec<indextree::NodeId>> {
+        let Some(mut current) = self.root else {
             return Ok(Vec::new());
         };
 
@@ -539,12 +543,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         loop {
             use InternalNode::*;
 
-            let current_tmp = current.borrow().clone();
+            let current_node = self.arena[current].get().clone();
 
-            let next = match current_tmp {
+            let next = match current_node {
                 Unresolved(idx) => {
                     let node = self.resolve(storage, idx, height)?;
-                    current.swap(&RefCell::new(node));
+                    *self.arena[current].get_mut() = node;
                     current
                 }
                 Binary(binary) => {
@@ -573,7 +577,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// Result will be either a [Binary](InternalNode::Binary), [Edge](InternalNode::Edge) or [Leaf](InternalNode::Leaf) node.
     fn resolve(
-        &self,
+        &mut self,
         storage: &impl Storage,
         index: u32,
         height: usize,
@@ -590,23 +594,23 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         let node = match node {
             StoredNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
                 height,
-                left: Rc::new(RefCell::new(InternalNode::Unresolved(left))),
-                right: Rc::new(RefCell::new(InternalNode::Unresolved(right))),
+                left: self.arena.new_node(InternalNode::Unresolved(left)),
+                right: self.arena.new_node(InternalNode::Unresolved(right)),
             }),
             StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
                 height,
                 path,
-                child: Rc::new(RefCell::new(InternalNode::Unresolved(child))),
+                child: self.arena.new_node(InternalNode::Unresolved(child)),
             }),
             StoredNode::LeafBinary { left, right } => InternalNode::Binary(BinaryNode {
                 height,
-                left: Rc::new(RefCell::new(InternalNode::Leaf(left))),
-                right: Rc::new(RefCell::new(InternalNode::Leaf(right))),
+                left: self.arena.new_node(InternalNode::Leaf(left)),
+                right: self.arena.new_node(InternalNode::Leaf(right)),
             }),
             StoredNode::LeafEdge { child, path } => InternalNode::Edge(EdgeNode {
                 height,
                 path,
-                child: Rc::new(RefCell::new(InternalNode::Leaf(child))),
+                child: self.arena.new_node(InternalNode::Leaf(child)),
             }),
         };
 
@@ -619,17 +623,29 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// This can occur when mutating the tree (e.g. deleting a child of a binary node), and is an illegal state
     /// (since edge nodes __must be__ maximal subtrees).
-    fn merge_edges(&self, storage: &impl Storage, parent: &mut EdgeNode) -> anyhow::Result<()> {
-        let resolved_child = match &*parent.child.borrow() {
+    fn merge_edges(
+        &mut self,
+        storage: &impl Storage,
+        parent: indextree::NodeId,
+    ) -> anyhow::Result<()> {
+        // let mut parent = self.arena[parent].get_mut().as_edge().unwrap();
+        let parent_edge = self.arena[parent].get().as_edge().unwrap().clone();
+
+        let resolved_child = match self.arena[parent_edge.child].get().clone() {
             InternalNode::Unresolved(hash) => {
-                self.resolve(storage, *hash, parent.height + parent.path.len())?
+                self.resolve(storage, hash, parent_edge.height + parent_edge.path.len())?
             }
             other => other.clone(),
         };
 
         if let Some(child_edge) = resolved_child.as_edge().cloned() {
-            parent.path.extend_from_bitslice(&child_edge.path);
-            parent.child = child_edge.child;
+            let parent_edge = self.arena[parent].get_mut();
+            if let InternalNode::Edge(parent_edge) = parent_edge {
+                parent_edge.path.extend_from_bitslice(&child_edge.path);
+                parent_edge.child = child_edge.child;
+            } else {
+                unreachable!()
+            }
         }
 
         Ok(())
@@ -647,7 +663,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// Upon successful non-breaking visit of the tree, `None` will be returned.
     #[allow(dead_code)]
     pub fn dfs<X, VisitorFn>(
-        &self,
+        &mut self,
         storage: &impl Storage,
         visitor_fn: &mut VisitorFn,
     ) -> anyhow::Result<Option<X>>
@@ -658,16 +674,16 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         #[allow(dead_code)]
         struct VisitedNode {
-            node: Rc<RefCell<InternalNode>>,
+            node: indextree::NodeId,
             path: BitVec<u8, Msb0>,
         }
 
-        let Some(root) = self.root.as_ref() else {
+        let Some(root) = self.root else {
             return Ok(None);
         };
 
         let mut visiting = vec![VisitedNode {
-            node: root.clone(),
+            node: root,
             path: bitvec![u8, Msb0;],
         }];
 
@@ -675,7 +691,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             match visiting.pop() {
                 None => break,
                 Some(VisitedNode { node, path }) => {
-                    let current_node = &*node.borrow();
+                    let current_node = self.arena[node].get();
                     match visitor_fn(current_node, &path) {
                         ControlFlow::Continue(Visit::ContinueDeeper) => {
                             // the default, no action, just continue deeper
@@ -720,12 +736,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         }
                         InternalNode::Leaf(_) => {}
                         unresolved @ InternalNode::Unresolved(idx) => {
+                            let resolved = self.resolve(storage, *idx, path.len())?;
                             visiting.push(VisitedNode {
-                                node: Rc::new(RefCell::new(self.resolve(
-                                    storage,
-                                    *idx,
-                                    path.len(),
-                                )?)),
+                                node: self.arena.new_node(resolved),
                                 path,
                             });
                         }
@@ -838,7 +851,7 @@ mod tests {
 
     #[test]
     fn get_empty() {
-        let uut = TestTree::empty();
+        let mut uut = TestTree::empty();
         let storage = TestStorage::default();
 
         let key = felt!("0x99cadc82").view_bits().to_bitvec();
@@ -903,17 +916,15 @@ mod tests {
             // The edge node path should match the key, and the leaf node the value.
             let expected_path = key.clone();
 
-            let edge = uut
-                .root
-                .unwrap()
-                .borrow()
+            let edge = uut.arena[uut.root.unwrap()]
+                .get()
                 .as_edge()
                 .cloned()
                 .expect("root should be an edge");
             assert_eq!(edge.path, expected_path);
             assert_eq!(edge.height, 0);
 
-            let leaf = edge.child.borrow().to_owned();
+            let leaf = uut.arena[edge.child].get().to_owned();
             assert_eq!(leaf, InternalNode::Leaf(value));
         }
 
@@ -933,10 +944,8 @@ mod tests {
             uut.set(&storage, &key0, value0).unwrap();
             uut.set(&storage, &key1, value1).unwrap();
 
-            let edge = uut
-                .root
-                .unwrap()
-                .borrow()
+            let edge = uut.arena[uut.root.unwrap()]
+                .get()
                 .as_edge()
                 .cloned()
                 .expect("root should be an edge");
@@ -945,9 +954,8 @@ mod tests {
             assert_eq!(edge.path, expected_path);
             assert_eq!(edge.height, 0);
 
-            let binary = edge
-                .child
-                .borrow()
+            let binary = uut.arena[edge.child]
+                .get()
                 .as_binary()
                 .cloned()
                 .expect("should be a binary node");
@@ -957,15 +965,13 @@ mod tests {
             let direction0 = Direction::from(false);
             let direction1 = Direction::from(true);
 
-            let child0 = binary
-                .get_child(direction0)
-                .borrow()
+            let child0 = uut.arena[binary.get_child(direction0)]
+                .get()
                 .as_edge()
                 .cloned()
                 .expect("child should be an edge");
-            let child1 = binary
-                .get_child(direction1)
-                .borrow()
+            let child1 = uut.arena[binary.get_child(direction1)]
+                .get()
                 .as_edge()
                 .cloned()
                 .expect("child should be an edge");
@@ -973,8 +979,8 @@ mod tests {
             assert_eq!(child0.height, 51);
             assert_eq!(child1.height, 51);
 
-            let leaf0 = child0.child.borrow().to_owned();
-            let leaf1 = child1.child.borrow().to_owned();
+            let leaf0 = uut.arena[child0.child].get().to_owned();
+            let leaf1 = uut.arena[child1.child].get().to_owned();
 
             assert_eq!(leaf0, InternalNode::Leaf(value0));
             assert_eq!(leaf1, InternalNode::Leaf(value1));
@@ -996,10 +1002,8 @@ mod tests {
             uut.set(&storage, &key0, value0).unwrap();
             uut.set(&storage, &key1, value1).unwrap();
 
-            let binary = uut
-                .root
-                .unwrap()
-                .borrow()
+            let binary = uut.arena[uut.root.unwrap()]
+                .get()
                 .as_binary()
                 .cloned()
                 .expect("root should be a binary node");
@@ -1009,15 +1013,13 @@ mod tests {
             let direction0 = Direction::from(false);
             let direction1 = Direction::from(true);
 
-            let child0 = binary
-                .get_child(direction0)
-                .borrow()
+            let child0 = uut.arena[binary.get_child(direction0)]
+                .get()
                 .as_edge()
                 .cloned()
                 .expect("child should be an edge");
-            let child1 = binary
-                .get_child(direction1)
-                .borrow()
+            let child1 = uut.arena[binary.get_child(direction1)]
+                .get()
                 .as_edge()
                 .cloned()
                 .expect("child should be an edge");
@@ -1025,8 +1027,8 @@ mod tests {
             assert_eq!(child0.height, 1);
             assert_eq!(child1.height, 1);
 
-            let leaf0 = child0.child.borrow().to_owned();
-            let leaf1 = child1.child.borrow().to_owned();
+            let leaf0 = uut.arena[child0.child].get().to_owned();
+            let leaf1 = uut.arena[child1.child].get().to_owned();
 
             assert_eq!(leaf0, InternalNode::Leaf(value0));
             assert_eq!(leaf1, InternalNode::Leaf(value1));
@@ -1047,10 +1049,8 @@ mod tests {
 
             // The tree should consist of an edge node, terminating in a binary node connecting to
             // the two leaf nodes.
-            let edge = uut
-                .root
-                .unwrap()
-                .borrow()
+            let edge = uut.arena[uut.root.unwrap()]
+                .get()
                 .as_edge()
                 .cloned()
                 .expect("root should be an edge");
@@ -1062,9 +1062,8 @@ mod tests {
             assert_eq!(edge.path, expected_path);
             assert_eq!(edge.height, 0);
 
-            let binary = edge
-                .child
-                .borrow()
+            let binary = uut.arena[edge.child]
+                .get()
                 .as_binary()
                 .cloned()
                 .expect("should be a binary node");
@@ -1073,8 +1072,8 @@ mod tests {
             // The binary children should be the leaf nodes.
             let direction0 = Direction::from(false);
             let direction1 = Direction::from(true);
-            let child0 = binary.get_child(direction0).borrow().to_owned();
-            let child1 = binary.get_child(direction1).borrow().to_owned();
+            let child0 = uut.arena[binary.get_child(direction0)].get().to_owned();
+            let child1 = uut.arena[binary.get_child(direction1)].get().to_owned();
             assert_eq!(child0, InternalNode::Leaf(value0));
             assert_eq!(child1, InternalNode::Leaf(value1));
         }
@@ -1162,7 +1161,7 @@ mod tests {
 
             let root = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root.1);
+            let mut uut = TestTree::new(root.1);
 
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
@@ -1242,17 +1241,17 @@ mod tests {
             uut.set(&storage, &key2, val2).unwrap();
             let root2 = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root0.1);
+            let mut uut = TestTree::new(root0.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), None);
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root1.1);
+            let mut uut = TestTree::new(root1.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root2.1);
+            let mut uut = TestTree::new(root2.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, &key2).unwrap(), Some(val2));
@@ -1281,17 +1280,17 @@ mod tests {
             uut.set(&storage, &key2, val2).unwrap();
             let root2 = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root0.1);
+            let mut uut = TestTree::new(root0.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), None);
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root1.1);
+            let mut uut = TestTree::new(root1.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root2.1);
+            let mut uut = TestTree::new(root2.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), None);
             assert_eq!(uut.get(&storage, &key2).unwrap(), Some(val2));
@@ -1400,13 +1399,19 @@ mod tests {
         use bitvec::slice::BitSlice;
         use bitvec::{bitvec, prelude::Msb0};
         use pathfinder_common::felt;
-        use std::cell::RefCell;
         use std::ops::ControlFlow;
-        use std::rc::Rc;
+
+        fn find_node_id(tree: &mut TestTree, needle: &InternalNode) -> indextree::NodeId {
+            tree.arena
+                .iter()
+                .find(|node| node.get() == needle)
+                .map(|node| tree.arena.get_node_id(node).unwrap())
+                .unwrap()
+        }
 
         #[test]
         fn empty_tree() {
-            let uut = TestTree::empty();
+            let mut uut = TestTree::empty();
             let storage = TestStorage::default();
 
             let mut visited = vec![];
@@ -1435,14 +1440,14 @@ mod tests {
             };
             uut.dfs(&storage, &mut visitor_fn).unwrap();
 
-            assert_eq!(
+            pretty_assertions::assert_eq!(
                 visited,
                 vec![
                     (
                         InternalNode::Edge(EdgeNode {
                             height: 0,
                             path: key.view_bits().into(),
-                            child: Rc::new(RefCell::new(InternalNode::Leaf(value)))
+                            child: find_node_id(&mut uut, &InternalNode::Leaf(value)),
                         }),
                         bitvec![u8, Msb0;]
                     ),
@@ -1480,8 +1485,8 @@ mod tests {
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
                     height: 250,
-                    left: Rc::new(RefCell::new(expected_2.0.clone())),
-                    right: Rc::new(RefCell::new(expected_3.0.clone())),
+                    left: find_node_id(&mut uut, &expected_2.0),
+                    right: find_node_id(&mut uut, &expected_3.0),
                 }),
                 bitvec![u8, Msb0; 0; 250],
             );
@@ -1489,7 +1494,7 @@ mod tests {
                 InternalNode::Edge(EdgeNode {
                     height: 0,
                     path: bitvec![u8, Msb0; 0; 250],
-                    child: Rc::new(RefCell::new(expected_1.0.clone())),
+                    child: find_node_id(&mut uut, &expected_1.0),
                 }),
                 bitvec![u8, Msb0;],
             );
@@ -1548,7 +1553,7 @@ mod tests {
                 InternalNode::Edge(EdgeNode {
                     height: 250,
                     path: bitvec![u8, Msb0; 1; 1],
-                    child: Rc::new(RefCell::new(expected_6.0.clone())),
+                    child: find_node_id(&mut uut, &expected_6.0),
                 }),
                 path_to_5,
             );
@@ -1557,16 +1562,16 @@ mod tests {
             let expected_2 = (
                 InternalNode::Binary(BinaryNode {
                     height: 250,
-                    left: Rc::new(RefCell::new(expected_3.0.clone())),
-                    right: Rc::new(RefCell::new(expected_4.0.clone())),
+                    left: find_node_id(&mut uut, &expected_3.0),
+                    right: find_node_id(&mut uut, &expected_4.0),
                 }),
                 path_to_2,
             );
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
                     height: 249,
-                    left: Rc::new(RefCell::new(expected_2.0.clone())),
-                    right: Rc::new(RefCell::new(expected_5.0.clone())),
+                    left: find_node_id(&mut uut, &expected_2.0),
+                    right: find_node_id(&mut uut, &expected_5.0),
                 }),
                 path_to_1.clone(),
             );
@@ -1574,7 +1579,7 @@ mod tests {
                 InternalNode::Edge(EdgeNode {
                     height: 0,
                     path: path_to_1,
-                    child: Rc::new(RefCell::new(expected_1.0.clone())),
+                    child: find_node_id(&mut uut, &expected_1.0),
                 }),
                 path_to_0,
             );
