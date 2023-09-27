@@ -107,13 +107,19 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = HashMap::new();
 
+        let mut hashes = HashMap::new();
+
         let root = if let Some(root) = self.root.as_ref() {
             match &mut *root.borrow_mut() {
                 InternalNode::Unresolved(idx) => {
                     let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
-                    self.commit_subtree(&mut root, &mut added, storage)?
+                    self.resolve_hashes(&root, &mut hashes, storage)?;
+                    self.commit_subtree(&mut root, &mut added, &hashes)?
                 }
-                mut other => self.commit_subtree(&mut other, &mut added, storage)?,
+                mut other => {
+                    self.resolve_hashes(&other, &mut hashes, storage)?;
+                    self.commit_subtree(&mut other, &mut added, &hashes)?
+                }
             }
         } else {
             // An empty trie has a root of zero
@@ -121,6 +127,32 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         };
 
         Ok(TrieUpdate { root, nodes: added })
+    }
+
+    fn resolve_hashes(
+        &self,
+        node: &InternalNode,
+        hashes: &mut HashMap<u32, Felt>,
+        storage: &impl Storage,
+    ) -> anyhow::Result<()> {
+        match node {
+            InternalNode::Unresolved(idx) => {
+                let hash = storage
+                    .hash(*idx)
+                    .context("Fetching stored node's hash")?
+                    .context("Stored node's hash is missing")?;
+                hashes.insert(*idx, hash);
+            }
+            InternalNode::Binary(binary) => {
+                self.resolve_hashes(&binary.left.borrow(), hashes, storage)?;
+                self.resolve_hashes(&binary.right.borrow(), hashes, storage)?;
+            }
+            InternalNode::Edge(edge) => {
+                self.resolve_hashes(&edge.child.borrow(), hashes, storage)?
+            }
+            InternalNode::Leaf(_) => {}
+        }
+        Ok(())
     }
 
     /// Persists any changes in this subtree to storage.
@@ -132,9 +164,9 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     /// In effect, the entire subtree gets persisted.
     fn commit_subtree(
         &self,
-        node: &mut InternalNode,
+        node: &InternalNode,
         added: &mut HashMap<Felt, Node>,
-        storage: &impl Storage,
+        hashes: &HashMap<u32, Felt>,
     ) -> anyhow::Result<Felt> {
         use pathfinder_storage::Child;
 
@@ -142,17 +174,16 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             InternalNode::Unresolved(idx) => {
                 // Unresovlved nodes are already committed, but we need their hash for subsequent
                 // iterations.
-                storage
-                    .hash(*idx)
-                    .context("Fetching stored node's hash")?
-                    .context("Stored node's hash is missing")?
+                *hashes.get(idx).context("Node's hash is missing")?
             }
             InternalNode::Leaf(hash) => *hash,
             InternalNode::Binary(binary) => {
-                let left_hash =
-                    self.commit_subtree(&mut binary.left.borrow_mut(), added, storage)?;
-                let right_hash =
-                    self.commit_subtree(&mut binary.right.borrow_mut(), added, storage)?;
+                // let (left_hash, right_hash) = rayon::join(
+                //     || self.commit_subtree(&binary.left.borrow(), added, hashes),
+                //     || self.commit_subtree(&binary.right.borrow(), added, hashes),
+                // );
+                let left_hash = self.commit_subtree(&binary.left.borrow(), added, hashes)?;
+                let right_hash = self.commit_subtree(&binary.right.borrow(), added, hashes)?;
                 let hash = BinaryNode::calculate_hash::<H>(left_hash, right_hash);
 
                 let persisted_node = match (&*binary.left.borrow(), &*binary.right.borrow()) {
@@ -181,8 +212,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 hash
             }
             InternalNode::Edge(edge) => {
-                let child_hash =
-                    self.commit_subtree(&mut edge.child.borrow_mut(), added, storage)?;
+                let child_hash = self.commit_subtree(&edge.child.borrow(), added, hashes)?;
 
                 let hash = EdgeNode::calculate_hash::<H>(child_hash, &edge.path);
 
