@@ -730,6 +730,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
@@ -760,43 +762,166 @@ mod tests {
         }
     }
 
-    mod axum_server {
-        use super::*;
+    #[tokio::test]
+    async fn empty_get_on_root_is_ok() {
+        // Monitoring bots often get query `/` with no body as a form
+        // of health check. Test that we return success for such queries.
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let context = RpcContext::for_tests();
+        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+            .spawn()
+            .unwrap();
 
-        #[tokio::test]
-        async fn empty_get_on_root_is_ok() {
-            // Monitoring bots often get query `/` with no body as a form
-            // of health check. Test that we return success for such queries.
-            let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-            let context = RpcContext::for_tests();
-            let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
-                .spawn()
-                .unwrap();
+        let url = format!("http://{addr}/");
 
-            let url = format!("http://{addr}/");
+        let client = reqwest::Client::new();
+        // No body
+        let status = client.get(url.clone()).send().await.unwrap().status();
+        assert!(status.is_success());
+        // Empty body - unsure if this is actually different to no body.
+        let status = client
+            .get(url.clone())
+            .body("")
+            .send()
+            .await
+            .unwrap()
+            .status();
+        assert!(status.is_success());
+        // Non-empty body should fail.
+        let status = client
+            .get(url.clone())
+            .body("x")
+            .send()
+            .await
+            .unwrap()
+            .status();
+        assert!(!status.is_success());
+    }
 
-            let client = reqwest::Client::new();
-            // No body
-            let status = client.get(url.clone()).send().await.unwrap().status();
-            assert!(status.is_success());
-            // Empty body - unsure if this is actually different to no body.
-            let status = client
-                .get(url.clone())
-                .body("")
-                .send()
-                .await
-                .unwrap()
-                .status();
-            assert!(status.is_success());
-            // Non-empty body should fail.
-            let status = client
-                .get(url.clone())
-                .body("x")
-                .send()
-                .await
-                .unwrap()
-                .status();
-            assert!(!status.is_success());
-        }
+    #[rustfmt::skip]
+    #[rstest::rstest]
+    // Ensure that a missing method would actually fail this test.
+    #[should_panic]
+    #[case::invalid("/", "invalid")]
+
+    #[case::root_starknet_blockHashAndNumber("/", "starknet_blockHashAndNumber")]
+    #[case::root_starknet_blockNumber("/", "starknet_blockNumber")]
+    #[case::root_starknet_call("/", "starknet_call")]
+    #[case::root_starknet_chainId("/", "starknet_chainId")]
+    #[case::root_starknet_getBlockWithTxHashes("/", "starknet_getBlockWithTxHashes")]
+    #[case::root_starknet_getBlockTransactionCount("/", "starknet_getBlockTransactionCount")]
+    #[case::root_starknet_getClass("/", "starknet_getClass")]
+    #[case::root_starknet_getClassAt("/", "starknet_getClassAt")]
+    #[case::root_starknet_getClassHashAt("/", "starknet_getClassHashAt")]
+    #[case::root_starknet_getNonce("/", "starknet_getNonce")]
+    #[case::root_starknet_getStorageAt("/", "starknet_getStorageAt")]
+    #[case::root_starknet_estimateFee("/", "starknet_estimateFee")]
+    #[case::root_starknet_getEvents("/", "starknet_getEvents")]
+    #[case::root_starknet_getStateUpdate("/", "starknet_getStateUpdate")]
+    #[case::root_starknet_addDeclareTransaction("/", "starknet_addDeclareTransaction")]
+    #[case::root_starknet_addDeployAccountTransaction("/", "starknet_addDeployAccountTransaction")]
+    #[case::root_starknet_addInvokeTransaction("/", "starknet_addInvokeTransaction")]
+    #[case::root_starknet_getBlockWithTxs("/", "starknet_getBlockWithTxs")]
+    #[case::root_starknet_getTransactionReceipt("/", "starknet_getTransactionReceipt")]
+    #[case::root_starknet_syncing("/", "starknet_syncing")]
+    #[case::root_starknet_simulateTransactions("/", "starknet_simulateTransactions")]
+    #[case::root_starknet_estimateMessageFee("/", "starknet_estimateMessageFee")]
+    #[case::root_starknet_getTransactionByBlockIdAndIndex("/", "starknet_getTransactionByBlockIdAndIndex")]
+    #[case::root_starknet_getTransactionByHash("/", "starknet_getTransactionByHash")]
+    #[case::root_starknet_pendingTransactions("/", "starknet_pendingTransactions")]
+    #[case::root_pathfinder_getProof("/", "pathfinder_getProof")]
+    #[case::root_pathfinder_getTransactionStatus("/", "pathfinder_getTransactionStatus")]
+
+    #[case::v03_starknet_addDeclareTransaction("/rpc/v0.3", "starknet_addDeclareTransaction")]
+    #[case::v03_starknet_addDeployAccountTransaction("/rpc/v0.3", "starknet_addDeployAccountTransaction")]
+    #[case::v03_starknet_addInvokeTransaction("/rpc/v0.3", "starknet_addInvokeTransaction")]
+    #[case::v03_starknet_blockHashAndNumber("/rpc/v0.3", "starknet_blockHashAndNumber")]
+    #[case::v03_starknet_blockNumber("/rpc/v0.3", "starknet_blockNumber")]
+    #[case::v03_starknet_call("/rpc/v0.3", "starknet_call")]
+    #[case::v03_starknet_chainId("/rpc/v0.3", "starknet_chainId")]
+    #[case::v03_starknet_getBlockWithTxHashes("/rpc/v0.3", "starknet_getBlockWithTxHashes")]
+    #[case::v03_starknet_getBlockWithTxs("/rpc/v0.3", "starknet_getBlockWithTxs")]
+    #[case::v03_starknet_getBlockTransactionCount("/rpc/v0.3", "starknet_getBlockTransactionCount")]
+    #[case::v03_starknet_getClass("/rpc/v0.3", "starknet_getClass")]
+    #[case::v03_starknet_getClassAt("/rpc/v0.3", "starknet_getClassAt")]
+    #[case::v03_starknet_getClassHashAt("/rpc/v0.3", "starknet_getClassHashAt")]
+    #[case::v03_starknet_getNonce("/rpc/v0.3", "starknet_getNonce")]
+    #[case::v03_starknet_getStorageAt("/rpc/v0.3", "starknet_getStorageAt")]
+    #[case::v03_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.3", "starknet_getTransactionByBlockIdAndIndex")]
+    #[case::v03_starknet_getTransactionByHash("/rpc/v0.3", "starknet_getTransactionByHash")]
+    #[case::v03_starknet_getTransactionReceipt("/rpc/v0.3", "starknet_getTransactionReceipt")]
+    #[case::v03_starknet_pendingTransactions("/rpc/v0.3", "starknet_pendingTransactions")]
+    #[case::v03_starknet_syncing("/rpc/v0.3", "starknet_syncing")]
+    #[case::v03_starknet_estimateFee("/rpc/v0.3", "starknet_estimateFee")]
+    #[case::v03_starknet_getEvents("/rpc/v0.3", "starknet_getEvents")]
+    #[case::v03_starknet_getStateUpdate("/rpc/v0.3", "starknet_getStateUpdate")]
+    #[case::v03_starknet_simulateTransaction("/rpc/v0.3", "starknet_simulateTransaction")]
+    #[case::v03_starknet_estimateMessageFee("/rpc/v0.3", "starknet_estimateMessageFee")]
+    #[case::v03_pathfinder_getProof("/rpc/v0.3", "pathfinder_getProof")]
+    #[case::v03_pathfinder_getTransactionStatus("/rpc/v0.3", "pathfinder_getTransactionStatus")]
+
+    #[case::v04_starknet_blockHashAndNumber("/rpc/v0.4", "starknet_blockHashAndNumber")]
+    #[case::v04_starknet_blockNumber("/rpc/v0.4", "starknet_blockNumber")]
+    #[case::v04_starknet_call("/rpc/v0.4", "starknet_call")]
+    #[case::v04_starknet_chainId("/rpc/v0.4", "starknet_chainId")]
+    #[case::v04_starknet_getBlockWithTxHashes("/rpc/v0.4", "starknet_getBlockWithTxHashes")]
+    #[case::v04_starknet_getBlockTransactionCount("/rpc/v0.4", "starknet_getBlockTransactionCount")]
+    #[case::v04_starknet_getClass("/rpc/v0.4", "starknet_getClass")]
+    #[case::v04_starknet_getClassAt("/rpc/v0.4", "starknet_getClassAt")]
+    #[case::v04_starknet_getClassHashAt("/rpc/v0.4", "starknet_getClassHashAt")]
+    #[case::v04_starknet_getNonce("/rpc/v0.4", "starknet_getNonce")]
+    #[case::v04_starknet_getStorageAt("/rpc/v0.4", "starknet_getStorageAt")]
+    #[case::v04_starknet_estimateFee("/rpc/v0.4", "starknet_estimateFee")]
+    #[case::v04_starknet_getEvents("/rpc/v0.4", "starknet_getEvents")]
+    #[case::v04_starknet_getStateUpdate("/rpc/v0.4", "starknet_getStateUpdate")]
+    #[case::v04_starknet_addDeclareTransaction("/rpc/v0.4", "starknet_addDeclareTransaction")]
+    #[case::v04_starknet_addDeployAccountTransaction("/rpc/v0.4", "starknet_addDeployAccountTransaction")]
+    #[case::v04_starknet_addInvokeTransaction("/rpc/v0.4", "starknet_addInvokeTransaction")]
+    #[case::v04_starknet_getBlockWithTxs("/rpc/v0.4", "starknet_getBlockWithTxs")]
+    #[case::v04_starknet_getTransactionReceipt("/rpc/v0.4", "starknet_getTransactionReceipt")]
+    #[case::v04_starknet_syncing("/rpc/v0.4", "starknet_syncing")]
+    #[case::v04_starknet_simulateTransactions("/rpc/v0.4", "starknet_simulateTransactions")]
+    #[case::v04_starknet_estimateMessageFee("/rpc/v0.4", "starknet_estimateMessageFee")]
+    #[case::v04_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.4", "starknet_getTransactionByBlockIdAndIndex")]
+    #[case::v04_starknet_getTransactionByHash("/rpc/v0.4", "starknet_getTransactionByHash")]
+    #[case::v04_starknet_pendingTransactions("/rpc/v0.4", "starknet_pendingTransactions")]
+    #[case::v04_pathfinder_getProof("/rpc/v0.4", "pathfinder_getProof")]
+    #[case::v04_pathfinder_getTransactionStatus("/rpc/v0.4", "pathfinder_getTransactionStatus")]
+
+    #[case::pathfinder_pathfinder_version("/rpc/pathfinder/v0.1", "pathfinder_version")]
+    #[case::pathfinder_pathfinder_getProof("/rpc/pathfinder/v0.1", "pathfinder_getProof")]
+    #[case::pathfinder_pathfinder_getTransactionStatus("/rpc/pathfinder/v0.1", "pathfinder_getTransactionStatus")]
+
+    #[allow(non_snake_case)]
+    #[tokio::test]
+    async fn rpc_routing(#[case] route: &'static str, #[case] method: &'static str) {
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let context = RpcContext::for_tests();
+        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+            .spawn()
+            .unwrap();
+
+        let url = format!("http://{addr}{route}");
+        let client = reqwest::Client::new();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "id": 0,
+        });
+
+        let res: serde_json::Value = client
+            .post(url.clone())
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        let method_not_found = json!(-32601);
+
+        assert_ne!(dbg!(&res["error"]["code"]), dbg!(&method_not_found));
     }
 }
