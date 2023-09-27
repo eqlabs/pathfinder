@@ -84,8 +84,6 @@ impl RpcServer {
     pub fn spawn(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
         use axum::routing::{get, post};
 
-        // TODO: allow OPTIONS
-
         // TODO: make this configurable
         const REQUEST_MAX_SIZE: usize = 10 * 1024 * 1024;
         // TODO: make this configurable
