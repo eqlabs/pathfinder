@@ -8,7 +8,7 @@ import "state.proto";
 
 // for now, we assume a small consensus, so this fits in 1M. Else, these will be repeated
 message Signatures {
-    uint64 block_number = 1;
+    starknet.common.BlockID block = 1;
 
     repeated starknet.common.ConsensusSignature signatures = 2; //
                                        // can be more explicit here about the signature structure as this is not part of account abstraction
@@ -53,9 +53,9 @@ message BlockProof {
 // for a fraction of peers, also send the GetBlockHeaders and GetBlockBodies response (as if they asked for it for this block)
 message NewBlock {
     oneof maybe_full {
-        uint64               block_number = 1;
-        BlockHeadersResponse header       = 2;
-        BlockBodiesResponse  body         = 3;
+        starknet.common.BlockID id     = 1;
+        BlockHeadersResponse    header = 2;
+        BlockBodiesResponse     body   = 3;
     }
 }
 
@@ -65,14 +65,16 @@ message BlockHeadersRequest {
     starknet.common.Iteration iteration = 1;
 }
 
-message BlockHeadersResponse {
-    uint64 block_number = 1;
-
+message BlockHeadersResponsePart {
     oneof header_message {
-        BlockHeader         header     = 2;
-        Signatures          signatures = 3;
-        starknet.common.Fin fin        = 4;
+        BlockHeader         header     = 1;
+        Signatures          signatures = 2;
+        starknet.common.Fin fin        = 3; // no support for interleaving for now
     }
+}
+
+message BlockHeadersResponse {
+    repeated BlockHeadersResponsePart part = 1;
 }
 
 // result is (StateDiff*, Classes*, BlockProof?)* currently in creation order (incr/dec), but may change in the future
@@ -81,7 +83,7 @@ message BlockBodiesRequest {
 }
 
 message BlockBodiesResponse {
-    uint64 block_number = 1;
+    optional starknet.common.BlockID id = 1; // may not appear if Fin is sent to end the whole response
 
     oneof body_message {
         starknet.state.StateDiff diff    = 2;

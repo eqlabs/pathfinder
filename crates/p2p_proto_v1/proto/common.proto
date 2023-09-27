@@ -38,15 +38,23 @@ message Patricia {
     Hash root = 2;
 }
 
+message BlockID {
+    uint64 number = 1;
+    Hash   header = 2;
+}
+
 message Iteration {
     enum Direction {
         Forward = 0;
         Backward = 1;
     }
-    uint64 start_block = 1; // exclude start from the result
-    Direction direction = 2;
-    uint64 limit = 3;
-    uint64 step = 4; // to allow interleaving from several nodes
+    oneof start {
+        uint64 block_number = 1;
+        Hash   header       = 2;
+    }
+    Direction direction = 3;
+    uint64 limit = 4;
+    uint64 step = 5; // to allow interleaving from several nodes
     // bool interleave = 6; // return results in any order of blocks, per block the messages should still be in the order specified
 }
 

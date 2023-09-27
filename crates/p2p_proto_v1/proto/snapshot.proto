@@ -29,21 +29,21 @@ message PatriciaRangeProof {
 
 // leafs of the contract state tree
 message ContractState {
-    starknet.common.Hash address = 1;  // the key
-    starknet.common.Hash class   = 2;
-    starknet.common.Hash storage = 3;  // patricia
-    uint64               nonce   = 4;
+    starknet.common.Address address = 1;  // the key
+    starknet.common.Hash    class   = 2;
+    starknet.common.Hash    storage = 3;  // patricia
+    uint64                  nonce   = 4;
 }
 
 // request a range from the contract state tree that matches the given root (block)
 // starts at 'start' and ends no more than 'end'.
 // the result is  (ContractRange+, PatriciaRangeProof)*
 message ContractRangeRequest {
-    uint32               domain           = 1;  // volition
-    starknet.common.Hash state_root       = 2;
-    starknet.common.Hash start            = 3;
-    starknet.common.Hash end              = 4;
-    uint32               chunks_per_proof = 5;  // how many ContractRange items to send before sending a proof
+    uint32                  domain           = 1;  // volition
+    starknet.common.Hash    state_root       = 2;
+    starknet.common.Address start            = 3;
+    starknet.common.Address end              = 4;
+    uint32                  chunks_per_proof = 5;  // how many ContractRange items to send before sending a proof
 }
 
 // stream of leaves in the contracts tree
@@ -52,9 +52,9 @@ message ContractRange {
 }
 
 message ContractRangeResponse {
-    starknet.common.Hash state_root     = 1;
-    starknet.common.Hash contracts_root = 2;
-    starknet.common.Hash classes_root   = 3;
+    optional starknet.common.Hash root           = 1; // may not appear if Fin is sent to end the whole response
+    optional starknet.common.Hash contracts_root = 2; // may not appear if Fin is sent to end the whole response
+    optional starknet.common.Hash classes_root   = 3; // may not appear if Fin is sent to end the whole response
     oneof responses {
         ContractRange       range = 4;
         starknet.common.Fin fin   = 5;
@@ -71,9 +71,9 @@ message ClassRangeRequest {
 }
 
 message ClassRangeResponse {
-    starknet.common.Hash root           = 1;
-    starknet.common.Hash contracts_root = 2;
-    starknet.common.Hash classes_root   = 3;
+    optional starknet.common.Hash root           = 1; // may not appear if Fin is sent to end the whole response
+    optional starknet.common.Hash contracts_root = 2; // may not appear if Fin is sent to end the whole response
+    optional starknet.common.Hash classes_root   = 3; // may not appear if Fin is sent to end the whole response
     oneof responses {
         starknet.state.Classes classes = 4;
         starknet.common.Fin    fin     = 5;
@@ -87,8 +87,8 @@ message StorageLeafQuery {
 }
 
 message StorageRangeQuery {
-    StorageLeafQuery start = 2;
-    StorageLeafQuery end   = 3;
+    StorageLeafQuery start = 1;
+    StorageLeafQuery end   = 2;
 }
 
 // result is (ContractStorageRange+, PatriciaRangeProof)*
@@ -103,7 +103,7 @@ message ContractStorage {
 }
 
 message ContractStorageResponse {
-    starknet.common.Hash state_root = 1;
+    optional starknet.common.Hash state_root = 1; // may not appear if Fin is sent to end the whole response
     oneof responses {
         ContractStorage     storage = 2;
         starknet.common.Fin fin     = 3;
