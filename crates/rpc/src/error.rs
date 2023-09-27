@@ -82,6 +82,8 @@ pub enum RpcError {
 impl RpcError {
     pub fn code(&self) -> i32 {
         match self {
+            // Taken from the official starknet json rpc api.
+            // https://github.com/starkware-libs/starknet-specs
             RpcError::FailedToReceiveTxn => 1,
             RpcError::NoTraceAvailable(_) => 10,
             RpcError::ContractNotFound => 20,
@@ -111,7 +113,9 @@ impl RpcError {
             RpcError::UnsupportedTxVersion => 61,
             RpcError::UnsupportedContractClassVersion => 62,
             RpcError::UnexpectedError { .. } => 63,
+            // doc/rpc/pathfinder_rpc_api.json
             RpcError::ProofLimitExceeded { .. } => 10000,
+            // https://www.jsonrpc.org/specification#error_object
             RpcError::GatewayError(_) | RpcError::Internal(_) => -32603,
         }
     }

@@ -31,6 +31,7 @@ impl PartialEq for RpcError {
 
 impl RpcError {
     pub fn code(&self) -> i32 {
+        // From the json-rpc specification: https://www.jsonrpc.org/specification#error_object
         match self {
             RpcError::ParseError => -32700,
             RpcError::InvalidRequest => -32600,
