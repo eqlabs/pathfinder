@@ -54,6 +54,7 @@ use pathfinder_storage::{Node, StoredNode};
 use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
+use std::sync::{Arc, Mutex};
 
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
@@ -75,7 +76,7 @@ pub struct TrieUpdate {
     pub nodes: HashMap<Felt, Node>,
 }
 
-impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
+impl<H: FeltHash + Send + Sync, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn new(root: u32) -> Self {
         let mut arena = indextree::Arena::new();
         let root = Some(arena.new_node(InternalNode::Unresolved(root)));
@@ -109,7 +110,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     pub fn commit_mut(&mut self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
         // Go through tree, collect mutated nodes and calculate their hashes.
-        let mut added = HashMap::new();
+        let added = Arc::new(Mutex::new(HashMap::new()));
 
         let mut hashes = HashMap::new();
 
@@ -118,11 +119,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 InternalNode::Unresolved(idx) => {
                     let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
                     self.resolve_hashes(&root, &mut hashes, storage)?;
-                    self.commit_subtree(&mut root, &mut added, &hashes)?
+                    self.commit_subtree(&mut root, &added, &hashes)?
                 }
                 mut other => {
                     self.resolve_hashes(&other, &mut hashes, storage)?;
-                    self.commit_subtree(&mut other, &mut added, &hashes)?
+                    self.commit_subtree(&mut other, &added, &hashes)?
                 }
             }
         } else {
@@ -130,7 +131,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             Felt::ZERO
         };
 
-        Ok(TrieUpdate { root, nodes: added })
+        let nodes = Arc::try_unwrap(added)
+            .expect("Added has still has multiple owners")
+            .into_inner()
+            .expect("Mutex is poisoned");
+
+        Ok(TrieUpdate { root, nodes })
     }
 
     fn resolve_hashes(
@@ -169,7 +175,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     fn commit_subtree(
         &self,
         node: &InternalNode,
-        added: &mut HashMap<Felt, Node>,
+        added: &Arc<Mutex<HashMap<Felt, Node>>>,
         hashes: &HashMap<u32, Felt>,
     ) -> anyhow::Result<Felt> {
         use pathfinder_storage::Child;
@@ -182,15 +188,17 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             }
             InternalNode::Leaf(hash) => *hash,
             InternalNode::Binary(binary) => {
-                // let (left_hash, right_hash) = rayon::join(
-                //     || self.commit_subtree(&binary.left.borrow(), added, hashes),
-                //     || self.commit_subtree(&binary.right.borrow(), added, hashes),
-                // );
                 let left = self.arena[binary.left].get();
                 let right = self.arena[binary.right].get();
 
-                let left_hash = self.commit_subtree(left, added, hashes)?;
-                let right_hash = self.commit_subtree(right, added, hashes)?;
+                let (left_hash, right_hash) = rayon::join(
+                    || self.commit_subtree(left, added, hashes),
+                    || self.commit_subtree(right, added, hashes),
+                );
+                let (left_hash, right_hash) = (left_hash?, right_hash?);
+
+                // let left_hash = self.commit_subtree(left, added, hashes)?;
+                // let right_hash = self.commit_subtree(right, added, hashes)?;
                 let hash = BinaryNode::calculate_hash::<H>(left_hash, right_hash);
 
                 let persisted_node = match (left, right) {
@@ -215,7 +223,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     }
                 };
 
-                added.insert(hash, persisted_node);
+                added
+                    .lock()
+                    .expect("Lock is poisoned")
+                    .insert(hash, persisted_node);
                 hash
             }
             InternalNode::Edge(edge) => {
@@ -240,7 +251,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     },
                 };
 
-                added.insert(hash, persisted_node);
+                added
+                    .lock()
+                    .expect("Lock is poisoned")
+                    .insert(hash, persisted_node);
                 hash
             }
         };
@@ -791,7 +805,7 @@ mod tests {
     }
 
     /// Commits the tree changes and persists them to storage.
-    fn commit_and_persist<H: FeltHash, const HEIGHT: usize>(
+    fn commit_and_persist<H: FeltHash + Send + Sync, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
     ) -> (Felt, u32) {

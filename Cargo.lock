@@ -6606,6 +6606,7 @@ dependencies = [
  "pathfinder-storage",
  "pretty_assertions",
  "rand 0.8.5",
+ "rayon",
  "stark_curve",
  "stark_hash",
  "stark_poseidon",

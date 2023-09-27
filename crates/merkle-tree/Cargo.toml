@@ -13,6 +13,7 @@ indextree = "4.6.0"
 pathfinder-common = { path = "../common" }
 pathfinder-storage = { path = "../storage" }
 rand = { workspace = true }
+rayon = "1.8.0"
 stark_curve = { path = "../stark_curve" }
 stark_hash = { path = "../stark_hash" }
 stark_poseidon = { path = "../stark_poseidon" }
