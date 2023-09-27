@@ -117,7 +117,7 @@ impl StorageAddress {
 }
 
 /// A Starknet block number.
-#[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Copy, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockNumber(u64);
 
 macros::i64_backed_u64::new_get_partialeq!(BlockNumber);
