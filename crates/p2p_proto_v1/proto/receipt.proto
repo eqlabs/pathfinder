@@ -93,11 +93,10 @@ message Receipts {
 }
 
 message ReceiptsResponse {
-  uint64               block_number = 1;
-  starknet.common.Hash block_hash   = 2;
+  optional starknet.common.BlockID id = 1; // may not appear if Fin is sent to end the whole response
 
   oneof responses {
-    Receipts            receipts = 3;
-    starknet.common.Fin fin      = 4;
+    Receipts            receipts = 2;
+    starknet.common.Fin fin      = 3;
   }
 }

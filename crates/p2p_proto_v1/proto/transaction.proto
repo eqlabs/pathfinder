@@ -167,11 +167,10 @@ message Transactions {
 }
 
 message TransactionsResponse {
-    uint64               block_number = 1;
-    starknet.common.Hash block_hash   = 2;
+    optional starknet.common.BlockID id = 1; // may not appear if Fin is sent to end the whole response
 
     oneof responses {
-        Transactions        transactions = 3;
-        starknet.common.Fin fin          = 4;
+        Transactions        transactions = 2;
+        starknet.common.Fin fin          = 3;
     }
 }
