@@ -318,15 +318,9 @@ impl ToProtobuf<i32> for EntryPointType {
 }
 
 impl TryFromProtobuf<i32> for EntryPointType {
-    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
         use proto::transaction::transaction::EntryPointType::{External, L1Handler};
-        let t = proto::transaction::transaction::EntryPointType::from_i32(input).ok_or(
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid value for field {field_name}: {input}"),
-            ),
-        )?;
-        Ok(match t {
+        Ok(match TryFrom::try_from(input)? {
             External => Self::External,
             L1Handler => Self::L1Handler,
         })
