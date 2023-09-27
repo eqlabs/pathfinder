@@ -1,4 +1,4 @@
-use crate::jsonrpc::RpcRouter;
+use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
 mod method;
 mod types;
@@ -8,7 +8,7 @@ use crate::v03::method as v03_method;
 use crate::v04::method as v04_method;
 
 #[rustfmt::skip]
-pub fn rpc_router() -> RpcRouter {
+pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder("v0.4")
         .register("starknet_blockHashAndNumber"              , v02_method::block_hash_and_number)
         .register("starknet_blockNumber"                     , v02_method::block_number)
@@ -42,5 +42,4 @@ pub fn rpc_router() -> RpcRouter {
 
         .register("pathfinder_getProof"                      , crate::pathfinder::methods::get_proof)
         .register("pathfinder_getTransactionStatus"          , crate::pathfinder::methods::get_transaction_status)
-        .build()
 }

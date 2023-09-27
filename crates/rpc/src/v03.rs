@@ -1,4 +1,4 @@
-use crate::jsonrpc::RpcRouter;
+use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
 pub mod method;
 
@@ -6,7 +6,7 @@ use crate::v02::method as v02_method;
 use method as v03_method;
 
 #[rustfmt::skip]
-pub fn rpc_router() -> RpcRouter {
+pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder("v0.3")
         .register("starknet_addDeclareTransaction"           ,v02_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction"     ,v02_method::add_deploy_account_transaction)
@@ -37,5 +37,4 @@ pub fn rpc_router() -> RpcRouter {
 
         .register("pathfinder_getProof"                      ,crate::pathfinder::methods::get_proof)
         .register("pathfinder_getTransactionStatus"          ,crate::pathfinder::methods::get_transaction_status)
-        .build()
 }

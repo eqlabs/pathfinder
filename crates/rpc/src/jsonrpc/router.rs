@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
 use axum::async_trait;
+use axum::extract::State;
+use axum::headers::ContentType;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::TypedHeader;
 use futures::{Future, FutureExt};
-use http::HeaderValue;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -17,6 +19,7 @@ use crate::jsonrpc::response::{RpcResponse, RpcResult};
 
 #[derive(Clone)]
 pub struct RpcRouter {
+    context: RpcContext,
     methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
     version: &'static str,
 }
@@ -37,13 +40,15 @@ impl RpcRouterBuilder {
         self
     }
 
-    pub fn build(self) -> RpcRouter {
+    pub fn build(self, context: RpcContext) -> RpcRouter {
         // Intentionally leak the hashmap to give it a static lifetime.
         //
         // Since the router is expected to be long lived, this shouldn't be an issue.
         let methods = Box::new(self.methods);
         let methods = Box::leak(methods);
+
         RpcRouter {
+            context,
             methods,
             version: self.version,
         }
@@ -63,11 +68,7 @@ impl RpcRouter {
     }
 
     /// Parses and executes a request. Returns [None] if its a notification.
-    async fn run_request<'a>(
-        &self,
-        state: RpcContext,
-        request: &'a str,
-    ) -> Option<RpcResponse<'a>> {
+    async fn run_request<'a>(&self, request: &'a str) -> Option<RpcResponse<'a>> {
         let Ok(request) = serde_json::from_str::<RpcRequest<'_>>(request) else {
             return Some(RpcResponse::INVALID_REQUEST);
         };
@@ -85,7 +86,7 @@ impl RpcRouter {
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version);
 
-        let method = method.invoke(state, request.params);
+        let method = method.invoke(self.context.clone(), request.params);
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
         let output = match result {
@@ -107,85 +108,60 @@ impl RpcRouter {
     }
 }
 
+#[axum::debug_handler]
+pub async fn rpc_handler(
+    State(state): State<RpcRouter>,
+    TypedHeader(content_type): TypedHeader<ContentType>,
+    body: axum::body::Bytes,
+) -> impl axum::response::IntoResponse {
+    // Only json content allowed.
+    if content_type != ContentType::json() {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+
+    // Unfortunately due to this https://github.com/serde-rs/json/issues/497
+    // we cannot use an enum with borrowed raw values inside to do a single deserialization
+    // for us. Instead we have to distinguish manually between a single request and a batch
+    // request which we do by checking the first byte.
+    if body.as_ref().first() != Some(&b'[') {
+        let Ok(request) = serde_json::from_slice::<&RawValue>(&body) else {
+            return RpcResponse::PARSE_ERROR.into_response();
+        };
+
+        match state.run_request(request.get()).await {
+            Some(response) => response.into_response(),
+            None => ().into_response(),
+        }
+    } else {
+        let Ok(requests) = serde_json::from_slice::<Vec<&RawValue>>(&body) else {
+            return RpcResponse::PARSE_ERROR.into_response();
+        };
+
+        if requests.is_empty() {
+            return RpcResponse::INVALID_REQUEST.into_response();
+        }
+
+        let mut responses = Vec::new();
+
+        for request in requests {
+            // Notifications return none and are skipped.
+            if let Some(response) = state.run_request(request.get()).await {
+                responses.push(response);
+            }
+        }
+
+        // All requests were notifications.
+        if responses.is_empty() {
+            return ().into_response();
+        }
+
+        serde_json::to_string(&responses).unwrap().into_response()
+    }
+}
+
 #[axum::async_trait]
 pub trait RpcMethod: Send + Sync {
     async fn invoke<'a>(&self, state: RpcContext, input: RawParams<'a>) -> RpcResult;
-}
-
-// Ideally this would have been an axum handler function, but turning the RPC router into
-// an async fn proved to be above my knowledge. This works and is pretty straight-forward,
-// but one does have to manually deal with body and header checks.
-impl axum::handler::Handler<(), RpcContext, axum::body::Body> for RpcRouter {
-    type Future = std::pin::Pin<Box<dyn Future<Output = axum::response::Response> + Send>>;
-
-    fn call(self, req: axum::http::Request<axum::body::Body>, state: RpcContext) -> Self::Future {
-        Box::pin(async move {
-            // Only allow json content.
-            static APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
-            match req.headers().get(http::header::CONTENT_TYPE) {
-                Some(header) if header == APPLICATION_JSON => {}
-                Some(_other) => return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response(),
-                None => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        "Missing `Content-Type: application/json` header".to_string(),
-                    )
-                        .into_response()
-                }
-            }
-
-            let body = match hyper::body::to_bytes(req.into_body()).await {
-                Ok(body) => body,
-                Err(e) => {
-                    tracing::trace!(reason=%e, "Failed to buffer body");
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to buffer request body".to_string(),
-                    )
-                        .into_response();
-                }
-            };
-
-            // Unfortunately due to this https://github.com/serde-rs/json/issues/497
-            // we cannot use an enum with borrowed raw values inside to do a single deserialization
-            // for us. Instead we have to distinguish manually between a single request and a batch
-            // request which we do by checking the first byte.
-            if body.as_ref().first() != Some(&b'[') {
-                let Ok(request) = serde_json::from_slice::<&RawValue>(&body) else {
-                    return RpcResponse::PARSE_ERROR.into_response();
-                };
-
-                match self.run_request(state, request.get()).await {
-                    Some(response) => response.into_response(),
-                    None => ().into_response(),
-                }
-            } else {
-                let Ok(requests) = serde_json::from_slice::<Vec<&RawValue>>(&body) else {
-                    return RpcResponse::PARSE_ERROR.into_response();
-                };
-
-                if requests.is_empty() {
-                    return RpcResponse::INVALID_REQUEST.into_response();
-                }
-
-                let mut responses = Vec::new();
-
-                for request in requests {
-                    // Notifications return none and are skipped.
-                    if let Some(response) = self.run_request(state.clone(), request.get()).await {
-                        responses.push(response);
-                    }
-                }
-
-                // All requests were notifications.
-                if responses.is_empty() {
-                    return ().into_response();
-                }
-
-                serde_json::to_string(&responses).unwrap().into_response()
-            }
-        })
-    }
 }
 
 /// Utility trait which automates the serde of an RPC methods input and output.
@@ -452,8 +428,8 @@ mod tests {
 
         tokio::spawn(async {
             let router = axum::Router::new()
-                .route("/", axum::routing::post(router))
-                .with_state(RpcContext::for_tests());
+                .route("/", axum::routing::post(rpc_handler))
+                .with_state(router);
             axum::Server::from_tcp(listener)
                 .unwrap()
                 .serve(router.into_make_service())
@@ -519,7 +495,7 @@ mod tests {
                 .register("subtract", subtract)
                 .register("sum", sum)
                 .register("get_data", get_data)
-                .build()
+                .build(RpcContext::for_tests())
         }
 
         #[rstest]
@@ -653,7 +629,7 @@ mod tests {
             RpcRouter::builder("vTest")
                 .register("panic", always_panic)
                 .register("success", always_success)
-                .build()
+                .build(RpcContext::for_tests())
         }
 
         #[tokio::test]
@@ -697,7 +673,7 @@ mod tests {
 
         let router = RpcRouter::builder("vTEST")
             .register("success", always_success)
-            .build();
+            .build(RpcContext::for_tests());
 
         let url = spawn_server(router).await;
 
@@ -727,7 +703,7 @@ mod tests {
 
         let router = RpcRouter::builder("vTEST")
             .register("success", always_success)
-            .build();
+            .build(RpcContext::for_tests());
 
         let url = spawn_server(router).await;
 

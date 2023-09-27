@@ -15,6 +15,7 @@ pub mod v04;
 
 pub use executor::compose_executor_transaction;
 
+use crate::jsonrpc::rpc_handler;
 pub use crate::jsonrpc::websocket::{BlockHeader, WebsocketSenders};
 use crate::v02::types::syncing::Syncing;
 use anyhow::Context;
@@ -141,21 +142,28 @@ impl RpcServer {
             }
         }
 
+        let v03_routes = v03::register_routes().build(self.context.clone());
+        let v04_routes = v04::register_routes().build(self.context.clone());
+        let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
+
         let default_router = match self.default_version {
-            DefaultVersion::V03 => v03::rpc_router(),
-            DefaultVersion::V04 => v04::rpc_router(),
+            DefaultVersion::V03 => v03_routes.clone(),
+            DefaultVersion::V04 => v04_routes.clone(),
         };
 
         let router = axum::Router::new()
             // Also return success for get's with an empty body. These are often
             // used by monitoring bots to check service health.
-            .route("/", get(empty_body).post(default_router))
-            .route("/rpc/v0.3", post(v03::rpc_router()))
-            .route("/rpc/v0.4", post(v04::rpc_router()))
-            .route("/rpc/pathfinder/v0.1", post(pathfinder::rpc_router()))
-            .layer(middleware)
-            // TODO: websockets
-            .with_state(self.context);
+            .route("/", get(empty_body).post(rpc_handler))
+            .with_state(default_router)
+            .route("/rpc/v0.3", post(rpc_handler))
+            .with_state(v03_routes)
+            .route("/rpc/v0.4", post(rpc_handler))
+            .with_state(v04_routes)
+            .route("/rpc/pathfinder/v0.1", post(rpc_handler))
+            .with_state(pathfinder_routes)
+            .layer(middleware);
+        // TODO: websockets
 
         let server_handle = tokio::spawn(async move {
             server
