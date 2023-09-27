@@ -1,5 +1,5 @@
 use crate::{
-    common::{Fin, Hash, Iteration},
+    common::{BlockId, Fin, Hash, Iteration},
     proto, ToProtobuf, TryFromProtobuf,
 };
 use fake::Dummy;
@@ -124,8 +124,8 @@ pub struct Receipts {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::receipt::ReceiptsResponse")]
 pub struct ReceiptsResponse {
-    pub block_number: u64,
-    pub block_hash: Hash,
+    #[optional]
+    pub id: Option<BlockId>,
     #[rename(responses)]
     pub kind: ReceiptsResponseKind,
 }

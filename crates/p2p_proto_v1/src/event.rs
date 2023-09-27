@@ -1,4 +1,4 @@
-use crate::common::{Fin, Hash, Iteration};
+use crate::common::{BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use stark_hash::Felt;
 
@@ -24,7 +24,7 @@ pub struct EventsRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
-#[protobuf(name = "crate::proto::event::events_response::Events")]
+#[protobuf(name = "crate::proto::event::Events")]
 pub struct Events {
     pub items: Vec<TxnEvents>,
 }
@@ -32,8 +32,8 @@ pub struct Events {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::event::EventsResponse")]
 pub struct EventsResponse {
-    pub block_number: u64,
-    pub block_hash: Hash,
+    #[optional]
+    pub id: Option<BlockId>,
     pub responses: Responses,
 }
 

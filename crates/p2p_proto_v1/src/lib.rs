@@ -193,11 +193,16 @@ fn check_classes_message_overhead(
 ) {
     let (num_classes, expected_overhead) = num_classes_expected_overhead;
     use crate::proto::block::{block_bodies_response::BodyMessage, BlockBodiesResponse};
-    use crate::proto::common::Hash;
+    use crate::proto::common::{BlockId, Hash};
     use crate::proto::state::{Class, Classes};
     use prost::Message;
     let response = |classes| BlockBodiesResponse {
-        block_number: u64::MAX,
+        id: Some(BlockId {
+            header: Some(Hash {
+                elements: vec![0xFF; 32],
+            }),
+            number: u64::MAX,
+        }),
         body_message: Some(BodyMessage::Classes(Classes {
             domain: u32::MAX,
             classes,

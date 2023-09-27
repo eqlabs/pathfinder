@@ -1,4 +1,4 @@
-use crate::common::{Address, ConsensusSignature, Fin, Hash, Iteration, Merkle, Patricia};
+use crate::common::{Address, BlockId, ConsensusSignature, Fin, Hash, Iteration, Merkle, Patricia};
 use crate::state::{Classes, StateDiff};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime};
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::block::Signatures")]
 pub struct Signatures {
-    pub block_number: u64,
+    pub block: BlockId,
     pub signatures: Vec<ConsensusSignature>,
 }
 
@@ -52,12 +52,11 @@ pub struct BlockHeadersRequest {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::block::BlockHeadersResponse")]
 pub struct BlockHeadersResponse {
-    pub block_number: u64,
-    pub header_message: BlockHeaderMessage,
+    pub part: Vec<BlockHeadersResponsePart>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BlockHeaderMessage {
+pub enum BlockHeadersResponsePart {
     Header(Box<BlockHeader>),
     Signatures(Signatures),
     Fin(Fin),
@@ -73,7 +72,8 @@ pub struct BlockBodiesRequest {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::block::BlockBodiesResponse")]
 pub struct BlockBodiesResponse {
-    pub block_number: u64,
+    #[optional]
+    pub id: Option<BlockId>,
     pub body_message: BlockBodyMessage,
 }
 
@@ -118,7 +118,7 @@ impl TryFromProtobuf<::prost_types::Timestamp> for SystemTime {
     }
 }
 
-impl BlockHeaderMessage {
+impl BlockHeadersResponsePart {
     pub fn into_header(self) -> Option<BlockHeader> {
         match self {
             Self::Header(header) => Some(*header),
@@ -171,31 +171,39 @@ impl BlockBodyMessage {
     }
 }
 
-impl ToProtobuf<proto::block::block_headers_response::HeaderMessage> for BlockHeaderMessage {
-    fn to_protobuf(self) -> proto::block::block_headers_response::HeaderMessage {
-        use proto::block::block_headers_response::HeaderMessage::{Fin, Header, Signatures};
-        match self {
-            Self::Header(header) => Header(header.to_protobuf()),
-            Self::Signatures(signatures) => Signatures(signatures.to_protobuf()),
-            Self::Fin(fin) => Fin(fin.to_protobuf()),
+impl ToProtobuf<proto::block::BlockHeadersResponsePart> for BlockHeadersResponsePart {
+    fn to_protobuf(self) -> proto::block::BlockHeadersResponsePart {
+        use proto::block::block_headers_response_part::HeaderMessage::{Fin, Header, Signatures};
+        proto::block::BlockHeadersResponsePart {
+            header_message: Some(match self {
+                Self::Header(header) => Header(header.to_protobuf()),
+                Self::Signatures(signatures) => Signatures(signatures.to_protobuf()),
+                Self::Fin(fin) => Fin(fin.to_protobuf()),
+            }),
         }
     }
 }
 
-impl TryFromProtobuf<proto::block::block_headers_response::HeaderMessage> for BlockHeaderMessage {
+impl TryFromProtobuf<proto::block::BlockHeadersResponsePart> for BlockHeadersResponsePart {
     fn try_from_protobuf(
-        input: proto::block::block_headers_response::HeaderMessage,
+        input: proto::block::BlockHeadersResponsePart,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::block::block_headers_response::HeaderMessage::{Fin, Header, Signatures};
-        Ok(match input {
-            Header(header) => Self::Header(Box::new(BlockHeader::try_from_protobuf(
+        use proto::block::block_headers_response_part::HeaderMessage::{Fin, Header, Signatures};
+        Ok(match input.header_message {
+            Some(Header(header)) => Self::Header(Box::new(BlockHeader::try_from_protobuf(
                 header, field_name,
             )?)),
-            Signatures(signatures) => {
+            Some(Signatures(signatures)) => {
                 Self::Signatures(self::Signatures::try_from_protobuf(signatures, field_name)?)
             }
-            Fin(fin) => Self::Fin(self::Fin::try_from_protobuf(fin, field_name)?),
+            Some(Fin(fin)) => Self::Fin(self::Fin::try_from_protobuf(fin, field_name)?),
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Missing header_message in BlockHeadersResponsePart"),
+                ))
+            }
         })
     }
 }
