@@ -6,8 +6,8 @@ mod pending;
 use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-    EventCommitment, GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate,
-    StorageCommitment, TransactionCommitment,
+    ContractAddress, ContractRoot, EventCommitment, GasPrice, SequencerAddress, SierraHash,
+    StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::{
@@ -19,13 +19,14 @@ use pathfinder_rpc::{
     websocket::types::WebsocketSenders,
     SyncState,
 };
-use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
+use pathfinder_storage::{Connection, Node, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use stark_hash::Felt;
 use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::{pending::PendingData, reply::Block};
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::time::Instant;
 use std::{sync::Arc, time::Duration};
@@ -380,6 +381,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     ev_comm,
                     *state_update,
                     verify_tree_hashes,
+                    storage.clone(),
                 )
                 .await
                 .with_context(|| format!("Update L2 state to {block_number}"))?;
@@ -671,6 +673,7 @@ async fn l2_update(
     event_commitment: EventCommitment,
     state_update: StateUpdate,
     verify_tree_hashes: bool,
+    storage: Storage,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -681,6 +684,7 @@ async fn l2_update(
             &state_update,
             verify_tree_hashes,
             block.block_number,
+            storage,
         )
         .context("Updating Starknet state")?;
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
@@ -830,6 +834,7 @@ fn update_starknet_state(
     state_update: &StateUpdate,
     verify_hashes: bool,
     block: BlockNumber,
+    storage: Storage,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
     let storage_root_idx = match block.parent() {
         Some(parent) => transaction
@@ -841,50 +846,109 @@ fn update_starknet_state(
     let _span = tracing::debug_span!("update_contract_trees").entered();
 
     let mut storage_commitment_tree = match storage_root_idx {
-        Some(idx) => StorageCommitmentTree::load(transaction, idx),
-        None => StorageCommitmentTree::empty(transaction),
+        Some(idx) => StorageCommitmentTree::load(&transaction, idx),
+        None => StorageCommitmentTree::empty(&transaction),
     }
     .with_verify_hashes(verify_hashes);
 
-    for (contract, update) in &state_update.contract_updates {
-        let (new_root, new_nodes) = update_contract_storage_tree(
-            *contract,
-            &update.storage,
-            transaction,
-            verify_hashes,
-            block,
-        )
-        .context("Updating contract storage tree")?;
+    use rayon::prelude::*;
+
+    let (send, recv) = std::sync::mpsc::channel();
+
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            let result: Vec<(ContractAddress, ContractRoot, HashMap<Felt, Node>)> = state_update
+                .contract_updates
+                .par_iter()
+                .map_init(
+                    || storage.clone().connection().unwrap(),
+                    |connection, (contract, update)| {
+                        let transaction = connection.transaction().unwrap();
+                        let (new_root, new_nodes) = update_contract_storage_tree(
+                            *contract,
+                            &update.storage,
+                            &transaction,
+                            verify_hashes,
+                            block,
+                        )
+                        .unwrap();
+                        (*contract, new_root, new_nodes)
+                    },
+                )
+                .collect();
+            let _ = send.send(result);
+        })
+    });
+
+    let contract_storage_updates = recv.recv().expect("Panic on rayon thread");
+
+    for (contract, new_root, new_nodes) in contract_storage_updates {
+        let update = &state_update.contract_updates[&contract];
+
         if !new_nodes.is_empty() {
             let root_index = transaction
                 .insert_contract_trie(new_root, &new_nodes)
                 .context("Persisting contract trie")?;
 
             transaction
-                .insert_contract_root(block, *contract, root_index)
+                .insert_contract_root(block, contract, root_index)
                 .context("Inserting contract's root index")?;
         }
 
         let state_hash = update_contract_state_hash(
-            *contract,
+            contract,
             new_root,
             update.nonce,
             update.class.as_ref().map(|x| x.class_hash()),
-            transaction,
+            &transaction,
             block,
         )
         .context("Update contract state")?;
 
         storage_commitment_tree
-            .set(*contract, state_hash)
+            .set(contract, state_hash)
             .context("Updating storage commitment tree")?;
     }
+
+    // for (contract, update) in &state_update.contract_updates {
+    //     let (new_root, new_nodes) = update_contract_storage_tree(
+    //         *contract,
+    //         &update.storage,
+    //         &transaction,
+    //         verify_hashes,
+    //         block,
+    //     )
+    //     .context("Updating contract storage tree")?;
+    //     if !new_nodes.is_empty() {
+    //         let root_index = transaction
+    //             .insert_contract_trie(new_root, &new_nodes)
+    //             .context("Persisting contract trie")?;
+
+    //         transaction
+    //             .insert_contract_root(block, *contract, root_index)
+    //             .context("Inserting contract's root index")?;
+    //     }
+
+    //     let state_hash = update_contract_state_hash(
+    //         *contract,
+    //         new_root,
+    //         update.nonce,
+    //         update.class.as_ref().map(|x| x.class_hash()),
+    //         &transaction,
+    //         block,
+    //     )
+    //     .context("Update contract state")?;
+
+    //     storage_commitment_tree
+    //         .set(*contract, state_hash)
+    //         .context("Updating storage commitment tree")?;
+    // }
 
     for (contract, update) in &state_update.system_contract_updates {
         let (new_root, new_nodes) = update_contract_storage_tree(
             *contract,
             &update.storage,
-            transaction,
+            &transaction,
             verify_hashes,
             block,
         )

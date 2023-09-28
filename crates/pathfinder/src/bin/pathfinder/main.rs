@@ -89,7 +89,7 @@ async fn async_main() -> anyhow::Result<()> {
     let storage_manager =
         Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
     let sync_storage = storage_manager
-        .create_pool(NonZeroU32::new(5).unwrap())
+        .create_pool(NonZeroU32::new(50).unwrap())
         .context(
             r"Creating database connection pool for sync.
 
