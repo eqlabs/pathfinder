@@ -52,7 +52,8 @@ pub struct BlockHeadersRequest {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
 #[protobuf(name = "crate::proto::block::BlockHeadersResponse")]
 pub struct BlockHeadersResponse {
-    pub part: Vec<BlockHeadersResponsePart>,
+    #[rename(part)]
+    pub parts: Vec<BlockHeadersResponsePart>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

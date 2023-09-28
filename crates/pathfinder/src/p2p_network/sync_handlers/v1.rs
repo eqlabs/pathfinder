@@ -1,16 +1,18 @@
 use anyhow::Context;
 use p2p_proto_v1::block::{
-    BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeaderMessage,
-    BlockHeadersRequest, BlockHeadersResponse,
+    BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
+    BlockHeadersResponse, BlockHeadersResponsePart,
 };
-use p2p_proto_v1::common::{Direction, Hash, Iteration, Step};
+use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Hash, Iteration, Step};
 use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, Responses, TxnEvents};
 use p2p_proto_v1::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
 use p2p_proto_v1::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
 };
-use p2p_proto_v1::{MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD};
-use pathfinder_common::{BlockNumber, ClassHash};
+use p2p_proto_v1::{
+    MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD,
+};
+use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
 use pathfinder_storage::Transaction;
 use tokio::sync::mpsc;
@@ -29,10 +31,7 @@ const MAX_COUNT_IN_TESTS: u64 = 10;
 #[cfg(test)]
 const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
-// TODO check which is more performant:
-// 1. retrieve all data from storage, then send it to channel one by one
-// 2. retrieve in batches,
-// 3. retrieve in batches, don't wait for the previous batch to finish, send with index to rebuild the correct order in the receiver
+// TODO consider batching db ops instead doing all in bulk if it's more performant
 pub async fn get_headers(
     storage: &Storage,
     request: BlockHeadersRequest,
@@ -85,17 +84,16 @@ pub(crate) fn headers(
     let BlockHeadersRequest {
         iteration:
             Iteration {
-                start_block,
+                start,
                 direction,
                 limit,
                 step,
             },
     } = request;
 
-    let mut next_block_number = BlockNumber::new(start_block);
+    let mut next_block_number = get_start_block_number(start, &tx)?;
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
-    let mut responses = Vec::new();
+    let mut parts = Vec::new();
 
     while let Some(block_number) = next_block_number {
         if limit == 0 {
@@ -108,10 +106,9 @@ pub(crate) fn headers(
             break;
         };
 
-        responses.push(BlockHeadersResponse {
-            block_number: block_number.get(),
-            header_message: BlockHeaderMessage::Header(Box::new(header.to_proto())),
-        });
+        parts.push(BlockHeadersResponsePart::Header(Box::new(
+            header.to_proto(),
+        )));
 
         // 2. Get the signatures for this block
         // TODO we don't have signatures yet
@@ -119,6 +116,13 @@ pub(crate) fn headers(
         limit -= 1;
         next_block_number = get_next_block_number(block_number, step, direction);
     }
+
+    let responses = parts
+        .chunks(MAX_HEADERS_PER_MESSAGE)
+        .map(|parts| BlockHeadersResponse {
+            parts: parts.to_vec(),
+        })
+        .collect();
 
     Ok(responses)
 }
@@ -130,16 +134,15 @@ fn bodies(
     let BlockBodiesRequest {
         iteration:
             Iteration {
-                start_block,
+                start,
                 direction,
                 limit,
                 step,
             },
     } = request;
 
-    let mut next_block_number = BlockNumber::new(start_block);
+    let mut next_block_number = get_start_block_number(start, &tx)?;
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
     let mut responses = Vec::new();
 
     while let Some(block_number) = next_block_number {
@@ -165,8 +168,12 @@ fn bodies(
             )
             .collect::<Vec<_>>();
 
+        let block_hash = state_diff.block_hash;
         responses.push(BlockBodiesResponse {
-            block_number: block_number.get(),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
         });
 
@@ -183,6 +190,7 @@ fn bodies(
 
         classes(
             block_number,
+            block_hash,
             new_classes,
             &mut responses,
             get_compressed_definition,
@@ -206,16 +214,15 @@ pub(crate) fn transactions(
     let TransactionsRequest {
         iteration:
             Iteration {
-                start_block,
+                start,
                 direction,
                 limit,
                 step,
             },
     } = request;
 
-    let mut next_block_number = BlockNumber::new(start_block);
+    let mut next_block_number = get_start_block_number(start, &tx)?;
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
     let mut responses = Vec::new();
 
     while let Some(block_number) = next_block_number {
@@ -232,8 +239,10 @@ pub(crate) fn transactions(
         };
 
         responses.push(TransactionsResponse {
-            block_number: block_number.get(),
-            block_hash: Hash(block_hash.0),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             kind: TransactionsResponseKind::Transactions(Transactions {
                 items: txn_data
                     .into_iter()
@@ -258,16 +267,15 @@ pub(crate) fn receipts(
     let ReceiptsRequest {
         iteration:
             Iteration {
-                start_block,
+                start,
                 direction,
                 limit,
                 step,
             },
     } = request;
 
-    let mut next_block_number = BlockNumber::new(start_block);
+    let mut next_block_number = get_start_block_number(start, &tx)?;
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
     let mut responses = Vec::new();
 
     while let Some(block_number) = next_block_number {
@@ -284,8 +292,10 @@ pub(crate) fn receipts(
         };
 
         responses.push(ReceiptsResponse {
-            block_number: block_number.get(),
-            block_hash: Hash(block_hash.0),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             kind: ReceiptsResponseKind::Receipts(Receipts {
                 items: txn_data.into_iter().map(ToProto::to_proto).collect(),
             }),
@@ -305,16 +315,15 @@ pub(crate) fn events(
     let EventsRequest {
         iteration:
             Iteration {
-                start_block,
+                start,
                 direction,
                 limit,
                 step,
             },
     } = request;
 
-    let mut next_block_number = BlockNumber::new(start_block);
+    let mut next_block_number = get_start_block_number(start, &tx)?;
     let mut limit = limit.min(MAX_BLOCKS_COUNT);
-
     let mut responses = Vec::new();
 
     while let Some(block_number) = next_block_number {
@@ -339,8 +348,10 @@ pub(crate) fn events(
             .collect::<Vec<_>>();
 
         responses.push(EventsResponse {
-            block_number: block_number.get(),
-            block_hash: Hash(block_hash.0),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             responses: Responses::Events(Events { items }),
         });
 
@@ -349,6 +360,16 @@ pub(crate) fn events(
     }
 
     Ok(responses)
+}
+
+fn get_start_block_number(
+    start: BlockNumberOrHash,
+    tx: &Transaction<'_>,
+) -> Result<Option<BlockNumber>, anyhow::Error> {
+    Ok(match start {
+        BlockNumberOrHash::Number(n) => BlockNumber::new(n),
+        BlockNumberOrHash::Hash(h) => tx.block_id(BlockHash(h.0).into())?.map(|(n, _)| n),
+    })
 }
 
 /// Helper function to get a range of classes from storage and put them into messages taking into account the 1MiB encoded message size limit.
@@ -360,6 +381,7 @@ pub(crate) fn events(
 ///   the database itself (e.g. it's inconsistent/corrupted, inaccessible, etc.) which is a fatal error
 fn classes(
     block_number: BlockNumber,
+    block_hash: BlockHash,
     new_classes: Vec<ClassHash>,
     responses: &mut Vec<BlockBodiesResponse>,
     mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
@@ -401,6 +423,7 @@ fn classes(
                 );
                 responses.push(block_bodies_response::take_from_class_definitions(
                     block_number,
+                    block_hash,
                     &mut classes_for_this_msg,
                 ));
                 // Buffer for accumulating class definitions for a new message is guaranteed to be empty now
@@ -419,6 +442,7 @@ fn classes(
             if !classes_for_this_msg.is_empty() {
                 responses.push(block_bodies_response::take_from_class_definitions(
                     block_number,
+                    block_hash,
                     &mut classes_for_this_msg,
                 ));
             }
@@ -441,6 +465,7 @@ fn classes(
                 // as we don't want to artificially break the next class definition into pieces
                 responses.push(block_bodies_response::from_class_definition_part(
                     block_number,
+                    block_hash,
                     class_hash,
                     chunk,
                     chunk_count,
@@ -457,6 +482,7 @@ fn classes(
     if !classes_for_this_msg.is_empty() {
         responses.push(block_bodies_response::take_from_class_definitions(
             block_number,
+            block_hash,
             &mut classes_for_this_msg,
         ));
     }
@@ -473,6 +499,7 @@ mod block_bodies_response {
     /// It is assumed that the chunk is not empty
     pub fn from_class_definition_part(
         block_number: BlockNumber,
+        block_hash: BlockHash,
         class_hash: ClassHash,
         part: &[u8],
         parts_count: u32,
@@ -480,7 +507,10 @@ mod block_bodies_response {
     ) -> BlockBodiesResponse {
         use p2p_proto_v1::state::{Class, Classes};
         BlockBodiesResponse {
-            block_number: block_number.get(),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             body_message: BlockBodyMessage::Classes(Classes {
                 domain: 0, // FIXME
                 classes: vec![Class {
@@ -497,6 +527,7 @@ mod block_bodies_response {
     /// so that later on it can be reused.
     pub fn take_from_class_definitions(
         block_number: BlockNumber,
+        block_hash: BlockHash,
         class_definitions: &mut Vec<(ClassHash, Vec<u8>)>,
     ) -> BlockBodiesResponse {
         use p2p_proto_v1::state::{Class, Classes};
@@ -510,7 +541,10 @@ mod block_bodies_response {
             })
             .collect();
         BlockBodiesResponse {
-            block_number: block_number.get(),
+            id: Some(BlockId {
+                number: block_number.get(),
+                hash: Hash(block_hash.0),
+            }),
             body_message: BlockBodyMessage::Classes(Classes {
                 domain: 0, // FIXME
                 classes,

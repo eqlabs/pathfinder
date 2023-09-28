@@ -5,7 +5,7 @@ use rand::Rng;
 use stark_hash::Felt;
 use std::{fmt::Display, num::NonZeroU64};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash)]
 pub struct Hash(pub Felt);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -38,7 +38,9 @@ pub struct Patricia {
     pub root: Hash,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, std::hash::Hash,
+)]
 #[protobuf(name = "crate::proto::common::BlockId")]
 pub struct BlockId {
     pub number: u64,
