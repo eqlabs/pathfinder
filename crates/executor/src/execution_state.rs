@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
-use blockifier::{
-    block_context::BlockContext,
-    state::cached_state::{CachedState, GlobalContractCache},
-};
+use crate::state_reader::LruCachedReader;
+use blockifier::{block_context::BlockContext, state::cached_state::CachedState};
 use pathfinder_common::{BlockNumber, BlockTimestamp, ChainId, SequencerAddress, StateUpdate};
 use primitive_types::U256;
+use std::sync::Arc;
 
 use super::state_reader::PathfinderStateReader;
 
@@ -23,21 +20,23 @@ pub struct ExecutionState {
 impl ExecutionState {
     pub(super) fn starknet_state(
         &mut self,
-    ) -> anyhow::Result<(CachedState<PathfinderStateReader<'_>>, BlockContext)> {
+    ) -> anyhow::Result<(
+        CachedState<LruCachedReader<PathfinderStateReader<'_>>>,
+        BlockContext,
+    )> {
         let block_context = super::block_context::construct_block_context(self)?;
 
-        let state_reader = PathfinderStateReader::new(
+        let raw_reader = PathfinderStateReader::new(
             &mut self.connection,
             self.state_at_block,
             self.pending_update.is_some(),
         )?;
-
-        let mut state = CachedState::new(state_reader, GlobalContractCache::default());
+        let mut cached_state = LruCachedReader::new_cached_state(raw_reader)?;
 
         self.pending_update.as_ref().map(|pending_update| {
-            super::pending::apply_pending_update(&mut state, pending_update.as_ref())
+            super::pending::apply_pending_update(&mut cached_state, pending_update.as_ref())
         });
 
-        Ok((state, block_context))
+        Ok((cached_state, block_context))
     }
 }
