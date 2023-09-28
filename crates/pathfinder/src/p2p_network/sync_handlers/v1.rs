@@ -4,13 +4,13 @@ use p2p_proto_v1::block::{
     BlockHeadersResponse, BlockHeadersResponsePart,
 };
 use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Hash, Iteration, Step};
+use p2p_proto_v1::consts::{
+    CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
+};
 use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, Responses, TxnEvents};
 use p2p_proto_v1::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
 use p2p_proto_v1::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
-};
-use p2p_proto_v1::{
-    MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD,
 };
 use pathfinder_common::{BlockHash, BlockNumber, ClassHash};
 use pathfinder_storage::Storage;
@@ -386,7 +386,7 @@ fn classes(
     responses: &mut Vec<BlockBodiesResponse>,
     mut class_definition_getter: impl FnMut(BlockNumber, ClassHash) -> anyhow::Result<Vec<u8>>,
 ) -> anyhow::Result<()> {
-    let mut estimated_message_size = PER_MESSAGE_OVERHEAD;
+    let mut estimated_message_size = CLASSES_MESSAGE_OVERHEAD;
     let mut classes_for_this_msg: Vec<(ClassHash, Vec<u8>)> = Vec::new();
     let new_classes = new_classes.into_iter();
 
@@ -395,7 +395,7 @@ fn classes(
         let compressed_definition = class_definition_getter(block_number, class_hash)?;
 
         // 2. Let's check if this definition needs to be chunked
-        if (PER_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
+        if (CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len())
             <= MESSAGE_SIZE_LIMIT
         {
             // 2.A Ok this definition is small enough but we can still exceed the limit for the entire
@@ -413,7 +413,7 @@ fn classes(
                     estimated_message_size,
                     // What we have accumulated so far
                     classes_for_this_msg.iter().fold(
-                                PER_MESSAGE_OVERHEAD,
+                                CLASSES_MESSAGE_OVERHEAD,
                                 |acc, (_, x)| acc
                                     + PER_CLASS_OVERHEAD
                                     + x.len()
@@ -431,7 +431,7 @@ fn classes(
 
                 // Now we reset the counter and start over with the current definition that didn't fit
                 estimated_message_size =
-                    PER_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len();
+                    CLASSES_MESSAGE_OVERHEAD + PER_CLASS_OVERHEAD + compressed_definition.len();
                 classes_for_this_msg.push((class_hash, compressed_definition));
                 // --> 1.
             }
@@ -452,7 +452,7 @@ fn classes(
             // Now we can take care of the current class definition
             // This class definition is too big, we need to chunk it and send each chunk in a separate message
             const CHUNK_SIZE_LIMIT: usize =
-                MESSAGE_SIZE_LIMIT - PER_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
+                MESSAGE_SIZE_LIMIT - CLASSES_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
 
             let chunk_iter = compressed_definition.chunks(CHUNK_SIZE_LIMIT).enumerate();
             let chunk_count = chunk_iter.len().try_into()?;
@@ -473,7 +473,7 @@ fn classes(
                 ));
             }
             // Now we reset the counter and start over with a clean slate
-            estimated_message_size = PER_MESSAGE_OVERHEAD;
+            estimated_message_size = CLASSES_MESSAGE_OVERHEAD;
             // --> 1.
         }
     }

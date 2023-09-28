@@ -482,11 +482,13 @@ mod classes {
     fn batching_and_partitioning() {
         use p2p_proto_v1::block::BlockBodyMessage::Classes;
         use p2p_proto_v1::common::Hash;
+        use p2p_proto_v1::consts::{
+            CLASSES_MESSAGE_OVERHEAD, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
+        };
         use p2p_proto_v1::state::Class;
-        use p2p_proto_v1::{MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD, PER_MESSAGE_OVERHEAD};
 
         // Max size of definition that can be stored in one message
-        const FULL: usize = MESSAGE_SIZE_LIMIT - PER_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
+        const FULL: usize = MESSAGE_SIZE_LIMIT - CLASSES_MESSAGE_OVERHEAD - PER_CLASS_OVERHEAD;
         const SMALL: usize = FULL / 10;
         const BIG: usize = MESSAGE_SIZE_LIMIT * 3;
         let not_full = fake::vec![u8; 1..FULL];
