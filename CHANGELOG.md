@@ -7,7 +7,7 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.8.2] - 2023-09-28
 
 ### Fixed
 
@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RPC v0.4 methods:
   - `starknet_traceTransaction`
   - `starknet_traceBlockTransactions`
+- Class cache for execution queries which provides a modest increase in performance speed.
+
+### Changed
+
+- `starknet_getEvents` continuation token formatting. The new format is incompatible with the previous format used v0.8.1 and older.
 
 ## [0.8.1] - 2023-09-07
 
