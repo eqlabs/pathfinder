@@ -48,9 +48,15 @@ pub struct DeployAccountTransactionTrace {
 }
 
 #[derive(Debug)]
+pub enum ExecuteInvocation {
+    FunctionInvocation(Option<FunctionInvocation>),
+    RevertedReason(String),
+}
+
+#[derive(Debug)]
 pub struct InvokeTransactionTrace {
     pub validate_invocation: Option<FunctionInvocation>,
-    pub execute_invocation: Option<FunctionInvocation>,
+    pub execute_invocation: ExecuteInvocation,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
 }
 

@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `--sync.verify_tree_node_data` which enables verifies state tree nodes as they are loaded from disk. This is a debugging tool to identify disk corruption impacting tree node data. This should only be enabled when debugging a state root mismatch.
 
+- RPC v0.4 methods:
+  - `starknet_traceTransaction`
+  - `starknet_traceBlockTransactions`
 
 ## [0.8.1] - 2023-09-07
 

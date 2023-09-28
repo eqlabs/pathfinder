@@ -18,7 +18,7 @@ pub use error::CallError;
 pub use estimate::estimate;
 pub use execution_state::ExecutionState;
 pub use felt::{IntoFelt, IntoStarkFelt};
-pub use simulate::simulate;
+pub use simulate::{simulate, trace_all, trace_one};
 
 // re-export blockifier transaction type since it's exposed on our API
 pub use blockifier::transaction::transaction_execution::Transaction;

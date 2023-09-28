@@ -4,6 +4,12 @@
 //! by each JSON-RPC method to trivially create its subset of [RpcError] along with the boilerplate involved.
 #![macro_use]
 
+#[derive(serde::Serialize, Clone, Copy, Debug)]
+pub enum TraceError {
+    Received,
+    Rejected,
+}
+
 /// The Starknet JSON-RPC error variants.
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {
@@ -17,6 +23,10 @@ pub enum RpcError {
     TxnHashNotFoundV03,
     #[error("Invalid transaction index in a block")]
     InvalidTxnIndex,
+    #[error("Invalid transaction hash")]
+    InvalidTxnHash,
+    #[error("Invalid block hash")]
+    InvalidBlockHash,
     #[error("Class hash not found")]
     ClassHashNotFound,
     #[error("Transaction hash not found")]
@@ -25,6 +35,8 @@ pub enum RpcError {
     PageSizeTooBig,
     #[error("There are no blocks")]
     NoBlocks,
+    #[error("No trace available")]
+    NoTraceAvailable(TraceError),
     #[error("The supplied continuation token is invalid or unknown")]
     InvalidContinuationToken,
     #[error("Too many keys provided in a filter")]
@@ -71,9 +83,12 @@ impl RpcError {
     pub fn code(&self) -> i32 {
         match self {
             RpcError::FailedToReceiveTxn => 1,
+            RpcError::NoTraceAvailable(_) => 10,
             RpcError::ContractNotFound => 20,
             RpcError::BlockNotFound => 24,
             RpcError::TxnHashNotFoundV03 => 25,
+            RpcError::InvalidTxnHash => 25,
+            RpcError::InvalidBlockHash => 26,
             RpcError::InvalidTxnIndex => 27,
             RpcError::ClassHashNotFound => 28,
             RpcError::TxnHashNotFoundV04 => 29,
@@ -130,6 +145,15 @@ impl From<RpcError> for jsonrpsee::core::error::Error {
 
                 let data = Data { limit, requested };
 
+                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
+                    .into()
+            }
+            RpcError::NoTraceAvailable(status) => {
+                #[derive(serde::Serialize)]
+                struct Data {
+                    status: TraceError,
+                }
+                let data = Data { status };
                 CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
                     .into()
             }

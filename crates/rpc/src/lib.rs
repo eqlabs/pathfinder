@@ -18,6 +18,8 @@ pub mod websocket;
 
 pub use middleware::versioning::DefaultVersion;
 
+pub use executor::compose_executor_transaction;
+
 use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
 use crate::v02::types::syncing::Syncing;
 use crate::websocket::types::WebsocketSenders;

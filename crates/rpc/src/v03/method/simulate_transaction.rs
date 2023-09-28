@@ -128,7 +128,7 @@ pub(crate) mod dto {
         SkipValidate,
     }
 
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub enum CallType {
         #[serde(rename = "CALL")]
         Call,
@@ -146,7 +146,7 @@ pub(crate) mod dto {
         }
     }
 
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub enum EntryPointType {
         #[serde(rename = "CONSTRUCTOR")]
         Constructor,
@@ -169,7 +169,7 @@ pub(crate) mod dto {
 
     #[serde_with::serde_as]
     #[serde_with::skip_serializing_none]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct FunctionInvocation {
         #[serde(default)]
         pub call_type: CallType,
@@ -214,7 +214,7 @@ pub(crate) mod dto {
     }
 
     #[serde_with::serde_as]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct MsgToL1 {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub payload: Vec<Felt>,
@@ -235,7 +235,7 @@ pub(crate) mod dto {
     }
 
     #[serde_with::serde_as]
-    #[derive(Debug, Serialize, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
     pub struct Event {
         #[serde_as(as = "Vec<RpcFelt>")]
         pub data: Vec<Felt>,
@@ -312,13 +312,24 @@ pub(crate) mod dto {
         }
     }
 
+    #[derive(Clone, Debug, Default, Serialize, Eq, PartialEq)]
+    #[serde(untagged)]
+    pub enum ExecuteInvocation {
+        #[default]
+        Empty,
+        FunctionInvocation(FunctionInvocation),
+        RevertedReason {
+            reverted_reason: String,
+        },
+    }
+
     #[serde_with::skip_serializing_none]
     #[derive(Debug, Serialize, Eq, PartialEq)]
     pub struct InvokeTxnTrace {
         #[serde(default)]
         pub validate_invocation: Option<FunctionInvocation>,
         #[serde(default)]
-        pub execute_invocation: Option<FunctionInvocation>,
+        pub execute_invocation: ExecuteInvocation,
         #[serde(default)]
         pub fee_transfer_invocation: Option<FunctionInvocation>,
     }
@@ -327,7 +338,17 @@ pub(crate) mod dto {
         fn from(trace: pathfinder_executor::types::InvokeTransactionTrace) -> Self {
             Self {
                 validate_invocation: trace.validate_invocation.map(Into::into),
-                execute_invocation: trace.execute_invocation.map(Into::into),
+                execute_invocation: match trace.execute_invocation {
+                    pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(Some(
+                        function_invocation,
+                    )) => ExecuteInvocation::FunctionInvocation(function_invocation.into()),
+                    pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(None) => {
+                        ExecuteInvocation::Empty
+                    }
+                    pathfinder_executor::types::ExecuteInvocation::RevertedReason(
+                        reverted_reason,
+                    ) => ExecuteInvocation::RevertedReason { reverted_reason },
+                },
                 fee_transfer_invocation: trace.fee_transfer_invocation.map(Into::into),
             }
         }
