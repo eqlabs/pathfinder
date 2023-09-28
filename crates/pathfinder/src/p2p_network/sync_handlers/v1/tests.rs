@@ -38,7 +38,7 @@ mod empty_reply {
     use assert_matches::assert_matches;
     use fake::{Fake, Faker};
     use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
-    use p2p_proto_v1::common::Iteration;
+    use p2p_proto_v1::common::{BlockNumberOrHash, Iteration};
     use p2p_proto_v1::event::EventsRequest;
     use p2p_proto_v1::receipt::ReceiptsRequest;
     use p2p_proto_v1::transaction::TransactionsRequest;
@@ -57,7 +57,7 @@ mod empty_reply {
 
     fn invalid_start() -> Iteration {
         Iteration {
-            start_block: rand::thread_rng().gen_range(I64_MAX + 1..=u64::MAX),
+            start: BlockNumberOrHash::Number(rand::thread_rng().gen_range(I64_MAX + 1..=u64::MAX)),
             ..Faker.fake()
         }
     }
@@ -92,8 +92,10 @@ mod empty_reply {
 mod prop {
     use crate::p2p_network::client::v1::conv::{self as simplified, TryFromProto};
     use crate::p2p_network::sync_handlers::v1::{bodies, events, headers, receipts, transactions};
-    use p2p_proto_v1::block::{BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest};
-    use p2p_proto_v1::common::Iteration;
+    use p2p_proto_v1::block::{
+        BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
+    };
+    use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Iteration};
     use p2p_proto_v1::event::EventsRequest;
     use p2p_proto_v1::receipt::ReceiptsRequest;
     use p2p_proto_v1::transaction::TransactionsRequest;
@@ -115,15 +117,15 @@ mod prop {
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(h, _, _, _, _)| h.into()).collect::<Vec<_>>();
             // Run the handler
-            let request = BlockHeadersRequest { iteration: Iteration { start_block, limit, step, direction, } };
-            let replies = headers(tx, request).unwrap();
+            let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
+            let mut replies = headers(tx, request).unwrap();
             // Extract headers from the replies
-            let actual = replies.into_iter().map(|reply | {
-                let header = reply.header_message.into_header().unwrap();
-                assert_eq!(reply.block_number, header.number);
-                simplified::BlockHeader::try_from_proto(header).unwrap()
-            }).collect::<Vec<_>>();
-
+            // Fake storage is so small that all headers should fit into one reply, there's a separate test for batching
+            let actual = if let Some(BlockHeadersResponse { parts }) = replies.pop() {
+                parts.into_iter().map(|part | {
+                    simplified::BlockHeader::try_from_proto(part.into_header().unwrap()).unwrap()
+                }).collect::<Vec<_>>()
+            } else { vec![] };
             prop_assert_eq!(actual, expected);
         }
     }
@@ -139,26 +141,29 @@ mod prop {
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(header, _, state_update, cairo_defs, sierra_defs)|
                     (
-                        header.number,
+                        (header.number, header.hash),
                         (state_update.into(),
                         cairo_defs.into_iter().chain(sierra_defs.into_iter().map(|(h, d)| (ClassHash(h.0), d))).collect())
                     )
-            ).collect::<HashMap<BlockNumber, (simplified::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
+            ).collect::<HashMap<_, (simplified::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
-            let request = BlockBodiesRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = bodies(tx, request).unwrap().into_iter();
             // Collect replies into a set of (block_number, state_update, definitions)
             let mut actual = HashMap::new();
 
             for reply in replies {
+                let BlockId { number, hash } = reply.id.unwrap();
+                let block_id = (BlockNumber::new(number).unwrap(), BlockHash(hash.0));
+
                 match reply.body_message {
                     BlockBodyMessage::Diff(d) => {
                         let state_update = simplified::StateUpdate::try_from_proto(d).unwrap();
-                        actual.insert(BlockNumber::new(reply.block_number).unwrap(), (state_update, HashMap::new()));
+                        actual.insert(block_id, (state_update, HashMap::new()));
                     },
                     BlockBodyMessage::Classes(c) => {
                         // Classes coming after a state diff should be for the same block
-                        let entry = actual.get_mut(&BlockNumber::new(reply.block_number).unwrap()).unwrap();
+                        let entry = actual.get_mut(&block_id).unwrap();
                         entry.1.extend(c.classes.into_iter().map(|c|
                             (
                                 ClassHash(c.compiled_hash.0),
@@ -216,14 +221,15 @@ mod prop {
                     )
             ).collect::<Vec<_>>();
             // Run the handler
-            let request = TransactionsRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let request = TransactionsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = transactions(tx, request).unwrap();
             // Extract transactions from the replies
             let actual = replies.into_iter().map(|reply | {
                 let transactions = reply.kind.into_transactions().unwrap().items;
+                let BlockId { number, hash } = reply.id.unwrap();
                 (
-                    BlockNumber::new(reply.block_number).unwrap(),
-                    BlockHash(reply.block_hash.0),
+                    BlockNumber::new(number).unwrap(),
+                    BlockHash(hash.0),
                     transactions.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
                 )
             }).collect::<Vec<_>>();
@@ -250,14 +256,15 @@ mod prop {
                     )
             ).collect::<Vec<_>>();
             // Run the handler
-            let request = ReceiptsRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = receipts(tx, request).unwrap();
             // Extract transactions from the replies
             let actual = replies.into_iter().map(|reply | {
                 let receipts = reply.kind.into_receipts().unwrap().items;
+                let BlockId { number, hash } = reply.id.unwrap();
                 (
-                    BlockNumber::new(reply.block_number).unwrap(),
-                    BlockHash(reply.block_hash.0),
+                    BlockNumber::new(number).unwrap(),
+                    BlockHash(hash.0),
                     receipts.into_iter().map(|r| simplified::Receipt::try_from_proto(r).unwrap()).collect::<Vec<_>>()
                 )
             }).collect::<Vec<_>>();
@@ -285,14 +292,15 @@ mod prop {
                     )
             ).collect::<Vec<_>>();
             // Run the handler
-            let request = EventsRequest { iteration: Iteration { start_block, limit, step, direction, } };
+            let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = events(tx, request).unwrap();
             // Extract events from the replies
             let actual = replies.into_iter().map(|reply | {
                 let events = reply.responses.into_events().unwrap().items;
+                let BlockId { number, hash } = reply.id.unwrap();
                 (
-                    BlockNumber::new(reply.block_number).unwrap(),
-                    BlockHash(reply.block_hash.0),
+                    BlockNumber::new(number).unwrap(),
+                    BlockHash(hash.0),
                     events.into_iter().map(|e|
                         (
                             TransactionHash(e.transaction_hash.0),
@@ -311,7 +319,7 @@ mod prop {
         use pathfinder_storage::fake::{with_n_blocks_and_rng, StorageInitializer};
         use pathfinder_storage::Storage;
 
-        pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
+        pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 10;
 
         pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, StorageInitializer) {
             use rand::SeedableRng;
@@ -439,12 +447,20 @@ mod prop {
 mod classes {
     use crate::p2p_network::sync_handlers::v1::classes;
     use fake::{Fake, Faker};
+    use p2p_proto_v1::common::BlockId;
     use pathfinder_common::ClassHash;
 
     #[test]
     fn empty_input_yields_empty_output() {
         let mut responses = vec![];
-        assert!(classes(Faker.fake(), vec![], &mut responses, |_, _| Ok(vec![]),).is_ok());
+        assert!(classes(
+            Faker.fake(),
+            Faker.fake(),
+            vec![],
+            &mut responses,
+            |_, _| Ok(vec![]),
+        )
+        .is_ok());
         assert!(responses.is_empty());
     }
 
@@ -452,6 +468,7 @@ mod classes {
     fn getter_error_yields_error() {
         let mut responses = vec![];
         assert!(classes(
+            Faker.fake(),
             Faker.fake(),
             vec![Faker.fake()],
             &mut responses,
@@ -475,6 +492,7 @@ mod classes {
         let not_full = fake::vec![u8; 1..FULL];
 
         let block_number = Faker.fake();
+        let block_hash = Faker.fake();
         let defs = vec![
             // Small ones are batched
             fake::vec![u8; 1..=SMALL],
@@ -499,6 +517,7 @@ mod classes {
         // UUT
         assert!(classes(
             block_number,
+            block_hash,
             class_hashes.clone(),
             &mut responses,
             class_definition_getter,
@@ -509,7 +528,13 @@ mod classes {
         let responses = responses
             .into_iter()
             .map(|r| {
-                assert_eq!(r.block_number, block_number.get());
+                assert_eq!(
+                    r.id,
+                    Some(BlockId {
+                        number: block_number.get(),
+                        hash: Hash(block_hash.0)
+                    })
+                );
                 match r.body_message {
                     Classes(c) => {
                         assert_eq!(c.domain, 0, "FIXME figure out what the domain id should be");

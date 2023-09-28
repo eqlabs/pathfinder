@@ -171,25 +171,25 @@ pub mod transaction;
 
 /// Constants that allow us to estimate the maximum payload of a class definition message
 /// see the test below for more details
-pub const PER_MESSAGE_OVERHEAD: usize = 20;
+pub const PER_MESSAGE_OVERHEAD: usize = 58;
 pub const PER_CLASS_OVERHEAD: usize = 60;
 pub const MESSAGE_SIZE_LIMIT: usize = 1024 * 1024;
 
 /// Trying to estimate the overhead of the classes message so that we know what is the limit
 /// on compressed class definition size, varint delimiting of the message is taken into account
 ///
-/// 0 classes == 20 bytes
-/// 1 x 1MiB class == 80 bytes; 60 bytes/class
-/// 3 x 1MiB class == 194 bytes; 58 bytes/class
-/// 10 x 1MiB class == 586 bytes; 57 bytes/class
+/// 0 classes == 58 bytes
+/// 1 x 1MiB class == 118 bytes; 60 bytes/class
+/// 3 x 1MiB class == 232 bytes; 58 bytes/class
+/// 10 x 1MiB class == 624 bytes; 57 bytes/class
 ///
 /// It's generally safe to assume:
-/// N classes == 20 + 60 * N bytes
+/// N classes == 58 + 60 * N bytes
 #[cfg(test)]
 #[rstest::rstest]
 #[test]
 fn check_classes_message_overhead(
-    #[values((0, 20), (1, 80), (3, 194), (10, 586))] num_classes_expected_overhead: (usize, usize),
+    #[values((0, 58), (1, 118), (3, 232), (10, 624))] num_classes_expected_overhead: (usize, usize),
 ) {
     let (num_classes, expected_overhead) = num_classes_expected_overhead;
     use crate::proto::block::{block_bodies_response::BodyMessage, BlockBodiesResponse};
@@ -220,4 +220,157 @@ fn check_classes_message_overhead(
         .encode_length_delimited_to_vec()
         .len();
     assert_eq!(len - (num_classes * MESSAGE_SIZE_LIMIT), expected_overhead);
+}
+
+pub const ENCODED_HEADER_SIZE: usize = 447;
+pub const HEADERS_MESSAGE_OVERHEAD: usize = 1;
+
+pub const MAX_HEADERS_PER_MESSAGE: usize =
+    (MESSAGE_SIZE_LIMIT - HEADERS_MESSAGE_OVERHEAD + ENCODED_HEADER_SIZE) / ENCODED_HEADER_SIZE;
+
+/// 0 hdrs == 1 byte
+/// 1 hdr  == 448 bytes; 447 bytes/header
+/// 3 hdrs == 1340 bytes; 447 bytes/header
+/// 10 hdrs == 4462 bytes; 447 bytes/class
+/// 100 hdrs == 44603 bytes; 447 bytes/class
+/// 1000 hdrs == 446003 bytes; 447 bytes/class
+///
+/// It's generally safe to assume:
+/// N headers == 1 + 447 * N bytes
+#[cfg(test)]
+#[rstest::rstest]
+#[test]
+fn check_headers_message_size_upper_bound(
+    #[values((0, 1), (1, 448), (3, 1340), (10, 4462), (100, 44603), (1000, 446003), (10000, 4460004))]
+    num_headers_expected_overhead: (usize, usize),
+) {
+    let (num_headers, expected_overhead) = num_headers_expected_overhead;
+    use std::vec;
+
+    use crate::proto::block::{
+        block_headers_response_part::HeaderMessage, BlockHeader, BlockHeadersResponse,
+        BlockHeadersResponsePart,
+    };
+    use crate::proto::common::{Address, Hash, Patricia};
+    use prost::Message;
+    use prost_types::Timestamp;
+    use proto::common::Merkle;
+    let a = || {
+        Some(Address {
+            elements: vec![0xFF; 32],
+        })
+    };
+    let h = || {
+        Some(Hash {
+            elements: vec![0xFF; 32],
+        })
+    };
+    let m = || {
+        Some(Merkle {
+            n_leaves: u32::MAX,
+            root: h(),
+        })
+    };
+    let p = || {
+        Some(Patricia {
+            height: u32::MAX,
+            root: h(),
+        })
+    };
+    let part = BlockHeadersResponsePart {
+        header_message: Some(HeaderMessage::Header(BlockHeader {
+            parent_header: h(),
+            number: u64::MAX,
+            time: Some(Timestamp {
+                seconds: i64::MAX,
+                nanos: i32::MAX,
+            }),
+            sequencer_address: a(),
+            state_diffs: m(),
+            state: p(),
+            proof_fact: h(),
+            transactions: m(),
+            events: m(),
+            receipts: m(),
+            block_hash: h(),
+            gas_price: vec![0xFF; 32],
+            starknet_version: "999.999.999".into(),
+        })),
+    };
+    let len = BlockHeadersResponse {
+        part: vec![part; num_headers],
+    }
+    .encode_length_delimited_to_vec()
+    .len();
+    eprintln!("len: {}", len);
+    assert_eq!(len, expected_overhead);
+}
+
+#[cfg(test)]
+#[rstest::rstest]
+#[test]
+fn check_headers_message_size_lower_bound(
+    #[values((0, 1), (1, 75), (3, 224), (10, 742), (100, 7402), (1000, 74003), (10000, 740003))]
+    num_headers_expected_overhead: (usize, usize),
+) {
+    let (num_headers, expected_overhead) = num_headers_expected_overhead;
+    use std::vec;
+
+    use crate::proto::block::{
+        block_headers_response_part::HeaderMessage, BlockHeader, BlockHeadersResponse,
+        BlockHeadersResponsePart,
+    };
+    use crate::proto::common::{Address, Hash, Patricia};
+    use prost::Message;
+    use prost_types::Timestamp;
+    use proto::common::Merkle;
+    let a = || {
+        Some(Address {
+            elements: vec![0x1; 1],
+        })
+    };
+    let h = || {
+        Some(Hash {
+            elements: vec![0xFF; 1],
+        })
+    };
+    let m = || {
+        Some(Merkle {
+            n_leaves: 64,
+            root: h(),
+        })
+    };
+    let p = || {
+        Some(Patricia {
+            height: 64,
+            root: h(),
+        })
+    };
+    let part = BlockHeadersResponsePart {
+        header_message: Some(HeaderMessage::Header(BlockHeader {
+            parent_header: h(),
+            number: 0,
+            time: Some(Timestamp {
+                seconds: 0,
+                nanos: 0,
+            }),
+            sequencer_address: a(),
+            state_diffs: m(),
+            state: p(),
+            proof_fact: h(),
+            transactions: m(),
+            events: m(),
+            receipts: m(),
+            block_hash: h(),
+            gas_price: vec![1; 1],
+            starknet_version: Default::default(),
+        })),
+    };
+    let len = BlockHeadersResponse {
+        part: vec![part; num_headers],
+    }
+    .encode_length_delimited_to_vec()
+    .len();
+    eprintln!("len: {}", len);
+    assert_eq!(len, expected_overhead);
 }
