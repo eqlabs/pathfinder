@@ -6,21 +6,51 @@ use pathfinder_common::{
     BlockNumber, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     StorageAddress, StorageValue,
 };
-use pathfinder_storage::Transaction;
+use pathfinder_storage::{Node, Transaction};
 use stark_hash::{stark_hash, Felt};
 
 /// Updates a contract's state with and returns the resulting [ContractStateHash].
 pub fn update_contract_state(
     contract_address: ContractAddress,
-    updates: &HashMap<StorageAddress, StorageValue>,
+    update: &HashMap<StorageAddress, StorageValue>,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
     transaction: &Transaction<'_>,
     verify_hashes: bool,
     block: BlockNumber,
 ) -> anyhow::Result<ContractStateHash> {
-    // Load the contract tree and insert the updates.
-    let new_root = if !updates.is_empty() {
+    let (new_root, new_nodes) =
+        update_contract_storage_tree(contract_address, update, transaction, verify_hashes, block)
+            .context("Updating contract storage tree")?;
+    if !new_nodes.is_empty() {
+        let root_index = transaction
+            .insert_contract_trie(new_root, &new_nodes)
+            .context("Persisting contract trie")?;
+
+        transaction
+            .insert_contract_root(block, contract_address, root_index)
+            .context("Inserting contract's root index")?;
+    }
+
+    update_contract_state_hash(
+        contract_address,
+        new_root,
+        new_nonce,
+        new_class_hash,
+        transaction,
+        block,
+    )
+    .context("Update system contract state")
+}
+
+pub fn update_contract_storage_tree(
+    contract_address: ContractAddress,
+    updates: &HashMap<StorageAddress, StorageValue>,
+    transaction: &Transaction<'_>,
+    verify_hashes: bool,
+    block: BlockNumber,
+) -> anyhow::Result<(ContractRoot, HashMap<Felt, Node>)> {
+    if !updates.is_empty() {
         let root_index = match block.parent() {
             Some(parent) => transaction
                 .contract_root_index(parent, contract_address)
@@ -44,24 +74,24 @@ pub fn update_contract_state(
             .commit()
             .context("Apply contract storage tree changes")?;
 
-        if !contract_root.0.is_zero() {
-            let root_index = transaction
-                .insert_contract_trie(contract_root, &nodes)
-                .context("Persisting contract trie")?;
-
-            transaction
-                .insert_contract_root(block, contract_address, root_index)
-                .context("Inserting contract's root index")?;
-        }
-
-        contract_root
+        Ok((contract_root, nodes))
     } else {
-        transaction
+        let contract_root = transaction
             .contract_root(block, contract_address)
             .context("Querying current contract root")?
-            .unwrap_or_default()
-    };
+            .unwrap_or_default();
+        Ok((contract_root, Default::default()))
+    }
+}
 
+pub fn update_contract_state_hash(
+    contract_address: ContractAddress,
+    new_root: ContractRoot,
+    new_nonce: Option<ContractNonce>,
+    new_class_hash: Option<ClassHash>,
+    transaction: &Transaction<'_>,
+    block: BlockNumber,
+) -> anyhow::Result<ContractStateHash> {
     let class_hash = if contract_address == ContractAddress::ONE {
         // This is a special system contract at address 0x1, which doesn't have a class hash.
         ClassHash::ZERO

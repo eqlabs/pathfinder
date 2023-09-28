@@ -10,7 +10,9 @@ use pathfinder_common::{
     StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
-use pathfinder_merkle_tree::contract_state::update_contract_state;
+use pathfinder_merkle_tree::contract_state::{
+    update_contract_state, update_contract_state_hash, update_contract_storage_tree,
+};
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
@@ -845,13 +847,30 @@ fn update_starknet_state(
     .with_verify_hashes(verify_hashes);
 
     for (contract, update) in &state_update.contract_updates {
-        let state_hash = update_contract_state(
+        let (new_root, new_nodes) = update_contract_storage_tree(
             *contract,
             &update.storage,
+            transaction,
+            verify_hashes,
+            block,
+        )
+        .context("Updating contract storage tree")?;
+        if !new_nodes.is_empty() {
+            let root_index = transaction
+                .insert_contract_trie(new_root, &new_nodes)
+                .context("Persisting contract trie")?;
+
+            transaction
+                .insert_contract_root(block, *contract, root_index)
+                .context("Inserting contract's root index")?;
+        }
+
+        let state_hash = update_contract_state_hash(
+            *contract,
+            new_root,
             update.nonce,
             update.class.as_ref().map(|x| x.class_hash()),
             transaction,
-            verify_hashes,
             block,
         )
         .context("Update contract state")?;
@@ -862,16 +881,27 @@ fn update_starknet_state(
     }
 
     for (contract, update) in &state_update.system_contract_updates {
-        let state_hash = update_contract_state(
+        let (new_root, new_nodes) = update_contract_storage_tree(
             *contract,
             &update.storage,
-            None,
-            None,
             transaction,
             verify_hashes,
             block,
         )
-        .context("Update system contract state")?;
+        .context("Updating contract storage tree")?;
+        if !new_nodes.is_empty() {
+            let root_index = transaction
+                .insert_contract_trie(new_root, &new_nodes)
+                .context("Persisting contract trie")?;
+
+            transaction
+                .insert_contract_root(block, *contract, root_index)
+                .context("Inserting contract's root index")?;
+        }
+
+        let state_hash =
+            update_contract_state_hash(*contract, new_root, None, None, transaction, block)
+                .context("Update system contract state")?;
 
         storage_commitment_tree
             .set(*contract, state_hash)
