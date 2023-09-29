@@ -202,7 +202,7 @@ impl TryFromProtobuf<proto::block::BlockHeadersResponsePart> for BlockHeadersRes
             None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Missing header_message in BlockHeadersResponsePart"),
+                    format!("Failed to parse {field_name}: missing header_message field"),
                 ))
             }
         })
