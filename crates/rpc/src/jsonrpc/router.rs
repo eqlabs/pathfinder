@@ -93,7 +93,7 @@ impl RpcRouter {
             Ok(output) => output,
             Err(_e) => {
                 tracing::warn!(method=%request.method, "RPC method panic'd");
-                Err(RpcError::InternalError(anyhow::anyhow!("Method panic'd")))
+                Err(RpcError::InternalError(anyhow::anyhow!("Internal error")))
             }
         };
 

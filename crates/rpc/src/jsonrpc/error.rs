@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde::Serialize;
 
 #[derive(Debug)]
@@ -42,14 +44,16 @@ impl RpcError {
         }
     }
 
-    pub fn message(&self) -> &str {
+    pub fn message(&self) -> Cow<'_, str> {
         match self {
-            RpcError::ParseError => "Parse error",
-            RpcError::InvalidRequest => "Invalid Request",
-            RpcError::MethodNotFound { .. } => "Method not found",
-            RpcError::InvalidParams => "Invalid params",
-            RpcError::InternalError(_) => "Internal error",
-            RpcError::ApplicationError { message, .. } => message,
+            RpcError::ParseError => "Parse error".into(),
+            RpcError::InvalidRequest => "Invalid Request".into(),
+            RpcError::MethodNotFound { .. } => "Method not found".into(),
+            RpcError::InvalidParams => "Invalid params".into(),
+            // TODO: this is not necessarily a good idea. All internal errors are returned here, even
+            // ones that we probably should not disclose.
+            RpcError::InternalError(e) => e.to_string().into(),
+            RpcError::ApplicationError { message, .. } => message.into(),
         }
     }
 }
@@ -63,7 +67,7 @@ impl Serialize for RpcError {
 
         let mut obj = serializer.serialize_map(Some(2))?;
         obj.serialize_entry("code", &self.code())?;
-        obj.serialize_entry("message", self.message())?;
+        obj.serialize_entry("message", &self.message())?;
         obj.end()
     }
 }
