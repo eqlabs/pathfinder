@@ -204,6 +204,12 @@ pub enum TransactionsResponseKind {
     Fin(Fin),
 }
 
+impl TransactionsResponse {
+    pub fn into_fin(self) -> Option<Fin> {
+        self.kind.into_fin()
+    }
+}
+
 impl TransactionsResponseKind {
     pub fn into_transactions(self) -> Option<Transactions> {
         match self {

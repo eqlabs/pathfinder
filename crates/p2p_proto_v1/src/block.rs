@@ -119,6 +119,17 @@ impl TryFromProtobuf<::prost_types::Timestamp> for SystemTime {
     }
 }
 
+impl BlockHeadersResponse {
+    pub fn into_fin(self) -> Option<Fin> {
+        if self.parts.len() == 1 {
+            let mut parts = self.parts;
+            parts.pop().unwrap().into_fin()
+        } else {
+            None
+        }
+    }
+}
+
 impl BlockHeadersResponsePart {
     pub fn into_header(self) -> Option<BlockHeader> {
         match self {
@@ -206,6 +217,12 @@ impl TryFromProtobuf<proto::block::BlockHeadersResponsePart> for BlockHeadersRes
                 ))
             }
         })
+    }
+}
+
+impl BlockBodiesResponse {
+    pub fn into_fin(self) -> Option<Fin> {
+        self.body_message.into_fin()
     }
 }
 

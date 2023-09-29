@@ -43,6 +43,12 @@ pub enum Responses {
     Fin(Fin),
 }
 
+impl EventsResponse {
+    pub fn into_fin(self) -> Option<Fin> {
+        self.responses.into_fin()
+    }
+}
+
 impl Responses {
     pub fn into_events(self) -> Option<Events> {
         match self {

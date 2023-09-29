@@ -35,10 +35,9 @@ mod empty_reply {
     use crate::p2p_network::sync_handlers::v1::{
         get_bodies, get_events, get_headers, get_receipts, get_transactions,
     };
-    use assert_matches::assert_matches;
     use fake::{Fake, Faker};
     use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
-    use p2p_proto_v1::common::{BlockNumberOrHash, Iteration};
+    use p2p_proto_v1::common::{BlockNumberOrHash, Fin, Iteration};
     use p2p_proto_v1::event::EventsRequest;
     use p2p_proto_v1::receipt::ReceiptsRequest;
     use p2p_proto_v1::transaction::TransactionsRequest;
@@ -46,7 +45,6 @@ mod empty_reply {
     use rand::Rng;
     use rstest::rstest;
     use tokio::sync::mpsc;
-    use tokio::sync::mpsc::error::TryRecvError;
 
     fn zero_limit() -> Iteration {
         Iteration {
@@ -75,8 +73,7 @@ mod empty_reply {
                 $uut_name(&storage, $request { iteration }, tx.clone())
                     .await
                     .unwrap();
-                // No reply should be sent
-                assert_matches!(rx.try_recv().unwrap_err(), TryRecvError::Empty);
+                assert_eq!(rx.recv().await.unwrap().into_fin(), Some(Fin::unknown()));
             }
         };
     }
