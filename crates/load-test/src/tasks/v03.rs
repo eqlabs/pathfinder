@@ -7,7 +7,7 @@ use crate::requests::v03::*;
 /// Fetch a random block, then fetch all individual transactions and receipts in the block.
 pub async fn block_explorer(user: &mut GooseUser) -> TransactionResult {
     let mut rng = rand::rngs::StdRng::from_entropy();
-    let block_number: u64 = rng.gen_range(1..1800);
+    let block_number: u64 = rng.gen_range(1..200000);
 
     let block = get_block_by_number(user, block_number).await?;
     let block_by_hash = get_block_by_hash(user, block.block_hash).await?;
