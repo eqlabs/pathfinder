@@ -28,7 +28,6 @@ lazy_static = { workspace = true }
 lru = "0.11.1"
 metrics = { workspace = true }
 metrics-exporter-prometheus = "0.11.0"
-num_cpus = "1.16.0"
 p2p = { path = "../p2p", optional = true }
 p2p_proto_v0 = { path = "../p2p_proto_v0", optional = true }
 pathfinder-common = { path = "../common" }

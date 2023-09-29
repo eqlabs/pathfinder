@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
         .compact()
         .init();
 
-    let n_cpus = num_cpus::get();
+    let n_cpus = std::thread::available_parallelism().unwrap().get();
 
     let database_path = std::env::args().nth(1).unwrap();
     let storage = Storage::migrate(database_path.into(), JournalMode::WAL)?
@@ -54,7 +54,7 @@ fn main() -> anyhow::Result<()> {
 
     let (tx, rx) = crossbeam_channel::bounded::<Work>(10);
 
-    let executors = (0..num_cpus::get())
+    let executors = (0..n_cpus)
         .map(|_| {
             let storage = storage.clone();
             let rx = rx.clone();

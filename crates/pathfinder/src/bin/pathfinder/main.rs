@@ -109,8 +109,10 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
       Try increasing the file limit to using `ulimit` or similar tooling.",
     )?;
 
+    let available_parallelism = std::thread::available_parallelism()?;
+
     let execution_storage_pool_size = config.execution_concurrency.unwrap_or_else(|| {
-        std::num::NonZeroU32::new(num_cpus::get() as u32)
+        std::num::NonZeroU32::new(available_parallelism.get() as u32)
             .expect("The number of CPU cores should be non-zero")
     });
     let execution_storage = storage_manager
