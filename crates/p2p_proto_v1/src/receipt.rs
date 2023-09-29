@@ -142,6 +142,12 @@ impl<T> Dummy<T> for EthereumAddress {
     }
 }
 
+impl ReceiptsResponse {
+    pub fn into_fin(self) -> Option<Fin> {
+        self.kind.into_fin()
+    }
+}
+
 impl ReceiptsResponseKind {
     pub fn into_receipts(self) -> Option<Receipts> {
         match self {
