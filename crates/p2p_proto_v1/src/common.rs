@@ -210,7 +210,7 @@ impl TryFromProtobuf<proto::common::iteration::Start> for BlockNumberOrHash {
 }
 
 impl Step {
-    pub fn take_inner(self) -> u64 {
+    pub fn into_inner(self) -> u64 {
         self.0.get()
     }
 }
@@ -241,7 +241,7 @@ impl<T> Dummy<T> for Step {
 
 impl ToProtobuf<u64> for Step {
     fn to_protobuf(self) -> u64 {
-        self.take_inner()
+        self.into_inner()
     }
 }
 
@@ -268,6 +268,24 @@ impl TryFromProtobuf<i32> for Direction {
             Backward => Direction::Backward,
             Forward => Direction::Forward,
         })
+    }
+}
+
+impl Fin {
+    pub fn ok() -> Self {
+        Self { error: None }
+    }
+
+    pub fn too_much() -> Self {
+        Self {
+            error: Some(Error::TooMuch),
+        }
+    }
+
+    pub fn unknown() -> Self {
+        Self {
+            error: Some(Error::Unknown),
+        }
     }
 }
 

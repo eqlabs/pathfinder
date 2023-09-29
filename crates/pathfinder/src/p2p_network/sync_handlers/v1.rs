@@ -3,7 +3,7 @@ use p2p_proto_v1::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
     BlockHeadersResponse, BlockHeadersResponsePart,
 };
-use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Hash, Iteration, Step};
+use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Fin, Hash, Iteration, Step};
 use p2p_proto_v1::consts::{
     CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
 };
@@ -31,16 +31,21 @@ const MAX_COUNT_IN_TESTS: u64 = 10;
 #[cfg(test)]
 const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
-// TODO consider batching db ops instead doing all in bulk if it's more performant
+const _: () = assert!(
+    MAX_BLOCKS_COUNT <= MAX_HEADERS_PER_MESSAGE as u64,
+    "All requested block headers, limited up to MAX_BLOCKS_COUNT should fit into one reply"
+);
+
 pub async fn get_headers(
     storage: &Storage,
     request: BlockHeadersRequest,
     tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, headers).await?;
-    send(tx, responses).await
+    let response = spawn_blocking_get(request, storage, headers).await?;
+    tx.send(response).await.context("Sending response")
 }
 
+// TODO consider batching db ops instead doing all in bulk if it's more performant
 pub async fn get_bodies(
     storage: &Storage,
     request: BlockBodiesRequest,
@@ -80,7 +85,7 @@ pub async fn get_events(
 pub(crate) fn headers(
     tx: Transaction<'_>,
     request: BlockHeadersRequest,
-) -> anyhow::Result<Vec<BlockHeadersResponse>> {
+) -> anyhow::Result<BlockHeadersResponse> {
     let BlockHeadersRequest {
         iteration:
             Iteration {
@@ -91,18 +96,28 @@ pub(crate) fn headers(
             },
     } = request;
 
-    let mut next_block_number = get_start_block_number(start, &tx)?;
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
+    let mut block_number = match get_start_block_number(start, &tx)? {
+        Some(x) => x,
+        None => {
+            return Ok(BlockHeadersResponse {
+                parts: vec![BlockHeadersResponsePart::Fin(Fin::unknown())],
+            });
+        }
+    };
+
+    let (limit, mut ending_marker) = if limit > MAX_BLOCKS_COUNT {
+        (MAX_BLOCKS_COUNT, Some(Fin::too_much()))
+    } else {
+        (limit, None)
+    };
+
     let mut parts = Vec::new();
 
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
+    for _ in 0..limit {
         // 1. Get the block header
         let Some(header) = tx.block_header(block_number.into())? else {
             // No such block
+            ending_marker = Some(Fin::unknown());
             break;
         };
 
@@ -113,18 +128,25 @@ pub(crate) fn headers(
         // 2. Get the signatures for this block
         // TODO we don't have signatures yet
 
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
+        // 3. Mark that we're done with this block
+        parts.push(BlockHeadersResponsePart::Fin(Fin::ok()));
+
+        // 4. Calculate the next block number
+        block_number = match get_next_block_number(block_number, step, direction) {
+            Some(x) => x,
+            None => {
+                // Out of range block number value
+                ending_marker = Some(Fin::unknown());
+                break;
+            }
+        };
     }
 
-    let responses = parts
-        .chunks(MAX_HEADERS_PER_MESSAGE)
-        .map(|parts| BlockHeadersResponse {
-            parts: parts.to_vec(),
-        })
-        .collect();
+    if let Some(end) = ending_marker {
+        parts.push(BlockHeadersResponsePart::Fin(end));
+    }
 
-    Ok(responses)
+    Ok(BlockHeadersResponse { parts })
 }
 
 fn bodies(
@@ -603,11 +625,11 @@ fn get_next_block_number(
     match direction {
         Direction::Forward => current
             .get()
-            .checked_add(step.take_inner())
+            .checked_add(step.into_inner())
             .and_then(BlockNumber::new),
         Direction::Backward => current
             .get()
-            .checked_sub(step.take_inner())
+            .checked_sub(step.into_inner())
             .and_then(BlockNumber::new),
     }
 }

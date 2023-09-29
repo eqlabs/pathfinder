@@ -94,8 +94,9 @@ mod prop {
     use crate::p2p_network::sync_handlers::v1::{bodies, events, headers, receipts, transactions};
     use p2p_proto_v1::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
+        BlockHeadersResponsePart,
     };
-    use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Iteration};
+    use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Fin, Iteration};
     use p2p_proto_v1::event::EventsRequest;
     use p2p_proto_v1::receipt::ReceiptsRequest;
     use p2p_proto_v1::transaction::TransactionsRequest;
@@ -114,18 +115,19 @@ mod prop {
             let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
-            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|(h, _, _, _, _)| h.into()).collect::<Vec<_>>();
+            let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
+                .into_iter().map(|(h, _, _, _, _)| h.into()).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let mut replies = headers(tx, request).unwrap();
-            // Extract headers from the replies
-            // Fake storage is so small that all headers should fit into one reply, there's a separate test for batching
-            let actual = if let Some(BlockHeadersResponse { parts }) = replies.pop() {
-                parts.into_iter().map(|part | {
-                    simplified::BlockHeader::try_from_proto(part.into_header().unwrap()).unwrap()
-                }).collect::<Vec<_>>()
-            } else { vec![] };
+            let BlockHeadersResponse { parts } = headers(tx, request).unwrap();
+            // Group reply parts by block
+            let parts_by_block = parts.chunks_exact(2);
+            let actual = parts_by_block.clone().map(|part | {
+                // Make sure block data is delimited
+                assert_eq!(part[1], BlockHeadersResponsePart::Fin(Fin::ok()));
+                // Extract the header
+                simplified::BlockHeader::try_from_proto(part[0].clone().into_header().unwrap()).unwrap()
+            }).collect::<Vec<_>>();
             prop_assert_eq!(actual, expected);
         }
     }
@@ -319,7 +321,7 @@ mod prop {
         use pathfinder_storage::fake::{with_n_blocks_and_rng, StorageInitializer};
         use pathfinder_storage::Storage;
 
-        pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 10;
+        pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 
         pub fn storage_with_seed(seed: u64, num_blocks: u64) -> (Storage, StorageInitializer) {
             use rand::SeedableRng;
@@ -363,7 +365,7 @@ mod prop {
             from_db
                 .into_iter()
                 .skip(start_block.try_into().unwrap())
-                .step_by(step.take_inner().try_into().unwrap())
+                .step_by(step.into_inner().try_into().unwrap())
                 .take(std::cmp::min(limit, MAX_COUNT_IN_TESTS).try_into().unwrap())
         }
 
@@ -384,7 +386,7 @@ mod prop {
                 .into_iter()
                 .take((start_block + 1).try_into().unwrap())
                 .rev()
-                .step_by(step.take_inner().try_into().unwrap())
+                .step_by(step.into_inner().try_into().unwrap())
                 .take(std::cmp::min(limit, MAX_COUNT_IN_TESTS).try_into().unwrap())
         }
     }
