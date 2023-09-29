@@ -52,6 +52,10 @@ async fn async_main() -> anyhow::Result<()> {
 
     permission_check(&config.data_directory)?;
 
+    rayon::ThreadPoolBuilder::new()
+        .thread_name(|thread_index| format!("rayon-{}", thread_index))
+        .build_global()?;
+
     // A readiness flag which is used to indicate that pathfinder is ready via monitoring.
     let readiness = Arc::new(AtomicBool::new(false));
 
