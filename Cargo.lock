@@ -6461,7 +6461,6 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mimalloc",
  "mockall",
- "num_cpus",
  "p2p",
  "p2p_proto_v0",
  "pathfinder-common",
