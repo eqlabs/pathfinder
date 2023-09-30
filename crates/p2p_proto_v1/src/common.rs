@@ -88,6 +88,10 @@ pub enum Error {
     Pruned,
 }
 
+pub trait FromFin {
+    fn from_fin(fin: Fin) -> Self;
+}
+
 impl ToProtobuf<proto::common::Felt252> for Felt {
     fn to_protobuf(self) -> proto::common::Felt252 {
         proto::common::Felt252 {

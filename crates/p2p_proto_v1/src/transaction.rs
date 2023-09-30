@@ -1,4 +1,4 @@
-use crate::common::{Address, BlockId, Fin, Hash, Iteration};
+use crate::common::{Address, BlockId, Fin, FromFin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
 use stark_hash::Felt;
@@ -202,6 +202,15 @@ pub struct TransactionsResponse {
 pub enum TransactionsResponseKind {
     Transactions(Transactions),
     Fin(Fin),
+}
+
+impl FromFin for TransactionsResponse {
+    fn from_fin(fin: Fin) -> Self {
+        Self {
+            id: None,
+            kind: TransactionsResponseKind::Fin(fin),
+        }
+    }
 }
 
 impl TransactionsResponse {

@@ -1,4 +1,6 @@
-use crate::common::{Address, BlockId, ConsensusSignature, Fin, Hash, Iteration, Merkle, Patricia};
+use crate::common::{
+    Address, BlockId, ConsensusSignature, Fin, FromFin, Hash, Iteration, Merkle, Patricia,
+};
 use crate::state::{Classes, StateDiff};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use fake::Dummy;
@@ -130,6 +132,12 @@ impl BlockHeadersResponse {
     }
 }
 
+impl FromFin for BlockHeadersResponsePart {
+    fn from_fin(fin: Fin) -> Self {
+        Self::Fin(fin)
+    }
+}
+
 impl BlockHeadersResponsePart {
     pub fn into_header(self) -> Option<BlockHeader> {
         match self {
@@ -217,6 +225,15 @@ impl TryFromProtobuf<proto::block::BlockHeadersResponsePart> for BlockHeadersRes
                 ))
             }
         })
+    }
+}
+
+impl FromFin for BlockBodiesResponse {
+    fn from_fin(fin: Fin) -> Self {
+        Self {
+            id: None,
+            body_message: BlockBodyMessage::Fin(fin),
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::common::{BlockId, Fin, Hash, Iteration};
+use crate::common::{BlockId, Fin, FromFin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use stark_hash::Felt;
 
@@ -34,58 +34,68 @@ pub struct Events {
 pub struct EventsResponse {
     #[optional]
     pub id: Option<BlockId>,
-    pub responses: Responses,
+    #[rename(responses)]
+    pub kind: EventsResponseKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Responses {
+pub enum EventsResponseKind {
     Events(Events),
     Fin(Fin),
 }
 
+impl FromFin for EventsResponse {
+    fn from_fin(fin: Fin) -> Self {
+        EventsResponse {
+            id: None,
+            kind: EventsResponseKind::Fin(fin),
+        }
+    }
+}
+
 impl EventsResponse {
     pub fn into_fin(self) -> Option<Fin> {
-        self.responses.into_fin()
+        self.kind.into_fin()
     }
 }
 
-impl Responses {
+impl EventsResponseKind {
     pub fn into_events(self) -> Option<Events> {
         match self {
-            Responses::Events(events) => Some(events),
-            Responses::Fin(_) => None,
+            EventsResponseKind::Events(events) => Some(events),
+            EventsResponseKind::Fin(_) => None,
         }
     }
 
     pub fn into_fin(self) -> Option<Fin> {
         match self {
-            Responses::Events(_) => None,
-            Responses::Fin(fin) => Some(fin),
+            EventsResponseKind::Events(_) => None,
+            EventsResponseKind::Fin(fin) => Some(fin),
         }
     }
 }
 
-impl ToProtobuf<proto::event::events_response::Responses> for Responses {
+impl ToProtobuf<proto::event::events_response::Responses> for EventsResponseKind {
     fn to_protobuf(self) -> proto::event::events_response::Responses {
         use proto::event::events_response::Responses::{Events, Fin};
         match self {
-            Responses::Events(events) => Events(events.to_protobuf()),
-            Responses::Fin(fin) => Fin(fin.to_protobuf()),
+            EventsResponseKind::Events(events) => Events(events.to_protobuf()),
+            EventsResponseKind::Fin(fin) => Fin(fin.to_protobuf()),
         }
     }
 }
 
-impl TryFromProtobuf<proto::event::events_response::Responses> for Responses {
+impl TryFromProtobuf<proto::event::events_response::Responses> for EventsResponseKind {
     fn try_from_protobuf(
         input: proto::event::events_response::Responses,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::event::events_response::Responses::{Events, Fin};
         match input {
-            Events(events) => Ok(Responses::Events(self::Events::try_from_protobuf(
+            Events(events) => Ok(EventsResponseKind::Events(self::Events::try_from_protobuf(
                 events, field_name,
             )?)),
-            Fin(fin) => Ok(Responses::Fin(self::Fin::try_from_protobuf(
+            Fin(fin) => Ok(EventsResponseKind::Fin(self::Fin::try_from_protobuf(
                 fin, field_name,
             )?)),
         }
