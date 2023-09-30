@@ -30,6 +30,28 @@ fn get_next_block_number(
     );
 }
 
+mod todo {
+    #[ignore]
+    #[test]
+    fn batching_works_correctly_for_transactions_receipts_events() {
+        todo!("add tests for transactions, receipts and events which checks if batching works correctly and none of the messages exceed 1MiB")
+        // Headers are always batched in a single response
+        // Body batching is already done in the classes test
+    }
+
+    #[ignore]
+    #[test]
+    fn internal_limiting_is_flagged_correctly() {
+        todo!("for all 5 types of requests, check that the internal limiting is flagged correctly")
+    }
+
+    #[ignore]
+    #[test]
+    fn partially_successful_requestes_are_flagged_correctly() {
+        todo!("for all 5 types of requests, check that partially successful requests are flagged correctly")
+    }
+}
+
 mod empty_reply {
     use super::I64_MAX;
     use crate::p2p_network::sync_handlers::v1::{
@@ -88,15 +110,15 @@ mod empty_reply {
 /// Property tests, grouped to be immediately visible when executed
 mod prop {
     use crate::p2p_network::client::v1::conv::{self as simplified, TryFromProto};
-    use crate::p2p_network::sync_handlers::v1::{bodies, events, headers, receipts, transactions};
+    use crate::p2p_network::sync_handlers::v1::blocking;
     use p2p_proto_v1::block::{
         BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
         BlockHeadersResponsePart,
     };
-    use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Fin, Iteration};
-    use p2p_proto_v1::event::EventsRequest;
-    use p2p_proto_v1::receipt::ReceiptsRequest;
-    use p2p_proto_v1::transaction::TransactionsRequest;
+    use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Error, Fin, Iteration};
+    use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
+    use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
+    use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
     use pathfinder_common::event::Event;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
     use pathfinder_common::{BlockHash, BlockNumber, ClassHash, TransactionHash};
@@ -116,16 +138,23 @@ mod prop {
                 .into_iter().map(|(h, _, _, _, _)| h.into()).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let BlockHeadersResponse { parts } = headers(tx, request).unwrap();
-            // Group reply parts by block
-            let parts_by_block = parts.chunks_exact(2);
-            let actual = parts_by_block.clone().map(|part | {
-                // Make sure block data is delimited
-                assert_eq!(part[1], BlockHeadersResponsePart::Fin(Fin::ok()));
-                // Extract the header
-                simplified::BlockHeader::try_from_proto(part[0].clone().into_header().unwrap()).unwrap()
-            }).collect::<Vec<_>>();
-            prop_assert_eq!(actual, expected);
+            let BlockHeadersResponse { parts } = blocking::get_headers(tx, request).unwrap();
+            // Empty reply is only possible if the request does not overlap with storage
+            // Invalid start is tested in `empty_reply::`
+            if expected.is_empty() {
+                prop_assert_eq!(parts.len(), 1);
+                prop_assert_eq!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
+            } else {
+                // Group reply parts by block: [[hdr-0, fin-0], [hdr-1, fin-1], ...]
+                let actual = parts.chunks_exact(2).map(|parts| {
+                    // Make sure block data is delimited
+                    assert_eq!(parts[1], BlockHeadersResponsePart::Fin(Fin::ok()));
+                    // Extract the header
+                    simplified::BlockHeader::try_from_proto(parts[0].clone().into_header().unwrap()).unwrap()
+                }).collect::<Vec<_>>();
+
+                prop_assert_eq!(actual, expected);
+            }
         }
     }
 
@@ -147,34 +176,51 @@ mod prop {
             ).collect::<HashMap<_, (simplified::StateUpdate, HashMap<ClassHash, Vec<u8>>)>>();
             // Run the handler
             let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = bodies(tx, request).unwrap().into_iter();
-            // Collect replies into a set of (block_number, state_update, definitions)
-            let mut actual = HashMap::new();
+            let replies = blocking::get_bodies(tx, request).unwrap();
+            // Empty reply is only possible if the request does not overlap with storage
+            // Invalid start is tested in `empty_reply::`
+            if expected.is_empty() {
+                prop_assert_eq!(replies.len(), 1);
+                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+            } else {
+                // Collect replies into a set of (block_number, state_update, definitions)
+                let mut actual = HashMap::new();
+                let mut block_id = None;
 
-            for reply in replies {
-                let BlockId { number, hash } = reply.id.unwrap();
-                let block_id = (BlockNumber::new(number).unwrap(), BlockHash(hash.0));
+                for reply in replies {
+                    match reply.body_message {
+                        BlockBodyMessage::Diff(d) => {
+                            let BlockId { number, hash } = reply.id.unwrap();
+                            block_id = Some((BlockNumber::new(number).unwrap(), BlockHash(hash.0)));
 
-                match reply.body_message {
-                    BlockBodyMessage::Diff(d) => {
-                        let state_update = simplified::StateUpdate::try_from_proto(d).unwrap();
-                        actual.insert(block_id, (state_update, HashMap::new()));
-                    },
-                    BlockBodyMessage::Classes(c) => {
-                        // Classes coming after a state diff should be for the same block
-                        let entry = actual.get_mut(&block_id).unwrap();
-                        entry.1.extend(c.classes.into_iter().map(|c|
-                            (
-                                ClassHash(c.compiled_hash.0),
-                                zstd::decode_all(&c.definition[..]).unwrap()
-                            )
-                        ));
-                    },
-                    _ => panic!("unexpected message type"),
+                            let state_update = simplified::StateUpdate::try_from_proto(d).unwrap();
+                            actual.insert(block_id.unwrap(), (state_update, HashMap::new()));
+                        },
+                        BlockBodyMessage::Classes(c) => {
+                            // Classes coming after a state diff should be for the same block
+                            let entry = actual.get_mut(&block_id.expect("Classes follow Diff so current block id should be set")).unwrap();
+                            entry.1.extend(c.classes.into_iter().map(|c|
+                                (
+                                    ClassHash(c.compiled_hash.0),
+                                    zstd::decode_all(&c.definition[..]).unwrap()
+                                )
+                            ));
+                        },
+                        BlockBodyMessage::Fin(f) => {
+                            match f.error {
+                                // We either managed to fit the entire range or we hit the internal limit
+                                None | Some(Error::TooMuch) => assert!(actual.contains_key(&block_id.unwrap())),
+                                // Either the request yielded nothing or was only partially successful
+                                Some(Error::Unknown) => {},
+                                Some(_) => panic!("unexpected error"),
+                            }
+                        }
+                        _ => unimplemented!(),
+                    }
                 }
-            }
 
-            prop_assert_eq!(actual, expected);
+                prop_assert_eq!(actual, expected);
+            }
         }
     }
 
@@ -221,19 +267,31 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = TransactionsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = transactions(tx, request).unwrap();
-            // Extract transactions from the replies
-            let actual = replies.into_iter().map(|reply | {
-                let transactions = reply.kind.into_transactions().unwrap().items;
-                let BlockId { number, hash } = reply.id.unwrap();
-                (
-                    BlockNumber::new(number).unwrap(),
-                    BlockHash(hash.0),
-                    transactions.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
-                )
-            }).collect::<Vec<_>>();
+            let replies = blocking::get_transactions(tx, request).unwrap();
+            // Empty reply is only possible if the request does not overlap with storage
+            // Invalid start is tested in `empty_reply::`
+            if expected.is_empty() {
+                prop_assert_eq!(replies.len(), 1);
+                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+            } else {
+                // Group replies by block, fake storage creates transactions per block small enough to fit under the 1MiB limit
+                // This means that there are 2 replies per block: [[transactions-0, fin-0], [transactions-1, fin-1], ...]
+                let actual = replies.chunks_exact(2).map(|replies | {
+                    assert_eq!(replies[0].id, replies[1].id);
+                    // Make sure block data is delimited
+                    assert_eq!(replies[1].kind, TransactionsResponseKind::Fin(Fin::ok()));
+                    // Extract transactions
+                    let transactions = replies[0].kind.clone().into_transactions().unwrap().items;
+                    let BlockId { number, hash } = replies[0].id.unwrap();
+                    (
+                        BlockNumber::new(number).unwrap(),
+                        BlockHash(hash.0),
+                        transactions.into_iter().map(|t| TransactionVariant::try_from_proto(t).unwrap()).collect::<Vec<_>>()
+                    )
+                }).collect::<Vec<_>>();
 
-            prop_assert_eq!(actual, expected);
+                prop_assert_eq!(actual, expected);
+            }
         }
     }
 
@@ -245,7 +303,7 @@ mod prop {
             let mut connection = storage.connection().unwrap();
             let tx = connection.transaction().unwrap();
             // Compute the overlapping set between the db and the request
-            // These are the transactions that we expect to be read from the db
+            // These are the receipts that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
                 .map(|(h, tr, _, _, _)|
                     (
@@ -256,19 +314,31 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = receipts(tx, request).unwrap();
-            // Extract transactions from the replies
-            let actual = replies.into_iter().map(|reply | {
-                let receipts = reply.kind.into_receipts().unwrap().items;
-                let BlockId { number, hash } = reply.id.unwrap();
-                (
-                    BlockNumber::new(number).unwrap(),
-                    BlockHash(hash.0),
-                    receipts.into_iter().map(|r| simplified::Receipt::try_from_proto(r).unwrap()).collect::<Vec<_>>()
-                )
-            }).collect::<Vec<_>>();
+            let replies = blocking::get_receipts(tx, request).unwrap();
+            // Empty reply is only possible if the request does not overlap with storage
+            // Invalid start is tested in `empty_reply::`
+            if expected.is_empty() {
+                prop_assert_eq!(replies.len(), 1);
+                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+            } else {
+                // Group replies by block, fake storage creates receipts per block small enough to fit under the 1MiB limit
+                // This means that there are 2 replies per block: [[receipts-0, fin-0], [receipts-1, fin-1], ...]
+                let actual = replies.chunks_exact(2).map(|replies | {
+                    assert_eq!(replies[0].id, replies[1].id);
+                    // Make sure block data is delimited
+                    assert_eq!(replies[1].kind, ReceiptsResponseKind::Fin(Fin::ok()));
+                    // Extract receipts
+                    let receipts = replies[0].kind.clone().into_receipts().unwrap().items;
+                    let BlockId { number, hash } = replies[0].id.unwrap();
+                    (
+                        BlockNumber::new(number).unwrap(),
+                        BlockHash(hash.0),
+                        receipts.into_iter().map(|r| simplified::Receipt::try_from_proto(r).unwrap()).collect::<Vec<_>>()
+                    )
+                }).collect::<Vec<_>>();
 
-            prop_assert_eq!(actual, expected);
+                prop_assert_eq!(actual, expected);
+            }
         }
     }
 
@@ -292,23 +362,35 @@ mod prop {
             ).collect::<Vec<_>>();
             // Run the handler
             let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
-            let replies = events(tx, request).unwrap();
-            // Extract events from the replies
-            let actual = replies.into_iter().map(|reply | {
-                let events = reply.responses.into_events().unwrap().items;
-                let BlockId { number, hash } = reply.id.unwrap();
-                (
-                    BlockNumber::new(number).unwrap(),
-                    BlockHash(hash.0),
-                    events.into_iter().map(|e|
-                        (
-                            TransactionHash(e.transaction_hash.0),
-                            e.events.into_iter().map(|e| Event::try_from_proto(e).unwrap()).collect::<Vec<_>>()
-                        )).collect::<Vec<_>>()
-                )
-            }).collect::<Vec<_>>();
+            let replies = blocking::get_events(tx, request).unwrap();
+            // Empty reply is only possible if the request does not overlap with storage
+            // Invalid start is tested in `empty_reply::`
+            if expected.is_empty() {
+                prop_assert_eq!(replies.len(), 1);
+                prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
+            } else {
+                // Group replies by block, fake storage creates events per block small enough to fit under the 1MiB limit
+                // This means that there are 2 replies per block: [[events-0, fin-0], [events-1, fin-1], ...]
+                let actual = replies.chunks_exact(2).map(|replies | {
+                    assert_eq!(replies[0].id, replies[1].id);
+                    // Make sure block data is delimited
+                    assert_eq!(replies[1].kind, EventsResponseKind::Fin(Fin::ok()));
+                    // Extract events
+                    let events = replies[0].kind.clone().into_events().unwrap().items;
+                    let BlockId { number, hash } = replies[0].id.unwrap();
+                    (
+                        BlockNumber::new(number).unwrap(),
+                        BlockHash(hash.0),
+                        events.into_iter().map(|e|
+                            (
+                                TransactionHash(e.transaction_hash.0),
+                                e.events.into_iter().map(|e| Event::try_from_proto(e).unwrap()).collect::<Vec<_>>()
+                            )).collect::<Vec<_>>()
+                    )
+                }).collect::<Vec<_>>();
 
-            prop_assert_eq!(actual, expected);
+                prop_assert_eq!(actual, expected);
+            }
         }
     }
 

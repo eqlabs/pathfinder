@@ -3,11 +3,13 @@ use p2p_proto_v1::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
     BlockHeadersResponse, BlockHeadersResponsePart,
 };
-use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Fin, Hash, Iteration, Step};
+use p2p_proto_v1::common::{
+    BlockId, BlockNumberOrHash, Direction, Fin, FromFin, Hash, Iteration, Step,
+};
 use p2p_proto_v1::consts::{
     CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
 };
-use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, Responses, TxnEvents};
+use p2p_proto_v1::event::{Events, EventsRequest, EventsResponse, EventsResponseKind, TxnEvents};
 use p2p_proto_v1::receipt::{Receipts, ReceiptsRequest, ReceiptsResponse, ReceiptsResponseKind};
 use p2p_proto_v1::transaction::{
     Transactions, TransactionsRequest, TransactionsResponse, TransactionsResponseKind,
@@ -41,7 +43,7 @@ pub async fn get_headers(
     request: BlockHeadersRequest,
     tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
-    let response = spawn_blocking_get(request, storage, headers).await?;
+    let response = spawn_blocking_get(request, storage, blocking::get_headers).await?;
     tx.send(response).await.context("Sending response")
 }
 
@@ -51,7 +53,7 @@ pub async fn get_bodies(
     request: BlockBodiesRequest,
     tx: mpsc::Sender<BlockBodiesResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, bodies).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_bodies).await?;
     send(tx, responses).await
 }
 
@@ -60,7 +62,7 @@ pub async fn get_transactions(
     request: TransactionsRequest,
     tx: mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, transactions).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_transactions).await?;
     send(tx, responses).await
 }
 
@@ -69,7 +71,7 @@ pub async fn get_receipts(
     request: ReceiptsRequest,
     tx: mpsc::Sender<ReceiptsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, receipts).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_receipts).await?;
     send(tx, responses).await
 }
 
@@ -78,30 +80,246 @@ pub async fn get_events(
     request: EventsRequest,
     tx: mpsc::Sender<EventsResponse>,
 ) -> anyhow::Result<()> {
-    let responses = spawn_blocking_get(request, storage, events).await?;
+    let responses = spawn_blocking_get(request, storage, blocking::get_events).await?;
     send(tx, responses).await
 }
 
-pub(crate) fn headers(
+pub(crate) mod blocking {
+    use super::*;
+
+    pub(crate) fn get_headers(
+        tx: Transaction<'_>,
+        request: BlockHeadersRequest,
+    ) -> anyhow::Result<BlockHeadersResponse> {
+        let parts = iterate(tx, request.iteration, get_header)?;
+        Ok(BlockHeadersResponse { parts })
+    }
+
+    pub(crate) fn get_bodies(
+        tx: Transaction<'_>,
+        request: BlockBodiesRequest,
+    ) -> anyhow::Result<Vec<BlockBodiesResponse>> {
+        iterate(tx, request.iteration, get_body)
+    }
+
+    pub(crate) fn get_transactions(
+        tx: Transaction<'_>,
+        request: TransactionsRequest,
+    ) -> anyhow::Result<Vec<TransactionsResponse>> {
+        iterate(tx, request.iteration, get_transactions_for_block)
+    }
+
+    pub(crate) fn get_receipts(
+        tx: Transaction<'_>,
+        request: ReceiptsRequest,
+    ) -> anyhow::Result<Vec<ReceiptsResponse>> {
+        iterate(tx, request.iteration, get_receipts_for_block)
+    }
+
+    pub(crate) fn get_events(
+        tx: Transaction<'_>,
+        request: EventsRequest,
+    ) -> anyhow::Result<Vec<EventsResponse>> {
+        iterate(tx, request.iteration, get_events_for_block)
+    }
+}
+
+fn get_header(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    parts: &mut Vec<BlockHeadersResponsePart>,
+) -> anyhow::Result<bool> {
+    if let Some(header) = tx.block_header(block_number.into())? {
+        parts.push(BlockHeadersResponsePart::Header(Box::new(
+            header.to_proto(),
+        )));
+        parts.push(BlockHeadersResponsePart::Fin(Fin::ok()));
+
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn get_body(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<BlockBodiesResponse>,
+) -> anyhow::Result<bool> {
+    let Some(state_diff) = tx.state_update(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let new_classes = state_diff
+        .declared_cairo_classes
+        .iter()
+        .copied()
+        .chain(
+            state_diff
+                .declared_sierra_classes
+                .keys()
+                .map(|x| ClassHash(x.0)),
+        )
+        .collect::<Vec<_>>();
+    let block_hash = state_diff.block_hash;
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(BlockBodiesResponse {
+        id,
+        body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
+    });
+
+    let get_compressed_definition =
+        |block_number: BlockNumber, class_hash| -> anyhow::Result<Vec<u8>> {
+            let definition = tx
+                .compressed_class_definition_at(block_number.into(), class_hash)?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
+                })?;
+            Ok(definition)
+        };
+
+    classes(
+        block_number,
+        block_hash,
+        new_classes,
+        responses,
+        get_compressed_definition,
+    )?;
+
+    responses.push(BlockBodiesResponse {
+        id,
+        body_message: BlockBodyMessage::Fin(Fin::ok()),
+    });
+    Ok(true)
+}
+
+fn get_transactions_for_block(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<TransactionsResponse>,
+) -> anyhow::Result<bool> {
+    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(TransactionsResponse {
+        id,
+        kind: TransactionsResponseKind::Transactions(Transactions {
+            items: txn_data
+                .into_iter()
+                .map(|(txn, _)| pathfinder_common::transaction::Transaction::from(txn).to_proto())
+                .collect(),
+        }),
+    });
+    responses.push(TransactionsResponse {
+        id,
+        kind: TransactionsResponseKind::Fin(Fin::ok()),
+    });
+
+    Ok(true)
+}
+
+fn get_receipts_for_block(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<ReceiptsResponse>,
+) -> anyhow::Result<bool> {
+    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(ReceiptsResponse {
+        id,
+        kind: ReceiptsResponseKind::Receipts(Receipts {
+            items: txn_data.into_iter().map(ToProto::to_proto).collect(),
+        }),
+    });
+    responses.push(ReceiptsResponse {
+        id,
+        kind: ReceiptsResponseKind::Fin(Fin::ok()),
+    });
+
+    Ok(true)
+}
+
+fn get_events_for_block(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    responses: &mut Vec<EventsResponse>,
+) -> anyhow::Result<bool> {
+    let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
+        return Ok(false);
+    };
+
+    let items = txn_data
+        .into_iter()
+        .map(|(_, r)| TxnEvents {
+            events: r.events.into_iter().map(ToProto::to_proto).collect(),
+            transaction_hash: Hash(r.transaction_hash.0),
+        })
+        .collect::<Vec<_>>();
+
+    let id = Some(BlockId {
+        number: block_number.get(),
+        hash: Hash(block_hash.0),
+    });
+
+    responses.push(EventsResponse {
+        id,
+        kind: EventsResponseKind::Events(Events { items }),
+    });
+    responses.push(EventsResponse {
+        id,
+        kind: EventsResponseKind::Fin(Fin::ok()),
+    });
+
+    Ok(true)
+}
+
+/// `block_handler` returns Ok(true) if the iteration should continue and is
+/// responsible for delimiting block data with `Fin::ok()` marker.
+fn iterate<T: FromFin>(
     tx: Transaction<'_>,
-    request: BlockHeadersRequest,
-) -> anyhow::Result<BlockHeadersResponse> {
-    let BlockHeadersRequest {
-        iteration:
-            Iteration {
-                start,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
+    iteration: Iteration,
+    block_handler: impl Fn(&Transaction<'_>, BlockNumber, &mut Vec<T>) -> anyhow::Result<bool>,
+) -> anyhow::Result<Vec<T>> {
+    let Iteration {
+        start,
+        direction,
+        limit,
+        step,
+    } = iteration;
 
     let mut block_number = match get_start_block_number(start, &tx)? {
         Some(x) => x,
         None => {
-            return Ok(BlockHeadersResponse {
-                parts: vec![BlockHeadersResponsePart::Fin(Fin::unknown())],
-            });
+            return Ok(vec![T::from_fin(Fin::unknown())]);
         }
     };
 
@@ -111,27 +329,17 @@ pub(crate) fn headers(
         (limit, None)
     };
 
-    let mut parts = Vec::new();
+    let mut responses = Vec::new();
 
     for _ in 0..limit {
-        // 1. Get the block header
-        let Some(header) = tx.block_header(block_number.into())? else {
+        if block_handler(&tx, block_number, &mut responses)? {
+            // Block data retrieved successfully, `block_handler` should add `Fin::ok()` marker on its own
+        } else {
             // No such block
             ending_marker = Some(Fin::unknown());
             break;
-        };
+        }
 
-        parts.push(BlockHeadersResponsePart::Header(Box::new(
-            header.to_proto(),
-        )));
-
-        // 2. Get the signatures for this block
-        // TODO we don't have signatures yet
-
-        // 3. Mark that we're done with this block
-        parts.push(BlockHeadersResponsePart::Fin(Fin::ok()));
-
-        // 4. Calculate the next block number
         block_number = match get_next_block_number(block_number, step, direction) {
             Some(x) => x,
             None => {
@@ -143,242 +351,7 @@ pub(crate) fn headers(
     }
 
     if let Some(end) = ending_marker {
-        parts.push(BlockHeadersResponsePart::Fin(end));
-    }
-
-    Ok(BlockHeadersResponse { parts })
-}
-
-fn bodies(
-    tx: Transaction<'_>,
-    request: BlockBodiesRequest,
-) -> anyhow::Result<Vec<BlockBodiesResponse>> {
-    let BlockBodiesRequest {
-        iteration:
-            Iteration {
-                start,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
-
-    let mut next_block_number = get_start_block_number(start, &tx)?;
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        // 1. Get the state diff for the block
-        let Some(state_diff) = tx.state_update(block_number.into())? else {
-            // No such block
-            break;
-        };
-
-        let new_classes = state_diff
-            .declared_cairo_classes
-            .iter()
-            .copied()
-            .chain(
-                state_diff
-                    .declared_sierra_classes
-                    .keys()
-                    .map(|x| ClassHash(x.0)),
-            )
-            .collect::<Vec<_>>();
-
-        let block_hash = state_diff.block_hash;
-        responses.push(BlockBodiesResponse {
-            id: Some(BlockId {
-                number: block_number.get(),
-                hash: Hash(block_hash.0),
-            }),
-            body_message: BlockBodyMessage::Diff(state_diff.to_proto()),
-        });
-
-        // 2. Get the newly declared classes in this block
-        let get_compressed_definition =
-            |block_number: BlockNumber, class_hash| -> anyhow::Result<Vec<u8>> {
-                let definition = tx
-                    .compressed_class_definition_at(block_number.into(), class_hash)?
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("Class {} not found at block {}", class_hash, block_number)
-                    })?;
-                Ok(definition)
-            };
-
-        classes(
-            block_number,
-            block_hash,
-            new_classes,
-            &mut responses,
-            get_compressed_definition,
-        )?;
-
-        // 3. Get the proof for block
-        // FIXME
-        // We're not sending the proof for the block, as we're not storing it right now
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
-    }
-
-    Ok(responses)
-}
-
-pub(crate) fn transactions(
-    tx: Transaction<'_>,
-    request: TransactionsRequest,
-) -> anyhow::Result<Vec<TransactionsResponse>> {
-    let TransactionsRequest {
-        iteration:
-            Iteration {
-                start,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
-
-    let mut next_block_number = get_start_block_number(start, &tx)?;
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
-            break;
-        };
-
-        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
-            break;
-        };
-
-        responses.push(TransactionsResponse {
-            id: Some(BlockId {
-                number: block_number.get(),
-                hash: Hash(block_hash.0),
-            }),
-            kind: TransactionsResponseKind::Transactions(Transactions {
-                items: txn_data
-                    .into_iter()
-                    .map(|(txn, _)| {
-                        pathfinder_common::transaction::Transaction::from(txn).to_proto()
-                    })
-                    .collect(),
-            }),
-        });
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
-    }
-
-    Ok(responses)
-}
-
-pub(crate) fn receipts(
-    tx: Transaction<'_>,
-    request: ReceiptsRequest,
-) -> anyhow::Result<Vec<ReceiptsResponse>> {
-    let ReceiptsRequest {
-        iteration:
-            Iteration {
-                start,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
-
-    let mut next_block_number = get_start_block_number(start, &tx)?;
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
-            break;
-        };
-
-        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
-            break;
-        };
-
-        responses.push(ReceiptsResponse {
-            id: Some(BlockId {
-                number: block_number.get(),
-                hash: Hash(block_hash.0),
-            }),
-            kind: ReceiptsResponseKind::Receipts(Receipts {
-                items: txn_data.into_iter().map(ToProto::to_proto).collect(),
-            }),
-        });
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
-    }
-
-    Ok(responses)
-}
-
-pub(crate) fn events(
-    tx: Transaction<'_>,
-    request: EventsRequest,
-) -> anyhow::Result<Vec<EventsResponse>> {
-    let EventsRequest {
-        iteration:
-            Iteration {
-                start,
-                direction,
-                limit,
-                step,
-            },
-    } = request;
-
-    let mut next_block_number = get_start_block_number(start, &tx)?;
-    let mut limit = limit.min(MAX_BLOCKS_COUNT);
-    let mut responses = Vec::new();
-
-    while let Some(block_number) = next_block_number {
-        if limit == 0 {
-            break;
-        }
-
-        let Some((_, block_hash)) = tx.block_id(block_number.into())? else {
-            break;
-        };
-
-        let Some(txn_data) = tx.transaction_data_for_block(block_number.into())? else {
-            break;
-        };
-
-        let items = txn_data
-            .into_iter()
-            .map(|(_, r)| TxnEvents {
-                events: r.events.into_iter().map(ToProto::to_proto).collect(),
-                transaction_hash: Hash(r.transaction_hash.0),
-            })
-            .collect::<Vec<_>>();
-
-        responses.push(EventsResponse {
-            id: Some(BlockId {
-                number: block_number.get(),
-                hash: Hash(block_hash.0),
-            }),
-            responses: Responses::Events(Events { items }),
-        });
-
-        limit -= 1;
-        next_block_number = get_next_block_number(block_number, step, direction);
+        responses.push(T::from_fin(end));
     }
 
     Ok(responses)

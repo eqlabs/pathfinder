@@ -1,5 +1,5 @@
 use crate::{
-    common::{BlockId, Fin, Hash, Iteration},
+    common::{BlockId, Fin, FromFin, Hash, Iteration},
     proto, ToProtobuf, TryFromProtobuf,
 };
 use fake::Dummy;
@@ -139,6 +139,15 @@ pub enum ReceiptsResponseKind {
 impl<T> Dummy<T> for EthereumAddress {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
         Self(H160::random_using(rng))
+    }
+}
+
+impl FromFin for ReceiptsResponse {
+    fn from_fin(fin: Fin) -> Self {
+        Self {
+            id: None,
+            kind: ReceiptsResponseKind::Fin(fin),
+        }
     }
 }
 
