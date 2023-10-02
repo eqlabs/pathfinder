@@ -6,8 +6,8 @@ mod pending;
 use anyhow::Context;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, Chain, ChainId, ClassCommitment, ClassHash,
-    EventCommitment, GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate,
-    StorageCommitment, TransactionCommitment,
+    ContractAddress, ContractStateHash, EventCommitment, GasPrice, SequencerAddress, SierraHash,
+    StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
 };
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -23,6 +23,7 @@ use starknet_gateway_client::{GatewayApi, GossipApi};
 use starknet_gateway_types::reply::PendingBlock;
 use starknet_gateway_types::{pending::PendingData, reply::Block};
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::time::Instant;
 use std::{sync::Arc, time::Duration};
@@ -826,6 +827,8 @@ fn update_starknet_state(
     verify_hashes: bool,
     storage: Storage,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
+    use rayon::prelude::*;
+
     let (storage_commitment, class_commitment) = transaction
         .block_header(pathfinder_storage::BlockId::Latest)
         .context("Querying latest state commitment")?
@@ -835,38 +838,89 @@ fn update_starknet_state(
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
         .with_verify_hashes(verify_hashes);
 
-    for (contract, update) in &state_update.contract_updates {
-        let contract_update_result = update_contract_state(
-            *contract,
-            &update.storage,
-            update.nonce,
-            update.class.as_ref().map(|x| x.class_hash()),
-            &storage_commitment_tree,
-            transaction,
-            verify_hashes,
-        )
-        .context("Update contract state")?;
+    let state_hashes: anyhow::Result<HashMap<ContractAddress, ContractStateHash>> = state_update
+        .contract_updates
+        .keys()
+        .map(|contract_address| {
+            Ok((
+                *contract_address,
+                storage_commitment_tree
+                    .get(*contract_address)?
+                    .unwrap_or(ContractStateHash(Felt::ZERO)),
+            ))
+        })
+        .collect();
+    let state_hashes = state_hashes.context("Collecting current state hashes")?;
 
+    let (send, recv) = std::sync::mpsc::channel();
+
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            let result: Result<Vec<_>, _> = state_update
+                .contract_updates
+                .par_iter()
+                .map_init(
+                    || storage.clone().connection(),
+                    |connection, (contract_address, update)| {
+                        let connection = match connection {
+                            Ok(connection) => connection,
+                            Err(e) => anyhow::bail!(
+                                "Failed to create database connection in rayon thread: {}",
+                                e
+                            ),
+                        };
+                        let transaction = connection.transaction()?;
+                        let state_hash = state_hashes[contract_address];
+                        update_contract_state(
+                            *contract_address,
+                            &update.storage,
+                            update.nonce,
+                            update.class.as_ref().map(|x| x.class_hash()),
+                            state_hash,
+                            &transaction,
+                            verify_hashes,
+                        )
+                    },
+                )
+                .collect();
+            let _ = send.send(result);
+        })
+    });
+
+    let contract_update_results = recv.recv().context("Panic on rayon thread")??;
+
+    for contract_update_result in contract_update_results.into_iter() {
         storage_commitment_tree
-            .set(*contract, contract_update_result.state_hash)
+            .set(
+                contract_update_result.contract_address,
+                contract_update_result.state_hash,
+            )
             .context("Updating storage commitment tree")?;
+        contract_update_result
+            .insert(transaction)
+            .context("Updating contract storage trie")?;
     }
 
     for (contract, update) in &state_update.system_contract_updates {
+        let state_hash = storage_commitment_tree
+            .get(*contract)?
+            .unwrap_or(ContractStateHash(Felt::ZERO));
         let contract_update_result = update_contract_state(
             *contract,
             &update.storage,
             None,
             None,
-            &storage_commitment_tree,
+            state_hash,
             transaction,
             verify_hashes,
         )
         .context("Update system contract state")?;
-
         storage_commitment_tree
             .set(*contract, contract_update_result.state_hash)
-            .context("Updating system contract storage commitment tree")?;
+            .context("Updating storage commitment tree")?;
+        contract_update_result
+            .insert(transaction)
+            .context("Updating system contract storage trie")?;
     }
 
     // Apply storage commitment tree changes.

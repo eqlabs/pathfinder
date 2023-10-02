@@ -200,7 +200,7 @@ impl Default for SyncState {
 
 pub mod test_utils {
     use pathfinder_common::event::Event;
-    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{macro_prelude::*, ContractStateHash};
     use pathfinder_common::{
         BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
         GasPrice, SierraHash, StarknetVersion, StateUpdate, StorageCommitment, TransactionIndex,
@@ -303,12 +303,16 @@ pub mod test_utils {
 
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
+        let state_hash = storage_commitment_tree
+            .get(contract0_addr)
+            .unwrap()
+            .unwrap_or(ContractStateHash(Felt::ZERO));
         let contract_update_result = update_contract_state(
             contract0_addr,
             &contract0_update,
             Some(contract_nonce!("0x1")),
             Some(class0_hash),
-            &storage_commitment_tree,
+            state_hash,
             &db_txn,
             false,
         )
@@ -324,12 +328,16 @@ pub mod test_utils {
             .unwrap();
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
+        let state_hash = storage_commitment_tree
+            .get(contract1_addr)
+            .unwrap()
+            .unwrap_or(ContractStateHash(Felt::ZERO));
         let contract_update_result = update_contract_state(
             contract1_addr,
             &contract1_update0,
             None,
             Some(class1_hash),
-            &storage_commitment_tree,
+            state_hash,
             &db_txn,
             false,
         )
@@ -338,12 +346,16 @@ pub mod test_utils {
             .set(contract1_addr, contract_update_result.state_hash)
             .unwrap();
         contract_update_result.insert(&db_txn).unwrap();
+        let state_hash = storage_commitment_tree
+            .get(contract1_addr)
+            .unwrap()
+            .unwrap_or(ContractStateHash(Felt::ZERO));
         let contract_update_result = update_contract_state(
             contract1_addr,
             &contract1_update1,
             None,
             None,
-            &storage_commitment_tree,
+            state_hash,
             &db_txn,
             false,
         )
@@ -358,12 +370,16 @@ pub mod test_utils {
             .unwrap();
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
+        let state_hash = storage_commitment_tree
+            .get(contract1_addr)
+            .unwrap()
+            .unwrap_or(ContractStateHash(Felt::ZERO));
         let contract_update_result = update_contract_state(
             contract1_addr,
             &contract1_update2,
             Some(contract_nonce!("0x10")),
             None,
-            &storage_commitment_tree,
+            state_hash,
             &db_txn,
             false,
         )
@@ -372,12 +388,16 @@ pub mod test_utils {
             .set(contract1_addr, contract_update_result.state_hash)
             .unwrap();
         contract_update_result.insert(&db_txn).unwrap();
+        let state_hash = storage_commitment_tree
+            .get(contract2_addr)
+            .unwrap()
+            .unwrap_or(ContractStateHash(Felt::ZERO));
         let contract_update_result = update_contract_state(
             contract2_addr,
             &HashMap::new(),
             Some(contract_nonce!("0xfeed")),
             Some(class2_hash),
-            &storage_commitment_tree,
+            state_hash,
             &db_txn,
             false,
         )

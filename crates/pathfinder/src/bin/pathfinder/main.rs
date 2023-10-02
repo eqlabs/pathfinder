@@ -88,11 +88,13 @@ async fn async_main() -> anyhow::Result<()> {
 
     verify_networks(pathfinder_context.network, ethereum.chain)?;
 
+    let available_parallelism: std::num::NonZeroUsize = std::thread::available_parallelism()?;
+
     // Setup and verify database
     let storage_manager =
         Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
     let sync_storage = storage_manager
-        .create_pool(NonZeroU32::new(5).unwrap())
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
         .context(
             r"Creating database connection pool for sync.
 
@@ -116,8 +118,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
     )?;
-
-    let available_parallelism = std::thread::available_parallelism()?;
 
     let execution_storage_pool_size = config.execution_concurrency.unwrap_or_else(|| {
         std::num::NonZeroU32::new(available_parallelism.get() as u32)

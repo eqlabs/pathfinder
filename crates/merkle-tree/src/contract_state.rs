@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ContractsStorageTree, StorageCommitmentTree};
+use crate::ContractsStorageTree;
 use anyhow::Context;
 use pathfinder_common::{
     trie::TrieNode, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
@@ -39,16 +39,10 @@ pub fn update_contract_state(
     updates: &HashMap<StorageAddress, StorageValue>,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
-    storage_commitment_tree: &StorageCommitmentTree<'_>,
+    state_hash: ContractStateHash,
     transaction: &Transaction<'_>,
     verify_hashes: bool,
 ) -> anyhow::Result<ContractUpdateResult> {
-    // Update the contract state tree.
-    let state_hash = storage_commitment_tree
-        .get(contract_address)
-        .context("Get contract state hash from global state tree")?
-        .unwrap_or(ContractStateHash(Felt::ZERO));
-
     // Fetch contract's previous root, class hash and nonce.
     //
     // If the contract state does not exist yet (new contract):
