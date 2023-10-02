@@ -78,15 +78,6 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 }
 
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
-    // This table does not have an ON DELETE clause, so we do it manually.
-    // TODO: migration to add ON DELETE.
-    tx.inner()
-        .execute(
-            "UPDATE class_definitions SET block_number = NULL WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Unsetting class definitions block number")?;
-
     tx.inner()
         .execute(
             r"DELETE FROM starknet_transactions WHERE block_hash = (

@@ -6,7 +6,7 @@ pub(crate) fn base_schema(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> 
 CREATE TABLE IF NOT EXISTS "class_definitions" (
     hash       BLOB PRIMARY KEY,
     definition BLOB,
-    block_number INTEGER REFERENCES canonical_blocks(number) DEFAULT NULL
+    block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE SET NULL
 );
 CREATE TABLE contract_states (
     state_hash BLOB PRIMARY KEY,
