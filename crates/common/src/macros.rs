@@ -185,29 +185,8 @@ macro_rules! felt_newtypes {
                 where
                     D: serde::Deserializer<'de>,
                 {
-                    struct Felt251Vistitor;
-
-                    impl<'de> serde::de::Visitor<'de> for Felt251Vistitor {
-                        type Value = $target;
-
-                        fn expecting(
-                            &self,
-                            formatter: &mut std::fmt::Formatter<'_>,
-                        ) -> std::fmt::Result {
-                            formatter.write_str("A hex string with at most 251 bits set.")
-                        }
-
-                        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-                        where
-                            E: serde::de::Error,
-                        {
-                            let felt = Felt::from_hex_str(v).map_err(serde::de::Error::custom)?;
-
-                            Self::Value::new(felt).context("Felt251 overflow").map_err(serde::de::Error::custom)
-                        }
-                    }
-
-                    de.deserialize_str(Felt251Vistitor)
+                    let felt = Felt::deserialize(de)?;
+                    $target::new(felt).context("Felt251 overflow").map_err(serde::de::Error::custom)
                 }
             }
         }
