@@ -3,11 +3,35 @@ use std::collections::HashMap;
 use crate::{ContractsStorageTree, StorageCommitmentTree};
 use anyhow::Context;
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, StorageAddress,
-    StorageValue,
+    trie::TrieNode, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+    StorageAddress, StorageValue,
 };
 use pathfinder_storage::Transaction;
 use stark_hash::{stark_hash, Felt};
+
+pub struct ContractUpdateResult {
+    pub contract_address: ContractAddress,
+    pub state_hash: ContractStateHash,
+    pub root: ContractRoot,
+    pub nonce: ContractNonce,
+    pub trie_nodes: HashMap<Felt, TrieNode>,
+    pub class_hash: ClassHash,
+}
+
+impl ContractUpdateResult {
+    pub fn insert(self, transaction: &Transaction<'_>) -> anyhow::Result<()> {
+        transaction.insert_contract_state(
+            self.state_hash,
+            self.class_hash,
+            self.root,
+            self.nonce,
+        )?;
+        let count = transaction.insert_contract_trie(self.root, &self.trie_nodes)?;
+        tracing::trace!(contract=%self.contract_address, new_nodes=%count, "Persisted contract trie");
+
+        Ok(())
+    }
+}
 
 /// Updates a contract's state with and returns the resulting [ContractStateHash].
 pub fn update_contract_state(
@@ -18,7 +42,7 @@ pub fn update_contract_state(
     storage_commitment_tree: &StorageCommitmentTree<'_>,
     transaction: &Transaction<'_>,
     verify_hashes: bool,
-) -> anyhow::Result<ContractStateHash> {
+) -> anyhow::Result<ContractUpdateResult> {
     // Update the contract state tree.
     let state_hash = storage_commitment_tree
         .get(contract_address)
@@ -41,7 +65,7 @@ pub fn update_contract_state(
     let new_nonce = new_nonce.unwrap_or(old_nonce);
 
     // Load the contract tree and insert the updates.
-    let new_root = if !updates.is_empty() {
+    let (new_root, new_nodes) = if !updates.is_empty() {
         let mut contract_tree =
             ContractsStorageTree::load(transaction, old_root).with_verify_hashes(verify_hashes);
         for (key, value) in updates {
@@ -49,36 +73,33 @@ pub fn update_contract_state(
                 .set(*key, *value)
                 .context("Update contract storage tree")?;
         }
-        let (contract_root, nodes) = contract_tree
+        contract_tree
             .commit()
-            .context("Apply contract storage tree changes")?;
-        let count = transaction
-            .insert_contract_trie(contract_root, &nodes)
-            .context("Persisting contract trie")?;
-        tracing::trace!(contract=%contract_address, new_nodes=%count, "Persisted contract trie");
-
-        contract_root
+            .context("Apply contract storage tree changes")?
     } else {
-        old_root
+        (old_root, Default::default())
     };
 
     // Calculate contract state hash, update global state tree and persist pre-image.
     //
     // The contract at address 0x1 is special. It was never deployed and doesn't have a class.
-    let class_hash = if contract_address == ContractAddress::ONE {
+    let new_class_hash = if contract_address == ContractAddress::ONE {
         ClassHash::ZERO
     } else {
         new_class_hash
             .or(old_class_hash)
             .context("Class hash is unknown for new contract")?
     };
-    let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
+    let new_state_hash = calculate_contract_state_hash(new_class_hash, new_root, new_nonce);
 
-    transaction
-        .insert_contract_state(contract_state_hash, class_hash, new_root, new_nonce)
-        .context("Insert constract state hash into contracts state table")?;
-
-    Ok(contract_state_hash)
+    Ok(ContractUpdateResult {
+        contract_address,
+        state_hash: new_state_hash,
+        root: new_root,
+        nonce: new_nonce,
+        trie_nodes: new_nodes,
+        class_hash: new_class_hash,
+    })
 }
 
 /// Calculates the contract state hash from its preimage.

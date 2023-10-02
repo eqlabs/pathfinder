@@ -303,7 +303,7 @@ pub mod test_utils {
 
         let mut storage_commitment_tree =
             StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
-        let contract_state_hash = update_contract_state(
+        let contract_update_result = update_contract_state(
             contract0_addr,
             &contract0_update,
             Some(contract_nonce!("0x1")),
@@ -314,15 +314,17 @@ pub mod test_utils {
         )
         .unwrap();
         storage_commitment_tree
-            .set(contract0_addr, contract_state_hash)
+            .set(contract0_addr, contract_update_result.state_hash)
             .unwrap();
+        contract_update_result.insert(&db_txn).unwrap();
+
         let (storage_commitment0, nodes) = storage_commitment_tree.commit().unwrap();
         db_txn
             .insert_storage_trie(storage_commitment0, &nodes)
             .unwrap();
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
-        let contract_state_hash = update_contract_state(
+        let contract_update_result = update_contract_state(
             contract1_addr,
             &contract1_update0,
             None,
@@ -333,9 +335,10 @@ pub mod test_utils {
         )
         .unwrap();
         storage_commitment_tree
-            .set(contract1_addr, contract_state_hash)
+            .set(contract1_addr, contract_update_result.state_hash)
             .unwrap();
-        let contract_state_hash = update_contract_state(
+        contract_update_result.insert(&db_txn).unwrap();
+        let contract_update_result = update_contract_state(
             contract1_addr,
             &contract1_update1,
             None,
@@ -346,15 +349,16 @@ pub mod test_utils {
         )
         .unwrap();
         storage_commitment_tree
-            .set(contract1_addr, contract_state_hash)
+            .set(contract1_addr, contract_update_result.state_hash)
             .unwrap();
+        contract_update_result.insert(&db_txn).unwrap();
         let (storage_commitment1, nodes) = storage_commitment_tree.commit().unwrap();
         db_txn
             .insert_storage_trie(storage_commitment1, &nodes)
             .unwrap();
 
         let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
-        let contract_state_hash = update_contract_state(
+        let contract_update_result = update_contract_state(
             contract1_addr,
             &contract1_update2,
             Some(contract_nonce!("0x10")),
@@ -365,9 +369,10 @@ pub mod test_utils {
         )
         .unwrap();
         storage_commitment_tree
-            .set(contract1_addr, contract_state_hash)
+            .set(contract1_addr, contract_update_result.state_hash)
             .unwrap();
-        let contract_state_hash = update_contract_state(
+        contract_update_result.insert(&db_txn).unwrap();
+        let contract_update_result = update_contract_state(
             contract2_addr,
             &HashMap::new(),
             Some(contract_nonce!("0xfeed")),
@@ -378,8 +383,9 @@ pub mod test_utils {
         )
         .unwrap();
         storage_commitment_tree
-            .set(contract2_addr, contract_state_hash)
+            .set(contract2_addr, contract_update_result.state_hash)
             .unwrap();
+        contract_update_result.insert(&db_txn).unwrap();
         let (storage_commitment2, nodes) = storage_commitment_tree.commit().unwrap();
         db_txn
             .insert_storage_trie(storage_commitment2, &nodes)

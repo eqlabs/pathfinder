@@ -377,6 +377,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     ev_comm,
                     *state_update,
                     verify_tree_hashes,
+                    storage.clone(),
                 )
                 .await
                 .with_context(|| format!("Update L2 state to {block_number}"))?;
@@ -668,13 +669,14 @@ async fn l2_update(
     event_commitment: EventCommitment,
     state_update: StateUpdate,
     verify_tree_hashes: bool,
+    storage: Storage,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
         let (storage_commitment, class_commitment) =
-            update_starknet_state(&transaction, &state_update, verify_tree_hashes)
+            update_starknet_state(&transaction, &state_update, verify_tree_hashes, storage)
                 .context("Updating Starknet state")?;
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
@@ -822,6 +824,7 @@ fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
     verify_hashes: bool,
+    storage: Storage,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
     let (storage_commitment, class_commitment) = transaction
         .block_header(pathfinder_storage::BlockId::Latest)
@@ -833,7 +836,7 @@ fn update_starknet_state(
         .with_verify_hashes(verify_hashes);
 
     for (contract, update) in &state_update.contract_updates {
-        let state_hash = update_contract_state(
+        let contract_update_result = update_contract_state(
             *contract,
             &update.storage,
             update.nonce,
@@ -845,12 +848,12 @@ fn update_starknet_state(
         .context("Update contract state")?;
 
         storage_commitment_tree
-            .set(*contract, state_hash)
+            .set(*contract, contract_update_result.state_hash)
             .context("Updating storage commitment tree")?;
     }
 
     for (contract, update) in &state_update.system_contract_updates {
-        let state_hash = update_contract_state(
+        let contract_update_result = update_contract_state(
             *contract,
             &update.storage,
             None,
@@ -862,7 +865,7 @@ fn update_starknet_state(
         .context("Update system contract state")?;
 
         storage_commitment_tree
-            .set(*contract, state_hash)
+            .set(*contract, contract_update_result.state_hash)
             .context("Updating system contract storage commitment tree")?;
     }
 
