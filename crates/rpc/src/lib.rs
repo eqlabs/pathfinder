@@ -203,8 +203,7 @@ pub mod test_utils {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, EntryPoint, EthereumAddress,
-        GasPrice, SierraHash, StarknetVersion, StateUpdate, StorageCommitment, TransactionIndex,
-        TransactionVersion,
+        GasPrice, SierraHash, StarknetVersion, StateUpdate, TransactionIndex, TransactionVersion,
     };
     use pathfinder_merkle_tree::StorageCommitmentTree;
     use pathfinder_storage::{BlockId, Storage};
@@ -301,37 +300,41 @@ pub mod test_utils {
             .insert_cairo_class(class_hash_pending, &class0_definition)
             .unwrap();
 
-        let mut storage_commitment_tree =
-            StorageCommitmentTree::load(&db_txn, StorageCommitment(Felt::ZERO));
+        // Update block 0
         let contract_state_hash = update_contract_state(
             contract0_addr,
             &contract0_update,
             Some(contract_nonce!("0x1")),
             Some(class0_hash),
-            &storage_commitment_tree,
             &db_txn,
             false,
+            BlockNumber::GENESIS,
         )
         .unwrap();
+        let mut storage_commitment_tree = StorageCommitmentTree::empty(&db_txn);
         storage_commitment_tree
             .set(contract0_addr, contract_state_hash)
             .unwrap();
         let (storage_commitment0, nodes) = storage_commitment_tree.commit().unwrap();
-        db_txn
+        let storage_root_idx = db_txn
             .insert_storage_trie(storage_commitment0, &nodes)
             .unwrap();
+        db_txn
+            .insert_storage_root(BlockNumber::GENESIS, storage_root_idx)
+            .unwrap();
+        let header0 = BlockHeader::builder()
+            .with_number(BlockNumber::GENESIS)
+            .with_storage_commitment(storage_commitment0)
+            .with_class_commitment(class_commitment0)
+            .with_calculated_state_commitment()
+            .finalize_with_hash(block_hash_bytes!(b"genesis"));
+        db_txn.insert_block_header(&header0).unwrap();
+        db_txn
+            .insert_state_update(header0.number, &state_update0)
+            .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment0);
-        let contract_state_hash = update_contract_state(
-            contract1_addr,
-            &contract1_update0,
-            None,
-            Some(class1_hash),
-            &storage_commitment_tree,
-            &db_txn,
-            false,
-        )
-        .unwrap();
+        // Update block 1
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_root_idx);
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -339,29 +342,46 @@ pub mod test_utils {
             contract1_addr,
             &contract1_update1,
             None,
-            None,
-            &storage_commitment_tree,
+            Some(class1_hash),
             &db_txn,
             false,
+            BlockNumber::GENESIS + 1,
         )
         .unwrap();
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
         let (storage_commitment1, nodes) = storage_commitment_tree.commit().unwrap();
-        db_txn
+        let storage_root_idx = db_txn
             .insert_storage_trie(storage_commitment1, &nodes)
             .unwrap();
+        db_txn
+            .insert_storage_root(BlockNumber::GENESIS + 1, storage_root_idx)
+            .unwrap();
+        let header1 = header0
+            .child_builder()
+            .with_timestamp(BlockTimestamp::new_or_panic(1))
+            .with_storage_commitment(storage_commitment1)
+            .with_class_commitment(class_commitment1)
+            .with_calculated_state_commitment()
+            .with_gas_price(GasPrice::from(1))
+            .with_sequencer_address(sequencer_address_bytes!(&[1u8]))
+            .finalize_with_hash(block_hash_bytes!(b"block 1"));
+        db_txn.insert_block_header(&header1).unwrap();
+        db_txn
+            .insert_state_update(header1.number, &state_update1)
+            .unwrap();
 
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_commitment1);
+        // Update block 2
+        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_root_idx);
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,
             Some(contract_nonce!("0x10")),
             None,
-            &storage_commitment_tree,
             &db_txn,
             false,
+            BlockNumber::GENESIS + 2,
         )
         .unwrap();
         storage_commitment_tree
@@ -372,34 +392,21 @@ pub mod test_utils {
             &HashMap::new(),
             Some(contract_nonce!("0xfeed")),
             Some(class2_hash),
-            &storage_commitment_tree,
             &db_txn,
             false,
+            BlockNumber::GENESIS + 2,
         )
         .unwrap();
         storage_commitment_tree
             .set(contract2_addr, contract_state_hash)
             .unwrap();
         let (storage_commitment2, nodes) = storage_commitment_tree.commit().unwrap();
-        db_txn
+        let storage_root_idx = db_txn
             .insert_storage_trie(storage_commitment2, &nodes)
             .unwrap();
-
-        let header0 = BlockHeader::builder()
-            .with_number(BlockNumber::GENESIS)
-            .with_storage_commitment(storage_commitment0)
-            .with_class_commitment(class_commitment0)
-            .with_calculated_state_commitment()
-            .finalize_with_hash(block_hash_bytes!(b"genesis"));
-        let header1 = header0
-            .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(1))
-            .with_storage_commitment(storage_commitment1)
-            .with_class_commitment(class_commitment1)
-            .with_calculated_state_commitment()
-            .with_gas_price(GasPrice::from(1))
-            .with_sequencer_address(sequencer_address_bytes!(&[1u8]))
-            .finalize_with_hash(block_hash_bytes!(b"block 1"));
+        db_txn
+            .insert_storage_root(BlockNumber::GENESIS + 2, storage_root_idx)
+            .unwrap();
         let header2 = header1
             .child_builder()
             .with_timestamp(BlockTimestamp::new_or_panic(2))
@@ -410,9 +417,10 @@ pub mod test_utils {
             .with_sequencer_address(sequencer_address_bytes!(&[2u8]))
             .finalize_with_hash(block_hash_bytes!(b"latest"));
 
-        db_txn.insert_block_header(&header0).unwrap();
-        db_txn.insert_block_header(&header1).unwrap();
         db_txn.insert_block_header(&header2).unwrap();
+        db_txn
+            .insert_state_update(header2.number, &state_update2)
+            .unwrap();
 
         let txn0_hash = transaction_hash_bytes!(b"txn 0");
         // TODO introduce other types of transactions too
@@ -526,16 +534,6 @@ pub mod test_utils {
             .unwrap();
         db_txn
             .insert_transaction_data(header2.hash, header2.number, &transaction_data2)
-            .unwrap();
-
-        db_txn
-            .insert_state_update(header0.number, &state_update0)
-            .unwrap();
-        db_txn
-            .insert_state_update(header1.number, &state_update1)
-            .unwrap();
-        db_txn
-            .insert_state_update(header2.number, &state_update2)
             .unwrap();
 
         // Mark block 0 as L1 accepted.

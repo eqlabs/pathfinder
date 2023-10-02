@@ -402,12 +402,16 @@ impl Node {
                 (left, right) => {
                     let left = match left {
                         Child::Id(id) => id,
-                        Child::Hash(hash) => *indices.get(&hash).context("Left child index missing")?,
+                        Child::Hash(hash) => {
+                            *indices.get(&hash).context("Left child index missing")?
+                        }
                     };
 
                     let right = match right {
                         Child::Id(id) => id,
-                        Child::Hash(hash) => *indices.get(&hash).context("Right child index missing")?,
+                        Child::Hash(hash) => {
+                            *indices.get(&hash).context("Right child index missing")?
+                        }
                     };
 
                     StoredNode::Binary { left, right }
@@ -775,10 +779,16 @@ mod tests {
             };
 
             let binary_hash0 = felt_bytes!(b"binary");
-            let binary_node0 = Node::Binary { left: Child::Id(456), right: Child::Id(777) };
+            let binary_node0 = Node::Binary {
+                left: Child::Id(456),
+                right: Child::Id(777),
+            };
 
             let root_hash = felt_bytes!(b"root");
-            let root_node = Node::Binary { left: Child::Hash(edge_hash), right: Child::Hash(binary_hash0) };
+            let root_node = Node::Binary {
+                left: Child::Hash(edge_hash),
+                right: Child::Hash(binary_hash0),
+            };
 
             let mut nodes = HashMap::new();
             nodes.insert(edge_hash, edge_node);

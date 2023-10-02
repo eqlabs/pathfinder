@@ -50,6 +50,7 @@ use anyhow::Context;
 use bitvec::{prelude::BitSlice, prelude::BitVec, prelude::Msb0};
 use pathfinder_common::hash::FeltHash;
 use pathfinder_common::trie::TrieNode;
+use pathfinder_storage::{Node, StoredNode};
 use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -58,7 +59,7 @@ use std::{cell::RefCell, rc::Rc};
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
-    root: Rc<RefCell<InternalNode>>,
+    root: Option<Rc<RefCell<InternalNode>>>,
     _hasher: std::marker::PhantomData<H>,
     /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
@@ -71,14 +72,14 @@ pub struct TrieUpdate {
     pub root: Felt,
     /// New nodes added. Note that these may contain false positives if the
     /// mutations resulted in removing and then re-adding the same nodes within the tree.
-    pub nodes: HashMap<Felt, TrieNode>,
+    pub nodes: HashMap<Felt, Node>,
 }
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
-    pub fn new(root: Felt) -> Self {
-        let root_node = Rc::new(RefCell::new(InternalNode::Unresolved(root)));
+    pub fn new(root: u32) -> Self {
+        let root = Some(Rc::new(RefCell::new(InternalNode::Unresolved(root))));
         Self {
-            root: root_node,
+            root,
             _hasher: std::marker::PhantomData,
             verify_hashes: false,
         }
@@ -90,20 +91,34 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     }
 
     pub fn empty() -> Self {
-        Self::new(Felt::ZERO)
+        Self {
+            root: None,
+            _hasher: std::marker::PhantomData,
+            verify_hashes: false,
+        }
     }
 
     /// Commits all tree mutations and returns the [changes](TrieUpdate) to the tree.
-    pub fn commit(mut self) -> anyhow::Result<TrieUpdate> {
-        self.commit_mut()
+    pub fn commit(mut self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
+        self.commit_mut(storage)
     }
 
-    pub fn commit_mut(&mut self) -> anyhow::Result<TrieUpdate> {
+    pub fn commit_mut(&mut self, storage: &impl Storage) -> anyhow::Result<TrieUpdate> {
         // Go through tree, collect mutated nodes and calculate their hashes.
         let mut added = HashMap::new();
-        Self::commit_subtree(&mut self.root.borrow_mut(), &mut added)?;
-        // unwrap is safe as `commit_subtree` will set the hash.
-        let root = self.root.borrow().hash().unwrap();
+
+        let root = if let Some(root) = self.root.as_ref() {
+            match &mut *root.borrow_mut() {
+                InternalNode::Unresolved(idx) => {
+                    let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
+                    self.commit_subtree(&mut root, &mut added, storage)?
+                }
+                mut other => self.commit_subtree(&mut other, &mut added, storage)?,
+            }
+        } else {
+            // An empty trie has a root of zero
+            Felt::ZERO
+        };
 
         Ok(TrieUpdate { root, nodes: added })
     }
@@ -116,46 +131,82 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// In effect, the entire subtree gets persisted.
     fn commit_subtree(
+        &self,
         node: &mut InternalNode,
-        added: &mut HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<()> {
-        use InternalNode::*;
-        match node {
-            Unresolved(_) => { /* Unresolved nodes are already persisted. */ }
-            Leaf(_) => { /* storage wouldn't persist these even if we asked. */ }
-            Binary(binary) if binary.hash.is_some() => { /* not dirty, already persisted */ }
-            Edge(edge) if edge.hash.is_some() => { /* not dirty, already persisted */ }
+        added: &mut HashMap<Felt, Node>,
+        storage: &impl Storage,
+    ) -> anyhow::Result<Felt> {
+        use pathfinder_storage::Child;
 
-            Binary(binary) => {
-                Self::commit_subtree(&mut binary.left.borrow_mut(), added)?;
-                Self::commit_subtree(&mut binary.right.borrow_mut(), added)?;
-                // This will succeed as `commit_subtree` will set the child hashes.
-                binary.calculate_hash::<H>();
-                // unwrap is safe as `commit_subtree` will set the hashes.
-                let left = binary.left.borrow().hash().unwrap();
-                let right = binary.right.borrow().hash().unwrap();
-                let persisted_node = TrieNode::Binary { left, right };
-                // unwrap is safe as we just set the hash.
-                added.insert(binary.hash.unwrap(), persisted_node);
+        let hash = match node {
+            InternalNode::Unresolved(idx) => {
+                // Unresovlved nodes are already committed, but we need their hash for subsequent
+                // iterations.
+                storage
+                    .hash(*idx)
+                    .context("Fetching stored node's hash")?
+                    .context("Stored node's hash is missing")?
             }
+            InternalNode::Leaf(hash) => *hash,
+            InternalNode::Binary(binary) => {
+                let left_hash =
+                    self.commit_subtree(&mut binary.left.borrow_mut(), added, storage)?;
+                let right_hash =
+                    self.commit_subtree(&mut binary.right.borrow_mut(), added, storage)?;
+                let hash = BinaryNode::calculate_hash::<H>(left_hash, right_hash);
 
-            Edge(edge) => {
-                Self::commit_subtree(&mut edge.child.borrow_mut(), added)?;
-                // This will succeed as `commit_subtree` will set the child's hash.
-                edge.calculate_hash::<H>();
+                let persisted_node = match (&*binary.left.borrow(), &*binary.right.borrow()) {
+                    (&InternalNode::Leaf(left), &InternalNode::Leaf(right)) => {
+                        Node::LeafBinary { left, right }
+                    }
+                    (InternalNode::Leaf(_), _non_leaf) | (_non_leaf, InternalNode::Leaf(_)) => {
+                        anyhow::bail!("Inconsistent binary children. Both children must be leaves or not leaves.")
+                    }
+                    (left, right) => {
+                        let left = match left {
+                            InternalNode::Unresolved(idx) => Child::Id(*idx),
+                            _ => Child::Hash(left_hash),
+                        };
 
-                // unwrap is safe as `commit_subtree` will set the hash.
-                let child = edge.child.borrow().hash().unwrap();
-                let persisted_node = TrieNode::Edge {
-                    path: edge.path.clone(),
-                    child,
+                        let right = match right {
+                            InternalNode::Unresolved(idx) => Child::Id(*idx),
+                            _ => Child::Hash(right_hash),
+                        };
+
+                        Node::Binary { left, right }
+                    }
                 };
-                // unwrap is safe as we just set the hash.
-                added.insert(edge.hash.unwrap(), persisted_node);
-            }
-        }
 
-        Ok(())
+                added.insert(hash, persisted_node);
+                hash
+            }
+            InternalNode::Edge(edge) => {
+                let child_hash =
+                    self.commit_subtree(&mut edge.child.borrow_mut(), added, storage)?;
+
+                let hash = EdgeNode::calculate_hash::<H>(child_hash, &edge.path);
+
+                let persisted_node = match *edge.child.borrow() {
+                    InternalNode::Leaf(child) => Node::LeafEdge {
+                        child,
+                        path: edge.path.clone(),
+                    },
+                    InternalNode::Unresolved(idx) => Node::Edge {
+                        child: Child::Id(idx),
+                        path: edge.path.clone(),
+                    },
+                    _ => Node::Edge {
+                        child: Child::Hash(child_hash),
+                        path: edge.path.clone(),
+                    },
+                };
+
+                added.insert(hash, persisted_node);
+                hash
+            }
+        };
+
+        Ok(hash)
     }
 
     /// Sets the value of a key. To delete a key, set the value to [Felt::ZERO].
@@ -172,9 +223,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         // Changing or inserting a new leaf into the tree will change the hashes
         // of all nodes along the path to the leaf.
         let path = self.traverse(storage, key)?;
-        for node in &path {
-            node.borrow_mut().mark_dirty();
-        }
 
         // There are three possibilities.
         //
@@ -216,7 +264,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             true => Rc::new(RefCell::new(new_leaf)),
                             false => {
                                 let new_edge = InternalNode::Edge(EdgeNode {
-                                    hash: None,
                                     height: child_height,
                                     path: new_path,
                                     child: Rc::new(RefCell::new(new_leaf)),
@@ -230,7 +277,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                             true => edge.child.clone(),
                             false => {
                                 let old_edge = InternalNode::Edge(EdgeNode {
-                                    hash: None,
                                     height: child_height,
                                     path: old_path,
                                     child: edge.child.clone(),
@@ -246,7 +292,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         };
 
                         let branch = InternalNode::Binary(BinaryNode {
-                            hash: None,
                             height: branch_height,
                             left,
                             right,
@@ -256,7 +301,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         match common.is_empty() {
                             true => branch,
                             false => InternalNode::Edge(EdgeNode {
-                                hash: None,
                                 height: edge.height,
                                 path: common.to_bitvec(),
                                 child: Rc::new(RefCell::new(branch)),
@@ -279,13 +323,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // an edge node connecting to the leaf.
                 let leaf = InternalNode::Leaf(value);
                 let edge = InternalNode::Edge(EdgeNode {
-                    hash: None,
                     height: 0,
                     path: key.to_bitvec(),
                     child: Rc::new(RefCell::new(leaf)),
                 });
 
-                self.root = Rc::new(RefCell::new(edge));
+                self.root = Some(Rc::new(RefCell::new(edge)));
             }
         }
 
@@ -325,11 +368,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             None => return Ok(()),
         }
 
-        // All hashes along the path will become invalid (if they aren't deleted).
-        for node in &path {
-            node.borrow_mut().mark_dirty();
-        }
-
         // Go backwards until we hit a branch node.
         let mut node_iter = path
             .into_iter()
@@ -348,7 +386,6 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     let child = binary.get_child(direction);
                     let path = std::iter::once(bool::from(direction)).collect::<BitVec<_, _>>();
                     let mut edge = EdgeNode {
-                        hash: None,
                         height: binary.height,
                         path,
                         child,
@@ -365,7 +402,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             None => {
                 // We reached the root without a hitting binary node. The new tree
                 // must therefore be empty.
-                self.root = Rc::new(RefCell::new(InternalNode::Unresolved(Felt::ZERO)));
+                self.root = None;
                 return Ok(());
             }
         };
@@ -425,24 +462,26 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             nodes.pop();
         }
 
-        Ok(nodes
-            .iter()
-            .map(|node| match &*node.borrow() {
-                InternalNode::Binary(bin) => TrieNode::Binary {
-                    left: bin.left.borrow().hash().expect("Node should be committed"),
-                    right: bin.right.borrow().hash().expect("Node should be committed"),
-                },
-                InternalNode::Edge(edge) => TrieNode::Edge {
-                    child: edge
-                        .child
-                        .borrow()
-                        .hash()
-                        .expect("Node should be committed"),
-                    path: edge.path.clone(),
-                },
-                _ => unreachable!(),
-            })
-            .collect())
+        todo!();
+
+        // Ok(nodes
+        //     .iter()
+        //     .map(|node| match &*node.borrow() {
+        //         InternalNode::Binary(bin) => TrieNode::Binary {
+        //             left: bin.left.borrow().hash().expect("Node should be committed"),
+        //             right: bin.right.borrow().hash().expect("Node should be committed"),
+        //         },
+        //         InternalNode::Edge(edge) => TrieNode::Edge {
+        //             child: edge
+        //                 .child
+        //                 .borrow()
+        //                 .hash()
+        //                 .expect("Node should be committed"),
+        //             path: edge.path.clone(),
+        //         },
+        //         _ => unreachable!(),
+        //     })
+        //     .collect())
     }
 
     /// Traverses from the current root towards destination node.
@@ -461,11 +500,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         storage: &impl Storage,
         dst: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Vec<Rc<RefCell<InternalNode>>>> {
-        if self.root.borrow().is_empty() {
+        let Some(mut current) = self.root.clone() else {
             return Ok(Vec::new());
-        }
+        };
 
-        let mut current = self.root.clone();
         let mut height = 0;
         let mut nodes = Vec::new();
         loop {
@@ -474,8 +512,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             let current_tmp = current.borrow().clone();
 
             let next = match current_tmp {
-                Unresolved(hash) => {
-                    let node = self.resolve(storage, hash, height)?;
+                Unresolved(idx) => {
+                    let node = self.resolve(storage, idx, height)?;
                     current.swap(&RefCell::new(node));
                     current
                 }
@@ -507,50 +545,38 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     fn resolve(
         &self,
         storage: &impl Storage,
-        hash: Felt,
+        index: u32,
         height: usize,
     ) -> anyhow::Result<InternalNode> {
-        if height == HEIGHT {
-            #[cfg(debug_assertions)]
-            match storage.get(&hash)? {
-                Some(TrieNode::Edge { .. } | TrieNode::Binary { .. }) | None => {
-                    // some cases are because of collisions, none is the common outcome
-                }
-            }
-            return Ok(InternalNode::Leaf(hash));
-        }
+        anyhow::ensure!(
+            height < HEIGHT,
+            "Attempted to resolve a node with height {height} which exceeds the tree height {HEIGHT}"
+        );
 
         let node = storage
-            .get(&hash)?
-            .with_context(|| format!("Node at height {height} does not exist: {hash}"))?;
-
-        if self.verify_hashes {
-            let calculated_hash = node.hash::<H>();
-
-            anyhow::ensure!(
-                hash == calculated_hash,
-                r"Node data is corrupt.
-
-Expected:   {hash}
-Calculated: {calculated_hash}
-
-Node: {node:?}
-"
-            );
-        }
+            .get(index)?
+            .with_context(|| format!("Node {index} at height {height} is missing"))?;
 
         let node = match node {
-            TrieNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
-                hash: Some(hash),
+            StoredNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Unresolved(left))),
                 right: Rc::new(RefCell::new(InternalNode::Unresolved(right))),
             }),
-            TrieNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
-                hash: Some(hash),
+            StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Unresolved(child))),
+            }),
+            StoredNode::LeafBinary { left, right } => InternalNode::Binary(BinaryNode {
+                height,
+                left: Rc::new(RefCell::new(InternalNode::Leaf(left))),
+                right: Rc::new(RefCell::new(InternalNode::Leaf(right))),
+            }),
+            StoredNode::LeafEdge { child, path } => InternalNode::Edge(EdgeNode {
+                height,
+                path,
+                child: Rc::new(RefCell::new(InternalNode::Leaf(child))),
             }),
         };
 
@@ -606,8 +632,12 @@ Node: {node:?}
             path: BitVec<u8, Msb0>,
         }
 
+        let Some(root) = self.root.as_ref() else {
+            return Ok(None);
+        };
+
         let mut visiting = vec![VisitedNode {
-            node: self.root.clone(),
+            node: root.clone(),
             path: bitvec![u8, Msb0;],
         }];
 
@@ -616,19 +646,17 @@ Node: {node:?}
                 None => break,
                 Some(VisitedNode { node, path }) => {
                     let current_node = &*node.borrow();
-                    if !matches!(current_node, InternalNode::Unresolved(Felt::ZERO)) {
-                        match visitor_fn(current_node, &path) {
-                            ControlFlow::Continue(Visit::ContinueDeeper) => {
-                                // the default, no action, just continue deeper
-                            }
-                            ControlFlow::Continue(Visit::StopSubtree) => {
-                                // make sure we don't add any more to `visiting` on this subtree
-                                continue;
-                            }
-                            ControlFlow::Break(x) => {
-                                // early exit
-                                return Ok(Some(x));
-                            }
+                    match visitor_fn(current_node, &path) {
+                        ControlFlow::Continue(Visit::ContinueDeeper) => {
+                            // the default, no action, just continue deeper
+                        }
+                        ControlFlow::Continue(Visit::StopSubtree) => {
+                            // make sure we don't add any more to `visiting` on this subtree
+                            continue;
+                        }
+                        ControlFlow::Break(x) => {
+                            // early exit
+                            return Ok(Some(x));
                         }
                     }
                     match current_node {
@@ -661,18 +689,15 @@ Node: {node:?}
                             });
                         }
                         InternalNode::Leaf(_) => {}
-                        InternalNode::Unresolved(hash) => {
-                            // Zero means empty tree, so nothing to resolve
-                            if hash != &Felt::ZERO {
-                                visiting.push(VisitedNode {
-                                    node: Rc::new(RefCell::new(self.resolve(
-                                        storage,
-                                        *hash,
-                                        path.len(),
-                                    )?)),
-                                    path,
-                                });
-                            }
+                        unresolved @ InternalNode::Unresolved(idx) => {
+                            visiting.push(VisitedNode {
+                                node: Rc::new(RefCell::new(self.resolve(
+                                    storage,
+                                    *idx,
+                                    path.len(),
+                                )?)),
+                                path,
+                            });
                         }
                     };
                 }
@@ -699,6 +724,7 @@ pub enum Visit {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::hash::PedersenHash;
+    use pathfinder_storage::StoredNode;
 
     use super::*;
     use bitvec::prelude::*;
@@ -706,12 +732,18 @@ mod tests {
 
     type TestTree = MerkleTree<PedersenHash, 251>;
 
-    #[derive(Default)]
-    struct TestStorage(HashMap<Felt, TrieNode>);
+    #[derive(Default, Debug)]
+    struct TestStorage {
+        nodes: HashMap<u32, (Felt, StoredNode)>,
+    }
 
     impl Storage for TestStorage {
-        fn get(&self, node: &Felt) -> anyhow::Result<Option<TrieNode>> {
-            Ok(self.0.get(node).cloned())
+        fn get(&self, node: u32) -> anyhow::Result<Option<StoredNode>> {
+            Ok(self.nodes.get(&node).map(|x| x.1.clone()))
+        }
+
+        fn hash(&self, node: u32) -> anyhow::Result<Option<Felt>> {
+            Ok(self.nodes.get(&node).map(|x| x.0))
         }
     }
 
@@ -719,14 +751,59 @@ mod tests {
     fn commit_and_persist<H: FeltHash, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
-    ) -> Felt {
-        let update = tree.commit().unwrap();
+    ) -> (Felt, u32) {
+        use pathfinder_storage::Child;
 
-        for (hash, node) in update.nodes {
-            storage.0.insert(hash, node);
+        let update = tree.commit(storage).unwrap();
+
+        let mut indices = HashMap::new();
+        let mut idx = storage.nodes.len();
+        for (hash, _) in &update.nodes {
+            indices.insert(*hash, idx as u32);
+            idx += 1;
         }
 
-        update.root
+        for (hash, node) in update.nodes {
+            let node = match node {
+                Node::Binary { left, right } => {
+                    let left = match left {
+                        Child::Id(idx) => idx,
+                        Child::Hash(hash) => {
+                            *indices.get(&hash).expect("Left child should have an index")
+                        }
+                    };
+
+                    let right = match right {
+                        Child::Id(idx) => idx,
+                        Child::Hash(hash) => *indices
+                            .get(&hash)
+                            .expect("Right child should have an index"),
+                    };
+
+                    StoredNode::Binary { left, right }
+                }
+                Node::Edge { child, path } => {
+                    let child = match child {
+                        Child::Id(idx) => idx,
+                        Child::Hash(hash) => {
+                            *indices.get(&hash).expect("Child should have an index")
+                        }
+                    };
+
+                    StoredNode::Edge { child, path }
+                }
+                Node::LeafBinary { left, right } => StoredNode::LeafBinary { left, right },
+                Node::LeafEdge { child, path } => StoredNode::LeafEdge { child, path },
+            };
+
+            storage
+                .nodes
+                .insert(*indices.get(&hash).unwrap(), (hash, node));
+        }
+
+        let index = *indices.get(&update.root).unwrap();
+
+        (update.root, index)
     }
 
     #[test]
@@ -798,6 +875,7 @@ mod tests {
 
             let edge = uut
                 .root
+                .unwrap()
                 .borrow()
                 .as_edge()
                 .cloned()
@@ -827,6 +905,7 @@ mod tests {
 
             let edge = uut
                 .root
+                .unwrap()
                 .borrow()
                 .as_edge()
                 .cloned()
@@ -889,6 +968,7 @@ mod tests {
 
             let binary = uut
                 .root
+                .unwrap()
                 .borrow()
                 .as_binary()
                 .cloned()
@@ -939,6 +1019,7 @@ mod tests {
             // the two leaf nodes.
             let edge = uut
                 .root
+                .unwrap()
                 .borrow()
                 .as_edge()
                 .cloned()
@@ -971,7 +1052,7 @@ mod tests {
         #[test]
         fn empty() {
             let uut = TestTree::empty();
-            assert_eq!(*uut.root.borrow(), InternalNode::Unresolved(Felt::ZERO));
+            assert!(uut.root.is_none());
         }
     }
 
@@ -986,7 +1067,7 @@ mod tests {
             let key = felt!("0x123abc").view_bits().to_bitvec();
             uut.delete_leaf(&storage, &key).unwrap();
 
-            assert_eq!(*uut.root.borrow(), InternalNode::Unresolved(Felt::ZERO));
+            assert!(uut.root.is_none());
         }
 
         #[test]
@@ -1001,7 +1082,7 @@ mod tests {
             uut.delete_leaf(&storage, &key).unwrap();
 
             assert_eq!(uut.get(&storage, &key).unwrap(), None);
-            assert_eq!(*uut.root.borrow(), InternalNode::Unresolved(Felt::ZERO));
+            assert!(uut.root.is_none());
         }
 
         #[test]
@@ -1051,7 +1132,7 @@ mod tests {
 
             let root = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root);
+            let uut = TestTree::new(root.1);
 
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
@@ -1098,13 +1179,14 @@ mod tests {
             let root = commit_and_persist(uut, &mut storage);
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage (unresolved).
-            let mut uut = TestTree::new(root);
+            let mut uut = TestTree::new(root.1);
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&storage, &key, val).unwrap();
-            let root = commit_and_persist(uut, &mut storage);
+            let (root_hash, _) = commit_and_persist(uut, &mut storage);
             let expect = felt!("0x5f3b2b98faef39c60dbbb459dbe63d1d10f1688af47fbc032f2cab025def896");
-            assert_eq!(root, expect);
+
+            assert_eq!(root_hash, expect);
         }
 
         #[test]
@@ -1122,25 +1204,25 @@ mod tests {
             uut.set(&storage, &key0, val0).unwrap();
             let root0 = commit_and_persist(uut, &mut storage);
 
-            let mut uut = TestTree::new(root0);
+            let mut uut = TestTree::new(root0.1);
             uut.set(&storage, &key1, val1).unwrap();
             let root1 = commit_and_persist(uut, &mut storage);
 
-            let mut uut = TestTree::new(root1);
+            let mut uut = TestTree::new(root1.1);
             uut.set(&storage, &key2, val2).unwrap();
             let root2 = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root0);
+            let uut = TestTree::new(root0.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), None);
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root1);
+            let uut = TestTree::new(root1.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root2);
+            let uut = TestTree::new(root2.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, &key2).unwrap(), Some(val2));
@@ -1161,25 +1243,25 @@ mod tests {
             uut.set(&storage, &key0, val0).unwrap();
             let root0 = commit_and_persist(uut, &mut storage);
 
-            let mut uut = TestTree::new(root0);
+            let mut uut = TestTree::new(root0.1);
             uut.set(&storage, &key1, val1).unwrap();
             let root1 = commit_and_persist(uut, &mut storage);
 
-            let mut uut = TestTree::new(root0);
+            let mut uut = TestTree::new(root0.1);
             uut.set(&storage, &key2, val2).unwrap();
             let root2 = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root0);
+            let uut = TestTree::new(root0.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), None);
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root1);
+            let uut = TestTree::new(root1.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, &key2).unwrap(), None);
 
-            let uut = TestTree::new(root2);
+            let uut = TestTree::new(root2.1);
             assert_eq!(uut.get(&storage, &key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, &key1).unwrap(), None);
             assert_eq!(uut.get(&storage, &key2).unwrap(), Some(val2));
@@ -1196,14 +1278,14 @@ mod tests {
 
             let root0 = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root0);
+            let uut = TestTree::new(root0.1);
             let root1 = commit_and_persist(uut, &mut storage);
 
-            let uut = TestTree::new(root1);
+            let uut = TestTree::new(root1.1);
             let root2 = commit_and_persist(uut, &mut storage);
 
-            assert_eq!(root0, root1);
-            assert_eq!(root0, root2);
+            assert_eq!(root0.0, root1.0);
+            assert_eq!(root0.0, root2.0);
         }
     }
 
@@ -1227,7 +1309,7 @@ mod tests {
             uut.set(&storage, felt!("0x87").view_bits(), felt!("0x2"))
                 .unwrap();
 
-            let root = commit_and_persist(uut, &mut storage);
+            let (root, _) = commit_and_persist(uut, &mut storage);
 
             assert_eq!(
                 root,
@@ -1274,7 +1356,7 @@ mod tests {
                 tree.set(&storage, key, val).unwrap();
             }
 
-            let root = tree.commit().unwrap().root;
+            let root = tree.commit(&storage).unwrap().root;
 
             let expected =
                 felt!("0x6ee9a8202b40f3f76f1a132f953faa2df78b3b33ccb2b4406431abdc99c2dfe");
@@ -1328,7 +1410,6 @@ mod tests {
                 vec![
                     (
                         InternalNode::Edge(EdgeNode {
-                            hash: None,
                             height: 0,
                             path: key.view_bits().into(),
                             child: Rc::new(RefCell::new(InternalNode::Leaf(value)))
@@ -1368,7 +1449,6 @@ mod tests {
             let expected_2 = (InternalNode::Leaf(value_left), key_left.view_bits().into());
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
-                    hash: None,
                     height: 250,
                     left: Rc::new(RefCell::new(expected_2.0.clone())),
                     right: Rc::new(RefCell::new(expected_3.0.clone())),
@@ -1377,7 +1457,6 @@ mod tests {
             );
             let expected_0 = (
                 InternalNode::Edge(EdgeNode {
-                    hash: None,
                     height: 0,
                     path: bitvec![u8, Msb0; 0; 250],
                     child: Rc::new(RefCell::new(expected_1.0.clone())),
@@ -1437,7 +1516,6 @@ mod tests {
             let expected_6 = (InternalNode::Leaf(value_c), key_c.view_bits().into());
             let expected_5 = (
                 InternalNode::Edge(EdgeNode {
-                    hash: None,
                     height: 250,
                     path: bitvec![u8, Msb0; 1; 1],
                     child: Rc::new(RefCell::new(expected_6.0.clone())),
@@ -1448,7 +1526,6 @@ mod tests {
             let expected_3 = (InternalNode::Leaf(value_a), key_a.view_bits().into());
             let expected_2 = (
                 InternalNode::Binary(BinaryNode {
-                    hash: None,
                     height: 250,
                     left: Rc::new(RefCell::new(expected_3.0.clone())),
                     right: Rc::new(RefCell::new(expected_4.0.clone())),
@@ -1457,7 +1534,6 @@ mod tests {
             );
             let expected_1 = (
                 InternalNode::Binary(BinaryNode {
-                    hash: None,
                     height: 249,
                     left: Rc::new(RefCell::new(expected_2.0.clone())),
                     right: Rc::new(RefCell::new(expected_5.0.clone())),
@@ -1466,7 +1542,6 @@ mod tests {
             );
             let expected_0 = (
                 InternalNode::Edge(EdgeNode {
-                    hash: None,
                     height: 0,
                     path: path_to_1,
                     child: Rc::new(RefCell::new(expected_1.0.clone())),
@@ -1484,567 +1559,567 @@ mod tests {
         }
     }
 
-    mod proofs {
-        use crate::storage::Storage;
-        use crate::tree::tests::commit_and_persist;
-        use pathfinder_common::hash::{FeltHash, PedersenHash};
-        use pathfinder_common::trie::TrieNode;
-
-        use super::{Direction, MerkleTree, TestStorage, TestTree};
-        use bitvec::prelude::Msb0;
-        use bitvec::slice::BitSlice;
-        use pathfinder_common::felt;
-        use stark_hash::Felt;
-
-        #[derive(Debug, PartialEq, Eq)]
-        pub enum Membership {
-            Member,
-            NonMember,
-        }
-
-        /// Verifies that the key `key` with value `value` is indeed part of the MPT that has root
-        /// `root`, given `proofs`.
-        /// Supports proofs of non-membership as well as proof of membership: this function returns
-        /// an enum corresponding to the membership of `value`, or returns `None` in case of a hash mismatch.
-        /// The algorithm follows this logic:
-        /// 1. init expected_hash <- root hash
-        /// 2. loop over nodes: current <- nodes[i]
-        ///    1. verify the current node's hash matches expected_hash (if not then we have a bad proof)
-        ///    2. move towards the target - if current is:
-        ///       1. binary node then choose the child that moves towards the target, else if
-        ///       2. edge node then check the path against the target bits
-        ///          1. If it matches then proceed with the child, else
-        ///          2. if it does not match then we now have a proof that the target does not exist
-        ///    3. nibble off target bits according to which child you got in (2). If all bits are gone then you
-        ///       have reached the target and the child hash is the value you wanted and the proof is complete.
-        ///    4. set expected_hash <- to the child hash
-        /// 3. check that the expected_hash is `value` (we should've reached the leaf)
-        fn verify_proof(
-            root: Felt,
-            key: &BitSlice<u8, Msb0>,
-            value: Felt,
-            proofs: &[TrieNode],
-        ) -> Option<Membership> {
-            // Protect from ill-formed keys
-            if key.len() != 251 {
-                return None;
-            }
-
-            let mut expected_hash = root;
-            let mut remaining_path: &BitSlice<u8, Msb0> = key;
-
-            for proof_node in proofs.iter() {
-                // Hash mismatch? Return None.
-                if proof_node.hash::<PedersenHash>() != expected_hash {
-                    return None;
-                }
-                match proof_node {
-                    TrieNode::Binary { left, right } => {
-                        // Direction will always correspond to the 0th index
-                        // because we're removing bits on every iteration.
-                        let direction = Direction::from(remaining_path[0]);
-
-                        // Set the next hash to be the left or right hash,
-                        // depending on the direction
-                        expected_hash = match direction {
-                            Direction::Left => *left,
-                            Direction::Right => *right,
-                        };
-
-                        // Advance by a single bit
-                        remaining_path = &remaining_path[1..];
-                    }
-                    TrieNode::Edge { child, path } => {
-                        if path != &remaining_path[..path.len()] {
-                            // If paths don't match, we've found a proof of non membership because we:
-                            // 1. Correctly moved towards the target insofar as is possible, and
-                            // 2. hashing all the nodes along the path does result in the root hash, which means
-                            // 3. the target definitely does not exist in this tree
-                            return Some(Membership::NonMember);
-                        }
-
-                        // Set the next hash to the child's hash
-                        expected_hash = *child;
-
-                        // Advance by the whole edge path
-                        remaining_path = &remaining_path[path.len()..];
-                    }
-                }
-            }
-
-            // At this point, we should reach `value` !
-            if expected_hash == value {
-                Some(Membership::Member)
-            } else {
-                // Hash mismatch. Return `None`.
-                None
-            }
-        }
-
-        /// Structure representing a randomly generated tree.
-        struct RandomTree {
-            keys: Vec<Felt>,
-            values: Vec<Felt>,
-            root: Felt,
-            tree: MerkleTree<PedersenHash, 251>,
-            storage: TestStorage,
-        }
-
-        impl RandomTree {
-            /// Creates a new random tree with `len` key / value pairs.
-            fn new(len: usize) -> Self {
-                let mut uut = TestTree::empty();
-                let mut storage = TestStorage::default();
-
-                // Create random keys
-                let keys: Vec<Felt> = gen_random_hashes(len);
-
-                // Create random values
-                let values: Vec<Felt> = gen_random_hashes(len);
-
-                // Insert them
-                keys.iter()
-                    .zip(values.iter())
-                    .for_each(|(k, v)| uut.set(&storage, k.view_bits(), *v).unwrap());
-
-                let root = commit_and_persist(uut, &mut storage);
-                let tree = TestTree::new(root);
-
-                Self {
-                    keys,
-                    values,
-                    root,
-                    tree,
-                    storage,
-                }
-            }
-
-            /// Calls `get_proof` and `verify_proof` on every key/value pair in the random_tree.
-            fn verify(&mut self) {
-                let keys_bits: Vec<&BitSlice<u8, Msb0>> =
-                    self.keys.iter().map(|k| k.view_bits()).collect();
-                let proofs = get_proofs(&keys_bits, &self.tree, &self.storage).unwrap();
-                keys_bits
-                    .iter()
-                    .zip(self.values.iter())
-                    .enumerate()
-                    .for_each(|(i, (k, v))| {
-                        let verified = verify_proof(self.root, k, *v, &proofs[i]).unwrap();
-                        assert_eq!(verified, Membership::Member, "Failed to prove key");
-                    });
-            }
-        }
-
-        /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
-        fn get_proofs<H: FeltHash, const HEIGHT: usize>(
-            keys: &'_ [&BitSlice<u8, Msb0>],
-            tree: &MerkleTree<H, HEIGHT>,
-            storage: &impl Storage,
-        ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
-            keys.iter().map(|k| tree.get_proof(storage, k)).collect()
-        }
-
-        #[test]
-        fn simple_binary() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //   (250, 0, x1)
-            //        |
-            //     (0,0,x1)
-            //      /    \
-            //     (2)  (3)
-
-            let key_1 = felt!("0x0"); // 0b01
-            let key_2 = felt!("0x1"); // 0b01
-
-            let key1 = key_1.view_bits();
-            let key2 = key_2.view_bits();
-            let keys = [key1, key2];
-
-            let value_1 = felt!("0x2");
-            let value_2 = felt!("0x3");
-
-            uut.set(&storage, key1, value_1).unwrap();
-            uut.set(&storage, key2, value_2).unwrap();
-            let root = commit_and_persist(uut, &mut storage);
-
-            let uut = TestTree::new(root);
-
-            let proofs = get_proofs(&keys, &uut, &storage).unwrap();
-
-            let verified_key1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
-
-            assert_eq!(verified_key1, Membership::Member);
-        }
-
-        #[test]
-        fn double_binary() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //           (249,0,x3)
-            //               |
-            //           (0, 0, x3)
-            //         /            \
-            //     (0,0,x1)       (1, 1, 5)
-            //      /    \             |
-            //     (2)  (3)           (5)
-
-            let key_1 = felt!("0x0"); // 0b01
-            let key_2 = felt!("0x1"); // 0b01
-            let key_3 = felt!("0x3"); // 0b11
-
-            let key1 = key_1.view_bits();
-            let key2 = key_2.view_bits();
-            let key3 = key_3.view_bits();
-            let keys = [key1, key2, key3];
-
-            let value_1 = felt!("0x2");
-            let value_2 = felt!("0x3");
-            let value_3 = felt!("0x5");
-
-            uut.set(&storage, key1, value_1).unwrap();
-            uut.set(&storage, key2, value_2).unwrap();
-            uut.set(&storage, key3, value_3).unwrap();
-
-            let root = commit_and_persist(uut, &mut storage);
-            let uut = TestTree::new(root);
-
-            let proofs = get_proofs(&keys, &uut, &storage).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
-            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
-
-            let verified_2 = verify_proof(root, key2, value_2, &proofs[1]).unwrap();
-            assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
-
-            let verified_key3 = verify_proof(root, key3, value_3, &proofs[2]).unwrap();
-            assert_eq!(verified_key3, Membership::Member, "Failed to prove key3");
-        }
-
-        #[test]
-        fn left_edge() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //  (251,0x00,0x99)
-            //       /
-            //      /
-            //   (0x99)
-
-            let key_1 = felt!("0x0"); // 0b00
-
-            let key1 = key_1.view_bits();
-            let keys = [key1];
-
-            let value_1 = felt!("0xaa");
-
-            uut.set(&storage, key1, value_1).unwrap();
-
-            let root = commit_and_persist(uut, &mut storage);
-            let uut = TestTree::new(root);
-
-            let proofs = get_proofs(&keys, &uut, &storage).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
-            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
-        }
-
-        #[test]
-        fn left_right_edge() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //  (251,0xff,0xaa)
-            //     /
-            //     \
-            //   (0xaa)
-
-            let key_1 = felt!("0xff"); // 0b11111111
-
-            let key1 = key_1.view_bits();
-            let keys = [key1];
-
-            let value_1 = felt!("0xaa");
-
-            uut.set(&storage, key1, value_1).unwrap();
-
-            let root = commit_and_persist(uut, &mut storage);
-            let uut = TestTree::new(root);
-
-            let proofs = get_proofs(&keys, &uut, &storage).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
-            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
-        }
-
-        #[test]
-        fn right_most_edge() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //  (251,0x7fff...,0xbb)
-            //          \
-            //           \
-            //          (0xbb)
-
-            let key_1 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
-
-            let key1 = key_1.view_bits();
-            let keys = [key1];
-
-            let value_1 = felt!("0xbb");
-
-            uut.set(&storage, key1, value_1).unwrap();
-
-            let root = commit_and_persist(uut, &mut storage);
-            let uut = TestTree::new(root);
-
-            let proofs = get_proofs(&keys, &uut, &storage).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
-            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
-        }
-
-        #[test]
-        fn binary_root() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //           (0, 0, x)
-            //    /                    \
-            // (250, 0, cc)     (250, 11111.., dd)
-            //    |                     |
-            //   (cc)                  (dd)
-
-            let key_1 = felt!("0x0");
-            let key_2 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
-
-            let key1 = key_1.view_bits();
-            let key2 = key_2.view_bits();
-            let keys = [key1, key2];
-
-            let value_1 = felt!("0xcc");
-            let value_2 = felt!("0xdd");
-
-            uut.set(&storage, key1, value_1).unwrap();
-            uut.set(&storage, key2, value_2).unwrap();
-
-            let root = commit_and_persist(uut, &mut storage);
-            let uut = TestTree::new(root);
-
-            let proofs = get_proofs(&keys, &uut, &storage).unwrap();
-            let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
-            assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
-
-            let verified_2 = verify_proof(root, key2, value_2, &proofs[1]).unwrap();
-            assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
-        }
-
-        /// Generates `n` random [Felt]
-        fn gen_random_hashes(n: usize) -> Vec<Felt> {
-            let mut out = Vec::with_capacity(n);
-            let mut rng = rand::rngs::ThreadRng::default();
-
-            while out.len() < n {
-                let sh = Felt::random(&mut rng);
-                if sh.has_more_than_251_bits() {
-                    continue;
-                }
-                out.push(sh);
-            }
-
-            out
-        }
-
-        #[test]
-        fn random_tree() {
-            const LEN: usize = 256;
-            RandomTree::new(LEN).verify();
-        }
-
-        #[test]
-        fn non_membership() {
-            const LEN: usize = 256;
-
-            let random_tree = RandomTree::new(LEN);
-
-            // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
-            let keys_set: std::collections::HashSet<&Felt> = random_tree.keys.iter().collect();
-
-            let inexistent_keys: Vec<Felt> = gen_random_hashes(LEN)
-                .into_iter()
-                .filter(|key| !keys_set.contains(key)) // Filter out duplicates if there are any
-                .collect();
-
-            let keys_bits: Vec<&BitSlice<u8, Msb0>> =
-                inexistent_keys.iter().map(|k| k.view_bits()).collect();
-            let proofs = get_proofs(&keys_bits, &random_tree.tree, &random_tree.storage).unwrap();
-            keys_bits
-                .iter()
-                .zip(random_tree.values.iter())
-                .enumerate()
-                .for_each(|(i, (k, v))| {
-                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]).unwrap();
-                    assert_eq!(verified, Membership::NonMember);
-                });
-        }
-
-        #[test]
-        fn invalid_values() {
-            const LEN: usize = 256;
-
-            let random_tree = RandomTree::new(LEN);
-
-            // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
-            let values_set: std::collections::HashSet<&Felt> = random_tree.values.iter().collect();
-
-            let inexistent_values: Vec<Felt> = gen_random_hashes(LEN)
-                .into_iter()
-                .filter(|value| !values_set.contains(value)) // Filter out duplicates if there are any
-                .collect();
-
-            let keys_bits: Vec<&BitSlice<u8, Msb0>> =
-                random_tree.keys.iter().map(|k| k.view_bits()).collect();
-            let proofs =
-                get_proofs(&keys_bits[..], &random_tree.tree, &random_tree.storage).unwrap();
-
-            keys_bits
-                .iter()
-                .zip(inexistent_values.iter())
-                .enumerate()
-                .for_each(|(i, (k, v))| {
-                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]);
-                    assert!(verified.is_none());
-                });
-        }
-
-        #[test]
-        fn modified_binary_left() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //           (0, 0, x)
-            //    /                    \
-            // (250, 0, cc)     (250, 11111.., dd)
-            //    |                     |
-            //   (cc)                  (dd)
-
-            let key_1 = felt!("0x0");
-            let key_2 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
-
-            let key1 = key_1.view_bits();
-            let key2 = key_2.view_bits();
-            let keys = [key1, key2];
-
-            let value_1 = felt!("0xcc");
-            let value_2 = felt!("0xdd");
-
-            uut.set(&storage, key1, value_1).unwrap();
-            uut.set(&storage, key2, value_2).unwrap();
-
-            let root = commit_and_persist(uut, &mut storage);
-            let uut = TestTree::new(root);
-
-            let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
-
-            // Modify the left hash
-            let new_node = match &proofs[0][0] {
-                TrieNode::Binary { right, .. } => TrieNode::Binary {
-                    left: felt!("0x42"),
-                    right: *right,
-                },
-                _ => unreachable!(),
-            };
-            proofs[0][0] = new_node;
-
-            let verified = verify_proof(root, key1, value_1, &proofs[0]);
-            assert!(verified.is_none());
-        }
-
-        #[test]
-        fn modified_edge_child() {
-            let mut uut = TestTree::empty();
-            let mut storage = TestStorage::default();
-
-            //           (0, 0, x)
-            //    /                    \
-            // (250, 0, cc)     (250, 11111.., dd)
-            //    |                     |
-            //   (cc)                  (dd)
-
-            let key_1 = felt!("0x0");
-            let key_2 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
-
-            let key1 = key_1.view_bits();
-            let key2 = key_2.view_bits();
-            let keys = [key1, key2];
-
-            let value_1 = felt!("0xcc");
-            let value_2 = felt!("0xdd");
-
-            uut.set(&storage, key1, value_1).unwrap();
-            uut.set(&storage, key2, value_2).unwrap();
-
-            let root = commit_and_persist(uut, &mut storage);
-            let uut = TestTree::new(root);
-
-            let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
-
-            // Modify the child hash
-            let new_node = match &proofs[0][1] {
-                TrieNode::Edge { path, .. } => TrieNode::Edge {
-                    child: felt!("0x42"),
-                    path: path.clone(),
-                },
-                _ => unreachable!(),
-            };
-            proofs[0][1] = new_node;
-
-            let verified = verify_proof(root, key1, value_1, &proofs[0]);
-            assert!(verified.is_none());
-        }
-    }
-
-    #[test]
-    fn dfs_on_leaf_to_binary_collision_tree() {
-        let mut uut = TestTree::empty();
-        let mut storage = TestStorage::default();
-
-        let value = felt!("0x1");
-        let key0 = felt!("0xee00").view_bits().to_bitvec();
-        let key1 = felt!("0xee01").view_bits().to_bitvec();
-
-        let key2 = felt!("0xffff").view_bits().to_bitvec();
-        let hash_of_values = stark_hash::stark_hash(value, value);
-        uut.set(&storage, &key2, hash_of_values).unwrap();
-
-        uut.set(&storage, &key0, value).unwrap();
-        uut.set(&storage, &key1, value).unwrap();
-
-        let root = commit_and_persist(uut, &mut storage);
-
-        let uut = TestTree::new(root);
-        // this used to panic because it did find the binary on dev profile with the leaf hash
-        let mut visited = Vec::new();
-        uut.dfs(&storage, &mut |n: &_, p: &_| -> ControlFlow<(), Visit> {
-            if let InternalNode::Leaf(h) = n {
-                visited.push((Felt::from_bits(p).unwrap(), *h));
-            }
-            std::ops::ControlFlow::Continue(Default::default())
-        })
-        .unwrap();
-        assert_eq!(uut.get(&storage, &key0).unwrap(), Some(value));
-        assert_eq!(uut.get(&storage, &key1).unwrap(), Some(value));
-        assert_eq!(uut.get(&storage, &key2).unwrap(), Some(hash_of_values));
-
-        assert_eq!(
-            visited,
-            &[
-                (felt!("0xEE00"), felt!("0x1")),
-                (felt!("0xEE01"), felt!("0x1")),
-                (
-                    felt!("0xFFFF"),
-                    felt!("0x2EBBD6878F81E49560AE863BD4EF327A417037BF57B63A016130AD0A94C8EAC")
-                )
-            ]
-        );
-    }
+    // mod proofs {
+    //     use crate::storage::Storage;
+    //     use crate::tree::tests::commit_and_persist;
+    //     use pathfinder_common::hash::{FeltHash, PedersenHash};
+    //     use pathfinder_common::trie::TrieNode;
+
+    //     use super::{Direction, MerkleTree, TestStorage, TestTree};
+    //     use bitvec::prelude::Msb0;
+    //     use bitvec::slice::BitSlice;
+    //     use pathfinder_common::felt;
+    //     use stark_hash::Felt;
+
+    //     #[derive(Debug, PartialEq, Eq)]
+    //     pub enum Membership {
+    //         Member,
+    //         NonMember,
+    //     }
+
+    //     /// Verifies that the key `key` with value `value` is indeed part of the MPT that has root
+    //     /// `root`, given `proofs`.
+    //     /// Supports proofs of non-membership as well as proof of membership: this function returns
+    //     /// an enum corresponding to the membership of `value`, or returns `None` in case of a hash mismatch.
+    //     /// The algorithm follows this logic:
+    //     /// 1. init expected_hash <- root hash
+    //     /// 2. loop over nodes: current <- nodes[i]
+    //     ///    1. verify the current node's hash matches expected_hash (if not then we have a bad proof)
+    //     ///    2. move towards the target - if current is:
+    //     ///       1. binary node then choose the child that moves towards the target, else if
+    //     ///       2. edge node then check the path against the target bits
+    //     ///          1. If it matches then proceed with the child, else
+    //     ///          2. if it does not match then we now have a proof that the target does not exist
+    //     ///    3. nibble off target bits according to which child you got in (2). If all bits are gone then you
+    //     ///       have reached the target and the child hash is the value you wanted and the proof is complete.
+    //     ///    4. set expected_hash <- to the child hash
+    //     /// 3. check that the expected_hash is `value` (we should've reached the leaf)
+    //     fn verify_proof(
+    //         root: Felt,
+    //         key: &BitSlice<u8, Msb0>,
+    //         value: Felt,
+    //         proofs: &[TrieNode],
+    //     ) -> Option<Membership> {
+    //         // Protect from ill-formed keys
+    //         if key.len() != 251 {
+    //             return None;
+    //         }
+
+    //         let mut expected_hash = root;
+    //         let mut remaining_path: &BitSlice<u8, Msb0> = key;
+
+    //         for proof_node in proofs.iter() {
+    //             // Hash mismatch? Return None.
+    //             if proof_node.hash::<PedersenHash>() != expected_hash {
+    //                 return None;
+    //             }
+    //             match proof_node {
+    //                 TrieNode::Binary { left, right } => {
+    //                     // Direction will always correspond to the 0th index
+    //                     // because we're removing bits on every iteration.
+    //                     let direction = Direction::from(remaining_path[0]);
+
+    //                     // Set the next hash to be the left or right hash,
+    //                     // depending on the direction
+    //                     expected_hash = match direction {
+    //                         Direction::Left => *left,
+    //                         Direction::Right => *right,
+    //                     };
+
+    //                     // Advance by a single bit
+    //                     remaining_path = &remaining_path[1..];
+    //                 }
+    //                 TrieNode::Edge { child, path } => {
+    //                     if path != &remaining_path[..path.len()] {
+    //                         // If paths don't match, we've found a proof of non membership because we:
+    //                         // 1. Correctly moved towards the target insofar as is possible, and
+    //                         // 2. hashing all the nodes along the path does result in the root hash, which means
+    //                         // 3. the target definitely does not exist in this tree
+    //                         return Some(Membership::NonMember);
+    //                     }
+
+    //                     // Set the next hash to the child's hash
+    //                     expected_hash = *child;
+
+    //                     // Advance by the whole edge path
+    //                     remaining_path = &remaining_path[path.len()..];
+    //                 }
+    //             }
+    //         }
+
+    //         // At this point, we should reach `value` !
+    //         if expected_hash == value {
+    //             Some(Membership::Member)
+    //         } else {
+    //             // Hash mismatch. Return `None`.
+    //             None
+    //         }
+    //     }
+
+    //     /// Structure representing a randomly generated tree.
+    //     struct RandomTree {
+    //         keys: Vec<Felt>,
+    //         values: Vec<Felt>,
+    //         root: Felt,
+    //         tree: MerkleTree<PedersenHash, 251>,
+    //         storage: TestStorage,
+    //     }
+
+    //     impl RandomTree {
+    //         /// Creates a new random tree with `len` key / value pairs.
+    //         fn new(len: usize) -> Self {
+    //             let mut uut = TestTree::empty();
+    //             let mut storage = TestStorage::default();
+
+    //             // Create random keys
+    //             let keys: Vec<Felt> = gen_random_hashes(len);
+
+    //             // Create random values
+    //             let values: Vec<Felt> = gen_random_hashes(len);
+
+    //             // Insert them
+    //             keys.iter()
+    //                 .zip(values.iter())
+    //                 .for_each(|(k, v)| uut.set(&storage, k.view_bits(), *v).unwrap());
+
+    //             let root = commit_and_persist(uut, &mut storage);
+    //             let tree = TestTree::new(root);
+
+    //             Self {
+    //                 keys,
+    //                 values,
+    //                 root,
+    //                 tree,
+    //                 storage,
+    //             }
+    //         }
+
+    //         /// Calls `get_proof` and `verify_proof` on every key/value pair in the random_tree.
+    //         fn verify(&mut self) {
+    //             let keys_bits: Vec<&BitSlice<u8, Msb0>> =
+    //                 self.keys.iter().map(|k| k.view_bits()).collect();
+    //             let proofs = get_proofs(&keys_bits, &self.tree, &self.storage).unwrap();
+    //             keys_bits
+    //                 .iter()
+    //                 .zip(self.values.iter())
+    //                 .enumerate()
+    //                 .for_each(|(i, (k, v))| {
+    //                     let verified = verify_proof(self.root, k, *v, &proofs[i]).unwrap();
+    //                     assert_eq!(verified, Membership::Member, "Failed to prove key");
+    //                 });
+    //         }
+    //     }
+
+    //     /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
+    //     fn get_proofs<H: FeltHash, const HEIGHT: usize>(
+    //         keys: &'_ [&BitSlice<u8, Msb0>],
+    //         tree: &MerkleTree<H, HEIGHT>,
+    //         storage: &impl Storage,
+    //     ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
+    //         keys.iter().map(|k| tree.get_proof(storage, k)).collect()
+    //     }
+
+    //     #[test]
+    //     fn simple_binary() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //   (250, 0, x1)
+    //         //        |
+    //         //     (0,0,x1)
+    //         //      /    \
+    //         //     (2)  (3)
+
+    //         let key_1 = felt!("0x0"); // 0b01
+    //         let key_2 = felt!("0x1"); // 0b01
+
+    //         let key1 = key_1.view_bits();
+    //         let key2 = key_2.view_bits();
+    //         let keys = [key1, key2];
+
+    //         let value_1 = felt!("0x2");
+    //         let value_2 = felt!("0x3");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+    //         uut.set(&storage, key2, value_2).unwrap();
+    //         let root = commit_and_persist(uut, &mut storage);
+
+    //         let uut = TestTree::new(root);
+
+    //         let proofs = get_proofs(&keys, &uut, &storage).unwrap();
+
+    //         let verified_key1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
+
+    //         assert_eq!(verified_key1, Membership::Member);
+    //     }
+
+    //     #[test]
+    //     fn double_binary() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //           (249,0,x3)
+    //         //               |
+    //         //           (0, 0, x3)
+    //         //         /            \
+    //         //     (0,0,x1)       (1, 1, 5)
+    //         //      /    \             |
+    //         //     (2)  (3)           (5)
+
+    //         let key_1 = felt!("0x0"); // 0b01
+    //         let key_2 = felt!("0x1"); // 0b01
+    //         let key_3 = felt!("0x3"); // 0b11
+
+    //         let key1 = key_1.view_bits();
+    //         let key2 = key_2.view_bits();
+    //         let key3 = key_3.view_bits();
+    //         let keys = [key1, key2, key3];
+
+    //         let value_1 = felt!("0x2");
+    //         let value_2 = felt!("0x3");
+    //         let value_3 = felt!("0x5");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+    //         uut.set(&storage, key2, value_2).unwrap();
+    //         uut.set(&storage, key3, value_3).unwrap();
+
+    //         let root = commit_and_persist(uut, &mut storage);
+    //         let uut = TestTree::new(root);
+
+    //         let proofs = get_proofs(&keys, &uut, &storage).unwrap();
+    //         let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
+    //         assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
+
+    //         let verified_2 = verify_proof(root, key2, value_2, &proofs[1]).unwrap();
+    //         assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
+
+    //         let verified_key3 = verify_proof(root, key3, value_3, &proofs[2]).unwrap();
+    //         assert_eq!(verified_key3, Membership::Member, "Failed to prove key3");
+    //     }
+
+    //     #[test]
+    //     fn left_edge() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //  (251,0x00,0x99)
+    //         //       /
+    //         //      /
+    //         //   (0x99)
+
+    //         let key_1 = felt!("0x0"); // 0b00
+
+    //         let key1 = key_1.view_bits();
+    //         let keys = [key1];
+
+    //         let value_1 = felt!("0xaa");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+
+    //         let root = commit_and_persist(uut, &mut storage);
+    //         let uut = TestTree::new(root);
+
+    //         let proofs = get_proofs(&keys, &uut, &storage).unwrap();
+    //         let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
+    //         assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
+    //     }
+
+    //     #[test]
+    //     fn left_right_edge() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //  (251,0xff,0xaa)
+    //         //     /
+    //         //     \
+    //         //   (0xaa)
+
+    //         let key_1 = felt!("0xff"); // 0b11111111
+
+    //         let key1 = key_1.view_bits();
+    //         let keys = [key1];
+
+    //         let value_1 = felt!("0xaa");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+
+    //         let root = commit_and_persist(uut, &mut storage);
+    //         let uut = TestTree::new(root);
+
+    //         let proofs = get_proofs(&keys, &uut, &storage).unwrap();
+    //         let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
+    //         assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
+    //     }
+
+    //     #[test]
+    //     fn right_most_edge() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //  (251,0x7fff...,0xbb)
+    //         //          \
+    //         //           \
+    //         //          (0xbb)
+
+    //         let key_1 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+    //         let key1 = key_1.view_bits();
+    //         let keys = [key1];
+
+    //         let value_1 = felt!("0xbb");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+
+    //         let root = commit_and_persist(uut, &mut storage);
+    //         let uut = TestTree::new(root);
+
+    //         let proofs = get_proofs(&keys, &uut, &storage).unwrap();
+    //         let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
+    //         assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
+    //     }
+
+    //     #[test]
+    //     fn binary_root() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //           (0, 0, x)
+    //         //    /                    \
+    //         // (250, 0, cc)     (250, 11111.., dd)
+    //         //    |                     |
+    //         //   (cc)                  (dd)
+
+    //         let key_1 = felt!("0x0");
+    //         let key_2 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+    //         let key1 = key_1.view_bits();
+    //         let key2 = key_2.view_bits();
+    //         let keys = [key1, key2];
+
+    //         let value_1 = felt!("0xcc");
+    //         let value_2 = felt!("0xdd");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+    //         uut.set(&storage, key2, value_2).unwrap();
+
+    //         let root = commit_and_persist(uut, &mut storage);
+    //         let uut = TestTree::new(root);
+
+    //         let proofs = get_proofs(&keys, &uut, &storage).unwrap();
+    //         let verified_1 = verify_proof(root, key1, value_1, &proofs[0]).unwrap();
+    //         assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
+
+    //         let verified_2 = verify_proof(root, key2, value_2, &proofs[1]).unwrap();
+    //         assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
+    //     }
+
+    //     /// Generates `n` random [Felt]
+    //     fn gen_random_hashes(n: usize) -> Vec<Felt> {
+    //         let mut out = Vec::with_capacity(n);
+    //         let mut rng = rand::rngs::ThreadRng::default();
+
+    //         while out.len() < n {
+    //             let sh = Felt::random(&mut rng);
+    //             if sh.has_more_than_251_bits() {
+    //                 continue;
+    //             }
+    //             out.push(sh);
+    //         }
+
+    //         out
+    //     }
+
+    //     #[test]
+    //     fn random_tree() {
+    //         const LEN: usize = 256;
+    //         RandomTree::new(LEN).verify();
+    //     }
+
+    //     #[test]
+    //     fn non_membership() {
+    //         const LEN: usize = 256;
+
+    //         let random_tree = RandomTree::new(LEN);
+
+    //         // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
+    //         let keys_set: std::collections::HashSet<&Felt> = random_tree.keys.iter().collect();
+
+    //         let inexistent_keys: Vec<Felt> = gen_random_hashes(LEN)
+    //             .into_iter()
+    //             .filter(|key| !keys_set.contains(key)) // Filter out duplicates if there are any
+    //             .collect();
+
+    //         let keys_bits: Vec<&BitSlice<u8, Msb0>> =
+    //             inexistent_keys.iter().map(|k| k.view_bits()).collect();
+    //         let proofs = get_proofs(&keys_bits, &random_tree.tree, &random_tree.storage).unwrap();
+    //         keys_bits
+    //             .iter()
+    //             .zip(random_tree.values.iter())
+    //             .enumerate()
+    //             .for_each(|(i, (k, v))| {
+    //                 let verified = verify_proof(random_tree.root, k, *v, &proofs[i]).unwrap();
+    //                 assert_eq!(verified, Membership::NonMember);
+    //             });
+    //     }
+
+    //     #[test]
+    //     fn invalid_values() {
+    //         const LEN: usize = 256;
+
+    //         let random_tree = RandomTree::new(LEN);
+
+    //         // 1337 code to be able to filter out duplicates in O(n) instead of O(n^2)
+    //         let values_set: std::collections::HashSet<&Felt> = random_tree.values.iter().collect();
+
+    //         let inexistent_values: Vec<Felt> = gen_random_hashes(LEN)
+    //             .into_iter()
+    //             .filter(|value| !values_set.contains(value)) // Filter out duplicates if there are any
+    //             .collect();
+
+    //         let keys_bits: Vec<&BitSlice<u8, Msb0>> =
+    //             random_tree.keys.iter().map(|k| k.view_bits()).collect();
+    //         let proofs =
+    //             get_proofs(&keys_bits[..], &random_tree.tree, &random_tree.storage).unwrap();
+
+    //         keys_bits
+    //             .iter()
+    //             .zip(inexistent_values.iter())
+    //             .enumerate()
+    //             .for_each(|(i, (k, v))| {
+    //                 let verified = verify_proof(random_tree.root, k, *v, &proofs[i]);
+    //                 assert!(verified.is_none());
+    //             });
+    //     }
+
+    //     #[test]
+    //     fn modified_binary_left() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //           (0, 0, x)
+    //         //    /                    \
+    //         // (250, 0, cc)     (250, 11111.., dd)
+    //         //    |                     |
+    //         //   (cc)                  (dd)
+
+    //         let key_1 = felt!("0x0");
+    //         let key_2 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+    //         let key1 = key_1.view_bits();
+    //         let key2 = key_2.view_bits();
+    //         let keys = [key1, key2];
+
+    //         let value_1 = felt!("0xcc");
+    //         let value_2 = felt!("0xdd");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+    //         uut.set(&storage, key2, value_2).unwrap();
+
+    //         let root = commit_and_persist(uut, &mut storage);
+    //         let uut = TestTree::new(root);
+
+    //         let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
+
+    //         // Modify the left hash
+    //         let new_node = match &proofs[0][0] {
+    //             TrieNode::Binary { right, .. } => TrieNode::Binary {
+    //                 left: felt!("0x42"),
+    //                 right: *right,
+    //             },
+    //             _ => unreachable!(),
+    //         };
+    //         proofs[0][0] = new_node;
+
+    //         let verified = verify_proof(root, key1, value_1, &proofs[0]);
+    //         assert!(verified.is_none());
+    //     }
+
+    //     #[test]
+    //     fn modified_edge_child() {
+    //         let mut uut = TestTree::empty();
+    //         let mut storage = TestStorage::default();
+
+    //         //           (0, 0, x)
+    //         //    /                    \
+    //         // (250, 0, cc)     (250, 11111.., dd)
+    //         //    |                     |
+    //         //   (cc)                  (dd)
+
+    //         let key_1 = felt!("0x0");
+    //         let key_2 = felt!("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // 0b111...
+
+    //         let key1 = key_1.view_bits();
+    //         let key2 = key_2.view_bits();
+    //         let keys = [key1, key2];
+
+    //         let value_1 = felt!("0xcc");
+    //         let value_2 = felt!("0xdd");
+
+    //         uut.set(&storage, key1, value_1).unwrap();
+    //         uut.set(&storage, key2, value_2).unwrap();
+
+    //         let root = commit_and_persist(uut, &mut storage);
+    //         let uut = TestTree::new(root);
+
+    //         let mut proofs = get_proofs(&keys, &uut, &storage).unwrap();
+
+    //         // Modify the child hash
+    //         let new_node = match &proofs[0][1] {
+    //             TrieNode::Edge { path, .. } => TrieNode::Edge {
+    //                 child: felt!("0x42"),
+    //                 path: path.clone(),
+    //             },
+    //             _ => unreachable!(),
+    //         };
+    //         proofs[0][1] = new_node;
+
+    //         let verified = verify_proof(root, key1, value_1, &proofs[0]);
+    //         assert!(verified.is_none());
+    //     }
+    // }
+
+    // #[test]
+    // fn dfs_on_leaf_to_binary_collision_tree() {
+    //     let mut uut = TestTree::empty();
+    //     let mut storage = TestStorage::default();
+
+    //     let value = felt!("0x1");
+    //     let key0 = felt!("0xee00").view_bits().to_bitvec();
+    //     let key1 = felt!("0xee01").view_bits().to_bitvec();
+
+    //     let key2 = felt!("0xffff").view_bits().to_bitvec();
+    //     let hash_of_values = stark_hash::stark_hash(value, value);
+    //     uut.set(&storage, &key2, hash_of_values).unwrap();
+
+    //     uut.set(&storage, &key0, value).unwrap();
+    //     uut.set(&storage, &key1, value).unwrap();
+
+    //     let root = commit_and_persist(uut, &mut storage);
+
+    //     let uut = TestTree::new(root);
+    //     // this used to panic because it did find the binary on dev profile with the leaf hash
+    //     let mut visited = Vec::new();
+    //     uut.dfs(&storage, &mut |n: &_, p: &_| -> ControlFlow<(), Visit> {
+    //         if let InternalNode::Leaf(h) = n {
+    //             visited.push((Felt::from_bits(p).unwrap(), *h));
+    //         }
+    //         std::ops::ControlFlow::Continue(Default::default())
+    //     })
+    //     .unwrap();
+    //     assert_eq!(uut.get(&storage, &key0).unwrap(), Some(value));
+    //     assert_eq!(uut.get(&storage, &key1).unwrap(), Some(value));
+    //     assert_eq!(uut.get(&storage, &key2).unwrap(), Some(hash_of_values));
+
+    //     assert_eq!(
+    //         visited,
+    //         &[
+    //             (felt!("0xEE00"), felt!("0x1")),
+    //             (felt!("0xEE01"), felt!("0x1")),
+    //             (
+    //                 felt!("0xFFFF"),
+    //                 felt!("0x2EBBD6878F81E49560AE863BD4EF327A417037BF57B63A016130AD0A94C8EAC")
+    //             )
+    //         ]
+    //     );
+    // }
 }

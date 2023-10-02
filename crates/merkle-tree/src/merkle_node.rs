@@ -17,7 +17,7 @@ pub enum InternalNode {
     /// A node that has not been fetched from storage yet.
     ///
     /// As such, all we know is its hash.
-    Unresolved(Felt),
+    Unresolved(u32),
     /// A branch node with exactly two children.
     Binary(BinaryNode),
     /// Describes a path connecting two other nodes.
@@ -29,9 +29,6 @@ pub enum InternalNode {
 /// Describes the [InternalNode::Binary] variant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
-    /// The hash of this node. Is [None] if the node
-    /// has not yet been committed.
-    pub hash: Option<Felt>,
     /// The height of this node in the tree.
     pub height: usize,
     /// [Left](Direction::Left) child.
@@ -42,9 +39,6 @@ pub struct BinaryNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EdgeNode {
-    /// The hash of this node. Is [None] if the node
-    /// has not yet been committed.
-    pub hash: Option<Felt>,
     /// The starting height of this node in the tree.
     pub height: usize,
     /// The path this edge takes.
@@ -116,55 +110,12 @@ impl BinaryNode {
         }
     }
 
-    /// If possible, calculates and sets its own hash value.
-    ///
-    /// Does nothing if the hash is already [Some].
-    ///
-    /// If either childs hash is [None], then the hash cannot
-    /// be calculated and it will remain [None].
-    pub(crate) fn calculate_hash<H: FeltHash>(&mut self) {
-        if self.hash.is_some() {
-            return;
-        }
-
-        let left = match self.left.borrow().hash() {
-            Some(hash) => hash,
-            None => unreachable!("subtrees have to be commited first"),
-        };
-
-        let right = match self.right.borrow().hash() {
-            Some(hash) => hash,
-            None => unreachable!("subtrees have to be commited first"),
-        };
-
-        self.hash = Some(H::hash(left, right));
+    pub(crate) fn calculate_hash<H: FeltHash>(left: Felt, right: Felt) -> Felt {
+        H::hash(left, right)
     }
 }
 
 impl InternalNode {
-    /// Convenience function which sets the inner node's hash to [None], if
-    /// applicable.
-    ///
-    /// Used to indicate that this node has been mutated.
-    pub fn mark_dirty(&mut self) {
-        match self {
-            InternalNode::Binary(inner) => inner.hash = None,
-            InternalNode::Edge(inner) => inner.hash = None,
-            _ => {}
-        }
-    }
-
-    /// Returns true if the node represents an empty node -- this is defined as a node
-    /// with the [Felt::ZERO].
-    ///
-    /// This can occur for the root node in an empty graph.
-    pub fn is_empty(&self) -> bool {
-        match self {
-            InternalNode::Unresolved(hash) => hash == &Felt::ZERO,
-            _ => false,
-        }
-    }
-
     pub fn is_binary(&self) -> bool {
         matches!(self, InternalNode::Binary(..))
     }
@@ -183,13 +134,8 @@ impl InternalNode {
         }
     }
 
-    pub fn hash(&self) -> Option<Felt> {
-        match self {
-            InternalNode::Unresolved(hash) => Some(*hash),
-            InternalNode::Binary(binary) => binary.hash,
-            InternalNode::Edge(edge) => edge.hash,
-            InternalNode::Leaf(value) => Some(*value),
-        }
+    pub fn is_leaf(&self) -> bool {
+        matches!(self, InternalNode::Leaf(_))
     }
 }
 
@@ -212,30 +158,14 @@ impl EdgeNode {
         &self.path[..common_length]
     }
 
-    /// If possible, calculates and sets its own hash value.
-    ///
-    /// Does nothing if the hash is already [Some].
-    ///
-    /// If the child's hash is [None], then the hash cannot
-    /// be calculated and it will remain [None].
-    pub(crate) fn calculate_hash<H: FeltHash>(&mut self) {
-        if self.hash.is_some() {
-            return;
-        }
-
-        let child = match self.child.borrow().hash() {
-            Some(hash) => hash,
-            None => unreachable!("subtree has to be commited before"),
-        };
-
-        let path = Felt::from_bits(&self.path).unwrap();
+    pub(crate) fn calculate_hash<H: FeltHash>(child: Felt, path: &BitSlice<u8, Msb0>) -> Felt {
         let mut length = [0; 32];
         // Safe as len() is guaranteed to be <= 251
-        length[31] = self.path.len() as u8;
-
+        length[31] = path.len() as u8;
         let length = Felt::from_be_bytes(length).unwrap();
-        let hash = H::hash(child, path) + length;
-        self.hash = Some(hash);
+        let path = Felt::from_bits(path).unwrap();
+
+        H::hash(child, path) + length
     }
 }
 
@@ -279,7 +209,6 @@ mod tests {
         #[test]
         fn direction() {
             let uut = BinaryNode {
-                hash: None,
                 height: 1,
                 left: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc")))),
                 right: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef")))),
@@ -304,7 +233,6 @@ mod tests {
             let right = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef"))));
 
             let uut = BinaryNode {
-                hash: None,
                 height: 1,
                 left: left.clone(),
                 right: right.clone(),
@@ -328,19 +256,9 @@ mod tests {
             let left = felt!("0x1234");
             let right = felt!("0xabcd");
 
-            let left = Rc::new(RefCell::new(InternalNode::Unresolved(left)));
-            let right = Rc::new(RefCell::new(InternalNode::Unresolved(right)));
+            let hash = BinaryNode::calculate_hash::<PedersenHash>(left, right);
 
-            let mut uut = BinaryNode {
-                hash: None,
-                height: 0,
-                left,
-                right,
-            };
-
-            uut.calculate_hash::<PedersenHash>();
-
-            assert_eq!(uut.hash, Some(expected));
+            assert_eq!(hash, expected);
         }
     }
 
@@ -360,20 +278,12 @@ mod tests {
             )
             .unwrap();
             let child = felt!("0x1234ABCD");
-            let child = Rc::new(RefCell::new(InternalNode::Unresolved(child)));
             // Path = 42 in binary.
             let path = bitvec![u8, Msb0; 1, 0, 1, 0, 1, 0];
 
-            let mut uut = EdgeNode {
-                hash: None,
-                height: 0,
-                path,
-                child,
-            };
+            let hash = EdgeNode::calculate_hash::<PedersenHash>(child, &path);
 
-            uut.calculate_hash::<PedersenHash>();
-
-            assert_eq!(uut.hash, Some(expected));
+            assert_eq!(hash, expected);
         }
 
         mod path_matches {
@@ -386,7 +296,6 @@ mod tests {
                 let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
 
                 let uut = EdgeNode {
-                    hash: None,
                     height: 0,
                     path: key.view_bits().to_bitvec(),
                     child,
@@ -403,7 +312,6 @@ mod tests {
                 let path = key.view_bits()[..45].to_bitvec();
 
                 let uut = EdgeNode {
-                    hash: None,
                     height: 0,
                     path,
                     child,
@@ -420,7 +328,6 @@ mod tests {
                 let path = key.view_bits()[50..].to_bitvec();
 
                 let uut = EdgeNode {
-                    hash: None,
                     height: 50,
                     path,
                     child,
@@ -437,7 +344,6 @@ mod tests {
                 let path = key.view_bits()[230..235].to_bitvec();
 
                 let uut = EdgeNode {
-                    hash: None,
                     height: 230,
                     path,
                     child,

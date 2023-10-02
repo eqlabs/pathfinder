@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
-use pathfinder_storage::{ClassTrieReader, Transaction};
+use pathfinder_storage::{Node, Transaction};
 use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
@@ -15,13 +14,20 @@ use pathfinder_common::hash::PoseidonHash;
 /// Tree data is persisted by a sqlite table 'tree_class'.
 pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
-    storage: ClassTrieReader<'tx>,
+    storage: ClassStorage<'tx>,
 }
 
 impl<'tx> ClassCommitmentTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
-        let tree = MerkleTree::new(root.0);
-        let storage = transaction.class_trie_reader();
+    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
+        let storage = ClassStorage(transaction);
+        let tree = MerkleTree::empty();
+
+        Self { tree, storage }
+    }
+
+    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
+        let storage = ClassStorage(transaction);
+        let tree = MerkleTree::new(root);
 
         Self { tree, storage }
     }
@@ -42,10 +48,22 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, TrieNode>)> {
-        let update = self.tree.commit()?;
+    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, Node>)> {
+        let update = self.tree.commit(&self.storage)?;
 
         let commitment = ClassCommitment(update.root);
         Ok((commitment, update.nodes))
+    }
+}
+
+struct ClassStorage<'tx>(&'tx Transaction<'tx>);
+
+impl crate::storage::Storage for ClassStorage<'_> {
+    fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+        self.0.class_trie_node(index)
+    }
+
+    fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+        self.0.class_trie_node_hash(index)
     }
 }

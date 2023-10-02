@@ -14,7 +14,7 @@ use pathfinder_common::{
     ContractAddress, ContractRoot, ContractStateHash, StorageAddress, StorageCommitment,
     StorageValue,
 };
-use pathfinder_storage::{ContractTrieReader, StorageTrieReader, Transaction};
+use pathfinder_storage::{Node, Transaction};
 use stark_hash::Felt;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -26,13 +26,20 @@ use std::ops::ControlFlow;
 /// Tree data is persisted by a sqlite table 'tree_contracts'.
 pub struct ContractsStorageTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
-    storage: ContractTrieReader<'tx>,
+    storage: ContractStorage<'tx>,
 }
 
 impl<'tx> ContractsStorageTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ContractRoot) -> Self {
-        let tree = MerkleTree::new(root.0);
-        let storage = transaction.contract_trie_reader();
+    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
+        let storage = ContractStorage(transaction);
+        let tree = MerkleTree::empty();
+
+        Self { tree, storage }
+    }
+
+    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
+        let storage = ContractStorage(transaction);
+        let tree = MerkleTree::new(root);
 
         Self { tree, storage }
     }
@@ -59,8 +66,8 @@ impl<'tx> ContractsStorageTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, TrieNode>)> {
-        let update = self.tree.commit()?;
+    pub fn commit(self) -> anyhow::Result<(ContractRoot, HashMap<Felt, Node>)> {
+        let update = self.tree.commit(&self.storage)?;
         let commitment = ContractRoot(update.root);
         Ok((commitment, update.nodes))
     }
@@ -81,13 +88,20 @@ impl<'tx> ContractsStorageTree<'tx> {
 /// Tree data is persisted by a sqlite table 'tree_global'.
 pub struct StorageCommitmentTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
-    storage: StorageTrieReader<'tx>,
+    storage: StorageTrieStorage<'tx>,
 }
 
 impl<'tx> StorageCommitmentTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: StorageCommitment) -> Self {
-        let tree = MerkleTree::new(root.0);
-        let storage = transaction.storage_trie_reader();
+    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
+        let storage = StorageTrieStorage(transaction);
+        let tree = MerkleTree::empty();
+
+        Self { tree, storage }
+    }
+
+    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
+        let storage = StorageTrieStorage(transaction);
+        let tree = MerkleTree::new(root);
 
         Self { tree, storage }
     }
@@ -112,8 +126,8 @@ impl<'tx> StorageCommitmentTree<'tx> {
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, TrieNode>)> {
-        let update = self.tree.commit()?;
+    pub fn commit(self) -> anyhow::Result<(StorageCommitment, HashMap<Felt, Node>)> {
+        let update = self.tree.commit(&self.storage)?;
         let commitment = StorageCommitment(update.root);
         Ok((commitment, update.nodes))
     }
@@ -129,5 +143,29 @@ impl<'tx> StorageCommitmentTree<'tx> {
         f: &mut F,
     ) -> anyhow::Result<Option<B>> {
         self.tree.dfs(&self.storage, f)
+    }
+}
+
+struct ContractStorage<'tx>(&'tx Transaction<'tx>);
+
+impl crate::storage::Storage for ContractStorage<'_> {
+    fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+        self.0.contract_trie_node(index)
+    }
+
+    fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+        self.0.contract_trie_node_hash(index)
+    }
+}
+
+struct StorageTrieStorage<'tx>(&'tx Transaction<'tx>);
+
+impl crate::storage::Storage for StorageTrieStorage<'_> {
+    fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+        self.0.storage_trie_node(index)
+    }
+
+    fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+        self.0.storage_trie_node_hash(index)
     }
 }
