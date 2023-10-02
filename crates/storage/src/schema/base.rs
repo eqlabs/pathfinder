@@ -1,86 +1,48 @@
 use anyhow::Context;
 
-/// The base schema as dumped after revision 30.
+/// The base schema as dumped after revision 39.
 pub(crate) fn base_schema(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(r#"
 CREATE TABLE IF NOT EXISTS "class_definitions" (
     hash       BLOB PRIMARY KEY,
     definition BLOB,
-    declared_on BLOB DEFAULT NULL REFERENCES canonical_blocks(hash) ON DELETE SET NULL
+    block_number INTEGER REFERENCES canonical_blocks(number) DEFAULT NULL
 );
 CREATE TABLE contract_states (
     state_hash BLOB PRIMARY KEY,
     hash       BLOB NOT NULL,
     root       BLOB NOT NULL,
-    nonce BLOB NOT NULL DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000'
+    nonce      BLOB NOT NULL DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000'
 );
-CREATE TABLE l1_state (
-    starknet_block_number      INTEGER PRIMARY KEY,
-    starknet_global_root       BLOB    NOT NULL,
-    ethereum_block_hash        BLOB    NOT NULL,
-    ethereum_block_number      INTEGER NOT NULL,
-    ethereum_transaction_hash  BLOB    NOT NULL,
-    ethereum_transaction_index INTEGER NOT NULL,
-    ethereum_log_index         INTEGER NOT NULL
-);
-CREATE TABLE refs (
-    idx INTEGER PRIMARY KEY, 
-    l1_l2_head BLOB
-);
+CREATE TABLE refs (idx INTEGER PRIMARY KEY, l1_l2_head BLOB);
 CREATE TABLE starknet_transactions (
     hash        BLOB PRIMARY KEY,
     idx         INTEGER NOT NULL,
     block_hash  BLOB NOT NULL,
     tx          BLOB,
-    receipt     BLOB
+    receipt     BLOB,
+    execution_status INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX starknet_transactions_block_hash ON starknet_transactions(block_hash);
-CREATE TABLE starknet_versions (
-    id INTEGER NOT NULL PRIMARY KEY, 
-    version TEXT NOT NULL UNIQUE
-);
-CREATE TABLE starknet_state_updates (
-    block_hash BLOB PRIMARY KEY NOT NULL,
-    data BLOB NOT NULL,
-    FOREIGN KEY(block_hash) REFERENCES starknet_blocks(hash) ON DELETE CASCADE
-);
-CREATE VIRTUAL TABLE starknet_events_keys USING fts5 (
-    keys,
-    content='starknet_events',
-    content_rowid='id',
-    tokenize='ascii'
-);
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_data'(
-    id INTEGER PRIMARY KEY, 
-    block BLOB
-);
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_idx'(
-    segid, 
-    term, 
-    pgno, 
-    PRIMARY KEY(segid, term)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_docsize'(
-    id INTEGER PRIMARY KEY, 
-    sz BLOB
-);
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_config'(k PRIMARY KEY, v) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS "starknet_blocks" (
+CREATE TABLE starknet_versions (id INTEGER NOT NULL PRIMARY KEY, version TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS "block_headers" (
     hash      BLOB    PRIMARY KEY NOT NULL,
     number    INTEGER NOT NULL,
-    root      BLOB    NOT NULL,
+    storage_commitment      BLOB    NOT NULL,
     timestamp INTEGER NOT NULL, 
     gas_price BLOB    NOT NULL,
     sequencer_address BLOB NOT NULL,
     version_id INTEGER REFERENCES starknet_versions(id),
-    transaction_commitment BLOB, event_commitment BLOB, 
-    class_commitment BLOB
+    transaction_commitment BLOB, 
+    event_commitment BLOB, 
+    class_commitment BLOB, 
+    state_commitment BLOB NOT NULL DEFAULT x'0000000000000000000000000000000000000000000000000000000000000000', 
+    transaction_count INTEGER NOT NULL DEFAULT 0, 
+    event_count INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX starknet_blocks_block_number ON starknet_blocks(number);
 CREATE TABLE canonical_blocks (
     number INTEGER PRIMARY KEY NOT NULL,
     hash   BLOB    NOT NULL,
-    FOREIGN KEY(hash) REFERENCES starknet_blocks(hash)
+    FOREIGN KEY(hash) REFERENCES "block_headers"(hash)
 );
 CREATE TABLE IF NOT EXISTS "starknet_events" (
     id INTEGER PRIMARY KEY NOT NULL,
@@ -93,30 +55,8 @@ CREATE TABLE IF NOT EXISTS "starknet_events" (
     data BLOB,
     FOREIGN KEY(block_number) REFERENCES canonical_blocks(number) ON DELETE CASCADE
 );
-CREATE TRIGGER starknet_events_ai AFTER INSERT ON starknet_events BEGIN
-    INSERT INTO starknet_events_keys(rowid, keys) VALUES (
-        new.id,
-        new.keys
-    );
-END;
-CREATE TRIGGER starknet_events_ad AFTER DELETE ON starknet_events BEGIN
-    INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys) VALUES (
-        'delete',
-        old.id,
-        old.keys
-    );
-END;
-CREATE TRIGGER starknet_events_au AFTER UPDATE ON starknet_events BEGIN
-    INSERT INTO starknet_events_keys(starknet_events_keys, rowid, keys) VALUES (
-        'delete',
-        old.id,
-        old.keys
-    );
-    INSERT INTO starknet_events_keys(rowid, keys) VALUES (
-        new.id,
-        new.keys
-    );
-END;
+CREATE INDEX starknet_transactions_block_hash ON starknet_transactions(block_hash);
+CREATE INDEX starknet_blocks_block_number ON "block_headers"(number);
 CREATE INDEX starknet_events_block_number ON starknet_events(block_number);
 CREATE INDEX starknet_events_from_address ON starknet_events(from_address);
 CREATE UNIQUE INDEX canonical_block_hash_idx ON canonical_blocks(hash);
@@ -184,6 +124,34 @@ CREATE TABLE tree_class (
     hash        BLOB PRIMARY KEY,
     data        BLOB,
     ref_count   INTEGER
+);
+CREATE TABLE contract_updates (
+    block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+    contract_address BLOB NOT NULL,
+    class_hash BLOB NOT NULL
+);
+CREATE TABLE nonce_updates (
+    block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+    contract_address BLOB NOT NULL,
+    nonce BLOB NOT NULL
+);
+CREATE TABLE storage_updates (
+    block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE CASCADE,
+    contract_address BLOB NOT NULL,
+    storage_address BLOB NOT NULL,
+    storage_value BLOB NOT NULL
+);
+CREATE INDEX nonce_updates_contract_address_block_number ON nonce_updates(contract_address, block_number);
+CREATE INDEX contract_updates_address_block_number ON contract_updates(contract_address, block_number);
+CREATE INDEX contract_updates_block_number ON contract_updates(block_number);
+CREATE INDEX storage_updates_contract_address_storage_address_block_number ON storage_updates(contract_address, storage_address, block_number);
+CREATE INDEX storage_updates_block_number ON storage_updates(block_number);
+CREATE INDEX nonce_updates_block_number ON nonce_updates(block_number);
+CREATE INDEX class_definitions_block_number ON class_definitions(block_number);
+CREATE TABLE l1_state (
+    starknet_block_number      INTEGER PRIMARY KEY,
+    starknet_block_hash        BLOB    NOT NULL,
+    starknet_state_root        BLOB    NOT NULL
 );"#)?;
 
     // Code expects there to always be one row here.
