@@ -259,38 +259,27 @@ mod types {
 mod tests {
     use super::*;
     use assert_matches::assert_matches;
-    use jsonrpsee::types::Params;
+    use serde_json::{json, Value};
+
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
     use starknet_gateway_types::pending::PendingData;
 
-    #[test]
-    fn parsing() {
-        let number = BlockId::Number(BlockNumber::new_or_panic(123));
-        let hash = BlockId::Hash(block_hash!("0xbeef"));
+    #[rstest::rstest]
+    #[case::positional_pending(json!(["pending"]), BlockId::Pending)]
+    #[case::positional_latest(json!(["latest"]), BlockId::Latest)]
+    #[case::positional_number(json!([{"block_number":123}]), BlockId::Number(BlockNumber::new_or_panic(123)))]
+    #[case::positional_hash(json!([{"block_hash": "0xbeef"}]), BlockId::Hash(block_hash!("0xbeef")))]
+    #[case::named_pending(json!({"block_id": "pending"}), BlockId::Pending)]
+    #[case::named_latest(json!({"block_id": "latest"}), BlockId::Latest)]
+    #[case::named_number(json!({"block_id": {"block_number":123}}), BlockId::Number(BlockNumber::new_or_panic(123)))]
+    #[case::named_hash(json!({"block_id": {"block_hash": "0xbeef"}}), BlockId::Hash(block_hash!("0xbeef")))]
+    fn parsing(#[case] input: Value, #[case] expected: BlockId) {
+        let expected = GetBlockInput { block_id: expected };
 
-        [
-            (r#"["pending"]"#, BlockId::Pending),
-            (r#"{"block_id": "pending"}"#, BlockId::Pending),
-            (r#"["latest"]"#, BlockId::Latest),
-            (r#"{"block_id": "latest"}"#, BlockId::Latest),
-            (r#"[{"block_number":123}]"#, number),
-            (r#"{"block_id": {"block_number":123}}"#, number),
-            (r#"[{"block_hash": "0xbeef"}]"#, hash),
-            (r#"{"block_id": {"block_hash": "0xbeef"}}"#, hash),
-        ]
-        .into_iter()
-        .enumerate()
-        .for_each(|(i, (input, expected))| {
-            let actual = Params::new(Some(input))
-                .parse::<GetBlockInput>()
-                .unwrap_or_else(|error| panic!("test case {i}: {input}, {error}"));
-            assert_eq!(
-                actual,
-                GetBlockInput { block_id: expected },
-                "test case {i}: {input}"
-            );
-        });
+        let input = serde_json::from_value::<GetBlockInput>(input).unwrap();
+
+        assert_eq!(input, expected);
     }
 
     type TestCaseHandler = Box<dyn Fn(usize, &Result<types::Block, GetBlockError>)>;

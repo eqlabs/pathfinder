@@ -194,9 +194,7 @@ mod tests {
 
     #[tokio::test]
     async fn reverted() {
-        let context = RpcContext::for_tests_with_pending()
-            .await
-            .with_version("v0.3");
+        let context = RpcContext::for_tests_with_pending().await;
         let input = GetGatewayTransactionInput {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };

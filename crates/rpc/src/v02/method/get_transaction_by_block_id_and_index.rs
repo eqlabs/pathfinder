@@ -107,20 +107,17 @@ mod tests {
 
     mod parsing {
         use super::*;
-
-        use jsonrpsee::types::Params;
+        use serde_json::json;
 
         #[test]
         fn positional_args() {
-            let positional = r#"[
+            let positional = json!([
                 {"block_hash": "0xdeadbeef"},
                 1
-            ]"#;
-            let positional = Params::new(Some(positional));
+            ]);
 
-            let input = positional
-                .parse::<GetTransactionByBlockIdAndIndexInput>()
-                .unwrap();
+            let input =
+                serde_json::from_value::<GetTransactionByBlockIdAndIndexInput>(positional).unwrap();
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {
@@ -132,15 +129,13 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named_args = r#"{
+            let named_args = json!({
                 "block_id": {"block_hash": "0xdeadbeef"},
                 "index": 1
-            }"#;
-            let named_args = Params::new(Some(named_args));
+            });
 
-            let input = named_args
-                .parse::<GetTransactionByBlockIdAndIndexInput>()
-                .unwrap();
+            let input =
+                serde_json::from_value::<GetTransactionByBlockIdAndIndexInput>(named_args).unwrap();
             assert_eq!(
                 input,
                 GetTransactionByBlockIdAndIndexInput {

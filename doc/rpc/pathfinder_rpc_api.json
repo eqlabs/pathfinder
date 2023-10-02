@@ -31,16 +31,14 @@
                     "schema": {
                         "$ref": "#/components/schemas/BLOCK_ID"
                     }
-                },
-                {
+                }, {
                     "name": "contract_address",
                     "description": "The address of the contract",
                     "required": true,
                     "schema": {
                         "$ref": "#/components/schemas/ADDRESS"
                     }
-                },
-                {
+                }, {
                     "name": "keys",
                     "description": "The storage element addresses to gather proofs for",
                     "required": true,
@@ -101,17 +99,10 @@
                                     }
                                 }
                             },
-                            "required": [
-                                "class_hash",
-                                "nonce",
-                                "root",
-                                "contract_state_hash_version"
-                            ]
+                            "required": ["class_hash", "nonce", "root", "contract_state_hash_version"]
                         }
                     },
-                    "required": [
-                        "contract_proof"
-                    ]
+                    "required": ["contract_proof"]
                 }
             },
             "errors": [
@@ -141,48 +132,6 @@
                     "$ref": "#/components/schemas/TX_GATEWAY_STATUS"
                 }
             }
-        },
-        {
-            "name": "pathfinder_subscribe_newHeads",
-            "summary": "Subscribe to new head events on WebSocket",
-            "description": "Fires a notification each time a new header is appended to the chain.",
-            "params": [],
-            "result": {
-                "name": "result",
-                "description": "Subscription ID",
-                "type": "number"
-            }
-        },
-        {
-            "name": "pathfinder_subscription_newHead",
-            "summary": "New header event notification",
-            "description": "Incoming notification from server when new header is appended to the chain.",
-            "params": [],
-            "result": {
-                "name": "result",
-                "description": "Newly added block header.",
-                "schema": {
-                    "$ref": "#/components/schemas/WebsocketEventNewHead"
-                }
-            }
-        },
-        {
-            "name": "pathfinder_unsubscribe_newHeads",
-            "summary": "Unsubscribe from new head events on WebSocket",
-            "description": "Terminates new head notifications.",
-            "params": [
-                {
-                    "description": "ID of the subscription that should be terminated",
-                    "required": true,
-                    "type": "bool"
-                }
-            ],
-            "paramStructure": "by-position",
-            "result": {
-                "name": "result",
-                "description": "Flag indicating if subscription was terminated successfully",
-                "type": "bool"
-            }
         }
     ],
     "components": {
@@ -198,16 +147,14 @@
                                 "$ref": "#/components/schemas/BLOCK_HASH"
                             }
                         }
-                    },
-                    {
+                    }, {
                         "type": "object",
                         "properties": {
                             "block_number": {
                                 "$ref": "#/components/schemas/BLOCK_NUMBER"
                             }
                         }
-                    },
-                    {
+                    }, {
                         "$ref": "#/components/schemas/BLOCK_TAG"
                     }
                 ]
@@ -215,10 +162,7 @@
             "BLOCK_TAG": {
                 "type": "string",
                 "description": "A tag specifying a dynamic reference to a block",
-                "enum": [
-                    "latest",
-                    "pending"
-                ]
+                "enum": ["latest", "pending"]
             },
             "FELT": {
                 "type": "string",
@@ -250,8 +194,7 @@
                 "oneof": [
                     {
                         "$ref": "#/components/schemas/BINARY_NODE"
-                    },
-                    {
+                    }, {
                         "$ref": "#/components/schemas/EDGE_NODE"
                     }
                 ]
@@ -271,15 +214,10 @@
                                 "$ref": "#/components/schemas/FELT"
                             }
                         },
-                        "required": [
-                            "left",
-                            "right"
-                        ]
+                        "required": ["left", "right"]
                     }
                 },
-                "required": [
-                    "binary"
-                ]
+                "required": ["binary"]
             },
             "EDGE_NODE": {
                 "type": "object",
@@ -303,21 +241,13 @@
                                         "type": "integer"
                                     }
                                 },
-                                "required": [
-                                    "value",
-                                    "len"
-                                ]
+                                "required": ["value", "len"]
                             }
                         },
-                        "required": [
-                            "child",
-                            "path"
-                        ]
+                        "required": ["child", "path"]
                     }
                 },
-                "required": [
-                    "edge"
-                ]
+                "required": ["edge"]
             },
             "TXN_HASH": {
                 "$ref": "#/components/schemas/FELT",
@@ -341,32 +271,56 @@
             "BLOCK_HEADER": {
                 "type": "object",
                 "properties": {
-                    "block_hash": {
-                        "type": "string"
-                    },
-                    "block_number": {
-                        "type": "number"
+                    "hash": {
+                        "ref": "#/components/schemas/FELT"
                     },
                     "parent_hash": {
-                        "type": "string"
+                        "ref": "#/components/schemas/FELT"
                     },
-                    "sequencer_address": {
-                        "type": "string"
-                    },
-                    "state_commitment": {
-                        "type": "string"
+                    "number": {
+                        "type": "integer"
                     },
                     "timestamp": {
-                        "type": "number"
+                        "type": "integer"
+                    },
+                    "gas_price": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "sequencer_address": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "starknet_version": {
+                        "ref": "string"
+                    },
+                    "class_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "event_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "state_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "storage_commitment": {
+                        "ref": "#/components/schemas/FELT"
+                    },
+                    "transaction_commitment": {
+                        "ref": "#/components/schemas/FELT"
                     }
                 },
                 "required": [
-                    "block_hash",
-                    "block_number",
+                    "hash",
                     "parent_hash",
+                    "number",
+                    "timestamp",
+                    "gas_price",
                     "sequencer_address",
+                    "starknet_version",
+                    "class_commitment",
+                    "event_commitment",
                     "state_commitment",
-                    "timestamp"
+                    "storage_commitment",
+                    "transaction_commitment"
                 ]
             }
         },
@@ -390,10 +344,7 @@
                             "type": "integer"
                         }
                     },
-                    "required": [
-                        "limit",
-                        "requested"
-                    ]
+                    "required": ["limit", "requested"]
                 }
             }
         }

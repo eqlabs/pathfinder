@@ -8,15 +8,12 @@ rust-version = "1.62"
 
 [dependencies]
 anyhow = { workspace = true }
+axum = { workspace = true, features = ["ws", "headers"] }
 base64 = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 hyper = "0.14.27"
-jsonrpsee = { version = "0.16.3", default-features = false, features = [
-    "jsonrpsee-types",
-    "server",
-] }
 metrics = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
@@ -41,13 +38,8 @@ starknet_api = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tower = { version = "0.4.13", default-features = false, features = [
-    "filter",
-    "util",
-] }
-tower-http = { version = "0.4.4", default-features = false, features = [
-    "cors",
-] }
+tower = { version = "0.4.13", default-features = false, features = ["filter", "util", "limit", "timeout"] }
+tower-http = { version = "0.4.0", default-features = false, features = ["cors", "limit", "trace"] }
 tracing = { workspace = true }
 zstd = { workspace = true }
 
@@ -56,11 +48,6 @@ assert_matches = { workspace = true }
 bytes = { workspace = true }
 flate2 = { workspace = true }
 hex = { workspace = true }
-jsonrpsee = { version = "0.16.3", default-features = false, features = [
-    "async-client",
-    "jsonrpsee-types",
-    "server",
-] }
 lazy_static = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = "0.18.2"
@@ -70,7 +57,3 @@ test-log = { version = "0.2.12", default-features = false, features = [
     "trace",
 ] }
 tracing-subscriber = { workspace = true }
-
-[[test]]
-name = "integration-versioning"
-path = "tests/versioning.rs"

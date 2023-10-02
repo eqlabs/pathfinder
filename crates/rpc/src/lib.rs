@@ -4,42 +4,46 @@ mod error;
 mod executor;
 mod felt;
 pub mod gas_price;
-pub mod metrics;
+mod jsonrpc;
 pub mod middleware;
-mod module;
 mod pathfinder;
-pub mod test_client;
 #[cfg(test)]
-pub(crate) mod test_setup;
+mod test_setup;
 pub mod v02;
 pub mod v03;
 pub mod v04;
-pub mod websocket;
-
-pub use middleware::versioning::DefaultVersion;
 
 pub use executor::compose_executor_transaction;
 
-use crate::metrics::logger::{MaybeRpcMetricsLogger, RpcMetricsLogger};
+use crate::jsonrpc::rpc_handler;
+pub use crate::jsonrpc::websocket::{BlockHeader, WebsocketSenders};
 use crate::v02::types::syncing::Syncing;
-use crate::websocket::types::WebsocketSenders;
+use anyhow::Context;
+use axum::error_handling::HandleErrorLayer;
+use axum::extract::DefaultBodyLimit;
+
+use axum::response::IntoResponse;
 use context::RpcContext;
 use http::Request;
 use hyper::Body;
-use jsonrpsee::server::{ServerBuilder, ServerHandle};
 use pathfinder_common::AllowedOrigins;
 use std::num::NonZeroUsize;
 use std::{net::SocketAddr, result::Result};
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
 
-const DEFAULT_MAX_CONNECTIONS: u32 = 1024;
+const DEFAULT_MAX_CONNECTIONS: usize = 1024;
+
+pub enum DefaultVersion {
+    V03,
+    V04,
+}
 
 pub struct RpcServer {
     addr: SocketAddr,
     context: RpcContext,
-    logger: MaybeRpcMetricsLogger,
-    max_connections: u32,
+    max_connections: usize,
     cors: Option<CorsLayer>,
     ws_senders: Option<WebsocketSenders>,
     default_version: DefaultVersion,
@@ -50,18 +54,10 @@ impl RpcServer {
         Self {
             addr,
             context,
-            logger: MaybeRpcMetricsLogger::NoOp,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             cors: None,
             ws_senders: None,
             default_version,
-        }
-    }
-
-    pub fn with_logger(self, middleware: RpcMetricsLogger) -> Self {
-        Self {
-            logger: MaybeRpcMetricsLogger::Logger(middleware),
-            ..self
         }
     }
 
@@ -72,7 +68,7 @@ impl RpcServer {
         }
     }
 
-    pub fn with_max_connections(mut self, max_connections: u32) -> Self {
+    pub fn with_max_connections(mut self, max_connections: usize) -> Self {
         self.max_connections = max_connections;
         self
     }
@@ -85,66 +81,98 @@ impl RpcServer {
     }
 
     /// Starts the HTTP-RPC server.
-    pub async fn run(self) -> Result<(ServerHandle, SocketAddr), anyhow::Error> {
-        const TEN_MB: u32 = 10 * 1024 * 1024;
+    pub fn spawn(self) -> Result<(JoinHandle<anyhow::Result<()>>, SocketAddr), anyhow::Error> {
+        use axum::routing::{get, post};
 
-        let server = match self.ws_senders {
-				Some(_) => ServerBuilder::default(),
-				None => ServerBuilder::default().http_only(),
-			}
-            .max_connections(self.max_connections)
-            .max_request_body_size(TEN_MB)
-            .set_logger(self.logger)
-            .set_middleware(tower::ServiceBuilder::new()
-                .option_layer(self.cors)
-                .map_result(middleware::versioning::try_map_errors_to_responses)
-                .filter_async({
-                    let default_version = self.default_version;
+        // TODO: make this configurable
+        const REQUEST_MAX_SIZE: usize = 10 * 1024 * 1024;
+        // TODO: make this configurable
+        const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
-                    move |request: Request<Body>| async move {
-					// skip method_name checks for websocket handshake
-					if request.headers().get("sec-websocket-key").is_some() {
-						return Ok(request);
-					}
+        let listener = match std::net::TcpListener::bind(self.addr) {
+            Ok(listener) => listener,
+            Err(e) => return Err(e).context(format!("RPC address {} is already in use.
+    
+            Hint: This usually means you are already running another instance of pathfinder.
+            Hint: If this happens when upgrading, make sure to shut down the first one first.
+            Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr)),
+        };
+        let addr = listener
+            .local_addr()
+            .context("Getting local address from listener")?;
+        let server = axum::Server::from_tcp(listener).context("Binding server to tcp listener")?;
 
-                    middleware::versioning::prefix_rpc_method_names_with_version(request, TEN_MB, default_version).await
-                }})
-            )
-            .build(self.addr)
-            .await
-            .map_err(|e| match e {
-                jsonrpsee::core::Error::Transport(_) => {
-                    use std::error::Error;
+        async fn handle_middleware_errors(err: axum::BoxError) -> (http::StatusCode, String) {
+            use http::StatusCode;
+            if err.is::<tower::timeout::error::Elapsed>() {
+                (
+                    StatusCode::REQUEST_TIMEOUT,
+                    "Request took too long".to_string(),
+                )
+            } else {
+                // TODO: confirm this isn't too verbose.
+                tracing::warn!(error = err, "Unhandled middleware error");
 
-                    if let Some(inner) = e.source().and_then(|inner| inner.downcast_ref::<std::io::Error>()) {
-                        if let std::io::ErrorKind::AddrInUse = inner.kind() {
-                            return anyhow::Error::new(e)
-                                .context(format!("RPC address is already in use: {}.
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal error".to_string(),
+                )
+            }
+        }
 
-Hint: This usually means you are already running another instance of pathfinder.
-Hint: If this happens when upgrading, make sure to shut down the first one first.
-Hint: If you are looking to run two instances of pathfinder, you must configure them with different http rpc addresses.", self.addr));
-                        }
-                    }
+        let middleware = tower::ServiceBuilder::new()
+            // Convert errors created by middleware layers into responses.
+            // This is required by axum -- axum doesn't deal with Result, errors
+            // must be responses as well.
+            .layer(HandleErrorLayer::new(handle_middleware_errors))
+            .concurrency_limit(self.max_connections)
+            .layer(DefaultBodyLimit::max(REQUEST_MAX_SIZE))
+            .timeout(REQUEST_TIMEOUT)
+            .layer(tower_http::trace::TraceLayer::new_for_http())
+            .option_layer(self.cors);
 
-                    anyhow::Error::new(e)
-                }
-                _ => anyhow::Error::new(e),
-            })?;
-        let local_addr = server.local_addr()?;
+        /// Returns success for requests with an empty body without reading
+        /// the entire body.
+        async fn empty_body(request: Request<Body>) -> impl IntoResponse {
+            use hyper::body::HttpBody;
+            if request.body().is_end_stream() {
+                http::StatusCode::OK.into_response()
+            } else {
+                http::StatusCode::METHOD_NOT_ALLOWED.into_response()
+            }
+        }
 
-        let module = crate::module::Module::new(self.context);
-        let module = v03::register_methods(module)?;
-        let module = v04::register_methods(module)?;
-        let module = pathfinder::register_methods(module)?;
-        let module = match &self.ws_senders {
-            Some(ws_senders) => websocket::register_subscriptions(module, ws_senders.clone())?,
-            None => module,
+        let v03_routes = v03::register_routes().build(self.context.clone());
+        let v04_routes = v04::register_routes().build(self.context.clone());
+        let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
+
+        let default_router = match self.default_version {
+            DefaultVersion::V03 => v03_routes.clone(),
+            DefaultVersion::V04 => v04_routes.clone(),
         };
 
-        let methods = module.build();
+        let router = axum::Router::new()
+            // Also return success for get's with an empty body. These are often
+            // used by monitoring bots to check service health.
+            .route("/", get(empty_body).post(rpc_handler))
+            .with_state(default_router)
+            .route("/rpc/v0.3", post(rpc_handler))
+            .with_state(v03_routes)
+            .route("/rpc/v0.4", post(rpc_handler))
+            .with_state(v04_routes)
+            .route("/rpc/pathfinder/v0.1", post(rpc_handler))
+            .with_state(pathfinder_routes)
+            .layer(middleware);
+        // TODO: websockets
 
-        Ok(server.start(methods).map(|handle| (handle, local_addr))?)
+        let server_handle = tokio::spawn(async move {
+            server
+                .serve(router.into_make_service())
+                .await
+                .map_err(Into::into)
+        });
+
+        Ok((server_handle, addr))
     }
 
     pub fn get_ws_senders(&self) -> WebsocketSenders {
@@ -702,6 +730,9 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn roundtrip_syncing() {
@@ -729,5 +760,168 @@ mod tests {
             assert_eq!(parsed, expected, "example from line {line}");
             assert_eq!(&output, input, "example from line {line}");
         }
+    }
+
+    #[tokio::test]
+    async fn empty_get_on_root_is_ok() {
+        // Monitoring bots often get query `/` with no body as a form
+        // of health check. Test that we return success for such queries.
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let context = RpcContext::for_tests();
+        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+            .spawn()
+            .unwrap();
+
+        let url = format!("http://{addr}/");
+
+        let client = reqwest::Client::new();
+        // No body
+        let status = client.get(url.clone()).send().await.unwrap().status();
+        assert!(status.is_success());
+        // Empty body - unsure if this is actually different to no body.
+        let status = client
+            .get(url.clone())
+            .body("")
+            .send()
+            .await
+            .unwrap()
+            .status();
+        assert!(status.is_success());
+        // Non-empty body should fail.
+        let status = client
+            .get(url.clone())
+            .body("x")
+            .send()
+            .await
+            .unwrap()
+            .status();
+        assert!(!status.is_success());
+    }
+
+    #[rustfmt::skip]
+    #[rstest::rstest]
+    // Ensure that a missing method would actually fail this test.
+    #[should_panic]
+    #[case::invalid("/", "invalid")]
+
+    #[case::root_starknet_blockHashAndNumber("/", "starknet_blockHashAndNumber")]
+    #[case::root_starknet_blockNumber("/", "starknet_blockNumber")]
+    #[case::root_starknet_call("/", "starknet_call")]
+    #[case::root_starknet_chainId("/", "starknet_chainId")]
+    #[case::root_starknet_getBlockWithTxHashes("/", "starknet_getBlockWithTxHashes")]
+    #[case::root_starknet_getBlockTransactionCount("/", "starknet_getBlockTransactionCount")]
+    #[case::root_starknet_getClass("/", "starknet_getClass")]
+    #[case::root_starknet_getClassAt("/", "starknet_getClassAt")]
+    #[case::root_starknet_getClassHashAt("/", "starknet_getClassHashAt")]
+    #[case::root_starknet_getNonce("/", "starknet_getNonce")]
+    #[case::root_starknet_getStorageAt("/", "starknet_getStorageAt")]
+    #[case::root_starknet_estimateFee("/", "starknet_estimateFee")]
+    #[case::root_starknet_getEvents("/", "starknet_getEvents")]
+    #[case::root_starknet_getStateUpdate("/", "starknet_getStateUpdate")]
+    #[case::root_starknet_addDeclareTransaction("/", "starknet_addDeclareTransaction")]
+    #[case::root_starknet_addDeployAccountTransaction("/", "starknet_addDeployAccountTransaction")]
+    #[case::root_starknet_addInvokeTransaction("/", "starknet_addInvokeTransaction")]
+    #[case::root_starknet_getBlockWithTxs("/", "starknet_getBlockWithTxs")]
+    #[case::root_starknet_getTransactionReceipt("/", "starknet_getTransactionReceipt")]
+    #[case::root_starknet_syncing("/", "starknet_syncing")]
+    #[case::root_starknet_simulateTransactions("/", "starknet_simulateTransactions")]
+    #[case::root_starknet_estimateMessageFee("/", "starknet_estimateMessageFee")]
+    #[case::root_starknet_getTransactionByBlockIdAndIndex("/", "starknet_getTransactionByBlockIdAndIndex")]
+    #[case::root_starknet_getTransactionByHash("/", "starknet_getTransactionByHash")]
+    #[case::root_starknet_pendingTransactions("/", "starknet_pendingTransactions")]
+    #[case::root_pathfinder_getProof("/", "pathfinder_getProof")]
+    #[case::root_pathfinder_getTransactionStatus("/", "pathfinder_getTransactionStatus")]
+
+    #[case::v03_starknet_addDeclareTransaction("/rpc/v0.3", "starknet_addDeclareTransaction")]
+    #[case::v03_starknet_addDeployAccountTransaction("/rpc/v0.3", "starknet_addDeployAccountTransaction")]
+    #[case::v03_starknet_addInvokeTransaction("/rpc/v0.3", "starknet_addInvokeTransaction")]
+    #[case::v03_starknet_blockHashAndNumber("/rpc/v0.3", "starknet_blockHashAndNumber")]
+    #[case::v03_starknet_blockNumber("/rpc/v0.3", "starknet_blockNumber")]
+    #[case::v03_starknet_call("/rpc/v0.3", "starknet_call")]
+    #[case::v03_starknet_chainId("/rpc/v0.3", "starknet_chainId")]
+    #[case::v03_starknet_getBlockWithTxHashes("/rpc/v0.3", "starknet_getBlockWithTxHashes")]
+    #[case::v03_starknet_getBlockWithTxs("/rpc/v0.3", "starknet_getBlockWithTxs")]
+    #[case::v03_starknet_getBlockTransactionCount("/rpc/v0.3", "starknet_getBlockTransactionCount")]
+    #[case::v03_starknet_getClass("/rpc/v0.3", "starknet_getClass")]
+    #[case::v03_starknet_getClassAt("/rpc/v0.3", "starknet_getClassAt")]
+    #[case::v03_starknet_getClassHashAt("/rpc/v0.3", "starknet_getClassHashAt")]
+    #[case::v03_starknet_getNonce("/rpc/v0.3", "starknet_getNonce")]
+    #[case::v03_starknet_getStorageAt("/rpc/v0.3", "starknet_getStorageAt")]
+    #[case::v03_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.3", "starknet_getTransactionByBlockIdAndIndex")]
+    #[case::v03_starknet_getTransactionByHash("/rpc/v0.3", "starknet_getTransactionByHash")]
+    #[case::v03_starknet_getTransactionReceipt("/rpc/v0.3", "starknet_getTransactionReceipt")]
+    #[case::v03_starknet_pendingTransactions("/rpc/v0.3", "starknet_pendingTransactions")]
+    #[case::v03_starknet_syncing("/rpc/v0.3", "starknet_syncing")]
+    #[case::v03_starknet_estimateFee("/rpc/v0.3", "starknet_estimateFee")]
+    #[case::v03_starknet_getEvents("/rpc/v0.3", "starknet_getEvents")]
+    #[case::v03_starknet_getStateUpdate("/rpc/v0.3", "starknet_getStateUpdate")]
+    #[case::v03_starknet_simulateTransaction("/rpc/v0.3", "starknet_simulateTransaction")]
+    #[case::v03_starknet_estimateMessageFee("/rpc/v0.3", "starknet_estimateMessageFee")]
+    #[case::v03_pathfinder_getProof("/rpc/v0.3", "pathfinder_getProof")]
+    #[case::v03_pathfinder_getTransactionStatus("/rpc/v0.3", "pathfinder_getTransactionStatus")]
+
+    #[case::v04_starknet_blockHashAndNumber("/rpc/v0.4", "starknet_blockHashAndNumber")]
+    #[case::v04_starknet_blockNumber("/rpc/v0.4", "starknet_blockNumber")]
+    #[case::v04_starknet_call("/rpc/v0.4", "starknet_call")]
+    #[case::v04_starknet_chainId("/rpc/v0.4", "starknet_chainId")]
+    #[case::v04_starknet_getBlockWithTxHashes("/rpc/v0.4", "starknet_getBlockWithTxHashes")]
+    #[case::v04_starknet_getBlockTransactionCount("/rpc/v0.4", "starknet_getBlockTransactionCount")]
+    #[case::v04_starknet_getClass("/rpc/v0.4", "starknet_getClass")]
+    #[case::v04_starknet_getClassAt("/rpc/v0.4", "starknet_getClassAt")]
+    #[case::v04_starknet_getClassHashAt("/rpc/v0.4", "starknet_getClassHashAt")]
+    #[case::v04_starknet_getNonce("/rpc/v0.4", "starknet_getNonce")]
+    #[case::v04_starknet_getStorageAt("/rpc/v0.4", "starknet_getStorageAt")]
+    #[case::v04_starknet_estimateFee("/rpc/v0.4", "starknet_estimateFee")]
+    #[case::v04_starknet_getEvents("/rpc/v0.4", "starknet_getEvents")]
+    #[case::v04_starknet_getStateUpdate("/rpc/v0.4", "starknet_getStateUpdate")]
+    #[case::v04_starknet_addDeclareTransaction("/rpc/v0.4", "starknet_addDeclareTransaction")]
+    #[case::v04_starknet_addDeployAccountTransaction("/rpc/v0.4", "starknet_addDeployAccountTransaction")]
+    #[case::v04_starknet_addInvokeTransaction("/rpc/v0.4", "starknet_addInvokeTransaction")]
+    #[case::v04_starknet_getBlockWithTxs("/rpc/v0.4", "starknet_getBlockWithTxs")]
+    #[case::v04_starknet_getTransactionReceipt("/rpc/v0.4", "starknet_getTransactionReceipt")]
+    #[case::v04_starknet_syncing("/rpc/v0.4", "starknet_syncing")]
+    #[case::v04_starknet_simulateTransactions("/rpc/v0.4", "starknet_simulateTransactions")]
+    #[case::v04_starknet_estimateMessageFee("/rpc/v0.4", "starknet_estimateMessageFee")]
+    #[case::v04_starknet_getTransactionByBlockIdAndIndex("/rpc/v0.4", "starknet_getTransactionByBlockIdAndIndex")]
+    #[case::v04_starknet_getTransactionByHash("/rpc/v0.4", "starknet_getTransactionByHash")]
+    #[case::v04_starknet_pendingTransactions("/rpc/v0.4", "starknet_pendingTransactions")]
+    #[case::v04_pathfinder_getProof("/rpc/v0.4", "pathfinder_getProof")]
+    #[case::v04_pathfinder_getTransactionStatus("/rpc/v0.4", "pathfinder_getTransactionStatus")]
+
+    #[case::pathfinder_pathfinder_version("/rpc/pathfinder/v0.1", "pathfinder_version")]
+    #[case::pathfinder_pathfinder_getProof("/rpc/pathfinder/v0.1", "pathfinder_getProof")]
+    #[case::pathfinder_pathfinder_getTransactionStatus("/rpc/pathfinder/v0.1", "pathfinder_getTransactionStatus")]
+
+    #[allow(non_snake_case)]
+    #[tokio::test]
+    async fn rpc_routing(#[case] route: &'static str, #[case] method: &'static str) {
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let context = RpcContext::for_tests();
+        let (_jh, addr) = RpcServer::new(addr, context, DefaultVersion::V04)
+            .spawn()
+            .unwrap();
+
+        let url = format!("http://{addr}{route}");
+        let client = reqwest::Client::new();
+
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "id": 0,
+        });
+
+        let res: serde_json::Value = client
+            .post(url.clone())
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        let method_not_found = json!(-32601);
+
+        assert_ne!(dbg!(&res["error"]["code"]), dbg!(&method_not_found));
     }
 }

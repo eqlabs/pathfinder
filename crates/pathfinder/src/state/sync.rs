@@ -14,8 +14,7 @@ use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::{
     v02::types::syncing::{self, NumberedBlock, Syncing},
-    websocket::types::WebsocketSenders,
-    SyncState,
+    SyncState, WebsocketSenders,
 };
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;

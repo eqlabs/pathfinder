@@ -41,7 +41,7 @@ mod tests {
                 None => server,
             };
 
-            let (_server_handle, address) = server.run().await.unwrap();
+            let (_server_handle, address) = server.spawn().unwrap();
 
             let resp = reqwest::Client::new()
                 .request(reqwest::Method::OPTIONS, format!("http://{address}"))

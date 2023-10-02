@@ -82,6 +82,8 @@ pub enum RpcError {
 impl RpcError {
     pub fn code(&self) -> i32 {
         match self {
+            // Taken from the official starknet json rpc api.
+            // https://github.com/starkware-libs/starknet-specs
             RpcError::FailedToReceiveTxn => 1,
             RpcError::NoTraceAvailable(_) => 10,
             RpcError::ContractNotFound => 20,
@@ -111,58 +113,10 @@ impl RpcError {
             RpcError::UnsupportedTxVersion => 61,
             RpcError::UnsupportedContractClassVersion => 62,
             RpcError::UnexpectedError { .. } => 63,
+            // doc/rpc/pathfinder_rpc_api.json
             RpcError::ProofLimitExceeded { .. } => 10000,
-            RpcError::GatewayError(_) | RpcError::Internal(_) => {
-                jsonrpsee::types::error::ErrorCode::InternalError.code()
-            }
-        }
-    }
-}
-
-impl From<RpcError> for jsonrpsee::core::error::Error {
-    fn from(err: RpcError) -> Self {
-        use jsonrpsee::types::error::{CallError, ErrorObject};
-
-        match err {
-            RpcError::ProofLimitExceeded { limit, requested } => {
-                #[derive(serde::Serialize)]
-                struct Data {
-                    limit: u32,
-                    requested: u32,
-                }
-
-                let data = Data { limit, requested };
-
-                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
-                    .into()
-            }
-            RpcError::TooManyKeysInFilter { limit, requested } => {
-                #[derive(serde::Serialize)]
-                struct Data {
-                    limit: usize,
-                    requested: usize,
-                }
-
-                let data = Data { limit, requested };
-
-                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
-                    .into()
-            }
-            RpcError::NoTraceAvailable(status) => {
-                #[derive(serde::Serialize)]
-                struct Data {
-                    status: TraceError,
-                }
-                let data = Data { status };
-                CallError::Custom(ErrorObject::owned(err.code(), err.to_string(), Some(data)))
-                    .into()
-            }
-            other => CallError::Custom(ErrorObject::owned(
-                other.code(),
-                other.to_string(),
-                None::<()>,
-            ))
-            .into(),
+            // https://www.jsonrpc.org/specification#error_object
+            RpcError::GatewayError(_) | RpcError::Internal(_) => -32603,
         }
     }
 }

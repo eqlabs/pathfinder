@@ -5,8 +5,11 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{consts::VERGEN_GIT_DESCRIBE, BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::state::SyncContext;
-use pathfinder_lib::{monitoring, state};
-use pathfinder_rpc::{metrics::logger::RpcMetricsLogger, SyncState};
+use pathfinder_lib::{
+    monitoring::{self},
+    state,
+};
+use pathfinder_rpc::SyncState;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -100,7 +103,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // Set the rpc file connection limit to a fraction of the RPC connections.
     // Having this be too large is counter productive as disk IO will then slow down
     // all queries.
-    let rpc_storage = std::cmp::max(10, config.max_rpc_connections.get() / 8);
+    let max_rpc_connections: u32 = config
+        .max_rpc_connections
+        .get()
+        .try_into()
+        .expect("usize should cast to u32");
+    let rpc_storage = std::cmp::max(10, max_rpc_connections / 8);
     let rpc_storage = NonZeroU32::new(rpc_storage).expect("A non-zero minimum is set");
     let rpc_storage = storage_manager.create_pool(rpc_storage).context(
         r"Creating database connection pool for RPC
@@ -201,10 +209,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let sync_handle = tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync));
 
     let (rpc_handle, local_addr) = rpc_server
-        .with_logger(RpcMetricsLogger)
         .with_max_connections(config.max_rpc_connections.get())
-        .run()
-        .await
+        .spawn()
         .context("Starting the RPC server")?;
 
     info!("📡 HTTP-RPC server started on: {}", local_addr);
@@ -222,9 +228,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
             }
         }
-        _result = rpc_handle.stopped() => {
-            // This handle returns () so its not very useful.
-            tracing::error!("RPC server process ended unexpected");
+        result = rpc_handle => {
+            match result {
+                Ok(_) => tracing::error!("RPC server process ended unexpectedly"),
+                Err(err) => tracing::error!(error=%err, "RPC server process ended unexpectedly"),
+            }
         }
         result = update_handle => {
             match result {
