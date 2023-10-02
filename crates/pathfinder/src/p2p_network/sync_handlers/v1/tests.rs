@@ -38,73 +38,288 @@ mod todo {
         // Headers are always batched in a single response
         // Body batching is already done in the classes test
     }
-
-    #[ignore]
-    #[test]
-    fn internal_limiting_is_flagged_correctly() {
-        todo!("for all 5 types of requests, check that the internal limiting is flagged correctly")
-    }
-
-    #[ignore]
-    #[test]
-    fn partially_successful_requestes_are_flagged_correctly() {
-        todo!("for all 5 types of requests, check that partially successful requests are flagged correctly")
-    }
 }
 
-mod empty_reply {
-    use super::I64_MAX;
-    use crate::p2p_network::sync_handlers::v1::{
-        get_bodies, get_events, get_headers, get_receipts, get_transactions,
-    };
-    use fake::{Fake, Faker};
-    use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
-    use p2p_proto_v1::common::{BlockNumberOrHash, Fin, Iteration};
-    use p2p_proto_v1::event::EventsRequest;
-    use p2p_proto_v1::receipt::ReceiptsRequest;
-    use p2p_proto_v1::transaction::TransactionsRequest;
-    use pathfinder_storage::Storage;
-    use rand::Rng;
-    use rstest::rstest;
-    use tokio::sync::mpsc;
-
-    fn zero_limit() -> Iteration {
-        Iteration {
-            limit: 0,
-            ..Faker.fake()
-        }
-    }
-
-    fn invalid_start() -> Iteration {
-        Iteration {
-            start: BlockNumberOrHash::Number(rand::thread_rng().gen_range(I64_MAX + 1..=u64::MAX)),
-            ..Faker.fake()
-        }
-    }
-
-    macro_rules! define_test {
-        ($name:ident, $uut_name:ident, $request:tt) => {
-            #[rstest]
-            #[case(zero_limit())]
-            #[case(invalid_start())]
-            #[tokio::test]
-            async fn $name(#[case] iteration: Iteration) {
-                let storage = Storage::in_memory().unwrap();
-                let (tx, mut rx) = mpsc::channel(1);
-                // Clone the sender to make sure that the channel is not prematurely closed
-                $uut_name(&storage, $request { iteration }, tx.clone())
-                    .await
-                    .unwrap();
-                assert_eq!(rx.recv().await.unwrap().into_fin(), Some(Fin::unknown()));
-            }
+mod boundary_conditions {
+    mod zero_limit_yields_fin_ok_invalid_start_yields_fin_unknown {
+        use super::super::I64_MAX;
+        use crate::p2p_network::sync_handlers::v1::{
+            get_bodies, get_events, get_headers, get_receipts, get_transactions,
         };
+        use fake::{Fake, Faker};
+        use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
+        use p2p_proto_v1::common::{BlockNumberOrHash, Fin, Iteration};
+        use p2p_proto_v1::event::EventsRequest;
+        use p2p_proto_v1::receipt::ReceiptsRequest;
+        use p2p_proto_v1::transaction::TransactionsRequest;
+        use pathfinder_storage::Storage;
+        use rand::Rng;
+        use rstest::rstest;
+        use tokio::sync::mpsc;
+
+        fn zero_limit() -> Iteration {
+            Iteration {
+                limit: 0,
+                ..Faker.fake()
+            }
+        }
+
+        fn invalid_start() -> Iteration {
+            Iteration {
+                start: BlockNumberOrHash::Number(
+                    rand::thread_rng().gen_range(I64_MAX + 1..=u64::MAX),
+                ),
+                ..Faker.fake()
+            }
+        }
+
+        macro_rules! define_test {
+            ($name:ident, $uut_name:ident, $request:tt) => {
+                #[rstest]
+                #[case(zero_limit(), Fin::ok())]
+                #[case(invalid_start(), Fin::unknown())]
+                #[tokio::test]
+                async fn $name(#[case] iteration: Iteration, #[case] fin: Fin) {
+                    let storage = Storage::in_memory().unwrap();
+                    let (tx, mut rx) = mpsc::channel(1);
+                    let _jh = tokio::spawn($uut_name(storage, $request { iteration }, tx));
+                    assert_eq!(rx.recv().await.unwrap().into_fin(), Some(fin));
+                }
+            };
+        }
+
+        define_test!(headers, get_headers, BlockHeadersRequest);
+        define_test!(bodies, get_bodies, BlockBodiesRequest);
+        define_test!(transactions, get_transactions, TransactionsRequest);
+        define_test!(receipts, get_receipts, ReceiptsRequest);
+        define_test!(events, get_events, EventsRequest);
     }
 
-    define_test!(headers, get_headers, BlockHeadersRequest);
-    define_test!(bodies, get_bodies, BlockBodiesRequest);
-    define_test!(transactions, get_transactions, TransactionsRequest);
-    define_test!(receipts, get_receipts, ReceiptsRequest);
-    define_test!(events, get_events, EventsRequest);
+    mod partially_successful_requests_end_with_additional_fin_unknown {
+        use crate::p2p_network::sync_handlers::v1::{self, MAX_COUNT_IN_TESTS};
+        use fake::{Fake, Faker};
+        use p2p_proto_v1::block::{
+            BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
+            BlockHeadersResponsePart,
+        };
+        use p2p_proto_v1::common::{BlockNumberOrHash, Direction, Fin, Iteration};
+        use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
+        use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
+        use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
+        use pathfinder_storage::fake::with_n_blocks;
+        use pathfinder_storage::Storage;
+        use rand::{thread_rng, Rng};
+        use rstest::rstest;
+        use tokio::sync::mpsc;
+
+        fn init_test<T>(
+            direction: Direction,
+        ) -> (Storage, Iteration, mpsc::Sender<T>, mpsc::Receiver<T>) {
+            let storage: Storage = Storage::in_memory().unwrap();
+            let _ = with_n_blocks(&storage, 1);
+            let iteration = Iteration {
+                start: BlockNumberOrHash::Number(0),
+                // We want more than available, we don't care about the internal limit because
+                // partial failure (`Fin::unknown()`) takes precedence over it (`Fin::too_much()`)
+                limit: thread_rng().gen_range(2..=MAX_COUNT_IN_TESTS * 2),
+                direction,
+                ..Faker.fake()
+            };
+            let (tx, rx) = mpsc::channel::<T>(1);
+            (storage, iteration, tx, rx)
+        }
+
+        #[rstest]
+        #[tokio::test]
+        async fn get_headers(
+            #[values(Direction::Backward, Direction::Forward)] direction: Direction,
+        ) {
+            let (storage, iteration, tx, mut rx) = init_test(direction);
+            v1::get_headers(storage, BlockHeadersRequest { iteration }, tx)
+                .await
+                .unwrap();
+            let BlockHeadersResponse { parts } = rx.recv().await.unwrap();
+            // parts[0] is the header, parts[1] is Fin::ok()
+            // Expect Fin::unknown() where the first unavailable item would be
+            assert_matches::assert_matches!(&parts[2], BlockHeadersResponsePart::Fin(f) => assert_eq!(f, &Fin::unknown()));
+            assert_eq!(parts.len(), 3);
+        }
+
+        #[rstest]
+        #[tokio::test]
+        async fn get_bodies(
+            #[values(Direction::Backward, Direction::Forward)] direction: Direction,
+        ) {
+            let (storage, iteration, tx, mut rx) = init_test(direction);
+            let _jh = tokio::spawn(v1::get_bodies(
+                storage,
+                BlockBodiesRequest { iteration },
+                tx,
+            ));
+            rx.recv().await.unwrap(); // Diff
+            match rx.recv().await.unwrap().body_message {
+                // New classes in block
+                BlockBodyMessage::Classes(_) => {
+                    rx.recv().await.unwrap(); // Classes, Fin::ok()
+                }
+                // No new classes in block
+                BlockBodyMessage::Fin(_) => {} // Fin::ok()
+                _ => panic!("unexpected message type"),
+            }
+
+            // Expect Fin::unknown() where the first unavailable item would be
+            assert_matches::assert_matches!(rx.recv().await.unwrap().body_message, BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::unknown()));
+        }
+
+        macro_rules! define_test {
+            ($uut_name:ident, $request:tt, $reply:tt) => {
+                #[rstest]
+                #[tokio::test]
+                async fn $uut_name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
+                    let (storage, iteration, tx, mut rx) = init_test(direction);
+                    let _jh = tokio::spawn(v1::$uut_name(
+                        storage,
+                        $request { iteration },
+                        tx,
+                    ));
+                    rx.recv().await.unwrap(); // Block data
+                    rx.recv().await.unwrap(); // Fin::ok()
+                    // Expect Fin::unknown() where the first unavailable item would be
+                    assert_matches::assert_matches!(
+                        rx.recv().await.unwrap().kind,
+                        $reply::Fin(f) => assert_eq!(f, Fin::unknown())
+                    );
+                }
+            };
+        }
+
+        define_test!(
+            get_transactions,
+            TransactionsRequest,
+            TransactionsResponseKind
+        );
+        define_test!(get_receipts, ReceiptsRequest, ReceiptsResponseKind);
+        define_test!(get_events, EventsRequest, EventsResponseKind);
+    }
+
+    mod internally_limited_requests_end_with_additional_fin_too_much {
+        use crate::p2p_network::sync_handlers::v1::{self, MAX_COUNT_IN_TESTS};
+        use assert_matches::assert_matches;
+        use p2p_proto_v1::block::{
+            BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
+            BlockHeadersResponsePart,
+        };
+        use p2p_proto_v1::common::{BlockNumberOrHash, Direction, Fin, Iteration};
+        use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
+        use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
+        use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
+        use pathfinder_storage::fake::with_n_blocks;
+        use pathfinder_storage::Storage;
+        use rand::{thread_rng, Rng};
+        use rstest::rstest;
+        use tokio::sync::mpsc;
+
+        const NUM_BLOCKS_IN_STORAGE: u64 = MAX_COUNT_IN_TESTS;
+
+        fn init_test<T>(
+            direction: Direction,
+        ) -> (Storage, Iteration, mpsc::Sender<T>, mpsc::Receiver<T>) {
+            let storage = Storage::in_memory().unwrap();
+            let _ = with_n_blocks(&storage, NUM_BLOCKS_IN_STORAGE as usize);
+            let (tx, rx) = mpsc::channel::<T>(1);
+            let start = match direction {
+                Direction::Forward => BlockNumberOrHash::Number(0),
+                Direction::Backward => BlockNumberOrHash::Number(NUM_BLOCKS_IN_STORAGE - 1),
+            };
+            let iteration = Iteration {
+                start,
+                // We want to trigger the internal limit
+                limit: thread_rng().gen_range(NUM_BLOCKS_IN_STORAGE + 1..=u64::MAX),
+                step: 1.into(),
+                direction,
+            };
+            (storage, iteration, tx, rx)
+        }
+
+        #[rstest]
+        #[tokio::test]
+        async fn get_headers(
+            #[values(Direction::Backward, Direction::Forward)] direction: Direction,
+        ) {
+            let (storage, iteration, tx, mut rx) = init_test(direction);
+            v1::get_headers(storage, BlockHeadersRequest { iteration }, tx.clone())
+                .await
+                .unwrap();
+
+            let BlockHeadersResponse { parts } = rx.recv().await.unwrap();
+            // 10 x [header + Fin::ok()]
+            // Expect Fin::too_much() if all requested items were found up to the internal limit
+            assert_matches!(&parts[NUM_BLOCKS_IN_STORAGE as usize * 2], BlockHeadersResponsePart::Fin(f) => assert_eq!(f, &Fin::too_much()));
+            assert_eq!(parts.len(), NUM_BLOCKS_IN_STORAGE as usize * 2 + 1);
+        }
+
+        #[rstest]
+        #[tokio::test]
+        async fn get_bodies(
+            #[values(Direction::Backward, Direction::Forward)] direction: Direction,
+        ) {
+            let (storage, iteration, tx, mut rx) = init_test(direction);
+            let _jh = tokio::spawn(v1::get_bodies(
+                storage,
+                BlockBodiesRequest { iteration },
+                tx,
+            ));
+            for _ in 0..NUM_BLOCKS_IN_STORAGE {
+                rx.recv().await.unwrap(); // Diff
+                match rx.recv().await.unwrap().body_message {
+                    // New classes in block
+                    BlockBodyMessage::Classes(_) => {
+                        rx.recv().await.unwrap(); // Classes, Fin::ok()
+                    }
+                    // No new classes in block
+                    BlockBodyMessage::Fin(_) => {} // Fin::ok()
+                    _ => panic!("unexpected message type"),
+                }
+            }
+            // Expect Fin::unknown() where the first unavailable item would be
+            assert_matches::assert_matches!(
+                rx.recv().await.unwrap().body_message,
+                BlockBodyMessage::Fin(f) => assert_eq!(f, Fin::too_much())
+            );
+        }
+
+        macro_rules! define_test {
+            ($uut_name:ident, $request:tt, $reply:tt) => {
+                #[rstest]
+                #[tokio::test]
+                async fn $uut_name(#[values(Direction::Backward, Direction::Forward)] direction: Direction) {
+                    let (storage, iteration, tx, mut rx) = init_test(direction);
+                    let _jh = tokio::spawn(v1::$uut_name(
+                        storage,
+                        $request { iteration },
+                        tx,
+                    ));
+                    for _ in 0..NUM_BLOCKS_IN_STORAGE {
+                        rx.recv().await.unwrap(); // Block data
+                        rx.recv().await.unwrap(); // Fin::ok()
+                    }
+                    // Expect Fin::unknown() where the first unavailable item would be
+                    assert_matches::assert_matches!(
+                        rx.recv().await.unwrap().kind,
+                        $reply::Fin(f) => assert_eq!(f, Fin::too_much())
+                    );
+                }
+            };
+        }
+
+        define_test!(
+            get_transactions,
+            TransactionsRequest,
+            TransactionsResponseKind
+        );
+        define_test!(get_receipts, ReceiptsRequest, ReceiptsResponseKind);
+        define_test!(get_events, EventsRequest, EventsResponseKind);
+    }
 }
 
 /// Property tests, grouped to be immediately visible when executed
