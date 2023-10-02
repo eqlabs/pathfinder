@@ -39,7 +39,7 @@ const _: () = assert!(
 );
 
 pub async fn get_headers(
-    storage: &Storage,
+    storage: Storage,
     request: BlockHeadersRequest,
     tx: mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
@@ -49,7 +49,7 @@ pub async fn get_headers(
 
 // TODO consider batching db ops instead doing all in bulk if it's more performant
 pub async fn get_bodies(
-    storage: &Storage,
+    storage: Storage,
     request: BlockBodiesRequest,
     tx: mpsc::Sender<BlockBodiesResponse>,
 ) -> anyhow::Result<()> {
@@ -58,7 +58,7 @@ pub async fn get_bodies(
 }
 
 pub async fn get_transactions(
-    storage: &Storage,
+    storage: Storage,
     request: TransactionsRequest,
     tx: mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
@@ -67,7 +67,7 @@ pub async fn get_transactions(
 }
 
 pub async fn get_receipts(
-    storage: &Storage,
+    storage: Storage,
     request: ReceiptsRequest,
     tx: mpsc::Sender<ReceiptsResponse>,
 ) -> anyhow::Result<()> {
@@ -76,7 +76,7 @@ pub async fn get_receipts(
 }
 
 pub async fn get_events(
-    storage: &Storage,
+    storage: Storage,
     request: EventsRequest,
     tx: mpsc::Sender<EventsResponse>,
 ) -> anyhow::Result<()> {
@@ -316,6 +316,10 @@ fn iterate<T: FromFin>(
         step,
     } = iteration;
 
+    if limit == 0 {
+        return Ok(vec![T::from_fin(Fin::ok())]);
+    }
+
     let mut block_number = match get_start_block_number(start, &tx)? {
         Some(x) => x,
         None => {
@@ -331,7 +335,7 @@ fn iterate<T: FromFin>(
 
     let mut responses = Vec::new();
 
-    for _ in 0..limit {
+    for i in 0..limit {
         if block_handler(&tx, block_number, &mut responses)? {
             // Block data retrieved successfully, `block_handler` should add `Fin::ok()` marker on its own
         } else {
@@ -340,14 +344,16 @@ fn iterate<T: FromFin>(
             break;
         }
 
-        block_number = match get_next_block_number(block_number, step, direction) {
-            Some(x) => x,
-            None => {
-                // Out of range block number value
-                ending_marker = Some(Fin::unknown());
-                break;
-            }
-        };
+        if i < limit - 1 {
+            block_number = match get_next_block_number(block_number, step, direction) {
+                Some(x) => x,
+                None => {
+                    // Out of range block number value
+                    ending_marker = Some(Fin::unknown());
+                    break;
+                }
+            };
+        }
     }
 
     if let Some(end) = ending_marker {
@@ -550,7 +556,7 @@ mod block_bodies_response {
 
 async fn spawn_blocking_get<Request, Response, Getter>(
     request: Request,
-    storage: &Storage,
+    storage: Storage,
     getter: Getter,
 ) -> anyhow::Result<Response>
 where
@@ -558,7 +564,6 @@ where
     Response: Send + 'static,
     Getter: FnOnce(Transaction<'_>, Request) -> anyhow::Result<Response> + Send + 'static,
 {
-    let storage = storage.clone();
     let span = tracing::Span::current();
 
     tokio::task::spawn_blocking(move || {
