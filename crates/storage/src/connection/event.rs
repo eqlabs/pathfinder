@@ -461,6 +461,9 @@ fn select_query_strategy(
             );
             return Ok(QueryStrategy::KeysFirst);
         }
+    } else {
+        // we have no key filter at all
+        return Ok(QueryStrategy::BlockRangeFirst);
     }
 
     let events_in_block_range =
