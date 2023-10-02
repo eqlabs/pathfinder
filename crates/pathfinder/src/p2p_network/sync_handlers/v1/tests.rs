@@ -41,21 +41,29 @@ mod todo {
 }
 
 mod boundary_conditions {
+    use super::I64_MAX;
+    use crate::p2p_network::sync_handlers::v1::{self, MAX_COUNT_IN_TESTS};
+    use crate::p2p_network::sync_handlers::v1::{
+        get_bodies, get_events, get_headers, get_receipts, get_transactions,
+    };
+    use assert_matches::assert_matches;
+    use fake::{Fake, Faker};
+    use p2p_proto_v1::block::{
+        BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
+        BlockHeadersResponsePart,
+    };
+    use p2p_proto_v1::common::{BlockNumberOrHash, Direction, Fin, Iteration};
+    use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
+    use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
+    use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
+    use pathfinder_storage::fake::with_n_blocks;
+    use pathfinder_storage::Storage;
+    use rand::{thread_rng, Rng};
+    use rstest::rstest;
+    use tokio::sync::mpsc;
+
     mod zero_limit_yields_fin_ok_invalid_start_yields_fin_unknown {
-        use super::super::I64_MAX;
-        use crate::p2p_network::sync_handlers::v1::{
-            get_bodies, get_events, get_headers, get_receipts, get_transactions,
-        };
-        use fake::{Fake, Faker};
-        use p2p_proto_v1::block::{BlockBodiesRequest, BlockHeadersRequest};
-        use p2p_proto_v1::common::{BlockNumberOrHash, Fin, Iteration};
-        use p2p_proto_v1::event::EventsRequest;
-        use p2p_proto_v1::receipt::ReceiptsRequest;
-        use p2p_proto_v1::transaction::TransactionsRequest;
-        use pathfinder_storage::Storage;
-        use rand::Rng;
-        use rstest::rstest;
-        use tokio::sync::mpsc;
+        use super::*;
 
         fn zero_limit() -> Iteration {
             Iteration {
@@ -96,21 +104,7 @@ mod boundary_conditions {
     }
 
     mod partially_successful_requests_end_with_additional_fin_unknown {
-        use crate::p2p_network::sync_handlers::v1::{self, MAX_COUNT_IN_TESTS};
-        use fake::{Fake, Faker};
-        use p2p_proto_v1::block::{
-            BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
-            BlockHeadersResponsePart,
-        };
-        use p2p_proto_v1::common::{BlockNumberOrHash, Direction, Fin, Iteration};
-        use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
-        use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
-        use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
-        use pathfinder_storage::fake::with_n_blocks;
-        use pathfinder_storage::Storage;
-        use rand::{thread_rng, Rng};
-        use rstest::rstest;
-        use tokio::sync::mpsc;
+        use super::*;
 
         fn init_test<T>(
             direction: Direction,
@@ -203,21 +197,7 @@ mod boundary_conditions {
     }
 
     mod internally_limited_requests_end_with_additional_fin_too_much {
-        use crate::p2p_network::sync_handlers::v1::{self, MAX_COUNT_IN_TESTS};
-        use assert_matches::assert_matches;
-        use p2p_proto_v1::block::{
-            BlockBodiesRequest, BlockBodyMessage, BlockHeadersRequest, BlockHeadersResponse,
-            BlockHeadersResponsePart,
-        };
-        use p2p_proto_v1::common::{BlockNumberOrHash, Direction, Fin, Iteration};
-        use p2p_proto_v1::event::{EventsRequest, EventsResponseKind};
-        use p2p_proto_v1::receipt::{ReceiptsRequest, ReceiptsResponseKind};
-        use p2p_proto_v1::transaction::{TransactionsRequest, TransactionsResponseKind};
-        use pathfinder_storage::fake::with_n_blocks;
-        use pathfinder_storage::Storage;
-        use rand::{thread_rng, Rng};
-        use rstest::rstest;
-        use tokio::sync::mpsc;
+        use super::*;
 
         const NUM_BLOCKS_IN_STORAGE: u64 = MAX_COUNT_IN_TESTS;
 
