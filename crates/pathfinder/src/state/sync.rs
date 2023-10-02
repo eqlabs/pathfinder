@@ -722,6 +722,7 @@ async fn l2_update(
             .context("Inserting block header into database")?;
 
         // Insert the transactions.
+        let _span = tracing::debug_span!("insert_transactions").entered();
         anyhow::ensure!(
             block.transactions.len() == block.transaction_receipts.len(),
             "Transactions and receipts mismatch. There were {} transactions and {} receipts.",
@@ -737,11 +738,14 @@ async fn l2_update(
         transaction
             .insert_transaction_data(header.hash, header.number, &transaction_data)
             .context("Insert transaction data into database")?;
+        drop(_span);
 
         // Insert state updates
+        let _span = tracing::debug_span!("insert_state_update").entered();
         transaction
             .insert_state_update(block.block_number, &state_update)
             .context("Insert state update into database")?;
+        drop(_span);
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
@@ -762,6 +766,7 @@ async fn l2_update(
             }
         }
 
+        let _span = tracing::debug_span!("commit_transaction").entered();
         transaction.commit().context("Commit database transaction")
     })?;
 
@@ -821,6 +826,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
     })
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
@@ -838,6 +844,7 @@ fn update_starknet_state(
     let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
         .with_verify_hashes(verify_hashes);
 
+    let _span = tracing::debug_span!("fetch_state_hashes").entered();
     let state_hashes: anyhow::Result<HashMap<ContractAddress, ContractStateHash>> = state_update
         .contract_updates
         .keys()
@@ -851,9 +858,11 @@ fn update_starknet_state(
         })
         .collect();
     let state_hashes = state_hashes.context("Collecting current state hashes")?;
+    drop(_span);
 
     let (send, recv) = std::sync::mpsc::channel();
 
+    let _span = tracing::debug_span!("update_contract_states").entered();
     rayon::scope(|s| {
         s.spawn(|_| {
             let result: Result<Vec<_>, _> = state_update
@@ -888,7 +897,9 @@ fn update_starknet_state(
     });
 
     let contract_update_results = recv.recv().context("Panic on rayon thread")??;
+    drop(_span);
 
+    let _span = tracing::debug_span!("insert_contract_state_changes").entered();
     for contract_update_result in contract_update_results.into_iter() {
         storage_commitment_tree
             .set(
@@ -900,7 +911,9 @@ fn update_starknet_state(
             .insert(transaction)
             .context("Updating contract storage trie")?;
     }
+    drop(_span);
 
+    let _span = tracing::debug_span!("update_system_contract_states").entered();
     for (contract, update) in &state_update.system_contract_updates {
         let state_hash = storage_commitment_tree
             .get(*contract)?
@@ -922,17 +935,24 @@ fn update_starknet_state(
             .insert(transaction)
             .context("Updating system contract storage trie")?;
     }
+    drop(_span);
 
     // Apply storage commitment tree changes.
+    let _span = tracing::debug_span!("commit_storage_commitment_tree").entered();
     let (new_storage_commitment, nodes) = storage_commitment_tree
         .commit()
         .context("Apply storage commitment tree updates")?;
+    drop(_span);
+    let _span = tracing::debug_span!("insert_storage_commitment_tree").entered();
     let count = transaction
         .insert_storage_trie(new_storage_commitment, &nodes)
         .context("Persisting storage trie")?;
     tracing::trace!(new_nodes=%count, "Storage trie persisted");
+    drop(_span);
 
     // Add new Sierra classes to class commitment tree.
+    let _span = tracing::debug_span!("update_class_commitment_tree").entered();
+
     let mut class_commitment_tree =
         ClassCommitmentTree::load(transaction, class_commitment).with_verify_hashes(verify_hashes);
 
@@ -956,6 +976,7 @@ fn update_starknet_state(
         .insert_class_trie(class_commitment, &nodes)
         .context("Persisting class trie")?;
     tracing::trace!(new_nodes=%count, "Class trie persisted");
+    drop(_span);
 
     Ok((new_storage_commitment, class_commitment))
 }
