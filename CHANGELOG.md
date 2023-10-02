@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Pathfinder now uses a new JSON-RPC implementation. This also means that we've temporarily removed Websocket support. It will be added back in a later release.
+
 ## [0.8.2] - 2023-09-28
 
 ### Fixed
