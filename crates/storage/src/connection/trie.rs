@@ -1,209 +1,812 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
-use pathfinder_common::trie::TrieNode;
+use bitvec::prelude::Msb0;
+use bitvec::vec::BitVec;
+use pathfinder_common::prelude::*;
 use stark_hash::Felt;
 
 use crate::prelude::*;
 
-insert_trie!(insert_class_trie, tree_class, ClassTrieReader);
-insert_trie!(insert_contract_trie, tree_contracts, ContractTrieReader);
-insert_trie!(insert_storage_trie, tree_global, StorageTrieReader);
+macros::create_trie_fns!(trie_class);
+macros::create_trie_fns!(trie_contracts);
+macros::create_trie_fns!(trie_storage);
 
-/// Creates the sql for inserting a node or incrementing its reference count if it already exists, returning
-/// the final reference count.
-macro_rules! insert_trie {
-    ($fn_name: ident, $table: ident, $reader_struct: ident) => {
-        /// Stores the node data for this trie in the `$table` table and returns the number of
-        /// new nodes that were added i.e. the nodes not already present in the database.
-        ///
-        /// Inserts nodes starting from the root.
-        ///
-        /// **NOTE**: since [TrieNode] does not identify leaf nodes explicitly, this function assumes that
-        /// any node definition not present in the hash map is in fact a leaf node. This means we recurse through
-        /// child nodes until the child node already exists in the database, or the child definition is not present
-        /// in the hash map (indicating it is a leaf node, and should not be inserted).
-        pub(super) fn $fn_name(
-            tx: &rusqlite::Transaction<'_>,
-            root: Felt,
-            nodes: &HashMap<Felt, TrieNode>,
-        ) -> anyhow::Result<usize> {
-            let mut to_insert = Vec::new();
-            to_insert.push(root);
+pub(super) fn class_root_index(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+) -> anyhow::Result<Option<u32>> {
+    tx.inner()
+        .query_row(
+            "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
+            params![&block_number],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+}
 
-            let mut stmt = tx
-                .prepare_cached(concat!(
-                    "INSERT OR IGNORE INTO ",
-                    stringify!($table),
-                    "(hash, data) VALUES(?, ?) ",
-                ))
-                .context("Creating insert statement")?;
+pub(super) fn storage_root_index(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+) -> anyhow::Result<Option<u32>> {
+    tx.inner()
+        .query_row(
+            "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
+            params![&block_number],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+}
 
-            let mut count = 0;
+pub(super) fn contract_root_index(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    contract: ContractAddress,
+) -> anyhow::Result<Option<u32>> {
+    tx.inner()
+        .query_row(
+            "SELECT root_index FROM contract_roots WHERE contract_address = ? AND block_number <= ? ORDER BY block_number DESC LIMIT 1",
+            params![&contract, &block_number],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+}
 
-            // cargo fmt misbehaves on the let some else expression.
-            #[cfg_attr(rustfmt, rustfmt_skip)]
-            while let Some(hash) = to_insert.pop() {
-                let Some(node) = nodes.get(&hash) else {
-                    continue;
-                };
-                let inserted = stmt
-                    .execute(params![&hash.as_be_bytes().as_slice(), node])
-                    .context("Inserting node")?;
+pub(super) fn contract_root(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    contract: ContractAddress,
+) -> anyhow::Result<Option<ContractRoot>> {
+    tx.inner()
+        .query_row(
+            r"SELECT hash FROM trie_contracts WHERE idx = (
+                SELECT root_index FROM contract_roots WHERE block_number <= ? AND contract_address = ? ORDER BY block_number DESC LIMIT 1
+            )",
+            params![&block_number, &contract],
+            |row| row.get_contract_root(0),
+        )
+        .optional()
+        .map_err(Into::into)
+}
 
-                if inserted == 1 {
-                    count += 1;
+pub(super) fn insert_class_root(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    root: u32,
+) -> anyhow::Result<()> {
+    tx.inner().execute(
+        "INSERT INTO class_roots (block_number, root_index) VALUES(?, ?)",
+        params![&block_number, &root],
+    )?;
+    Ok(())
+}
 
-                    match node {
-                        TrieNode::Binary { left, right } => {
-                            to_insert.push(*left);
-                            to_insert.push(*right);
+pub(super) fn insert_storage_root(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    root: u32,
+) -> anyhow::Result<()> {
+    tx.inner().execute(
+        "INSERT INTO storage_roots (block_number, root_index) VALUES(?, ?)",
+        params![&block_number, &root],
+    )?;
+    Ok(())
+}
+
+pub(super) fn insert_contract_root(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    contract: ContractAddress,
+    root: u32,
+) -> anyhow::Result<()> {
+    tx.inner().execute(
+        "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
+        params![&block_number, &contract, &root],
+    )?;
+    Ok(())
+}
+
+mod macros {
+    /// Generates the `insert`, `node` and `hash` trie functions for the given table name, within
+    /// a module with the table name.
+    macro_rules! create_trie_fns {
+        ($table: ident) => {
+            pub(super) mod $table {
+                use super::*;
+
+                /// Stores the node data for this trie and returns the index of the root.
+                pub fn insert(
+                    tx: &Transaction<'_>,
+                    root: Felt,
+                    nodes: &HashMap<Felt, Node>,
+                ) -> anyhow::Result<u32> {
+                    let mut stmt = tx
+                        .inner()
+                        .prepare_cached(concat!(
+                            "INSERT INTO ",
+                            stringify!($table),
+                            " (hash, data) VALUES(?, ?) RETURNING idx",
+                        ))
+                        .context("Creating insert statement")?;
+
+                    let mut to_insert = Vec::new();
+                    let mut to_process = vec![Child::Hash(root)];
+
+                    while let Some(node) = to_process.pop() {
+                        // Only hash variants need to be stored.
+                        //
+                        // Leaf nodes never get stored and a node having an
+                        // ID indicates it has already been stored as part of a
+                        // previous tree - and its children as well.
+                        let Child::Hash(hash) = node else {
+                            continue;
+                        };
+
+                        let node = nodes.get(&hash).context("New node data is missing")?;
+                        to_insert.push(hash);
+
+                        match node {
+                            Node::Binary { left, right } => {
+                                to_process.push(left.clone());
+                                to_process.push(right.clone());
+                            }
+                            Node::Edge { child, .. } => {
+                                to_process.push(child.clone());
+                            }
+                            // Leaves are not stored as separate nodes but are instead serialized in-line in their parents.
+                            Node::LeafEdge { .. } | Node::LeafBinary { .. } => {}
                         }
-                        TrieNode::Edge { child, .. } => to_insert.push(*child),
                     }
+
+                    let mut indices = HashMap::new();
+
+                    // Reusable (and oversized) buffer for encoding.
+                    let mut buffer = vec![0u8; 256];
+
+                    // Insert nodes in reverse to ensure children always have an assigned index for the parent to use.
+                    for hash in to_insert.into_iter().rev() {
+                        let node = nodes
+                            .get(&hash)
+                            .expect("Node must exist as hash is dependent on this");
+
+                        let node = node.into_stored(&indices)?;
+
+                        let length = node.encode(&mut buffer).context("Encoding node")?;
+
+                        let idx: u32 = stmt
+                            .query_row(
+                                params![&hash.as_be_bytes().as_slice(), &&buffer[..length]],
+                                |row| row.get(0),
+                            )
+                            .context("Inserting node")?;
+
+                        indices.insert(hash, idx);
+                    }
+
+                    Ok(*indices
+                        .get(&root)
+                        .expect("Root index must exist as we just inserted it"))
+                }
+
+                /// Returns the node with the given index.
+                pub fn node(
+                    tx: &Transaction<'_>,
+                    index: u32,
+                ) -> anyhow::Result<Option<StoredNode>> {
+                    // We rely on sqlite caching the statement here. Storing the statement would be nice,
+                    // however that leads to &mut requirements or interior mutable work-arounds.
+                    let mut stmt = tx
+                        .inner()
+                        .prepare_cached(concat!(
+                            "SELECT data FROM ",
+                            stringify!($table),
+                            " WHERE idx = ?",
+                        ))
+                        .context("Creating get statement")?;
+
+                    let Some(data): Option<Vec<u8>> = stmt
+                        .query_row(params![&index], |row| row.get(0))
+                        .optional()?
+                    else {
+                        return Ok(None);
+                    };
+
+                    let node = StoredNode::decode(&data).context("Decoding node")?;
+
+                    Ok(Some(node))
+                }
+
+                /// Returns the hash of the node with the given index.
+                pub fn hash(tx: &Transaction<'_>, index: u32) -> anyhow::Result<Option<Felt>> {
+                    // We rely on sqlite caching the statement here. Storing the statement would be nice,
+                    // however that leads to &mut requirements or interior mutable work-arounds.
+                    let mut stmt = tx
+                        .inner()
+                        .prepare_cached(concat!(
+                            "SELECT hash FROM ",
+                            stringify!($table),
+                            " WHERE idx = ?",
+                        ))
+                        .context("Creating get statement")?;
+
+                    stmt.query_row(params![&index], |row| row.get_felt(0))
+                        .optional()
+                        .map_err(Into::into)
                 }
             }
+        };
+    }
 
-            Ok(count)
-        }
-
-        pub struct $reader_struct<'tx>(&'tx Transaction<'tx>);
-
-        impl<'tx> $reader_struct<'tx> {
-            pub(super) fn new(tx: &'tx Transaction<'tx>) -> Self {
-                Self(tx)
-            }
-
-            pub fn get(&self, node: &stark_hash::Felt) -> anyhow::Result<Option<TrieNode>> {
-                // We rely on sqlite caching the statement here. Storing the statement would be nice,
-                // however that leads to &mut requirements or interior mutable work-arounds.
-                let mut stmt = self
-                    .0
-                    .inner()
-                    .prepare_cached(concat!(
-                        "SELECT data FROM ",
-                        stringify!($table),
-                        " WHERE hash = ?",
-                    ))
-                    .context("Creating get statement")?;
-
-                let node: Option<TrieNode> = stmt
-                    .query_row(params![&node.as_be_bytes().as_slice()], |row| {
-                        row.get_trie_node(0)
-                    })
-                    .optional()?;
-
-                Ok(node)
-            }
-        }
-    };
+    pub(super) use create_trie_fns;
 }
-use insert_trie;
+
+#[derive(Clone, Debug)]
+pub enum Node {
+    Binary {
+        left: Child,
+        right: Child,
+    },
+    Edge {
+        child: Child,
+        path: BitVec<u8, Msb0>,
+    },
+    LeafBinary {
+        left: Felt,
+        right: Felt,
+    },
+    LeafEdge {
+        child: Felt,
+        path: BitVec<u8, Msb0>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum Child {
+    Id(u32),
+    Hash(Felt),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum StoredNode {
+    Binary { left: u32, right: u32 },
+    Edge { child: u32, path: BitVec<u8, Msb0> },
+    LeafBinary { left: Felt, right: Felt },
+    LeafEdge { child: Felt, path: BitVec<u8, Msb0> },
+}
+
+#[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
+enum StoredSerde<'a> {
+    Binary { left: u32, right: u32 },
+    Edge { child: u32, path: Vec<u8> },
+    LeafBinary { left: &'a [u8], right: &'a [u8] },
+    LeafEdge { child: &'a [u8], path: Vec<u8> },
+}
+
+impl StoredNode {
+    const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
+
+    /// Writes the [StoredNode] into `buffer` and returns the number of bytes written.
+    fn encode(&self, mut buffer: &mut [u8]) -> Result<usize, bincode::error::EncodeError> {
+        let helper = match self {
+            Self::Binary { left, right } => StoredSerde::Binary {
+                left: *left,
+                right: *right,
+            },
+            Self::Edge { child, path } => {
+                let path_length = path.len() as u8;
+
+                let mut path = path.to_owned();
+                path.force_align();
+                let mut path = path.into_vec();
+                path.push(path_length);
+
+                StoredSerde::Edge {
+                    child: *child,
+                    path,
+                }
+            }
+            Self::LeafBinary { left, right } => StoredSerde::LeafBinary {
+                left: left.as_be_bytes(),
+                right: right.as_be_bytes(),
+            },
+            Self::LeafEdge { child, path } => {
+                let path_length = path.len() as u8;
+
+                let mut path = path.to_owned();
+                path.force_align();
+                let mut path = path.into_vec();
+                path.push(path_length);
+
+                StoredSerde::LeafEdge {
+                    child: child.as_be_bytes(),
+                    path,
+                }
+            }
+        };
+        // Do not use serialize() as this will invoke serialization twice.
+        // https://github.com/bincode-org/bincode/issues/401
+        bincode::encode_into_slice(&helper, &mut buffer, Self::CODEC_CFG)
+    }
+
+    fn decode(data: &[u8]) -> Result<Self, bincode::error::DecodeError> {
+        let helper = bincode::borrow_decode_from_slice(data, Self::CODEC_CFG)?;
+
+        let node = match helper.0 {
+            StoredSerde::Binary { left, right } => Self::Binary { left, right },
+            StoredSerde::Edge { child, mut path } => {
+                let path_length = path.pop().ok_or(bincode::error::DecodeError::Other(
+                    "Edge node's path length is missing",
+                ))?;
+                let mut path = bitvec::vec::BitVec::from_vec(path);
+                path.resize(path_length as usize, false);
+                Self::Edge { child, path }
+            }
+            StoredSerde::LeafBinary { left, right } => {
+                let left = Felt::from_be_slice(left).unwrap();
+                let right = Felt::from_be_slice(right).unwrap();
+                Self::LeafBinary { left, right }
+            }
+            StoredSerde::LeafEdge { child, mut path } => {
+                let path_length = path.pop().ok_or(bincode::error::DecodeError::Other(
+                    "Edge node's path length is missing",
+                ))?;
+                let mut path = bitvec::vec::BitVec::from_vec(path);
+                path.resize(path_length as usize, false);
+                let child = Felt::from_be_slice(child).unwrap();
+                Self::LeafEdge { child, path }
+            }
+        };
+
+        Ok(node)
+    }
+}
+
+#[cfg(test)]
+impl StoredNode {
+    fn as_binary(self) -> Option<(u32, u32)> {
+        match self {
+            Self::Binary { left, right } => Some((left, right)),
+            _ => None,
+        }
+    }
+
+    fn as_edge(self) -> Option<(u32, BitVec<u8, Msb0>)> {
+        match self {
+            Self::Edge { child, path } => Some((child, path)),
+            _ => None,
+        }
+    }
+
+    fn as_binary_leaf(self) -> Option<(Felt, Felt)> {
+        match self {
+            Self::LeafBinary { left, right } => Some((left, right)),
+            _ => None,
+        }
+    }
+
+    fn as_edge_leaf(self) -> Option<(Felt, BitVec<u8, Msb0>)> {
+        match self {
+            Self::LeafEdge { child, path } => Some((child, path)),
+            _ => None,
+        }
+    }
+}
+
+impl Node {
+    fn into_stored(&self, indices: &HashMap<Felt, u32>) -> anyhow::Result<StoredNode> {
+        let node = match self {
+            Node::Binary { left, right } => match (left.clone(), right.clone()) {
+                (left, right) => {
+                    let left = match left {
+                        Child::Id(id) => id,
+                        Child::Hash(hash) => *indices.get(&hash).context("Left child index missing")?,
+                    };
+
+                    let right = match right {
+                        Child::Id(id) => id,
+                        Child::Hash(hash) => *indices.get(&hash).context("Right child index missing")?,
+                    };
+
+                    StoredNode::Binary { left, right }
+                }
+            },
+            Node::Edge { child, path } => {
+                let child = match child {
+                    Child::Id(id) => id,
+                    Child::Hash(hash) => indices.get(hash).context("Child index missing")?,
+                };
+
+                StoredNode::Edge {
+                    child: *child,
+                    path: path.clone(),
+                }
+            }
+            Node::LeafEdge { child, path } => StoredNode::LeafEdge {
+                child: *child,
+                path: path.clone(),
+            },
+            Node::LeafBinary { left, right } => StoredNode::LeafBinary {
+                left: *left,
+                right: *right,
+            },
+        };
+
+        Ok(node)
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use bitvec::prelude::Msb0;
-    use pathfinder_common::felt_bytes;
+    use pathfinder_common::{contract_address_bytes, contract_root_bytes, felt_bytes};
 
     use super::*;
 
     #[test]
-    fn trie() {
-        // Since graph testing and traversal is quite annoying, we use a
-        // single large test which checks several things at once.
-        //
-        // The graph created is unrealistic, but does include two key things:
-        //  1. edge, binary and leaf node variants
-        //  2. a node can appear multiple times in the same graph (duplicate)
-        //
-        //                       root
-        //                    /       \
-        //          left child         right child
-        //                |               |
-        //                \              edge
-        //                 \           /
-        //                   duplicate
-        //                  /         \
-        //            leaf 1           leaf 2
-
-        insert_trie!(insert_test, tree_test, TestTrieReader);
-
-        let mut db = rusqlite::Connection::open_in_memory().unwrap();
+    fn class_roots() {
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
         let tx = db.transaction().unwrap();
-        tx.execute(
-            "CREATE TABLE tree_test(hash BLOB PRIMARY KEY, data BLOB, ref_count INTEGER)",
-            [],
-        )
-        .unwrap();
 
-        let root = felt_bytes!(b"root node");
-        let l_child = felt_bytes!(b"left child");
-        let r_child = felt_bytes!(b"right child");
-        let edge = felt_bytes!(b"edge node");
-        let duplicate = felt_bytes!(b"duplicate");
-        // These must not get inserted.
-        let leaf_1 = felt_bytes!(b"leaf 1");
-        let leaf_2 = felt_bytes!(b"leaf 2");
+        let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
+        assert_eq!(result, None);
 
-        let root_node = TrieNode::Binary {
-            left: l_child,
-            right: r_child,
-        };
-        let l_node = TrieNode::Edge {
-            child: duplicate,
-            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1],
-        };
-        let r_node = TrieNode::Edge {
-            child: edge,
-            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1],
-        };
-        let edge_node = TrieNode::Edge {
-            child: duplicate,
-            path: bitvec::bitvec![u8, Msb0; 1, 0, 1, 1, 1, 1, 1],
-        };
-        let duplicate_node = TrieNode::Binary {
-            left: leaf_1,
-            right: leaf_2,
-        };
+        insert_class_root(&tx, BlockNumber::GENESIS, 123).unwrap();
+        let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
+        assert_eq!(result, Some(123));
 
+        insert_class_root(&tx, BlockNumber::GENESIS + 1, 456).unwrap();
+        let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
+        assert_eq!(result, Some(123));
+        let result = class_root_index(&tx, BlockNumber::GENESIS + 1).unwrap();
+        assert_eq!(result, Some(456));
+        let result = class_root_index(&tx, BlockNumber::GENESIS + 2).unwrap();
+        assert_eq!(result, Some(456));
+
+        insert_class_root(&tx, BlockNumber::GENESIS + 10, 789).unwrap();
+        let result = class_root_index(&tx, BlockNumber::GENESIS + 9).unwrap();
+        assert_eq!(result, Some(456));
+        let result = class_root_index(&tx, BlockNumber::GENESIS + 10).unwrap();
+        assert_eq!(result, Some(789));
+        let result = class_root_index(&tx, BlockNumber::GENESIS + 11).unwrap();
+        assert_eq!(result, Some(789));
+    }
+
+    #[test]
+    fn storage_roots() {
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let tx = db.transaction().unwrap();
+
+        let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
+        assert_eq!(result, None);
+
+        insert_storage_root(&tx, BlockNumber::GENESIS, 123).unwrap();
+        let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
+        assert_eq!(result, Some(123));
+
+        insert_storage_root(&tx, BlockNumber::GENESIS + 1, 456).unwrap();
+        let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
+        assert_eq!(result, Some(123));
+        let result = storage_root_index(&tx, BlockNumber::GENESIS + 1).unwrap();
+        assert_eq!(result, Some(456));
+        let result = storage_root_index(&tx, BlockNumber::GENESIS + 2).unwrap();
+        assert_eq!(result, Some(456));
+
+        insert_storage_root(&tx, BlockNumber::GENESIS + 10, 789).unwrap();
+        let result = storage_root_index(&tx, BlockNumber::GENESIS + 9).unwrap();
+        assert_eq!(result, Some(456));
+        let result = storage_root_index(&tx, BlockNumber::GENESIS + 10).unwrap();
+        assert_eq!(result, Some(789));
+        let result = storage_root_index(&tx, BlockNumber::GENESIS + 11).unwrap();
+        assert_eq!(result, Some(789));
+    }
+
+    #[test]
+    fn contract_roots() {
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let tx = db.transaction().unwrap();
+
+        let c1 = contract_address_bytes!(b"first");
+        let c2 = contract_address_bytes!(b"second");
+
+        // Simplest trie node setup so we can test the fetching of contract root hashes.
+        let root0 = contract_root_bytes!(b"root 0");
+        let root_node = Node::LeafBinary {
+            left: felt_bytes!(b"left"),
+            right: felt_bytes!(b"right"),
+        };
         let mut nodes = HashMap::new();
-        nodes.insert(root, root_node.clone());
-        nodes.insert(l_child, l_node.clone());
-        nodes.insert(r_child, r_node.clone());
-        nodes.insert(edge, edge_node.clone());
-        nodes.insert(duplicate, duplicate_node.clone());
+        nodes.insert(root0.0, root_node.clone());
 
-        let count = insert_test(&tx, root, &nodes).unwrap();
-        let db_count: usize = tx
-            .query_row("SELECT COUNT(1) FROM tree_test", [], |row| row.get(0))
+        let idx0 = trie_contracts::insert(&tx, root0.0, &nodes).unwrap();
+
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS, c1).unwrap();
+        assert_eq!(result1, None);
+
+        insert_contract_root(&tx, BlockNumber::GENESIS, c1, idx0).unwrap();
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS, c1).unwrap();
+        let result2 = contract_root_index(&tx, BlockNumber::GENESIS, c2).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS, c1).unwrap();
+        let hash2 = contract_root(&tx, BlockNumber::GENESIS, c2).unwrap();
+        assert_eq!(result1, Some(idx0));
+        assert_eq!(result2, None);
+        assert_eq!(hash1, Some(root0));
+        assert_eq!(hash2, None);
+
+        let root1 = contract_root_bytes!(b"root 1");
+        nodes.clear();
+        nodes.insert(root1.0, root_node.clone());
+        let idx1 = trie_contracts::insert(&tx, root1.0, &nodes).unwrap();
+
+        insert_contract_root(&tx, BlockNumber::GENESIS + 1, c1, idx1).unwrap();
+        insert_contract_root(&tx, BlockNumber::GENESIS + 1, c2, 888).unwrap();
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS, c1).unwrap();
+        let result2 = contract_root_index(&tx, BlockNumber::GENESIS, c2).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS, c1).unwrap();
+        assert_eq!(result1, Some(idx0));
+        assert_eq!(result2, None);
+        assert_eq!(hash1, Some(root0));
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 1, c1).unwrap();
+        let result2 = contract_root_index(&tx, BlockNumber::GENESIS + 1, c2).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 1, c1).unwrap();
+        assert_eq!(result1, Some(idx1));
+        assert_eq!(result2, Some(888));
+        assert_eq!(hash1, Some(root1));
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 2, c1).unwrap();
+        let result2 = contract_root_index(&tx, BlockNumber::GENESIS + 2, c2).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 2, c1).unwrap();
+        assert_eq!(result1, Some(idx1));
+        assert_eq!(result2, Some(888));
+        assert_eq!(hash1, Some(root1));
+
+        let root2 = contract_root_bytes!(b"root 2");
+        nodes.clear();
+        nodes.insert(root2.0, root_node.clone());
+        let idx2 = trie_contracts::insert(&tx, root2.0, &nodes).unwrap();
+
+        insert_contract_root(&tx, BlockNumber::GENESIS + 10, c1, idx2).unwrap();
+        insert_contract_root(&tx, BlockNumber::GENESIS + 11, c2, 999).unwrap();
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 9, c1).unwrap();
+        let result2 = contract_root_index(&tx, BlockNumber::GENESIS + 9, c2).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 9, c1).unwrap();
+        assert_eq!(result1, Some(idx1));
+        assert_eq!(result2, Some(888));
+        assert_eq!(hash1, Some(root1));
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
+        let result2 = contract_root_index(&tx, BlockNumber::GENESIS + 10, c2).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
+        assert_eq!(result1, Some(idx2));
+        assert_eq!(result2, Some(888));
+        assert_eq!(hash1, Some(root2));
+        let result2 = contract_root_index(&tx, BlockNumber::GENESIS + 11, c2).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 11, c1).unwrap();
+        assert_eq!(result2, Some(999));
+        assert_eq!(hash1, Some(root2));
+    }
+
+    #[rstest::rstest]
+    #[case::binary(StoredNode::Binary {
+        left: 12, right: 34
+    })]
+    #[case::edge(StoredNode::Edge { 
+        child: 123, 
+        path: bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1] 
+    })]
+    #[case::binary(StoredNode::LeafBinary { 
+        left: felt_bytes!(b"left"), right: felt_bytes!(b"right") 
+    })]
+    #[case::binary(StoredNode::LeafEdge { 
+        child: felt_bytes!(b"child"), path: 
+        bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1] 
+    })]
+    #[case::edge_max_path(StoredNode::Edge { 
+        child: 123, 
+        path: bitvec::bitvec![u8, Msb0; 1; 251] 
+    })]
+    #[case::edge_min_path(StoredNode::Edge { 
+        child: 123, 
+        path: bitvec::bitvec![u8, Msb0; 0] 
+    })]
+    fn serde(#[case] node: StoredNode) {
+        let mut buffer = vec![0; 256];
+        let length = node.encode(&mut buffer).unwrap();
+        let result = StoredNode::decode(&buffer[..length]).unwrap();
+
+        assert_eq!(result, node);
+    }
+
+    mod trie_fns {
+        use super::*;
+        macros::create_trie_fns!(test_table);
+
+        fn setup_db() -> rusqlite::Connection {
+            let db = rusqlite::Connection::open_in_memory().unwrap();
+            db.execute(
+                "CREATE TABLE test_table (idx INTEGER PRIMARY KEY,hash BLOB NOT NULL,data BLOB) ",
+                [],
+            )
             .unwrap();
 
-        // We expect inserts for the root, left and right children, edge and duplicate node.
-        assert_eq!(count, 5);
-        assert_eq!(count, db_count);
+            db
+        }
 
-        // Inserting the same trie again should do nothing
-        let count = insert_test(&tx, root, &nodes).unwrap();
-        assert_eq!(count, 0);
+        mod missing_child_is_error {
+            use super::*;
 
-        let tx = Transaction::from_inner(tx);
+            #[test]
+            fn root() {
+                let mut db = setup_db();
+                let tx = db.transaction().unwrap();
+                let tx = crate::Transaction::from_inner(tx);
 
-        let reader = TestTrieReader::new(&tx);
+                test_table::insert(&tx, felt_bytes!(b"missing"), &HashMap::new()).unwrap_err();
+            }
 
-        let root = reader.get(&root).unwrap().unwrap();
-        assert_eq!(root, root_node);
-        let l_child = reader.get(&l_child).unwrap().unwrap();
-        assert_eq!(l_child, l_node);
-        let r_child = reader.get(&r_child).unwrap().unwrap();
-        assert_eq!(r_child, r_node);
-        let edge = reader.get(&edge).unwrap().unwrap();
-        assert_eq!(edge, edge_node);
-        let duplicate = reader.get(&duplicate).unwrap().unwrap();
-        assert_eq!(duplicate, duplicate_node);
+            #[test]
+            fn binary() {
+                let mut db = setup_db();
+                let tx = db.transaction().unwrap();
+                let tx = crate::Transaction::from_inner(tx);
 
-        let leaf_1 = reader.get(&leaf_1).unwrap();
-        assert!(leaf_1.is_none());
-        let leaf_2 = reader.get(&leaf_2).unwrap();
-        assert!(leaf_2.is_none());
+                let root = felt_bytes!(b"root");
+                let mut nodes = HashMap::new();
+                nodes.insert(
+                    root,
+                    Node::Binary {
+                        left: Child::Hash(felt_bytes!(b"missing")),
+                        right: Child::Hash(felt_bytes!(b"exists")),
+                    },
+                );
+                nodes.insert(
+                    felt_bytes!(b"exists"),
+                    Node::Edge {
+                        child: Child::Hash(felt_bytes!(b"leaf")),
+                        path: bitvec::bitvec![u8, Msb0; 251; 1],
+                    },
+                );
+
+                test_table::insert(&tx, root, &nodes).unwrap_err();
+            }
+
+            #[test]
+            fn edge() {
+                let mut db = setup_db();
+                let tx = db.transaction().unwrap();
+                let tx = crate::Transaction::from_inner(tx);
+
+                let root = felt_bytes!(b"root");
+                let mut nodes = HashMap::new();
+                nodes.insert(
+                    root,
+                    Node::Edge {
+                        child: Child::Hash(felt_bytes!(b"missing")),
+                        path: bitvec::bitvec![u8, Msb0; 251; 1],
+                    },
+                );
+
+                test_table::insert(&tx, root, &nodes).unwrap_err();
+            }
+        }
+
+        #[test]
+        fn one_of_each_node() {
+            // Create an (unrealistic) tree containing each of the node types and ensure
+            // the tree and its hashes are retrieved accurately.
+            let mut db = setup_db();
+            let tx = db.transaction().unwrap();
+            let tx = crate::Transaction::from_inner(tx);
+
+            let edge_leaf_hash = felt_bytes!(b"edge leaf");
+            let edge_leaf_node = Node::LeafEdge {
+                child: felt_bytes!(b"child 0"),
+                path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1],
+            };
+
+            let binary_leaf_hash = felt_bytes!(b"binary leaf");
+            let binary_leaf_node = Node::LeafBinary {
+                left: felt_bytes!(b"child 1"),
+                right: felt_bytes!(b"child 2"),
+            };
+
+            let edge_hash = felt_bytes!(b"edge");
+            let edge_node = Node::Edge {
+                child: Child::Hash(binary_leaf_hash),
+                path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1],
+            };
+
+            let root_hash = felt_bytes!(b"root");
+            let root_node = Node::Binary {
+                left: Child::Hash(edge_hash),
+                right: Child::Hash(edge_leaf_hash),
+            };
+
+            let mut nodes = HashMap::new();
+            nodes.insert(edge_leaf_hash, edge_leaf_node);
+            nodes.insert(binary_leaf_hash, binary_leaf_node);
+            nodes.insert(edge_hash, edge_node);
+            nodes.insert(root_hash, root_node);
+
+            let root_idx = test_table::insert(&tx, root_hash, &nodes).unwrap();
+
+            // Root node
+            let hash = test_table::hash(&tx, root_idx).unwrap();
+            assert_eq!(hash, Some(root_hash));
+            let node = test_table::node(&tx, root_idx).unwrap().unwrap();
+            let (left, right) = node.as_binary().unwrap();
+
+            // Right child is the edge leaf
+            let hash = test_table::hash(&tx, right).unwrap();
+            assert_eq!(hash, Some(edge_leaf_hash));
+            let node = test_table::node(&tx, right).unwrap().unwrap();
+            let (child, path) = node.as_edge_leaf().unwrap();
+            assert_eq!(child, felt_bytes!(b"child 0"));
+            assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1]);
+
+            // Left child is the edge node
+            let hash = test_table::hash(&tx, left).unwrap();
+            assert_eq!(hash, Some(edge_hash));
+            let node = test_table::node(&tx, left).unwrap().unwrap();
+            let (child, path) = node.as_edge().unwrap();
+            assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1]);
+
+            // Edge's child is the binary leaf
+            let hash = test_table::hash(&tx, child).unwrap();
+            assert_eq!(hash, Some(binary_leaf_hash));
+            let node = test_table::node(&tx, child).unwrap().unwrap();
+            let (left, right) = node.as_binary_leaf().unwrap();
+            assert_eq!(left, felt_bytes!(b"child 1"));
+            assert_eq!(right, felt_bytes!(b"child 2"));
+        }
+
+        #[test]
+        fn index_children() {
+            // Insert nodes which use indices as children instead of hashes.
+            // The indices don't actually need to point to real nodes since this
+            // isn't enforced within the db.
+            let mut db = setup_db();
+            let tx = db.transaction().unwrap();
+            let tx = crate::Transaction::from_inner(tx);
+
+            let edge_hash = felt_bytes!(b"edge");
+            let edge_node = Node::Edge {
+                child: Child::Id(123),
+                path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1],
+            };
+
+            let binary_hash0 = felt_bytes!(b"binary");
+            let binary_node0 = Node::Binary { left: Child::Id(456), right: Child::Id(777) };
+
+            let root_hash = felt_bytes!(b"root");
+            let root_node = Node::Binary { left: Child::Hash(edge_hash), right: Child::Hash(binary_hash0) };
+
+            let mut nodes = HashMap::new();
+            nodes.insert(edge_hash, edge_node);
+            nodes.insert(binary_hash0, binary_node0);
+            nodes.insert(root_hash, root_node);
+
+            let root_idx = test_table::insert(&tx, root_hash, &nodes).unwrap();
+
+            // Root node
+            let hash = test_table::hash(&tx, root_idx).unwrap();
+            assert_eq!(hash, Some(root_hash));
+            let node = test_table::node(&tx, root_idx).unwrap().unwrap();
+            let (left, right) = node.as_binary().unwrap();
+
+            // Right child is the binary node
+            let hash = test_table::hash(&tx, right).unwrap();
+            assert_eq!(hash, Some(binary_hash0));
+            let node = test_table::node(&tx, right).unwrap().unwrap();
+            let children = node.as_binary().unwrap();
+            assert_eq!(children, (456, 777));
+
+            // Left child is the edge node
+            let hash = test_table::hash(&tx, left).unwrap();
+            assert_eq!(hash, Some(edge_hash));
+            let node = test_table::node(&tx, left).unwrap().unwrap();
+            let (child, path) = node.as_edge().unwrap();
+            assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1]);
+            assert_eq!(child, 123);
+        }
     }
 }
