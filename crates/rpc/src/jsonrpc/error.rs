@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use serde::Serialize;
+use serde_json::{Number, Value};
 
 #[derive(Debug)]
 pub enum RpcError {
@@ -9,7 +10,14 @@ pub enum RpcError {
     MethodNotFound,
     InvalidParams,
     InternalError(anyhow::Error),
-    ApplicationError { code: i32, message: String },
+    ApplicationError {
+        code: i32,
+        message: String,
+    },
+    WebsocketSubscriptionClosed {
+        subscription_id: u32,
+        reason: String,
+    },
 }
 
 impl PartialEq for RpcError {
@@ -41,6 +49,7 @@ impl RpcError {
             RpcError::InvalidParams => -32602,
             RpcError::InternalError(_) => -32603,
             RpcError::ApplicationError { code, .. } => *code,
+            RpcError::WebsocketSubscriptionClosed { .. } => -32099,
         }
     }
 
@@ -54,6 +63,18 @@ impl RpcError {
             // ones that we probably should not disclose.
             RpcError::InternalError(e) => e.to_string().into(),
             RpcError::ApplicationError { message, .. } => message.into(),
+            RpcError::WebsocketSubscriptionClosed { reason, .. } => {
+                ("Websocket subscription closed, reason: ".to_string() + reason).into()
+            }
+        }
+    }
+
+    pub fn data(&self) -> Option<Value> {
+        match self {
+            RpcError::WebsocketSubscriptionClosed {
+                subscription_id, ..
+            } => Some(Value::Number(Number::from(*subscription_id))),
+            _ => None,
         }
     }
 }
@@ -68,6 +89,11 @@ impl Serialize for RpcError {
         let mut obj = serializer.serialize_map(Some(2))?;
         obj.serialize_entry("code", &self.code())?;
         obj.serialize_entry("message", &self.message())?;
+
+        if let Some(data) = self.data() {
+            obj.serialize_entry("data", &data)?;
+        }
+
         obj.end()
     }
 }
