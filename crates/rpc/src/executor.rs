@@ -304,6 +304,41 @@ pub(crate) fn map_broadcasted_transaction(
             }
         },
         BroadcastedTransaction::Invoke(tx) => match tx {
+            crate::v02::types::request::BroadcastedInvokeTransaction::V0(tx) => {
+                let transaction_hash = transaction.transaction_hash(chain_id, None);
+
+                let tx = starknet_api::transaction::InvokeTransactionV0 {
+                    // TODO: maybe we should store tx.max_fee as u128 internally?
+                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                        tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
+                    )),
+                    signature: starknet_api::transaction::TransactionSignature(
+                        tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
+                    ),
+                    contract_address: starknet_api::core::ContractAddress(
+                        PatriciaKey::try_from(tx.contract_address.get().into_starkfelt())
+                            .expect("No sender address overflow expected"),
+                    ),
+                    entry_point_selector: starknet_api::core::EntryPointSelector(
+                        tx.entry_point_selector.0.into_starkfelt(),
+                    ),
+                    calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                        tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
+                    )),
+                };
+
+                let tx = pathfinder_executor::Transaction::from_api(
+                    starknet_api::transaction::Transaction::Invoke(
+                        starknet_api::transaction::InvokeTransaction::V0(tx),
+                    ),
+                    starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
+                    None,
+                    None,
+                    None,
+                )?;
+
+                Ok(tx)
+            }
             crate::v02::types::request::BroadcastedInvokeTransaction::V1(tx) => {
                 let transaction_hash = transaction.transaction_hash(chain_id, None);
 

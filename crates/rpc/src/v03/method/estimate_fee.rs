@@ -186,7 +186,7 @@ pub(crate) mod tests {
 
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
-            BroadcastedInvokeTransactionV1,
+            BroadcastedInvokeTransactionV0, BroadcastedInvokeTransactionV1,
         };
         use crate::v02::types::{ContractClass, SierraContractClass};
 
@@ -270,8 +270,26 @@ pub(crate) mod tests {
                 }),
             );
 
+            let invoke_v0_transaction = BroadcastedTransaction::Invoke(
+                BroadcastedInvokeTransaction::V0(BroadcastedInvokeTransactionV0 {
+                    version: TransactionVersion::ONE,
+                    max_fee,
+                    signature: vec![],
+                    contract_address: contract_address!(
+                        "0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7"
+                    ),
+                    entry_point_selector: EntryPoint::hashed(b"get_data"),
+                    calldata: vec![],
+                }),
+            );
+
             let input = EstimateFeeInput {
-                request: vec![declare_transaction, deploy_transaction, invoke_transaction],
+                request: vec![
+                    declare_transaction,
+                    deploy_transaction,
+                    invoke_transaction,
+                    invoke_v0_transaction,
+                ],
                 block_id: BlockId::Number(last_block_header.number),
             };
             let result = estimate_fee(context, input).await.unwrap();
@@ -290,9 +308,19 @@ pub(crate) mod tests {
                 gas_price: 1.into(),
                 overall_fee: 2491.into(),
             };
+            let invoke_v0_expected = FeeEstimate {
+                gas_consumed: 1260.into(),
+                gas_price: 1.into(),
+                overall_fee: 1260 .into(),
+            };
             assert_eq!(
                 result,
-                vec![declare_expected, deploy_expected, invoke_expected]
+                vec![
+                    declare_expected,
+                    deploy_expected,
+                    invoke_expected,
+                    invoke_v0_expected
+                ]
             );
         }
     }

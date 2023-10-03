@@ -127,7 +127,7 @@ pub(crate) mod tests {
     };
     use starknet_gateway_types::reply::{
         self as gateway,
-        transaction::{ExecutionStatus, Receipt},
+        transaction::{EntryPointType, ExecutionStatus, Receipt},
     };
 
     use super::*;
@@ -208,6 +208,24 @@ pub(crate) mod tests {
                             constructor_calldata: deploy.constructor_calldata,
                             class_hash: deploy.class_hash,
                         },
+                    )
+                }
+                crate::v02::types::request::BroadcastedTransaction::Invoke(
+                    crate::v02::types::request::BroadcastedInvokeTransaction::V0(invoke),
+                ) => {
+                    let transaction_hash = invoke.transaction_hash(ChainId(felt!("0x1")));
+                    starknet_gateway_types::reply::transaction::Transaction::Invoke(
+                        gateway::transaction::InvokeTransaction::V0(
+                            gateway::transaction::InvokeTransactionV0 {
+                                calldata: invoke.calldata,
+                                sender_address: invoke.contract_address,
+                                entry_point_type: Some(EntryPointType::External),
+                                entry_point_selector: invoke.entry_point_selector,
+                                max_fee: invoke.max_fee,
+                                signature: invoke.signature,
+                                transaction_hash,
+                            },
+                        ),
                     )
                 }
                 crate::v02::types::request::BroadcastedTransaction::Invoke(

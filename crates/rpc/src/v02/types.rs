@@ -79,6 +79,7 @@ pub mod request {
                     }
                 }
                 BroadcastedTransaction::Invoke(tx) => match tx {
+                    BroadcastedInvokeTransaction::V0(tx) => tx.transaction_hash(chain_id),
                     BroadcastedInvokeTransaction::V1(tx) => tx.transaction_hash(chain_id),
                 },
                 BroadcastedTransaction::DeployAccount(tx) => tx.transaction_hash(chain_id),
@@ -347,6 +348,7 @@ pub mod request {
         serde(untagged)
     )]
     pub enum BroadcastedInvokeTransaction {
+        V0(BroadcastedInvokeTransactionV0),
         V1(BroadcastedInvokeTransactionV1),
     }
 
@@ -354,6 +356,14 @@ pub mod request {
         pub fn into_v1(self) -> Option<BroadcastedInvokeTransactionV1> {
             match self {
                 Self::V1(x) => Some(x),
+                _ => None,
+            }
+        }
+
+        pub fn into_v0(self) -> Option<BroadcastedInvokeTransactionV0> {
+            match self {
+                Self::V0(x) => Some(x),
+                _ => None,
             }
         }
     }
@@ -375,11 +385,57 @@ pub mod request {
             let v = serde_json::Value::deserialize(deserializer)?;
             let version = Version::deserialize(&v).map_err(de::Error::custom)?;
             match version.version.without_query_version() {
+                0 => Ok(Self::V0(
+                    BroadcastedInvokeTransactionV0::deserialize(&v).map_err(de::Error::custom)?,
+                )),
                 1 => Ok(Self::V1(
                     BroadcastedInvokeTransactionV1::deserialize(&v).map_err(de::Error::custom)?,
                 )),
-                _ => Err(de::Error::custom("version must be 1")),
+                _ => Err(de::Error::custom("version must be 0 or 1")),
             }
+        }
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Serialize))]
+    #[serde(deny_unknown_fields)]
+    pub struct BroadcastedInvokeTransactionV0 {
+        #[serde_as(as = "TransactionVersionAsHexStr")]
+        pub version: TransactionVersion,
+
+        // BROADCASTED_TXN_COMMON_PROPERTIES: ideally this should just be included
+        // here in a flattened struct, but `flatten` doesn't work with
+        // `deny_unknown_fields`: https://serde.rs/attr-flatten.html#struct-flattening
+        pub max_fee: Fee,
+        pub signature: Vec<TransactionSignatureElem>,
+
+        pub contract_address: ContractAddress,
+        pub entry_point_selector: EntryPoint,
+        pub calldata: Vec<CallParam>,
+    }
+
+    impl BroadcastedInvokeTransactionV0 {
+        pub fn transaction_hash(&self, chain_id: ChainId) -> TransactionHash {
+            compute_txn_hash(
+                b"invoke",
+                self.version,
+                self.contract_address,
+                Some(self.entry_point_selector),
+                {
+                    self.calldata
+                        .iter()
+                        .fold(HashChain::default(), |mut hh, call_param| {
+                            hh.update(call_param.0);
+                            hh
+                        })
+                        .finalize()
+                },
+                Some(self.max_fee),
+                chain_id,
+                (),
+                None,
+            )
         }
     }
 
