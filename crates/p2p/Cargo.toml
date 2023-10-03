@@ -30,7 +30,7 @@ libp2p = { version = "0.51.3", default-features = false, features = [
 ] }
 p2p_proto_v0 = { path = "../p2p_proto_v0" }
 pathfinder-common = { path = "../common" }
-prost = "0.11.9"
+prost = "0.12.1"
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

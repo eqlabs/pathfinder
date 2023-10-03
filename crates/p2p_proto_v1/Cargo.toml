@@ -1,5 +1,5 @@
 [package]
-name = "p2p_proto"
+name = "p2p_proto_v1"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -10,10 +10,13 @@ fake = { workspace = true }
 libp2p-identity = { version = "0.2.2", features = ["peerid"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 primitive-types = { workspace = true }
-prost = "0.11.9"
-prost-types = "0.11.9"
+prost = "0.12.1"
+prost-types = "0.12.1"
 rand = { workspace = true }
 stark_hash = { path = "../stark_hash" }
 
+[dev-dependencies]
+rstest = "0.18.2"
+
 [build-dependencies]
-prost-build = "0.11.9"
+prost-build = "0.12.1"

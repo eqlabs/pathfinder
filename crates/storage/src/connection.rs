@@ -242,6 +242,15 @@ impl<'inner> Transaction<'inner> {
         class::class_definition(self, class_hash)
     }
 
+    /// Returns the compressed class definition if it has been declared at `block_id`.
+    pub fn compressed_class_definition_at(
+        &self,
+        block_id: BlockId,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        class::compressed_class_definition_at(self, block_id, class_hash)
+    }
+
     /// Returns the uncompressed class definition if it has been declared at `block_id`.
     pub fn class_definition_at(
         &self,

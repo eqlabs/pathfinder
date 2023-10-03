@@ -9,10 +9,10 @@ build = "build.rs"
 fake = { version = "2.5.0", features = ["derive"] }
 p2p_proto_derive = { path = "../p2p_proto_derive" }
 primitive-types = "0.12.1"
-prost = "0.11.0"
+prost = "0.12.1"
 rand = { version = "0.8.5" }
 stark_hash = { path = "../stark_hash" }
 zstd = "0.12.0"
 
 [build-dependencies]
-prost-build = "0.11.0"
+prost-build = "0.12.1"
