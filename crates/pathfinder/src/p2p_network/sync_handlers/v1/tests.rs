@@ -222,7 +222,7 @@ mod boundary_conditions {
                 .unwrap();
 
             let BlockHeadersResponse { parts } = rx.recv().await.unwrap();
-            // 10 x [header + Fin::ok()]
+            // parts[0..20] are 10 x [header + Fin::ok()]
             // Expect Fin::too_much() if all requested items were found up to the internal limit
             assert_matches!(&parts[NUM_BLOCKS_IN_STORAGE as usize * 2], BlockHeadersResponsePart::Fin(f) => assert_eq!(f, &Fin::too_much()));
             assert_eq!(parts.len(), NUM_BLOCKS_IN_STORAGE as usize * 2 + 1);
@@ -239,6 +239,7 @@ mod boundary_conditions {
                 BlockBodiesRequest { iteration },
                 tx,
             ));
+            // 10 x [Diff, Classes*, Fin::ok()]
             for _ in 0..NUM_BLOCKS_IN_STORAGE {
                 rx.recv().await.unwrap(); // Diff
                 match rx.recv().await.unwrap().body_message {
@@ -324,8 +325,8 @@ mod prop {
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let BlockHeadersResponse { parts } = blocking::get_headers(tx, request).unwrap();
-            // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start is tested in `empty_reply::`
+            // Empty reply in the test is only possible if the request does not overlap with storage
+            // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
                 prop_assert_eq!(parts.len(), 1);
                 prop_assert_eq!(parts[0].clone().into_fin().unwrap(), Fin::unknown());
@@ -363,7 +364,7 @@ mod prop {
             let request = BlockBodiesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = blocking::get_bodies(tx, request).unwrap();
             // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start is tested in `empty_reply::`
+            // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
                 prop_assert_eq!(replies.len(), 1);
                 prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
@@ -454,12 +455,12 @@ mod prop {
             let request = TransactionsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = blocking::get_transactions(tx, request).unwrap();
             // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start is tested in `empty_reply::`
+            // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
                 prop_assert_eq!(replies.len(), 1);
                 prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
-                // Group replies by block, fake storage creates transactions per block small enough to fit under the 1MiB limit
+                // Group replies by block, it is assumed that transactions per block are small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[transactions-0, fin-0], [transactions-1, fin-1], ...]
                 let actual = replies.chunks_exact(2).map(|replies | {
                     assert_eq!(replies[0].id, replies[1].id);
@@ -501,12 +502,12 @@ mod prop {
             let request = ReceiptsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = blocking::get_receipts(tx, request).unwrap();
             // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start is tested in `empty_reply::`
+            // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
                 prop_assert_eq!(replies.len(), 1);
                 prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
-                // Group replies by block, fake storage creates receipts per block small enough to fit under the 1MiB limit
+                // Group replies by block, it is assumed that receipts per block small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[receipts-0, fin-0], [receipts-1, fin-1], ...]
                 let actual = replies.chunks_exact(2).map(|replies | {
                     assert_eq!(replies[0].id, replies[1].id);
@@ -549,12 +550,12 @@ mod prop {
             let request = EventsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let replies = blocking::get_events(tx, request).unwrap();
             // Empty reply is only possible if the request does not overlap with storage
-            // Invalid start is tested in `empty_reply::`
+            // Invalid start and zero limit are tested in boundary_conditions::
             if expected.is_empty() {
                 prop_assert_eq!(replies.len(), 1);
                 prop_assert_eq!(replies[0].clone().into_fin().unwrap(), Fin::unknown());
             } else {
-                // Group replies by block, fake storage creates events per block small enough to fit under the 1MiB limit
+                // Group replies by block, it is assumed that events per block small enough to fit under the 1MiB limit
                 // This means that there are 2 replies per block: [[events-0, fin-0], [events-1, fin-1], ...]
                 let actual = replies.chunks_exact(2).map(|replies | {
                     assert_eq!(replies[0].id, replies[1].id);
@@ -657,9 +658,8 @@ mod prop {
 
     /// Building blocks for the ultimate composite strategy used in all property tests
     mod strategy {
-        use crate::p2p_network::sync_handlers::v1::tests::I64_MAX;
-
         use super::fixtures::MAX_NUM_BLOCKS;
+        use crate::p2p_network::sync_handlers::v1::tests::I64_MAX;
         use p2p_proto_v1::common::{Direction, Step};
         use proptest::prelude::*;
         use std::ops::Range;
