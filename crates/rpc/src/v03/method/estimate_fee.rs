@@ -99,7 +99,6 @@ pub(crate) mod tests {
         felt, BlockHash, CallParam, ContractAddress, Fee, TransactionNonce,
         TransactionSignatureElem, TransactionVersion,
     };
-    use stark_hash::Felt;
 
     mod parsing {
         use super::*;
@@ -210,7 +209,7 @@ pub(crate) mod tests {
 
             assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
 
-            let max_fee = Fee(Felt::from_u64(10_000_000));
+            let max_fee = Fee::default();
 
             // declare test class
             let declare_transaction = BroadcastedTransaction::Declare(
@@ -270,6 +269,7 @@ pub(crate) mod tests {
                 }),
             );
 
+            // do the same invoke with a v0 transaction
             let invoke_v0_transaction = BroadcastedTransaction::Invoke(
                 BroadcastedInvokeTransaction::V0(BroadcastedInvokeTransactionV0 {
                     version: TransactionVersion::ONE,
@@ -311,7 +311,7 @@ pub(crate) mod tests {
             let invoke_v0_expected = FeeEstimate {
                 gas_consumed: 1260.into(),
                 gas_price: 1.into(),
-                overall_fee: 1260 .into(),
+                overall_fee: 1260.into(),
             };
             assert_eq!(
                 result,
