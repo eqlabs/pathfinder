@@ -30,16 +30,6 @@ fn get_next_block_number(
     );
 }
 
-mod todo {
-    #[ignore]
-    #[test]
-    fn batching_works_correctly_for_transactions_receipts_events() {
-        todo!("add tests for transactions, receipts and events which checks if batching works correctly and none of the messages exceed 1MiB")
-        // Headers are always batched in a single response
-        // Body batching is already done in the classes test
-    }
-}
-
 mod boundary_conditions {
     use super::I64_MAX;
     use crate::p2p_network::sync_handlers::v1::{self, MAX_COUNT_IN_TESTS};
