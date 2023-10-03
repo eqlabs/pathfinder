@@ -70,8 +70,27 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(&self, key: &BitSlice<u8, Msb0>) -> anyhow::Result<Vec<TrieNode>> {
-        self.tree.get_proof(&self.storage, key)
+    pub fn get_proof(
+        tx: &'tx Transaction<'tx>,
+        contract: ContractAddress,
+        block: BlockNumber,
+        key: &BitSlice<u8, Msb0>,
+    ) -> anyhow::Result<Vec<TrieNode>> {
+        let root = tx
+            .contract_root_index(block, contract)
+            .context("Querying contract root index")?;
+
+        let Some(root) = root else {
+            return Ok(Vec::new());
+        };
+
+        let storage = ContractStorage {
+            tx,
+            block: Some(block),
+            contract,
+        };
+
+        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, key)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -155,8 +174,25 @@ impl<'tx> StorageCommitmentTree<'tx> {
     }
 
     /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(&mut self, address: &ContractAddress) -> anyhow::Result<Vec<TrieNode>> {
-        self.tree.get_proof(&self.storage, address.view_bits())
+    pub fn get_proof(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        address: &ContractAddress,
+    ) -> anyhow::Result<Vec<TrieNode>> {
+        let root = tx
+            .storage_root_index(block)
+            .context("Querying storage root index")?;
+
+        let Some(root) = root else {
+            return Ok(Vec::new());
+        };
+
+        let storage = StorageTrieStorage {
+            tx,
+            block: Some(block),
+        };
+
+        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, address.view_bits())
     }
 
     /// See [`MerkleTree::dfs`]
