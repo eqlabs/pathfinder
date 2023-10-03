@@ -22,8 +22,8 @@ pub enum InternalNode {
     Binary(BinaryNode),
     /// Describes a path connecting two other nodes.
     Edge(EdgeNode),
-    /// A leaf node that contains a value.
-    Leaf(Felt),
+    /// A leaf node.
+    Leaf,
 }
 
 /// Describes the [InternalNode::Binary] variant.
@@ -135,7 +135,7 @@ impl InternalNode {
     }
 
     pub fn is_leaf(&self) -> bool {
-        matches!(self, InternalNode::Leaf(_))
+        matches!(self, InternalNode::Leaf)
     }
 }
 
@@ -210,8 +210,8 @@ mod tests {
         fn direction() {
             let uut = BinaryNode {
                 height: 1,
-                left: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc")))),
-                right: Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef")))),
+                left: Rc::new(RefCell::new(InternalNode::Unresolved(1))),
+                right: Rc::new(RefCell::new(InternalNode::Unresolved(2))),
             };
 
             let mut zero_key = bitvec![u8, Msb0; 1; 251];
@@ -229,8 +229,8 @@ mod tests {
 
         #[test]
         fn get_child() {
-            let left = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
-            let right = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xdef"))));
+            let left = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
+            let right = Rc::new(RefCell::new(InternalNode::Unresolved(2)));
 
             let uut = BinaryNode {
                 height: 1,
@@ -293,7 +293,7 @@ mod tests {
             #[test]
             fn full() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
 
                 let uut = EdgeNode {
                     height: 0,
@@ -307,7 +307,7 @@ mod tests {
             #[test]
             fn prefix() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
 
                 let path = key.view_bits()[..45].to_bitvec();
 
@@ -323,7 +323,7 @@ mod tests {
             #[test]
             fn suffix() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
 
                 let path = key.view_bits()[50..].to_bitvec();
 
@@ -339,7 +339,7 @@ mod tests {
             #[test]
             fn middle_slice() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Leaf(felt!("0xabc"))));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
 
                 let path = key.view_bits()[230..235].to_bitvec();
 

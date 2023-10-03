@@ -5,7 +5,6 @@ mod class;
 mod ethereum;
 mod event;
 mod reference;
-mod state;
 mod state_update;
 mod transaction;
 mod trie;
@@ -66,25 +65,21 @@ impl<'inner> Transaction<'inner> {
         Self(tx)
     }
 
-    // TODO: get rid of this in favor of storing contract roots in a separate table similar to
-    //       nonces and storage updates. This would remove the last reliance on navigating the
-    //       global trie -- since this is required to retrieve the state hash, and thereby the
-    //       contract root.
-    pub fn contract_state(
+    pub fn insert_contract_state_hash(
         &self,
+        block_number: BlockNumber,
+        contract: ContractAddress,
         state_hash: ContractStateHash,
-    ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
-        state::contract_state(self, state_hash)
+    ) -> anyhow::Result<()> {
+        trie::insert_contract_state_hash(self, block_number, contract, state_hash)
     }
 
-    pub fn insert_contract_state(
+    pub fn contract_state_hash(
         &self,
-        state_hash: ContractStateHash,
-        class_hash: ClassHash,
-        root: ContractRoot,
-        nonce: ContractNonce,
-    ) -> anyhow::Result<()> {
-        state::insert_contract_state(self, state_hash, class_hash, root, nonce)
+        block: BlockNumber,
+        contract: ContractAddress,
+    ) -> anyhow::Result<Option<ContractStateHash>> {
+        trie::contract_state_hash(self, block, contract)
     }
 
     pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
@@ -224,10 +219,19 @@ impl<'inner> Transaction<'inner> {
 
     pub fn insert_class_commitment_leaf(
         &self,
+        block: BlockNumber,
         leaf: &ClassCommitmentLeafHash,
         casm_hash: &CasmHash,
     ) -> anyhow::Result<()> {
-        class::insert_class_commitment_leaf(self, leaf, casm_hash)
+        class::insert_class_commitment_leaf(self, block, leaf, casm_hash)
+    }
+
+    pub fn class_commitment_leaf(
+        &self,
+        block: BlockNumber,
+        casm_hash: &CasmHash,
+    ) -> anyhow::Result<Option<ClassCommitmentLeafHash>> {
+        class::class_commitment_leaf(self, block, casm_hash)
     }
 
     /// Returns whether the Sierra or Cairo class definition exists in the database.

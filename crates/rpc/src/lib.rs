@@ -268,8 +268,6 @@ pub mod test_utils {
         let contract0_update = HashMap::new();
 
         let storage_addr = storage_address_bytes!(b"storage addr 0");
-        let contract1_update0 =
-            HashMap::from([(storage_addr, storage_value_bytes!(b"storage value 0"))]);
         let contract1_update1 =
             HashMap::from([(storage_addr, storage_value_bytes!(b"storage value 1"))]);
         let contract1_update2 =
@@ -334,7 +332,8 @@ pub mod test_utils {
             .unwrap();
 
         // Update block 1
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_root_idx);
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, BlockNumber::GENESIS).unwrap();
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
             .unwrap();
@@ -373,7 +372,8 @@ pub mod test_utils {
             .unwrap();
 
         // Update block 2
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&db_txn, storage_root_idx);
+        let mut storage_commitment_tree =
+            StorageCommitmentTree::load(&db_txn, BlockNumber::GENESIS + 1).unwrap();
         let contract_state_hash = update_contract_state(
             contract1_addr,
             &contract1_update2,

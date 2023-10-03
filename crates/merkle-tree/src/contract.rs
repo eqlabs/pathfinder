@@ -7,12 +7,13 @@ use crate::{
     merkle_node::InternalNode,
     tree::{MerkleTree, Visit},
 };
+use anyhow::Context;
 use bitvec::{prelude::Msb0, slice::BitSlice};
 use pathfinder_common::hash::PedersenHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    ContractAddress, ContractRoot, ContractStateHash, StorageAddress, StorageCommitment,
-    StorageValue,
+    BlockNumber, ContractAddress, ContractRoot, ContractStateHash, StorageAddress,
+    StorageCommitment, StorageValue,
 };
 use pathfinder_storage::{Node, Transaction};
 use stark_hash::Felt;
@@ -30,29 +31,42 @@ pub struct ContractsStorageTree<'tx> {
 }
 
 impl<'tx> ContractsStorageTree<'tx> {
-    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
-        let storage = ContractStorage(transaction);
+    pub fn empty(tx: &'tx Transaction<'tx>, contract: ContractAddress) -> Self {
+        let storage = ContractStorage {
+            tx,
+            block: None,
+            contract,
+        };
         let tree = MerkleTree::empty();
 
         Self { tree, storage }
     }
 
-    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
-        let storage = ContractStorage(transaction);
+    pub fn load(
+        tx: &'tx Transaction<'tx>,
+        contract: ContractAddress,
+        block: BlockNumber,
+    ) -> anyhow::Result<Self> {
+        let root = tx
+            .contract_root_index(block, contract)
+            .context("Querying contract root index")?;
+        let Some(root) = root else {
+            return Ok(Self::empty(tx, contract));
+        };
+
+        let storage = ContractStorage {
+            tx,
+            block: Some(block),
+            contract,
+        };
         let tree = MerkleTree::new(root);
 
-        Self { tree, storage }
+        Ok(Self { tree, storage })
     }
 
     pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
         self.tree = self.tree.with_verify_hashes(verify_hashes);
         self
-    }
-
-    #[allow(dead_code)]
-    pub fn get(&self, address: StorageAddress) -> anyhow::Result<Option<StorageValue>> {
-        let value = self.tree.get(&self.storage, address.view_bits())?;
-        Ok(value.map(StorageValue))
     }
 
     /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
@@ -61,7 +75,8 @@ impl<'tx> ContractsStorageTree<'tx> {
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
-        self.tree.set(&self.storage, address.view_bits(), value.0)
+        let key = address.view_bits().to_owned();
+        self.tree.set(&self.storage, key, value.0)
     }
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
@@ -92,18 +107,29 @@ pub struct StorageCommitmentTree<'tx> {
 }
 
 impl<'tx> StorageCommitmentTree<'tx> {
-    pub fn empty(transaction: &'tx Transaction<'tx>) -> Self {
-        let storage = StorageTrieStorage(transaction);
+    pub fn empty(tx: &'tx Transaction<'tx>) -> Self {
+        let storage = StorageTrieStorage { tx, block: None };
         let tree = MerkleTree::empty();
 
         Self { tree, storage }
     }
 
-    pub fn load(transaction: &'tx Transaction<'tx>, root: u32) -> Self {
-        let storage = StorageTrieStorage(transaction);
+    pub fn load(tx: &'tx Transaction<'tx>, block: BlockNumber) -> anyhow::Result<Self> {
+        let root = tx
+            .storage_root_index(block)
+            .context("Querying storage root index")?;
+        let Some(root) = root else {
+            return Ok(Self::empty(tx));
+        };
+
+        let storage = StorageTrieStorage {
+            tx,
+            block: Some(block),
+        };
+
         let tree = MerkleTree::new(root);
 
-        Self { tree, storage }
+        Ok(Self { tree, storage })
     }
 
     pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
@@ -111,17 +137,13 @@ impl<'tx> StorageCommitmentTree<'tx> {
         self
     }
 
-    pub fn get(&self, address: ContractAddress) -> anyhow::Result<Option<ContractStateHash>> {
-        let value = self.tree.get(&self.storage, address.view_bits())?;
-        Ok(value.map(ContractStateHash))
-    }
-
     pub fn set(
         &mut self,
         address: ContractAddress,
         value: ContractStateHash,
     ) -> anyhow::Result<()> {
-        self.tree.set(&self.storage, address.view_bits(), value.0)
+        let key = address.view_bits().to_owned();
+        self.tree.set(&self.storage, key, value.0)
     }
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
@@ -146,26 +168,67 @@ impl<'tx> StorageCommitmentTree<'tx> {
     }
 }
 
-struct ContractStorage<'tx>(&'tx Transaction<'tx>);
+struct ContractStorage<'tx> {
+    tx: &'tx Transaction<'tx>,
+    block: Option<BlockNumber>,
+    contract: ContractAddress,
+}
 
 impl crate::storage::Storage for ContractStorage<'_> {
     fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
-        self.0.contract_trie_node(index)
+        self.tx.contract_trie_node(index)
     }
 
     fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
-        self.0.contract_trie_node_hash(index)
+        self.tx.contract_trie_node_hash(index)
+    }
+
+    fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
+        assert!(path.len() == 251);
+
+        let Some(block) = self.block else {
+            return Ok(None);
+        };
+
+        let key =
+            StorageAddress(Felt::from_bits(path).context("Mapping leaf path to storage address")?);
+
+        let value = self
+            .tx
+            .storage_value(block.into(), self.contract, key)?
+            .map(|x| x.0);
+
+        Ok(value)
     }
 }
 
-struct StorageTrieStorage<'tx>(&'tx Transaction<'tx>);
+struct StorageTrieStorage<'tx> {
+    tx: &'tx Transaction<'tx>,
+    block: Option<BlockNumber>,
+}
 
 impl crate::storage::Storage for StorageTrieStorage<'_> {
     fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
-        self.0.storage_trie_node(index)
+        self.tx.storage_trie_node(index)
     }
 
     fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
-        self.0.storage_trie_node_hash(index)
+        self.tx.storage_trie_node_hash(index)
+    }
+
+    fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
+        assert!(path.len() == 251);
+
+        let Some(block) = self.block else {
+            return Ok(None);
+        };
+
+        let contract = ContractAddress(
+            Felt::from_bits(path).context("Mapping leaf path to contract address")?,
+        );
+
+        let value = self.tx.contract_state_hash(block, contract)?.map(|x| x.0);
+
+        Ok(value)
     }
 }

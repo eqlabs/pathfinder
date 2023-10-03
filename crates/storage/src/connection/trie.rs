@@ -84,6 +84,33 @@ pub(super) fn insert_class_root(
     Ok(())
 }
 
+pub(super) fn insert_contract_state_hash(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    contract: ContractAddress,
+    state_hash: ContractStateHash,
+) -> anyhow::Result<()> {
+    tx.inner().execute("INSERT INTO contract_state_hashes(block_number, contract_address, state_hash) VALUES(?,?,?)", 
+        params![&block_number, &contract, &state_hash])?;
+
+    Ok(())
+}
+
+pub(super) fn contract_state_hash(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    contract: ContractAddress,
+) -> anyhow::Result<Option<ContractStateHash>> {
+    tx.inner()
+        .query_row(
+            "SELECT state_hash FROM contract_state_hashes WHERE contract_address = ? AND block_number <= ? ORDER BY block_number DESC LIMIT 1",
+            params![&contract, &block_number],
+            |row| row.get_contract_state_hash(0),
+        )
+        .optional()
+        .map_err(Into::into)
+}
+
 pub(super) fn insert_storage_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
@@ -253,12 +280,8 @@ pub enum Node {
         child: Child,
         path: BitVec<u8, Msb0>,
     },
-    LeafBinary {
-        left: Felt,
-        right: Felt,
-    },
+    LeafBinary,
     LeafEdge {
-        child: Felt,
         path: BitVec<u8, Msb0>,
     },
 }
@@ -273,16 +296,16 @@ pub enum Child {
 pub enum StoredNode {
     Binary { left: u32, right: u32 },
     Edge { child: u32, path: BitVec<u8, Msb0> },
-    LeafBinary { left: Felt, right: Felt },
-    LeafEdge { child: Felt, path: BitVec<u8, Msb0> },
+    LeafBinary,
+    LeafEdge { path: BitVec<u8, Msb0> },
 }
 
 #[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
-enum StoredSerde<'a> {
+enum StoredSerde {
     Binary { left: u32, right: u32 },
     Edge { child: u32, path: Vec<u8> },
-    LeafBinary { left: &'a [u8], right: &'a [u8] },
-    LeafEdge { child: &'a [u8], path: Vec<u8> },
+    LeafBinary,
+    LeafEdge { path: Vec<u8> },
 }
 
 impl StoredNode {
@@ -308,11 +331,8 @@ impl StoredNode {
                     path,
                 }
             }
-            Self::LeafBinary { left, right } => StoredSerde::LeafBinary {
-                left: left.as_be_bytes(),
-                right: right.as_be_bytes(),
-            },
-            Self::LeafEdge { child, path } => {
+            Self::LeafBinary => StoredSerde::LeafBinary,
+            Self::LeafEdge { path } => {
                 let path_length = path.len() as u8;
 
                 let mut path = path.to_owned();
@@ -320,10 +340,7 @@ impl StoredNode {
                 let mut path = path.into_vec();
                 path.push(path_length);
 
-                StoredSerde::LeafEdge {
-                    child: child.as_be_bytes(),
-                    path,
-                }
+                StoredSerde::LeafEdge { path }
             }
         };
         // Do not use serialize() as this will invoke serialization twice.
@@ -344,19 +361,14 @@ impl StoredNode {
                 path.resize(path_length as usize, false);
                 Self::Edge { child, path }
             }
-            StoredSerde::LeafBinary { left, right } => {
-                let left = Felt::from_be_slice(left).unwrap();
-                let right = Felt::from_be_slice(right).unwrap();
-                Self::LeafBinary { left, right }
-            }
-            StoredSerde::LeafEdge { child, mut path } => {
+            StoredSerde::LeafBinary => Self::LeafBinary,
+            StoredSerde::LeafEdge { mut path } => {
                 let path_length = path.pop().ok_or(bincode::error::DecodeError::Other(
                     "Edge node's path length is missing",
                 ))?;
                 let mut path = bitvec::vec::BitVec::from_vec(path);
                 path.resize(path_length as usize, false);
-                let child = Felt::from_be_slice(child).unwrap();
-                Self::LeafEdge { child, path }
+                Self::LeafEdge { path }
             }
         };
 
@@ -380,16 +392,16 @@ impl StoredNode {
         }
     }
 
-    fn as_binary_leaf(self) -> Option<(Felt, Felt)> {
+    fn as_binary_leaf(self) -> Option<()> {
         match self {
-            Self::LeafBinary { left, right } => Some((left, right)),
+            Self::LeafBinary => Some(()),
             _ => None,
         }
     }
 
-    fn as_edge_leaf(self) -> Option<(Felt, BitVec<u8, Msb0>)> {
+    fn as_edge_leaf(self) -> Option<BitVec<u8, Msb0>> {
         match self {
-            Self::LeafEdge { child, path } => Some((child, path)),
+            Self::LeafEdge { path } => Some(path),
             _ => None,
         }
     }
@@ -428,14 +440,8 @@ impl Node {
                     path: path.clone(),
                 }
             }
-            Node::LeafEdge { child, path } => StoredNode::LeafEdge {
-                child: *child,
-                path: path.clone(),
-            },
-            Node::LeafBinary { left, right } => StoredNode::LeafBinary {
-                left: *left,
-                right: *right,
-            },
+            Node::LeafEdge { path } => StoredNode::LeafEdge { path: path.clone() },
+            Node::LeafBinary => StoredNode::LeafBinary,
         };
 
         Ok(node)
@@ -444,9 +450,8 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{contract_address_bytes, contract_root_bytes, felt_bytes};
-
     use super::*;
+    use pathfinder_common::macro_prelude::*;
 
     #[test]
     fn class_roots() {
@@ -516,10 +521,7 @@ mod tests {
 
         // Simplest trie node setup so we can test the fetching of contract root hashes.
         let root0 = contract_root_bytes!(b"root 0");
-        let root_node = Node::LeafBinary {
-            left: felt_bytes!(b"left"),
-            right: felt_bytes!(b"right"),
-        };
+        let root_node = Node::LeafBinary;
         let mut nodes = HashMap::new();
         nodes.insert(root0.0, root_node.clone());
 
@@ -593,24 +595,21 @@ mod tests {
     #[case::binary(StoredNode::Binary {
         left: 12, right: 34
     })]
-    #[case::edge(StoredNode::Edge { 
-        child: 123, 
-        path: bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1] 
+    #[case::edge(StoredNode::Edge {
+        child: 123,
+        path: bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1]
     })]
-    #[case::binary(StoredNode::LeafBinary { 
-        left: felt_bytes!(b"left"), right: felt_bytes!(b"right") 
+    #[case::binary(StoredNode::LeafBinary)]
+    #[case::binary(StoredNode::LeafEdge {
+        path: bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1]
     })]
-    #[case::binary(StoredNode::LeafEdge { 
-        child: felt_bytes!(b"child"), path: 
-        bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1] 
+    #[case::edge_max_path(StoredNode::Edge {
+        child: 123,
+        path: bitvec::bitvec![u8, Msb0; 1; 251]
     })]
-    #[case::edge_max_path(StoredNode::Edge { 
-        child: 123, 
-        path: bitvec::bitvec![u8, Msb0; 1; 251] 
-    })]
-    #[case::edge_min_path(StoredNode::Edge { 
-        child: 123, 
-        path: bitvec::bitvec![u8, Msb0; 0] 
+    #[case::edge_min_path(StoredNode::Edge {
+        child: 123,
+        path: bitvec::bitvec![u8, Msb0; 0]
     })]
     fn serde(#[case] node: StoredNode) {
         let mut buffer = vec![0; 256];
@@ -703,15 +702,11 @@ mod tests {
 
             let edge_leaf_hash = felt_bytes!(b"edge leaf");
             let edge_leaf_node = Node::LeafEdge {
-                child: felt_bytes!(b"child 0"),
                 path: bitvec::bitvec![u8, Msb0; 1,0,1,1,1],
             };
 
             let binary_leaf_hash = felt_bytes!(b"binary leaf");
-            let binary_leaf_node = Node::LeafBinary {
-                left: felt_bytes!(b"child 1"),
-                right: felt_bytes!(b"child 2"),
-            };
+            let binary_leaf_node = Node::LeafBinary;
 
             let edge_hash = felt_bytes!(b"edge");
             let edge_node = Node::Edge {
@@ -743,8 +738,7 @@ mod tests {
             let hash = test_table::hash(&tx, right).unwrap();
             assert_eq!(hash, Some(edge_leaf_hash));
             let node = test_table::node(&tx, right).unwrap().unwrap();
-            let (child, path) = node.as_edge_leaf().unwrap();
-            assert_eq!(child, felt_bytes!(b"child 0"));
+            let path = node.as_edge_leaf().unwrap();
             assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1]);
 
             // Left child is the edge node
@@ -758,9 +752,7 @@ mod tests {
             let hash = test_table::hash(&tx, child).unwrap();
             assert_eq!(hash, Some(binary_leaf_hash));
             let node = test_table::node(&tx, child).unwrap().unwrap();
-            let (left, right) = node.as_binary_leaf().unwrap();
-            assert_eq!(left, felt_bytes!(b"child 1"));
-            assert_eq!(right, felt_bytes!(b"child 2"));
+            node.as_binary_leaf().unwrap();
         }
 
         #[test]
@@ -818,5 +810,33 @@ mod tests {
             assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1]);
             assert_eq!(child, 123);
         }
+    }
+
+    #[test]
+    fn contract_state_hash() {
+        let mut db = crate::Storage::in_memory().unwrap().connection().unwrap();
+        let tx = db.transaction().unwrap();
+
+        let contract = contract_address_bytes!(b"address");
+        let state_hash = contract_state_hash_bytes!(b"state hash");
+
+        insert_contract_state_hash(&tx, BlockNumber::GENESIS + 2, contract, state_hash).unwrap();
+
+        let result = super::contract_state_hash(&tx, BlockNumber::GENESIS, contract).unwrap();
+        assert!(result.is_none());
+
+        let result = super::contract_state_hash(&tx, BlockNumber::GENESIS + 2, contract).unwrap();
+        assert_eq!(result, Some(state_hash));
+
+        let result = super::contract_state_hash(&tx, BlockNumber::GENESIS + 10, contract).unwrap();
+        assert_eq!(result, Some(state_hash));
+
+        let result = super::contract_state_hash(
+            &tx,
+            BlockNumber::GENESIS + 2,
+            contract_address_bytes!(b"missing"),
+        )
+        .unwrap();
+        assert!(result.is_none());
     }
 }

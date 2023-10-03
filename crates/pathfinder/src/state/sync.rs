@@ -828,15 +828,9 @@ fn update_starknet_state(
     verify_hashes: bool,
     block: BlockNumber,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
-    let storage_root_idx = match block.parent() {
-        Some(parent) => transaction
-            .storage_root_index(parent)
-            .context("Querying storage root index")?,
-        None => None,
-    };
-
-    let mut storage_commitment_tree = match storage_root_idx {
-        Some(idx) => StorageCommitmentTree::load(transaction, idx),
+    let mut storage_commitment_tree = match block.parent() {
+        Some(parent) => StorageCommitmentTree::load(transaction, parent)
+            .context("Loading storage commitment tree")?,
         None => StorageCommitmentTree::empty(transaction),
     }
     .with_verify_hashes(verify_hashes);
@@ -891,15 +885,9 @@ fn update_starknet_state(
     }
 
     // Add new Sierra classes to class commitment tree.
-    let class_root_idx = match block.parent() {
-        Some(parent) => transaction
-            .class_root_index(parent)
-            .context("Querying class root index")?,
-        None => None,
-    };
-
-    let mut class_commitment_tree = match class_root_idx {
-        Some(idx) => ClassCommitmentTree::load(transaction, idx),
+    let mut class_commitment_tree = match block.parent() {
+        Some(parent) => ClassCommitmentTree::load(transaction, parent)
+            .context("Loading class commitment tree")?,
         None => ClassCommitmentTree::empty(transaction),
     }
     .with_verify_hashes(verify_hashes);
@@ -908,7 +896,7 @@ fn update_starknet_state(
         let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(*casm);
 
         transaction
-            .insert_class_commitment_leaf(&leaf_hash, casm)
+            .insert_class_commitment_leaf(block, &leaf_hash, casm)
             .context("Adding class commitment leaf")?;
 
         class_commitment_tree

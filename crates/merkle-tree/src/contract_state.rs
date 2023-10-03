@@ -21,17 +21,11 @@ pub fn update_contract_state(
 ) -> anyhow::Result<ContractStateHash> {
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
-        let root_index = match block.parent() {
-            Some(parent) => transaction
-                .contract_root_index(parent, contract_address)
-                .context("Querying contract root index")?,
-            None => None,
-        };
-
-        let mut contract_tree = match root_index {
-            Some(root_index) => ContractsStorageTree::load(transaction, root_index)
+        let mut contract_tree = match block.parent() {
+            Some(parent) => ContractsStorageTree::load(transaction, contract_address, parent)
+                .context("Loading contract storage tree")?
                 .with_verify_hashes(verify_hashes),
-            None => ContractsStorageTree::empty(transaction),
+            None => ContractsStorageTree::empty(transaction, contract_address),
         }
         .with_verify_hashes(verify_hashes);
 
@@ -87,8 +81,8 @@ pub fn update_contract_state(
     let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, nonce);
 
     transaction
-        .insert_contract_state(contract_state_hash, class_hash, new_root, nonce)
-        .context("Insert constract state hash into contracts state table")?;
+        .insert_contract_state_hash(block, contract_address, contract_state_hash)
+        .context("Inserting constract state hash")?;
 
     Ok(contract_state_hash)
 }

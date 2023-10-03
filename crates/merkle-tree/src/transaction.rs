@@ -35,12 +35,19 @@ impl crate::storage::Storage for NullStorage {
     fn hash(&self, _: u32) -> anyhow::Result<Option<Felt>> {
         Ok(None)
     }
+
+    fn leaf(
+        &self,
+        _: &bitvec::slice::BitSlice<u8, bitvec::prelude::Msb0>,
+    ) -> anyhow::Result<Option<Felt>> {
+        Ok(None)
+    }
 }
 
 impl TransactionOrEventTree {
     pub fn set(&mut self, index: u64, value: Felt) -> anyhow::Result<()> {
-        let key = index.to_be_bytes();
-        self.tree.set(&NullStorage {}, key.view_bits(), value)
+        let key = index.to_be_bytes().view_bits().to_owned();
+        self.tree.set(&NullStorage {}, key, value)
     }
 
     pub fn commit(self) -> anyhow::Result<Felt> {

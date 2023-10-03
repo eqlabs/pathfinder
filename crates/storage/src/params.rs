@@ -257,6 +257,8 @@ pub trait RowExt {
     row_felt_wrapper!(get_contract_nonce, ContractNonce);
     row_felt_wrapper!(get_storage_value, StorageValue);
     row_felt_wrapper!(get_transaction_hash, TransactionHash);
+    row_felt_wrapper!(get_contract_state_hash, ContractStateHash);
+    row_felt_wrapper!(get_class_commitment_leaf, ClassCommitmentLeafHash);
 }
 
 impl<'a> RowExt for &rusqlite::Row<'a> {
