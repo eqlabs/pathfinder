@@ -895,6 +895,7 @@ mod tests {
     #[case::v05_starknet_addDeclareTransaction("/rpc/v0.5", "starknet_addDeclareTransaction")]
     #[case::v05_starknet_addDeployAccountTransaction("/rpc/v0.5", "starknet_addDeployAccountTransaction")]
     #[case::v05_starknet_addInvokeTransaction("/rpc/v0.5", "starknet_addInvokeTransaction")]
+    #[case::v05_starknet_specVersion("/rpc/v0.5", "starknet_specVersion")]
 
     #[case::pathfinder_pathfinder_version("/rpc/pathfinder/v0.1", "pathfinder_version")]
     #[case::pathfinder_pathfinder_getProof("/rpc/pathfinder/v0.1", "pathfinder_getProof")]
