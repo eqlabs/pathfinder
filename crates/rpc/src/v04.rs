@@ -1,6 +1,6 @@
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
-mod method;
+pub mod method;
 mod types;
 
 use crate::v02::method as v02_method;

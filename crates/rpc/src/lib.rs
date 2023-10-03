@@ -12,6 +12,7 @@ mod test_setup;
 pub mod v02;
 pub mod v03;
 pub mod v04;
+pub mod v05;
 
 pub use executor::compose_executor_transaction;
 
@@ -38,6 +39,7 @@ const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 pub enum DefaultVersion {
     V03,
     V04,
+    V05,
 }
 
 pub struct RpcServer {
@@ -144,11 +146,13 @@ impl RpcServer {
 
         let v03_routes = v03::register_routes().build(self.context.clone());
         let v04_routes = v04::register_routes().build(self.context.clone());
+        let v05_routes = v05::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
             DefaultVersion::V03 => v03_routes.clone(),
             DefaultVersion::V04 => v04_routes.clone(),
+            DefaultVersion::V05 => v05_routes.clone(),
         };
 
         let router = axum::Router::new()
@@ -160,6 +164,8 @@ impl RpcServer {
             .with_state(v03_routes)
             .route("/rpc/v0.4", post(rpc_handler))
             .with_state(v04_routes)
+            .route("/rpc/v0.5", post(rpc_handler))
+            .with_state(v05_routes)
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
             .with_state(pathfinder_routes)
             .layer(middleware);
@@ -885,6 +891,10 @@ mod tests {
     #[case::v04_starknet_pendingTransactions("/rpc/v0.4", "starknet_pendingTransactions")]
     #[case::v04_pathfinder_getProof("/rpc/v0.4", "pathfinder_getProof")]
     #[case::v04_pathfinder_getTransactionStatus("/rpc/v0.4", "pathfinder_getTransactionStatus")]
+
+    #[case::v05_starknet_addDeclareTransaction("/rpc/v0.5", "starknet_addDeclareTransaction")]
+    #[case::v05_starknet_addDeployAccountTransaction("/rpc/v0.5", "starknet_addDeployAccountTransaction")]
+    #[case::v05_starknet_addInvokeTransaction("/rpc/v0.5", "starknet_addInvokeTransaction")]
 
     #[case::pathfinder_pathfinder_version("/rpc/pathfinder/v0.1", "pathfinder_version")]
     #[case::pathfinder_pathfinder_getProof("/rpc/pathfinder/v0.1", "pathfinder_getProof")]

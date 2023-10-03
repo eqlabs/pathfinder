@@ -12,9 +12,9 @@ mod syncing;
 mod trace_block_transactions;
 mod trace_transaction;
 
-pub(super) use add_declare_transaction::add_declare_transaction;
-pub(super) use add_deploy_account_transaction::add_deploy_account_transaction;
-pub(super) use add_invoke_transaction::add_invoke_transaction;
+pub(crate) use add_declare_transaction::add_declare_transaction;
+pub(crate) use add_deploy_account_transaction::add_deploy_account_transaction;
+pub(crate) use add_invoke_transaction::add_invoke_transaction;
 pub(super) use estimate_message_fee::estimate_message_fee;
 pub(super) use get_block_with_txs::get_block_with_txs;
 pub(super) use get_transaction_by_block_and_index::get_transaction_by_block_id_and_index;
