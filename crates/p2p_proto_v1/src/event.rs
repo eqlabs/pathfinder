@@ -1,4 +1,4 @@
-use crate::common::{BlockId, Fin, FromFin, Hash, Iteration};
+use crate::common::{BlockId, Fin, Hash, Iteration};
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 use stark_hash::Felt;
 
@@ -44,8 +44,8 @@ pub enum EventsResponseKind {
     Fin(Fin),
 }
 
-impl FromFin for EventsResponse {
-    fn from_fin(fin: Fin) -> Self {
+impl From<Fin> for EventsResponse {
+    fn from(fin: Fin) -> Self {
         EventsResponse {
             id: None,
             kind: EventsResponseKind::Fin(fin),

@@ -3,9 +3,7 @@ use p2p_proto_v1::block::{
     BlockBodiesRequest, BlockBodiesResponse, BlockBodyMessage, BlockHeadersRequest,
     BlockHeadersResponse, BlockHeadersResponsePart,
 };
-use p2p_proto_v1::common::{
-    BlockId, BlockNumberOrHash, Direction, Fin, FromFin, Hash, Iteration, Step,
-};
+use p2p_proto_v1::common::{BlockId, BlockNumberOrHash, Direction, Fin, Hash, Iteration, Step};
 use p2p_proto_v1::consts::{
     CLASSES_MESSAGE_OVERHEAD, MAX_HEADERS_PER_MESSAGE, MESSAGE_SIZE_LIMIT, PER_CLASS_OVERHEAD,
 };
@@ -304,7 +302,7 @@ fn get_events_for_block(
 
 /// `block_handler` returns Ok(true) if the iteration should continue and is
 /// responsible for delimiting block data with `Fin::ok()` marker.
-fn iterate<T: FromFin>(
+fn iterate<T: From<Fin>>(
     tx: Transaction<'_>,
     iteration: Iteration,
     block_handler: impl Fn(&Transaction<'_>, BlockNumber, &mut Vec<T>) -> anyhow::Result<bool>,
@@ -317,13 +315,13 @@ fn iterate<T: FromFin>(
     } = iteration;
 
     if limit == 0 {
-        return Ok(vec![T::from_fin(Fin::ok())]);
+        return Ok(vec![T::from(Fin::ok())]);
     }
 
     let mut block_number = match get_start_block_number(start, &tx)? {
         Some(x) => x,
         None => {
-            return Ok(vec![T::from_fin(Fin::unknown())]);
+            return Ok(vec![T::from(Fin::unknown())]);
         }
     };
 
@@ -357,7 +355,7 @@ fn iterate<T: FromFin>(
     }
 
     if let Some(end) = ending_marker {
-        responses.push(T::from_fin(end));
+        responses.push(T::from(end));
     }
 
     Ok(responses)

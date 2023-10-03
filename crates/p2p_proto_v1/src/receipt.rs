@@ -1,5 +1,5 @@
 use crate::{
-    common::{BlockId, Fin, FromFin, Hash, Iteration},
+    common::{BlockId, Fin, Hash, Iteration},
     proto, ToProtobuf, TryFromProtobuf,
 };
 use fake::Dummy;
@@ -142,8 +142,8 @@ impl<T> Dummy<T> for EthereumAddress {
     }
 }
 
-impl FromFin for ReceiptsResponse {
-    fn from_fin(fin: Fin) -> Self {
+impl From<Fin> for ReceiptsResponse {
+    fn from(fin: Fin) -> Self {
         Self {
             id: None,
             kind: ReceiptsResponseKind::Fin(fin),
