@@ -25,7 +25,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 )",
         [],
     )
-    .context("Creating class_roots table")?;
+    .context("Creating contract_roots table")?;
 
     tx.execute(
         "CREATE INDEX contract_roots_address_block_number ON contract_roots(contract_address, block_number)", []

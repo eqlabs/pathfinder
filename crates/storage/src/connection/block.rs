@@ -101,6 +101,41 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
         )
         .context("Deleting block from block_headers table")?;
 
+    tx.inner()
+        .execute(
+            "DELETE FROM contract_roots WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from contract_roots table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM class_commitment_leaves WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from class_commitment_leaves table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM contract_state_hashes WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from contract_state_hashes table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM class_roots WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from class_roots table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM storage_roots WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from storage_roots table")?;
+
     Ok(())
 }
 
