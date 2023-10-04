@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- pathfinder now exits with a non-zero exit status if any of the service tasks (sync/RPC/monitoring) terminates.
+
 ### Changed
 
 - Switched to a custom JSON-RPC framework to more easily support multiple specification versions. This may lead to some unexpected changes in behaviour.
