@@ -78,17 +78,14 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                     prev_block = Some(block.clone());
                     tracing::trace!("Pending block data changed");
 
-                    if let Err(e) = download_classes_and_emit_event(
+                    download_classes_and_emit_event(
                         &tx_event,
                         sequencer,
                         &storage,
                         block,
                         Arc::new(state_update),
                     )
-                    .await
-                    {
-                        tracing::debug!(reason=?e, "Failed to download pending classes");
-                    }
+                    .await?;
                 } else {
                     tracing::trace!("No change in pending block data");
                 }
@@ -108,8 +105,11 @@ async fn download_classes_and_emit_event<S: GatewayApi + Clone + Send + 'static>
 ) -> anyhow::Result<()> {
     tracing::trace!("Downloading classes for pending state update");
 
-    // Download, process and emit all missing classes.
-    super::l2::download_new_classes(
+    // Download, process and emit all missing classes. This can occasionally
+    // fail when querying a desync'd feeder gateway which isn't aware of the
+    // new pending classes. In this case, ignore the new pending data as it
+    // is incomplete.
+    if let Err(e) = super::l2::download_new_classes(
         &state_update,
         sequencer,
         tx_event,
@@ -117,7 +117,10 @@ async fn download_classes_and_emit_event<S: GatewayApi + Clone + Send + 'static>
         storage.clone(),
     )
     .await
-    .context("Handling newly declared classes for pending block")?;
+    {
+        tracing::debug!(reason=?e, "Failed to download pending classes");
+        return Ok(());
+    }
 
     tracing::trace!("Emitting a pending update");
     tx_event
