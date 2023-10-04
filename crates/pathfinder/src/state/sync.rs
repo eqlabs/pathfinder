@@ -1186,11 +1186,11 @@ mod tests {
         let (a, b, c) = blocks[0].clone();
 
         event_tx
-            .send(SyncEvent::Block(a.clone(), b.clone(), c.clone()))
+            .send(SyncEvent::Block(a.clone(), b.clone(), c))
             .await
             .unwrap();
         event_tx
-            .send(SyncEvent::Block(a.clone(), b.clone(), c.clone()))
+            .send(SyncEvent::Block(a.clone(), b.clone(), c))
             .await
             .unwrap();
         drop(event_tx);
