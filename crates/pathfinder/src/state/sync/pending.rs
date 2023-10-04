@@ -78,14 +78,17 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                     prev_block = Some(block.clone());
                     tracing::trace!("Pending block data changed");
 
-                    download_classes_and_emit_event(
+                    if let Err(e) = download_classes_and_emit_event(
                         &tx_event,
                         sequencer,
                         &storage,
                         block,
                         Arc::new(state_update),
                     )
-                    .await?;
+                    .await
+                    {
+                        tracing::debug!(reason=?e, "Failed to download pending classes");
+                    }
                 } else {
                     tracing::trace!("No change in pending block data");
                 }
