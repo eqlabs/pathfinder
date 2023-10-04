@@ -1169,4 +1169,27 @@ mod tests {
 
         assert_eq!(definition, expected_definition);
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consumer_should_ignore_duplicate_blocks() {
+        let storage = Storage::in_memory().unwrap();
+
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+
+        let blocks = generate_block_data();
+        let (a, b, c) = blocks[0].clone();
+
+        event_tx.send(SyncEvent::Block(a.clone(), b.clone(), c.clone())).await.unwrap();
+        event_tx.send(SyncEvent::Block(a.clone(), b.clone(), c.clone())).await.unwrap();
+        drop(event_tx);
+
+        let context = ConsumerContext {
+            storage,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            verify_tree_hashes: false,
+        };
+
+        consumer(event_rx, context).await.unwrap();
+    }
 }
