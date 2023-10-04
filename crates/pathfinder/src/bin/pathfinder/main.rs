@@ -248,7 +248,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
     }
 
-    Ok(())
+    anyhow::bail!("Unexpected shutdown");
 }
 
 #[cfg(feature = "tokio-console")]
