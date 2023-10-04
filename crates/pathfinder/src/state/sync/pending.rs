@@ -3,8 +3,8 @@ use pathfinder_common::BlockId;
 use pathfinder_common::StateUpdate;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
+use starknet_gateway_types::reply::Block;
 use starknet_gateway_types::reply::MaybePendingBlock;
-use starknet_gateway_types::reply::{Block, PendingBlock};
 use std::sync::Arc;
 use tokio::time::Instant;
 
@@ -29,7 +29,11 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     poll_interval: std::time::Duration,
     storage: Storage,
 ) -> anyhow::Result<(Option<Block>, Option<StateUpdate>)> {
-    let mut prev_block: Option<Arc<PendingBlock>> = None;
+    // The transaction count of the last emitted pending block. This is used
+    // as a proxy for freshness of the pending data. Feeder gateways are not 100%
+    // in sync wrt pending data, and as a result it is possible for us to receive
+    // pending data which is older than the one we received previously.
+    let mut prev_tx_count = 0;
 
     loop {
         let t_fetch = Instant::now();
@@ -67,66 +71,40 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                 );
                 return Ok((None, None));
             }
-            MaybePendingBlock::Pending(pending) => {
-                let replace = prev_block
-                    .as_ref()
-                    .map(|prev| pending.transactions.len() > prev.transactions.len())
-                    .unwrap_or(true);
-
-                if replace {
-                    let block = Arc::new(pending);
-                    prev_block = Some(block.clone());
-                    tracing::trace!("Pending block data changed");
-
-                    download_classes_and_emit_event(
-                        &tx_event,
-                        sequencer,
-                        &storage,
-                        block,
-                        Arc::new(state_update),
-                    )
-                    .await?;
+            MaybePendingBlock::Pending(pending) if pending.transactions.len() > prev_tx_count => {
+                // Download, process and emit all missing classes. This can occasionally
+                // fail when querying a desync'd feeder gateway which isn't aware of the
+                // new pending classes. In this case, ignore the new pending data as it
+                // is incomplete.
+                if let Err(e) = super::l2::download_new_classes(
+                    &state_update,
+                    sequencer,
+                    &tx_event,
+                    &pending.starknet_version,
+                    storage.clone(),
+                )
+                .await
+                {
+                    tracing::debug!(reason=?e, "Failed to download pending classes");
                 } else {
-                    tracing::trace!("No change in pending block data");
+                    prev_tx_count = pending.transactions.len();
+                    tracing::trace!("Emitting a pending update");
+                    let block = Arc::new(pending);
+                    let state_update = Arc::new(state_update);
+                    tx_event
+                        .send(SyncEvent::Pending(block, state_update))
+                        .await
+                        .context("Event channel closed")?;
                 }
+            }
+            MaybePendingBlock::Pending(_) => {
+                // Pending data was not newer than the previous iteration.
+                tracing::trace!("No change in pending block data");
             }
         }
 
         tokio::time::sleep_until(t_fetch + poll_interval).await;
     }
-}
-
-async fn download_classes_and_emit_event<S: GatewayApi + Clone + Send + 'static>(
-    tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
-    sequencer: &S,
-    storage: &Storage,
-    block: Arc<PendingBlock>,
-    state_update: Arc<StateUpdate>,
-) -> anyhow::Result<()> {
-    tracing::trace!("Downloading classes for pending state update");
-
-    // Download, process and emit all missing classes. This can occasionally
-    // fail when querying a desync'd feeder gateway which isn't aware of the
-    // new pending classes. In this case, ignore the new pending data as it
-    // is incomplete.
-    if let Err(e) = super::l2::download_new_classes(
-        &state_update,
-        sequencer,
-        tx_event,
-        &block.starknet_version,
-        storage.clone(),
-    )
-    .await
-    {
-        tracing::debug!(reason=?e, "Failed to download pending classes");
-        return Ok(());
-    }
-
-    tracing::trace!("Emitting a pending update");
-    tx_event
-        .send(SyncEvent::Pending(block, state_update))
-        .await
-        .context("Event channel closed")
 }
 
 #[cfg(test)]
