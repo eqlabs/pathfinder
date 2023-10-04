@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Pathfinder now uses a new JSON-RPC implementation. This also means that we've temporarily removed Websocket support. It will be added back in a later release.
+- Switched to a custom JSON-RPC framework to more easily support multiple specification versions. This may lead to some unexpected changes in behaviour.
+
+### Removed
+
+- JSON-RPC subscription support (`pathfinder_newHeads`). This is temporary while we re-add support to our new JSON-RPC framework.
 
 ## [0.8.2] - 2023-09-28
 
@@ -32,12 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `starknet_getEvents` continuation token formatting. The new format is incompatible with the previous format used v0.8.1 and older.
-- Switched to a custom JSON-RPC framework to more easily support multiple specification versions. This may lead to some unexpected changes in behaviour.
-
-### Removed
-
-- JSON-RPC subscription support (`pathfinder_newHeads`). This is temporary while we re-add support to our new JSON-RPC framework.
-
 
 ## [0.8.1] - 2023-09-07
 
