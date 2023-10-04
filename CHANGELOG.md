@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - JSON-RPC requests containing a Cairo 0 class definition were requiring the `debug_info` property to be present in the input program. This was a regression caused by the execution engine change. 
 - Performance for the `starknet_getEvents` JSON-RPC method has been improved for queries involving the pending block.
+- Rare edge case where duplicate blocks caused the sync process to halt due to a `A PRIMARY KEY constraint failed` error.
+- Querying a descync'd feeder gateway causes sync process to end due to missing classes.
 
 ### Added
 
