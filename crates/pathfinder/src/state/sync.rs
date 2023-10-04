@@ -874,15 +874,19 @@ fn update_starknet_state(
         .commit()
         .context("Apply storage commitment tree updates")?;
 
-    if !storage_commitment.0.is_zero() {
+    let root_idx = if !storage_commitment.0.is_zero() {
         let root_idx = transaction
             .insert_storage_trie(storage_commitment, &nodes)
             .context("Persisting storage trie")?;
 
-        transaction
-            .insert_storage_root(block, root_idx)
-            .context("Inserting storage root index")?;
-    }
+        Some(root_idx)
+    } else {
+        None
+    };
+
+    transaction
+        .insert_storage_root(block, root_idx)
+        .context("Inserting storage root index")?;
 
     // Add new Sierra classes to class commitment tree.
     let mut class_commitment_tree = match block.parent() {
@@ -909,15 +913,19 @@ fn update_starknet_state(
         .commit()
         .context("Apply class commitment tree updates")?;
 
-    if !class_commitment.0.is_zero() {
+    let class_root_idx = if !class_commitment.0.is_zero() {
         let class_root_idx = transaction
             .insert_class_trie(class_commitment, &nodes)
             .context("Persisting class trie")?;
 
-        transaction
-            .insert_class_root(block, class_root_idx)
-            .context("Inserting class root index")?;
-    }
+        Some(class_root_idx)
+    } else {
+        None
+    };
+
+    transaction
+        .insert_class_root(block, class_root_idx)
+        .context("Inserting class root index")?;
 
     Ok((storage_commitment, class_commitment))
 }

@@ -21,7 +21,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         r"CREATE TABLE contract_roots (
     block_number     INTEGER NOT NULL,
     contract_address BLOB NOT NULL,
-    root_index       INTEGER NOT NULL
+    root_index       INTEGER
 )",
         [],
     )
@@ -99,7 +99,7 @@ fn create_roots_table(tx: &rusqlite::Transaction<'_>, table: &'static str) -> an
         &format!(
             r"CREATE TABLE {table} (
     block_number INTEGER PRIMARY KEY,
-    root_index   INTEGER NOT NULL
+    root_index   INTEGER
 )"
         ),
         [],

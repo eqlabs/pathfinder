@@ -375,11 +375,19 @@ impl<'inner> Transaction<'inner> {
         trie::contract_root(self, block, contract)
     }
 
-    pub fn insert_class_root(&self, block_number: BlockNumber, root: u32) -> anyhow::Result<()> {
+    pub fn insert_class_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u32>,
+    ) -> anyhow::Result<()> {
         trie::insert_class_root(self, block_number, root)
     }
 
-    pub fn insert_storage_root(&self, block_number: BlockNumber, root: u32) -> anyhow::Result<()> {
+    pub fn insert_storage_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u32>,
+    ) -> anyhow::Result<()> {
         trie::insert_storage_root(self, block_number, root)
     }
 
@@ -387,7 +395,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         block_number: BlockNumber,
         contract: ContractAddress,
-        root: u32,
+        root: Option<u32>,
     ) -> anyhow::Result<()> {
         trie::insert_contract_root(self, block_number, contract, root)
     }

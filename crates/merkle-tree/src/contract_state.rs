@@ -38,15 +38,18 @@ pub fn update_contract_state(
             .commit()
             .context("Apply contract storage tree changes")?;
 
-        if !contract_root.0.is_zero() {
+        let root_index = if !contract_root.0.is_zero() {
             let root_index = transaction
                 .insert_contract_trie(contract_root, &nodes)
                 .context("Persisting contract trie")?;
+            Some(root_index)
+        } else {
+            None
+        };
 
-            transaction
-                .insert_contract_root(block, contract_address, root_index)
-                .context("Inserting contract's root index")?;
-        }
+        transaction
+            .insert_contract_root(block, contract_address, root_index)
+            .context("Inserting contract's root index")?;
 
         contract_root
     } else {

@@ -20,9 +20,10 @@ pub(super) fn class_root_index(
         .query_row(
             "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
             params![&block_number],
-            |row| row.get(0),
+            |row| row.get::<_, Option<u32>>(0),
         )
         .optional()
+        .map(|x| x.flatten())
         .map_err(Into::into)
 }
 
@@ -34,9 +35,10 @@ pub(super) fn storage_root_index(
         .query_row(
             "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
             params![&block_number],
-            |row| row.get(0),
+            |row| row.get::<_, Option<u32>>(0),
         )
         .optional()
+        .map(|x| x.flatten())
         .map_err(Into::into)
 }
 
@@ -49,9 +51,10 @@ pub(super) fn contract_root_index(
         .query_row(
             "SELECT root_index FROM contract_roots WHERE contract_address = ? AND block_number <= ? ORDER BY block_number DESC LIMIT 1",
             params![&contract, &block_number],
-            |row| row.get(0),
+            |row| row.get::<_, Option<u32>>(0),
         )
         .optional()
+        .map(|x| x.flatten())
         .map_err(Into::into)
 }
 
@@ -75,7 +78,7 @@ pub(super) fn contract_root(
 pub(super) fn insert_class_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    root: u32,
+    root: Option<u32>,
 ) -> anyhow::Result<()> {
     tx.inner().execute(
         "INSERT INTO class_roots (block_number, root_index) VALUES(?, ?)",
@@ -114,7 +117,7 @@ pub(super) fn contract_state_hash(
 pub(super) fn insert_storage_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    root: u32,
+    root: Option<u32>,
 ) -> anyhow::Result<()> {
     tx.inner().execute(
         "INSERT INTO storage_roots (block_number, root_index) VALUES(?, ?)",
@@ -127,7 +130,7 @@ pub(super) fn insert_contract_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
     contract: ContractAddress,
-    root: u32,
+    root: Option<u32>,
 ) -> anyhow::Result<()> {
     tx.inner().execute(
         "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
@@ -461,11 +464,11 @@ mod tests {
         let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
         assert_eq!(result, None);
 
-        insert_class_root(&tx, BlockNumber::GENESIS, 123).unwrap();
+        insert_class_root(&tx, BlockNumber::GENESIS, Some(123)).unwrap();
         let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
         assert_eq!(result, Some(123));
 
-        insert_class_root(&tx, BlockNumber::GENESIS + 1, 456).unwrap();
+        insert_class_root(&tx, BlockNumber::GENESIS + 1, Some(456)).unwrap();
         let result = class_root_index(&tx, BlockNumber::GENESIS).unwrap();
         assert_eq!(result, Some(123));
         let result = class_root_index(&tx, BlockNumber::GENESIS + 1).unwrap();
@@ -473,13 +476,19 @@ mod tests {
         let result = class_root_index(&tx, BlockNumber::GENESIS + 2).unwrap();
         assert_eq!(result, Some(456));
 
-        insert_class_root(&tx, BlockNumber::GENESIS + 10, 789).unwrap();
+        insert_class_root(&tx, BlockNumber::GENESIS + 10, Some(789)).unwrap();
         let result = class_root_index(&tx, BlockNumber::GENESIS + 9).unwrap();
         assert_eq!(result, Some(456));
         let result = class_root_index(&tx, BlockNumber::GENESIS + 10).unwrap();
         assert_eq!(result, Some(789));
         let result = class_root_index(&tx, BlockNumber::GENESIS + 11).unwrap();
         assert_eq!(result, Some(789));
+
+        insert_class_root(&tx, BlockNumber::GENESIS + 12, None).unwrap();
+        let result = class_root_index(&tx, BlockNumber::GENESIS + 12).unwrap();
+        assert_eq!(result, None);
+        let result = class_root_index(&tx, BlockNumber::GENESIS + 13).unwrap();
+        assert_eq!(result, None);
     }
 
     #[test]
@@ -490,11 +499,11 @@ mod tests {
         let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
         assert_eq!(result, None);
 
-        insert_storage_root(&tx, BlockNumber::GENESIS, 123).unwrap();
+        insert_storage_root(&tx, BlockNumber::GENESIS, Some(123)).unwrap();
         let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
         assert_eq!(result, Some(123));
 
-        insert_storage_root(&tx, BlockNumber::GENESIS + 1, 456).unwrap();
+        insert_storage_root(&tx, BlockNumber::GENESIS + 1, Some(456)).unwrap();
         let result = storage_root_index(&tx, BlockNumber::GENESIS).unwrap();
         assert_eq!(result, Some(123));
         let result = storage_root_index(&tx, BlockNumber::GENESIS + 1).unwrap();
@@ -502,13 +511,19 @@ mod tests {
         let result = storage_root_index(&tx, BlockNumber::GENESIS + 2).unwrap();
         assert_eq!(result, Some(456));
 
-        insert_storage_root(&tx, BlockNumber::GENESIS + 10, 789).unwrap();
+        insert_storage_root(&tx, BlockNumber::GENESIS + 10, Some(789)).unwrap();
         let result = storage_root_index(&tx, BlockNumber::GENESIS + 9).unwrap();
         assert_eq!(result, Some(456));
         let result = storage_root_index(&tx, BlockNumber::GENESIS + 10).unwrap();
         assert_eq!(result, Some(789));
         let result = storage_root_index(&tx, BlockNumber::GENESIS + 11).unwrap();
         assert_eq!(result, Some(789));
+
+        insert_storage_root(&tx, BlockNumber::GENESIS + 12, None).unwrap();
+        let result = storage_root_index(&tx, BlockNumber::GENESIS + 12).unwrap();
+        assert_eq!(result, None);
+        let result = storage_root_index(&tx, BlockNumber::GENESIS + 13).unwrap();
+        assert_eq!(result, None);
     }
 
     #[test]
@@ -530,7 +545,7 @@ mod tests {
         let result1 = contract_root_index(&tx, BlockNumber::GENESIS, c1).unwrap();
         assert_eq!(result1, None);
 
-        insert_contract_root(&tx, BlockNumber::GENESIS, c1, idx0).unwrap();
+        insert_contract_root(&tx, BlockNumber::GENESIS, c1, Some(idx0)).unwrap();
         let result1 = contract_root_index(&tx, BlockNumber::GENESIS, c1).unwrap();
         let result2 = contract_root_index(&tx, BlockNumber::GENESIS, c2).unwrap();
         let hash1 = contract_root(&tx, BlockNumber::GENESIS, c1).unwrap();
@@ -545,8 +560,8 @@ mod tests {
         nodes.insert(root1.0, root_node.clone());
         let idx1 = trie_contracts::insert(&tx, root1.0, &nodes).unwrap();
 
-        insert_contract_root(&tx, BlockNumber::GENESIS + 1, c1, idx1).unwrap();
-        insert_contract_root(&tx, BlockNumber::GENESIS + 1, c2, 888).unwrap();
+        insert_contract_root(&tx, BlockNumber::GENESIS + 1, c1, Some(idx1)).unwrap();
+        insert_contract_root(&tx, BlockNumber::GENESIS + 1, c2, Some(888)).unwrap();
         let result1 = contract_root_index(&tx, BlockNumber::GENESIS, c1).unwrap();
         let result2 = contract_root_index(&tx, BlockNumber::GENESIS, c2).unwrap();
         let hash1 = contract_root(&tx, BlockNumber::GENESIS, c1).unwrap();
@@ -571,8 +586,8 @@ mod tests {
         nodes.insert(root2.0, root_node.clone());
         let idx2 = trie_contracts::insert(&tx, root2.0, &nodes).unwrap();
 
-        insert_contract_root(&tx, BlockNumber::GENESIS + 10, c1, idx2).unwrap();
-        insert_contract_root(&tx, BlockNumber::GENESIS + 11, c2, 999).unwrap();
+        insert_contract_root(&tx, BlockNumber::GENESIS + 10, c1, Some(idx2)).unwrap();
+        insert_contract_root(&tx, BlockNumber::GENESIS + 11, c2, Some(999)).unwrap();
         let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 9, c1).unwrap();
         let result2 = contract_root_index(&tx, BlockNumber::GENESIS + 9, c2).unwrap();
         let hash1 = contract_root(&tx, BlockNumber::GENESIS + 9, c1).unwrap();
@@ -589,6 +604,16 @@ mod tests {
         let hash1 = contract_root(&tx, BlockNumber::GENESIS + 11, c1).unwrap();
         assert_eq!(result2, Some(999));
         assert_eq!(hash1, Some(root2));
+
+        insert_contract_root(&tx, BlockNumber::GENESIS + 12, c1, None).unwrap();
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
+        assert_eq!(result1, None);
+        assert_eq!(hash1, None);
+        let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 12, c1).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
+        assert_eq!(result1, None);
+        assert_eq!(hash1, None);
     }
 
     #[rstest::rstest]
