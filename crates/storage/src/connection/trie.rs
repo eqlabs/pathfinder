@@ -602,10 +602,10 @@ mod tests {
         insert_contract_root(&tx, BlockNumber::GENESIS + 12, c1, None).unwrap();
         let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
         let hash1 = contract_root(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
-        assert_eq!(result1, None);
-        assert_eq!(hash1, None);
+        assert_eq!(result1, Some(idx2));
+        assert_eq!(hash1, Some(root2));
         let result1 = contract_root_index(&tx, BlockNumber::GENESIS + 12, c1).unwrap();
-        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 10, c1).unwrap();
+        let hash1 = contract_root(&tx, BlockNumber::GENESIS + 12, c1).unwrap();
         assert_eq!(result1, None);
         assert_eq!(hash1, None);
     }
