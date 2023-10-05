@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{ContractsStorageTree, StorageCommitmentTree};
+use crate::ContractsStorageTree;
 use anyhow::Context;
 use pathfinder_common::{
-    ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, StorageAddress,
-    StorageValue,
+    BlockNumber, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
+    StorageAddress, StorageValue,
 };
 use pathfinder_storage::Transaction;
 use stark_hash::{stark_hash, Felt};
@@ -15,35 +15,20 @@ pub fn update_contract_state(
     updates: &HashMap<StorageAddress, StorageValue>,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
-    storage_commitment_tree: &StorageCommitmentTree<'_>,
     transaction: &Transaction<'_>,
     verify_hashes: bool,
+    block: BlockNumber,
 ) -> anyhow::Result<ContractStateHash> {
-    // Update the contract state tree.
-    let state_hash = storage_commitment_tree
-        .get(contract_address)
-        .context("Get contract state hash from global state tree")?
-        .unwrap_or(ContractStateHash(Felt::ZERO));
-
-    // Fetch contract's previous root, class hash and nonce.
-    //
-    // If the contract state does not exist yet (new contract):
-    // Contract root defaults to ZERO because that is the default merkle tree value.
-    // Contract nonce defaults to ZERO because that is its historical value before being added in 0.10.
-    let (old_root, old_class_hash, old_nonce) = transaction
-        .contract_state(state_hash)
-        .context("Read contract root and nonce from contracts state table")?
-        .map_or_else(
-            || (ContractRoot::ZERO, None, ContractNonce::ZERO),
-            |(root, class_hash, nonce)| (root, Some(class_hash), nonce),
-        );
-
-    let new_nonce = new_nonce.unwrap_or(old_nonce);
-
     // Load the contract tree and insert the updates.
     let new_root = if !updates.is_empty() {
-        let mut contract_tree =
-            ContractsStorageTree::load(transaction, old_root).with_verify_hashes(verify_hashes);
+        let mut contract_tree = match block.parent() {
+            Some(parent) => ContractsStorageTree::load(transaction, contract_address, parent)
+                .context("Loading contract storage tree")?
+                .with_verify_hashes(verify_hashes),
+            None => ContractsStorageTree::empty(transaction, contract_address),
+        }
+        .with_verify_hashes(verify_hashes);
+
         for (key, value) in updates {
             contract_tree
                 .set(*key, *value)
@@ -52,31 +37,55 @@ pub fn update_contract_state(
         let (contract_root, nodes) = contract_tree
             .commit()
             .context("Apply contract storage tree changes")?;
-        let count = transaction
-            .insert_contract_trie(contract_root, &nodes)
-            .context("Persisting contract trie")?;
-        tracing::trace!(contract=%contract_address, new_nodes=%count, "Persisted contract trie");
+
+        let root_index = if !contract_root.0.is_zero() {
+            let root_index = transaction
+                .insert_contract_trie(contract_root, &nodes)
+                .context("Persisting contract trie")?;
+            Some(root_index)
+        } else {
+            None
+        };
+
+        transaction
+            .insert_contract_root(block, contract_address, root_index)
+            .context("Inserting contract's root index")?;
 
         contract_root
     } else {
-        old_root
+        transaction
+            .contract_root(block, contract_address)
+            .context("Querying current contract root")?
+            .unwrap_or_default()
     };
 
-    // Calculate contract state hash, update global state tree and persist pre-image.
-    //
-    // The contract at address 0x1 is special. It was never deployed and doesn't have a class.
     let class_hash = if contract_address == ContractAddress::ONE {
+        // This is a special system contract at address 0x1, which doesn't have a class hash.
         ClassHash::ZERO
+    } else if let Some(class_hash) = new_class_hash {
+        class_hash
     } else {
-        new_class_hash
-            .or(old_class_hash)
-            .context("Class hash is unknown for new contract")?
+        transaction
+            .contract_class_hash(block.into(), contract_address)
+            .context("Querying contract's class hash")?
+            .context("Contract's class hash is missing")?
     };
-    let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, new_nonce);
+
+    let nonce = if let Some(nonce) = new_nonce {
+        nonce
+    } else {
+        transaction
+            .contract_nonce(contract_address, block.into())
+            .context("Querying contract's nonce")?
+            //Nonce defaults to ZERO because that is its historical value before being added in 0.10.
+            .unwrap_or_default()
+    };
+
+    let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, nonce);
 
     transaction
-        .insert_contract_state(contract_state_hash, class_hash, new_root, new_nonce)
-        .context("Insert constract state hash into contracts state table")?;
+        .insert_contract_state_hash(block, contract_address, contract_state_hash)
+        .context("Inserting constract state hash")?;
 
     Ok(contract_state_hash)
 }

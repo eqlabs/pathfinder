@@ -5,7 +5,6 @@ mod class;
 mod ethereum;
 mod event;
 mod reference;
-mod state;
 mod state_update;
 mod transaction;
 mod trie;
@@ -18,9 +17,8 @@ pub use event::*;
 
 pub use transaction::TransactionStatus;
 
-pub use trie::{ClassTrieReader, ContractTrieReader, StorageTrieReader};
+pub use trie::{Child, Node, StoredNode};
 
-use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassCommitmentLeafHash,
     ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash, SierraHash,
@@ -66,25 +64,21 @@ impl<'inner> Transaction<'inner> {
         Self(tx)
     }
 
-    // TODO: get rid of this in favor of storing contract roots in a separate table similar to
-    //       nonces and storage updates. This would remove the last reliance on navigating the
-    //       global trie -- since this is required to retrieve the state hash, and thereby the
-    //       contract root.
-    pub fn contract_state(
+    pub fn insert_contract_state_hash(
         &self,
+        block_number: BlockNumber,
+        contract: ContractAddress,
         state_hash: ContractStateHash,
-    ) -> anyhow::Result<Option<(ContractRoot, ClassHash, ContractNonce)>> {
-        state::contract_state(self, state_hash)
+    ) -> anyhow::Result<()> {
+        trie::insert_contract_state_hash(self, block_number, contract, state_hash)
     }
 
-    pub fn insert_contract_state(
+    pub fn contract_state_hash(
         &self,
-        state_hash: ContractStateHash,
-        class_hash: ClassHash,
-        root: ContractRoot,
-        nonce: ContractNonce,
-    ) -> anyhow::Result<()> {
-        state::insert_contract_state(self, state_hash, class_hash, root, nonce)
+        block: BlockNumber,
+        contract: ContractAddress,
+    ) -> anyhow::Result<Option<ContractStateHash>> {
+        trie::contract_state_hash(self, block, contract)
     }
 
     pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
@@ -224,10 +218,19 @@ impl<'inner> Transaction<'inner> {
 
     pub fn insert_class_commitment_leaf(
         &self,
+        block: BlockNumber,
         leaf: &ClassCommitmentLeafHash,
         casm_hash: &CasmHash,
     ) -> anyhow::Result<()> {
-        class::insert_class_commitment_leaf(self, leaf, casm_hash)
+        class::insert_class_commitment_leaf(self, block, leaf, casm_hash)
+    }
+
+    pub fn class_commitment_leaf(
+        &self,
+        block: BlockNumber,
+        casm_hash: &CasmHash,
+    ) -> anyhow::Result<Option<ClassCommitmentLeafHash>> {
+        class::class_commitment_leaf(self, block, casm_hash)
     }
 
     /// Returns whether the Sierra or Cairo class definition exists in the database.
@@ -296,43 +299,104 @@ impl<'inner> Transaction<'inner> {
         class::casm_hash_at(self, block_id, class_hash)
     }
 
-    /// Stores the class trie information using reference counting.
+    /// Stores the class trie information.
     pub fn insert_class_trie(
         &self,
         root: ClassCommitment,
-        nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
-        trie::insert_class_trie(&self.0, root.0, nodes)
+        nodes: &HashMap<Felt, Node>,
+    ) -> anyhow::Result<u32> {
+        trie::trie_class::insert(self, root.0, nodes)
     }
 
-    /// Stores a single contract's storage trie information using reference counting.
+    /// Stores a single contract's storage trie information.
     pub fn insert_contract_trie(
         &self,
         root: ContractRoot,
-        nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
-        trie::insert_contract_trie(&self.0, root.0, nodes)
+        nodes: &HashMap<Felt, Node>,
+    ) -> anyhow::Result<u32> {
+        trie::trie_contracts::insert(self, root.0, nodes)
     }
 
-    /// Stores the global starknet storage trie information using reference counting.
+    /// Stores the global starknet storage trie information.
     pub fn insert_storage_trie(
         &self,
         root: StorageCommitment,
-        nodes: &HashMap<Felt, TrieNode>,
-    ) -> anyhow::Result<usize> {
-        trie::insert_storage_trie(&self.0, root.0, nodes)
+        nodes: &HashMap<Felt, Node>,
+    ) -> anyhow::Result<u32> {
+        trie::trie_storage::insert(self, root.0, nodes)
     }
 
-    pub fn class_trie_reader(&self) -> ClassTrieReader<'_> {
-        ClassTrieReader::new(self)
+    pub fn class_trie_node(&self, index: u32) -> anyhow::Result<Option<StoredNode>> {
+        trie::trie_class::node(self, index)
     }
 
-    pub fn storage_trie_reader(&self) -> StorageTrieReader<'_> {
-        StorageTrieReader::new(self)
+    pub fn storage_trie_node(&self, index: u32) -> anyhow::Result<Option<StoredNode>> {
+        trie::trie_storage::node(self, index)
     }
 
-    pub fn contract_trie_reader(&self) -> ContractTrieReader<'_> {
-        ContractTrieReader::new(self)
+    pub fn contract_trie_node(&self, index: u32) -> anyhow::Result<Option<StoredNode>> {
+        trie::trie_contracts::node(self, index)
+    }
+
+    pub fn class_trie_node_hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+        trie::trie_class::hash(self, index)
+    }
+
+    pub fn storage_trie_node_hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+        trie::trie_storage::hash(self, index)
+    }
+
+    pub fn contract_trie_node_hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+        trie::trie_contracts::hash(self, index)
+    }
+
+    pub fn class_root_index(&self, block: BlockNumber) -> anyhow::Result<Option<u32>> {
+        trie::class_root_index(self, block)
+    }
+
+    pub fn storage_root_index(&self, block: BlockNumber) -> anyhow::Result<Option<u32>> {
+        trie::storage_root_index(self, block)
+    }
+
+    pub fn contract_root_index(
+        &self,
+        block: BlockNumber,
+        contract: ContractAddress,
+    ) -> anyhow::Result<Option<u32>> {
+        trie::contract_root_index(self, block, contract)
+    }
+
+    pub fn contract_root(
+        &self,
+        block: BlockNumber,
+        contract: ContractAddress,
+    ) -> anyhow::Result<Option<ContractRoot>> {
+        trie::contract_root(self, block, contract)
+    }
+
+    pub fn insert_class_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u32>,
+    ) -> anyhow::Result<()> {
+        trie::insert_class_root(self, block_number, root)
+    }
+
+    pub fn insert_storage_root(
+        &self,
+        block_number: BlockNumber,
+        root: Option<u32>,
+    ) -> anyhow::Result<()> {
+        trie::insert_storage_root(self, block_number, root)
+    }
+
+    pub fn insert_contract_root(
+        &self,
+        block_number: BlockNumber,
+        contract: ContractAddress,
+        root: Option<u32>,
+    ) -> anyhow::Result<()> {
+        trie::insert_contract_root(self, block_number, contract, root)
     }
 
     pub fn insert_state_update(

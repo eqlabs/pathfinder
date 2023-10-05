@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
-use pathfinder_common::trie::TrieNode;
-use pathfinder_common::{ClassCommitment, ClassCommitmentLeafHash, SierraHash};
-use pathfinder_storage::{ClassTrieReader, Transaction};
+use anyhow::Context;
+use pathfinder_common::{
+    BlockNumber, ClassCommitment, ClassCommitmentLeafHash, ClassHash, SierraHash,
+};
+use pathfinder_storage::{Node, Transaction};
 use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
@@ -15,15 +17,32 @@ use pathfinder_common::hash::PoseidonHash;
 /// Tree data is persisted by a sqlite table 'tree_class'.
 pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
-    storage: ClassTrieReader<'tx>,
+    storage: ClassStorage<'tx>,
 }
 
 impl<'tx> ClassCommitmentTree<'tx> {
-    pub fn load(transaction: &'tx Transaction<'tx>, root: ClassCommitment) -> Self {
-        let tree = MerkleTree::new(root.0);
-        let storage = transaction.class_trie_reader();
+    pub fn empty(tx: &'tx Transaction<'tx>) -> Self {
+        let storage = ClassStorage { tx, block: None };
+        let tree = MerkleTree::empty();
 
         Self { tree, storage }
+    }
+
+    pub fn load(tx: &'tx Transaction<'tx>, block: BlockNumber) -> anyhow::Result<Self> {
+        let root = tx
+            .class_root_index(block)
+            .context("Querying class root index")?;
+        let Some(root) = root else {
+            return Ok(Self::empty(tx));
+        };
+
+        let storage = ClassStorage {
+            tx,
+            block: Some(block),
+        };
+        let tree = MerkleTree::new(root);
+
+        Ok(Self { tree, storage })
     }
 
     pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
@@ -37,15 +56,60 @@ impl<'tx> ClassCommitmentTree<'tx> {
     /// See <https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/state.cairo#L302>
     /// for details.
     pub fn set(&mut self, class: SierraHash, value: ClassCommitmentLeafHash) -> anyhow::Result<()> {
-        self.tree.set(&self.storage, class.view_bits(), value.0)
+        let key = class.view_bits().to_owned();
+        self.tree.set(&self.storage, key, value.0)
     }
 
     /// Commits the changes and calculates the new node hashes. Returns the new commitment and
     /// any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, TrieNode>)> {
-        let update = self.tree.commit()?;
+    pub fn commit(self) -> anyhow::Result<(ClassCommitment, HashMap<Felt, Node>)> {
+        let update = self.tree.commit(&self.storage)?;
 
         let commitment = ClassCommitment(update.root);
         Ok((commitment, update.nodes))
+    }
+}
+
+struct ClassStorage<'tx> {
+    tx: &'tx Transaction<'tx>,
+    block: Option<BlockNumber>,
+}
+
+impl crate::storage::Storage for ClassStorage<'_> {
+    fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+        self.tx.class_trie_node(index)
+    }
+
+    fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+        self.tx.class_trie_node_hash(index)
+    }
+
+    fn leaf(
+        &self,
+        path: &bitvec::slice::BitSlice<u8, bitvec::prelude::Msb0>,
+    ) -> anyhow::Result<Option<Felt>> {
+        assert!(path.len() == 251);
+
+        let Some(block) = self.block else {
+            return Ok(None);
+        };
+
+        let sierra = ClassHash(Felt::from_bits(path).context("Mapping path to sierra hash")?);
+
+        let casm = self
+            .tx
+            .casm_hash_at(block.into(), sierra)
+            .context("Querying CASM hash")?;
+        let Some(casm) = casm else {
+            return Ok(None);
+        };
+
+        let leaf = self
+            .tx
+            .class_commitment_leaf(block, &casm)
+            .context("Querying class leaf")?
+            .map(|x| x.0);
+
+        Ok(leaf)
     }
 }

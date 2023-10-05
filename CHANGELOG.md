@@ -11,12 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- State tree updates are slow on disks with low disk IO or high latency (e.g. network attached storage).
+- Pathfinder now exits with a non-zero exit status if any of the service tasks (sync/RPC/monitoring) terminates.
 - Rare edge case where duplicate blocks caused the sync process to halt due to a `A PRIMARY KEY constraint failed` error.
 - Querying a descync'd feeder gateway causes sync process to end due to missing classes.
-- pathfinder now exits with a non-zero exit status if any of the service tasks (sync/RPC/monitoring) terminates.
 
 ### Changed
 
+- Reworked state tree storage schema. This is not backwards compatible and requires a re-sync.
 - Switched to a custom JSON-RPC framework to more easily support multiple specification versions. This may lead to some unexpected changes in behaviour.
 
 ### Removed

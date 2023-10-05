@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash};
+use pathfinder_common::{BlockNumber, CasmHash, ClassCommitmentLeafHash, ClassHash, SierraHash};
 
 use crate::{prelude::*, BlockId};
 
@@ -350,15 +350,32 @@ pub(super) fn casm_hash_at(
 
 pub(super) fn insert_class_commitment_leaf(
     transaction: &Transaction<'_>,
+    block: BlockNumber,
     leaf: &ClassCommitmentLeafHash,
     casm_hash: &CasmHash,
 ) -> anyhow::Result<()> {
     transaction.inner().execute(
-        "INSERT OR IGNORE INTO class_commitment_leaves (hash, compiled_class_hash) VALUES (?, ?)",
-        params![leaf, casm_hash],
+        "INSERT INTO class_commitment_leaves (block_number, leaf, casm) VALUES (?, ?, ?)",
+        params![&block, leaf, casm_hash],
     )?;
 
     Ok(())
+}
+
+pub(super) fn class_commitment_leaf(
+    transaction: &Transaction<'_>,
+    block: BlockNumber,
+    casm_hash: &CasmHash,
+) -> anyhow::Result<Option<ClassCommitmentLeafHash>> {
+    transaction
+        .inner()
+        .query_row(
+            "SELECT leaf FROM class_commitment_leaves WHERE casm = ? AND block_number <= ?",
+            params![casm_hash, &block],
+            |row| row.get_class_commitment_leaf(0),
+        )
+        .optional()
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -483,5 +500,32 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(definition, sierra_definition);
+    }
+
+    #[test]
+    fn compiled_class_leaves() {
+        let mut connection = Storage::in_memory().unwrap().connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let leaf0 = class_commitment_leaf_hash_bytes!(b"genesis leaf");
+        let casm0 = casm_hash_bytes!(b"genesis casm");
+
+        let leaf1 = class_commitment_leaf_hash_bytes!(b"leaf one");
+        let casm1 = casm_hash_bytes!(b"casm one");
+
+        insert_class_commitment_leaf(&tx, BlockNumber::GENESIS, &leaf0, &casm0).unwrap();
+        insert_class_commitment_leaf(&tx, BlockNumber::GENESIS + 5, &leaf1, &casm0).unwrap();
+        insert_class_commitment_leaf(&tx, BlockNumber::GENESIS + 5, &leaf1, &casm1).unwrap();
+
+        let result =
+            class_commitment_leaf(&tx, BlockNumber::GENESIS, &casm_hash_bytes!(b"missing"))
+                .unwrap();
+        assert!(result.is_none());
+
+        let result = class_commitment_leaf(&tx, BlockNumber::GENESIS, &casm0).unwrap();
+        assert_eq!(result, Some(leaf0));
+
+        let result = class_commitment_leaf(&tx, BlockNumber::GENESIS, &casm1).unwrap();
+        assert!(result.is_none());
     }
 }

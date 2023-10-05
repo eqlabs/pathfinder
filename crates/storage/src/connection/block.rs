@@ -78,15 +78,6 @@ fn intern_starknet_version(tx: &Transaction<'_>, version: &StarknetVersion) -> a
 }
 
 pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::Result<()> {
-    // This table does not have an ON DELETE clause, so we do it manually.
-    // TODO: migration to add ON DELETE.
-    tx.inner()
-        .execute(
-            "UPDATE class_definitions SET block_number = NULL WHERE block_number = ?",
-            params![&block],
-        )
-        .context("Unsetting class definitions block number")?;
-
     tx.inner()
         .execute(
             r"DELETE FROM starknet_transactions WHERE block_hash = (
@@ -109,6 +100,41 @@ pub(super) fn purge_block(tx: &Transaction<'_>, block: BlockNumber) -> anyhow::R
             params![&block],
         )
         .context("Deleting block from block_headers table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM contract_roots WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from contract_roots table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM class_commitment_leaves WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from class_commitment_leaves table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM contract_state_hashes WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from contract_state_hashes table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM class_roots WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from class_roots table")?;
+
+    tx.inner()
+        .execute(
+            "DELETE FROM storage_roots WHERE block_number = ?",
+            params![&block],
+        )
+        .context("Deleting block from storage_roots table")?;
 
     Ok(())
 }
@@ -265,10 +291,7 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice, StateCommitment,
-        StateUpdate, TransactionCommitment,
-    };
+    use pathfinder_common::prelude::*;
 
     use super::*;
     use crate::Connection;
@@ -374,39 +397,6 @@ mod tests {
         let invalid = block_hash_bytes!(b"invalid block hash");
         let result = tx.block_header(invalid.into()).unwrap();
         assert_eq!(result, None);
-    }
-
-    #[test]
-    fn get_works_with_null_fields() {
-        // The migration introducing transaction, event and class commitments allowed them
-        // to be NULL (and defaulted to NULL). This test ensures that these are correctly handled
-        // and defaulted to ZERO.
-        //
-        // Starknet version was also allowed to be null which means that version_id can be null.
-        // This should default to an empty version string now.
-        let (mut connection, headers) = setup();
-        let tx = connection.transaction().unwrap();
-
-        let target = headers.last().unwrap();
-
-        // Overwrite the commitment fields to NULL.
-        tx.inner().execute(
-            r"UPDATE block_headers
-                SET transaction_commitment=NULL, event_commitment=NULL, class_commitment=NULL, version_id=NULL
-                WHERE number=?",
-            params![&target.number],
-        )
-        .unwrap();
-
-        let mut expected = target.clone();
-        expected.starknet_version = StarknetVersion::default();
-        expected.transaction_commitment = TransactionCommitment::ZERO;
-        expected.event_commitment = EventCommitment::ZERO;
-        expected.class_commitment = ClassCommitment::ZERO;
-
-        let result = tx.block_header(target.number.into()).unwrap().unwrap();
-
-        assert_eq!(result, expected);
     }
 
     #[test]

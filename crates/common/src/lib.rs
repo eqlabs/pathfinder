@@ -214,6 +214,15 @@ impl BlockNumber {
     /// The maximum [BlockNumber] we can support. Restricted to `u64::MAX/2` to
     /// match Sqlite's maximum integer value.
     pub const MAX: BlockNumber = BlockNumber::new_or_panic(i64::MAX as u64);
+
+    /// Returns the parent's [BlockNumber] or [None] if the current number is genesis.
+    pub fn parent(&self) -> Option<Self> {
+        if self == &Self::GENESIS {
+            None
+        } else {
+            Some(*self - 1)
+        }
+    }
 }
 
 impl std::ops::Add<u64> for BlockNumber {

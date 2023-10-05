@@ -679,9 +679,13 @@ async fn l2_update(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
-        let (storage_commitment, class_commitment) =
-            update_starknet_state(&transaction, &state_update, verify_tree_hashes)
-                .context("Updating Starknet state")?;
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &transaction,
+            &state_update,
+            verify_tree_hashes,
+            block.block_number,
+        )
+        .context("Updating Starknet state")?;
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
         // Ensure that roots match.. what should we do if it doesn't? For now the whole sync process ends..
@@ -828,15 +832,14 @@ fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
     verify_hashes: bool,
+    block: BlockNumber,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
-    let (storage_commitment, class_commitment) = transaction
-        .block_header(pathfinder_storage::BlockId::Latest)
-        .context("Querying latest state commitment")?
-        .map(|header| (header.storage_commitment, header.class_commitment))
-        .unwrap_or((StorageCommitment::ZERO, ClassCommitment::ZERO));
-
-    let mut storage_commitment_tree = StorageCommitmentTree::load(transaction, storage_commitment)
-        .with_verify_hashes(verify_hashes);
+    let mut storage_commitment_tree = match block.parent() {
+        Some(parent) => StorageCommitmentTree::load(transaction, parent)
+            .context("Loading storage commitment tree")?,
+        None => StorageCommitmentTree::empty(transaction),
+    }
+    .with_verify_hashes(verify_hashes);
 
     for (contract, update) in &state_update.contract_updates {
         let state_hash = update_contract_state(
@@ -844,9 +847,9 @@ fn update_starknet_state(
             &update.storage,
             update.nonce,
             update.class.as_ref().map(|x| x.class_hash()),
-            &storage_commitment_tree,
             transaction,
             verify_hashes,
+            block,
         )
         .context("Update contract state")?;
 
@@ -861,9 +864,9 @@ fn update_starknet_state(
             &update.storage,
             None,
             None,
-            &storage_commitment_tree,
             transaction,
             verify_hashes,
+            block,
         )
         .context("Update system contract state")?;
 
@@ -873,23 +876,37 @@ fn update_starknet_state(
     }
 
     // Apply storage commitment tree changes.
-    let (new_storage_commitment, nodes) = storage_commitment_tree
+    let (storage_commitment, nodes) = storage_commitment_tree
         .commit()
         .context("Apply storage commitment tree updates")?;
-    let count = transaction
-        .insert_storage_trie(new_storage_commitment, &nodes)
-        .context("Persisting storage trie")?;
-    tracing::trace!(new_nodes=%count, "Storage trie persisted");
+
+    let root_idx = if !storage_commitment.0.is_zero() {
+        let root_idx = transaction
+            .insert_storage_trie(storage_commitment, &nodes)
+            .context("Persisting storage trie")?;
+
+        Some(root_idx)
+    } else {
+        None
+    };
+
+    transaction
+        .insert_storage_root(block, root_idx)
+        .context("Inserting storage root index")?;
 
     // Add new Sierra classes to class commitment tree.
-    let mut class_commitment_tree =
-        ClassCommitmentTree::load(transaction, class_commitment).with_verify_hashes(verify_hashes);
+    let mut class_commitment_tree = match block.parent() {
+        Some(parent) => ClassCommitmentTree::load(transaction, parent)
+            .context("Loading class commitment tree")?,
+        None => ClassCommitmentTree::empty(transaction),
+    }
+    .with_verify_hashes(verify_hashes);
 
     for (sierra, casm) in &state_update.declared_sierra_classes {
         let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(*casm);
 
         transaction
-            .insert_class_commitment_leaf(&leaf_hash, casm)
+            .insert_class_commitment_leaf(block, &leaf_hash, casm)
             .context("Adding class commitment leaf")?;
 
         class_commitment_tree
@@ -901,12 +918,22 @@ fn update_starknet_state(
     let (class_commitment, nodes) = class_commitment_tree
         .commit()
         .context("Apply class commitment tree updates")?;
-    let count = transaction
-        .insert_class_trie(class_commitment, &nodes)
-        .context("Persisting class trie")?;
-    tracing::trace!(new_nodes=%count, "Class trie persisted");
 
-    Ok((new_storage_commitment, class_commitment))
+    let class_root_idx = if !class_commitment.0.is_zero() {
+        let class_root_idx = transaction
+            .insert_class_trie(class_commitment, &nodes)
+            .context("Persisting class trie")?;
+
+        Some(class_root_idx)
+    } else {
+        None
+    };
+
+    transaction
+        .insert_class_root(block, class_root_idx)
+        .context("Inserting class root index")?;
+
+    Ok((storage_commitment, class_commitment))
 }
 
 #[cfg(test)]

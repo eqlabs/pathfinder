@@ -1,9 +1,9 @@
 use bitvec::view::BitView;
+use pathfinder_storage::StoredNode;
 use stark_hash::Felt;
 
 use crate::tree::MerkleTree;
 use pathfinder_common::hash::PedersenHash;
-use pathfinder_common::trie::TrieNode;
 
 /// A (Patricia Merkle tree)[MerkleTree] which can be used to calculate transaction or event commitments.
 ///
@@ -28,19 +28,30 @@ impl Default for TransactionOrEventTree {
 struct NullStorage;
 
 impl crate::storage::Storage for NullStorage {
-    fn get(&self, _node: &Felt) -> anyhow::Result<Option<TrieNode>> {
+    fn get(&self, _: u32) -> anyhow::Result<Option<StoredNode>> {
+        Ok(None)
+    }
+
+    fn hash(&self, _: u32) -> anyhow::Result<Option<Felt>> {
+        Ok(None)
+    }
+
+    fn leaf(
+        &self,
+        _: &bitvec::slice::BitSlice<u8, bitvec::prelude::Msb0>,
+    ) -> anyhow::Result<Option<Felt>> {
         Ok(None)
     }
 }
 
 impl TransactionOrEventTree {
     pub fn set(&mut self, index: u64, value: Felt) -> anyhow::Result<()> {
-        let key = index.to_be_bytes();
-        self.tree.set(&NullStorage {}, key.view_bits(), value)
+        let key = index.to_be_bytes().view_bits().to_owned();
+        self.tree.set(&NullStorage {}, key, value)
     }
 
     pub fn commit(self) -> anyhow::Result<Felt> {
-        self.tree.commit().map(|update| update.root)
+        self.tree.commit(&NullStorage {}).map(|update| update.root)
     }
 }
 

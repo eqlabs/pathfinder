@@ -4,10 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
-use pathfinder_common::{
-    BlockId, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
-    StateCommitment, StorageAddress,
-};
+use pathfinder_common::{prelude::*, BlockId};
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
 use stark_hash::Felt;
 
@@ -176,69 +173,74 @@ pub async fn get_proof(
 
         // Use internal error to indicate that the process of querying for a particular block failed,
         // which is not the same as being sure that the block is not in the db.
-        let (storage_commitment, class_commitment) = tx
+        let header = tx
             .block_header(block_id)
             .context("Fetching block header")?
-            .map(|header| (header.storage_commitment, header.class_commitment))
             .ok_or(GetProofError::BlockNotFound)?;
 
-        let (state_commitment, class_commitment) = if class_commitment == ClassCommitment::ZERO {
-            (None, None)
-        } else {
-            (
-                Some(StateCommitment::calculate(
-                    storage_commitment,
-                    class_commitment,
-                )),
-                Some(class_commitment),
-            )
+        let state_commitment = match header.state_commitment {
+            StateCommitment::ZERO => None,
+            other => Some(other),
         };
-
-        let mut storage_commitment_tree = StorageCommitmentTree::load(&tx, storage_commitment);
+        let class_commitment = match header.class_commitment {
+            ClassCommitment::ZERO => None,
+            other => Some(other),
+        };
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
-        let contract_proof = storage_commitment_tree.get_proof(&input.contract_address)?;
+        let contract_proof =
+            StorageCommitmentTree::get_proof(&tx, header.number, &input.contract_address)
+                .context("Creating contract proof")?;
         let contract_proof = ProofNodes(contract_proof);
 
-        let contract_state_hash = match storage_commitment_tree.get(input.contract_address)? {
-            Some(contract_state_hash) => contract_state_hash,
-            None => {
-                // Contract not found: return the proof of non membership that we generated earlier.
-                return Ok(GetProofOutput {
-                    state_commitment,
-                    class_commitment,
-                    contract_proof,
-                    contract_data: None,
-                });
-            }
+        let contract_state_hash = tx
+            .contract_state_hash(header.number, input.contract_address)
+            .context("Fetching contract's state hash")?;
+
+        if contract_state_hash.is_none() {
+            return Ok(GetProofOutput {
+                state_commitment,
+                class_commitment,
+                contract_proof,
+                contract_data: None,
+            });
         };
 
-        let (contract_state_root, class_hash, nonce) = tx
-            .contract_state(contract_state_hash)
-            .context("Get contract state root and nonce")?
-            // Root and nonce should not be None at this stage since we have a valid block and non-zero contract state_hash.
-            .ok_or_else(|| -> GetProofError {
-                anyhow::anyhow!(
-                    "Root or nonce missing for state_hash={}",
-                    contract_state_hash
-                )
-                .into()
-            })?;
+        let contract_root = tx
+            .contract_root(header.number, input.contract_address)
+            .context("Querying contract's root")?
+            .unwrap_or_default();
 
-        let contract_state_tree = ContractsStorageTree::load(&tx, contract_state_root);
+        let class_hash = tx
+            .contract_class_hash(header.number.into(), input.contract_address)
+            .context("Querying contract's class hash")?
+            .unwrap_or_default();
+
+        let nonce = tx
+            .contract_nonce(input.contract_address, header.number.into())
+            .context("Querying contract's nonce")?
+            .unwrap_or_default();
 
         let storage_proofs = input
             .keys
             .iter()
-            .map(|k| contract_state_tree.get_proof(k.view_bits()).map(ProofNodes))
+            .map(|k| {
+                ContractsStorageTree::get_proof(
+                    &tx,
+                    input.contract_address,
+                    header.number,
+                    k.view_bits(),
+                )
+                .map(ProofNodes)
+            })
             .collect::<anyhow::Result<Vec<_>>>()
             .context("Get proof from contract state treee")?;
 
         let contract_data = ContractData {
             class_hash,
             nonce,
-            root: contract_state_root,
+            root: contract_root,
             contract_state_hash_version: Felt::ZERO, // Currently, this is defined as 0. Might change in the future.
             storage_proofs,
         };
