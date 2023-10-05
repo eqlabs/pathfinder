@@ -844,7 +844,7 @@ fn update_starknet_state(
     .with_verify_hashes(verify_hashes);
 
     for (contract, update) in &state_update.contract_updates {
-        let state_hash = update_contract_state(
+        let update_result = update_contract_state(
             *contract,
             &update.storage,
             update.nonce,
@@ -856,12 +856,16 @@ fn update_starknet_state(
         .context("Update contract state")?;
 
         storage_commitment_tree
-            .set(*contract, state_hash)
+            .set(*contract, update_result.state_hash)
             .context("Updating storage commitment tree")?;
+
+        update_result
+            .insert(block, transaction)
+            .context("Persisting contract trie updates")?;
     }
 
     for (contract, update) in &state_update.system_contract_updates {
-        let state_hash = update_contract_state(
+        let update_result = update_contract_state(
             *contract,
             &update.storage,
             None,
@@ -873,8 +877,12 @@ fn update_starknet_state(
         .context("Update system contract state")?;
 
         storage_commitment_tree
-            .set(*contract, state_hash)
+            .set(*contract, update_result.state_hash)
             .context("Updating system contract storage commitment tree")?;
+
+        update_result
+            .insert(block, transaction)
+            .context("Persisting system contract trie updates")?;
     }
 
     // Apply storage commitment tree changes.

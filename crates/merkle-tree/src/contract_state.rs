@@ -6,8 +6,45 @@ use pathfinder_common::{
     BlockNumber, ClassHash, ContractAddress, ContractNonce, ContractRoot, ContractStateHash,
     StorageAddress, StorageValue,
 };
-use pathfinder_storage::Transaction;
+use pathfinder_storage::{Node, Transaction};
 use stark_hash::{stark_hash, Felt};
+
+pub struct ContractStateUpdateResult {
+    pub state_hash: ContractStateHash,
+    pub contract_address: ContractAddress,
+    root: ContractRoot,
+    did_storage_updates: bool,
+    // trie nodes to be inserted into the database
+    nodes: HashMap<Felt, Node>,
+}
+
+impl ContractStateUpdateResult {
+    /// Inserts the results of a contract state update into the database.
+    ///
+    /// The new trie nodes are committed first, then the root node index and the contract state hash
+    /// is persisted.
+    pub fn insert(self, block: BlockNumber, transaction: &Transaction<'_>) -> anyhow::Result<()> {
+        // Insert nodes only if we made storage updates.
+        if self.did_storage_updates {
+            let root_index = if !self.root.0.is_zero() && !self.nodes.is_empty() {
+                let root_index = transaction
+                    .insert_contract_trie(self.root, &self.nodes)
+                    .context("Persisting contract trie")?;
+                Some(root_index)
+            } else {
+                None
+            };
+
+            transaction
+                .insert_contract_root(block, self.contract_address, root_index)
+                .context("Inserting contract's root index")?;
+        }
+
+        transaction
+            .insert_contract_state_hash(block, self.contract_address, self.state_hash)
+            .context("Inserting constract state hash")
+    }
+}
 
 /// Updates a contract's state with and returns the resulting [ContractStateHash].
 pub fn update_contract_state(
@@ -18,9 +55,9 @@ pub fn update_contract_state(
     transaction: &Transaction<'_>,
     verify_hashes: bool,
     block: BlockNumber,
-) -> anyhow::Result<ContractStateHash> {
+) -> anyhow::Result<ContractStateUpdateResult> {
     // Load the contract tree and insert the updates.
-    let new_root = if !updates.is_empty() {
+    let (new_root, nodes) = if !updates.is_empty() {
         let mut contract_tree = match block.parent() {
             Some(parent) => ContractsStorageTree::load(transaction, contract_address, parent)
                 .context("Loading contract storage tree")?
@@ -38,25 +75,14 @@ pub fn update_contract_state(
             .commit()
             .context("Apply contract storage tree changes")?;
 
-        let root_index = if !contract_root.0.is_zero() {
-            let root_index = transaction
-                .insert_contract_trie(contract_root, &nodes)
-                .context("Persisting contract trie")?;
-            Some(root_index)
-        } else {
-            None
-        };
-
-        transaction
-            .insert_contract_root(block, contract_address, root_index)
-            .context("Inserting contract's root index")?;
-
-        contract_root
+        (contract_root, nodes)
     } else {
-        transaction
+        let current_root = transaction
             .contract_root(block, contract_address)
             .context("Querying current contract root")?
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        (current_root, Default::default())
     };
 
     let class_hash = if contract_address == ContractAddress::ONE {
@@ -81,13 +107,15 @@ pub fn update_contract_state(
             .unwrap_or_default()
     };
 
-    let contract_state_hash = calculate_contract_state_hash(class_hash, new_root, nonce);
+    let state_hash = calculate_contract_state_hash(class_hash, new_root, nonce);
 
-    transaction
-        .insert_contract_state_hash(block, contract_address, contract_state_hash)
-        .context("Inserting constract state hash")?;
-
-    Ok(contract_state_hash)
+    Ok(ContractStateUpdateResult {
+        contract_address,
+        state_hash,
+        root: new_root,
+        did_storage_updates: !updates.is_empty(),
+        nodes,
+    })
 }
 
 /// Calculates the contract state hash from its preimage.
