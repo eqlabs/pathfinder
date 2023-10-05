@@ -10,7 +10,7 @@ use lru::LruCache;
 use p2p::HeadRx;
 use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, CallParam, CasmHash, ClassHash, ContractAddress,
-    ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
+    ContractAddressSalt, EntryPoint, Fee, StateUpdate, TransactionHash, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
 use starknet_gateway_client::{GatewayApi, GossipApi};
@@ -351,8 +351,9 @@ impl GatewayApi for HybridClient {
         version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
-        nonce: TransactionNonce,
+        nonce: Option<TransactionNonce>,
         contract_address: ContractAddress,
+        entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         self.as_sequencer()
@@ -362,6 +363,7 @@ impl GatewayApi for HybridClient {
                 signature,
                 nonce,
                 contract_address,
+                entry_point_selector,
                 calldata,
             )
             .await

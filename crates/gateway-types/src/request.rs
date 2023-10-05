@@ -193,7 +193,7 @@ pub mod add_transaction {
     use super::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
     use super::{CallParam, ContractAddress, Fee, TransactionSignatureElem};
     use pathfinder_common::{
-        CasmHash, ClassHash, ContractAddressSalt, TransactionNonce, TransactionVersion,
+        CasmHash, ClassHash, ContractAddressSalt, EntryPoint, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{
         CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr, TransactionVersionAsHexStr,
@@ -261,9 +261,14 @@ pub mod add_transaction {
         pub max_fee: Fee,
         #[serde_as(as = "Vec<TransactionSignatureElemAsDecimalStr>")]
         pub signature: Vec<TransactionSignatureElem>,
-        pub nonce: TransactionNonce,
+        // NOTE: this is optional because Invoke v0 transactions do not have a nonce
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub nonce: Option<TransactionNonce>,
 
         pub sender_address: ContractAddress,
+        // NOTE: this is optional because only Invoke v0 transactions have an entry point selector
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub entry_point_selector: Option<EntryPoint>,
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
         pub calldata: Vec<CallParam>,
     }

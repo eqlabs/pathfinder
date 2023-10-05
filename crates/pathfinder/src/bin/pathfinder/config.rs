@@ -225,6 +225,7 @@ impl Color {
 pub enum RpcVersion {
     V03,
     V04,
+    V05,
 }
 
 #[derive(clap::Args)]

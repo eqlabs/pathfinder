@@ -52,14 +52,32 @@ pub async fn add_invoke_transaction(
 ) -> Result<AddInvokeTransactionOutput, AddInvokeTransactionError> {
     let Transaction::Invoke(tx) = input.invoke_transaction;
     let response = match tx {
+        BroadcastedInvokeTransaction::V0(v0) => context
+            .sequencer
+            .add_invoke_transaction(
+                v0.version,
+                v0.max_fee,
+                v0.signature,
+                None,
+                v0.contract_address,
+                Some(v0.entry_point_selector),
+                v0.calldata,
+            )
+            .await
+            .map_err(|e| match e {
+                SequencerError::StarknetError(e) => AddInvokeTransactionError::GatewayError(e),
+                other => AddInvokeTransactionError::Internal(other.into()),
+            })?,
+
         BroadcastedInvokeTransaction::V1(v1) => context
             .sequencer
             .add_invoke_transaction(
                 v1.version,
                 v1.max_fee,
                 v1.signature,
-                v1.nonce,
+                Some(v1.nonce),
                 v1.sender_address,
+                None,
                 v1.calldata,
             )
             .await

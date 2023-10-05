@@ -1,7 +1,7 @@
 //! Starknet L2 sequencer client.
 use pathfinder_common::{
     BlockHash, BlockId, BlockNumber, CallParam, CasmHash, Chain, ClassHash, ContractAddress,
-    ContractAddressSalt, Fee, StateUpdate, TransactionHash, TransactionNonce,
+    ContractAddressSalt, EntryPoint, Fee, StateUpdate, TransactionHash, TransactionNonce,
     TransactionSignatureElem, TransactionVersion,
 };
 use reqwest::Url;
@@ -85,8 +85,9 @@ pub trait GatewayApi: Sync {
         version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
-        nonce: TransactionNonce,
+        nonce: Option<TransactionNonce>,
         contract_address: ContractAddress,
+        entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         unimplemented!();
@@ -207,8 +208,9 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
-        nonce: TransactionNonce,
+        nonce: Option<TransactionNonce>,
         contract_address: ContractAddress,
+        entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         self.as_ref()
@@ -218,6 +220,7 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
                 signature,
                 nonce,
                 contract_address,
+                entry_point_selector,
                 calldata,
             )
             .await
@@ -539,8 +542,9 @@ impl GatewayApi for Client {
         version: TransactionVersion,
         max_fee: Fee,
         signature: Vec<TransactionSignatureElem>,
-        nonce: TransactionNonce,
+        nonce: Option<TransactionNonce>,
         sender_address: ContractAddress,
+        entry_point_selector: Option<EntryPoint>,
         calldata: Vec<CallParam>,
     ) -> Result<reply::add_transaction::InvokeResponse, SequencerError> {
         let req = AddTransaction::Invoke(InvokeFunction {
@@ -550,6 +554,7 @@ impl GatewayApi for Client {
             version,
             signature,
             nonce,
+            entry_point_selector,
         });
 
         // Note that we don't do retries here.
@@ -1319,7 +1324,15 @@ mod tests {
                 )]);
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let error = client
-                    .add_invoke_transaction(TransactionVersion::ZERO, fee, sig, nonce, addr, call)
+                    .add_invoke_transaction(
+                        TransactionVersion::ZERO,
+                        fee,
+                        sig,
+                        Some(nonce),
+                        addr,
+                        None,
+                        call,
+                    )
                     .await
                     .unwrap_err();
                 assert_matches!(
@@ -1340,7 +1353,7 @@ mod tests {
                 // test with values dumped from `starknet invoke` for a test contract
                 let (ver, fee, sig, nonce, addr, call) = inputs();
                 client
-                    .add_invoke_transaction(ver, fee, sig, nonce, addr, call)
+                    .add_invoke_transaction(ver, fee, sig, Some(nonce), addr, None, call)
                     .await
                     .unwrap();
             }
