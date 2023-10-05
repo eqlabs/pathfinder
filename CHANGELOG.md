@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Rare edge case where duplicate blocks caused the sync process to halt due to a `A PRIMARY KEY constraint failed` error.
+- Querying a descync'd feeder gateway causes sync process to end due to missing classes.
 - pathfinder now exits with a non-zero exit status if any of the service tasks (sync/RPC/monitoring) terminates.
 
 ### Changed
