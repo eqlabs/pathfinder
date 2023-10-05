@@ -915,6 +915,7 @@ fn update_starknet_state(
 
     let (send, recv) = std::sync::mpsc::channel();
 
+    let _span = tracing::trace_span!("update_contract_trees").entered();
     rayon::scope(|s| {
         s.spawn(|_| {
             let result: Result<Vec<_>, _> = state_update
@@ -949,6 +950,9 @@ fn update_starknet_state(
 
     let contract_update_results = recv.recv().context("Panic on rayon thread")??;
 
+    drop(_span);
+    let _span = tracing::trace_span!("insert_contract_trees").entered();
+
     for contract_update_result in contract_update_results.into_iter() {
         storage_commitment_tree
             .set(
@@ -960,7 +964,9 @@ fn update_starknet_state(
             .insert(block, transaction)
             .context("Inserting contract update result")?;
     }
+    drop(_span);
 
+    let _span = tracing::trace_span!("update_system_contract_trees").entered();
     for (contract, update) in &state_update.system_contract_updates {
         let update_result = update_contract_state(
             *contract,
@@ -981,11 +987,16 @@ fn update_starknet_state(
             .insert(block, transaction)
             .context("Persisting system contract trie updates")?;
     }
+    drop(_span);
 
+    let _span = tracing::trace_span!("commit_global_tree").entered();
     // Apply storage commitment tree changes.
     let (storage_commitment, nodes) = storage_commitment_tree
         .commit()
         .context("Apply storage commitment tree updates")?;
+    drop(_span);
+
+    let _span = tracing::trace_span!("insert_global_tree").entered();
 
     let root_idx = if !storage_commitment.0.is_zero() {
         let root_idx = transaction
@@ -1000,7 +1011,9 @@ fn update_starknet_state(
     transaction
         .insert_storage_root(block, root_idx)
         .context("Inserting storage root index")?;
+    drop(_span);
 
+    let _span = tracing::trace_span!("update_class_trie").entered();
     // Add new Sierra classes to class commitment tree.
     let mut class_commitment_tree = match block.parent() {
         Some(parent) => ClassCommitmentTree::load(transaction, parent)
@@ -1039,6 +1052,7 @@ fn update_starknet_state(
     transaction
         .insert_class_root(block, class_root_idx)
         .context("Inserting class root index")?;
+    drop(_span);
 
     Ok((storage_commitment, class_commitment))
 }
