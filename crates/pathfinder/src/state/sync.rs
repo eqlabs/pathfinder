@@ -339,14 +339,14 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
         .connection()
         .context("Creating database connection")?;
 
-    let mut latest_timestamp = tokio::task::block_in_place(|| {
+    let (mut latest_timestamp, mut next_number) = tokio::task::block_in_place(|| {
         let tx = db_conn
             .transaction()
             .context("Creating database transaction")?;
         let latest = tx
             .block_header(pathfinder_storage::BlockId::Latest)
             .context("Fetching latest block header")?
-            .map(|b| b.timestamp)
+            .map(|b| (b.timestamp, b.number + 1))
             .unwrap_or_default();
 
         anyhow::Ok(latest)
@@ -361,6 +361,11 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
             Block((block, (tx_comm, ev_comm)), state_update, timings) => {
+                if block.block_number < next_number {
+                    tracing::debug!("Ignoring duplicate block {}", block.block_number);
+                    continue;
+                }
+
                 let block_number = block.block_number;
                 let block_hash = block.block_hash;
                 let block_timestamp = block.timestamp;
@@ -422,6 +427,7 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     (block_timestamp.get() - latest_timestamp.get()) as f64
                 );
                 latest_timestamp = block_timestamp;
+                next_number += 1;
 
                 // Give a simple log under INFO level, and a more verbose log
                 // with timing information under DEBUG+ level.
@@ -1195,5 +1201,34 @@ mod tests {
         let definition = tx.class_definition(ClassHash(class_hash)).unwrap().unwrap();
 
         assert_eq!(definition, expected_definition);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consumer_should_ignore_duplicate_blocks() {
+        let storage = Storage::in_memory().unwrap();
+
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+
+        let blocks = generate_block_data();
+        let (a, b, c) = blocks[0].clone();
+
+        event_tx
+            .send(SyncEvent::Block(a.clone(), b.clone(), c))
+            .await
+            .unwrap();
+        event_tx
+            .send(SyncEvent::Block(a.clone(), b.clone(), c))
+            .await
+            .unwrap();
+        drop(event_tx);
+
+        let context = ConsumerContext {
+            storage,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            verify_tree_hashes: false,
+        };
+
+        consumer(event_rx, context).await.unwrap();
     }
 }
