@@ -291,10 +291,7 @@ pub(super) fn block_is_l1_accepted(tx: &Transaction<'_>, block: BlockId) -> anyh
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, GasPrice, StateCommitment,
-        StateUpdate, TransactionCommitment,
-    };
+    use pathfinder_common::prelude::*;
 
     use super::*;
     use crate::Connection;
