@@ -3,7 +3,7 @@ use anyhow::Context;
 /// The base schema as dumped after revision 39.
 pub(crate) fn base_schema(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute_batch(r#"
-CREATE TABLE IF NOT EXISTS "class_definitions" (
+CREATE TABLE class_definitions (
     hash       BLOB PRIMARY KEY,
     definition BLOB,
     block_number INTEGER REFERENCES canonical_blocks(number) ON DELETE SET NULL
@@ -12,7 +12,7 @@ CREATE TABLE contract_states (
     state_hash BLOB PRIMARY KEY,
     hash       BLOB NOT NULL,
     root       BLOB NOT NULL,
-    nonce      BLOB NOT NULL DEFAULT X'0000000000000000000000000000000000000000000000000000000000000000'
+    nonce      BLOB NOT NULL
 );
 CREATE TABLE refs (idx INTEGER PRIMARY KEY, l1_l2_head BLOB);
 CREATE TABLE starknet_transactions (
@@ -21,30 +21,30 @@ CREATE TABLE starknet_transactions (
     block_hash  BLOB NOT NULL,
     tx          BLOB,
     receipt     BLOB,
-    execution_status INTEGER NOT NULL DEFAULT 0
+    execution_status INTEGER
 );
 CREATE TABLE starknet_versions (id INTEGER NOT NULL PRIMARY KEY, version TEXT NOT NULL UNIQUE);
-CREATE TABLE IF NOT EXISTS "block_headers" (
-    hash      BLOB    PRIMARY KEY NOT NULL,
-    number    INTEGER NOT NULL,
-    storage_commitment      BLOB    NOT NULL,
-    timestamp INTEGER NOT NULL, 
-    gas_price BLOB    NOT NULL,
-    sequencer_address BLOB NOT NULL,
-    version_id INTEGER REFERENCES starknet_versions(id),
-    transaction_commitment BLOB, 
-    event_commitment BLOB, 
-    class_commitment BLOB, 
-    state_commitment BLOB NOT NULL DEFAULT x'0000000000000000000000000000000000000000000000000000000000000000', 
-    transaction_count INTEGER NOT NULL DEFAULT 0, 
-    event_count INTEGER NOT NULL DEFAULT 0
+CREATE TABLE block_headers (
+    hash                        BLOB    PRIMARY KEY NOT NULL,
+    number                      INTEGER NOT NULL,
+    storage_commitment          BLOB    NOT NULL,
+    timestamp                   INTEGER NOT NULL, 
+    gas_price                   BLOB    NOT NULL,
+    sequencer_address           BLOB NOT NULL,
+    version_id                  INTEGER REFERENCES starknet_versions(id),
+    transaction_commitment      BLOB NOT NULL, 
+    event_commitment            BLOB NOT NULL, 
+    class_commitment            BLOB NOT NULL, 
+    state_commitment            BLOB NOT NULL, 
+    transaction_count           INTEGER NOT NULL, 
+    event_count                 INTEGER NOT NULL
 );
 CREATE TABLE canonical_blocks (
     number INTEGER PRIMARY KEY NOT NULL,
     hash   BLOB    NOT NULL,
-    FOREIGN KEY(hash) REFERENCES "block_headers"(hash)
+    FOREIGN KEY(hash) REFERENCES block_headers(hash)
 );
-CREATE TABLE IF NOT EXISTS "starknet_events" (
+CREATE TABLE starknet_events (
     id INTEGER PRIMARY KEY NOT NULL,
     block_number  INTEGER NOT NULL,
     idx INTEGER NOT NULL,
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS "starknet_events" (
     FOREIGN KEY(block_number) REFERENCES canonical_blocks(number) ON DELETE CASCADE
 );
 CREATE INDEX starknet_transactions_block_hash ON starknet_transactions(block_hash);
-CREATE INDEX starknet_blocks_block_number ON "block_headers"(number);
+CREATE INDEX starknet_blocks_block_number ON block_headers(number);
 CREATE INDEX starknet_events_block_number ON starknet_events(block_number);
 CREATE INDEX starknet_events_from_address ON starknet_events(from_address);
 CREATE UNIQUE INDEX canonical_block_hash_idx ON canonical_blocks(hash);
@@ -66,10 +66,10 @@ CREATE VIRTUAL TABLE starknet_events_keys_03 USING fts5(
     content='',
     tokenize='ascii'
 );
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_03_data'(id INTEGER PRIMARY KEY, block BLOB);
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_03_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_03_docsize'(id INTEGER PRIMARY KEY, sz BLOB);
-CREATE TABLE IF NOT EXISTS 'starknet_events_keys_03_config'(k PRIMARY KEY, v) WITHOUT ROWID;
+CREATE TABLE starknet_events_keys_03_data(id INTEGER PRIMARY KEY, block BLOB);
+CREATE TABLE starknet_events_keys_03_idx(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
+CREATE TABLE starknet_events_keys_03_docsize(id INTEGER PRIMARY KEY, sz BLOB);
+CREATE TABLE starknet_events_keys_03_config(k PRIMARY KEY, v) WITHOUT ROWID;
 CREATE TRIGGER starknet_events_03_ai AFTER INSERT ON starknet_events BEGIN
     INSERT INTO starknet_events_keys_03(rowid, keys) VALUES (
         new.id,

@@ -60,7 +60,6 @@ impl<'inner> Transaction<'inner> {
     // be kept in separate files with more reasonable LOC counts and easier test oversight.
 
     #[cfg(test)]
-    #[allow(dead_code)]
     pub(crate) fn from_inner(tx: rusqlite::Transaction<'inner>) -> Self {
         Self(tx)
     }

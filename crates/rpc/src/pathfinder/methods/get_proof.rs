@@ -1,15 +1,10 @@
-#![allow(unused)]
-
 use anyhow::{anyhow, Context};
 use pathfinder_common::trie::TrieNode;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
-use pathfinder_common::{
-    BlockId, ClassCommitment, ClassHash, ContractAddress, ContractNonce, ContractRoot,
-    StateCommitment, StorageAddress, StorageCommitment,
-};
+use pathfinder_common::{prelude::*, BlockId};
 use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
 use stark_hash::Felt;
 
@@ -187,10 +182,6 @@ pub async fn get_proof(
             StateCommitment::ZERO => None,
             other => Some(other),
         };
-        let storage_commitment = match header.storage_commitment {
-            StorageCommitment::ZERO => None,
-            other => Some(other),
-        };
         let class_commitment = match header.class_commitment {
             ClassCommitment::ZERO => None,
             other => Some(other),
@@ -207,7 +198,7 @@ pub async fn get_proof(
             .contract_state_hash(header.number, input.contract_address)
             .context("Fetching contract's state hash")?;
 
-        let Some(contract_state_hash) = contract_state_hash else {
+        if contract_state_hash.is_none() {
             return Ok(GetProofOutput {
                 state_commitment,
                 class_commitment,
