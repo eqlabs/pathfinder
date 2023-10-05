@@ -116,7 +116,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     let mut root = self.resolve(storage, *idx, 0).context("Resolving root")?;
                     self.commit_subtree(&mut root, &mut added, storage, BitVec::new())?
                 }
-                mut other => self.commit_subtree(&mut other, &mut added, storage, BitVec::new())?,
+                other => self.commit_subtree(other, &mut added, storage, BitVec::new())?,
             }
         } else {
             // An empty trie has a root of zero
@@ -846,7 +846,7 @@ mod tests {
 
         let mut indices = HashMap::new();
         let mut idx = storage.nodes.len();
-        for (hash, _) in &update.nodes {
+        for hash in update.nodes.keys() {
             indices.insert(*hash, idx as u32);
             idx += 1;
         }
@@ -1824,7 +1824,7 @@ mod tests {
             let key1 = felt!("0x0").view_bits().to_owned(); // 0b01
             let key2 = felt!("0x1").view_bits().to_owned(); // 0b01
 
-            let keys = vec![key1.as_bitslice(), &key2.as_bitslice()];
+            let keys = vec![key1.as_bitslice(), key2.as_bitslice()];
 
             let value_1 = felt!("0x2");
             let value_2 = felt!("0x3");

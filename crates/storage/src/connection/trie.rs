@@ -202,7 +202,7 @@ mod macros {
                             .get(&hash)
                             .expect("Node must exist as hash is dependent on this");
 
-                        let node = node.into_stored(&indices)?;
+                        let node = node.as_stored(&indices)?;
 
                         let length = node.encode(&mut buffer).context("Encoding node")?;
 
@@ -315,7 +315,7 @@ impl StoredNode {
     const CODEC_CFG: bincode::config::Configuration = bincode::config::standard();
 
     /// Writes the [StoredNode] into `buffer` and returns the number of bytes written.
-    fn encode(&self, mut buffer: &mut [u8]) -> Result<usize, bincode::error::EncodeError> {
+    fn encode(&self, buffer: &mut [u8]) -> Result<usize, bincode::error::EncodeError> {
         let helper = match self {
             Self::Binary { left, right } => StoredSerde::Binary {
                 left: *left,
@@ -348,7 +348,7 @@ impl StoredNode {
         };
         // Do not use serialize() as this will invoke serialization twice.
         // https://github.com/bincode-org/bincode/issues/401
-        bincode::encode_into_slice(&helper, &mut buffer, Self::CODEC_CFG)
+        bincode::encode_into_slice(helper, buffer, Self::CODEC_CFG)
     }
 
     fn decode(data: &[u8]) -> Result<Self, bincode::error::DecodeError> {
@@ -381,28 +381,28 @@ impl StoredNode {
 
 #[cfg(test)]
 impl StoredNode {
-    fn as_binary(self) -> Option<(u32, u32)> {
+    fn into_binary(self) -> Option<(u32, u32)> {
         match self {
             Self::Binary { left, right } => Some((left, right)),
             _ => None,
         }
     }
 
-    fn as_edge(self) -> Option<(u32, BitVec<u8, Msb0>)> {
+    fn into_edge(self) -> Option<(u32, BitVec<u8, Msb0>)> {
         match self {
             Self::Edge { child, path } => Some((child, path)),
             _ => None,
         }
     }
 
-    fn as_binary_leaf(self) -> Option<()> {
+    fn into_binary_leaf(self) -> Option<()> {
         match self {
             Self::LeafBinary => Some(()),
             _ => None,
         }
     }
 
-    fn as_edge_leaf(self) -> Option<BitVec<u8, Msb0>> {
+    fn into_edge_leaf(self) -> Option<BitVec<u8, Msb0>> {
         match self {
             Self::LeafEdge { path } => Some(path),
             _ => None,
@@ -411,27 +411,21 @@ impl StoredNode {
 }
 
 impl Node {
-    fn into_stored(&self, indices: &HashMap<Felt, u32>) -> anyhow::Result<StoredNode> {
+    fn as_stored(&self, indices: &HashMap<Felt, u32>) -> anyhow::Result<StoredNode> {
         let node = match self {
-            Node::Binary { left, right } => match (left.clone(), right.clone()) {
-                (left, right) => {
-                    let left = match left {
-                        Child::Id(id) => id,
-                        Child::Hash(hash) => {
-                            *indices.get(&hash).context("Left child index missing")?
-                        }
-                    };
+            Node::Binary { left, right } => {
+                let left = match left {
+                    Child::Id(id) => *id,
+                    Child::Hash(hash) => *indices.get(hash).context("Left child index missing")?,
+                };
 
-                    let right = match right {
-                        Child::Id(id) => id,
-                        Child::Hash(hash) => {
-                            *indices.get(&hash).context("Right child index missing")?
-                        }
-                    };
+                let right = match right {
+                    Child::Id(id) => *id,
+                    Child::Hash(hash) => *indices.get(hash).context("Right child index missing")?,
+                };
 
-                    StoredNode::Binary { left, right }
-                }
-            },
+                StoredNode::Binary { left, right }
+            }
             Node::Edge { child, path } => {
                 let child = match child {
                     Child::Id(id) => id,
@@ -757,27 +751,27 @@ mod tests {
             let hash = test_table::hash(&tx, root_idx).unwrap();
             assert_eq!(hash, Some(root_hash));
             let node = test_table::node(&tx, root_idx).unwrap().unwrap();
-            let (left, right) = node.as_binary().unwrap();
+            let (left, right) = node.into_binary().unwrap();
 
             // Right child is the edge leaf
             let hash = test_table::hash(&tx, right).unwrap();
             assert_eq!(hash, Some(edge_leaf_hash));
             let node = test_table::node(&tx, right).unwrap().unwrap();
-            let path = node.as_edge_leaf().unwrap();
+            let path = node.into_edge_leaf().unwrap();
             assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1]);
 
             // Left child is the edge node
             let hash = test_table::hash(&tx, left).unwrap();
             assert_eq!(hash, Some(edge_hash));
             let node = test_table::node(&tx, left).unwrap().unwrap();
-            let (child, path) = node.as_edge().unwrap();
+            let (child, path) = node.into_edge().unwrap();
             assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1]);
 
             // Edge's child is the binary leaf
             let hash = test_table::hash(&tx, child).unwrap();
             assert_eq!(hash, Some(binary_leaf_hash));
             let node = test_table::node(&tx, child).unwrap().unwrap();
-            node.as_binary_leaf().unwrap();
+            node.into_binary_leaf().unwrap();
         }
 
         #[test]
@@ -818,20 +812,20 @@ mod tests {
             let hash = test_table::hash(&tx, root_idx).unwrap();
             assert_eq!(hash, Some(root_hash));
             let node = test_table::node(&tx, root_idx).unwrap().unwrap();
-            let (left, right) = node.as_binary().unwrap();
+            let (left, right) = node.into_binary().unwrap();
 
             // Right child is the binary node
             let hash = test_table::hash(&tx, right).unwrap();
             assert_eq!(hash, Some(binary_hash0));
             let node = test_table::node(&tx, right).unwrap().unwrap();
-            let children = node.as_binary().unwrap();
+            let children = node.into_binary().unwrap();
             assert_eq!(children, (456, 777));
 
             // Left child is the edge node
             let hash = test_table::hash(&tx, left).unwrap();
             assert_eq!(hash, Some(edge_hash));
             let node = test_table::node(&tx, left).unwrap().unwrap();
-            let (child, path) = node.as_edge().unwrap();
+            let (child, path) = node.into_edge().unwrap();
             assert_eq!(path, bitvec::bitvec![u8, Msb0; 1,0,1,1,1,0,0,0,0,0,1,1]);
             assert_eq!(child, 123);
         }
