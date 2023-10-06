@@ -283,7 +283,7 @@ impl<'a> RowExt for &rusqlite::Row<'a> {
     }
 }
 
-/// Implements [ToSql] for the target [Felt](stark_hash::Felt) newtype.
+/// Implements [ToSql] for the target [Felt] newtype.
 ///
 /// Writes the full underlying bytes (no compression).
 macro_rules! to_sql_felt {
