@@ -211,6 +211,14 @@ mod tests {
                 // Pending data is absent, fallback to the latest block
                 assert_value(b"storage value 2"),
             ),
+            (
+                ctx.clone(),
+                contract_address_bytes!(b"pending contract 0 address"),
+                non_existent_key,
+                BlockId::Pending,
+                // Contract has been deployed in pending but key has not been updated
+                assert_value(&[0]),
+            ),
             // Other block ids - happy paths
             (
                 ctx.clone(),
