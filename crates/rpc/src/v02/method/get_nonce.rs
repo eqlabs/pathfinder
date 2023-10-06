@@ -223,6 +223,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn contract_deployed_in_pending_defaults_to_zero() {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        // This contract is deployed in the pending block but does not have a nonce update.
+        let input = GetNonceInput {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"pending contract 0 address"),
+        };
+        let nonce = get_nonce(context, input).await.unwrap();
+        assert_eq!(nonce.0, ContractNonce::ZERO);
+    }
+
+    #[tokio::test]
     async fn pending() {
         use super::get_pending_nonce;
         use std::sync::Arc;
