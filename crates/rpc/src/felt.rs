@@ -1,4 +1,4 @@
-//! Contains the [RpcFelt] and [RpcFelt251] wrappers around [Felt](stark_hash::Felt) which
+//! Contains the [RpcFelt] and [RpcFelt251] wrappers around [Felt] which
 //! implement RPC compliant serialization.
 //!
 //! The wrappers implement [serde_with::SerializeAs] which allows annotating
