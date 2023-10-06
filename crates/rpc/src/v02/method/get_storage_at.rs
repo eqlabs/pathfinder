@@ -23,7 +23,7 @@ pub async fn get_storage_at(
     context: RpcContext,
     input: GetStorageAtInput,
 ) -> Result<GetStorageOutput, GetStorageAtError> {
-    let block_id = match input.block_id {
+    let (block_id, contract_exists_in_pending) = match input.block_id {
         BlockId::Pending => {
             match context
                 .pending_data
@@ -32,25 +32,32 @@ pub async fn get_storage_at(
                 .await
             {
                 Some(update) => {
-                    let pending_value = update
-                        .contract_updates
-                        .get(&input.contract_address)
-                        .and_then(|update| {
-                            update
-                                .storage
-                                .iter()
-                                .find_map(|(key, value)| (key == &input.key).then_some(*value))
-                        });
+                    let value =
+                        update
+                            .contract_updates
+                            .get(&input.contract_address)
+                            .map(|update| {
+                                update
+                                    .storage
+                                    .iter()
+                                    .find_map(|(key, value)| (key == &input.key).then_some(*value))
+                            });
 
-                    match pending_value {
-                        Some(value) => return Ok(GetStorageOutput(value)),
-                        None => pathfinder_storage::BlockId::Latest,
+                    match value {
+                        Some(Some(value)) => return Ok(GetStorageOutput(value)),
+                        // Contract exists but no such key was present in pending
+                        Some(None) => (pathfinder_storage::BlockId::Latest, true),
+                        // Contract not updated in pending
+                        None => (pathfinder_storage::BlockId::Latest, false),
                     }
                 }
-                None => pathfinder_storage::BlockId::Latest,
+                None => (pathfinder_storage::BlockId::Latest, false),
             }
         }
-        other => other.try_into().expect("Only pending cast should fail"),
+        other => (
+            other.try_into().expect("Only pending cast should fail"),
+            false,
+        ),
     };
 
     let storage = context.storage.clone();
@@ -76,7 +83,9 @@ pub async fn get_storage_at(
         match value {
             Some(value) => Ok(GetStorageOutput(value)),
             None => {
-                if tx.contract_exists(input.contract_address, block_id)? {
+                if contract_exists_in_pending
+                    || tx.contract_exists(input.contract_address, block_id)?
+                {
                     Ok(GetStorageOutput(StorageValue::ZERO))
                 } else {
                     Err(GetStorageAtError::ContractNotFound)
@@ -210,6 +219,14 @@ mod tests {
                 BlockId::Pending,
                 // Pending data is absent, fallback to the latest block
                 assert_value(b"storage value 2"),
+            ),
+            (
+                ctx.clone(),
+                contract_address_bytes!(b"pending contract 0 address"),
+                non_existent_key,
+                BlockId::Pending,
+                // Contract has been deployed in pending but key has not been updated
+                assert_value(&[0]),
             ),
             // Other block ids - happy paths
             (
