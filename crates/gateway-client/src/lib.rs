@@ -360,12 +360,12 @@ impl Client {
 
 #[async_trait::async_trait]
 impl GatewayApi for Client {
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn block(&self, block: BlockId) -> Result<reply::MaybePendingBlock, SequencerError> {
         self.block_with_retry_behaviour(block, self.retry).await
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn block_without_retry(
         &self,
         block: BlockId,
@@ -373,6 +373,7 @@ impl GatewayApi for Client {
         self.block_with_retry_behaviour(block, false).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn block_header(
         &self,
         block: BlockId,
@@ -397,7 +398,7 @@ impl GatewayApi for Client {
     }
 
     /// Gets class for a particular class hash.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn pending_class_by_hash(
         &self,
         class_hash: ClassHash,
@@ -412,7 +413,7 @@ impl GatewayApi for Client {
     }
 
     /// Gets CASM for a particular class hash.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn pending_casm_by_hash(
         &self,
         class_hash: ClassHash,
@@ -427,7 +428,7 @@ impl GatewayApi for Client {
     }
 
     /// Gets transaction by hash.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn transaction(
         &self,
         transaction_hash: TransactionHash,
@@ -440,7 +441,7 @@ impl GatewayApi for Client {
             .await
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn state_update(&self, block: BlockId) -> Result<StateUpdate, SequencerError> {
         let state_update: reply::StateUpdate = self
             .feeder_gateway_request()
@@ -459,7 +460,7 @@ impl GatewayApi for Client {
     ///
     /// This is useful because using fetching both in a single request guarantees the consistency
     /// of the block and state update information for the pending block.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn state_update_with_block(
         &self,
         block: BlockId,
@@ -476,7 +477,7 @@ impl GatewayApi for Client {
     }
 
     /// Gets addresses of the Ethereum contracts crucial to Starknet operation.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         self.feeder_gateway_request()
             .get_contract_addresses()
@@ -486,7 +487,7 @@ impl GatewayApi for Client {
     }
 
     /// Adds a transaction invoking a contract.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn add_invoke_transaction(
         &self,
         invoke: request::add_transaction::InvokeFunction,
@@ -503,7 +504,7 @@ impl GatewayApi for Client {
     }
 
     /// Adds a transaction declaring a class.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn add_declare_transaction(
         &self,
         declare: request::add_transaction::Declare,
@@ -522,7 +523,7 @@ impl GatewayApi for Client {
             .await
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn add_deploy_account(
         &self,
         deploy: request::add_transaction::DeployAccount,
