@@ -40,6 +40,12 @@ pub async fn get_storage_at(
                                 .storage
                                 .iter()
                                 .find_map(|(key, value)| (key == &input.key).then_some(*value))
+                                .or_else(|| update.class.as_ref().and_then(|c| match c {
+                                    // If the contract has been deployed in pending but the key has not been set yet
+                                    // return the default value of zero.
+                                    pathfinder_common::state_update::ContractClassUpdate::Deploy(_) => Some(StorageValue::ZERO),
+                                    pathfinder_common::state_update::ContractClassUpdate::Replace(_) => None,
+                                }))
                         });
 
                     match pending_value {
