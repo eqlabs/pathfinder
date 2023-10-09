@@ -460,6 +460,8 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
+                next_number = reorg_tail;
+
                 let new_head = match reorg_tail {
                     BlockNumber::GENESIS => None,
                     other => Some(other - 1),
@@ -1097,6 +1099,61 @@ mod tests {
             .block_exists(BlockNumber::new_or_panic(2).into())
             .unwrap();
         assert!(!block_2_exists);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn blocks_are_not_skipped_after_a_reorg() {
+        // A bug caused reorg'd block numbers to be skipped. This
+        // was due to the expected block number not being updated
+        // when handling the reorg.
+        let storage = Storage::in_memory().unwrap();
+        let mut connection = storage.connection().unwrap();
+
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
+
+        // Send block updates, followed by a reorg removing block 2.
+        // Then republish block 2, which should succeed.
+        let blocks = generate_block_data();
+        let block2 = blocks[2].clone();
+        for (a, b, c) in blocks {
+            event_tx.send(SyncEvent::Block(a, b, c)).await.unwrap();
+        }
+        event_tx
+            .send(SyncEvent::Reorg(block2.0 .0.block_number))
+            .await
+            .unwrap();
+        // This previously failed as the expected next block number was never
+        // updated after a reorg, causing the reorg'd block numbers to be considered
+        // duplicates and skipped - breaking sync.
+        event_tx
+            .send(SyncEvent::Block(block2.0, block2.1, block2.2))
+            .await
+            .unwrap();
+        // Close the event channel which allows the consumer task to exit.
+        drop(event_tx);
+
+        let context = ConsumerContext {
+            storage,
+            state: Arc::new(SyncState::default()),
+            pending_data: PendingData::default(),
+            verify_tree_hashes: false,
+        };
+
+        consumer(event_rx, context).await.unwrap();
+
+        let tx = connection.transaction().unwrap();
+        let genesis_exists = tx.block_exists(BlockNumber::GENESIS.into()).unwrap();
+        assert!(genesis_exists);
+
+        let block_1_exists = tx
+            .block_exists(BlockNumber::new_or_panic(1).into())
+            .unwrap();
+        assert!(block_1_exists);
+        // Block 2 should actually exist as well again.
+        let block_2_exists = tx
+            .block_exists(BlockNumber::new_or_panic(2).into())
+            .unwrap();
+        assert!(block_2_exists);
     }
 
     #[tokio::test(flavor = "multi_thread")]
