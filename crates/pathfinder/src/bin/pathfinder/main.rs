@@ -52,6 +52,13 @@ async fn async_main() -> anyhow::Result<()> {
 
     permission_check(&config.data_directory)?;
 
+    let available_parallelism = std::thread::available_parallelism()?;
+
+    rayon::ThreadPoolBuilder::new()
+        .thread_name(|thread_index| format!("rayon-{}", thread_index))
+        .num_threads(available_parallelism.get())
+        .build_global()?;
+
     // A readiness flag which is used to indicate that pathfinder is ready via monitoring.
     let readiness = Arc::new(AtomicBool::new(false));
 
@@ -92,7 +99,9 @@ async fn async_main() -> anyhow::Result<()> {
     let storage_manager =
         Storage::migrate(pathfinder_context.database.clone(), config.sqlite_wal).unwrap();
     let sync_storage = storage_manager
-        .create_pool(NonZeroU32::new(5).unwrap())
+        // 5 is enough for normal sync operations, and then `available_parallelism` for
+        // the rayon thread pool workers to use.
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
         .context(
             r"Creating database connection pool for sync.
 
@@ -116,8 +125,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
     )?;
-
-    let available_parallelism = std::thread::available_parallelism()?;
 
     let execution_storage_pool_size = config.execution_concurrency.unwrap_or_else(|| {
         std::num::NonZeroU32::new(available_parallelism.get() as u32)
