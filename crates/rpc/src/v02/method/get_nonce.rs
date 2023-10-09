@@ -84,7 +84,20 @@ async fn get_pending_nonce(
             update
                 .contract_updates
                 .get(&contract_address)
-                .and_then(|x| x.nonce)
+                .and_then(|x| {
+                    x.nonce.or_else(|| {
+                        x.class.as_ref().and_then(|c| match c {
+                            pathfinder_common::state_update::ContractClassUpdate::Deploy(_) => {
+                                // The contract has been just deployed in the pending block, so
+                                // its nonce is zero.
+                                Some(ContractNonce::ZERO)
+                            }
+                            pathfinder_common::state_update::ContractClassUpdate::Replace(_) => {
+                                None
+                            }
+                        })
+                    })
+                })
         }),
         None => None,
     }
@@ -219,6 +232,19 @@ mod tests {
         };
         let nonce = get_nonce(context, input).await.unwrap();
 
+        assert_eq!(nonce.0, ContractNonce::ZERO);
+    }
+
+    #[tokio::test]
+    async fn contract_deployed_in_pending_defaults_to_zero() {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        // This contract is deployed in the pending block but does not have a nonce update.
+        let input = GetNonceInput {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"pending contract 0 address"),
+        };
+        let nonce = get_nonce(context, input).await.unwrap();
         assert_eq!(nonce.0, ContractNonce::ZERO);
     }
 

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rare edge case where duplicate blocks caused the sync process to halt due to a `A PRIMARY KEY constraint failed` error.
 - Querying a descync'd feeder gateway causes sync process to end due to missing classes.
 - `starknet_getStorageAt` no longer returns ContractNotFound when querying for non-existent keys for contracts deployed in the pending block.
+- `starknet_getNonce` no longer returns ContractNotFound when querying for nonce of contracts deployed in the pending block.
 
 ### Changed
 
