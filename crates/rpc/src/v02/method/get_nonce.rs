@@ -84,7 +84,20 @@ async fn get_pending_nonce(
             update
                 .contract_updates
                 .get(&contract_address)
-                .and_then(|x| x.nonce)
+                .and_then(|x| {
+                    x.nonce.or_else(|| {
+                        x.class.as_ref().and_then(|c| match c {
+                            pathfinder_common::state_update::ContractClassUpdate::Deploy(_) => {
+                                // The contract has been just deployed in the pending block, so
+                                // its nonce is zero.
+                                Some(ContractNonce::ZERO)
+                            }
+                            pathfinder_common::state_update::ContractClassUpdate::Replace(_) => {
+                                None
+                            }
+                        })
+                    })
+                })
         }),
         None => None,
     }
