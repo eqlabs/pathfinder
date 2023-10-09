@@ -28,11 +28,11 @@ impl Default for TransactionOrEventTree {
 struct NullStorage;
 
 impl crate::storage::Storage for NullStorage {
-    fn get(&self, _: u32) -> anyhow::Result<Option<StoredNode>> {
+    fn get(&self, _: u64) -> anyhow::Result<Option<StoredNode>> {
         Ok(None)
     }
 
-    fn hash(&self, _: u32) -> anyhow::Result<Option<Felt>> {
+    fn hash(&self, _: u64) -> anyhow::Result<Option<Felt>> {
         Ok(None)
     }
 

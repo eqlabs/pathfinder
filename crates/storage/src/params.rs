@@ -88,6 +88,7 @@ to_sql_builtin!(
     i32,
     i16,
     i8,
+    u64,
     u32,
     u16,
     u8

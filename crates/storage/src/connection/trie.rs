@@ -15,12 +15,12 @@ macros::create_trie_fns!(trie_storage);
 pub(super) fn class_root_index(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-) -> anyhow::Result<Option<u32>> {
+) -> anyhow::Result<Option<u64>> {
     tx.inner()
         .query_row(
             "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
             params![&block_number],
-            |row| row.get::<_, Option<u32>>(0),
+            |row| row.get::<_, Option<u64>>(0),
         )
         .optional()
         .map(|x| x.flatten())
@@ -30,12 +30,12 @@ pub(super) fn class_root_index(
 pub(super) fn storage_root_index(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-) -> anyhow::Result<Option<u32>> {
+) -> anyhow::Result<Option<u64>> {
     tx.inner()
         .query_row(
             "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
             params![&block_number],
-            |row| row.get::<_, Option<u32>>(0),
+            |row| row.get::<_, Option<u64>>(0),
         )
         .optional()
         .map(|x| x.flatten())
@@ -46,12 +46,12 @@ pub(super) fn contract_root_index(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
     contract: ContractAddress,
-) -> anyhow::Result<Option<u32>> {
+) -> anyhow::Result<Option<u64>> {
     tx.inner()
         .query_row(
             "SELECT root_index FROM contract_roots WHERE contract_address = ? AND block_number <= ? ORDER BY block_number DESC LIMIT 1",
             params![&contract, &block_number],
-            |row| row.get::<_, Option<u32>>(0),
+            |row| row.get::<_, Option<u64>>(0),
         )
         .optional()
         .map(|x| x.flatten())
@@ -78,7 +78,7 @@ pub(super) fn contract_root(
 pub(super) fn insert_class_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    root: Option<u32>,
+    root: Option<u64>,
 ) -> anyhow::Result<()> {
     tx.inner().execute(
         "INSERT INTO class_roots (block_number, root_index) VALUES(?, ?)",
@@ -117,7 +117,7 @@ pub(super) fn contract_state_hash(
 pub(super) fn insert_storage_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
-    root: Option<u32>,
+    root: Option<u64>,
 ) -> anyhow::Result<()> {
     tx.inner().execute(
         "INSERT INTO storage_roots (block_number, root_index) VALUES(?, ?)",
@@ -130,7 +130,7 @@ pub(super) fn insert_contract_root(
     tx: &Transaction<'_>,
     block_number: BlockNumber,
     contract: ContractAddress,
-    root: Option<u32>,
+    root: Option<u64>,
 ) -> anyhow::Result<()> {
     tx.inner().execute(
         "INSERT INTO contract_roots (block_number, contract_address, root_index) VALUES(?, ?, ?)",
@@ -152,7 +152,7 @@ mod macros {
                     tx: &Transaction<'_>,
                     root: Felt,
                     nodes: &HashMap<Felt, Node>,
-                ) -> anyhow::Result<u32> {
+                ) -> anyhow::Result<u64> {
                     let mut stmt = tx
                         .inner()
                         .prepare_cached(concat!(
@@ -206,7 +206,7 @@ mod macros {
 
                         let length = node.encode(&mut buffer).context("Encoding node")?;
 
-                        let idx: u32 = stmt
+                        let idx: u64 = stmt
                             .query_row(
                                 params![&hash.as_be_bytes().as_slice(), &&buffer[..length]],
                                 |row| row.get(0),
@@ -224,7 +224,7 @@ mod macros {
                 /// Returns the node with the given index.
                 pub fn node(
                     tx: &Transaction<'_>,
-                    index: u32,
+                    index: u64,
                 ) -> anyhow::Result<Option<StoredNode>> {
                     // We rely on sqlite caching the statement here. Storing the statement would be nice,
                     // however that leads to &mut requirements or interior mutable work-arounds.
@@ -250,7 +250,7 @@ mod macros {
                 }
 
                 /// Returns the hash of the node with the given index.
-                pub fn hash(tx: &Transaction<'_>, index: u32) -> anyhow::Result<Option<Felt>> {
+                pub fn hash(tx: &Transaction<'_>, index: u64) -> anyhow::Result<Option<Felt>> {
                     // We rely on sqlite caching the statement here. Storing the statement would be nice,
                     // however that leads to &mut requirements or interior mutable work-arounds.
                     let mut stmt = tx
@@ -291,22 +291,22 @@ pub enum Node {
 
 #[derive(Clone, Debug)]
 pub enum Child {
-    Id(u32),
+    Id(u64),
     Hash(Felt),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StoredNode {
-    Binary { left: u32, right: u32 },
-    Edge { child: u32, path: BitVec<u8, Msb0> },
+    Binary { left: u64, right: u64 },
+    Edge { child: u64, path: BitVec<u8, Msb0> },
     LeafBinary,
     LeafEdge { path: BitVec<u8, Msb0> },
 }
 
 #[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
 enum StoredSerde {
-    Binary { left: u32, right: u32 },
-    Edge { child: u32, path: Vec<u8> },
+    Binary { left: u64, right: u64 },
+    Edge { child: u64, path: Vec<u8> },
     LeafBinary,
     LeafEdge { path: Vec<u8> },
 }
@@ -381,14 +381,14 @@ impl StoredNode {
 
 #[cfg(test)]
 impl StoredNode {
-    fn into_binary(self) -> Option<(u32, u32)> {
+    fn into_binary(self) -> Option<(u64, u64)> {
         match self {
             Self::Binary { left, right } => Some((left, right)),
             _ => None,
         }
     }
 
-    fn into_edge(self) -> Option<(u32, BitVec<u8, Msb0>)> {
+    fn into_edge(self) -> Option<(u64, BitVec<u8, Msb0>)> {
         match self {
             Self::Edge { child, path } => Some((child, path)),
             _ => None,
@@ -411,7 +411,7 @@ impl StoredNode {
 }
 
 impl Node {
-    fn as_stored(&self, indices: &HashMap<Felt, u32>) -> anyhow::Result<StoredNode> {
+    fn as_stored(&self, indices: &HashMap<Felt, u64>) -> anyhow::Result<StoredNode> {
         let node = match self {
             Node::Binary { left, right } => {
                 let left = match left {
