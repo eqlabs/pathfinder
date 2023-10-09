@@ -76,11 +76,11 @@ struct ClassStorage<'tx> {
 }
 
 impl crate::storage::Storage for ClassStorage<'_> {
-    fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
         self.tx.class_trie_node(index)
     }
 
-    fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
         self.tx.class_trie_node_hash(index)
     }
 

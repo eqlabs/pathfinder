@@ -77,7 +77,7 @@ pub struct TrieUpdate {
 }
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
-    pub fn new(root: u32) -> Self {
+    pub fn new(root: u64) -> Self {
         let root = Some(Rc::new(RefCell::new(InternalNode::Unresolved(root))));
         Self {
             root,
@@ -469,7 +469,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///   2. the hashes are correct, and
     ///   3. the root hash matches the known root
     pub fn get_proof(
-        root: u32,
+        root: u64,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Vec<TrieNode>> {
@@ -621,7 +621,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     fn resolve(
         &self,
         storage: &impl Storage,
-        index: u32,
+        index: u64,
         height: usize,
     ) -> anyhow::Result<InternalNode> {
         anyhow::ensure!(
@@ -810,16 +810,16 @@ mod tests {
 
     #[derive(Default, Debug)]
     struct TestStorage {
-        nodes: HashMap<u32, (Felt, StoredNode)>,
+        nodes: HashMap<u64, (Felt, StoredNode)>,
         leaves: HashMap<Felt, Felt>,
     }
 
     impl Storage for TestStorage {
-        fn get(&self, node: u32) -> anyhow::Result<Option<StoredNode>> {
+        fn get(&self, node: u64) -> anyhow::Result<Option<StoredNode>> {
             Ok(self.nodes.get(&node).map(|x| x.1.clone()))
         }
 
-        fn hash(&self, node: u32) -> anyhow::Result<Option<Felt>> {
+        fn hash(&self, node: u64) -> anyhow::Result<Option<Felt>> {
             Ok(self.nodes.get(&node).map(|x| x.0))
         }
 
@@ -834,7 +834,7 @@ mod tests {
     fn commit_and_persist<H: FeltHash, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
-    ) -> (Felt, u32) {
+    ) -> (Felt, u64) {
         use pathfinder_storage::Child;
 
         for (key, value) in &tree.leaves {
@@ -847,7 +847,7 @@ mod tests {
         let mut indices = HashMap::new();
         let mut idx = storage.nodes.len();
         for hash in update.nodes.keys() {
-            indices.insert(*hash, idx as u32);
+            indices.insert(*hash, idx as u64);
             idx += 1;
         }
 
@@ -1751,7 +1751,7 @@ mod tests {
             keys: Vec<Felt>,
             values: Vec<Felt>,
             root: Felt,
-            root_idx: u32,
+            root_idx: u64,
             storage: TestStorage,
         }
 
@@ -1802,7 +1802,7 @@ mod tests {
         /// Generates a storage proof for each `key` in `keys` and returns the result in the form of an array.
         fn get_proofs(
             keys: &'_ [&BitSlice<u8, Msb0>],
-            root: u32,
+            root: u64,
             storage: &impl Storage,
         ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
             keys.iter()

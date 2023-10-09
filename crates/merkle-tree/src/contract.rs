@@ -211,11 +211,11 @@ struct ContractStorage<'tx> {
 }
 
 impl crate::storage::Storage for ContractStorage<'_> {
-    fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
         self.tx.contract_trie_node(index)
     }
 
-    fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
         self.tx.contract_trie_node_hash(index)
     }
 
@@ -244,11 +244,11 @@ struct StorageTrieStorage<'tx> {
 }
 
 impl crate::storage::Storage for StorageTrieStorage<'_> {
-    fn get(&self, index: u32) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
         self.tx.storage_trie_node(index)
     }
 
-    fn hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
         self.tx.storage_trie_node_hash(index)
     }
 

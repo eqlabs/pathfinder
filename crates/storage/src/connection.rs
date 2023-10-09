@@ -304,7 +304,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: ClassCommitment,
         nodes: &HashMap<Felt, Node>,
-    ) -> anyhow::Result<u32> {
+    ) -> anyhow::Result<u64> {
         trie::trie_class::insert(self, root.0, nodes)
     }
 
@@ -313,7 +313,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: ContractRoot,
         nodes: &HashMap<Felt, Node>,
-    ) -> anyhow::Result<u32> {
+    ) -> anyhow::Result<u64> {
         trie::trie_contracts::insert(self, root.0, nodes)
     }
 
@@ -322,39 +322,39 @@ impl<'inner> Transaction<'inner> {
         &self,
         root: StorageCommitment,
         nodes: &HashMap<Felt, Node>,
-    ) -> anyhow::Result<u32> {
+    ) -> anyhow::Result<u64> {
         trie::trie_storage::insert(self, root.0, nodes)
     }
 
-    pub fn class_trie_node(&self, index: u32) -> anyhow::Result<Option<StoredNode>> {
+    pub fn class_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
         trie::trie_class::node(self, index)
     }
 
-    pub fn storage_trie_node(&self, index: u32) -> anyhow::Result<Option<StoredNode>> {
+    pub fn storage_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
         trie::trie_storage::node(self, index)
     }
 
-    pub fn contract_trie_node(&self, index: u32) -> anyhow::Result<Option<StoredNode>> {
+    pub fn contract_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
         trie::trie_contracts::node(self, index)
     }
 
-    pub fn class_trie_node_hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+    pub fn class_trie_node_hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
         trie::trie_class::hash(self, index)
     }
 
-    pub fn storage_trie_node_hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+    pub fn storage_trie_node_hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
         trie::trie_storage::hash(self, index)
     }
 
-    pub fn contract_trie_node_hash(&self, index: u32) -> anyhow::Result<Option<Felt>> {
+    pub fn contract_trie_node_hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
         trie::trie_contracts::hash(self, index)
     }
 
-    pub fn class_root_index(&self, block: BlockNumber) -> anyhow::Result<Option<u32>> {
+    pub fn class_root_index(&self, block: BlockNumber) -> anyhow::Result<Option<u64>> {
         trie::class_root_index(self, block)
     }
 
-    pub fn storage_root_index(&self, block: BlockNumber) -> anyhow::Result<Option<u32>> {
+    pub fn storage_root_index(&self, block: BlockNumber) -> anyhow::Result<Option<u64>> {
         trie::storage_root_index(self, block)
     }
 
@@ -362,7 +362,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         block: BlockNumber,
         contract: ContractAddress,
-    ) -> anyhow::Result<Option<u32>> {
+    ) -> anyhow::Result<Option<u64>> {
         trie::contract_root_index(self, block, contract)
     }
 
@@ -377,7 +377,7 @@ impl<'inner> Transaction<'inner> {
     pub fn insert_class_root(
         &self,
         block_number: BlockNumber,
-        root: Option<u32>,
+        root: Option<u64>,
     ) -> anyhow::Result<()> {
         trie::insert_class_root(self, block_number, root)
     }
@@ -385,7 +385,7 @@ impl<'inner> Transaction<'inner> {
     pub fn insert_storage_root(
         &self,
         block_number: BlockNumber,
-        root: Option<u32>,
+        root: Option<u64>,
     ) -> anyhow::Result<()> {
         trie::insert_storage_root(self, block_number, root)
     }
@@ -394,7 +394,7 @@ impl<'inner> Transaction<'inner> {
         &self,
         block_number: BlockNumber,
         contract: ContractAddress,
-        root: Option<u32>,
+        root: Option<u64>,
     ) -> anyhow::Result<()> {
         trie::insert_contract_root(self, block_number, contract, root)
     }
