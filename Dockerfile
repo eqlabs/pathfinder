@@ -5,10 +5,10 @@
 ########################################
 # Stage 1: Build the pathfinder binary #
 ########################################
-# Note that we're explicitly using the Debian bullseye image to make sure we're
+# Note that we're explicitly using the Debian bookworm image to make sure we're
 # compatible with the Python container we'll be copying the pathfinder
 # executable to.
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.62-rust-1.72-slim-bullseye AS cargo-chef
+FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.62-rust-1.73-slim-bookworm AS cargo-chef
 WORKDIR /usr/src/pathfinder
 
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-planner
@@ -26,7 +26,7 @@ RUN TARGETARCH=${TARGETARCH} ./prepare.sh
 # input required for cargo chef cook, the command that will build out our dependencies.
 COPY --from=rust-planner /usr/src/pathfinder/recipe.json recipe.json
 COPY ./build/cargo-chef-cook.sh ./cargo-chef-cook.sh
-RUN TARGETARCH=${TARGETARCH} ./cargo-chef-cook.sh --profile release-lto --recipe-path recipe.json
+RUN TARGETARCH=${TARGETARCH} ./cargo-chef-cook.sh --profile release-lto --recipe-path recipe.json --package pathfinder --bin pathfinder
 
 # Compile the actual libraries and binary now
 COPY . .
@@ -34,15 +34,15 @@ ARG PATHFINDER_FORCE_VERSION
 COPY ./build/cargo-build.sh ./cargo-build.sh
 RUN TARGETARCH=${TARGETARCH} \
     PATHFINDER_FORCE_VERSION=${PATHFINDER_FORCE_VERSION} \
-    ./cargo-build.sh --locked --profile release-lto -p pathfinder --bin pathfinder \
+    ./cargo-build.sh --locked --profile release-lto --package pathfinder --bin pathfinder \
     && cp target/*-unknown-linux-gnu/release-lto/pathfinder pathfinder-${TARGETARCH}
 
 #######################
 # Final Stage: Runner #
 #######################
-# Note that we're explicitly using the Debian bullseye image to make sure we're
+# Note that we're explicitly using the Debian bookworm image to make sure we're
 # compatible with the Rust builder we've built the pathfinder executable in.
-FROM debian:bullseye-slim AS runner
+FROM debian:bookworm-slim AS runner
 ARG TARGETARCH
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates libgmp10 tini && rm -rf /var/lib/apt/lists/*

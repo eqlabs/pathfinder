@@ -7,8 +7,5 @@ elif [[ "${TARGETARCH}" == "arm64" ]]; then
     C_INCLUDE_PATH=/build/sysroot/usr/include \
     OPENSSL_LIB_DIR=/build/sysroot/usr/lib/aarch64-linux-gnu \
     OPENSSL_INCLUDE_DIR=/build/sysroot/usr/include/aarch64-linux-gnu \
-    PYO3_CROSS_INCLUDE_DIR=/build/sysroot/usr/include \
-    PYO3_CROSS_LIB_DIR=/build/sysroot/usr/ \
-    PYO3_CROSS_PYTHON_VERSION=3.9 \
     cargo build --target aarch64-unknown-linux-gnu $*
 fi
