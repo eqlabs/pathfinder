@@ -460,6 +460,8 @@ async fn consumer(mut events: Receiver<SyncEvent>, context: ConsumerContext) -> 
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
+                next_number = reorg_tail;
+
                 let new_head = match reorg_tail {
                     BlockNumber::GENESIS => None,
                     other => Some(other - 1),
@@ -1121,7 +1123,7 @@ mod tests {
             .await
             .unwrap();
         // This previously failed as the expected next block number was never
-        // updated after a reorg, causing the reorg'd block numbers to be considered 
+        // updated after a reorg, causing the reorg'd block numbers to be considered
         // duplicates and skipped - breaking sync.
         event_tx
             .send(SyncEvent::Block(block2.0, block2.1, block2.2))
